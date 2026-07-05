@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* SISTEN - High-contrast Professional Dark Theme */
+.dark {
+  color-scheme: dark;
+  --bg-primary: #0a0e17;      /* Deep cosmic background */
+  --bg-secondary: #0f1422;    /* Slate-900 / Cards and panel backgrounds */
+  --bg-tertiary: #171e30;     /* Slate-800 / Dropdowns & inputs */
+  --border-primary: #1e293b;  /* Slate-700 / High contrast borders */
+  --border-secondary: #334155;/* Slate-600 / Subdued borders */
+  --text-primary: #f8fafc;    /* Slate-50 / Body text */
+  --text-secondary: #cbd5e1;  /* Slate-300 / Labels and description text */
+  --text-muted: #64748b;      /* Slate-500 / Subtexts */
+  --brand-color: #10b981;     /* Emerald green brand color */
+}
+
+/* Base Body override in Dark Mode */
+.dark body {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Global root level element bg */
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50,
+.dark .bg-gray-50,
+.dark .bg-slate-100\/50 {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Main Cards & Header */
+.dark .bg-white,
+.dark header,
+.dark .bg-slate-100 {
+  background-color: var(--bg-secondary) !important;
+}
+
+/* Hover background updates for lists, tables, and buttons */
+.dark .hover\:bg-slate-50\/40:hover,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-50\/50:hover,
+.dark .hover\:bg-slate-100\/50:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* Text overrides to prevent dark text on dark background */
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-gray-900,
+.dark .text-gray-800 {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-gray-700,
+.dark .text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+.dark .text-slate-500,
+.dark .text-slate-400,
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: var(--text-muted) !important;
+}
+
+/* Borders */
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-gray-50,
+.dark .border-gray-100,
+.dark .border-gray-200 {
+  border-color: var(--border-primary) !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border-primary) !important;
+}
+
+/* Inputs, Textareas, Selects */
+.dark input[type="text"],
+.dark input[type="password"],
+.dark input[type="email"],
+.dark input[type="number"],
+.dark input[type="date"],
+.dark select,
+.dark textarea {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark input[type="text"]::placeholder,
+.dark input[type="password"]::placeholder,
+.dark input[type="email"]::placeholder,
+.dark input[type="number"]::placeholder,
+.dark textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Interactive custom card lists */
+.dark .bg-emerald-50\/30 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+.dark .bg-blue-50\/40 {
+  background-color: rgba(59, 130, 246, 0.08) !important;
+}
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+/* Specific elements like active tabs, widgets, modals */
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg,
+.dark .shadow-xl {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Fix login right-side card border */
+.dark .lg\:w-2\/5, .dark .xl\:w-1\/3 {
+  border-color: var(--border-primary) !important;
+}
