@@ -6,11 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, Map, Shield, Upload, Check, X, AlertTriangle, 
-  Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus 
+  Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
+  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
-import { Profile, Sector } from '../types';
+import { getAutoCategory } from '../data/materials';
+import { Profile, Sector, Material } from '../types';
 
 interface AdminPanelProps {
   user: Profile;
@@ -29,11 +31,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
 
-  // Materials CSV Importer
-  const [csvContent, setCsvContent] = useState('');
+  // Materials Importer (aceita planilha SAP .xlsx/.xls ou .csv)
   const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [pendingImportItems, setPendingImportItems] = useState<Omit<Material, 'id' | 'is_active' | 'created_at'>[]>([]);
   const [importStatus, setImportStatus] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
   const [importError, setImportError] = useState('');
+  const [importSummary, setImportSummary] = useState<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number } | null>(null);
 
   // SAP ME5A/ZL0132 upload simulation states
   const [sapLogPreview, setSapLogPreview] = useState<any[]>([]);
@@ -42,6 +45,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapLogError, setSapLogError] = useState('');
   const [currentSapUploadType, setCurrentSapUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [sapCsvText, setSapCsvText] = useState('');
+  const [lastUploadLog, setLastUploadLog] = useState<any | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   // Buyer Groups Config States
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
@@ -107,7 +112,98 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     loadData();
   };
 
-  // CSV Parsing simulation for bulk import
+  // Materials import: SAP export structure -> Material | Texto breve material | Texto longo do material | empresa
+  const VALID_COMPANIES = ['TEN2', 'AG', 'AMBAS'];
+
+  const parseMaterialsRows = (rawRows: any[][]): Omit<Material, 'id' | 'is_active' | 'created_at'>[] => {
+    if (rawRows.length < 2) {
+      throw new Error('Planilha vazia ou sem linhas de dados.');
+    }
+
+    const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
+    const headers = rawRows[0].map(normalizeHeader);
+
+    const codeIdx = headers.findIndex(h => h === 'material');
+    const descIdx = headers.findIndex(h => h.includes('texto breve'));
+    const techIdx = headers.findIndex(h => h.includes('texto longo'));
+    const companyIdx = headers.findIndex(h => h === 'empresa');
+
+    if (codeIdx === -1 || descIdx === -1) {
+      throw new Error('Colunas obrigatórias não encontradas. Esperado: "Material" e "Texto breve material".');
+    }
+
+    const items: Omit<Material, 'id' | 'is_active' | 'created_at'>[] = [];
+    rawRows.slice(1).forEach(row => {
+      const material_code = String(row[codeIdx] ?? '').trim();
+      if (!material_code) return;
+
+      const description = String(row[descIdx] ?? '').trim();
+      const rawCompany = companyIdx !== -1 ? String(row[companyIdx] ?? '').trim().toUpperCase() : '';
+
+      items.push({
+        material_code,
+        description,
+        technical_text: techIdx !== -1 ? String(row[techIdx] ?? '').trim() : '',
+        category: getAutoCategory(description),
+        company: (VALID_COMPANIES.includes(rawCompany) ? rawCompany : 'TEN2') as Material['company'],
+        unit: 'UN'
+      });
+    });
+
+    if (items.length === 0) {
+      throw new Error('Nenhum material válido encontrado na planilha.');
+    }
+
+    return items;
+  };
+
+  const processMaterialsFile = (file: File) => {
+    setImportError('');
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      setImportError('Falha ao ler o arquivo selecionado.');
+      setImportStatus('error');
+    };
+
+    if (isExcel) {
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+          const items = parseMaterialsRows(rawRows);
+          setPendingImportItems(items);
+          setImportPreview(items.slice(0, 10));
+          setImportStatus('parsed');
+        } catch (err: any) {
+          setImportError(err.message || 'Falha ao processar a planilha .xlsx.');
+          setImportStatus('error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          const rawRows = text.split('\n').filter(l => l.trim()).map(line =>
+            line.split(';').map(c => c.trim().replace(/"/g, ''))
+          );
+          const items = parseMaterialsRows(rawRows);
+          setPendingImportItems(items);
+          setImportPreview(items.slice(0, 10));
+          setImportStatus('parsed');
+        } catch (err: any) {
+          setImportError(err.message || 'Falha ao processar o arquivo CSV. Verifique o delimitador (;).');
+          setImportStatus('error');
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
   const handleCSVDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
@@ -115,96 +211,29 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const handleCSVDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files?.length) {
-      const file = e.dataTransfer.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        parseCSV(text);
-      };
-      reader.readAsText(file);
+      processMaterialsFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        parseCSV(text);
-      };
-      reader.readAsText(file);
+      processMaterialsFile(e.target.files[0]);
     }
   };
 
-  const parseCSV = (text: string) => {
-    setImportError('');
+  const handleBulkImport = async () => {
+    setImportStatus('saving');
     try {
-      const lines = text.split('\n').filter(l => l.trim());
-      if (lines.length < 2) {
-        setImportError('Arquivo CSV vazio ou sem cabeçalhos.');
-        setImportStatus('error');
-        return;
-      }
-
-      const parsed: any[] = [];
-      // Simple CSV parser
-      const headers = lines[0].split(';').map(h => h.trim().replace(/"/g, ''));
-      
-      // Expected headers: Código SAP; Descrição; Texto Técnico; Categoria; Empresa; Unidade
-      for (let i = 1; i < Math.min(lines.length, 10); i++) {
-        const cols = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
-        if (cols.length >= 4) {
-          parsed.push({
-            code: cols[0],
-            description: cols[1],
-            technical_text: cols[2] || '',
-            category: cols[3] || 'OUTROS',
-            company: cols[4] || 'TEN2',
-            unit: cols[5] || 'UN'
-          });
-        }
-      }
-
-      setImportPreview(parsed);
-      setCsvContent(text);
-      setImportStatus('parsed');
-    } catch (err) {
-      setImportError('Falha ao processar o formato do arquivo CSV. Verifique o delimitador (;).');
+      const result = await localDb.importMaterials(pendingImportItems);
+      setImportSummary(result);
+      setImportStatus('success');
+      setImportPreview([]);
+      setPendingImportItems([]);
+    } catch (err: any) {
+      console.error('Erro ao importar catálogo de materiais:', err);
+      setImportError(`Erro ao realizar salvamento do catálogo: ${err?.message || String(err)}`);
       setImportStatus('error');
     }
-  };
-
-  const handleBulkImport = () => {
-    setImportStatus('saving');
-    setTimeout(() => {
-      // Upsert mock items based on csv content
-      try {
-        const lines = csvContent.split('\n').filter(l => l.trim());
-        const importedItems: any[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(';').map(c => c.trim().replace(/"/g, ''));
-          if (cols.length >= 4) {
-            importedItems.push({
-              material_code: cols[0],
-              description: cols[1],
-              technical_text: cols[2] || '',
-              category: cols[3] || 'OUTROS',
-              company: cols[4] || 'TEN2',
-              unit: cols[5] || 'UN'
-            });
-          }
-        }
-
-        localDb.bulkUpsertMaterials(importedItems);
-        setImportStatus('success');
-        setImportPreview([]);
-        setCsvContent('');
-      } catch (err) {
-        setImportError('Erro ao realizar salvamento no banco de dados local.');
-        setImportStatus('error');
-      }
-    }, 1200);
   };
 
   const pendingUsers = profiles.filter(p => p.status === 'pendente');
@@ -500,27 +529,27 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
-      {/* Tab 4: Materials bulk CSV parser */}
+      {/* Tab 4: Materials import (cadastro SAP) */}
       {activeTab === 'importar' && (
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-800">Importação de Materiais SAP</h3>
-            <p className="text-xs text-slate-500">Realize carga consolidada de materiais a partir de planilha exportada do SAP.</p>
+            <h3 className="text-sm font-bold text-slate-800">Importação do Cadastro de Materiais SAP</h3>
+            <p className="text-xs text-slate-500">Carregue a planilha exportada do SAP com as colunas "Material", "Texto breve material", "Texto longo do material" e "empresa". O catálogo local e a tabela <code>materials</code> no Supabase são atualizados automaticamente.</p>
 
-            <div 
+            <div
               onDragOver={handleCSVDragOver}
               onDrop={handleCSVDrop}
               className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:bg-slate-50/50 transition-colors cursor-pointer relative"
             >
               <input
                 type="file"
-                accept=".csv"
+                accept=".xlsx,.xls,.csv"
                 onChange={handleFileSelect}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
               <FileSpreadsheet className="mx-auto h-10 w-10 text-gray-400" />
-              <p className="mt-2 text-xs font-semibold text-slate-700">Solte seu arquivo CSV de materiais aqui, ou clique para buscar</p>
-              <p className="mt-1 text-[10px] text-slate-400">Delimitador por ponto e vírgula (;). Máx 10 MB.</p>
+              <p className="mt-2 text-xs font-semibold text-slate-700">Solte a planilha de materiais aqui, ou clique para buscar</p>
+              <p className="mt-1 text-[10px] text-slate-400">Aceita .xlsx, .xls ou .csv (delimitado por ponto e vírgula). Máx 10 MB.</p>
             </div>
 
             {importError && (
@@ -530,10 +559,24 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </div>
             )}
 
-            {importStatus === 'success' && (
-              <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 border border-emerald-100 flex items-center">
-                <Check className="mr-2 h-4.5 w-4.5 shrink-0 text-emerald-600 font-black" />
-                <span>Importação realizada com sucesso! Os novos itens estão disponíveis para busca no catálogo.</span>
+            {importStatus === 'saving' && (
+              <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 flex items-center">
+                <RefreshCw className="mr-2 h-4.5 w-4.5 shrink-0 text-blue-600 animate-spin" />
+                <span>Salvando catálogo no banco local e sincronizando com o Supabase...</span>
+              </div>
+            )}
+
+            {importStatus === 'success' && importSummary && (
+              <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${importSummary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
+                {importSummary.syncFailed > 0 ? (
+                  <AlertTriangle className="mr-2 h-4.5 w-4.5 shrink-0 text-amber-600" />
+                ) : (
+                  <Check className="mr-2 h-4.5 w-4.5 shrink-0 text-emerald-600 font-black" />
+                )}
+                <span>
+                  Importação concluída! Lidos: {importSummary.read}, Inseridos: {importSummary.inserted}, Atualizados: {importSummary.updated}, Desativados: {importSummary.deactivated}.
+                  {importSummary.syncFailed > 0 && ` ${importSummary.syncFailed} linha(s) não sincronizaram com o Supabase — veja o console para detalhes e tente reimportar.`}
+                </span>
               </div>
             )}
           </div>
@@ -542,7 +585,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           {importStatus === 'parsed' && importPreview.length > 0 && (
             <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pré-visualização da Importação (Amostra dos 10 primeiros itens)</h4>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pré-visualização da Importação ({pendingImportItems.length} itens lidos, amostra dos 10 primeiros)</h4>
                 <button
                   onClick={handleBulkImport}
                   className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-1.5 px-4 cursor-pointer"
@@ -558,16 +601,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <th className="py-2 px-3">Código SAP</th>
                       <th className="py-2 px-3">Descrição</th>
                       <th className="py-2 px-3">Categoria Sugerida</th>
-                      <th className="py-2 px-3 text-center">Un.</th>
+                      <th className="py-2 px-3 text-center">Empresa</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {importPreview.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="py-2 px-3 font-mono text-emerald-800 font-bold">{item.code}</td>
+                        <td className="py-2 px-3 font-mono text-emerald-800 font-bold">{item.material_code}</td>
                         <td className="py-2 px-3 font-semibold text-slate-800">{item.description}</td>
                         <td className="py-2 px-3 font-medium text-slate-600">{item.category}</td>
-                        <td className="py-2 px-3 text-center font-bold text-slate-500">{item.unit}</td>
+                        <td className="py-2 px-3 text-center font-bold text-slate-500">{item.company}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -602,17 +645,25 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <button
                   onClick={() => {
                     setSapLogStatus('saving');
+                    setLastUploadLog(null);
                     setTimeout(() => {
                       try {
-                        const demoME5A = [
-                          { requisicao_de_compra: '1000000123', item_reqc: '00010', material_code: '10000123', texto_breve: 'Cabo de Cobre Flexível 4mm', qtd_requisicao: 150, unidade_medida: 'M', grupo_comprador: 'G001', data_solicitacao: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString().split('T')[0], tipo_documento: 'ZR01', requisitante_name: 'Guilherme Silva' },
-                          { requisicao_de_compra: '1000000123', item_reqc: '00020', material_code: '10000456', texto_breve: 'Disjuntor Termomagnético 50A', qtd_requisicao: 12, unidade_medida: 'UN', grupo_comprador: 'G001', data_solicitacao: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().split('T')[0], tipo_documento: 'ZR02', requisitante_name: 'Guilherme Silva' },
-                          { requisicao_de_compra: '1000000124', item_reqc: '00010', material_code: '10000789', texto_breve: 'Placa de Aço Laminado 2000x1000x10mm', qtd_requisicao: 5, unidade_medida: 'UN', grupo_comprador: 'G002', data_solicitacao: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString().split('T')[0], tipo_documento: 'ZR03', requisitante_name: 'Roberto Souza' }
+                        const headers = ['Tipo de documento', 'Requisição de compra', 'Item ReqC', 'Data da solicitação', 'Requisitante', 'Material', 'Texto breve', 'Qtd.solicitada', 'Unidade de medida', 'Grupo de compradores'];
+                        const data = [
+                          ['ZR01', '1000000123', '00010', new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Guilherme Silva', '10000123', 'Cabo de Cobre Flexível 4mm', 150, 'M', '314'],
+                          ['ZR02', '1000000123', '00020', new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Guilherme Silva', '10000456', 'Disjuntor Termomagnético 50A', 12, 'UN', '314'],
+                          ['ZR03', '1000000124', '00010', new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Roberto Souza', '10000789', 'Placa de Aço Laminado 2000x1000x10mm', 5, 'UN', '358']
                         ];
-                        const log = localDb.importME5A(demoME5A, 'sap_export_me5a_simulado.xlsx');
-                        setSapLogStatus('success');
-                        setSapLogError('');
-                        loadData();
+                        const rawRows = [headers, ...data];
+                        localDb.importME5ARaw(rawRows, 'sap_export_me5a_simulado.xlsx').then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          setSapLogError('');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Erro ao simular ME5A.');
+                          setSapLogStatus('error');
+                        });
                       } catch (err: any) {
                         setSapLogError(err.message || 'Erro ao simular ME5A.');
                         setSapLogStatus('error');
@@ -627,15 +678,23 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <button
                   onClick={() => {
                     setSapLogStatus('saving');
+                    setLastUploadLog(null);
                     setTimeout(() => {
                       try {
-                        const demoZL0132 = [
-                          { requisicao_de_compra: '1000000123', item_reqc: '00010', documento_compra: '4500123456', item_pedido: '00010', fornecedor_code: 'F900213', fornecedor_name: 'Metalúrgica Gerdau S.A.', data_pedido: new Date().toISOString().split('T')[0], data_entrega_sap: new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().split('T')[0] }
+                        const headers = ['ReqC', 'Item', 'Doc.compra', 'Itm', 'Fornecedor', 'Nome 1', 'Data doc.', 'Dt.remessa', 'Qtd.pedido'];
+                        const data = [
+                          ['1000000123', '00010', '4500123456', '00010', 'F900213', 'Metalúrgica Gerdau S.A.', new Date().toISOString().split('T')[0], new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().split('T')[0], 150]
                         ];
-                        const log = localDb.importZL0132(demoZL0132, 'sap_export_zl0132_simulado.xlsx');
-                        setSapLogStatus('success');
-                        setSapLogError('');
-                        loadData();
+                        const rawRows = [headers, ...data];
+                        localDb.importZL0132Raw(rawRows, 'sap_export_zl0132_simulado.xlsx').then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          setSapLogError('');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Erro ao simular ZL0132.');
+                          setSapLogStatus('error');
+                        });
                       } catch (err: any) {
                         setSapLogError(err.message || 'Erro ao simular ZL0132.');
                         setSapLogStatus('error');
@@ -666,24 +725,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
+                        setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
                         
                         r.onload = (ev) => {
                           try {
-                            let objList: any[] = [];
+                            let rawRows: any[][] = [];
                             if (fileExtension === 'csv') {
                               const text = ev.target?.result as string;
-                              const rows = text.split('\n').filter(l => l.trim()).map(l => {
-                                const cols = l.split(';').map(c => c.replace(/"/g, '').trim());
-                                return cols;
-                              });
-                              if (rows.length < 2) throw new Error('Cabeçalhos não encontrados.');
-                              const headers = rows[0];
-                              objList = rows.slice(1).map(row => {
-                                const o: any = {};
-                                headers.forEach((h, idx) => { o[h] = row[idx]; });
-                                return o;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
                               });
                             } else {
                               const data = new Uint8Array(ev.target?.result as ArrayBuffer);
@@ -691,12 +743,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
                               const sheetName = workbook.SheetNames[0];
                               const worksheet = workbook.Sheets[sheetName];
-                              objList = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
                             
-                            localDb.importME5A(objList, file.name);
-                            setSapLogStatus('success');
-                            loadData();
+                            localDb.importME5ARaw(rawRows, file.name).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
                           } catch (err: any) {
                             setSapLogError(err.message || 'Falha ao processar planilha.');
                             setSapLogStatus('error');
@@ -732,24 +789,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
+                        setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
                         
                         r.onload = (ev) => {
                           try {
-                            let objList: any[] = [];
+                            let rawRows: any[][] = [];
                             if (fileExtension === 'csv') {
                               const text = ev.target?.result as string;
-                              const rows = text.split('\n').filter(l => l.trim()).map(l => {
-                                const cols = l.split(';').map(c => c.replace(/"/g, '').trim());
-                                return cols;
-                              });
-                              if (rows.length < 2) throw new Error('Cabeçalhos não encontrados.');
-                              const headers = rows[0];
-                              objList = rows.slice(1).map(row => {
-                                const o: any = {};
-                                headers.forEach((h, idx) => { o[h] = row[idx]; });
-                                return o;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
                               });
                             } else {
                               const data = new Uint8Array(ev.target?.result as ArrayBuffer);
@@ -757,12 +807,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
                               const sheetName = workbook.SheetNames[0];
                               const worksheet = workbook.Sheets[sheetName];
-                              objList = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
                             
-                            localDb.importZL0132(objList, file.name);
-                            setSapLogStatus('success');
-                            loadData();
+                            localDb.importZL0132Raw(rawRows, file.name).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
                           } catch (err: any) {
                             setSapLogError(err.message || 'Falha ao processar planilha.');
                             setSapLogStatus('error');
@@ -797,10 +852,92 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               </div>
             )}
 
-            {sapLogStatus === 'success' && (
-              <div className="rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 border border-emerald-100 flex items-center">
-                <Check className="mr-1.5 h-4 w-4 text-emerald-600 shrink-0 font-black" />
-                <span>Carga importada e integrada com sucesso! Todos os prazos e SLAs foram recalculados automaticamente.</span>
+            {sapLogStatus === 'success' && lastUploadLog && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 space-y-4 text-left">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                  <Check className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <span>Carga importada e integrada com sucesso! Todos os SLAs e prazos recalculados.</span>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px]">
+                  <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
+                    <p className="text-slate-400 font-semibold">Arquivo</p>
+                    <p className="text-slate-700 font-bold font-mono mt-0.5 break-all">{lastUploadLog.filename}</p>
+                  </div>
+                  <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
+                    <p className="text-slate-400 font-semibold">Linhas Lidas</p>
+                    <p className="text-slate-700 font-black text-sm mt-0.5">{lastUploadLog.records_read}</p>
+                  </div>
+                  <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
+                    <p className="text-slate-400 font-semibold">Novas Inseridas</p>
+                    <p className="text-emerald-700 font-black text-sm mt-0.5">+{lastUploadLog.records_inserted}</p>
+                  </div>
+                  <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
+                    <p className="text-slate-400 font-semibold">Atualizadas / Inativas</p>
+                    <p className="text-slate-600 font-black text-sm mt-0.5">{lastUploadLog.records_updated} / {lastUploadLog.records_eliminated}</p>
+                  </div>
+                </div>
+
+                {lastUploadLog.quantity_changes && lastUploadLog.quantity_changes.length > 0 && (
+                  <div className="bg-white border border-emerald-100 p-3 rounded-lg text-[10px] space-y-2">
+                    <p className="font-bold text-slate-700">Mudanças de Quantidade Detectadas:</p>
+                    <div className="divide-y divide-slate-100 max-h-32 overflow-y-auto">
+                      {lastUploadLog.quantity_changes.map((qc: any, idx: number) => (
+                        <div key={idx} className="py-1 flex justify-between font-mono">
+                          <span className="text-slate-500">{qc.item} (RI: {qc.ri})</span>
+                          <span className="font-bold text-amber-600">Qtd: {qc.oldQty} → {qc.newQty}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {lastUploadLog.missing_ris && lastUploadLog.missing_ris.length > 0 && (
+                  <div className="bg-white border border-emerald-100 p-3 rounded-lg text-[10px] space-y-2">
+                    <div className="flex justify-between items-center">
+                      <p className="font-bold text-slate-700">RIs Ausentes na última carga ({lastUploadLog.missing_ris.length}):</p>
+                      <button
+                        onClick={() => {
+                          const text = lastUploadLog.missing_ris.join('\n');
+                          const blob = new Blob([text], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `ris_ausentes_${lastUploadLog.id}.txt`;
+                          a.click();
+                        }}
+                        className="text-[9px] font-bold text-blue-600 hover:underline"
+                      >
+                        Exportar Lista (.txt)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(lastUploadLog.columns_missing?.length > 0 || lastUploadLog.columns_new?.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[10px]">
+                    {lastUploadLog.columns_missing?.length > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg space-y-1 text-amber-800">
+                        <p className="font-bold flex items-center gap-1">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Colunas Esperadas Ausentes:
+                        </p>
+                        <ul className="list-disc pl-4 space-y-0.5">
+                          {lastUploadLog.columns_missing.map((c: string) => <li key={c}>{c}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {lastUploadLog.columns_new?.length > 0 && (
+                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg space-y-1 text-blue-800">
+                        <p className="font-bold flex items-center gap-1">
+                          <RefreshCw className="h-3.5 w-3.5 text-blue-600 animate-spin-slow" /> Colunas Novas Detectadas (Salvas em extra):
+                        </p>
+                        <ul className="list-disc pl-4 space-y-0.5 animate-pulse">
+                          {lastUploadLog.columns_new.map((c: string) => <li key={c}>{c}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -813,14 +950,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Histórico de Cargas do SAP</h3>
-              <p className="text-xs text-slate-500">Histórico de importações tolerantes a schema ME5A e ZL0132 realizadas por compradores e administradores.</p>
+              <p className="text-xs text-slate-500">Detalhamento completo das importações ME5A e ZL0132 — registros processados, ignorados e alterações detectadas.</p>
             </div>
             <button
               onClick={loadData}
-              className="p-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg text-xs cursor-pointer transition-colors"
               title="Atualizar Logs"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" /> Atualizar
             </button>
           </div>
 
@@ -828,43 +965,298 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-2.5 px-4 w-8"></th>
                     <th className="py-2.5 px-4">ID Carga</th>
                     <th className="py-2.5 px-4">Tipo</th>
-                    <th className="py-2.5 px-4">Nome do Arquivo</th>
-                    <th className="py-2.5 px-4 text-center">Registros Lidos</th>
-                    <th className="py-2.5 px-4 text-center">Novos</th>
-                    <th className="py-2.5 px-4 text-center">Atualizados</th>
-                    <th className="py-2.5 px-4 text-center">Removidos / Inativos</th>
+                    <th className="py-2.5 px-4">Arquivo</th>
+                    <th className="py-2.5 px-4 text-center">Lidos</th>
+                    <th className="py-2.5 px-4 text-center">Importados</th>
+                    <th className="py-2.5 px-4 text-center">Ignorados</th>
+                    <th className="py-2.5 px-4 text-center">Inativos</th>
                     <th className="py-2.5 px-4">Feito por</th>
-                    <th className="py-2.5 px-4">Importado em</th>
+                    <th className="py-2.5 px-4">Data</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-600">
                   {sapLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400 font-medium">
-                        Nenhum registro de carga encontrado.
+                      <td colSpan={10} className="py-12 text-center">
+                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                          <FileSpreadsheet className="h-8 w-8 opacity-30" />
+                          <p className="font-medium text-sm">Nenhum registro de carga encontrado.</p>
+                          <p className="text-xs">Importe uma planilha ME5A ou ZL0132 para ver o histórico aqui.</p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    sapLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 px-4 font-mono font-bold text-slate-700">#{log.id.slice(-6).toUpperCase()}</td>
-                        <td className="py-2.5 px-4 font-bold">
-                          <span className={`px-2 py-0.5 rounded text-[10px] ${log.type === 'ME5A' ? 'bg-emerald-50 border border-emerald-150 text-emerald-700' : 'bg-blue-50 border border-blue-150 text-blue-700'}`}>
-                            {log.type}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 font-semibold text-slate-700">{log.filename}</td>
-                        <td className="py-2.5 px-4 text-center font-bold text-slate-800">{log.records_read}</td>
-                        <td className="py-2.5 px-4 text-center font-bold text-emerald-700">{log.records_inserted}</td>
-                        <td className="py-2.5 px-4 text-center font-bold text-slate-500">{log.records_updated}</td>
-                        <td className="py-2.5 px-4 text-center font-bold text-red-600">{log.records_eliminated}</td>
-                        <td className="py-2.5 px-4 font-medium">{log.user_name}</td>
-                        <td className="py-2.5 px-4 text-slate-400">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
-                      </tr>
-                    ))
+                    sapLogs.map((log) => {
+                      const isExpanded = expandedLogId === log.id;
+                      const totalImported = (log.records_inserted || 0) + (log.records_updated || 0);
+                      const totalIgnored = (log.ignored_rows?.length || 0);
+                      const hasIssues = totalIgnored > 0 || (log.columns_missing?.length || 0) > 0;
+                      return (
+                        <React.Fragment key={log.id}>
+                          <tr
+                            onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                            className={`hover:bg-slate-50/80 cursor-pointer select-none border-b border-slate-100 transition-colors ${isExpanded ? 'bg-indigo-50/30' : ''}`}
+                          >
+                            <td className="py-3 px-3 text-slate-400">
+                              {isExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />
+                                : <ChevronRight className="h-3.5 w-3.5" />
+                              }
+                            </td>
+                            <td className="py-3 px-4 font-mono font-bold text-slate-700 text-[11px]">#{log.id.slice(-6).toUpperCase()}</td>
+                            <td className="py-3 px-4 font-bold">
+                              <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide ${
+                                log.type === 'ME5A'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {log.type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5">
+                                <FileSpreadsheet className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                <span className="font-semibold text-slate-700 truncate max-w-[160px]">{log.filename}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-slate-800">{log.records_read}</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-bold text-emerald-700">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {totalImported}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {totalIgnored > 0
+                                ? <span className="inline-flex items-center gap-1 font-bold text-amber-600">
+                                    <XCircle className="h-3 w-3" />
+                                    {totalIgnored}
+                                  </span>
+                                : <span className="text-slate-300 font-medium">—</span>
+                              }
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-red-600">
+                              {log.records_eliminated > 0 ? log.records_eliminated : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="py-3 px-4 font-medium text-slate-600">{log.user_name}</td>
+                            <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
+                          </tr>
+
+                          {isExpanded && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={10} className="px-6 py-4 border-b border-slate-200">
+                                <div className="space-y-4 text-xs">
+
+                                  {/* Resumo em cards */}
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ID da Carga</p>
+                                      <p className="font-mono font-bold text-slate-700 mt-0.5 text-[11px]">{log.id}</p>
+                                    </div>
+                                    <div className="bg-white rounded-lg border border-slate-200 p-3 shadow-sm">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Data / Hora</p>
+                                      <p className="font-bold text-slate-700 mt-0.5">{new Date(log.created_at).toLocaleString('pt-BR')}</p>
+                                    </div>
+                                    <div className="bg-emerald-50 rounded-lg border border-emerald-200 p-3 shadow-sm">
+                                      <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Importados com Sucesso</p>
+                                      <p className="font-bold text-emerald-700 text-lg mt-0.5">{totalImported}</p>
+                                      <p className="text-[9px] text-emerald-500 mt-0.5">{log.records_inserted || 0} novos · {log.records_updated || 0} atualizados</p>
+                                    </div>
+                                    <div className={`rounded-lg border p-3 shadow-sm ${
+                                      totalIgnored > 0 ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'
+                                    }`}>
+                                      <p className={`text-[9px] font-bold uppercase tracking-wider ${
+                                        totalIgnored > 0 ? 'text-amber-600' : 'text-slate-400'
+                                      }`}>Ignorados / Filtrados</p>
+                                      <p className={`font-bold text-lg mt-0.5 ${
+                                        totalIgnored > 0 ? 'text-amber-700' : 'text-slate-300'
+                                      }`}>{totalIgnored}</p>
+                                      {totalIgnored > 0 && (
+                                        <p className="text-[9px] text-amber-500 mt-0.5">
+                                          de {log.records_read} linhas lidas ({Math.round((totalIgnored / log.records_read) * 100)}%)
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Barra de progresso de importação */}
+                                  {log.records_read > 0 && (
+                                    <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm space-y-2">
+                                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Aproveitamento da Carga</p>
+                                      <div className="flex gap-0.5 rounded-full overflow-hidden h-2.5 bg-slate-100">
+                                        <div
+                                          className="bg-emerald-500 h-full transition-all"
+                                          style={{ width: `${Math.round((totalImported / log.records_read) * 100)}%` }}
+                                        />
+                                        <div
+                                          className="bg-amber-400 h-full transition-all"
+                                          style={{ width: `${Math.round((totalIgnored / log.records_read) * 100)}%` }}
+                                        />
+                                      </div>
+                                      <div className="flex gap-4 text-[9px] font-semibold">
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Importados ({Math.round((totalImported / log.records_read) * 100)}%)</span>
+                                        {totalIgnored > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Ignorados ({Math.round((totalIgnored / log.records_read) * 100)}%)</span>}
+                                        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-200 inline-block" /> Restante</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Itens ignorados */}
+                                  {log.ignored_rows && log.ignored_rows.length > 0 && (() => {
+                                    const byReason = log.ignored_rows.reduce((acc: Record<string, any[]>, row: any) => {
+                                      const key = row.reason || 'Outros';
+                                      if (!acc[key]) acc[key] = [];
+                                      acc[key].push(row);
+                                      return acc;
+                                    }, {});
+                                    return (
+                                      <div className="bg-white border border-amber-200 rounded-lg shadow-sm overflow-hidden">
+                                        <div className="bg-amber-50 px-3 py-2 flex items-center justify-between border-b border-amber-200">
+                                          <p className="font-bold text-amber-800 text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                            <FileX className="h-3.5 w-3.5" /> Linhas Não Importadas ({log.ignored_rows.length})
+                                          </p>
+                                          <button
+                                            onClick={() => {
+                                              const lines = log.ignored_rows.map((r: any) => `Linha ${r.row}\tRI: ${r.identifier}\t${r.reason}`);
+                                              const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+                                              const url = URL.createObjectURL(blob);
+                                              const a = document.createElement('a');
+                                              a.href = url;
+                                              a.download = `ignorados_${log.id}.txt`;
+                                              a.click();
+                                            }}
+                                            className="flex items-center gap-1 text-[9px] font-bold text-amber-700 hover:text-amber-900 cursor-pointer"
+                                          >
+                                            <Download className="h-3 w-3" /> Exportar
+                                          </button>
+                                        </div>
+                                        <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                                          {Object.entries(byReason).map(([reason, rows]: [string, any]) => (
+                                            <div key={reason} className="p-3 space-y-1.5">
+                                              <p className="text-[9px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                                                <AlertTriangle className="h-3 w-3" /> {reason} ({rows.length}x)
+                                              </p>
+                                              <div className="flex flex-wrap gap-1.5">
+                                                {rows.map((r: any, i: number) => (
+                                                  <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 font-mono text-[9px]">
+                                                    L{r.row} · {r.identifier}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+
+                                  {/* Alterações de Quantidade */}
+                                  {log.quantity_changes && log.quantity_changes.length > 0 && (
+                                    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                                      <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
+                                        <p className="font-bold text-slate-700 text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                          <Activity className="h-3.5 w-3.5 text-indigo-500" /> Alterações de Quantidade ({log.quantity_changes.length})
+                                        </p>
+                                      </div>
+                                      <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                                        {log.quantity_changes.map((qc: any, idx: number) => {
+                                          const increased = (qc.newQty || 0) > (qc.oldQty || 0);
+                                          return (
+                                            <div key={idx} className="py-2 px-3 flex items-center justify-between font-mono text-[10px]">
+                                              <span className="text-slate-500 font-medium">{qc.item} <span className="text-slate-400 text-[9px]">RI: {qc.ri}</span></span>
+                                              <span className={`flex items-center gap-1 font-bold ${
+                                                increased ? 'text-emerald-600' : 'text-red-500'
+                                              }`}>
+                                                {increased ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                                {qc.oldQty} → {qc.newQty}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* RIs ausentes nessa carga */}
+                                  {log.missing_ris && log.missing_ris.length > 0 && (
+                                    <div className="bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
+                                      <div className="bg-red-50 px-3 py-2 flex items-center justify-between border-b border-red-200">
+                                        <p className="font-bold text-red-700 text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                                          <XCircle className="h-3.5 w-3.5" /> RIs Ausentes nesta Carga ({log.missing_ris.length})
+                                        </p>
+                                        <button
+                                          onClick={() => {
+                                            const blob = new Blob([log.missing_ris.join('\n')], { type: 'text/plain' });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = `ris_ausentes_${log.id}.txt`;
+                                            a.click();
+                                          }}
+                                          className="flex items-center gap-1 text-[9px] font-bold text-red-600 hover:text-red-800 cursor-pointer"
+                                        >
+                                          <Download className="h-3 w-3" /> Exportar
+                                        </button>
+                                      </div>
+                                      <div className="p-3">
+                                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                                          {log.missing_ris.map((ri: string, i: number) => (
+                                            <span key={i} className="inline-block bg-red-50 text-red-600 border border-red-200 rounded px-1.5 py-0.5 font-mono text-[9px]">{ri}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Colunas com divergência */}
+                                  {(log.columns_missing?.length > 0 || log.columns_new?.length > 0) && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      {log.columns_missing?.length > 0 && (
+                                        <div className="bg-amber-50/60 border border-amber-200 p-3 rounded-lg space-y-1.5">
+                                          <p className="font-bold text-amber-800 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Colunas Esperadas Ausentes ({log.columns_missing.length})
+                                          </p>
+                                          <div className="flex flex-wrap gap-1">
+                                            {log.columns_missing.map((c: string) => (
+                                              <span key={c} className="inline-block bg-amber-100 text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 text-[9px] font-mono font-semibold">{c}</span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {log.columns_new?.length > 0 && (
+                                        <div className="bg-blue-50/60 border border-blue-200 p-3 rounded-lg space-y-1.5">
+                                          <p className="font-bold text-blue-800 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                                            <RefreshCw className="h-3.5 w-3.5 text-blue-600" /> Colunas Novas Detectadas ({log.columns_new.length})
+                                          </p>
+                                          <div className="flex flex-wrap gap-1">
+                                            {log.columns_new.map((c: string) => (
+                                              <span key={c} className="inline-block bg-blue-100 text-blue-700 border border-blue-300 rounded px-1.5 py-0.5 text-[9px] font-mono font-semibold">{c}</span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Nenhum problema */}
+                                  {!hasIssues && !log.quantity_changes?.length && !log.missing_ris?.length && (
+                                    <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                      <span className="text-xs font-semibold">Carga importada com sucesso. Nenhum problema ou divergência detectado.</span>
+                                    </div>
+                                  )}
+
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -881,7 +1273,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <Users className="h-5 w-5 text-blue-600" /> Associação de Compradores aos Grupos SAP
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Associe os compradores do time de Suprimentos aos códigos de grupos de compras oficiais do SAP (ex: G001, G002).
+              Associe os compradores do time de Suprimentos aos códigos de grupos de compras oficiais do SAP (ex: 314, 358).
               Isso direciona automaticamente as requisições e simplifica a filtragem de demandas operacionais no painel e nos dashboards.
             </p>
 
@@ -945,7 +1337,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         type="text"
                         value={buyerGroupsInput}
                         onChange={(e) => setBuyerGroupsInput(e.target.value)}
-                        placeholder="Ex: G001, G002, G003"
+                        placeholder="Ex: 314, 358, 447"
                         className="w-full rounded border border-slate-200 p-2.5 bg-white text-xs focus:outline-none focus:border-blue-500 font-mono"
                       />
                       <p className="text-[9px] text-slate-400">Separe os códigos por vírgula.</p>
@@ -957,7 +1349,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         type="text"
                         value={buyerPrimaryGroup}
                         onChange={(e) => setBuyerPrimaryGroup(e.target.value)}
-                        placeholder="Ex: G001"
+                        placeholder="Ex: 314"
                         className="w-full rounded border border-slate-200 p-2.5 bg-white text-xs focus:outline-none focus:border-blue-500 font-mono"
                       />
                       <p className="text-[9px] text-slate-400">Deve ser um dos códigos listados no campo superior.</p>
@@ -1024,7 +1416,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     >
                       <div>
                         <p className="font-bold text-slate-800">{sec.name}</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">ID Setor: {sec.id} | Código: {sec.code}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">ID Setor: {sec.id}</p>
                       </div>
 
                       <div className="flex items-center gap-3">

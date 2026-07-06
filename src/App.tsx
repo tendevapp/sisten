@@ -55,11 +55,21 @@ export default function App() {
 
   // Initialize DB and authenticate user
   useEffect(() => {
-    // Check session
-    const currentUser = localDb.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-    }
+    (async () => {
+      try {
+        await localDb.syncFromSupabase();
+      } catch (err) {
+        console.error("Falha ao sincronizar cache local com o Supabase:", err);
+      }
+
+      // Check session
+      const currentUser = localDb.getCurrentUser();
+      if (currentUser) {
+        setUser(currentUser);
+      }
+
+      setLoading(false);
+    })();
 
     // Custom Hash Router initialization
     const handleHashChange = () => {
@@ -72,8 +82,6 @@ export default function App() {
 
     window.addEventListener('hashchange', handleHashChange);
     handleHashChange(); // trigger on load
-
-    setLoading(false);
 
     return () => {
       window.removeEventListener('hashchange', handleHashChange);

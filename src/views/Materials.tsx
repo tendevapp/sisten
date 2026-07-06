@@ -3,14 +3,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2 } from 'lucide-react';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
 
 interface MaterialsProps {
   user: Profile;
 }
+
+const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
+const sanitizeTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
 
 export default function Materials({ user }: MaterialsProps) {
   const [queryInput, setQueryInput] = useState('');
@@ -18,15 +22,22 @@ export default function Materials({ user }: MaterialsProps) {
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [selectedCompany, setSelectedCompany] = useState('Todas');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
-  
+
   const [results, setResults] = useState<Material[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
-  // Pagination
+  // Pagination — busca paginada no servidor (Supabase), não no array local,
+  // pois o catálogo tem 180k+ linhas e não caberia na memória/localStorage.
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     setFavorites(localDb.getFavorites(user.id));
@@ -38,13 +49,69 @@ export default function Materials({ user }: MaterialsProps) {
     }
   }, [user]);
 
+  // Qualquer mudança de filtro volta para a primeira página
   useEffect(() => {
-    // Generate active query from cumulative chips
-    const activeQuery = chips.join(' ');
-    const matched = localDb.searchMaterials(activeQuery, selectedCategory, selectedCompany, onlyFavorites, user.id);
-    setResults(matched);
-    setCurrentPage(1); // Reset page
-  }, [chips, selectedCategory, selectedCompany, onlyFavorites, user]);
+    setCurrentPage(1);
+  }, [chips, selectedCategory, selectedCompany, onlyFavorites]);
+
+  const applyFilters = useCallback(<T,>(query: T): T => {
+    let q = query as any;
+    if (selectedCategory !== 'Todas') {
+      q = q.eq('category', selectedCategory);
+    }
+    if (selectedCompany !== 'Todas') {
+      q = q.or(`company.eq.${selectedCompany},company.eq.AMBAS`);
+    }
+    chips.map(sanitizeTerm).filter(Boolean).forEach(term => {
+      q = q.or(`material_code.ilike.%${term}%,description.ilike.%${term}%,technical_text.ilike.%${term}%`);
+    });
+    return q as T;
+  }, [chips, selectedCategory, selectedCompany]);
+
+  useEffect(() => {
+    const thisRequestId = ++requestIdRef.current;
+
+    const run = async () => {
+      setIsLoading(true);
+      setSearchError('');
+
+      if (onlyFavorites && favorites.length === 0) {
+        setResults([]);
+        setTotalResults(0);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        let query = supabase.from('materials').select('*', { count: 'exact' }).eq('is_active', true);
+        if (onlyFavorites) {
+          query = query.in('material_code', favorites);
+        }
+        query = applyFilters(query);
+
+        const from = (currentPage - 1) * itemsPerPage;
+        const to = from + itemsPerPage - 1;
+        const { data, error, count } = await query.order('material_code', { ascending: true }).range(from, to);
+
+        if (error) throw error;
+        if (requestIdRef.current !== thisRequestId) return; // resposta obsoleta
+
+        setResults(data || []);
+        setTotalResults(count || 0);
+      } catch (err) {
+        console.error('Erro ao buscar materiais no Supabase:', err);
+        if (requestIdRef.current === thisRequestId) {
+          setResults([]);
+          setTotalResults(0);
+          setSearchError('Falha ao buscar materiais. Tente novamente.');
+        }
+      } finally {
+        if (requestIdRef.current === thisRequestId) setIsLoading(false);
+      }
+    };
+
+    run();
+  }, [chips, selectedCategory, selectedCompany, onlyFavorites, favorites, currentPage, applyFilters]);
 
   const handleAddChip = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,38 +150,61 @@ export default function Materials({ user }: MaterialsProps) {
     if (!searchWords.length || !text) return text;
     const regex = new RegExp(`(${searchWords.map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})`, 'gi');
     const parts = text.split(regex);
-    return parts.map((part, i) => 
+    return parts.map((part, i) =>
       regex.test(part) ? <mark key={i} className="bg-yellow-100 text-yellow-900 px-0.5 rounded font-semibold">{part}</mark> : part
     );
   };
 
-  // Pagination computations
-  const totalResults = results.length;
-  const paginatedResults = results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalPages = Math.ceil(totalResults / itemsPerPage);
 
-  // CSV Exporter
-  const handleExportCSV = () => {
-    const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Categoria', 'Empresa', 'Unidade'];
-    const rows = results.map(m => [
-      m.material_code,
-      m.description,
-      m.technical_text || '',
-      m.category,
-      m.company,
-      m.unit
-    ]);
+  // Exportador CSV — refaz a busca (sem paginação, em lotes) para exportar TODOS
+  // os itens que casam com o filtro atual, não apenas a página exibida em tela.
+  const EXPORT_CAP = 20000;
+  const handleExportCSV = async () => {
+    if (onlyFavorites && favorites.length === 0) return;
+    setIsExporting(true);
+    try {
+      const allRows: Material[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      while (allRows.length < EXPORT_CAP) {
+        let query = supabase.from('materials').select('*').eq('is_active', true);
+        if (onlyFavorites) query = query.in('material_code', favorites);
+        query = applyFilters(query);
+        const { data, error } = await query.order('material_code', { ascending: true }).range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        allRows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(';'), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(';'))].join('\n');
+      const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Categoria', 'Empresa', 'Unidade'];
+      const rows = allRows.map(m => [
+        m.material_code,
+        m.description,
+        m.technical_text || '',
+        m.category,
+        m.company,
+        m.unit
+      ]);
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `catalogo_materiais_sisten_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const csvContent = "data:text/csv;charset=utf-8,﻿"
+        + [headers.join(';'), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))].join('\n');
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `catalogo_materiais_sisten_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Erro ao exportar CSV de materiais:', err);
+      setSearchError('Falha ao exportar o CSV. Tente novamente.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -126,11 +216,11 @@ export default function Materials({ user }: MaterialsProps) {
         </div>
         <button
           onClick={handleExportCSV}
-          disabled={results.length === 0}
+          disabled={totalResults === 0 || isExporting}
           className="flex items-center space-x-2 rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2 px-4 transition-colors cursor-pointer disabled:opacity-50"
         >
-          <Download className="h-4 w-4" />
-          <span>Exportar CSV</span>
+          {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          <span>{isExporting ? 'Exportando...' : 'Exportar CSV'}</span>
         </button>
       </div>
 
@@ -229,10 +319,16 @@ export default function Materials({ user }: MaterialsProps) {
         </div>
       </div>
 
+      {searchError && (
+        <div className="rounded-lg bg-red-50 border border-red-100 p-3.5 text-xs text-red-700">
+          {searchError}
+        </div>
+      )}
+
       {/* Warning banner for refined searches */}
       {totalResults > 500 && (
         <div className="rounded-lg bg-blue-50 border border-blue-100 p-3.5 text-xs text-blue-800">
-          <strong>Resultados abundantes ({totalResults} encontrados).</strong> O catálogo exibe até 50 itens por página. Adicione mais chips ou filtre por categoria para refinar sua busca.
+          <strong>Resultados abundantes ({totalResults.toLocaleString('pt-BR')} encontrados).</strong> O catálogo exibe até 50 itens por página. Adicione mais chips ou filtre por categoria para refinar sua busca.
         </div>
       )}
 
@@ -251,17 +347,23 @@ export default function Materials({ user }: MaterialsProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
-              {paginatedResults.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                    <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Buscando materiais...
+                  </td>
+                </tr>
+              ) : results.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-slate-400">
                     Nenhum material correspondente aos filtros. Tente remover termos da busca.
                   </td>
                 </tr>
               ) : (
-                paginatedResults.map((m) => {
+                results.map((m) => {
                   const isFav = favorites.includes(m.material_code);
                   const isExpanded = expandedId === m.id;
-                  
+
                   return (
                     <React.Fragment key={m.id}>
                       <tr className="hover:bg-slate-50/50 transition-colors">
@@ -342,7 +444,7 @@ export default function Materials({ user }: MaterialsProps) {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
             <span className="text-xs text-slate-500">
-              Mostrando de <strong>{((currentPage - 1) * itemsPerPage) + 1}</strong> a <strong>{Math.min(currentPage * itemsPerPage, totalResults)}</strong> de <strong>{totalResults}</strong> materiais
+              Mostrando de <strong>{((currentPage - 1) * itemsPerPage) + 1}</strong> a <strong>{Math.min(currentPage * itemsPerPage, totalResults)}</strong> de <strong>{totalResults.toLocaleString('pt-BR')}</strong> materiais
             </span>
             <div className="flex items-center space-x-2">
               <button
@@ -352,7 +454,7 @@ export default function Materials({ user }: MaterialsProps) {
               >
                 Anterior
               </button>
-              <span className="text-xs font-semibold text-slate-700">Pág. {currentPage} de {totalPages}</span>
+              <span className="text-xs font-semibold text-slate-700">Pág. {currentPage} de {totalPages.toLocaleString('pt-BR')}</span>
               <button
                 disabled={currentPage === totalPages}
                 onClick={() => setCurrentPage(currentPage + 1)}

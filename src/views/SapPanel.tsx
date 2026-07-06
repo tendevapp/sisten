@@ -52,8 +52,8 @@ const allColsZl0132 = [
 interface SAPObsHistory {
   id: string;
   ri: string;
-  obs_comprador: string;
-  data_entrega_prevista: string;
+  obs_comprador?: string;
+  data_entrega_prevista?: string;
   user_name: string;
   created_at: string;
 }
@@ -415,8 +415,8 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
         texto_breve: matchingReq?.texto_breve || p.campos_extras?.texto_breve || '—',
         status_entrega,
         dias_atrasado,
-        preco_liquido: p.campos_extras?.preco_liquido || p.campos_extras?.['Preço líq.'] || p.campos_extras?.['Preço líquido'] || p.campos_extras?.['preco_liquido'] || 120.00,
-        valor_brl: p.campos_extras?.valor_brl || p.campos_extras?.['VALOR EM BRL'] || p.campos_extras?.['Valor em BRL'] || p.campos_extras?.['valor_brl'] || 1200.00,
+        preco_liquido: p.preco_liquido !== undefined ? p.preco_liquido : (p.campos_extras?.preco_liquido || p.campos_extras?.['Preço líq.'] || p.campos_extras?.['Preço líquido'] || p.campos_extras?.['preco_liquido'] || 120.00),
+        valor_brl: p.valor_brl !== undefined ? p.valor_brl : (p.campos_extras?.valor_brl || p.campos_extras?.['VALOR EM BRL'] || p.campos_extras?.['Valor em BRL'] || p.campos_extras?.['valor_brl'] || 1200.00),
       };
     });
     setPedidos(enrichedPeds);
@@ -425,11 +425,11 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   // Perform Filters on Requisicoes (ME5A)
   const filteredRequisicoes = records.filter(r => {
     const query = searchQuery.toLowerCase();
-    const rmMatch = r.requisicao_de_compra.toLowerCase().includes(query);
-    const poMatch = r.documento_compra ? r.documento_compra.toLowerCase().includes(query) : false;
-    const matMatch = r.material_code.toLowerCase().includes(query);
-    const descMatch = r.texto_breve.toLowerCase().includes(query);
-    const supplierMatch = r.fornecedor_name ? r.fornecedor_name.toLowerCase().includes(query) : false;
+    const rmMatch = String(r.requisicao_de_compra || '').toLowerCase().includes(query);
+    const poMatch = r.documento_compra ? String(r.documento_compra).toLowerCase().includes(query) : false;
+    const matMatch = String(r.material_code || (r as any).material || '').toLowerCase().includes(query);
+    const descMatch = String(r.texto_breve || '').toLowerCase().includes(query);
+    const supplierMatch = r.fornecedor_name ? String(r.fornecedor_name).toLowerCase().includes(query) : false;
     const matchesSearch = rmMatch || poMatch || matMatch || descMatch || supplierMatch;
 
     const matchesStatus = statusFilter === 'Todos' || 
@@ -445,11 +445,11 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   // Perform Filters on Pedidos (ZL0132)
   const filteredPedidos = pedidos.filter(p => {
     const query = searchQuery.toLowerCase();
-    const poMatch = p.documento_compra.toLowerCase().includes(query);
-    const rmMatch = p.requisicao_origem.toLowerCase().includes(query);
-    const matMatch = p.material.toLowerCase().includes(query);
-    const descMatch = p.texto_breve.toLowerCase().includes(query);
-    const supplierMatch = p.fornecedor_name.toLowerCase().includes(query);
+    const poMatch = String(p.documento_compra || '').toLowerCase().includes(query);
+    const rmMatch = String(p.requisicao_origem || '').toLowerCase().includes(query);
+    const matMatch = String(p.material || '').toLowerCase().includes(query);
+    const descMatch = String(p.texto_breve || '').toLowerCase().includes(query);
+    const supplierMatch = String(p.fornecedor_name || '').toLowerCase().includes(query);
     const matchesSearch = poMatch || rmMatch || matMatch || descMatch || supplierMatch;
 
     // Pedidos are always "Com PO"
@@ -655,93 +655,66 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
     return Array.from(groups).sort();
   };
 
-  // Export tables to Excel easily
+  // Export tables to Excel — usa Blob + anchor para garantir download com extensao correta
   const handleExportXLS = () => {
-    let htmlContent = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>${activeTab === 'me5a' ? 'Requisicoes ME5A' : 'Pedidos ME2N'}</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-          table { border-collapse: collapse; }
-          th { background-color: #047857; color: #ffffff; font-weight: bold; border: 1px solid #cbd5e1; padding: 5px; text-align: left; }
-          td { border: 1px solid #cbd5e1; padding: 5px; }
-        </style>
-      </head>
-      <body>
-        <table>
-    `;
+    let dataToExport: any[] = [];
+    const timestamp = new Date().toISOString().split('T')[0];
+    const sheetName = activeTab === 'me5a' ? 'Requisicoes ME5A' : 'Pedidos ZL0132';
+    const filename = activeTab === 'me5a'
+      ? `Requisicoes_ME5A_${timestamp}.xlsx`
+      : `Pedidos_ZL0132_${timestamp}.xlsx`;
 
     if (activeTab === 'me5a') {
-      const headers = ['Status', 'Natureza', 'RM / Requisicao', 'Item', 'Data solic.', 'Material', 'Texto breve', 'Qtd.', 'Un.', 'Comprador', 'Data remessa', 'Requisitante', 'Data pedido', 'Obs. Comprador', 'Entrega prev.'];
-      htmlContent += '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
-      sortedRequisicoes.forEach(r => {
-        const row = [
-          r.status_requisicao === 'Sem PO' ? `Sem PO (${r.alerta})` : 'Processado',
-          r.natureza || 'Normal',
-          r.requisicao_de_compra,
-          r.item_reqc,
-          r.data_solicitacao ? new Date(r.data_solicitacao).toLocaleDateString('pt-BR') : '—',
-          r.material_code,
-          r.texto_breve,
-          r.qtd_requisicao,
-          r.unidade_medida,
-          r.grupo_comprador,
-          r.data_remessa ? new Date(r.data_remessa).toLocaleDateString('pt-BR') : '—',
-          r.requisitante_name,
-          r.data_pedido ? new Date(r.data_pedido).toLocaleDateString('pt-BR') : '—',
-          r.obs_comprador || '—',
-          r.data_entrega_prevista ? new Date(r.data_entrega_prevista).toLocaleDateString('pt-BR') : '—'
-        ];
-        htmlContent += '<tr>' + row.map(v => `<td>${v !== undefined && v !== null ? String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</td>`).join('') + '</tr>';
-      });
+      dataToExport = sortedRequisicoes.map(r => ({
+        'Status': r.status_requisicao === 'Sem PO' ? `Sem PO (${r.alerta})` : 'Processado',
+        'Natureza': r.natureza || 'Normal',
+        'RM': r.requisicao_de_compra,
+        'Item': r.item_reqc,
+        'Data Solicitacao': r.data_solicitacao ? new Date(r.data_solicitacao).toLocaleDateString('pt-BR') : '',
+        'Material': r.material_code || '',
+        'Texto Breve': r.texto_breve || '',
+        'Qtd': r.qtd_requisicao || '',
+        'Un': r.unidade_medida || '',
+        'Comprador': r.grupo_comprador || '',
+        'Data Remessa': r.data_remessa ? new Date(r.data_remessa).toLocaleDateString('pt-BR') : '',
+        'Requisitante': r.requisitante_name || '',
+        'Data Pedido': r.data_pedido ? new Date(r.data_pedido).toLocaleDateString('pt-BR') : '',
+        'Obs Comprador': r.obs_comprador || '',
+        'Entrega Prevista': r.data_entrega_prevista ? new Date(r.data_entrega_prevista).toLocaleDateString('pt-BR') : '',
+      }));
     } else {
-      const headers = ['Pedido (PO)', 'Item', 'RM Origem', 'Item RM', 'Material', 'Texto Breve', 'Fornecedor', 'Data Pedido', 'Data Remessa', 'Data MIGO', 'Preco Liq.', 'Valor BRL', 'Status Entrega', 'Atraso (dias)'];
-      htmlContent += '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
-      sortedPedidos.forEach(p => {
-        const row = [
-          p.documento_compra,
-          p.item_pedido,
-          p.requisicao_origem,
-          p.item_requisicao_origem,
-          p.material,
-          p.texto_breve,
-          p.fornecedor_name,
-          p.data_pedido ? new Date(p.data_pedido).toLocaleDateString('pt-BR') : '—',
-          p.data_entrega_sap ? new Date(p.data_entrega_sap).toLocaleDateString('pt-BR') : '—',
-          p.campos_extras?.data_migo ? new Date(p.campos_extras.data_migo).toLocaleDateString('pt-BR') : '—',
-          p.preco_liquido,
-          p.valor_brl,
-          p.status_entrega,
-          p.dias_atrasado
-        ];
-        htmlContent += '<tr>' + row.map(v => `<td>${v !== undefined && v !== null ? String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : ''}</td>`).join('') + '</tr>';
-      });
+      dataToExport = sortedPedidos.map(p => ({
+        'Pedido (PO)': p.documento_compra || '',
+        'Item': p.item_pedido || '',
+        'RM Origem': p.requisicao_origem || '',
+        'Item RM': p.item_requisicao_origem || '',
+        'Material': p.material || '',
+        'Texto Breve': p.texto_breve || '',
+        'Fornecedor': p.fornecedor_name || '',
+        'Data Pedido': p.data_pedido ? new Date(p.data_pedido).toLocaleDateString('pt-BR') : '',
+        'Data Remessa': p.data_entrega_sap ? new Date(p.data_entrega_sap).toLocaleDateString('pt-BR') : '',
+        'Data MIGO': p.campos_extras?.data_migo ? new Date(p.campos_extras.data_migo).toLocaleDateString('pt-BR') : '',
+        'Preco Liquido': p.preco_liquido ?? '',
+        'Valor BRL': p.valor_brl ?? '',
+        'Status Entrega': p.status_entrega || '',
+        'Atraso (dias)': p.dias_atrasado ?? 0,
+      }));
     }
 
-    htmlContent += '</tbody></table></body></html>';
+    if (dataToExport.length === 0) {
+      alert('Nenhum dado disponivel para exportar. Verifique os filtros ativos.');
+      return;
+    }
 
-    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `sap_export_${activeTab}_${new Date().toISOString().split('T')[0]}.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      XLSX.writeFile(workbook, filename, { bookType: 'xlsx' });
+    } catch (err) {
+      console.error('Erro ao exportar planilha:', err);
+      alert('Nao foi possivel gerar a planilha. Tente novamente.');
+    }
   };
 
   // KPI calculations
@@ -756,7 +729,6 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
 
   const totalGeral = records.length;
 
-  // Integrated File uploader logic
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
@@ -768,18 +740,11 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        let objList: any[] = [];
+        let rawRows: any[][] = [];
         if (extension === 'csv') {
           const text = ev.target?.result as string;
-          const rows = text.split('\n').filter(l => l.trim()).map(l => {
+          rawRows = text.split('\n').filter(l => l.trim()).map(l => {
             return l.split(';').map(c => c.replace(/"/g, '').trim());
-          });
-          if (rows.length < 2) throw new Error('Cabeçalhos não encontrados.');
-          const headers = rows[0];
-          objList = rows.slice(1).map(row => {
-            const o: any = {};
-            headers.forEach((h, idx) => { o[h] = row[idx]; });
-            return o;
           });
         } else {
           const data = new Uint8Array(ev.target?.result as ArrayBuffer);
@@ -787,19 +752,28 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
           if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          objList = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+          rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
         }
 
         if (uploadType === 'ME5A') {
-          localDb.importME5A(objList, file.name);
-          setUploadMessage(`ME5A importado com sucesso! ${objList.length} registros processados.`);
+          localDb.importME5ARaw(rawRows, file.name).then(log => {
+            setUploadMessage(`ME5A importada com sucesso! ${rawRows.length - 1} linhas lidas.`);
+            setUploadStatus('success');
+            loadData();
+          }).catch(err => {
+            setUploadStatus('error');
+            setUploadMessage(err.message || 'Falha ao processar arquivo.');
+          });
         } else {
-          localDb.importZL0132(objList, file.name);
-          setUploadMessage(`ZL0132 importado com sucesso! ${objList.length} pedidos vinculados.`);
+          localDb.importZL0132Raw(rawRows, file.name).then(log => {
+            setUploadMessage(`ZL0132 importada com sucesso! ${rawRows.length - 1} linhas lidas.`);
+            setUploadStatus('success');
+            loadData();
+          }).catch(err => {
+            setUploadStatus('error');
+            setUploadMessage(err.message || 'Falha ao processar arquivo.');
+          });
         }
-        
-        setUploadStatus('success');
-        loadData();
       } catch (err: any) {
         setUploadStatus('error');
         setUploadMessage(err.message || 'Falha ao processar arquivo.');
@@ -864,7 +838,8 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
               <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
               <span>Atualizar base</span>
             </button>
-            <button 
+            <button
+              type="button"
               onClick={handleExportXLS}
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
             >

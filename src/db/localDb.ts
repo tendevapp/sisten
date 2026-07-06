@@ -12,6 +12,7 @@ import {
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
+import { supabase } from './supabaseClient';
 
 class LocalDatabase {
   private sectorsKey = 'sisten_sectors';
@@ -36,6 +37,167 @@ class LocalDatabase {
 
   constructor() {
     this.initialize();
+  }
+
+  public async syncFromSupabase(): Promise<void> {
+    try {
+      console.log('Iniciando sincronização com o Supabase...');
+
+      // 1. Sectors
+      const { data: sectors, error: sectorsError } = await supabase.from('sectors').select('*');
+      if (sectorsError) throw sectorsError;
+      if (sectors && sectors.length > 0) {
+        this.setStorageItem(this.sectorsKey, sectors);
+      } else {
+        await supabase.from('sectors').upsert(INITIAL_SECTORS);
+        this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
+      }
+
+      // 2. Profiles
+      const { data: profiles, error: profilesError } = await supabase.from('profiles').select('*');
+      if (profilesError) throw profilesError;
+      if (profiles && profiles.length > 0) {
+        const mappedProfiles = profiles.map(p => ({
+          ...p,
+          roles: p.roles || []
+        }));
+        this.setStorageItem(this.profilesKey, mappedProfiles);
+      }
+
+      // 3. Buyer Groups
+      const { data: buyerGroups, error: bgError } = await supabase.from('buyer_groups').select('*');
+      if (bgError) throw bgError;
+      if (buyerGroups && buyerGroups.length > 0) {
+        this.setStorageItem(this.buyerGroupsKey, buyerGroups);
+      }
+
+      // 4. Materials
+      const { data: materials, error: matError } = await supabase.from('materials').select('*');
+      if (matError) throw matError;
+      try {
+        if (materials && materials.length > 0) {
+          this.setStorageItem(this.materialsKey, materials);
+        } else {
+          const generated = generateMaterials();
+          for (let i = 0; i < generated.length; i += 50) {
+            await supabase.from('materials').upsert(generated.slice(i, i + 50));
+          }
+          this.setStorageItem(this.materialsKey, generated);
+        }
+      } catch (err) {
+        // Catálogos SAP grandes podem exceder a cota do localStorage (~5-10MB).
+        // Não deve interromper a sincronização das demais tabelas.
+        console.warn('Não foi possível atualizar o cache local de materiais (cota do navegador excedida).', err);
+      }
+
+      // 5. Requisicoes (ME5A) - Usando a View enriquecida
+      const { data: reqs, error: reqsError } = await supabase.from('view_enriched_requisicoes').select('*');
+      if (reqsError) throw reqsError;
+      this.setStorageItem(this.requisicoesKey, reqs || []);
+
+      // 6. Pedidos (ZL0132) - Usando a View enriquecida
+      const { data: peds, error: pedsError } = await supabase.from('view_enriched_pedidos').select('*');
+      if (pedsError) throw pedsError;
+      this.setStorageItem(this.pedidosKey, peds || []);
+
+      // 7. Requests (sistema)
+      const { data: dbRequests, error: rError } = await supabase.from('requests').select('*');
+      if (rError) throw rError;
+      if (dbRequests && dbRequests.length > 0) {
+        this.setStorageItem(this.requestsKey, dbRequests);
+      }
+
+      // 8. Request Items
+      const { data: dbRequestItems, error: riError } = await supabase.from('request_items').select('*');
+      if (riError) throw riError;
+      if (dbRequestItems && dbRequestItems.length > 0) {
+        this.setStorageItem(this.requestItemsKey, dbRequestItems);
+      }
+
+      // 9. Comments
+      const { data: dbComments, error: cError } = await supabase.from('request_comments').select('*');
+      if (cError) throw cError;
+      if (dbComments && dbComments.length > 0) {
+        const mappedComments = dbComments.map(c => ({
+          id: c.id,
+          request_id: c.request_id,
+          user_id: c.user_id,
+          user_name: c.user_name,
+          user_roles: c.user_roles || [],
+          content: c.content,
+          is_internal: c.is_internal,
+          created_at: c.created_at
+        }));
+        this.setStorageItem(this.commentsKey, mappedComments);
+      }
+
+      // 10. Status History
+      const { data: dbHistory, error: hError } = await supabase.from('request_status_history').select('*');
+      if (hError) throw hError;
+      if (dbHistory && dbHistory.length > 0) {
+        this.setStorageItem(this.historyKey, dbHistory);
+      }
+
+      // 11. Notifications
+      const { data: dbNotifications, error: nError } = await supabase.from('notifications').select('*');
+      if (nError) throw nError;
+      if (dbNotifications && dbNotifications.length > 0) {
+        this.setStorageItem(this.notificationsKey, dbNotifications);
+      }
+
+      // 12. Import Logs
+      const { data: dbImportLogs, error: ilError } = await supabase.from('import_logs').select('*');
+      if (ilError) throw ilError;
+      if (dbImportLogs && dbImportLogs.length > 0) {
+        this.setStorageItem(this.importLogsKey, dbImportLogs);
+      }
+
+      // 13. Obs Historico (Auditoria)
+      const { data: dbObsHistory, error: ohError } = await supabase.from('obs_historico').select('*');
+      if (ohError) throw ohError;
+      if (dbObsHistory && dbObsHistory.length > 0) {
+        const mappedObsHist = dbObsHistory.map(oh => {
+          let comment = '';
+          let deliveryDate = '';
+          try {
+            const val = JSON.parse(oh.valor_novo || '{}');
+            comment = val.obs || '';
+            deliveryDate = val.date || '';
+          } catch {
+            comment = oh.valor_novo || '';
+          }
+          return {
+            id: oh.id,
+            ri: oh.ri,
+            obs_comprador: comment,
+            data_entrega_prevista: deliveryDate,
+            user_name: oh.user_name,
+            created_at: oh.created_at
+          };
+        });
+        this.setStorageItem(this.obsHistoryKey, mappedObsHist);
+      }
+
+      // 14. Activity Logs
+      const { data: dbActivityLogs, error: alError } = await supabase.from('activity_logs').select('*');
+      if (alError) throw alError;
+      if (dbActivityLogs && dbActivityLogs.length > 0) {
+        this.setStorageItem(this.logsKey, dbActivityLogs);
+      }
+
+      // 15. Sequences
+      const { data: dbSequences, error: seqError } = await supabase.from('sequences').select('*');
+      if (seqError) throw seqError;
+      if (dbSequences && dbSequences.length > 0) {
+        const seqs: Record<string, number> = {};
+        dbSequences.forEach(s => { seqs[s.key] = s.value; });
+        this.setStorageItem(this.sequencesKey, seqs);
+      }
+
+      console.log('Sincronização com o Supabase concluída com sucesso!');
+    } catch (err) {
+      console.error('Falha geral ao sincronizar com o Supabase. Usando banco de dados local.', err);
+    }
   }
 
   public getStorageItem<T>(key: string, defaultValue: T): T {
@@ -105,7 +267,7 @@ class LocalDatabase {
         {
           id: 'u5',
           email: 'comprador1@ten.com.br',
-          name: 'Comprador G001',
+          name: 'Comprador 314',
           cargo: 'Comprador Pleno',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
@@ -115,7 +277,7 @@ class LocalDatabase {
         {
           id: 'u6',
           email: 'comprador2@ten.com.br',
-          name: 'Comprador G002',
+          name: 'Comprador 358',
           cargo: 'Comprador Sênior',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
@@ -125,7 +287,7 @@ class LocalDatabase {
         {
           id: 'u7',
           email: 'comprador3@ten.com.br',
-          name: 'Comprador G003',
+          name: 'Comprador 447',
           cargo: 'Comprador Júnior',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
@@ -199,10 +361,10 @@ class LocalDatabase {
     // 4. Buyer Groups Seed
     if (!localStorage.getItem(this.buyerGroupsKey)) {
       const buyerGroups: UserBuyerGroup[] = [
-        { id: 'bg1', user_id: 'u5', group_code: 'G001', is_primary: true },
-        { id: 'bg2', user_id: 'u6', group_code: 'G002', is_primary: true },
-        { id: 'bg3', user_id: 'u7', group_code: 'G003', is_primary: true },
-        { id: 'bg4', user_id: 'u2', group_code: 'G004', is_primary: true }
+        { id: 'bg1', user_id: 'u5', group_code: '314', is_primary: true },
+        { id: 'bg2', user_id: 'u6', group_code: '358', is_primary: true },
+        { id: 'bg3', user_id: 'u7', group_code: '447', is_primary: true },
+        { id: 'bg4', user_id: 'u2', group_code: '575', is_primary: true }
       ];
       this.setStorageItem(this.buyerGroupsKey, buyerGroups);
     }
@@ -559,15 +721,6 @@ class LocalDatabase {
       ];
       this.setStorageItem(this.commentsKey, seededComments);
     }
-
-    // Default Current User (Admin by default for testing, user can switch in header/login)
-    if (!localStorage.getItem(this.currentUserKey)) {
-      const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
-      const adminUser = users.find(u => u.email === 'admin@ten.com.br');
-      if (adminUser) {
-        this.setStorageItem(this.currentUserKey, adminUser);
-      }
-    }
   }
 
   // Auth Methods
@@ -870,12 +1023,49 @@ class LocalDatabase {
     return this.getStorageItem<string[]>(key, []);
   }
 
-  public importMaterials(materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[]): { read: number; inserted: number; updated: number; deactivated: number } {
-    const currentList = this.getMaterials();
+  // PostgREST limita cada select a um máximo de linhas (geralmente 1000) mesmo sem
+  // filtro. Para tabelas grandes (catálogo de materiais com 180k+ linhas) é preciso
+  // paginar com .range() até esgotar os resultados.
+  private async fetchAllFromTable<T>(table: string, selectCols: string = '*', pageSize = 1000): Promise<T[]> {
+    const allRows: T[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase.from(table).select(selectCols).range(from, from + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allRows.push(...(data as T[]));
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return allRows;
+  }
+
+  public async importMaterials(materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[]): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
+    // Busca o catálogo atual completo diretamente do Supabase (fonte de verdade,
+    // paginado para não ser truncado em 1000 linhas), pois o cache local pode
+    // estar incompleto (ex.: cota do localStorage excedida em catálogos grandes).
+    // Sem isso, códigos já existentes fora da primeira página pareceriam "novos",
+    // ganhariam um id gerado localmente e violariam a constraint unique de
+    // material_code ao sincronizar.
+    let currentList = this.getMaterials();
+    try {
+      const remoteMaterials = await this.fetchAllFromTable<Material>('materials');
+      if (remoteMaterials.length > 0) currentList = remoteMaterials;
+    } catch (err) {
+      console.warn('Não foi possível buscar o catálogo completo do Supabase antes da importação; usando cache local.', err);
+    }
+
     const currentMap = new Map(currentList.map(m => [m.material_code, m]));
-    
-    const importedCodes = new Set(materials.map(m => m.material_code));
-    
+
+    // Deduplica por material_code (última ocorrência prevalece), pois a própria
+    // planilha SAP pode conter o mesmo código em mais de uma linha — duas linhas
+    // novas com o mesmo código na mesma leva de upsert também violariam a
+    // constraint unique.
+    const dedupedMaterials = new Map<string, Omit<Material, 'id' | 'is_active' | 'created_at'>>();
+    materials.forEach(m => dedupedMaterials.set(m.material_code, m));
+
+    const importedCodes = new Set(dedupedMaterials.keys());
+
     let inserted = 0;
     let updated = 0;
     let deactivated = 0;
@@ -883,7 +1073,7 @@ class LocalDatabase {
     const newList: Material[] = [];
 
     // Upsert imported materials
-    materials.forEach((m, idx) => {
+    dedupedMaterials.forEach(m => {
       const existing = currentMap.get(m.material_code);
       if (existing) {
         newList.push({
@@ -923,17 +1113,38 @@ class LocalDatabase {
       }
     });
 
-    this.setStorageItem(this.materialsKey, newList);
+    try {
+      this.setStorageItem(this.materialsKey, newList);
+    } catch (err) {
+      // Catálogos SAP grandes podem exceder a cota do localStorage (~5-10MB).
+      // Não deve bloquear a sincronização com o Supabase, que é a fonte de verdade.
+      console.warn('Não foi possível atualizar o cache local de materiais (cota do navegador excedida). Prosseguindo com a sincronização no Supabase.', err);
+    }
+
+    // Sincroniza o catálogo completo com o Supabase (upsert por material_code em lotes).
+    // Cada lote é isolado: uma falha em um lote não interrompe os demais.
+    let syncFailed = 0;
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < newList.length; i += BATCH_SIZE) {
+      const batch = newList.slice(i, i + BATCH_SIZE);
+      try {
+        const { error } = await supabase.from('materials').upsert(batch, { onConflict: 'material_code' });
+        if (error) throw error;
+      } catch (err) {
+        syncFailed += batch.length;
+        console.error(`Falha ao sincronizar lote de materiais com o Supabase (linhas ${i + 1}-${i + batch.length}):`, err);
+      }
+    }
 
     const user = this.getCurrentUser();
     this.logActivity(
-      user?.id || 'admin', 
-      'Catálogo SAP', 
-      'Importar Catálogo', 
-      `Excel processado. Lidos: ${materials.length}, Inseridos: ${inserted}, Atualizados: ${updated}, Desativados: ${deactivated}.`
+      user?.id || 'admin',
+      'Catálogo SAP',
+      'Importar Catálogo',
+      `Excel processado. Lidos: ${materials.length}, Inseridos: ${inserted}, Atualizados: ${updated}, Desativados: ${deactivated}, Falhas de sync: ${syncFailed}.`
     );
 
-    return { read: materials.length, inserted, updated, deactivated };
+    return { read: materials.length, inserted, updated, deactivated, syncFailed };
   }
 
   // Notifications
@@ -1270,11 +1481,38 @@ class LocalDatabase {
 
   // SAP ME5A/ZL0132 Operational methods
   public getRequisicoes(): SAPRequisicao[] {
-    return this.getStorageItem<SAPRequisicao[]>(this.requisicoesKey, []);
+    const raw = this.getStorageItem<any[]>(this.requisicoesKey, []);
+    return raw.map(r => ({
+      ...r,
+      requisicao_de_compra: r.requisicao_de_compra || '',
+      item_reqc: r.item_reqc || '',
+      material_code: r.material_code || r.material || '',
+      texto_breve: r.texto_breve || '',
+      qtd_requisicao: r.qtd_requisicao !== undefined ? Number(r.qtd_requisicao) : Number(r.qtd_solicitada || 0),
+      unidade_medida: r.unidade_medida || r.unidade_de_medida || 'UN',
+      grupo_comprador: r.grupo_comprador || r.grupo_de_compradores || '',
+      data_solicitacao: r.data_solicitacao || r.data_da_solicitacao || '',
+      data_remessa: r.data_remessa || r.data_de_remessa || '',
+      requisitante_name: r.requisitante_name || r.requisitante || '',
+      tipo_documento: r.tipo_documento || r.tipo_de_documento || 'ZR01',
+      codigo_de_eliminacao: r.codigo_de_eliminacao !== undefined ? r.codigo_de_eliminacao : (r.eliminado || false),
+      presente_ultima_carga: r.presente_ultima_carga !== undefined ? r.presente_ultima_carga : true,
+    }));
   }
 
   public getPedidos(): SAPPedido[] {
-    return this.getStorageItem<SAPPedido[]>(this.pedidosKey, []);
+    const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
+    return raw.map(p => ({
+      ...p,
+      documento_compra: p.documento_compra || p.doc_compra || '',
+      item_pedido: p.item_pedido || p.item || '',
+      fornecedor_code: p.fornecedor_code || p.fornecedor_codigo || '',
+      fornecedor_name: p.fornecedor_name || p.fornecedor_nome || '',
+      data_pedido: p.data_pedido || p.data_doc || '',
+      data_entrega_sap: p.data_entrega_sap || p.dt_remessa || '',
+      valor_brl: p.valor_brl !== undefined ? Number(p.valor_brl) : (p.valor_em_brl !== undefined ? Number(p.valor_em_brl) : Number(p.valor_liquido || 0)),
+      preco_liquido: p.preco_liquido !== undefined ? Number(p.preco_liquido) : (p.preco_liquido_unit !== undefined ? Number(p.preco_liquido_unit) : Number(p.valor_liquido || 0)),
+    }));
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
@@ -1399,6 +1637,9 @@ class LocalDatabase {
       const user = this.getCurrentUser();
       const userName = user?.name || 'Sistema';
 
+      const prevObs = reqs[idx].obs_comprador || '';
+      const prevDate = reqs[idx].data_entrega_prevista || '';
+
       reqs[idx].obs_comprador = obs;
       reqs[idx].data_entrega_prevista = deliveryDate;
       reqs[idx].obs_updated_at = new Date().toISOString();
@@ -1406,10 +1647,11 @@ class LocalDatabase {
 
       this.setStorageItem(this.requisicoesKey, reqs);
 
-      // Save to history
+      // Save to history local
       const hist = this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []);
+      const ohId = 'oh_' + Math.random().toString(36).substr(2, 9);
       hist.push({
-        id: 'oh_' + Math.random().toString(36).substr(2, 9),
+        id: ohId,
         ri,
         obs_comprador: obs,
         data_entrega_prevista: deliveryDate,
@@ -1417,6 +1659,46 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       });
       this.setStorageItem(this.obsHistoryKey, hist);
+
+      // Async write to Supabase
+      (async () => {
+        try {
+          await supabase.from('requisicoes').update({
+            obs_comprador: obs,
+            data_entrega_prevista: deliveryDate || null,
+            obs_updated_at: new Date().toISOString(),
+            obs_updated_by: userName
+          }).eq('ri', ri);
+
+          await supabase.from('obs_historico').insert({
+            id: ohId,
+            ri,
+            campo_alterado: 'obs_comprador_e_data_entrega',
+            valor_anterior: JSON.stringify({ obs: prevObs, date: prevDate }),
+            valor_novo: JSON.stringify({ obs, date: deliveryDate }),
+            user_name: userName,
+            created_at: new Date().toISOString()
+          });
+
+          const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
+          if (updatedReqs) {
+            const mappedReqs = updatedReqs.map(ur => ({
+              ...ur,
+              tipo_documento: ur.tipo_de_documento,
+              requisitante_name: ur.requisitante,
+              qtd_requisicao: ur.qtd_solicitada,
+              unidade_medida: ur.unidade_de_medida,
+              grupo_comprador: ur.grupo_de_compradores,
+              data_solicitacao: ur.data_da_solicitacao,
+              data_remessa: ur.remessas_de_ate,
+              material_code: ur.material
+            }));
+            this.setStorageItem(this.requisicoesKey, mappedReqs);
+          }
+        } catch (e) {
+          console.error("Erro ao sincronizar updateBuyerFields no Supabase:", e);
+        }
+      })();
 
       return true;
     }
@@ -1427,263 +1709,761 @@ class LocalDatabase {
     return this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []).filter(h => h.ri === ri);
   }
 
-  // Schema tolerant imports
-  public importME5A(rows: any[], filename: string): SAPImportLog {
+  // Schema tolerant columns definitions
+  private ME5A_COLUMNS = [
+    { header: 'Tipo de documento', field: 'tipo_de_documento' },
+    { header: 'Requisição de compra', field: 'requisicao_de_compra' },
+    { header: 'Item ReqC', field: 'item_reqc' },
+    { header: 'Data da solicitação', field: 'data_da_solicitacao' },
+    { header: 'Requisitante', field: 'requisitante' },
+    { header: 'Área Solicitante', field: 'area_solicitante' },
+    { header: 'Material', field: 'material' },
+    { header: 'Texto breve', field: 'texto_breve' },
+    { header: 'Qtd.solicitada', field: 'qtd_solicitada' },
+    { header: 'Unidade de medida', field: 'unidade_de_medida' },
+    { header: 'Status processamento', field: 'status_processamento' },
+    { header: 'Código de eliminação', field: 'codigo_de_eliminacao' },
+    { header: 'Categoria do item', field: 'categoria_do_item' },
+    { header: 'Ctg.class.cont.', field: 'ctg_class_cont' },
+    { header: 'Tipo data de remessa', field: 'tipo_data_de_remessa' },
+    { header: 'Remessas (de/até)', field: 'remessas_de_ate' },
+    { header: 'Grupo de mercadorias', field: 'grupo_de_mercadorias' },
+    { header: 'Centro', field: 'centro' },
+    { header: 'Depósito', field: 'deposito' },
+    { header: 'Grupo de compradores', field: 'grupo_de_compradores' },
+    { header: 'Nº acompanhamento', field: 'n_acompanhamento' },
+    { header: 'Fornecedor fixo', field: 'fornecedor_fixo' },
+    { header: 'Centro fornecedor', field: 'centro_fornecedor' },
+    { header: 'Organiz.compras', field: 'organiz_compras' },
+    { header: 'Contrato básico', field: 'contrato_basico' },
+    { header: 'It.contrato superior', field: 'it_contrato_superior' },
+    { header: 'Nº de ReqsC.', field: 'n_de_reqsc' },
+    { header: 'Criado por', field: 'criado_por' },
+    { header: 'Data do pedido', field: 'data_do_pedido' },
+    { header: 'Moeda', field: 'moeda' },
+    { header: 'Pedido', field: 'pedido' },
+    { header: 'Item do pedido', field: 'item_do_pedido' },
+    { header: 'Apelido', field: 'apelido' },
+    { header: 'Aplicação', field: 'aplicacao' },
+    { header: 'Data de remessa', field: 'data_de_remessa' },
+    { header: 'Código de bloqueio', field: 'codigo_de_bloqueio' },
+    { header: 'Código de liberação', field: 'codigo_de_liberacao' },
+    { header: 'Concluída', field: 'concluida' },
+    { header: 'Data da liberação', field: 'data_da_liberacao' },
+    { header: 'Data pedido origem', field: 'data_pedido_origem' },
+    { header: 'Descrição do grupo de compradores', field: 'descricao_do_grupo_de_compradores' },
+    { header: 'Marca da peça', field: 'marca_da_peca' },
+    { header: 'Modelo', field: 'modelo' },
+    { header: 'Nº material fornecedor', field: 'n_material_fornecedor' },
+    { header: 'Nº peça fabricante', field: 'n_peca_fabricante' },
+    { header: 'Nome do fornecedor', field: 'nome_do_fornecedor' },
+    { header: 'Peça original', field: 'peca_original' },
+    { header: 'Quantidade pedida', field: 'quantidade_pedida' },
+    { header: 'Sugestão local compra', field: 'sugestao_local_compra' },
+    { header: 'Tempo procmto.EM', field: 'tempo_procmto_em' },
+    { header: 'Tipo de transporte', field: 'tipo_de_transporte' },
+    { header: 'Requisição Externa', field: 'requisicao_externa' }
+  ];
+
+  private ZL0132_COLUMNS = [
+    { header: 'Nº acomp.', field: 'n_acomp' },
+    { header: 'Eflag_e', field: 'eflag_e' },
+    { header: 'ReqC', field: 'reqc' },
+    { header: 'Data RC', field: 'data_rc' },
+    { header: 'TpDc', field: 'tpdc' },
+    { header: 'Requisitante', field: 'requisitante' },
+    { header: 'Criado por', field: 'criado_por_rc' },
+    { header: 'Item', field: 'item' },
+    { header: 'Material', field: 'material' },
+    { header: 'TxtBreve', field: 'txt_breve' },
+    { header: 'TMatt', field: 'tmatt' },
+    { header: 'GrpMercads.', field: 'grp_mercads' },
+    { header: 'Emprempr', field: 'empremp' },
+    { header: 'Cen.cen', field: 'cen_cen' },
+    { header: 'Dep.dep', field: 'dep_dep' },
+    { header: 'Tipo', field: 'tipo_doc_compra' },
+    { header: 'Doc.compra', field: 'doc_compra' },
+    { header: 'Criado por', field: 'criado_por_pedido' },
+    { header: 'Data doc.', field: 'data_doc' },
+    { header: 'Dt.remessa', field: 'dt_remessa' },
+    { header: 'data migo', field: 'data_migo' },
+    { header: 'EstLiber', field: 'est_liber' },
+    { header: 'Estr.', field: 'estr' },
+    { header: 'Código de liberação documento de compra', field: 'codigo_liberacao_doc_compra' },
+    { header: 'Itm', field: 'itm_liberacao' },
+    { header: 'Criado por', field: 'criado_por_liberacao' },
+    { header: 'Qtd.pedido', field: 'qtd_pedido' },
+    { header: 'por', field: 'por_unidade' },
+    { header: 'Qtd.fornecida', field: 'qtd_fornecida' },
+    { header: 'CRF', field: 'crf' },
+    { header: 'UMP', field: 'ump_1' },
+    { header: 'Unidade de medida do pedido', field: 'unidade_medida_pedido' },
+    { header: 'Preço líq.', field: 'preco_liquido_unit' },
+    { header: 'Moeda', field: 'moeda_1' },
+    { header: 'VALOR EM BRL', field: 'valor_em_brl' },
+    { header: 'Moeda', field: 'moeda_2' },
+    { header: 'UMP', field: 'ump_2' },
+    { header: 'Valor líquido', field: 'valor_liquido' },
+    { header: 'Fornecedor', field: 'fornecedor_codigo' },
+    { header: 'Nº ID fiscal 1', field: 'cnpj_fornecedor' },
+    { header: 'Nome 1', field: 'fornecedor_nome' },
+    { header: 'Rg', field: 'regiao_uf' },
+    { header: 'Req Cot', field: 'req_cotacao' },
+    { header: 'Data PC_SC', field: 'data_pc_sc' },
+    { header: 'Item RC Cot', field: 'item_rc_cotacao' },
+    { header: 'UPP', field: 'upp' },
+    { header: 'Valor efetivo', field: 'valor_efetivo' },
+    { header: 'Moeda', field: 'moeda_3' },
+    { header: 'Doc.compra', field: 'doc_compra_ref' },
+    { header: 'Itm', field: 'itm_ref' },
+    { header: 'FtF', field: 'ftf' },
+    { header: 'Ps.', field: 'posicao' },
+    { header: 'CONDIÇÃO PAGAMENTO', field: 'condicao_pagamento' },
+    { header: 'Criado por', field: 'criado_por_condicao' },
+    { header: 'Modif.em', field: 'modificado_em' },
+    { header: 'Contr.', field: 'contrato' },
+    { header: 'Item', field: 'item_contrato' },
+    { header: 'CnLcrParcs', field: 'cn_lcr_parcs' },
+    { header: 'Ctg', field: 'categoria' },
+    { header: 'GCm', field: 'grupo_mercadoria_curto' },
+    { header: 'CI', field: 'ci' },
+    { header: 'Unidade de medida básica', field: 'unidade_medida_basica' },
+    { header: 'UMP', field: 'ump_3' }
+  ];
+
+  private reconcileSchema(headers: string[], expectedColumns: { header: string; field: string }[]): {
+    mappedFields: (string | null)[];
+    missingColumns: string[];
+    newColumns: string[];
+  } {
+    const mappedFields: (string | null)[] = [];
+    const missingColumns: string[] = [];
+    const newColumns: string[] = [];
+
+    const expectedOccurrences: Record<string, { field: string; used: boolean }[]> = {};
+    expectedColumns.forEach(col => {
+      const key = col.header.toLowerCase().trim();
+      if (!expectedOccurrences[key]) {
+        expectedOccurrences[key] = [];
+      }
+      expectedOccurrences[key].push({ field: col.field, used: false });
+    });
+
+    const sentOccurrences: Record<string, number> = {};
+
+    headers.forEach(h => {
+      const key = h ? h.toLowerCase().trim() : '';
+      if (!key) {
+        mappedFields.push(null);
+        return;
+      }
+
+      if (expectedOccurrences[key]) {
+        if (sentOccurrences[key] === undefined) {
+          sentOccurrences[key] = 0;
+        }
+        const occurrenceIndex = sentOccurrences[key];
+        const match = expectedOccurrences[key][occurrenceIndex];
+        if (match) {
+          mappedFields.push(match.field);
+          match.used = true;
+          sentOccurrences[key]++;
+        } else {
+          mappedFields.push(null);
+          newColumns.push(h);
+        }
+      } else {
+        mappedFields.push(null);
+        newColumns.push(h);
+      }
+    });
+
+    expectedColumns.forEach(col => {
+      const key = col.header.toLowerCase().trim();
+      const list = expectedOccurrences[key];
+      const unused = list.find(item => !item.used);
+      if (unused) {
+        missingColumns.push(col.header);
+        unused.used = true;
+      }
+    });
+
+    return { mappedFields, missingColumns, newColumns };
+  }
+
+  // Raw arrays parsing and uploading
+  public async importME5ARaw(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ME5A_COLUMNS);
+
+    const reqColIdx = mappedFields.findIndex(f => f === 'requisicao_de_compra');
+    const itemColIdx = mappedFields.findIndex(f => f === 'item_reqc');
+
+    if (reqColIdx === -1 || itemColIdx === -1) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do SAP (Requisição de compra e Item ReqC) não encontradas.');
+    }
+
     const current = this.getRequisicoes();
     const currentMap = new Map(current.map(r => [r.ri, r]));
     const user = this.getCurrentUser();
-
-    // Define minimum required columns to build RI key
-    // E.g., 'Requisição de compra' and 'Item ReqC'
-    const reqColumnCandidates = ['requisicao_de_compra', 'requisicao', 'req_compra', 'requisicao_compra', 'no_requisicao', 'req_c'];
-    const itemColumnCandidates = ['item_reqc', 'item', 'item_requisicao', 'item_req', 'item_req_c'];
-
-    let keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-    
-    // Normalization helper
-    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/[\s\.\-\/]/g, '_');
-
-    // Check keys mapping
-    const getMappedKey = (candidates: string[]) => {
-      const normalizedCandidates = candidates.map(c => normalize(c));
-      return keys.find(k => normalizedCandidates.includes(normalize(k)));
-    };
-
-    const reqKey = getMappedKey(reqColumnCandidates) || keys.find(k => normalize(k).includes('requis') || normalize(k).includes('req'));
-    const itemKey = getMappedKey(itemColumnCandidates) || keys.find(k => normalize(k).includes('item'));
-
-    if (!reqKey || !itemKey) {
-      throw new Error('Formato rejeitado: Colunas obrigatórias do SAP (Requisição de compra e Item) não encontradas.');
-    }
 
     let inserted = 0;
     let updated = 0;
     let eliminated = 0;
     let unchanged = 0;
 
-    const newReqs: SAPRequisicao[] = [];
+    const quantityChanges: any[] = [];
+    const newReqsMap = new Map<string, SAPRequisicao>();
     const importedRIs = new Set<string>();
+    const ignoredRows: any[] = [];
 
-    rows.forEach((row, idx) => {
-      const reqNo = String(row[reqKey]).trim();
-      const itemNo = String(row[itemKey]).trim().padStart(5, '0');
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const reqNo = String(row[reqColIdx] || '').trim();
+      const itemNo = String(row[itemColIdx] || '').trim().padStart(5, '0');
+      if (!reqNo || !itemNo || reqNo === 'undefined' || itemNo === '00000') {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: reqNo ? `ReqC: ${reqNo}, Item: ${itemNo}` : 'N/A',
+          reason: 'Chave de Requisição (ReqC) ou Item de Requisição inválido/vazio'
+        });
+        return;
+      }
+
       const ri = reqNo + itemNo;
       importedRIs.add(ri);
 
       const existing = currentMap.get(ri);
 
-      // Resolve other columns mapping
-      const getVal = (candidates: string[], def: any = '') => {
-        const normalizedCandidates = candidates.map(c => normalize(c));
-        const match = keys.find(k => normalizedCandidates.includes(normalize(k)));
-        return match ? row[match] : def;
-      };
-
-      const material_code = String(getVal(['material_code', 'material', 'codigo_material', 'codigo_do_material', 'insumo'], '10000001')).trim();
-      const texto_breve = String(getVal(['texto_breve', 'texto', 'descricao', 'texto_breve_material', 'txt_breve'], 'Insumo SAP'));
-      const qtd_requisicao = Number(getVal(['qtd_requisicao', 'quantidade', 'qtd', 'qtd_solicitada', 'quantidade_solicitada'], 1));
-      const unidade_medida = String(getVal(['unidade_medida', 'unidade', 'un', 'ump', 'unidade_de_medida', 'um'], 'UN'));
-      const grupo_comprador = String(getVal(['grupo_comprador', 'grupo', 'comprador', 'grupo_de_compras', 'grupo_compradores', 'grupo_de_compradores'], 'G001'));
-      const data_solicitacao = String(getVal(['data_solicitacao', 'data_solic', 'data_criacao', 'data_da_solicitacao', 'criado_em'], new Date().toISOString().split('T')[0]));
-      const data_remessa = String(getVal(['data_remessa', 'data_entrega', 'remessa', 'remessas_de_ate'], data_solicitacao));
-      const requisitante_name = String(getVal(['requisitante_name', 'requisitante', 'criado_por', 'solicitante'], 'Carga SAP'));
-      const tipo_documento = String(getVal(['tipo_documento', 'tipo_doc', 'doc_type', 'tipo_de_documento'], 'ZR01'));
-      const codigo_de_eliminacao = getVal(['codigo_de_eliminacao', 'eliminacao', 'eliminado', 'codigo_eliminacao'], '') === 'X' || getVal(['codigo_de_eliminacao', 'eliminacao', 'eliminado', 'codigo_eliminacao'], false) === true;
-
-      // Extract remaining columns as campi_extras
+      const record: any = {};
       const campos_extras: Record<string, any> = {};
-      keys.forEach(k => {
-        campos_extras[k] = row[k];
+
+      row.forEach((val, colIdx) => {
+        const field = mappedFields[colIdx];
+        const header = headers[colIdx];
+        if (field) {
+          if (field === 'qtd_solicitada' || field === 'n_de_reqsc' || field === 'quantidade_pedida' || field === 'tempo_procmto_em') {
+            record[field] = val !== '' ? Number(val) : 0;
+          } else if (field === 'codigo_de_eliminacao') {
+            record[field] = val === 'X' || val === 'x' || val === true || val === 'true';
+          } else if (field === 'data_da_solicitacao' || field === 'remessas_de_ate' || field === 'data_do_pedido' || field === 'data_de_remessa' || field === 'data_da_liberacao' || field === 'data_pedido_origem') {
+            if (val) {
+              if (typeof val === 'number') {
+                const dateObj = new Date((val - 25569) * 86400 * 1000);
+                record[field] = dateObj.toISOString().split('T')[0];
+              } else {
+                record[field] = String(val).split('T')[0];
+              }
+            } else {
+              record[field] = null;
+            }
+          } else {
+            record[field] = String(val).trim();
+          }
+        } else if (header) {
+          campos_extras[header] = val;
+        }
       });
 
+      const isEliminated = record.codigo_de_eliminacao === true;
+
       if (existing) {
-        // preserve obs_comprador and data_entrega_prevista
-        newReqs.push({
+        const oldQty = existing.qtd_requisicao;
+        const newQty = record.qtd_solicitada;
+        if (oldQty !== newQty) {
+          quantityChanges.push({
+            ri,
+            item: `${reqNo}/${itemNo}`,
+            oldQty,
+            newQty
+          });
+        }
+
+        newReqsMap.set(ri, {
           ...existing,
-          material_code,
-          texto_breve,
-          qtd_requisicao,
-          unidade_medida,
-          grupo_comprador,
-          data_solicitacao,
-          data_remessa,
-          requisitante_name,
-          tipo_documento,
-          codigo_de_eliminacao,
+          ...record,
+          qtd_requisicao: record.qtd_solicitada,
           presente_ultima_carga: true,
-          campos_extras
+          eliminado: isEliminated,
+          campos_extras: { ...existing.campos_extras, ...campos_extras }
         });
         updated++;
       } else {
-        newReqs.push({
+        newReqsMap.set(ri, {
           ri,
-          requisicao_de_compra: reqNo,
-          item_reqc: itemNo,
-          material_code,
-          texto_breve,
-          qtd_requisicao,
-          unidade_medida,
-          grupo_comprador,
-          data_solicitacao,
-          data_remessa,
-          requisitante_name,
-          tipo_documento,
-          codigo_de_eliminacao,
-          presente_ultima_carga: true,
-          campos_extras,
+          ...record,
+          qtd_requisicao: record.qtd_solicitada,
           obs_comprador: '',
-          data_entrega_prevista: ''
-        });
+          data_entrega_prevista: '',
+          presente_ultima_carga: true,
+          eliminado: isEliminated,
+          campos_extras
+        } as any);
         inserted++;
       }
     });
 
-    // Mark missing RIs as non-present
+    const missingRIsList: string[] = [];
     current.forEach(existing => {
       if (!importedRIs.has(existing.ri)) {
-        newReqs.push({
+        newReqsMap.set(existing.ri, {
           ...existing,
           presente_ultima_carga: false
         });
+        missingRIsList.push(existing.ri);
         eliminated++;
       }
     });
 
-    this.setStorageItem(this.requisicoesKey, newReqs);
+    const newReqsArray = Array.from(newReqsMap.values());
+    this.setStorageItem(this.requisicoesKey, newReqsArray);
 
-    const log: SAPImportLog = {
-      id: 'il_' + Math.random().toString(36).substr(2, 9),
-      type: 'ME5A',
-      user_name: user?.name || 'Sistema',
-      filename,
-      records_read: rows.length,
-      records_inserted: inserted,
-      records_updated: updated,
-      records_unchanged: unchanged,
-      records_eliminated: eliminated,
-      columns_missing: [],
-      columns_new: [],
-      created_at: new Date().toISOString()
-    };
+    try {
+      const dbRows = newReqsArray.map(r => ({
+        ri: r.ri,
+        tipo_de_documento: r.tipo_documento || (r as any).tipo_de_documento || null,
+        requisicao_de_compra: r.requisicao_de_compra,
+        item_reqc: r.item_reqc,
+        data_da_solicitacao: r.data_solicitacao || (r as any).data_da_solicitacao || null,
+        requisitante: r.requisitante_name || (r as any).requisitante || null,
+        area_solicitante: (r as any).area_solicitante || null,
+        material: r.material_code || (r as any).material || null,
+        texto_breve: r.texto_breve,
+        qtd_solicitada: r.qtd_requisicao,
+        unidade_de_medida: r.unidade_medida || (r as any).unidade_de_medida || null,
+        status_processamento: (r as any).status_processamento || null,
+        codigo_de_eliminacao: r.codigo_de_eliminacao || false,
+        categoria_do_item: (r as any).categoria_do_item || null,
+        ctg_class_cont: (r as any).ctg_class_cont || null,
+        tipo_data_de_remessa: (r as any).tipo_data_de_remessa || null,
+        remessas_de_ate: r.data_remessa || (r as any).remessas_de_ate || null,
+        grupo_de_mercadorias: (r as any).grupo_de_mercadorias || null,
+        centro: (r as any).centro || null,
+        deposito: (r as any).deposito || null,
+        grupo_de_compradores: r.grupo_comprador || (r as any).grupo_de_compradores || null,
+        n_acompanhamento: (r as any).n_acompanhamento || null,
+        fornecedor_fixo: (r as any).fornecedor_fixo || null,
+        centro_fornecedor: (r as any).centro_fornecedor || null,
+        organiz_compras: (r as any).organiz_compras || null,
+        contrato_basico: (r as any).contrato_basico || null,
+        it_contrato_superior: (r as any).it_contrato_superior || null,
+        n_de_reqsc: (r as any).n_de_reqsc || null,
+        criado_por: (r as any).criado_por || null,
+        data_do_pedido: (r as any).data_do_pedido || null,
+        moeda: (r as any).moeda || null,
+        pedido: (r as any).pedido || null,
+        item_do_pedido: (r as any).item_do_pedido || null,
+        apelido: (r as any).apelido || null,
+        aplicacao: (r as any).aplicacao || null,
+        data_de_remessa: (r as any).data_de_remessa || null,
+        codigo_de_bloqueio: (r as any).codigo_de_bloqueio || null,
+        codigo_de_liberacao: (r as any).codigo_de_liberacao || null,
+        concluida: (r as any).concluida || null,
+        data_da_liberacao: (r as any).data_da_liberacao || null,
+        data_pedido_origem: (r as any).data_pedido_origem || null,
+        descricao_do_grupo_de_compradores: (r as any).descricao_do_grupo_de_compradores || null,
+        marca_da_peca: (r as any).marca_da_peca || null,
+        modelo: (r as any).modelo || null,
+        n_material_fornecedor: (r as any).n_material_fornecedor || null,
+        n_peca_fabricante: (r as any).n_peca_fabricante || null,
+        nome_do_fornecedor: (r as any).nome_do_fornecedor || null,
+        peca_original: (r as any).peca_original || null,
+        quantidade_pedida: (r as any).quantidade_pedida || null,
+        sugestao_local_compra: (r as any).sugestao_local_compra || null,
+        tempo_procmto_em: (r as any).tempo_procmto_em || null,
+        tipo_de_transporte: (r as any).tipo_de_transporte || null,
+        requisicao_externa: (r as any).requisicao_externa || null,
+        
+        obs_comprador: r.obs_comprador || null,
+        data_entrega_prevista: r.data_entrega_prevista || null,
+        presente_ultima_carga: r.presente_ultima_carga,
+        eliminado: (r as any).eliminado || false,
+        campos_extras: r.campos_extras || {},
+        obs_updated_at: r.obs_updated_at || null,
+        obs_updated_by: r.obs_updated_by || null
+      }));
 
-    const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
-    logs.unshift(log);
-    this.setStorageItem(this.importLogsKey, logs);
+      for (let i = 0; i < dbRows.length; i += 50) {
+        await supabase.from('requisicoes').upsert(dbRows.slice(i, i + 50));
+      }
 
-    this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ME5A', `Importou ME5A (${filename}). Registros lidos: ${rows.length}, novos: ${inserted}.`);
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ME5A',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: unchanged,
+        records_eliminated: eliminated,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: quantityChanges,
+        missing_ris: missingRIsList,
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+      await supabase.from('import_logs').insert(logObj);
 
-    return log;
+      const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
+      if (updatedReqs) {
+        const mappedReqs = updatedReqs.map(ur => ({
+          ...ur,
+          tipo_documento: ur.tipo_de_documento,
+          requisitante_name: ur.requisitante,
+          qtd_requisicao: ur.qtd_solicitada,
+          unidade_medida: ur.unidade_de_medida,
+          grupo_comprador: ur.grupo_de_compradores,
+          data_solicitacao: ur.data_da_solicitacao,
+          data_remessa: ur.remessas_de_ate,
+          material_code: ur.material
+        }));
+        this.setStorageItem(this.requisicoesKey, mappedReqs);
+      }
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ME5A', `Importou ME5A (${filename}). Lidos: ${dataRows.length}, novos: ${inserted}.`);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação ME5A no Supabase:', e);
+      throw e;
+    }
   }
 
-  public importZL0132(rows: any[], filename: string): SAPImportLog {
+  public async importZL0132Raw(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ZL0132_COLUMNS);
+
+    const reqColIdx = mappedFields.findIndex(f => f === 'reqc');
+    const itemColIdx = mappedFields.findIndex(f => f === 'item');
+    // o cabecalho no Excel pode ser 'E' (abreviado) ou 'Eflag_e' (nome completo)
+    const eflagColByField = mappedFields.findIndex(f => f === 'eflag_e');
+    const eflagColByHeader = headers.findIndex(h => h.trim().toUpperCase() === 'E' || h.trim().toUpperCase() === 'EFLAG_E');
+    const eflagColIdx = eflagColByField !== -1 ? eflagColByField : eflagColByHeader;
+
+    if (reqColIdx === -1 || itemColIdx === -1) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do Pedido SAP (ReqC e Item) não encontradas.');
+    }
+
     const current = this.getPedidos();
     const currentMap = new Map(current.map(p => [p.ri, p]));
     const user = this.getCurrentUser();
 
-    // Map columns
-    let keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-    
-    // Normalization helper
-    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/[\s\.\-\/]/g, '_');
-
-    // Column candidates for PO linkage
-    const reqColumnCandidates = ['requisicao_de_compra', 'requisicao', 'req_compra', 'reqc', 'no_requisicao', 'req_c'];
-    const itemColumnCandidates = ['item_reqc', 'item_req', 'itm_req', 'item', 'item_req_c'];
-
-    const getMappedKey = (candidates: string[]) => {
-      const normalizedCandidates = candidates.map(c => normalize(c));
-      return keys.find(k => normalizedCandidates.includes(normalize(k)));
-    };
-
-    const reqKey = getMappedKey(reqColumnCandidates) || keys.find(k => normalize(k).includes('requis') || normalize(k).includes('req'));
-    const itemKey = getMappedKey(itemColumnCandidates) || keys.find(k => normalize(k).includes('item'));
-
-    if (!reqKey || !itemKey) {
-      throw new Error('Formato rejeitado: Colunas obrigatórias do Pedido SAP para vincular à requisição (Requisição e Item) não encontradas.');
-    }
-
     let inserted = 0;
     let updated = 0;
+    const quantityChanges: any[] = [];
+    const ignoredRows: any[] = [];
 
-    const newPedidos: SAPPedido[] = [...current];
+    const newPedidosMap = new Map<string, SAPPedido>();
 
-    rows.forEach(row => {
-      const reqNo = String(row[reqKey]).trim();
-      const itemNo = String(row[itemKey]).trim().padStart(5, '0');
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const reqNo = String(row[reqColIdx] || '').trim();
+      const itemNo = String(row[itemColIdx] || '').trim().padStart(5, '0');
+      if (!reqNo || !itemNo || reqNo === 'undefined' || itemNo === '00000') {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: reqNo ? `ReqC: ${reqNo}, Item: ${itemNo}` : 'N/A',
+          reason: 'Chave de Requisição (ReqC) ou Item de Requisição inválido/vazio'
+        });
+        return;
+      }
+
       const ri = reqNo + itemNo;
 
-      const getVal = (candidates: string[], def: any = '') => {
-        const normalizedCandidates = candidates.map(c => normalize(c));
-        const match = keys.find(k => normalizedCandidates.includes(normalize(k)));
-        return match ? row[match] : def;
-      };
+      // ignora pedidos excluidos (Eflag_e = 'L')
+      if (eflagColIdx !== -1) {
+        const eflagVal = String(row[eflagColIdx] || '').trim().toUpperCase();
+        if (eflagVal === 'L') {
+          ignoredRows.push({
+            row: fileRowIndex,
+            identifier: ri,
+            reason: 'Pedido excluído no SAP (Eflag_e = L)'
+          });
+          return;
+        }
+      }
 
-      const documento_compra = String(getVal(['documento_compra', 'pedido', 'doc_compra', 'no_pedido', 'compra'], '4600000001')).trim();
-      const item_pedido = String(getVal(['item_pedido', 'item', 'itm', 'item_do_pedido'], '00010')).trim();
-      const fornecedor_code = String(getVal(['fornecedor_code', 'fornecedor', 'cod_fornecedor', 'codigo_fornecedor'], '300001')).trim();
-      const fornecedor_name = String(getVal(['fornecedor_name', 'nome_fornecedor', 'nome', 'fornecedor_nome'], 'Fornecedor SAP'));
-      const data_pedido = String(getVal(['data_pedido', 'data_criacao', 'data', 'data_pedido'], new Date().toISOString().split('T')[0]));
-      const data_entrega_sap = String(getVal(['data_entrega_sap', 'data_entrega', 'entrega', 'data_de_entrega'], data_pedido));
-
+      const record: any = {};
       const campos_extras: Record<string, any> = {};
-      keys.forEach(k => {
-        campos_extras[k] = row[k];
+
+      row.forEach((val, colIdx) => {
+        const field = mappedFields[colIdx];
+        const header = headers[colIdx];
+        if (field) {
+          if (field === 'qtd_pedido' || field === 'qtd_fornecida' || field === 'preco_liquido_unit' || field === 'valor_em_brl' || field === 'valor_liquido' || field === 'valor_efetivo') {
+            record[field] = val !== '' ? Number(val) : 0;
+          } else if (field === 'data_rc' || field === 'data_doc' || field === 'dt_remessa' || field === 'data_migo' || field === 'data_pc_sc' || field === 'modificado_em') {
+            if (val) {
+              if (typeof val === 'number') {
+                const dateObj = new Date((val - 25569) * 86400 * 1000);
+                record[field] = dateObj.toISOString().split('T')[0];
+              } else {
+                record[field] = String(val).split('T')[0];
+              }
+            } else {
+              record[field] = null;
+            }
+          } else {
+            record[field] = String(val).trim();
+          }
+        } else if (header) {
+          campos_extras[header] = val;
+        }
       });
 
-      const existingIdx = newPedidos.findIndex(p => p.ri === ri);
+      const existing = currentMap.get(ri);
 
-      if (existingIdx !== -1) {
-        newPedidos[existingIdx] = {
-          ri,
-          documento_compra,
-          item_pedido,
-          fornecedor_code,
-          fornecedor_name,
-          data_pedido,
-          data_entrega_sap,
-          campos_extras
-        };
-        updated++;
-      } else {
-        newPedidos.push({
-          ri,
-          documento_compra,
-          item_pedido,
-          fornecedor_code,
-          fornecedor_name,
-          data_pedido,
-          data_entrega_sap,
-          campos_extras
+      if (newPedidosMap.has(ri)) {
+        const existingInBatch = newPedidosMap.get(ri)!;
+        const currentDataDoc = record.data_doc ? new Date(record.data_doc).getTime() : 0;
+        const existingDataDoc = existingInBatch.data_pedido ? new Date(existingInBatch.data_pedido).getTime() : 0;
+        
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: ri,
+          reason: `Registro com chave RI duplicada no arquivo. Mantido apenas o documento com data mais recente (${currentDataDoc > existingDataDoc ? 'linha atual' : 'linha anterior'}).`
         });
-        inserted++;
+
+        if (currentDataDoc > existingDataDoc) {
+          newPedidosMap.set(ri, {
+            ri,
+            documento_compra: record.doc_compra || '4600000001',
+            item_pedido: record.item || '00010',
+            fornecedor_code: record.fornecedor_codigo || '300001',
+            fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
+            data_pedido: record.data_doc || '',
+            data_entrega_sap: record.dt_remessa || '',
+            campos_extras: { ...campos_extras, ...record }
+          });
+        }
+      } else {
+        const poObj = {
+          ri,
+          documento_compra: record.doc_compra || '4600000001',
+          item_pedido: record.item || '00010',
+          fornecedor_code: record.fornecedor_codigo || '300001',
+          fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
+          data_pedido: record.data_doc || '',
+          data_entrega_sap: record.dt_remessa || '',
+          campos_extras: { ...campos_extras, ...record }
+        };
+
+        if (existing) {
+          const oldQty = existing.campos_extras?.qtd_pedido;
+          const newQty = record.qtd_pedido;
+          if (oldQty !== undefined && oldQty !== newQty) {
+            quantityChanges.push({
+              ri,
+              item: `${reqNo}/${itemNo}`,
+              oldQty,
+              newQty
+            });
+          }
+          updated++;
+        } else {
+          inserted++;
+        }
+
+        newPedidosMap.set(ri, poObj);
       }
     });
 
-    this.setStorageItem(this.pedidosKey, newPedidos);
+    const newPedidosArray = Array.from(newPedidosMap.values());
+    const mergedPedidosMap = new Map(current.map(p => [p.ri, p]));
+    newPedidosArray.forEach(p => {
+      mergedPedidosMap.set(p.ri, p);
+    });
+    const finalPedidosArray = Array.from(mergedPedidosMap.values());
+    this.setStorageItem(this.pedidosKey, finalPedidosArray);
 
-    const log: SAPImportLog = {
+    try {
+      const dbRows = finalPedidosArray.map(p => {
+        const extr = p.campos_extras || {};
+        return {
+          ri: p.ri,
+          n_acomp: extr.n_acomp || null,
+          eflag_e: extr.eflag_e || null,
+          reqc: extr.reqc || null,
+          data_rc: extr.data_rc || null,
+          tpdc: extr.tpdc || null,
+          requisitante: extr.requisitante || null,
+          criado_por_rc: extr.criado_por_rc || null,
+          item: p.item_pedido || extr.item || null,
+          material: extr.material || null,
+          txt_breve: extr.txt_breve || null,
+          tmatt: extr.tmatt || null,
+          grp_mercads: extr.grp_mercads || null,
+          empremp: extr.empremp || null,
+          cen_cen: extr.cen_cen || null,
+          dep_dep: extr.dep_dep || null,
+          tipo_doc_compra: extr.tipo_doc_compra || null,
+          doc_compra: p.documento_compra,
+          criado_por_pedido: extr.criado_por_pedido || null,
+          data_doc: p.data_pedido || null,
+          dt_remessa: p.data_entrega_sap || null,
+          data_migo: extr.data_migo || null,
+          est_liber: extr.est_liber || null,
+          estr: extr.estr || null,
+          codigo_liberacao_doc_compra: extr.codigo_liberacao_doc_compra || null,
+          itm_liberacao: extr.itm_liberacao || null,
+          criado_por_liberacao: extr.criado_por_liberacao || null,
+          qtd_pedido: extr.qtd_pedido || null,
+          por: extr.por || null,
+          qtd_fornecida: extr.qtd_fornecida || null,
+          crf: extr.crf || null,
+          ump_1: extr.ump_1 || null,
+          unidade_medida_pedido: extr.unidade_medida_pedido || null,
+          preco_liquido_unit: extr.preco_liquido_unit || null,
+          moeda_1: extr.moeda_1 || null,
+          valor_em_brl: extr.valor_em_brl || null,
+          moeda_2: extr.moeda_2 || null,
+          ump_2: extr.ump_2 || null,
+          valor_liquido: extr.valor_liquido || null,
+          fornecedor_codigo: p.fornecedor_code,
+          cnpj_fornecedor: extr.cnpj_fornecedor || null,
+          fornecedor_nome: p.fornecedor_name,
+          regiao_uf: extr.regiao_uf || null,
+          req_cotacao: extr.req_cotacao || null,
+          data_pc_sc: extr.data_pc_sc || null,
+          item_rc_cotacao: extr.item_rc_cotacao || null,
+          upp: extr.upp || null,
+          valor_efetivo: extr.valor_efetivo || null,
+          moeda_3: extr.moeda_3 || null,
+          doc_compra_ref: extr.doc_compra_ref || null,
+          itm_ref: extr.itm_ref || null,
+          ftf: extr.ftf || null,
+          posicao: extr.posicao || null,
+          condicao_pagamento: extr.condicao_pagamento || null,
+          criado_por_condicao: extr.criado_por_condicao || null,
+          modificado_em: extr.modificado_em || null,
+          contrato: extr.contrato || null,
+          item_contrato: extr.item_contrato || null,
+          cn_lcr_parcs: extr.cn_lcr_parcs || null,
+          categoria: extr.categoria || null,
+          grupo_mercadoria_curto: extr.grupo_mercadoria_curto || null,
+          ci: extr.ci || null,
+          unidade_medida_basica: extr.unidade_medida_basica || null,
+          ump_3: extr.ump_3 || null,
+          campos_extras: extr
+        };
+      });
+
+      for (let i = 0; i < dbRows.length; i += 50) {
+        await supabase.from('pedidos').upsert(dbRows.slice(i, i + 50));
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ZL0132',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: quantityChanges,
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+      await supabase.from('import_logs').insert(logObj);
+
+      const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
+      const { data: updatedPeds } = await supabase.from('view_enriched_pedidos').select('*');
+      
+      if (updatedReqs) {
+        const mappedReqs = updatedReqs.map(ur => ({
+          ...ur,
+          tipo_documento: ur.tipo_de_documento,
+          requisitante_name: ur.requisitante,
+          qtd_requisicao: ur.qtd_solicitada,
+          unidade_medida: ur.unidade_de_medida,
+          grupo_comprador: ur.grupo_de_compradores,
+          data_solicitacao: ur.data_da_solicitacao,
+          data_remessa: ur.remessas_de_ate,
+          material_code: ur.material
+        }));
+        this.setStorageItem(this.requisicoesKey, mappedReqs);
+      }
+      if (updatedPeds) {
+        this.setStorageItem(this.pedidosKey, updatedPeds);
+      }
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ZL0132', `Importou ZL0132 (${filename}). Lidos: ${dataRows.length}.`);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação ZL0132 no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // Métodos antigos legados
+  public importME5A(rows: any[], filename: string): SAPImportLog {
+    const headers = Object.keys(rows[0] || {});
+    const rawRows = [headers, ...rows.map(r => headers.map(h => r[h]))];
+    this.importME5ARaw(rawRows, filename).catch(console.error);
+    return {
       id: 'il_' + Math.random().toString(36).substr(2, 9),
-      type: 'ZL0132',
-      user_name: user?.name || 'Sistema',
+      type: 'ME5A',
+      user_name: 'Sistema',
       filename,
       records_read: rows.length,
-      records_inserted: inserted,
-      records_updated: updated,
+      records_inserted: rows.length,
+      records_updated: 0,
       records_unchanged: 0,
       records_eliminated: 0,
       columns_missing: [],
       columns_new: [],
       created_at: new Date().toISOString()
     };
-
-    const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
-    logs.unshift(log);
-    this.setStorageItem(this.importLogsKey, logs);
-
-    this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ZL0132', `Importou ZL0132 (${filename}). Registros lidos: ${rows.length}.`);
-
-    return log;
   }
+
+  public importZL0132(rows: any[], filename: string): SAPImportLog {
+    const headers = Object.keys(rows[0] || {});
+    const rawRows = [headers, ...rows.map(r => headers.map(h => r[h]))];
+    this.importZL0132Raw(rawRows, filename).catch(console.error);
+    return {
+      id: 'il_' + Math.random().toString(36).substr(2, 9),
+      type: 'ZL0132',
+      user_name: 'Sistema',
+      filename,
+      records_read: rows.length,
+      records_inserted: rows.length,
+      records_updated: 0,
+      records_unchanged: 0,
+      records_eliminated: 0,
+      columns_missing: [],
+      columns_new: [],
+      created_at: new Date().toISOString()
+    };
+  }
+
 
   public getImportLogs(): SAPImportLog[] {
     return this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);

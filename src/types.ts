@@ -47,7 +47,7 @@ export interface ActivityLog {
 export interface UserBuyerGroup {
   id: string;
   user_id: string;
-  group_code: string; // E.g., G001, G002
+  group_code: string; // E.g., 314, 358, 447, 575, 588
   is_primary: boolean;
 }
 
@@ -183,7 +183,7 @@ export interface SAPRequisicao {
   texto_breve: string;
   qtd_requisicao: number;
   unidade_medida: string;
-  grupo_comprador: string; // G001, G002...
+  grupo_comprador: string; // 314, 358, 447, 575, 588...
   data_solicitacao: string;
   data_remessa: string;
   requisitante_name: string;
@@ -225,6 +225,8 @@ export interface SAPPedido {
   fornecedor_name: string;
   data_pedido: string;
   data_entrega_sap: string;
+  valor_brl?: number;
+  preco_liquido?: number;
   campos_extras: Record<string, any>;
 }
 
@@ -249,5 +251,8 @@ export interface SAPImportLog {
   records_eliminated: number;
   columns_missing: string[];
   columns_new: string[];
+  quantity_changes?: any[];
+  missing_ris?: string[];
+  ignored_rows?: { row: number; identifier: string; reason: string }[];
   created_at: string;
 }

@@ -9,6 +9,7 @@ import {
   AlertTriangle, Save, CheckCircle, HelpCircle, Loader2, Info, Search
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, Material } from '../types';
 
 interface NewRequestProps {
@@ -29,7 +30,7 @@ interface PurchaseItemState {
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
-  const [sectorId, setSectorId] = useState(user.sector_id);
+  const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
   const [criticality, setCriticality] = useState(3);
@@ -41,10 +42,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, suggested_supplier: '', estimated_value: 0 }
   ]);
 
-  // SAP catalog autocomplete states
+  // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
+  // 180k+ linhas, não cabe em memória/localStorage), com debounce por item ativo.
   const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
-  const materials = React.useMemo(() => localDb.getMaterials(), []);
+  const [activeSearchResults, setActiveSearchResults] = useState<Material[]>([]);
+  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -59,22 +64,43 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper to filter materials for the autocomplete
-  const getFilteredMaterials = (description: string, sapCode: string) => {
-    const descTerm = description.trim().toLowerCase();
-    const codeTerm = sapCode.trim().toLowerCase();
-    
-    if (!descTerm && !codeTerm) {
-      // Show first 5 materials as recent/popular suggestions when empty
-      return materials.slice(0, 5);
+  const activeItemForSearch = activeSearchIndex !== null ? items[activeSearchIndex] : null;
+  const activeDescriptionTerm = activeItemForSearch?.description.trim() || '';
+  const activeSapCodeTerm = activeItemForSearch?.sap_code.trim() || '';
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+
+    if (activeSearchIndex === null) {
+      setActiveSearchResults([]);
+      return;
     }
-    
-    return materials.filter(m => {
-      const matchesDesc = descTerm ? m.description.toLowerCase().includes(descTerm) : true;
-      const matchesCode = codeTerm ? m.material_code.toLowerCase().includes(codeTerm) : true;
-      return matchesDesc && matchesCode;
-    }).slice(0, 8); // Limit to top 8 items
-  };
+
+    searchDebounceRef.current = setTimeout(async () => {
+      const thisRequestId = ++searchRequestIdRef.current;
+      setIsSearchingCatalog(true);
+      try {
+        let query = supabase.from('materials').select('*').eq('is_active', true);
+        if (activeSapCodeTerm) query = query.ilike('material_code', `%${activeSapCodeTerm}%`);
+        if (activeDescriptionTerm) query = query.ilike('description', `%${activeDescriptionTerm}%`);
+        const limit = activeSapCodeTerm || activeDescriptionTerm ? 8 : 5;
+        const { data, error } = await query.order('material_code', { ascending: true }).limit(limit);
+        if (error) throw error;
+        if (searchRequestIdRef.current === thisRequestId) {
+          setActiveSearchResults(data || []);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar materiais no catálogo SAP:', err);
+        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults([]);
+      } finally {
+        if (searchRequestIdRef.current === thisRequestId) setIsSearchingCatalog(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -84,9 +110,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sapRegVendorInfo, setSapRegVendorInfo] = useState(''); // CNPJ / Site or vendor suggestion
 
   // Specific for Helpdesk Chamados
+  const [chamadoSectorId, setChamadoSectorId] = useState(''); // Setor solicitante — sem pré-seleção
   const [helpdeskSectorId, setHelpdeskSectorId] = useState(''); // E.g., '9' for TI, '3' for Facilities
   const [helpdeskCategory, setHelpdeskCategory] = useState('');
-  const [helpdeskTitle, setHelpdeskTitle] = useState('');
   const [helpdeskLocal, setHelpdeskLocal] = useState('');
 
   // States
@@ -94,7 +120,26 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
 
   const sectors = localDb.getSectors();
-  const buyers = localDb.getProfiles().filter(p => p.roles.includes('comprador'));
+
+  // Lista de compradores responsáveis vem da tabela compradores (grupo_compras/nome_comprador),
+  // resolvendo o usuário do sistema vinculado via buyer_groups para manter o comprador_id
+  // apontando para um profile válido (usado nos painéis "Minhas Solicitações" do comprador).
+  const [compradoresList, setCompradoresList] = useState<{ grupo_compras: string; nome_comprador: string }[]>([]);
+  useEffect(() => {
+    supabase.from('compradores').select('*').order('nome_comprador').then(({ data, error }) => {
+      if (error) {
+        console.error('Erro ao buscar compradores:', error);
+        return;
+      }
+      setCompradoresList(data || []);
+    });
+  }, []);
+
+  const buyerGroups = localDb.getBuyerGroups();
+  const buyerOptions = compradoresList.map(c => {
+    const bg = buyerGroups.find(b => b.group_code === c.grupo_compras);
+    return { code: c.grupo_compras, label: c.nome_comprador, profileId: bg?.user_id };
+  });
 
   // Load draft if exists
   useEffect(() => {
@@ -116,9 +161,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.sapRegSpecs) setSapRegSpecs(parsed.sapRegSpecs);
         if (parsed.sapRegBrand) setSapRegBrand(parsed.sapRegBrand);
         if (parsed.sapRegVendorInfo) setSapRegVendorInfo(parsed.sapRegVendorInfo);
+        if (parsed.chamadoSectorId) setChamadoSectorId(parsed.chamadoSectorId);
         if (parsed.helpdeskSectorId) setHelpdeskSectorId(parsed.helpdeskSectorId);
         if (parsed.helpdeskCategory) setHelpdeskCategory(parsed.helpdeskCategory);
-        if (parsed.helpdeskTitle) setHelpdeskTitle(parsed.helpdeskTitle);
         if (parsed.helpdeskLocal) setHelpdeskLocal(parsed.helpdeskLocal);
       } catch (err) {
         console.error('Error loading draft', err);
@@ -140,9 +185,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     return () => clearInterval(interval);
   }, [
-    activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa, 
-    items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo, 
-    helpdeskSectorId, helpdeskCategory, helpdeskTitle, helpdeskLocal
+    activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
+    items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+    chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
   ]);
 
   const saveDraft = () => {
@@ -150,7 +195,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     const draftData = {
       activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
       items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
-      helpdeskSectorId, helpdeskCategory, helpdeskTitle, helpdeskLocal
+      chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
     setTimeout(() => setAutosaveStatus('saved'), 600);
@@ -176,18 +221,20 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       ...updated[index],
       [key]: val
     };
-
-    // Auto-fill unit or description if existing valid 8-digit SAP code is typed
-    if (key === 'sap_code' && String(val).trim().length === 8) {
-      const mats = localDb.getMaterials();
-      const match = mats.find(m => m.material_code === String(val).trim());
-      if (match) {
-        updated[index].description = match.description;
-        updated[index].unit = match.unit;
-      }
-    }
-
     setItems(updated);
+
+    // Auto-fill descrição/unidade se um código SAP válido de 8 dígitos for digitado
+    if (key === 'sap_code' && String(val).trim().length === 8) {
+      const code = String(val).trim();
+      supabase.from('materials').select('*').eq('material_code', code).eq('is_active', true).maybeSingle()
+        .then(({ data, error }) => {
+          if (error || !data) return;
+          setItems(prev => prev.map((item, i) => {
+            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já alterou o campo
+            return { ...item, description: data.description, unit: data.unit || 'UN' };
+          }));
+        });
+    }
   };
 
   // Criticality selector details
@@ -232,14 +279,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       let payload: any = {
         type: activeTab,
         criticality,
-        justificativa: activeTab === 'compra' ? justificativa : (activeTab === 'cadastro_sap' ? sapRegSpecs : helpdeskTitle),
+        justificativa: activeTab === 'compra' ? justificativa : '',
       };
 
       if (activeTab === 'compra') {
         payload = {
           ...payload,
           solicitante_sector_id: sectorId,
-          comprador_id: compradorId || buyers[0]?.id,
+          comprador_id: compradorId || buyerOptions.find(b => b.profileId)?.profileId,
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
           items: items.map(it => ({
@@ -258,16 +305,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         payload = {
           ...payload,
           registration_type: registrationType,
-          justificativa: `Nome: ${sapRegName}. Specs: ${sapRegSpecs}. Justificativa: ${justificativa}`,
+          justificativa: registrationType === 'Item'
+            ? `Nome: ${sapRegName}. Specs: ${sapRegSpecs}. Justificativa: ${justificativa}`
+            : `Nome: ${sapRegName}. Justificativa: ${justificativa}`,
           brand: sapRegBrand,
           suggested_supplier: sapRegVendorInfo
         };
       } else if (activeTab === 'chamado') {
         payload = {
           ...payload,
+          solicitante_sector_id: chamadoSectorId,
           target_sector_id: helpdeskSectorId,
           category_id: helpdeskCategory || getHelpdeskCategories(helpdeskSectorId)[0],
-          justificativa: `Chamado: ${helpdeskTitle}. Descrição: ${justificativa}`,
+          justificativa,
           local: helpdeskLocal
         };
       }
@@ -339,12 +389,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Setor solicitante</label>
+                  <label className="text-xs font-bold text-slate-700">Setor solicitante *</label>
                   <select
                     value={sectorId}
                     onChange={(e) => setSectorId(e.target.value)}
+                    required
                     className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer"
                   >
+                    <option value="">Selecione seu setor...</option>
                     {sectors.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -360,8 +412,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer"
                   >
                     <option value="">Selecione um comprador...</option>
-                    {buyers.map(b => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.cargo})</option>
+                    {buyerOptions.map(b => (
+                      <option key={b.code} value={b.profileId || b.code} disabled={!b.profileId}>
+                        {b.label} ({b.code}){!b.profileId ? ' — sem login vinculado' : ''}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -413,23 +467,42 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      {/* Descricao */}
-                      <div className="sm:col-span-6 space-y-1 relative" ref={(el) => { dropdownRefs.current[index] = el; }}>
-                        <label className="text-[10px] font-bold text-slate-500 block">Descrição *</label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Digite para buscar no catálogo SAP..."
-                            value={it.description}
-                            onChange={(e) => {
-                              handleItemChange(index, 'description', e.target.value);
-                              setActiveSearchIndex(index);
-                            }}
-                            onFocus={() => setActiveSearchIndex(index)}
-                            className="w-full rounded border border-gray-200 bg-white py-1 pl-7 pr-2 text-xs focus:outline-none focus:border-emerald-600 font-medium"
-                          />
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      {/* Código SAP + Descrição — busca bidirecional no catálogo SAP */}
+                      <div className="sm:col-span-8 relative" ref={(el) => { dropdownRefs.current[index] = el; }}>
+                        <div className="flex gap-3">
+                          <div className="w-24 shrink-0 space-y-1">
+                            <label className="text-[10px] font-bold text-slate-500 block">Código SAP</label>
+                            <input
+                              type="text"
+                              placeholder="8 dígitos"
+                              maxLength={8}
+                              value={it.sap_code}
+                              onChange={(e) => {
+                                handleItemChange(index, 'sap_code', e.target.value);
+                                setActiveSearchIndex(index);
+                              }}
+                              onFocus={() => setActiveSearchIndex(index)}
+                              className="w-full rounded border border-gray-200 bg-white py-1 px-2 text-xs font-mono focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <label className="text-[10px] font-bold text-slate-500 block">Descrição *</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                required
+                                placeholder="Digite para buscar no catálogo SAP..."
+                                value={it.description}
+                                onChange={(e) => {
+                                  handleItemChange(index, 'description', e.target.value);
+                                  setActiveSearchIndex(index);
+                                }}
+                                onFocus={() => setActiveSearchIndex(index)}
+                                className="w-full rounded border border-gray-200 bg-white py-1 pl-7 pr-2 text-xs focus:outline-none focus:border-emerald-600 font-medium"
+                              />
+                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            </div>
+                          </div>
                         </div>
 
                         {/* Autocomplete Dropdown list */}
@@ -438,10 +511,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             <div className="bg-slate-50 px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between sticky top-0 border-b border-slate-100">
                               <span>Resultados do Catálogo SAP</span>
                               <span className="text-emerald-600 font-bold bg-emerald-50 px-1 rounded">
-                                {getFilteredMaterials(it.description, it.sap_code).length} itens
+                                {isSearchingCatalog ? '...' : `${activeSearchResults.length} itens`}
                               </span>
                             </div>
-                            {getFilteredMaterials(it.description, it.sap_code).length === 0 ? (
+                            {isSearchingCatalog ? (
+                              <div className="p-3 text-xs text-slate-400 text-center">Buscando no catálogo SAP...</div>
+                            ) : activeSearchResults.length === 0 ? (
                               <div className="p-3 text-xs text-slate-400 text-center">
                                 Nenhum item correspondente no catálogo.
                                 <div className="text-[10px] text-slate-400 mt-0.5">
@@ -449,7 +524,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </div>
                               </div>
                             ) : (
-                              getFilteredMaterials(it.description, it.sap_code).map((mat) => (
+                              activeSearchResults.map((mat) => (
                                 <button
                                   key={mat.id}
                                   type="button"
@@ -463,6 +538,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     };
                                     setItems(updated);
                                     setActiveSearchIndex(null);
+                                    setActiveSearchResults([]);
                                   }}
                                   className="w-full text-left px-3 py-2 hover:bg-emerald-50/20 transition-colors flex items-start space-x-2 text-xs"
                                 >
@@ -487,19 +563,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             )}
                           </div>
                         )}
-                      </div>
-
-                      {/* Código SAP */}
-                      <div className="sm:col-span-2 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500">Código SAP</label>
-                        <input
-                          type="text"
-                          placeholder="8 dígitos (opcional)"
-                          maxLength={8}
-                          value={it.sap_code}
-                          onChange={(e) => handleItemChange(index, 'sap_code', e.target.value)}
-                          className="w-full rounded border border-gray-200 bg-white py-1 px-2 text-xs font-mono focus:outline-none focus:border-emerald-600"
-                        />
                       </div>
 
                       {/* Qtd */}
@@ -661,17 +724,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Especificações Técnicas *</label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="Dimensões, padrão de materiais, certificado de calibração necessário ou outras informações mínimas para que o setor de Suprimentos valide o cadastro."
-                  value={sapRegSpecs}
-                  onChange={(e) => setSapRegSpecs(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 py-2 px-3 text-sm focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
+              {registrationType === 'Item' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Especificações Técnicas *</label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Dimensões, padrão de materiais, certificado de calibração necessário ou outras informações mínimas para que o setor de Suprimentos valide o cadastro."
+                    value={sapRegSpecs}
+                    onChange={(e) => setSapRegSpecs(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 py-2 px-3 text-sm focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">Justificativa de necessidade *</label>
@@ -689,6 +754,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
           {activeTab === 'chamado' && (
             <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Setor solicitante *</label>
+                <select
+                  value={chamadoSectorId}
+                  onChange={(e) => setChamadoSectorId(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer"
+                >
+                  <option value="">Selecione seu setor...</option>
+                  {sectors.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Step 1: Support Sector Card Selectors */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700">Destino do chamado *</label>
@@ -734,21 +814,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Título / Resumo (máx. 80 caracteres) *</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={80}
-                    placeholder="Ex: Impressora de etiquetas parou de responder"
-                    value={helpdeskTitle}
-                    onChange={(e) => setHelpdeskTitle(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700">
                     Local de ocorrência {helpdeskSectorId === '3' ? '*' : '(Opcional)'}
                   </label>
@@ -764,7 +829,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Descrição detalhada do incidente *</label>
+                <label className="text-xs font-bold text-slate-700">Descrição detalhada *</label>
                 <textarea
                   required
                   rows={4}
@@ -856,7 +921,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         <div className="flex items-center justify-end space-x-4 pt-4">
           <button
             type="button"
-            onClick={() => onNavigate('/')}
+            onClick={() => { clearDraft(); onNavigate('/'); }}
             className="rounded-lg border border-gray-200 px-5 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer"
           >
             Cancelar
