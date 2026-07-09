@@ -105,6 +105,10 @@ class LocalDatabase {
   // uma falha isolada (ex.: uma view indisponível) não deve mais abortar a sincronização
   // das demais tabelas, e o tempo total passa a ser o da tabela mais lenta, não a soma de todas.
   public async syncFromSupabase(): Promise<void> {
+    if (!supabase) {
+      console.warn('Sincronização com o Supabase ignorada: cliente não inicializado.');
+      return;
+    }
     console.log('Iniciando sincronização com o Supabase...');
 
     const tasks: Array<[string, () => Promise<void>]> = [
@@ -820,23 +824,28 @@ class LocalDatabase {
     }
 
     // Sincroniza o novo cadastro com a tabela profiles no Supabase
-    supabase.from('profiles')
-      .insert({
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        cargo: newUser.cargo,
-        sector_id: newUser.sector_id,
-        roles: newUser.roles,
-        status: newUser.status,
-        password: password || 'ten123',
-        created_at: newUser.created_at
-      })
-      .then(({ error }) => {
-        if (error) {
-          console.error('Erro ao sincronizar cadastro no Supabase:', error);
-        }
-      });
+    if (supabase) {
+      supabase.from('profiles')
+        .insert({
+          id: newUser.id,
+          email: newUser.email,
+          name: newUser.name,
+          cargo: newUser.cargo,
+          sector_id: newUser.sector_id,
+          roles: newUser.roles,
+          status: newUser.status,
+          password: password || 'ten123',
+          created_at: newUser.created_at
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error('Erro ao sincronizar cadastro no Supabase:', error);
+          }
+        })
+        .catch(err => {
+          console.error('Falha de escrita assíncrona no Supabase:', err);
+        });
+    }
     
     // Log as system activity
     this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
@@ -2842,14 +2851,19 @@ class LocalDatabase {
       this.logActivity('admin', 'Administração', 'Aprovar Usuário', `Usuário ${users[idx].name} status atualizado para ${status}.`);
 
       // Atualiza o status no Supabase de forma assíncrona
-      supabase.from('profiles')
-        .update({ status: status })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Erro ao sincronizar status do usuário no Supabase:', error);
-          }
-        });
+      if (supabase) {
+        supabase.from('profiles')
+          .update({ status: status })
+          .eq('id', userId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Erro ao sincronizar status do usuário no Supabase:', error);
+            }
+          })
+          .catch(err => {
+            console.error('Falha de escrita de status no Supabase:', err);
+          });
+      }
 
       return true;
     }
@@ -2865,14 +2879,19 @@ class LocalDatabase {
       this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
 
       // Atualiza os papéis de acesso no Supabase de forma assíncrona
-      supabase.from('profiles')
-        .update({ roles: [role] })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
-          }
-        });
+      if (supabase) {
+        supabase.from('profiles')
+          .update({ roles: [role] })
+          .eq('id', userId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
+            }
+          })
+          .catch(err => {
+            console.error('Falha de escrita de papéis no Supabase:', err);
+          });
+      }
 
       return true;
     }
@@ -3004,14 +3023,19 @@ class LocalDatabase {
       this.logActivity(userId, 'Perfil', 'Atualização', `Nome atualizado para "${name}" e cargo para "${cargo}".`);
 
       // Atualiza os dados de nome e cargo no Supabase de forma assíncrona
-      supabase.from('profiles')
-        .update({ name, cargo })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
-          }
-        });
+      if (supabase) {
+        supabase.from('profiles')
+          .update({ name, cargo })
+          .eq('id', userId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
+            }
+          })
+          .catch(err => {
+            console.error('Falha de escrita de campos de perfil no Supabase:', err);
+          });
+      }
 
       return users[idx];
     }
@@ -3039,14 +3063,19 @@ class LocalDatabase {
     this.logActivity(userId, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
 
     // Atualiza a senha do usuário no Supabase de forma assíncrona
-    supabase.from('profiles')
-      .update({ password: newPass })
-      .eq('id', userId)
-      .then(({ error }) => {
-        if (error) {
-          console.error('Erro ao sincronizar senha no Supabase:', error);
-        }
-      });
+    if (supabase) {
+      supabase.from('profiles')
+        .update({ password: newPass })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Erro ao sincronizar senha no Supabase:', error);
+          }
+        })
+        .catch(err => {
+          console.error('Falha de escrita de senha no Supabase:', err);
+        });
+    }
 
     return true;
   }

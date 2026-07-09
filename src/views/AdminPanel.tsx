@@ -78,6 +78,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   useEffect(() => {
     loadData();
+    const unsubscribe = localDb.subscribe(() => {
+      loadData();
+    });
+    return () => unsubscribe();
   }, [activeTab]);
 
   const loadData = () => {
