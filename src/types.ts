@@ -11,7 +11,8 @@ export type Role =
   | 'gestor'
   | 'comprador'
   | 'coordenador_suprimentos'
-  | 'atendente';
+  | 'atendente'
+  | 'pendente';
 
 export type UserStatus = 'pendente' | 'ativo' | 'inativo';
 

@@ -242,7 +242,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   };
 
   const pendingUsers = profiles.filter(p => p.status === 'pendente');
-  const activeUsers = profiles.filter(p => p.status === 'ativo');
+  const activeUsers = profiles.filter(p => p.status === 'ativo' || p.status === 'pendente');
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
@@ -252,7 +252,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       gestor: 'Gestor',
       comprador: 'Comprador',
       coordenador_suprimentos: 'Coordenador',
-      atendente: 'Atendente Suporte'
+      atendente: 'Atendente Suporte',
+      pendente: 'Acesso Pendente'
     };
     return labels[role] || role;
   };
@@ -395,7 +396,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <tbody className="divide-y divide-slate-100">
                   {activeUsers.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50">
-                      <td className="py-3 font-semibold text-slate-800">{p.name}</td>
+                      <td className="py-3 font-semibold text-slate-800 flex items-center gap-2">
+                        <span>{p.name}</span>
+                        {p.status === 'pendente' && (
+                          <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-amber-250 uppercase animate-pulse shrink-0">
+                            Pendente
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3 text-slate-500">{p.email}</td>
                       <td className="py-3 text-slate-600 font-medium">{p.cargo} • Setor {p.sector_id}</td>
                       <td className="py-3">
@@ -406,6 +414,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               onChange={(e) => setEditingRole(e.target.value)}
                               className="rounded border border-slate-200 py-1 px-2 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer bg-white"
                             >
+                              <option value="pendente">Acesso Pendente</option>
                               <option value="admin">Admin</option>
                               <option value="solicitante">Solicitante</option>
                               <option value="gestor">Gestor</option>

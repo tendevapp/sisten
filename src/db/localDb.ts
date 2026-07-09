@@ -809,7 +809,7 @@ class LocalDatabase {
       name,
       cargo,
       sector_id,
-      roles: ['visualizador'],
+      roles: ['pendente'],
       status: 'pendente',
       created_at: new Date().toISOString()
     };
@@ -2847,13 +2847,21 @@ class LocalDatabase {
     const idx = users.findIndex(u => u.id === userId);
     if (idx !== -1) {
       users[idx].status = status as any;
+
+      if (status === 'ativo' && users[idx].roles.includes('pendente')) {
+        users[idx].roles = ['visualizador'];
+      }
+
       this.setStorageItem(this.profilesKey, users);
       this.logActivity('admin', 'Administração', 'Aprovar Usuário', `Usuário ${users[idx].name} status atualizado para ${status}.`);
 
       // Atualiza o status no Supabase de forma assíncrona
       if (supabase) {
         supabase.from('profiles')
-          .update({ status: status })
+          .update({ 
+            status: status,
+            roles: users[idx].roles
+          })
           .eq('id', userId)
           .then(({ error }) => {
             if (error) {
@@ -2875,13 +2883,21 @@ class LocalDatabase {
     const idx = users.findIndex(u => u.id === userId);
     if (idx !== -1) {
       users[idx].roles = [role as any];
+
+      if (users[idx].status === 'pendente' && role !== 'pendente') {
+        users[idx].status = 'ativo';
+      }
+
       this.setStorageItem(this.profilesKey, users);
       this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
 
       // Atualiza os papéis de acesso no Supabase de forma assíncrona
       if (supabase) {
         supabase.from('profiles')
-          .update({ roles: [role] })
+          .update({ 
+            roles: [role],
+            status: users[idx].status
+          })
           .eq('id', userId)
           .then(({ error }) => {
             if (error) {
