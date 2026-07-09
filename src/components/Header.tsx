@@ -101,7 +101,7 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
   const sector = localDb.getSectors().find(s => s.id === user.sector_id);
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-end border-b border-gray-100 bg-white px-6 shadow-sm">
+    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-end border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-6 shadow-sm transition-colors">
       {/* Right side Controls */}
       <div className="flex items-center space-x-4">
         {/* Notifications */}
@@ -111,7 +111,7 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
               setShowNotifications(!showNotifications);
               setShowProfileMenu(false);
             }}
-            className="relative rounded-full p-1.5 text-gray-500 hover:bg-gray-100 focus:outline-none transition-colors"
+            className="relative rounded-full p-1.5 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
           >
             <Bell className="h-6 w-6" />
             {unreadCount > 0 && (
@@ -122,10 +122,10 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-3 w-80 rounded-xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
-              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                <h3 className="font-semibold text-gray-800 text-sm">Notificações</h3>
-                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+            <div className="absolute right-0 mt-3 w-80 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
+              <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 px-4 py-3">
+                <h3 className="font-semibold text-gray-800 dark:text-slate-100 text-sm">Notificações</h3>
+                <span className="rounded-full bg-gray-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">
                   {unreadCount} não lidas
                 </span>
               </div>
@@ -137,7 +137,7 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
                     <button
                       key={n.id}
                       onClick={() => handleNotificationClick(n)}
-                      className={`flex w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 ${!n.is_read ? 'bg-blue-50/40 hover:bg-blue-50/80' : ''}`}
+                      className={`flex w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors border-b border-gray-50 dark:border-slate-850 ${!n.is_read ? 'bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-50/80' : ''}`}
                     >
                       <div className="mr-3 mt-0.5">
                         {n.type === 'critical' ? (
@@ -147,10 +147,10 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs ${!n.is_read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                        <p className={`text-xs ${!n.is_read ? 'font-semibold text-gray-900 dark:text-slate-100' : 'text-gray-700 dark:text-slate-350'}`}>
                           {n.title}
                         </p>
-                        <p className="mt-0.5 text-xs text-gray-500 truncate">{n.description}</p>
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400 truncate">{n.description}</p>
                         <span className="mt-1 block text-[10px] text-gray-400">
                           {new Date(n.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
@@ -170,23 +170,23 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
               setShowProfileMenu(!showProfileMenu);
               setShowNotifications(false);
             }}
-            className="flex items-center space-x-3 rounded-lg p-1.5 hover:bg-gray-50 transition-colors focus:outline-none"
+            className="flex items-center space-x-3 rounded-lg p-1.5 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors focus:outline-none"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white font-bold">
               {user.name.charAt(0)}
             </div>
             <div className="hidden text-left lg:block">
-              <p className="text-sm font-semibold text-gray-700">{user.name}</p>
-              <p className="text-[11px] text-gray-400 truncate max-w-[120px]">{sector?.name || 'Sem Setor'} • {getRoleBadge(user.roles[0])}</p>
+              <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">{user.name}</p>
+              <p className="text-[11px] text-gray-400 dark:text-slate-400 truncate max-w-[120px]">{sector?.name || 'Sem Setor'} • {getRoleBadge(user.roles[0])}</p>
             </div>
             <ChevronDown className="h-4 w-4 text-gray-400" />
           </button>
 
           {showProfileMenu && (
-            <div className="absolute right-0 mt-3 w-56 rounded-xl border border-gray-100 bg-white py-1 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
-              <div className="px-4 py-3 border-b border-gray-50 text-left">
-                <p className="text-sm font-semibold text-gray-900">{user.name}</p>
-                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            <div className="absolute right-0 mt-3 w-56 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
+              <div className="px-4 py-3 border-b border-gray-50 dark:border-slate-850 text-left">
+                <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">{user.name}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{user.email}</p>
                 <p className="mt-1 text-[10px] bg-emerald-50 text-emerald-800 font-bold px-1.5 py-0.5 rounded inline-block">
                   {user.cargo}
                 </p>
@@ -197,7 +197,7 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
                   setShowProfileMenu(false);
                   onNavigate('/perfil');
                 }}
-                className="flex w-full items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                className="flex w-full items-center px-4 py-2 text-sm text-gray-700 dark:text-slate-350 hover:bg-gray-50 dark:hover:bg-slate-800 text-left"
               >
                 <User className="mr-3 h-4 w-4 text-gray-400" />
                 Meu Perfil
@@ -205,7 +205,7 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
 
               <button
                 onClick={handleLogout}
-                className="flex w-full items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left border-t border-gray-50"
+                className="flex w-full items-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-rose-950/20 text-left border-t border-gray-50 dark:border-slate-850"
               >
                 <LogOut className="mr-3 h-4 w-4 text-red-500" />
                 Sair

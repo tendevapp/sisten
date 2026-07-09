@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { localDb } from './db/localDb';
 import { Profile } from './types';
 
@@ -11,26 +11,42 @@ import { Profile } from './types';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 
-// Views
+// Views (auth screens são pequenas e sempre necessárias no primeiro paint: mantidas eager;
+// as demais só entram no bundle quando o usuário navega até elas)
 import Login from './views/Login';
 import Signup from './views/Signup';
-import Dashboard from './views/Dashboard';
-import Materials from './views/Materials';
-import NewRequest from './views/NewRequest';
-import MyRequests from './views/MyRequests';
-import Approvals from './views/Approvals';
-import SapPanel from './views/SapPanel';
-import SapDashboards from './views/SapDashboards';
-import Helpdesk from './views/Helpdesk';
-import AdminPanel from './views/AdminPanel';
-import ProfileView from './views/ProfileView';
-import CadastrosSap from './views/CadastrosSap';
-import Reports from './views/Reports';
+const Dashboard = lazy(() => import('./views/Dashboard'));
+const Materials = lazy(() => import('./views/Materials'));
+const NewRequest = lazy(() => import('./views/NewRequest'));
+const MyRequests = lazy(() => import('./views/MyRequests'));
+const Approvals = lazy(() => import('./views/Approvals'));
+const SapPanel = lazy(() => import('./views/SapPanel'));
+const SapDashboards = lazy(() => import('./views/SapDashboards'));
+const Helpdesk = lazy(() => import('./views/Helpdesk'));
+const AdminPanel = lazy(() => import('./views/AdminPanel'));
+const ProfileView = lazy(() => import('./views/ProfileView'));
+const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
+const Reports = lazy(() => import('./views/Reports'));
+const SuppliersLookup = lazy(() => import('./views/SuppliersLookup'));
+
+function ViewLoadingFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center py-24">
+      <svg className="h-8 w-8 text-blue-500 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        <path d="M12 12L12 2M12 12L4 16.5M12 12L20 16.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  );
+}
 
 export default function App() {
   const [user, setUser] = useState<Profile | null>(null);
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [loading, setLoading] = useState(true);
+  // Incrementado quando a sincronização em segundo plano com o Supabase traz dados
+  // novos, para que a tela ativa possa se atualizar sem esperar o usuário navegar.
+  const [dataVersion, setDataVersion] = useState(0);
 
   // Theme management (Dark / Light Mode)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -41,35 +57,38 @@ export default function App() {
 
   useEffect(() => {
     const root = window.document.documentElement;
-    if (theme === 'dark') {
+    if (theme === 'dark' && user) {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
-  }, [theme]);
+  }, [theme, user]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  // Initialize DB and authenticate user
+  // Initialize DB and authenticate user.
+  // Só aguardamos o cache local (IndexedDB, rápido) ficar pronto para liberar o primeiro
+  // render — a sincronização com o Supabase roda em segundo plano e não bloqueia mais a UI.
   useEffect(() => {
     (async () => {
-      try {
-        await localDb.syncFromSupabase();
-      } catch (err) {
-        console.error("Falha ao sincronizar cache local com o Supabase:", err);
-      }
+      await localDb.ready;
 
-      // Check session
       const currentUser = localDb.getCurrentUser();
       if (currentUser) {
         setUser(currentUser);
       }
 
       setLoading(false);
+
+      localDb.syncFromSupabase().catch(err => {
+        console.error("Falha ao sincronizar cache local com o Supabase:", err);
+      });
     })();
+
+    const unsubscribe = localDb.subscribe(() => setDataVersion(v => v + 1));
 
     // Custom Hash Router initialization
     const handleHashChange = () => {
@@ -85,6 +104,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
+      unsubscribe();
     };
   }, []);
 
@@ -160,6 +180,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/suprimentos/fornecedores':
+        if (localDb.hasPermission(user, 'sap', 'fornecedores')) {
+          return <SuppliersLookup user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/helpdesk':
         if (user.roles.includes('atendente') || user.roles.includes('admin')) {
           return <Helpdesk user={user} onNavigate={handleNavigate} initialView="atendimento" />;
@@ -203,7 +229,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50/50">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
       {/* Collapsible Sidebar */}
       <Sidebar 
         user={user} 
@@ -214,7 +240,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors">
         {/* Dynamic Header */}
         <Header 
           user={user} 
@@ -224,7 +250,16 @@ export default function App() {
 
         {/* Dynamic scrollable main pane view */}
         <main className="flex-1 overflow-y-auto p-6">
-          {renderActiveView()}
+          <Suspense fallback={<ViewLoadingFallback />}>
+            {/*
+              Key força remontagem quando novos dados chegam da sincronização em segundo
+              plano, para telas que carregam dados apenas no mount. Exceto em NewRequest,
+              onde remontar destruiria um rascunho em edição pelo usuário.
+            */}
+            <div key={currentPath === '/solicitacoes/nova' ? currentPath : `${currentPath}:${dataVersion}`}>
+              {renderActiveView()}
+            </div>
+          </Suspense>
         </main>
       </div>
     </div>

@@ -197,6 +197,7 @@ export interface SAPRequisicao {
   data_entrega_prevista?: string;
   obs_updated_at?: string;
   obs_updated_by?: string;
+  pedido?: string;
 }
 
 export interface EnrichedSAPRecord extends SAPRequisicao {
@@ -241,7 +242,7 @@ export interface SAPObsHistory {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS';
   user_name: string;
   filename: string;
   records_read: number;
@@ -256,3 +257,46 @@ export interface SAPImportLog {
   ignored_rows?: { row: number; identifier: string; reason: string }[];
   created_at: string;
 }
+
+export interface PedidoForn {
+  id: string;
+  material: string;
+  txt_breve?: string;
+  cod_forn?: string;
+  cnpj?: string;
+  fornecedor?: string;
+  regiao_uf?: string;
+  data_pedido?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ContatoFornecedor {
+  id: string;
+  cod_vendor: string;
+  fornecedor?: string;
+  telefone?: string;
+  email?: string;
+  classificacao?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface FornecedorMaterialRow {
+  cod_forn: string;
+  cnpj: string;
+  fornecedor: string;
+  regiao_uf: string;
+  telefone: string;
+  email: string;
+  classificacao: string;
+  ultima_data: string;
+}
+
+export interface MaterialFornecedoresGroup {
+  codigo: string;
+  descricao?: string;
+  encontrado: boolean;
+  fornecedores: FornecedorMaterialRow[];
+}
+

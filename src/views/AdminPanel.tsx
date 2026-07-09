@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Map, Shield, Upload, Check, X, AlertTriangle, 
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
-  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download
+  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -306,7 +306,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'importar_sap' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
             >
               <FileSpreadsheet className="h-4 w-4 mr-1.5 text-emerald-600" />
-              Importar ME5A/ZL0132
+              Importar SAP
             </button>
             <button
               onClick={() => { setActiveTab('importar_sap_log'); window.location.hash = '/suprimentos/importar/log'; }}
@@ -621,25 +621,25 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
-      {/* Tab 5: Importar SAP (ME5A & ZL0132) */}
+      {/* Tab 5: Importar SAP (ME5A, ZL0132, PedidosForn & Contatos) */}
       {activeTab === 'importar_sap' && (
         <div className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-emerald-700" /> Carga de Dados Operacionais (ME5A & ZL0132)
+              <FileSpreadsheet className="h-5 w-5 text-emerald-700" /> Carga de Dados do SAP e Fornecedores
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              O sistema sincroniza a fila de solicitações e ordens de compra cruzando a carga das requisições abertas (transação ME5A do SAP) com as ordens de compra emitidas (transação ZL0132 do SAP). 
-              Você pode carregar arquivos no formato CSV ou simular cargas integradas instantaneamente usando dados demonstrativos homologados.
+              O sistema sincroniza a fila de solicitações e ordens de compra cruzando as requisições abertas (ME5A), ordens de compra emitidas (ZL0132), histórico de compras por fornecedor (PedidosForn) e contatos.
+              Você pode carregar arquivos nos formatos XLSX, XLS ou CSV, ou simular cargas integradas demonstrativas.
             </p>
 
             {/* Quick Demo Simulator Buttons */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-150 space-y-3.5">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                <RefreshCw className="h-4 w-4 text-emerald-600 shrink-0" /> Simulador de Cargas Integradas do SAP
+                <RefreshCw className="h-4 w-4 text-emerald-600 shrink-0" /> Simulador de Cargas do SAP e Fornecedores
               </h4>
               <p className="text-[11px] text-slate-500">
-                Pressione os botões abaixo para preencher o banco de dados local com registros válidos de requisições e pedidos de compra e testar a sincronização automática de alertas e SLAs.
+                Pressione os botões abaixo para preencher o banco de dados com registros demonstrativos válidos de requisições, ordens, históricos e contatos.
               </p>
               <div className="flex flex-wrap gap-3">
                 <button
@@ -705,11 +705,78 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 >
                   <FileSpreadsheet className="h-4 w-4" /> Vincular Pedidos Emitidos (ZL0132)
                 </button>
+
+                <button
+                  onClick={() => {
+                    setSapLogStatus('saving');
+                    setLastUploadLog(null);
+                    setTimeout(() => {
+                      try {
+                        const headers = ['Material', 'TxtBreve', 'Cod Forn', 'CNPJ', 'Fornecedor', 'Rg', 'Data'];
+                        const data = [
+                          ['10000123', 'Cabo de Cobre Flexível 4mm', 'F900213', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-06-01'],
+                          ['10000123', 'Cabo de Cobre Flexível 4mm', 'F800555', '98.765.432/0001-00', 'Alcoa Alumínio Brasil', 'RJ', '2026-07-01'],
+                          ['10000456', 'Disjuntor Termomagnético 50A', 'F900213', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-05-15'],
+                          ['10000789', 'Placa de Aço Laminado 2000x1000x10mm', 'F700333', '11.222.333/0001-44', 'Usiminas S.A.', 'MG', '2026-06-20']
+                        ];
+                        const rawRows = [headers, ...data];
+                        localDb.importPedidosForn(rawRows, 'historico_pedidos_simulado.xlsx').then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          setSapLogError('');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Erro ao simular Histórico de Pedidos.');
+                          setSapLogStatus('error');
+                        });
+                      } catch (err: any) {
+                        setSapLogError(err.message || 'Erro ao simular Histórico de Pedidos.');
+                        setSapLogStatus('error');
+                      }
+                    }, 800);
+                  }}
+                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Histórico (PedidosForn)
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSapLogStatus('saving');
+                    setLastUploadLog(null);
+                    setTimeout(() => {
+                      try {
+                        const headers = ['N° VENDOR', 'FORNECEDORES', 'TELEFONE', 'E-MAIL', 'CLASSIFICAÇÃO'];
+                        const data = [
+                          ['F900213', 'Metalúrgica Gerdau S.A.', '(11) 98888-7777', 'vendas@gerdau.com.br', 'Parceiro Estratégico'],
+                          ['F800555', 'Alcoa Alumínio Brasil', '(21) 2555-1234', 'comercial@alcoa.com', 'Homologado'],
+                          ['F700333', 'Usiminas S.A.', '(31) 3499-8000', 'atendimento@usiminas.com', 'Preferencial']
+                        ];
+                        const rawRows = [headers, ...data];
+                        localDb.importContatos(rawRows, 'contatos_fornecedores_simulado.xlsx').then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          setSapLogError('');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Erro ao simular Contatos.');
+                          setSapLogStatus('error');
+                        });
+                      } catch (err: any) {
+                        setSapLogError(err.message || 'Erro ao simular Contatos.');
+                        setSapLogStatus('error');
+                      }
+                    }, 800);
+                  }}
+                  className="rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Contatos (Contatos)
+                </button>
               </div>
             </div>
 
             {/* Custom file parser */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 pt-1">
               {/* ME5A Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
@@ -837,6 +904,134 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0132</p>
                 </div>
               </div>
+
+              {/* PedidosForn Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Histórico de Pedidos (PedidosForn)
+                </h4>
+                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar o histórico de fornecedores por material.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+                        
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+                            
+                            localDb.importPedidosForn(rawRows, file.name).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogStatus('error');
+                          }
+                        };
+                        
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV PedidosForn</p>
+                </div>
+              </div>
+
+              {/* Contatos Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Cadastro de Contatos (Contatos)
+                </h4>
+                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar os contatos de fornecedores.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+                        
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+                            
+                            localDb.importContatos(rawRows, file.name).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogStatus('error');
+                          }
+                        };
+                        
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
+                </div>
+              </div>
             </div>
 
             {sapLogStatus === 'saving' && (
@@ -944,6 +1139,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
+
+
       {/* Tab 6: Logs SAP */}
       {activeTab === 'importar_sap_log' && (
         <div className="space-y-4">
@@ -1012,7 +1209,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-wide ${
                                 log.type === 'ME5A'
                                   ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-blue-100 text-blue-800'
+                                  : log.type === 'ZL0132'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : log.type === 'PEDIDOSFORN'
+                                  ? 'bg-indigo-100 text-indigo-800'
+                                  : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {log.type}
                               </span>

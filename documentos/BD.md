@@ -7,8 +7,8 @@ Este documento contém o mapeamento e a estrutura detalhada de todas as tabelas 
 ## 🚨 ALERTA CRÍTICO DE SEGURANÇA: RLS Desabilitado
 
 > [!CAUTION]
-> **Row Level Security (RLS) está desativado** para todas as 17 tabelas mapeadas no banco de dados.
-> Atualmente, qualquer cliente utilizando as chaves públicas (`anon` e `authenticated`) tem permissão irrestrita de leitura e escrita nas tabelas. 
+> **Row Level Security (RLS) está desativado** para as 17 tabelas legadas do banco de dados (as novas tabelas pedidosforn e contatos possuem RLS ativo).
+> Atualmente, qualquer cliente utilizando as chaves públicas (`anon` e `authenticated`) tem permissão irrestrita de leitura e escrita nas tabelas legadas. 
 > 
 > **Recomendação:** Deve-se habilitar o RLS em produção e definir políticas de acesso apropriadas (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) para cada papel de usuário.
 >
@@ -31,6 +31,8 @@ Este documento contém o mapeamento e a estrutura detalhada de todas as tabelas 
 > ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
 > ALTER TABLE public.import_logs ENABLE ROW LEVEL SECURITY;
 > ALTER TABLE public.obs_historico ENABLE ROW LEVEL SECURITY;
+> ALTER TABLE public.pedidosforn ENABLE ROW LEVEL SECURITY;
+> ALTER TABLE public.contatos ENABLE ROW LEVEL SECURITY;
 > ```
 
 ---
@@ -460,3 +462,44 @@ Histórico de auditoria para observações e atualizações manuais de dados SAP
   | `valor_novo` | `text` | `nullable`, `updatable` | - |
   | `user_name` | `text` | `updatable` | - |
   | `created_at` | `timestamp with time zone` | `nullable`, `updatable` | `now()` |
+
+---
+
+### 18. `public.pedidosforn`
+Histórico de pedidos de compra associando fornecedores a códigos de material (com chave única composta por material, cod_forn, data_pedido).
+- **Chave Primária:** `id`
+- **Índices:**
+  - `idx_pedidosforn_material` (material)
+  - `idx_pedidosforn_cnpj` (cnpj)
+- **Colunas:**
+  | Coluna | Tipo de Dados | Opções | Valor Padrão |
+  | --- | --- | --- | --- |
+  | `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` |
+  | `material` | `text` | `not null`, `updatable` | - |
+  | `txt_breve` | `text` | `nullable`, `updatable` | - |
+  | `cod_forn` | `text` | `nullable`, `updatable` | - |
+  | `cnpj` | `text` | `nullable`, `updatable` | - |
+  | `fornecedor` | `text` | `nullable`, `updatable` | - |
+  | `regiao_uf` | `text` | `nullable`, `updatable` | - |
+  | `data_pedido` | `date` | `nullable`, `updatable` | - |
+  | `campos_extras` | `jsonb` | `updatable` | `'{}'::jsonb` |
+  | `created_at` | `timestamp with time zone` | `nullable` | `now()` |
+  | `updated_at` | `timestamp with time zone` | `nullable` | `now()` |
+
+---
+
+### 19. `public.contatos`
+Cadastro de contatos e classificação mercadológica por fornecedor.
+- **Chave Primária:** `id`
+- **Restrição de Unicidade:** `cod_vendor` é único.
+- **Colunas:**
+  | Coluna | Tipo de Dados | Opções | Valor Padrão |
+  | --- | --- | --- | --- |
+  | `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` |
+  | `cod_vendor` | `text` | `unique`, `updatable` | - |
+  | `fornecedor` | `text` | `nullable`, `updatable` | - |
+  | `telefone` | `text` | `nullable`, `updatable` | - |
+  | `email` | `text` | `nullable`, `updatable` | - |
+  | `classificacao` | `text` | `nullable`, `updatable` | - |
+  | `created_at` | `timestamp with time zone` | `nullable` | `now()` |
+  | `updated_at` | `timestamp with time zone` | `nullable` | `now()` |

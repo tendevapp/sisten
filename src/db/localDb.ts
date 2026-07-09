@@ -13,8 +13,21 @@ import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
 import { supabase } from './supabaseClient';
+import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
 
 class LocalDatabase {
+  // Espelho em memória de tudo que está no IndexedDB. Toda leitura (getStorageItem)
+  // e escrita (setStorageItem) passa por aqui, mantendo a API síncrona usada em toda
+  // a aplicação mesmo com uma persistência assíncrona por trás.
+  private cache = new Map<string, any>();
+  private listeners = new Set<() => void>();
+  private readonly migratedFlagKey = '__sisten_idb_migrated__';
+
+  // Resolvida assim que o cache em memória estiver populado (a partir do IndexedDB,
+  // com migração de dados legados do localStorage se necessário). App.tsx aguarda
+  // apenas isto — não a sincronização com o Supabase — antes de renderizar.
+  public readonly ready: Promise<void>;
+
   private sectorsKey = 'sisten_sectors';
   private profilesKey = 'sisten_profiles';
   private materialsKey = 'sisten_materials';
@@ -31,198 +44,228 @@ class LocalDatabase {
   private logsKey = 'sisten_activity_logs';
   private favoritesKey = 'sisten_favorites';
   private sequencesKey = 'sisten_sequences';
+  private pedidosFornKey = 'sisten_pedidos_forn';
+  private contatosKey = 'sisten_contatos';
 
   // Current logged in user profile (saved in session/localStorage)
   private currentUserKey = 'sisten_current_user';
 
   constructor() {
+    this.ready = this.init();
+  }
+
+  private async init(): Promise<void> {
+    try {
+      const allEntries = await idbEntries<string, any>();
+      allEntries.forEach(([key, value]) => this.cache.set(String(key), value));
+    } catch (err) {
+      console.warn('Não foi possível carregar o cache do IndexedDB. Iniciando com armazenamento vazio.', err);
+    }
+
+    await this.migrateFromLocalStorageIfNeeded();
     this.initialize();
   }
 
-  public async syncFromSupabase(): Promise<void> {
-    try {
-      console.log('Iniciando sincronização com o Supabase...');
+  // Migração única de dados de versões anteriores do app, que guardavam tudo em
+  // localStorage (síncrono, cota de poucos MB). Copia cada chave para o cache/IndexedDB
+  // e limpa o localStorage para liberar a cota do navegador.
+  private async migrateFromLocalStorageIfNeeded(): Promise<void> {
+    if (this.cache.has(this.migratedFlagKey)) return;
 
-      // 1. Sectors
-      const { data: sectors, error: sectorsError } = await supabase.from('sectors').select('*');
-      if (sectorsError) throw sectorsError;
-      if (sectors && sectors.length > 0) {
-        this.setStorageItem(this.sectorsKey, sectors);
-      } else {
-        await supabase.from('sectors').upsert(INITIAL_SECTORS);
-        this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
-      }
-
-      // 2. Profiles
-      const { data: profiles, error: profilesError } = await supabase.from('profiles').select('*');
-      if (profilesError) throw profilesError;
-      if (profiles && profiles.length > 0) {
-        const mappedProfiles = profiles.map(p => ({
-          ...p,
-          roles: p.roles || []
-        }));
-        this.setStorageItem(this.profilesKey, mappedProfiles);
-      }
-
-      // 3. Buyer Groups
-      const { data: buyerGroups, error: bgError } = await supabase.from('buyer_groups').select('*');
-      if (bgError) throw bgError;
-      if (buyerGroups && buyerGroups.length > 0) {
-        this.setStorageItem(this.buyerGroupsKey, buyerGroups);
-      }
-
-      // 4. Materials
-      const { data: materials, error: matError } = await supabase.from('materials').select('*');
-      if (matError) throw matError;
+    const legacyKeys = Object.keys(localStorage).filter(k => k !== 'theme');
+    for (const key of legacyKeys) {
+      const raw = localStorage.getItem(key);
+      if (raw === null) continue;
       try {
-        if (materials && materials.length > 0) {
-          this.setStorageItem(this.materialsKey, materials);
-        } else {
-          const generated = generateMaterials();
-          for (let i = 0; i < generated.length; i += 50) {
-            await supabase.from('materials').upsert(generated.slice(i, i + 50));
-          }
-          this.setStorageItem(this.materialsKey, generated);
+        const parsed = JSON.parse(raw);
+        this.cache.set(key, parsed);
+        await idbSet(key, parsed);
+      } catch {
+        // Valor legado não era JSON válido; ignora.
+      }
+    }
+    legacyKeys.forEach(k => localStorage.removeItem(k));
+
+    this.cache.set(this.migratedFlagKey, true);
+    await idbSet(this.migratedFlagKey, true);
+  }
+
+  // Permite que a UI seja avisada quando dados novos chegarem em segundo plano
+  // (ex.: ao final da sincronização com o Supabase), sem precisar bloquear o render inicial.
+  public subscribe(callback: () => void): () => void {
+    this.listeners.add(callback);
+    return () => this.listeners.delete(callback);
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach(cb => cb());
+  }
+
+  // Cada tabela é sincronizada de forma independente e em paralelo (Promise.allSettled):
+  // uma falha isolada (ex.: uma view indisponível) não deve mais abortar a sincronização
+  // das demais tabelas, e o tempo total passa a ser o da tabela mais lenta, não a soma de todas.
+  public async syncFromSupabase(): Promise<void> {
+    console.log('Iniciando sincronização com o Supabase...');
+
+    const tasks: Array<[string, () => Promise<void>]> = [
+      ['sectors', () => this.syncSectors()],
+      ['profiles', () => this.syncProfiles()],
+      ['buyer_groups', () => this.syncBuyerGroups()],
+      ['materials', () => this.syncMaterials()],
+      ['view_enriched_requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true)],
+      ['view_enriched_pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true)],
+      ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
+      ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
+      ['request_comments', () => this.syncComments()],
+      ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey)],
+      ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey)],
+      ['import_logs', () => this.syncSimpleTable('import_logs', this.importLogsKey)],
+      ['obs_historico', () => this.syncObsHistory()],
+      ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
+      ['sequences', () => this.syncSequences()],
+      ['pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true)],
+      ['contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true)],
+    ];
+
+    const results = await Promise.allSettled(tasks.map(([, task]) => task()));
+    results.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`Falha ao sincronizar "${tasks[idx][0]}" com o Supabase:`, result.reason);
+      }
+    });
+
+    console.log('Sincronização com o Supabase concluída.');
+    this.notifyListeners();
+  }
+
+  private async syncSectors(): Promise<void> {
+    const { data: sectors, error } = await supabase.from('sectors').select('*');
+    if (error) throw error;
+    if (sectors && sectors.length > 0) {
+      this.setStorageItem(this.sectorsKey, sectors);
+    } else {
+      await supabase.from('sectors').upsert(INITIAL_SECTORS);
+      this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
+    }
+  }
+
+  private async syncProfiles(): Promise<void> {
+    const { data: profiles, error } = await supabase.from('profiles').select('*');
+    if (error) throw error;
+    if (profiles && profiles.length > 0) {
+      const mappedProfiles = profiles.map(p => ({ ...p, roles: p.roles || [] }));
+      this.setStorageItem(this.profilesKey, mappedProfiles);
+    }
+  }
+
+  private async syncBuyerGroups(): Promise<void> {
+    const { data: buyerGroups, error } = await supabase.from('buyer_groups').select('*');
+    if (error) throw error;
+    if (buyerGroups && buyerGroups.length > 0) {
+      this.setStorageItem(this.buyerGroupsKey, buyerGroups);
+    }
+  }
+
+  private async syncMaterials(): Promise<void> {
+    const materials = await this.fetchAllFromTable<any>('materials');
+    if (materials && materials.length > 0) {
+      this.setStorageItem(this.materialsKey, materials);
+    } else {
+      const generated = generateMaterials();
+      for (let i = 0; i < generated.length; i += 50) {
+        await supabase.from('materials').upsert(generated.slice(i, i + 50));
+      }
+      this.setStorageItem(this.materialsKey, generated);
+    }
+  }
+
+  private async syncSimpleTable(table: string, storageKey: string, alwaysSet: boolean = false): Promise<void> {
+    const rows = await this.fetchAllFromTable<any>(table);
+    if (alwaysSet || (rows && rows.length > 0)) {
+      this.setStorageItem(storageKey, rows || []);
+    }
+  }
+
+  private async syncComments(): Promise<void> {
+    const dbComments = await this.fetchAllFromTable<any>('request_comments');
+    if (dbComments && dbComments.length > 0) {
+      const mappedComments = dbComments.map(c => ({
+        id: c.id,
+        request_id: c.request_id,
+        user_id: c.user_id,
+        user_name: c.user_name,
+        user_roles: c.user_roles || [],
+        content: c.content,
+        is_internal: c.is_internal,
+        created_at: c.created_at
+      }));
+      this.setStorageItem(this.commentsKey, mappedComments);
+    }
+  }
+
+  private async syncObsHistory(): Promise<void> {
+    const dbObsHistory = await this.fetchAllFromTable<any>('obs_historico');
+    if (dbObsHistory && dbObsHistory.length > 0) {
+      const mappedObsHist = dbObsHistory.map(oh => {
+        let comment = '';
+        let deliveryDate = '';
+        try {
+          const val = JSON.parse(oh.valor_novo || '{}');
+          comment = val.obs || '';
+          deliveryDate = val.date || '';
+        } catch {
+          comment = oh.valor_novo || '';
         }
-      } catch (err) {
-        // Catálogos SAP grandes podem exceder a cota do localStorage (~5-10MB).
-        // Não deve interromper a sincronização das demais tabelas.
-        console.warn('Não foi possível atualizar o cache local de materiais (cota do navegador excedida).', err);
-      }
+        return {
+          id: oh.id,
+          ri: oh.ri,
+          obs_comprador: comment,
+          data_entrega_prevista: deliveryDate,
+          user_name: oh.user_name,
+          created_at: oh.created_at
+        };
+      });
+      this.setStorageItem(this.obsHistoryKey, mappedObsHist);
+    }
+  }
 
-      // 5. Requisicoes (ME5A) - Usando a View enriquecida
-      const { data: reqs, error: reqsError } = await supabase.from('view_enriched_requisicoes').select('*');
-      if (reqsError) throw reqsError;
-      this.setStorageItem(this.requisicoesKey, reqs || []);
-
-      // 6. Pedidos (ZL0132) - Usando a View enriquecida
-      const { data: peds, error: pedsError } = await supabase.from('view_enriched_pedidos').select('*');
-      if (pedsError) throw pedsError;
-      this.setStorageItem(this.pedidosKey, peds || []);
-
-      // 7. Requests (sistema)
-      const { data: dbRequests, error: rError } = await supabase.from('requests').select('*');
-      if (rError) throw rError;
-      if (dbRequests && dbRequests.length > 0) {
-        this.setStorageItem(this.requestsKey, dbRequests);
-      }
-
-      // 8. Request Items
-      const { data: dbRequestItems, error: riError } = await supabase.from('request_items').select('*');
-      if (riError) throw riError;
-      if (dbRequestItems && dbRequestItems.length > 0) {
-        this.setStorageItem(this.requestItemsKey, dbRequestItems);
-      }
-
-      // 9. Comments
-      const { data: dbComments, error: cError } = await supabase.from('request_comments').select('*');
-      if (cError) throw cError;
-      if (dbComments && dbComments.length > 0) {
-        const mappedComments = dbComments.map(c => ({
-          id: c.id,
-          request_id: c.request_id,
-          user_id: c.user_id,
-          user_name: c.user_name,
-          user_roles: c.user_roles || [],
-          content: c.content,
-          is_internal: c.is_internal,
-          created_at: c.created_at
-        }));
-        this.setStorageItem(this.commentsKey, mappedComments);
-      }
-
-      // 10. Status History
-      const { data: dbHistory, error: hError } = await supabase.from('request_status_history').select('*');
-      if (hError) throw hError;
-      if (dbHistory && dbHistory.length > 0) {
-        this.setStorageItem(this.historyKey, dbHistory);
-      }
-
-      // 11. Notifications
-      const { data: dbNotifications, error: nError } = await supabase.from('notifications').select('*');
-      if (nError) throw nError;
-      if (dbNotifications && dbNotifications.length > 0) {
-        this.setStorageItem(this.notificationsKey, dbNotifications);
-      }
-
-      // 12. Import Logs
-      const { data: dbImportLogs, error: ilError } = await supabase.from('import_logs').select('*');
-      if (ilError) throw ilError;
-      if (dbImportLogs && dbImportLogs.length > 0) {
-        this.setStorageItem(this.importLogsKey, dbImportLogs);
-      }
-
-      // 13. Obs Historico (Auditoria)
-      const { data: dbObsHistory, error: ohError } = await supabase.from('obs_historico').select('*');
-      if (ohError) throw ohError;
-      if (dbObsHistory && dbObsHistory.length > 0) {
-        const mappedObsHist = dbObsHistory.map(oh => {
-          let comment = '';
-          let deliveryDate = '';
-          try {
-            const val = JSON.parse(oh.valor_novo || '{}');
-            comment = val.obs || '';
-            deliveryDate = val.date || '';
-          } catch {
-            comment = oh.valor_novo || '';
-          }
-          return {
-            id: oh.id,
-            ri: oh.ri,
-            obs_comprador: comment,
-            data_entrega_prevista: deliveryDate,
-            user_name: oh.user_name,
-            created_at: oh.created_at
-          };
-        });
-        this.setStorageItem(this.obsHistoryKey, mappedObsHist);
-      }
-
-      // 14. Activity Logs
-      const { data: dbActivityLogs, error: alError } = await supabase.from('activity_logs').select('*');
-      if (alError) throw alError;
-      if (dbActivityLogs && dbActivityLogs.length > 0) {
-        this.setStorageItem(this.logsKey, dbActivityLogs);
-      }
-
-      // 15. Sequences
-      const { data: dbSequences, error: seqError } = await supabase.from('sequences').select('*');
-      if (seqError) throw seqError;
-      if (dbSequences && dbSequences.length > 0) {
-        const seqs: Record<string, number> = {};
-        dbSequences.forEach(s => { seqs[s.key] = s.value; });
-        this.setStorageItem(this.sequencesKey, seqs);
-      }
-
-      console.log('Sincronização com o Supabase concluída com sucesso!');
-    } catch (err) {
-      console.error('Falha geral ao sincronizar com o Supabase. Usando banco de dados local.', err);
+  private async syncSequences(): Promise<void> {
+    const dbSequences = await this.fetchAllFromTable<any>('sequences');
+    if (dbSequences && dbSequences.length > 0) {
+      const seqs: Record<string, number> = {};
+      dbSequences.forEach(s => { seqs[s.key] = s.value; });
+      this.setStorageItem(this.sequencesKey, seqs);
     }
   }
 
   public getStorageItem<T>(key: string, defaultValue: T): T {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
+    return this.cache.has(key) ? (this.cache.get(key) as T) : defaultValue;
   }
 
+  // Grava no cache em memória de forma síncrona (o chamador enxerga o valor
+  // imediatamente) e persiste no IndexedDB em segundo plano, sem bloquear a thread
+  // principal e sem a cota de ~5-10MB do localStorage.
   public setStorageItem<T>(key: string, value: T): void {
-    localStorage.setItem(key, JSON.stringify(value));
+    this.cache.set(key, value);
+    idbSet(key, value).catch(err => {
+      console.warn(`Não foi possível persistir "${key}" no IndexedDB.`, err);
+    });
   }
 
   // Check and run seeds
   private initialize() {
     // 1. Sectors
-    if (!localStorage.getItem(this.sectorsKey)) {
+    if (!this.cache.has(this.sectorsKey)) {
       this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
     }
 
     // 2. Sequences
-    if (!localStorage.getItem(this.sequencesKey)) {
+    if (!this.cache.has(this.sequencesKey)) {
       this.setStorageItem(this.sequencesKey, { '1': 1000, '2': 1000, '3': 1000, '4': 1000, '5': 1000 });
     }
 
     // 3. Profiles Seed
-    if (!localStorage.getItem(this.profilesKey)) {
+    if (!this.cache.has(this.profilesKey)) {
       const seededProfiles: Profile[] = [
         {
           id: 'u1',
@@ -359,7 +402,7 @@ class LocalDatabase {
     }
 
     // 4. Buyer Groups Seed
-    if (!localStorage.getItem(this.buyerGroupsKey)) {
+    if (!this.cache.has(this.buyerGroupsKey)) {
       const buyerGroups: UserBuyerGroup[] = [
         { id: 'bg1', user_id: 'u5', group_code: '314', is_primary: true },
         { id: 'bg2', user_id: 'u6', group_code: '358', is_primary: true },
@@ -370,19 +413,19 @@ class LocalDatabase {
     }
 
     // 5. Materials Catalog Seed (exactly 200)
-    if (!localStorage.getItem(this.materialsKey)) {
+    if (!this.cache.has(this.materialsKey)) {
       this.setStorageItem(this.materialsKey, generateMaterials());
     }
 
     // 6. SAP Data (ME5A and ZL0132) Seed
-    if (!localStorage.getItem(this.requisicoesKey) || !localStorage.getItem(this.pedidosKey)) {
+    if (!this.cache.has(this.requisicoesKey) || !this.cache.has(this.pedidosKey)) {
       const sapSeed = generateSAPSeedData();
       this.setStorageItem(this.requisicoesKey, sapSeed.requisicoes);
       this.setStorageItem(this.pedidosKey, sapSeed.pedidos);
     }
 
     // 7. Request Engine Seeds (13 requests including 2 pending for approval)
-    if (!localStorage.getItem(this.requestsKey)) {
+    if (!this.cache.has(this.requestsKey)) {
       const seededRequests: Request[] = [
         {
           id: 'r5',
@@ -749,7 +792,7 @@ class LocalDatabase {
     return user;
   }
 
-  public signup(name: string, email: string, sector_id: string, cargo: string): string {
+  public signup(name: string, email: string, sector_id: string, cargo: string, password?: string): string {
     const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
     const emailExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (emailExists) {
@@ -769,6 +812,12 @@ class LocalDatabase {
 
     users.push(newUser);
     this.setStorageItem(this.profilesKey, users);
+
+    if (password) {
+      const customPassMap = this.getStorageItem<Record<string, string>>('sisten_custom_passwords', {});
+      customPassMap[newUser.id] = password;
+      this.setStorageItem('sisten_custom_passwords', customPassMap);
+    }
     
     // Log as system activity
     this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
@@ -781,7 +830,10 @@ class LocalDatabase {
     if (user) {
       this.logActivity(user.id, 'Autenticação', 'Logout', `Usuário ${user.name} efetuou logout.`);
     }
-    localStorage.removeItem(this.currentUserKey);
+    this.cache.delete(this.currentUserKey);
+    idbDel(this.currentUserKey).catch(err => {
+      console.warn('Não foi possível remover o usuário atual do IndexedDB.', err);
+    });
   }
 
   public getCurrentUser(): Profile | null {
@@ -866,7 +918,8 @@ class LocalDatabase {
         'compras.vincular_rm', 
         'sap.visualizar_painel', 
         'sap.editar_campos_comprador',
-        'cadastro_sap.atender'
+        'cadastro_sap.atender',
+        'sap.fornecedores'
       ],
       coordenador_suprimentos: [
         'materiais.visualizar', 
@@ -879,7 +932,8 @@ class LocalDatabase {
         'sap.dashboards', 
         'sap.gerenciar_grupos', 
         'sap.exportar',
-        'cadastro_sap.atender'
+        'cadastro_sap.atender',
+        'sap.fornecedores'
       ],
       atendente: [
         'materiais.visualizar', 
@@ -1497,6 +1551,7 @@ class LocalDatabase {
       tipo_documento: r.tipo_documento || r.tipo_de_documento || 'ZR01',
       codigo_de_eliminacao: r.codigo_de_eliminacao !== undefined ? r.codigo_de_eliminacao : (r.eliminado || false),
       presente_ultima_carga: r.presente_ultima_carga !== undefined ? r.presente_ultima_carga : true,
+      pedido: r.pedido || '',
     }));
   }
 
@@ -1543,7 +1598,8 @@ class LocalDatabase {
       else if (td === 'ZR17') natureza = 'Serviço - MP';
 
       // Status
-      const hasPO = !!p.documento_compra;
+      const pedidoVal = (r.pedido || (r as any).documento_compra || p.documento_compra || '').trim();
+      const hasPO = !!pedidoVal && pedidoVal !== '—' && pedidoVal !== '0' && pedidoVal !== 'undefined' && pedidoVal !== 'null';
       const status_requisicao = hasPO ? 'Processado' : 'Sem PO';
 
       // Lead time meta (in days)
@@ -1618,6 +1674,7 @@ class LocalDatabase {
       return {
         ...r,
         ...p,
+        documento_compra: pedidoVal,
         natureza,
         status_requisicao,
         lead_time_compras_meta,
@@ -1680,7 +1737,7 @@ class LocalDatabase {
             created_at: new Date().toISOString()
           });
 
-          const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
+          const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
           if (updatedReqs) {
             const mappedReqs = updatedReqs.map(ur => ({
               ...ur,
@@ -1760,9 +1817,26 @@ class LocalDatabase {
     { header: 'Peça original', field: 'peca_original' },
     { header: 'Quantidade pedida', field: 'quantidade_pedida' },
     { header: 'Sugestão local compra', field: 'sugestao_local_compra' },
-    { header: 'Tempo procmto.EM', field: 'tempo_procmto_em' },
     { header: 'Tipo de transporte', field: 'tipo_de_transporte' },
     { header: 'Requisição Externa', field: 'requisicao_externa' }
+  ];
+
+  private PEDIDOSFORN_COLUMNS = [
+    { header: 'Material', field: 'material' },
+    { header: 'TxtBreve', field: 'txt_breve' },
+    { header: 'Cod Forn', field: 'cod_forn' },
+    { header: 'CNPJ', field: 'cnpj' },
+    { header: 'Fornecedor', field: 'fornecedor' },
+    { header: 'Rg', field: 'regiao_uf' },
+    { header: 'Data', field: 'data_pedido' }
+  ];
+
+  private CONTATOS_COLUMNS = [
+    { header: 'N° VENDOR', field: 'cod_vendor' },
+    { header: 'FORNECEDORES', field: 'fornecedor' },
+    { header: 'TELEFONE', field: 'telefone' },
+    { header: 'E-MAIL', field: 'email' },
+    { header: 'CLASSIFICAÇÃO', field: 'classificacao' }
   ];
 
   private ZL0132_COLUMNS = [
@@ -2113,7 +2187,7 @@ class LocalDatabase {
       };
       await supabase.from('import_logs').insert(logObj);
 
-      const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -2390,8 +2464,8 @@ class LocalDatabase {
       };
       await supabase.from('import_logs').insert(logObj);
 
-      const { data: updatedReqs } = await supabase.from('view_enriched_requisicoes').select('*');
-      const { data: updatedPeds } = await supabase.from('view_enriched_pedidos').select('*');
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
+      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos');
       
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -2419,6 +2493,224 @@ class LocalDatabase {
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação ZL0132 no Supabase:', e);
+      throw e;
+    }
+  }
+
+  public async importPedidosForn(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.PEDIDOSFORN_COLUMNS);
+
+    const matColIdx = mappedFields.findIndex(f => f === 'material');
+    const fornColIdx = mappedFields.findIndex(f => f === 'cod_forn');
+    const dateColIdx = mappedFields.findIndex(f => f === 'data_pedido');
+
+    if (matColIdx === -1 || fornColIdx === -1 || dateColIdx === -1) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias (Material, Cod Forn, Data) não encontradas.');
+    }
+
+    const user = this.getCurrentUser();
+    let inserted = 0;
+    let updated = 0;
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const txtBreveIdx = mappedFields.findIndex(f => f === 'txt_breve');
+    const cnpjIdx = mappedFields.findIndex(f => f === 'cnpj');
+    const fornecedorIdx = mappedFields.findIndex(f => f === 'fornecedor');
+    const regiaoIdx = mappedFields.findIndex(f => f === 'regiao_uf');
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const material = String(row[matColIdx] || '').trim();
+      const codForn = String(row[fornColIdx] || '').trim();
+      const rawDate = row[dateColIdx];
+
+      if (!material || !codForn || !rawDate) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: `Material: ${material}, Forn: ${codForn}`,
+          reason: 'Material, Código do Fornecedor ou Data vazios.'
+        });
+        return;
+      }
+
+      let dataPedido: string | null = null;
+      if (rawDate) {
+        if (typeof rawDate === 'number') {
+          const dateObj = new Date((rawDate - 25569) * 86400 * 1000);
+          dataPedido = dateObj.toISOString().split('T')[0];
+        } else {
+          dataPedido = String(rawDate).split('T')[0];
+        }
+      }
+
+      dbRows.push({
+        material,
+        cod_forn: codForn,
+        data_pedido: dataPedido,
+        txt_breve: txtBreveIdx !== -1 ? String(row[txtBreveIdx] || '').trim() : null,
+        cnpj: cnpjIdx !== -1 ? String(row[cnpjIdx] || '').trim() : null,
+        fornecedor: fornecedorIdx !== -1 ? String(row[fornecedorIdx] || '').trim() : null,
+        regiao_uf: regiaoIdx !== -1 ? String(row[regiaoIdx] || '').trim() : null,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    // Deduplica os registros em memória antes de enviar para o Supabase para evitar o erro:
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    const uniqueDbRowsMap = new Map<string, any>();
+    dbRows.forEach(item => {
+      const key = `${item.material}_${item.cod_forn}_${item.data_pedido}`;
+      uniqueDbRowsMap.set(key, item);
+    });
+    const finalDbRows = Array.from(uniqueDbRowsMap.values());
+
+    try {
+      for (let i = 0; i < finalDbRows.length; i += 50) {
+        const { error } = await supabase.from('pedidosforn').upsert(finalDbRows.slice(i, i + 50), { onConflict: 'material,cod_forn,data_pedido' });
+        if (error) throw error;
+      }
+
+      inserted = finalDbRows.length;
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'PEDIDOSFORN',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        created_at: new Date().toISOString(),
+        ignored_rows: ignoredRows
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Historico Fornecedores', `Importou Historico Fornecedores (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
+
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de pedidosforn no Supabase:', e);
+      throw e;
+    }
+  }
+
+  public async importContatos(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.CONTATOS_COLUMNS);
+
+    const vendorColIdx = mappedFields.findIndex(f => f === 'cod_vendor');
+
+    if (vendorColIdx === -1) {
+      throw new Error('Formato rejeitado: Coluna obrigatória "N° Vendor" não encontrada.');
+    }
+
+    const user = this.getCurrentUser();
+    let inserted = 0;
+    let updated = 0;
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const fornColIdx = mappedFields.findIndex(f => f === 'fornecedor');
+    const telColIdx = mappedFields.findIndex(f => f === 'telefone');
+    const emailColIdx = mappedFields.findIndex(f => f === 'email');
+    const classColIdx = mappedFields.findIndex(f => f === 'classificacao');
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const codVendor = String(row[vendorColIdx] || '').trim();
+
+      if (!codVendor) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Código do Fornecedor (N° Vendor) vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        cod_vendor: codVendor,
+        fornecedor: fornColIdx !== -1 ? String(row[fornColIdx] || '').trim() : null,
+        telefone: telColIdx !== -1 ? String(row[telColIdx] || '').trim() : null,
+        email: emailColIdx !== -1 ? String(row[emailColIdx] || '').trim() : null,
+        classificacao: classColIdx !== -1 ? String(row[classColIdx] || '').trim() : null,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    // Deduplica os contatos em memória antes de enviar para o Supabase
+    const uniqueDbRowsMap = new Map<string, any>();
+    dbRows.forEach(item => {
+      uniqueDbRowsMap.set(item.cod_vendor, item);
+    });
+    const finalDbRows = Array.from(uniqueDbRowsMap.values());
+
+    try {
+      for (let i = 0; i < finalDbRows.length; i += 50) {
+        const { error } = await supabase.from('contatos').upsert(finalDbRows.slice(i, i + 50), { onConflict: 'cod_vendor' });
+        if (error) throw error;
+      }
+
+      inserted = finalDbRows.length;
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'CONTATOS',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        created_at: new Date().toISOString(),
+        ignored_rows: ignoredRows
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      await this.syncSimpleTable('contatos', this.contatosKey, true);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contatos Fornecedores', `Importou Contatos Fornecedores (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
+
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de contatos no Supabase:', e);
       throw e;
     }
   }

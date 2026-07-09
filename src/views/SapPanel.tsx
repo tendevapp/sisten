@@ -19,6 +19,7 @@ const allColsMe5a = [
   { key: 'Natureza', label: 'Natureza' },
   { key: 'RM / Requisição', label: 'RM / Requisição' },
   { key: 'Item', label: 'Item' },
+  { key: 'Pedido', label: 'Pedido' },
   { key: 'Data solic.', label: 'Data solic.' },
   { key: 'Material', label: 'Material' },
   { key: 'Texto breve', label: 'Texto breve' },
@@ -295,7 +296,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
 
   // Columns visibility & customization to prevent lateral scroll
   const [visibleColsMe5a, setVisibleColsMe5a] = useState<string[]>([
-    'Status', 'RM / Requisição', 'Item', 'Material', 'Texto breve', 'Qtd.', 'Comprador', 'Data remessa', 'Obs. Comprador', 'Entrega prev.'
+    'Status', 'RM / Requisição', 'Item', 'Pedido', 'Material', 'Texto breve', 'Qtd.', 'Comprador', 'Data remessa', 'Obs. Comprador', 'Entrega prev.'
   ]);
   const [visibleColsZl0132, setVisibleColsZl0132] = useState<string[]>([
     'Pedido', 'Item', 'RM Origem', 'Material', 'Texto breve', 'Fornecedor', 'Data Remessa', 'Data MIGO', 'Valor BRL', 'Status Entrega', 'Atraso (dias)'
@@ -670,6 +671,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
         'Natureza': r.natureza || 'Normal',
         'RM': r.requisicao_de_compra,
         'Item': r.item_reqc,
+        'Pedido': r.documento_compra || '',
         'Data Solicitacao': r.data_solicitacao ? new Date(r.data_solicitacao).toLocaleDateString('pt-BR') : '',
         'Material': r.material_code || '',
         'Texto Breve': r.texto_breve || '',
@@ -1043,6 +1045,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                   {visibleColsMe5a.includes('Natureza') && <SortHeader label="Natureza" sortKey="Natureza" />}
                   {visibleColsMe5a.includes('RM / Requisição') && <SortHeader label="RM / Requisição" sortKey="RM / Requisição" />}
                   {visibleColsMe5a.includes('Item') && <SortHeader label="Item" sortKey="Item" />}
+                  {visibleColsMe5a.includes('Pedido') && <SortHeader label="Pedido" sortKey="Pedido" />}
                   {visibleColsMe5a.includes('Data solic.') && <SortHeader label="Data solic." sortKey="Data solic." />}
                   {visibleColsMe5a.includes('Material') && <SortHeader label="Material" sortKey="Material" />}
                   {visibleColsMe5a.includes('Texto breve') && <SortHeader label="Texto breve" sortKey="Texto breve" />}
@@ -1079,6 +1082,13 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                       
                       {/* Item */}
                       {visibleColsMe5a.includes('Item') && <td className="py-1.5 px-2.5 font-mono text-slate-400">{r.item_reqc}</td>}
+                      
+                      {/* Pedido */}
+                      {visibleColsMe5a.includes('Pedido') && (
+                        <td className="py-1.5 px-2.5 font-mono text-slate-700 font-medium">
+                          {r.documento_compra || '—'}
+                        </td>
+                      )}
                       
                       {/* Data solic */}
                       {visibleColsMe5a.includes('Data solic.') && (

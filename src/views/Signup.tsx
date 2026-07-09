@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { localDb } from '../db/localDb';
 
 interface SignupProps {
@@ -16,6 +16,10 @@ export default function Signup({ onNavigate }: SignupProps) {
   const [email, setEmail] = useState('');
   const [sectorId, setSectorId] = useState('1'); // Defaults to RH (1)
   const [cargo, setCargo] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,15 +30,26 @@ export default function Signup({ onNavigate }: SignupProps) {
     e.preventDefault();
     setError('');
 
-    // Corporate email validation
-    if (!email.toLowerCase().endsWith('@ten.com.br')) {
-      setError('Apenas e-mails corporativos finalizados em @ten.com.br são aceitos.');
+    // Validação genérica de e-mail
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Por favor, insira um e-mail válido.');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('A senha deve conter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem.');
       return;
     }
 
     setLoading(true);
     setTimeout(() => {
-      const res = localDb.signup(name, email, sectorId, cargo);
+      const res = localDb.signup(name, email, sectorId, cargo, password);
       setLoading(false);
       if (res === 'sucesso') {
         setSuccess(true);
@@ -93,11 +108,11 @@ export default function Signup({ onNavigate }: SignupProps) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">E-mail corporativo</label>
+                  <label className="text-xs font-bold text-slate-700">E-mail</label>
                   <input
                     type="email"
                     required
-                    placeholder="seu.nome@ten.com.br"
+                    placeholder="seu.email@provedor.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-xl border border-gray-250 py-2.5 px-3.5 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all"
@@ -130,6 +145,50 @@ export default function Signup({ onNavigate }: SignupProps) {
                         </option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Criar Senha</label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        placeholder="Mín. 6 caracteres"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full rounded-xl border border-gray-250 py-2.5 pl-3.5 pr-10 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Confirmar Senha</label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        required
+                        placeholder="Confirme a senha"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full rounded-xl border border-gray-250 py-2.5 pl-3.5 pr-10 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

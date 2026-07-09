@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4 usa prefers-color-scheme por padrão para o variant dark:.
+   O app alterna o tema manualmente via classe .dark em <html> (App.tsx),
+   então o variant precisa seguir essa classe em vez do SO. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* SISTEN - High-contrast Professional Dark Theme */
 .dark {
   color-scheme: dark;
