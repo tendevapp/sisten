@@ -42,6 +42,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapLogPreview, setSapLogPreview] = useState<any[]>([]);
   const [sapLogs, setSapLogs] = useState<any[]>([]);
   const [sapLogStatus, setSapLogStatus] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
+  const [sapProgress, setSapProgress] = useState(0);
   const [sapLogError, setSapLogError] = useState('');
   const [currentSapUploadType, setCurrentSapUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [sapCsvText, setSapCsvText] = useState('');
@@ -792,10 +793,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
+                        setSapProgress(0);
                         setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
-                        
+
                         r.onload = (ev) => {
                           try {
                             let rawRows: any[][] = [];
@@ -812,8 +814,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               const worksheet = workbook.Sheets[sheetName];
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
-                            
-                            localDb.importME5ARaw(rawRows, file.name).then(log => {
+
+                            localDb.importME5ARaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
@@ -856,10 +858,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
+                        setSapProgress(0);
                         setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
-                        
+
                         r.onload = (ev) => {
                           try {
                             let rawRows: any[][] = [];
@@ -876,8 +879,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               const worksheet = workbook.Sheets[sheetName];
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
-                            
-                            localDb.importZL0132Raw(rawRows, file.name).then(log => {
+
+                            localDb.importZL0132Raw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
@@ -1035,8 +1038,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             </div>
 
             {sapLogStatus === 'saving' && (
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 py-2">
-                <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" /> Processando carga do SAP e recalculando metas de entrega...
+              <div className="space-y-2 py-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                  <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" />
+                  <span>Processando carga do SAP e recalculando metas de entrega...</span>
+                  <span className="ml-auto tabular-nums text-emerald-600">{sapProgress}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-300 ease-out"
+                    style={{ width: `${sapProgress}%` }}
+                  />
+                </div>
               </div>
             )}
 

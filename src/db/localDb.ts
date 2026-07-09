@@ -1534,9 +1534,8 @@ class LocalDatabase {
   }
 
   // SAP ME5A/ZL0132 Operational methods
-  public getRequisicoes(): SAPRequisicao[] {
-    const raw = this.getStorageItem<any[]>(this.requisicoesKey, []);
-    return raw.map(r => ({
+  private normalizeRequisicaoRow(r: any): SAPRequisicao {
+    return {
       ...r,
       requisicao_de_compra: r.requisicao_de_compra || '',
       item_reqc: r.item_reqc || '',
@@ -1552,12 +1551,16 @@ class LocalDatabase {
       codigo_de_eliminacao: r.codigo_de_eliminacao !== undefined ? r.codigo_de_eliminacao : (r.eliminado || false),
       presente_ultima_carga: r.presente_ultima_carga !== undefined ? r.presente_ultima_carga : true,
       pedido: r.pedido || '',
-    }));
+    };
   }
 
-  public getPedidos(): SAPPedido[] {
-    const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
-    return raw.map(p => ({
+  public getRequisicoes(): SAPRequisicao[] {
+    const raw = this.getStorageItem<any[]>(this.requisicoesKey, []);
+    return raw.map(r => this.normalizeRequisicaoRow(r));
+  }
+
+  private normalizePedidoRow(p: any): SAPPedido {
+    return {
       ...p,
       documento_compra: p.documento_compra || p.doc_compra || '',
       item_pedido: p.item_pedido || p.item || '',
@@ -1567,7 +1570,12 @@ class LocalDatabase {
       data_entrega_sap: p.data_entrega_sap || p.dt_remessa || '',
       valor_brl: p.valor_brl !== undefined ? Number(p.valor_brl) : (p.valor_em_brl !== undefined ? Number(p.valor_em_brl) : Number(p.valor_liquido || 0)),
       preco_liquido: p.preco_liquido !== undefined ? Number(p.preco_liquido) : (p.preco_liquido_unit !== undefined ? Number(p.preco_liquido_unit) : Number(p.valor_liquido || 0)),
-    }));
+    };
+  }
+
+  public getPedidos(): SAPPedido[] {
+    const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
+    return raw.map(p => this.normalizePedidoRow(p));
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
@@ -1673,7 +1681,11 @@ class LocalDatabase {
 
       return {
         ...r,
-        ...p,
+        item_pedido: p.item_pedido,
+        fornecedor_code: p.fornecedor_code,
+        fornecedor_name: p.fornecedor_name,
+        data_pedido: p.data_pedido,
+        data_entrega_sap: p.data_entrega_sap,
         documento_compra: pedidoVal,
         natureza,
         status_requisicao,
@@ -1966,10 +1978,11 @@ class LocalDatabase {
   }
 
   // Raw arrays parsing and uploading
-  public async importME5ARaw(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+  public async importME5ARaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
     if (rawRows.length < 2) {
       throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
     }
+    onProgress?.(0);
 
     const headers = rawRows[0].map(h => String(h || '').trim());
     const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
@@ -1983,7 +1996,21 @@ class LocalDatabase {
       throw new Error('Formato rejeitado: Colunas obrigatórias do SAP (Requisição de compra e Item ReqC) não encontradas.');
     }
 
-    const current = this.getRequisicoes();
+    // Busca as requisições atuais diretamente do Supabase (fonte de verdade),
+    // pois o cache local pode estar incompleto ou desatualizado (ex.: import
+    // feito por outro usuário/dispositivo, ou cache limpo no navegador). Sem
+    // isso, requisições já existentes pareceriam "novas" para esta reimportação:
+    // o campo obs_comprador do comprador seria apagado e, caso a chave `ri`
+    // não seja de fato única no banco, a linha seria duplicada em vez de
+    // atualizada.
+    let current = this.getRequisicoes();
+    try {
+      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes');
+      if (remoteReqs.length > 0) current = remoteReqs.map(r => this.normalizeRequisicaoRow(r));
+    } catch (err) {
+      console.warn('Não foi possível buscar as requisições atuais do Supabase antes da importação; usando cache local.', err);
+    }
+    onProgress?.(10);
     const currentMap = new Map(current.map(r => [r.ri, r]));
     const user = this.getCurrentUser();
 
@@ -2163,8 +2190,12 @@ class LocalDatabase {
         obs_updated_by: r.obs_updated_by || null
       }));
 
+      const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        await supabase.from('requisicoes').upsert(dbRows.slice(i, i + 50));
+        const { error } = await supabase.from('requisicoes').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri' });
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 50) + 1;
+        onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
       }
 
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
@@ -2186,6 +2217,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       await supabase.from('import_logs').insert(logObj);
+      onProgress?.(90);
 
       const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
       if (updatedReqs) {
@@ -2208,6 +2240,7 @@ class LocalDatabase {
       this.setStorageItem(this.importLogsKey, logs);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ME5A', `Importou ME5A (${filename}). Lidos: ${dataRows.length}, novos: ${inserted}.`);
+      onProgress?.(100);
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação ME5A no Supabase:', e);
@@ -2215,10 +2248,11 @@ class LocalDatabase {
     }
   }
 
-  public async importZL0132Raw(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+  public async importZL0132Raw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
     if (rawRows.length < 2) {
       throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
     }
+    onProgress?.(0);
 
     const headers = rawRows[0].map(h => String(h || '').trim());
     const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
@@ -2236,7 +2270,18 @@ class LocalDatabase {
       throw new Error('Formato rejeitado: Colunas obrigatórias do Pedido SAP (ReqC e Item) não encontradas.');
     }
 
-    const current = this.getPedidos();
+    // Busca os pedidos atuais diretamente do Supabase (fonte de verdade),
+    // pelo mesmo motivo do importME5ARaw: o cache local pode estar
+    // incompleto/desatualizado e faria pedidos já existentes parecerem
+    // "novos", duplicando linhas em vez de atualizá-las.
+    let current = this.getPedidos();
+    try {
+      const remotePeds = await this.fetchAllFromTable<any>('pedidos');
+      if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
+    } catch (err) {
+      console.warn('Não foi possível buscar os pedidos atuais do Supabase antes da importação; usando cache local.', err);
+    }
+    onProgress?.(10);
     const currentMap = new Map(current.map(p => [p.ri, p]));
     const user = this.getCurrentUser();
 
@@ -2440,8 +2485,12 @@ class LocalDatabase {
         };
       });
 
+      const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        await supabase.from('pedidos').upsert(dbRows.slice(i, i + 50));
+        const { error } = await supabase.from('pedidos').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri' });
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 50) + 1;
+        onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
       }
 
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
@@ -2463,10 +2512,11 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       await supabase.from('import_logs').insert(logObj);
+      onProgress?.(90);
 
       const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
       const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos');
-      
+
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -2490,6 +2540,7 @@ class LocalDatabase {
       this.setStorageItem(this.importLogsKey, logs);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ZL0132', `Importou ZL0132 (${filename}). Lidos: ${dataRows.length}.`);
+      onProgress?.(100);
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação ZL0132 no Supabase:', e);
