@@ -776,7 +776,7 @@ class LocalDatabase {
       return 'E-mail corporativo não encontrado.';
     }
 
-    const expectedPass = customPassMap[user.id] || 'ten123';
+    const expectedPass = (user as any).password || customPassMap[user.id] || 'ten123';
     if (pass !== expectedPass && pass !== 'admin' && pass !== 'ten123') {
       return 'Senha incorreta. Se alterou sua senha, digite a nova senha.';
     }
@@ -818,6 +818,25 @@ class LocalDatabase {
       customPassMap[newUser.id] = password;
       this.setStorageItem('sisten_custom_passwords', customPassMap);
     }
+
+    // Sincroniza o novo cadastro com a tabela profiles no Supabase
+    supabase.from('profiles')
+      .insert({
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        cargo: newUser.cargo,
+        sector_id: newUser.sector_id,
+        roles: newUser.roles,
+        status: newUser.status,
+        password: password || 'ten123',
+        created_at: newUser.created_at
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error('Erro ao sincronizar cadastro no Supabase:', error);
+        }
+      });
     
     // Log as system activity
     this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
@@ -2821,6 +2840,17 @@ class LocalDatabase {
       users[idx].status = status as any;
       this.setStorageItem(this.profilesKey, users);
       this.logActivity('admin', 'Administração', 'Aprovar Usuário', `Usuário ${users[idx].name} status atualizado para ${status}.`);
+
+      // Atualiza o status no Supabase de forma assíncrona
+      supabase.from('profiles')
+        .update({ status: status })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Erro ao sincronizar status do usuário no Supabase:', error);
+          }
+        });
+
       return true;
     }
     return false;
@@ -2833,6 +2863,17 @@ class LocalDatabase {
       users[idx].roles = [role as any];
       this.setStorageItem(this.profilesKey, users);
       this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
+
+      // Atualiza os papéis de acesso no Supabase de forma assíncrona
+      supabase.from('profiles')
+        .update({ roles: [role] })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
+          }
+        });
+
       return true;
     }
     return false;
@@ -2961,6 +3002,17 @@ class LocalDatabase {
         this.setStorageItem(this.currentUserKey, currentUser);
       }
       this.logActivity(userId, 'Perfil', 'Atualização', `Nome atualizado para "${name}" e cargo para "${cargo}".`);
+
+      // Atualiza os dados de nome e cargo no Supabase de forma assíncrona
+      supabase.from('profiles')
+        .update({ name, cargo })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
+          }
+        });
+
       return users[idx];
     }
     return null;
@@ -2968,7 +3020,9 @@ class LocalDatabase {
 
   public changePassword(userId: string, currentPass: string, newPass: string): boolean {
     const customPassMap = this.getStorageItem<Record<string, string>>('sisten_custom_passwords', {});
-    const existingPass = customPassMap[userId] || 'ten123';
+    const users = this.getProfiles();
+    const user = users.find(u => u.id === userId);
+    const existingPass = (user as any)?.password || customPassMap[userId] || 'ten123';
     
     if (currentPass !== existingPass && currentPass !== 'admin') {
       return false;
@@ -2976,7 +3030,24 @@ class LocalDatabase {
 
     customPassMap[userId] = newPass;
     this.setStorageItem('sisten_custom_passwords', customPassMap);
+
+    if (user) {
+      (user as any).password = newPass;
+      this.setStorageItem(this.profilesKey, users);
+    }
+
     this.logActivity(userId, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
+
+    // Atualiza a senha do usuário no Supabase de forma assíncrona
+    supabase.from('profiles')
+      .update({ password: newPass })
+      .eq('id', userId)
+      .then(({ error }) => {
+        if (error) {
+          console.error('Erro ao sincronizar senha no Supabase:', error);
+        }
+      });
+
     return true;
   }
 
