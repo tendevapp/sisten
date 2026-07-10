@@ -268,6 +268,7 @@ export interface PedidoForn {
   fornecedor?: string;
   regiao_uf?: string;
   data_pedido?: string;
+  preco_liquido?: number;
   created_at: string;
   updated_at?: string;
 }
@@ -292,6 +293,7 @@ export interface FornecedorMaterialRow {
   email: string;
   classificacao: string;
   ultima_data: string;
+  preco_liquido?: number;
 }
 
 export interface MaterialFornecedoresGroup {

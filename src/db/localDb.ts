@@ -968,7 +968,8 @@ class LocalDatabase {
         'solicitacoes.criar', 
         'solicitacoes.visualizar_proprias',
         'chamados.atender_setor'
-      ]
+      ],
+      pendente: []
     };
 
     const permString = `${module}.${action}`;
@@ -1868,7 +1869,8 @@ class LocalDatabase {
     { header: 'CNPJ', field: 'cnpj' },
     { header: 'Fornecedor', field: 'fornecedor' },
     { header: 'Rg', field: 'regiao_uf' },
-    { header: 'Data', field: 'data_pedido' }
+    { header: 'Data', field: 'data_pedido' },
+    { header: 'Preço Líquido', field: 'preco_liquido' }
   ];
 
   private CONTATOS_COLUMNS = [
@@ -2604,6 +2606,7 @@ class LocalDatabase {
     const cnpjIdx = mappedFields.findIndex(f => f === 'cnpj');
     const fornecedorIdx = mappedFields.findIndex(f => f === 'fornecedor');
     const regiaoIdx = mappedFields.findIndex(f => f === 'regiao_uf');
+    const precoLiquidoIdx = mappedFields.findIndex(f => f === 'preco_liquido');
 
     dataRows.forEach((row, index) => {
       const fileRowIndex = index + 2;
@@ -2630,6 +2633,11 @@ class LocalDatabase {
         }
       }
 
+      const rawPreco = precoLiquidoIdx !== -1 ? row[precoLiquidoIdx] : null;
+      const precoLiquido = rawPreco !== null && rawPreco !== undefined && rawPreco !== ''
+        ? Number(String(rawPreco).replace(',', '.'))
+        : null;
+
       dbRows.push({
         material,
         cod_forn: codForn,
@@ -2638,6 +2646,7 @@ class LocalDatabase {
         cnpj: cnpjIdx !== -1 ? String(row[cnpjIdx] || '').trim() : null,
         fornecedor: fornecedorIdx !== -1 ? String(row[fornecedorIdx] || '').trim() : null,
         regiao_uf: regiaoIdx !== -1 ? String(row[regiaoIdx] || '').trim() : null,
+        preco_liquido: precoLiquido !== null && !isNaN(precoLiquido) ? precoLiquido : null,
         updated_at: new Date().toISOString()
       });
     });

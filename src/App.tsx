@@ -27,7 +27,33 @@ const AdminPanel = lazy(() => import('./views/AdminPanel'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
-const SuppliersLookup = lazy(() => import('./views/SuppliersLookup'));
+const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
+
+// Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
+// edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
+// quando a sincronização em segundo plano chega, pois isso apagaria o estado local.
+// As demais (Início, Relatórios, Dashboards) são de leitura e podem remontar para
+// refletir os dados recém-sincronizados.
+const STATE_PRESERVING_PATHS = new Set<string>([
+  '/solicitacoes/nova',
+  '/solicitacoes/minhas',
+  '/solicitacoes/aprovacoes',
+  '/materiais/busca',
+  '/suprimentos/painel',
+  '/suprimentos/fornecedores-sem-po',
+  '/suprimentos/cadastros-sap',
+  '/helpdesk',
+  '/helpdesk/relatorios',
+  '/perfil',
+  '/admin/usuarios',
+  '/admin/setores',
+  '/admin/permissoes',
+  '/admin/importacao-materiais',
+  '/admin/helpdesk',
+  '/suprimentos/importar',
+  '/suprimentos/importar/log',
+  '/suprimentos/grupos-comprador',
+]);
 
 function ViewLoadingFallback() {
   return (
@@ -180,9 +206,9 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/suprimentos/fornecedores':
+      case '/suprimentos/fornecedores-sem-po':
         if (localDb.hasPermission(user, 'sap', 'fornecedores')) {
-          return <SuppliersLookup user={user} onNavigate={handleNavigate} />;
+          return <SuppliersNoPO user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -252,11 +278,16 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-6">
           <Suspense fallback={<ViewLoadingFallback />}>
             {/*
-              Key força remontagem quando novos dados chegam da sincronização em segundo
-              plano, para telas que carregam dados apenas no mount. Exceto em NewRequest,
-              onde remontar destruiria um rascunho em edição pelo usuário.
+              A chave inclui dataVersion para forçar remontagem quando a sincronização
+              em segundo plano traz dados novos — útil para telas de leitura que carregam
+              dados apenas no mount (Início, Relatórios, Dashboards).
+
+              PORÉM, remontar destrói todo o estado local da tela (formulários, filtros,
+              buscas, edições inline, rascunhos, textos sendo digitados). Em telas onde o
+              usuário está trabalhando, isso apagaria o que ele faz quando o sync chega.
+              Por isso essas telas usam uma chave estável (só o path), sem dataVersion.
             */}
-            <div key={currentPath === '/solicitacoes/nova' ? currentPath : `${currentPath}:${dataVersion}`}>
+            <div key={STATE_PRESERVING_PATHS.has(currentPath) ? currentPath : `${currentPath}:${dataVersion}`}>
               {renderActiveView()}
             </div>
           </Suspense>
