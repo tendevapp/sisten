@@ -8,11 +8,12 @@ import {
   Database, Filter, Edit3, Calendar, Check, AlertCircle, 
   ChevronRight, ArrowRight, MessageSquare, ListCollapse, BookOpen, 
   ExternalLink, RefreshCw, Search, Download, Upload, X, AlertTriangle, 
-  Clock, FileText, FileSpreadsheet, ChevronDown, CheckCircle2, SlidersHorizontal
+  Clock, FileText, FileSpreadsheet, ChevronDown, CheckCircle2, SlidersHorizontal, Info
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
-import { Profile, EnrichedSAPRecord, SAPPedido } from '../types';
+import { Profile, EnrichedSAPRecord, SAPPedido, ItemStatus } from '../types';
+import SapDetailModal from '../components/SapDetailModal';
 
 const allColsMe5a = [
   { key: 'Status', label: 'Status' },
@@ -63,12 +64,14 @@ interface SapObservationFormProps {
   ri: string;
   initialComment: string;
   initialDate: string;
+  initialStatus: ItemStatus | '';
   onSaveSuccess: () => void;
 }
 
-function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: SapObservationFormProps) {
+function SapObservationForm({ ri, initialComment, initialDate, initialStatus, onSaveSuccess }: SapObservationFormProps) {
   const [comment, setComment] = useState(initialComment);
   const [date, setDate] = useState(initialDate);
+  const [status, setStatus] = useState<ItemStatus | ''>(initialStatus);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [history, setHistory] = useState<SAPObsHistory[]>([]);
@@ -77,20 +80,21 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
   useEffect(() => {
     setComment(initialComment);
     setDate(initialDate);
+    setStatus(initialStatus);
     setSaveSuccess(false);
     
     // Load observation history
     const hist = localDb.getObsHistory(ri);
     setHistory(hist.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-  }, [ri, initialComment, initialDate]);
+  }, [ri, initialComment, initialDate, initialStatus]);
 
   // Unified save function (instant write, no unnecessary delay)
-  const handleSave = (currentComment: string, currentDate: string, showIndicator = true) => {
+  const handleSave = (currentComment: string, currentDate: string, currentStatus: ItemStatus | '', showIndicator = true) => {
     setIsSaving(true);
     if (showIndicator) setSaveSuccess(false);
     
     // Instant save in local database
-    localDb.updateBuyerFields(ri, currentComment, currentDate);
+    localDb.updateBuyerFields(ri, currentComment, currentDate, currentStatus);
     
     setIsSaving(false);
     if (showIndicator) {
@@ -111,7 +115,7 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
   useEffect(() => {
     if (comment === initialComment) return;
     const timer = setTimeout(() => {
-      handleSave(comment, date, false);
+      handleSave(comment, date, status, false);
     }, 1200);
     return () => clearTimeout(timer);
   }, [comment]);
@@ -120,25 +124,62 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
   const handleDateChange = (newDate: string) => {
     setDate(newDate);
     // Saves immediately to database on selection
-    handleSave(comment, newDate, true);
+    handleSave(comment, newDate, status, true);
+  };
+
+  // Handle immediate change when status changes
+  const handleStatusChange = (newStatus: ItemStatus | '') => {
+    setStatus(newStatus);
+    handleSave(comment, date, newStatus, true);
   };
 
   // Handle manual save
   const handleManualSave = () => {
-    handleSave(comment, date, true);
+    handleSave(comment, date, status, true);
   };
 
   // Handle blur save (saves instantly when focus leaves comment box)
   const handleBlur = () => {
     if (comment !== initialComment) {
-      handleSave(comment, date, true);
+      handleSave(comment, date, status, true);
     }
   };
+
+  const itemStatusOptions: ItemStatus[] = [
+    'Buscar Fornecedores',
+    'Cotação enviada',
+    'Análise de Cotações',
+    'Pedido Enviado',
+    'Aguardando Coleta',
+    'Em rota de entrega',
+    'Entregue',
+    'Inativo',
+    'Aguardando Solicitante'
+  ];
 
   return (
     <div id="sap_observation_form_container" className="space-y-4">
       {/* Inputs Section */}
       <div className="space-y-3.5">
+        {/* Status Dropdown */}
+        <div className="space-y-1">
+          <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase block">
+            Status do Item
+          </label>
+          <select
+            value={status}
+            onChange={(e) => handleStatusChange(e.target.value as ItemStatus | '')}
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 py-2 px-3 text-xs focus:outline-none focus:border-emerald-600 transition-all cursor-pointer"
+          >
+            <option value="">Selecionar Status...</option>
+            {itemStatusOptions.map(opt => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Buyer Observation Textarea */}
         <div className="space-y-1">
           <label className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase block">
@@ -196,7 +237,7 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
               ) : (
                 <>
                   <Edit3 className="h-3.5 w-3.5" />
-                  <span>Salvar Agora</span>
+                  <span>Atualizar Status</span>
                 </>
               )}
             </button>
@@ -215,7 +256,7 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
                 Pendente...
               </span>
             )}
-            {!isSaving && comment === initialComment && date === initialDate && (
+            {!isSaving && comment === initialComment && date === initialDate && status === initialStatus && (
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center">
                 <Check className="h-3.5 w-3.5 mr-0.5 text-emerald-500" />
                 Sincronizado
@@ -226,7 +267,7 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
 
         {saveSuccess && (
           <p className="text-center text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 animate-fade-in">
-            ✓ As alterações foram registradas e atualizadas com sucesso!
+            ✓ O status e as observações foram registradas com sucesso!
           </p>
         )}
       </div>
@@ -235,7 +276,7 @@ function SapObservationForm({ ri, initialComment, initialDate, onSaveSuccess }: 
       <div className="border-t border-slate-100 dark:border-slate-800 pt-4">
         <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 pb-2 mb-2 flex items-center">
           <Clock className="h-3.5 w-3.5 text-slate-400 mr-1.5" />
-          Histórico de Observações
+          Histórico do Item
         </h4>
 
         {history.length === 0 ? (
@@ -327,6 +368,10 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   const [uploadType, setUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [uploadMessage, setUploadMessage] = useState('');
+
+  // Universal SAP Detail Modal
+  const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Sync status simulation
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
@@ -1098,12 +1143,36 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                       )}
                       
                       {/* Material */}
-                      {visibleColsMe5a.includes('Material') && <td className="py-1.5 px-2.5 font-mono text-slate-700 font-medium">{r.material_code}</td>}
+                      {visibleColsMe5a.includes('Material') && (
+                        <td className="py-1.5 px-2.5 font-mono text-slate-700 font-medium">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRecordForModal(r);
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="hover:underline hover:text-emerald-600 inline-flex items-center gap-1 focus:outline-none cursor-pointer text-left"
+                            title="Ver detalhamento SAP completo"
+                          >
+                            {r.material_code}
+                            <Info className="h-3.5 w-3.5 text-slate-400" />
+                          </button>
+                        </td>
+                      )}
                       
                       {/* Texto breve */}
                       {visibleColsMe5a.includes('Texto breve') && (
                         <td className="py-1.5 px-2.5 truncate max-w-[130px] lg:max-w-[180px] text-slate-700" title={r.texto_breve}>
-                          {r.texto_breve}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedRecordForModal(r);
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="hover:underline hover:text-emerald-600 focus:outline-none cursor-pointer text-left font-medium block truncate max-w-full"
+                          >
+                            {r.texto_breve}
+                          </button>
                         </td>
                       )}
                       
@@ -1254,12 +1323,41 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                       {visibleColsZl0132.includes('Item RM') && <td className="py-1.5 px-2.5 font-mono text-slate-400">{p.item_requisicao_origem}</td>}
                       
                       {/* Material */}
-                      {visibleColsZl0132.includes('Material') && <td className="py-1.5 px-2.5 font-mono text-slate-700 font-medium">{p.material}</td>}
+                      {visibleColsZl0132.includes('Material') && (
+                        <td className="py-1.5 px-2.5 font-mono text-slate-705 font-medium">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rec = records.find(r => r.ri === p.ri);
+                              if (rec) {
+                                setSelectedRecordForModal(rec);
+                                setIsDetailModalOpen(true);
+                              }
+                            }}
+                            className="hover:underline hover:text-emerald-600 inline-flex items-center gap-1 focus:outline-none cursor-pointer text-left font-bold"
+                          >
+                            {p.material}
+                            <Info className="h-3.5 w-3.5 text-slate-400" />
+                          </button>
+                        </td>
+                      )}
                       
                       {/* Texto breve */}
                       {visibleColsZl0132.includes('Texto breve') && (
                         <td className="py-1.5 px-2.5 truncate max-w-[130px] lg:max-w-[180px]" title={p.texto_breve}>
-                          {p.texto_breve}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rec = records.find(r => r.ri === p.ri);
+                              if (rec) {
+                                setSelectedRecordForModal(rec);
+                                setIsDetailModalOpen(true);
+                              }
+                            }}
+                            className="hover:underline hover:text-emerald-600 focus:outline-none cursor-pointer text-left font-medium block truncate max-w-full"
+                          >
+                            {p.texto_breve}
+                          </button>
                         </td>
                       )}
                       
@@ -1437,6 +1535,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                   ri={selectedRecord.ri}
                   initialComment={selectedRecord.obs_comprador || ''}
                   initialDate={selectedRecord.data_entrega_prevista || ''}
+                  initialStatus={selectedRecord.item_status || ''}
                   onSaveSuccess={loadData}
                 />
               </div>
@@ -1530,6 +1629,18 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
             </div>
           </div>
         </div>
+      )}
+      {/* Modal Universal de Detalhes SAP */}
+      {isDetailModalOpen && selectedRecordForModal && (
+        <SapDetailModal
+          record={selectedRecordForModal}
+          fornecedores={[]}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedRecordForModal(null);
+          }}
+          onUpdate={loadData}
+        />
       )}
 
     </div>

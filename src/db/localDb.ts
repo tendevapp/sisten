@@ -7,7 +7,7 @@ import {
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
-  ActivityLog, EnrichedSAPRecord
+  ActivityLog, EnrichedSAPRecord, ItemStatus
 } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -1580,6 +1580,9 @@ class LocalDatabase {
       codigo_de_eliminacao: r.codigo_de_eliminacao !== undefined ? r.codigo_de_eliminacao : (r.eliminado || false),
       presente_ultima_carga: r.presente_ultima_carga !== undefined ? r.presente_ultima_carga : true,
       pedido: r.pedido || '',
+      item_status: r.item_status || 'Buscar Fornecedores',
+      item_status_updated_at: r.item_status_updated_at || '',
+      item_status_updated_by: r.item_status_updated_by || ''
     };
   }
 
@@ -1728,7 +1731,31 @@ class LocalDatabase {
     });
   }
 
-  public updateBuyerFields(ri: string, obs: string, deliveryDate: string): boolean {
+  public isValidStatusTransition(from: ItemStatus | undefined | null | '', to: ItemStatus): boolean {
+    if (!from) return true; // Inicialmente vazio aceita qualquer primeiro status
+    
+    const f = String(from).trim().toLowerCase();
+    const t = String(to).trim().toLowerCase();
+    
+    if (t === 'inativo' || f === 'inativo') return true;
+    if (t === 'aguardando solicitante' || f === 'aguardando solicitante') return true;
+
+    const transitions: Record<string, string[]> = {
+      'buscar fornecedores': ['cotação enviada'],
+      'cotação enviada': ['análise de cotações', 'buscar fornecedores'],
+      'análise de cotações': ['pedido enviado', 'cotação enviada'],
+      'pedido enviado': ['aguardando coleta', 'análise de cotações'],
+      'aguardando coleta': ['em rota de entrega', 'pedido enviado'],
+      'em rota de entrega': ['entregue', 'aguardando coleta'],
+      'entregue': ['inativo'],
+      'inativo': [],
+      'aguardando solicitante': []
+    };
+
+    return transitions[f]?.includes(t) || false;
+  }
+
+  public updateBuyerFields(ri: string, obs: string, deliveryDate: string, itemStatus?: ItemStatus | ''): boolean {
     const reqs = this.getRequisicoes();
     const idx = reqs.findIndex(r => r.ri === ri);
     if (idx !== -1) {
@@ -1737,11 +1764,20 @@ class LocalDatabase {
 
       const prevObs = reqs[idx].obs_comprador || '';
       const prevDate = reqs[idx].data_entrega_prevista || '';
+      const prevStatus = reqs[idx].item_status || null;
 
       reqs[idx].obs_comprador = obs;
       reqs[idx].data_entrega_prevista = deliveryDate;
       reqs[idx].obs_updated_at = new Date().toISOString();
       reqs[idx].obs_updated_by = userName;
+
+      let statusChanged = false;
+      if (itemStatus !== undefined && itemStatus !== prevStatus) {
+        reqs[idx].item_status = itemStatus || undefined;
+        reqs[idx].item_status_updated_at = new Date().toISOString();
+        reqs[idx].item_status_updated_by = userName;
+        statusChanged = true;
+      }
 
       this.setStorageItem(this.requisicoesKey, reqs);
 
@@ -1753,6 +1789,7 @@ class LocalDatabase {
         ri,
         obs_comprador: obs,
         data_entrega_prevista: deliveryDate,
+        item_status: reqs[idx].item_status,
         user_name: userName,
         created_at: new Date().toISOString()
       });
@@ -1761,19 +1798,28 @@ class LocalDatabase {
       // Async write to Supabase
       (async () => {
         try {
-          await supabase.from('requisicoes').update({
+          const updatePayload: any = {
             obs_comprador: obs,
             data_entrega_prevista: deliveryDate || null,
             obs_updated_at: new Date().toISOString(),
             obs_updated_by: userName
-          }).eq('ri', ri);
+          };
 
+          if (statusChanged) {
+            updatePayload.item_status = reqs[idx].item_status || null;
+            updatePayload.item_status_updated_at = new Date().toISOString();
+            updatePayload.item_status_updated_by = userName;
+          }
+
+          await supabase.from('requisicoes').update(updatePayload).eq('ri', ri);
+
+          // Registra histórico detalhado
           await supabase.from('obs_historico').insert({
             id: ohId,
             ri,
-            campo_alterado: 'obs_comprador_e_data_entrega',
-            valor_anterior: JSON.stringify({ obs: prevObs, date: prevDate }),
-            valor_novo: JSON.stringify({ obs, date: deliveryDate }),
+            campo_alterado: statusChanged ? 'item_status' : 'obs_comprador_e_data_entrega',
+            valor_anterior: JSON.stringify({ obs: prevObs, date: prevDate, status: prevStatus }),
+            valor_novo: JSON.stringify({ obs, date: deliveryDate, status: reqs[idx].item_status || null }),
             user_name: userName,
             created_at: new Date().toISOString()
           });
@@ -1789,7 +1835,10 @@ class LocalDatabase {
               grupo_comprador: ur.grupo_de_compradores,
               data_solicitacao: ur.data_da_solicitacao,
               data_remessa: ur.remessas_de_ate,
-              material_code: ur.material
+              material_code: ur.material,
+              item_status: ur.item_status || 'Buscar Fornecedores',
+              item_status_updated_at: ur.item_status_updated_at || '',
+              item_status_updated_by: ur.item_status_updated_by || ''
             }));
             this.setStorageItem(this.requisicoesKey, mappedReqs);
           }

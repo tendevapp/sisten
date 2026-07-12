@@ -175,6 +175,17 @@ export interface Notification {
   created_at: string;
 }
 
+export type ItemStatus =
+  | 'Buscar Fornecedores'
+  | 'Cotação enviada'
+  | 'Análise de Cotações'
+  | 'Pedido Enviado'
+  | 'Aguardando Coleta'
+  | 'Em rota de entrega'
+  | 'Entregue'
+  | 'Inativo'
+  | 'Aguardando Solicitante';
+
 // 4. SAP Panel (ME5A and ZL0132 Integration)
 export interface SAPRequisicao {
   ri: string; // Unique key: requisicao_de_compra + item_reqc
@@ -199,6 +210,9 @@ export interface SAPRequisicao {
   obs_updated_at?: string;
   obs_updated_by?: string;
   pedido?: string;
+  item_status?: ItemStatus;
+  item_status_updated_at?: string;
+  item_status_updated_by?: string;
 }
 
 export interface EnrichedSAPRecord extends SAPRequisicao {
@@ -237,6 +251,7 @@ export interface SAPObsHistory {
   ri: string;
   obs_comprador?: string;
   data_entrega_prevista?: string;
+  item_status?: ItemStatus;
   user_name: string;
   created_at: string;
 }
