@@ -1,20 +1,16 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { localDb } from './db/localDb';
 import { Profile } from './types';
+import { supabase } from './db/supabaseClient';
 
 // Components
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 
-// Views (auth screens são pequenas e sempre necessárias no primeiro paint: mantidas eager;
-// as demais só entram no bundle quando o usuário navega até elas)
+// Views
 import Login from './views/Login';
 import Signup from './views/Signup';
+import ResetPassword from './views/ResetPassword';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
@@ -96,30 +92,85 @@ export default function App() {
   };
 
   // Initialize DB and authenticate user.
-  // Só aguardamos o cache local (IndexedDB, rápido) ficar pronto para liberar o primeiro
-  // render — a sincronização com o Supabase roda em segundo plano e não bloqueia mais a UI.
   useEffect(() => {
+    let authSubscription: any = null;
+
     (async () => {
       await localDb.ready;
 
-      const currentUser = localDb.getCurrentUser();
-      if (currentUser) {
-        setUser(currentUser);
+      if (supabase) {
+        // Obter sessão inicial
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && session.user) {
+          // Buscar profile atualizado
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (profile && profile.status === 'ativo') {
+            const mapped = { ...profile, roles: profile.roles || [] };
+            localDb.setCurrentUser(mapped);
+            setUser(mapped);
+          } else {
+            await supabase.auth.signOut();
+            localDb.setCurrentUser(null);
+            setUser(null);
+          }
+        } else {
+          localDb.setCurrentUser(null);
+          setUser(null);
+        }
+
+        // Ouvir mudanças de auth
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log(`Auth event: ${event}`);
+          if (event === 'PASSWORD_RECOVERY') {
+            handleNavigate('/reset-password');
+          } else if (session && session.user) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .maybeSingle();
+
+            if (profile && profile.status === 'ativo') {
+              const mapped = { ...profile, roles: profile.roles || [] };
+              localDb.setCurrentUser(mapped);
+              setUser(mapped);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+          }
+        });
+        authSubscription = subscription;
+      } else {
+        const currentUser = localDb.getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+        }
       }
 
       setLoading(false);
 
-      localDb.syncFromSupabase().catch(err => {
-        console.error("Falha ao sincronizar cache local com o Supabase:", err);
-      });
+      if (supabase) {
+        localDb.syncFromSupabase().catch(err => {
+          console.error("Falha ao sincronizar cache local com o Supabase:", err);
+        });
+      }
     })();
 
     const unsubscribe = localDb.subscribe(() => setDataVersion(v => v + 1));
 
     // Custom Hash Router initialization
     const handleHashChange = () => {
-      // Parse hash path, e.g., #/solicitacoes/nova?id=123 -> /solicitacoes/nova
       const hash = window.location.hash || '#/';
+      if (hash.includes('type=recovery') || hash.includes('recovery')) {
+        setCurrentPath('/reset-password');
+        window.location.hash = '/reset-password';
+        return;
+      }
       const pathWithParams = hash.slice(1); // remove '#'
       const pathOnly = pathWithParams.split('?')[0] || '/';
       setCurrentPath(pathOnly);
@@ -131,6 +182,9 @@ export default function App() {
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
       unsubscribe();
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
     };
   }, []);
 
@@ -169,6 +223,9 @@ export default function App() {
   if (!user) {
     if (currentPath === '/cadastro') {
       return <Signup onNavigate={handleNavigate} />;
+    }
+    if (currentPath === '/reset-password') {
+      return <ResetPassword onNavigate={handleNavigate} />;
     }
     return <Login onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
   }

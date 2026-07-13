@@ -171,6 +171,12 @@ class LocalDatabase {
   }
 
   private async syncMaterials(): Promise<void> {
+    const localCount = this.getMaterials().length;
+    // Se o banco local já possui catálogo, evita fazer 170 requests HTTP pesados sequenciais
+    if (localCount > 0) {
+      console.log(`syncMaterials: pulando download completo do catálogo pois já existem ${localCount} itens no IndexedDB.`);
+      return;
+    }
     const materials = await this.fetchAllFromTable<any>('materials');
     if (materials && materials.length > 0) {
       this.setStorageItem(this.materialsKey, materials);
@@ -771,101 +777,181 @@ class LocalDatabase {
   }
 
   // Auth Methods
-  public login(email: string, pass: string): Profile | string {
-    const customPassMap = this.getStorageItem<Record<string, string>>('sisten_custom_passwords', {});
-    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  public async login(email: string, pass: string): Promise<Profile | string> {
+    if (!supabase) return 'Supabase não inicializado';
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase(),
+        password: pass,
+      });
 
-    if (!user) {
-      return 'E-mail corporativo não encontrado.';
-    }
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          return 'E-mail corporativo ou senha incorretos.';
+        }
+        return error.message;
+      }
 
-    const expectedPass = (user as any).password || customPassMap[user.id] || 'ten123';
-    if (pass !== expectedPass && pass !== 'admin' && pass !== 'ten123') {
-      return 'Senha incorreta. Se alterou sua senha, digite a nova senha.';
-    }
+      if (!data.user) {
+        return 'Falha ao recuperar informações do usuário.';
+      }
 
-    if (user.status === 'pendente') {
-      return 'Cadastro realizado. Aguarde a autorização do administrador.';
+      // Buscar perfil correspondente na tabela profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Erro ao buscar perfil no Supabase:', profileError);
+        return 'Erro ao recuperar perfil do usuário.';
+      }
+
+      if (!profile) {
+        // Se o profile não foi criado pelo trigger, tentamos criar um perfil padrão pendente
+        const newProfile: Profile = {
+          id: data.user.id,
+          email: data.user.email || email.toLowerCase(),
+          name: data.user.user_metadata?.name || 'Novo Usuário',
+          cargo: data.user.user_metadata?.cargo || '',
+          sector_id: data.user.user_metadata?.sector_id || '1',
+          roles: ['pendente'],
+          status: 'pendente',
+          created_at: new Date().toISOString()
+        };
+
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert(newProfile);
+
+        if (insertError) {
+          console.error('Erro ao inserir perfil padrão:', insertError);
+        }
+
+        await supabase.auth.signOut();
+        return 'Cadastro realizado. Aguarde a autorização do administrador.';
+      }
+
+      const mappedProfile: Profile = {
+        ...profile,
+        roles: profile.roles || []
+      };
+
+      if (mappedProfile.status === 'pendente') {
+        await supabase.auth.signOut();
+        return 'Cadastro realizado. Aguarde a autorização do administrador.';
+      }
+      if (mappedProfile.status === 'inativo') {
+        await supabase.auth.signOut();
+        return 'Conta inativa. Procure o administrador.';
+      }
+
+      // Salvar no local storage / cache
+      this.setStorageItem(this.currentUserKey, mappedProfile);
+      this.logActivity(mappedProfile.id, 'Autenticação', 'Login', `Usuário ${mappedProfile.name} efetuou login com sucesso.`);
+      
+      // Salvar os perfis locais atualizados
+      const profiles = this.getStorageItem<Profile[]>(this.profilesKey, []);
+      const idx = profiles.findIndex(p => p.id === mappedProfile.id);
+      if (idx !== -1) {
+        profiles[idx] = mappedProfile;
+      } else {
+        profiles.push(mappedProfile);
+      }
+      this.setStorageItem(this.profilesKey, profiles);
+
+      return mappedProfile;
+    } catch (err: any) {
+      console.error('Falha de comunicação com o Supabase no Login:', err);
+      return 'Erro interno de comunicação com o banco de dados.';
     }
-    if (user.status === 'inativo') {
-      return 'Conta inativa. Procure o administrador.';
-    }
-    this.setStorageItem(this.currentUserKey, user);
-    this.logActivity(user.id, 'Autenticação', 'Login', `Usuário ${user.name} efetuou login com sucesso.`);
-    return user;
   }
 
-  public signup(name: string, email: string, sector_id: string, cargo: string, password?: string): string {
-    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
-    const emailExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      return 'Este e-mail já possui cadastro.';
-    }
-
-    const newUser: Profile = {
-      id: 'u_' + Math.random().toString(36).substr(2, 9),
-      email: email.toLowerCase(),
-      name,
-      cargo,
-      sector_id,
-      roles: ['pendente'],
-      status: 'pendente',
-      created_at: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    this.setStorageItem(this.profilesKey, users);
-
-    if (password) {
-      const customPassMap = this.getStorageItem<Record<string, string>>('sisten_custom_passwords', {});
-      customPassMap[newUser.id] = password;
-      this.setStorageItem('sisten_custom_passwords', customPassMap);
-    }
-
-    // Sincroniza o novo cadastro com a tabela profiles no Supabase
-    if (supabase) {
-      supabase.from('profiles')
-        .insert({
-          id: newUser.id,
-          email: newUser.email,
-          name: newUser.name,
-          cargo: newUser.cargo,
-          sector_id: newUser.sector_id,
-          roles: newUser.roles,
-          status: newUser.status,
-          password: password || 'ten123',
-          created_at: newUser.created_at
-        })
-        .then(({ error }) => {
-          if (error) {
-            console.error('Erro ao sincronizar cadastro no Supabase:', error);
+  public async signup(name: string, email: string, sector_id: string, cargo: string, password?: string): Promise<string> {
+    if (!supabase) return 'Supabase não inicializado';
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.toLowerCase(),
+        password: password || 'ten123',
+        options: {
+          data: {
+            name,
+            cargo,
+            sector_id
           }
-        })
-        .catch(err => {
-          console.error('Falha de escrita assíncrona no Supabase:', err);
-        });
+        }
+      });
+
+      if (error) {
+        return error.message;
+      }
+
+      if (!data.user) {
+        return 'Falha ao criar cadastro.';
+      }
+
+      this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
+      return 'sucesso';
+    } catch (err: any) {
+      console.error('Falha ao registrar usuário no Supabase:', err);
+      return 'Erro interno de comunicação com o banco de dados.';
     }
-    
-    // Log as system activity
-    this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
-    
-    return 'sucesso';
   }
 
-  public logout(): void {
+  public async logout(): Promise<void> {
     const user = this.getCurrentUser();
     if (user) {
       this.logActivity(user.id, 'Autenticação', 'Logout', `Usuário ${user.name} efetuou logout.`);
     }
     this.cache.delete(this.currentUserKey);
-    idbDel(this.currentUserKey).catch(err => {
+    await idbDel(this.currentUserKey).catch(err => {
       console.warn('Não foi possível remover o usuário atual do IndexedDB.', err);
     });
+    if (supabase) {
+      await supabase.auth.signOut().catch(err => {
+        console.error('Erro no signOut do Supabase:', err);
+      });
+    }
+  }
+
+  public async resetPasswordForEmail(email: string): Promise<string> {
+    if (!supabase) return 'Supabase não inicializado';
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
+        redirectTo: `${window.location.origin}/#/reset-password`
+      });
+      if (error) {
+        return error.message;
+      }
+      return 'sucesso';
+    } catch (err: any) {
+      console.error('Erro ao solicitar recuperação de senha:', err);
+      return 'Erro de comunicação com o servidor.';
+    }
   }
 
   public getCurrentUser(): Profile | null {
-    return this.getStorageItem<Profile | null>(this.currentUserKey, null);
+    const user = this.getStorageItem<Profile | null>(this.currentUserKey, null);
+    if (user && (user.status === 'pendente' || user.status === 'inativo')) {
+      this.cache.delete(this.currentUserKey);
+      idbDel(this.currentUserKey).catch(() => {});
+      return null;
+    }
+    return user;
+  }
+
+  public setCurrentUser(user: Profile | null): void {
+    if (user) {
+      this.setStorageItem(this.currentUserKey, user);
+    } else {
+      this.cache.delete(this.currentUserKey);
+      idbDel(this.currentUserKey).catch(err => {
+        console.warn('Não foi possível remover o usuário atual do IndexedDB.', err);
+      });
+    }
   }
 
   public switchUser(userId: string): Profile | null {
@@ -3116,42 +3202,23 @@ class LocalDatabase {
     return null;
   }
 
-  public changePassword(userId: string, currentPass: string, newPass: string): boolean {
-    const customPassMap = this.getStorageItem<Record<string, string>>('sisten_custom_passwords', {});
-    const users = this.getProfiles();
-    const user = users.find(u => u.id === userId);
-    const existingPass = (user as any)?.password || customPassMap[userId] || 'ten123';
-    
-    if (currentPass !== existingPass && currentPass !== 'admin') {
+  public async changePassword(newPass: string): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPass });
+      if (error) {
+        console.error('Erro ao atualizar senha no Supabase Auth:', error);
+        return false;
+      }
+      const user = this.getCurrentUser();
+      if (user) {
+        this.logActivity(user.id, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
+      }
+      return true;
+    } catch (err) {
+      console.error('Falha de comunicação ao alterar senha:', err);
       return false;
     }
-
-    customPassMap[userId] = newPass;
-    this.setStorageItem('sisten_custom_passwords', customPassMap);
-
-    if (user) {
-      (user as any).password = newPass;
-      this.setStorageItem(this.profilesKey, users);
-    }
-
-    this.logActivity(userId, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
-
-    // Atualiza a senha do usuário no Supabase de forma assíncrona
-    if (supabase) {
-      supabase.from('profiles')
-        .update({ password: newPass })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Erro ao sincronizar senha no Supabase:', error);
-          }
-        })
-        .catch(err => {
-          console.error('Falha de escrita de senha no Supabase:', err);
-        });
-    }
-
-    return true;
   }
 
   public getNotificationPreferences(userId: string): 'in-app' | 'both' {

@@ -27,6 +27,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
+  const [syncing, setSyncing] = useState(false);
 
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -380,7 +381,26 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
           {/* Active profiles list */}
           <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-800">Perfis Ativos ({activeUsers.length})</h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-800">Perfis Ativos ({activeUsers.length})</h3>
+              <button
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
+                    await localDb.syncFromSupabase();
+                  } catch (err) {
+                    console.error('Falha de sincronização explícita no painel admin:', err);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing}
+                className="flex items-center gap-1.5 rounded bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-bold text-[11px] py-1.5 px-3 cursor-pointer transition-colors border border-slate-200"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                Sincronizar com o Supabase
+              </button>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">

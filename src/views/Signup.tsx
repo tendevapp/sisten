@@ -26,7 +26,7 @@ export default function Signup({ onNavigate }: SignupProps) {
 
   const sectors = localDb.getSectors();
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -48,15 +48,18 @@ export default function Signup({ onNavigate }: SignupProps) {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      const res = localDb.signup(name, email, sectorId, cargo, password);
+    try {
+      const res = await localDb.signup(name, email, sectorId, cargo, password);
       setLoading(false);
       if (res === 'sucesso') {
         setSuccess(true);
       } else {
         setError(res);
       }
-    }, 800);
+    } catch (err) {
+      setLoading(false);
+      setError('Erro de comunicação com o servidor.');
+    }
   };
 
   return (

@@ -1,12 +1,7 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import { 
   Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, MapPin, 
-  ClipboardList, Headset, Package, BarChart3
+  ClipboardList, Headset, Package, BarChart3, CheckCircle2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -23,13 +18,20 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Estados de Esqueci minha senha
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const result = localDb.login(email, password);
+    try {
+      const result = await localDb.login(email, password);
       setLoading(false);
       if (typeof result === 'string') {
         if (result.includes('pendente') || result.includes('autorização')) {
@@ -42,7 +44,30 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
       } else {
         onLoginSuccess(result);
       }
-    }, 800);
+    } catch (err) {
+      setLoading(false);
+      setError('Erro de comunicação com o servidor.');
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+    setResetMessage('');
+    setResetLoading(true);
+
+    try {
+      const res = await localDb.resetPasswordForEmail(resetEmail);
+      setResetLoading(false);
+      if (res === 'sucesso') {
+        setResetMessage('E-mail de recuperação enviado com sucesso! Verifique sua caixa de entrada.');
+      } else {
+        setResetError(res);
+      }
+    } catch (err) {
+      setResetLoading(false);
+      setResetError('Erro ao processar solicitação de recuperação.');
+    }
   };
 
   const prefill = (em: string) => {
@@ -127,7 +152,72 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                   </p>
                 </div>
 
-                {error === 'pendente' ? (
+                {isForgotPassword ? (
+                  <form onSubmit={handleResetPassword} className="space-y-5 text-left">
+                    <div className="mb-4">
+                      <p className="text-sm text-slate-500">
+                        Insira seu e-mail corporativo cadastrado. Nós enviaremos um link de redefinição de senha para você.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label htmlFor="resetEmail" className="text-sm font-semibold text-slate-700">
+                        E-mail
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                        <input
+                          id="resetEmail"
+                          type="email"
+                          placeholder="seu.nome@ten.com.br"
+                          className="w-full pl-11 h-12 bg-slate-50/50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          required
+                          autoComplete="email"
+                        />
+                      </div>
+                    </div>
+
+                    {resetMessage && (
+                      <div className="text-sm text-emerald-700 flex items-center gap-1.5 font-medium border border-emerald-200 bg-emerald-50 p-2.5 rounded-lg">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <span>{resetMessage}</span>
+                      </div>
+                    )}
+
+                    {resetError && (
+                      <div className="text-sm text-red-600 flex items-center gap-1.5 font-medium border border-red-200/50 bg-red-50 p-2.5 rounded-lg">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{resetError}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-3 pt-2">
+                      <button 
+                        type="submit" 
+                        className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] text-white font-bold rounded-xl transition-colors text-base shadow-sm disabled:opacity-50 cursor-pointer" 
+                        disabled={resetLoading}
+                      >
+                        {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
+                        Enviar Link de Recuperação
+                      </button>
+
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setIsForgotPassword(false);
+                          setResetEmail('');
+                          setResetMessage('');
+                          setResetError('');
+                        }}
+                        className="w-full h-12 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-base cursor-pointer"
+                      >
+                        Voltar ao Login
+                      </button>
+                    </div>
+                  </form>
+                ) : error === 'pendente' ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <div className="flex gap-3">
                       <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
@@ -197,7 +287,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                         </label>
                         <button 
                           type="button"
-                          onClick={() => {}}
+                          onClick={() => setIsForgotPassword(true)}
                           className="text-xs font-semibold text-[#0056c6] hover:underline cursor-pointer"
                         >
                           Esqueci minha senha

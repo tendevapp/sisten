@@ -60,12 +60,12 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
     }
   };
 
-  const handleUpdatePassword = (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess(false);
 
-    if (!currentPass || !newPass || !confirmPass) {
+    if (!newPass || !confirmPass) {
       setPasswordError('Todos os campos de senha são obrigatórios.');
       return;
     }
@@ -75,20 +75,19 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
       return;
     }
 
-    if (newPass.length < 4) {
-      setPasswordError('A nova senha deve ter pelo menos 4 caracteres.');
+    if (newPass.length < 6) {
+      setPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
-    const ok = localDb.changePassword(user.id, currentPass, newPass);
+    const ok = await localDb.changePassword(newPass);
     if (ok) {
       setPasswordSuccess(true);
-      setCurrentPass('');
       setNewPass('');
       setConfirmPass('');
       setTimeout(() => setPasswordSuccess(false), 4000);
     } else {
-      setPasswordError('A senha atual informada está incorreta.');
+      setPasswordError('Erro ao atualizar a senha no servidor.');
     }
   };
 
@@ -236,18 +235,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
             </h3>
 
             <form onSubmit={handleUpdatePassword} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Senha Atual</label>
-                  <input
-                    type="password"
-                    value={currentPass}
-                    onChange={(e) => setCurrentPass(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 p-2.5 focus:border-emerald-500 focus:outline-none"
-                    placeholder="Digite sua senha atual"
-                    required
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700">Nova Senha</label>
                   <input
@@ -255,7 +243,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                     value={newPass}
                     onChange={(e) => setNewPass(e.target.value)}
                     className="w-full rounded-lg border border-slate-200 p-2.5 focus:border-emerald-500 focus:outline-none"
-                    placeholder="Mínimo 4 caracteres"
+                    placeholder="Mínimo 6 caracteres"
                     required
                   />
                 </div>
