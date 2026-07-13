@@ -331,31 +331,52 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   const [records, setRecords] = useState<EnrichedSAPRecord[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
   
+  // Carrega do cache
+  const pageCache = localDb.getPageCache('sap_panel', {
+    activeTab: 'me5a',
+    visibleColsMe5a: ['Status', 'RM / Requisição', 'Item', 'Pedido', 'Material', 'Texto breve', 'Qtd.', 'Comprador', 'Data remessa', 'Obs. Comprador', 'Entrega prev.'],
+    visibleColsZl0132: ['Pedido', 'Item', 'RM Origem', 'Material', 'Texto breve', 'Fornecedor', 'Data Remessa', 'Data MIGO', 'Valor BRL', 'Status Entrega', 'Atraso (dias)'],
+    searchQuery: '',
+    statusFilter: 'Todos',
+    buyerGroupFilter: 'Todos',
+    alertFilter: 'Todos',
+    onlyMine: false,
+    sortConfig: { key: '', direction: null }
+  });
+
   // Navigation & Tabs
-  const [activeTab, setActiveTab] = useState<'me5a' | 'zl0132'>('me5a');
+  const [activeTab, setActiveTab] = useState<'me5a' | 'zl0132'>(pageCache.activeTab as 'me5a' | 'zl0132');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Columns visibility & customization to prevent lateral scroll
-  const [visibleColsMe5a, setVisibleColsMe5a] = useState<string[]>([
-    'Status', 'RM / Requisição', 'Item', 'Pedido', 'Material', 'Texto breve', 'Qtd.', 'Comprador', 'Data remessa', 'Obs. Comprador', 'Entrega prev.'
-  ]);
-  const [visibleColsZl0132, setVisibleColsZl0132] = useState<string[]>([
-    'Pedido', 'Item', 'RM Origem', 'Material', 'Texto breve', 'Fornecedor', 'Data Remessa', 'Data MIGO', 'Valor BRL', 'Status Entrega', 'Atraso (dias)'
-  ]);
+  const [visibleColsMe5a, setVisibleColsMe5a] = useState<string[]>(pageCache.visibleColsMe5a);
+  const [visibleColsZl0132, setVisibleColsZl0132] = useState<string[]>(pageCache.visibleColsZl0132);
   const [isColMenuOpen, setIsColMenuOpen] = useState(false);
   
   // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'Todos' | 'Com PO' | 'Sem PO'>('Todos');
-  const [buyerGroupFilter, setBuyerGroupFilter] = useState('Todos');
-  const [alertFilter, setAlertFilter] = useState('Todos');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(pageCache.searchQuery);
+  const [statusFilter, setStatusFilter] = useState<'Todos' | 'Com PO' | 'Sem PO'>(pageCache.statusFilter as 'Todos' | 'Com PO' | 'Sem PO');
+  const [buyerGroupFilter, setBuyerGroupFilter] = useState(pageCache.buyerGroupFilter);
+  const [alertFilter, setAlertFilter] = useState(pageCache.alertFilter);
+  const [onlyMine, setOnlyMine] = useState(pageCache.onlyMine);
 
   // Column sorting configuration
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' | null }>({
-    key: '',
-    direction: null
-  });
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' | null }>(pageCache.sortConfig);
+
+  // Efeito para salvar o cache
+  useEffect(() => {
+    localDb.setPageCache('sap_panel', {
+      activeTab,
+      visibleColsMe5a,
+      visibleColsZl0132,
+      searchQuery,
+      statusFilter,
+      buyerGroupFilter,
+      alertFilter,
+      onlyMine,
+      sortConfig
+    });
+  }, [activeTab, visibleColsMe5a, visibleColsZl0132, searchQuery, statusFilter, buyerGroupFilter, alertFilter, onlyMine, sortConfig]);
 
   // Inline editing active keys
   const [editingId, setEditingId] = useState<string | null>(null);

@@ -10,7 +10,6 @@ import {
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import {
   Profile, EnrichedSAPRecord, PedidoForn, ContatoFornecedor,
@@ -47,30 +46,7 @@ const formatPreco = (v?: number | null): string =>
     ? '—'
     : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-async function fetchAllMatching<T>(
-  table: string,
-  column: string,
-  values: string[],
-  select: string
-): Promise<T[]> {
-  if (!supabase || values.length === 0) return [];
-  const pageSize = 1000;
-  const all: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(select)
-      .in(column, values)
-      .order('id', { ascending: true })
-      .range(from, from + pageSize - 1);
-    if (error) throw error;
-    if (data) all.push(...(data as unknown as T[]));
-    if (!data || data.length < pageSize) break;
-    from += pageSize;
-  }
-  return all;
-}
+
 
 // Componente local de cópia rápida reutilizável
 const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) => {
@@ -143,7 +119,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
 
-  const buildSuppliersData = useCallback(async () => {
+  const buildSuppliersData = useCallback(() => {
     setLoading(true);
     setError(null);
     try {
@@ -164,7 +140,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       setDateInputState(initialDates);
       setStatusInputState(initialStatus);
 
-      // Variantes de código para a consulta
+      // Monta conjunto de variantes de codigo para matching tolerante a zeros
       const codeVariants = new Set<string>();
       semPoRecords.forEach(r => {
         const raw = (r.material_code || '').trim();
@@ -180,38 +156,29 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
-      if (codeVariants.size > 0 && supabase) {
-        const variantList = Array.from(codeVariants);
-        const chunk = 150;
+      if (codeVariants.size > 0) {
+        // Usa dados ja sincronizados no IndexedDB — sem round-trips HTTP
+        const todosPedidos = localDb.getPedidosForn();
+        const todosContatos = localDb.getContatosForn();
 
-        const pedidos: PedidoForn[] = [];
-        for (let i = 0; i < variantList.length; i += chunk) {
-          const slice = variantList.slice(i, i + chunk);
-          const rows = await fetchAllMatching<PedidoForn>('pedidosforn', 'material', slice, '*');
-          pedidos.push(...rows);
-        }
-
-        const codsForn = Array.from(
-          new Set(pedidos.map(p => p.cod_forn).filter((c): c is string => !!c))
-        );
+        // Monta mapa de contatos indexado por cod_vendor
         const contatosMap = new Map<string, ContatoFornecedor>();
-        for (let i = 0; i < codsForn.length; i += chunk) {
-          const slice = codsForn.slice(i, i + chunk);
-          if (slice.length === 0) break;
-          const rows = await fetchAllMatching<ContatoFornecedor>('contatos', 'cod_vendor', slice, '*');
-          rows.forEach(c => contatosMap.set(c.cod_vendor, c));
-        }
+        todosContatos.forEach(c => {
+          if (c.cod_vendor) contatosMap.set(c.cod_vendor, c);
+        });
 
+        // Filtra pedidos relevantes para os materiais desta pagina
         const pedidosPorNorm = new Map<string, PedidoForn[]>();
-        pedidos.forEach(p => {
-          const key = normalizeCode(p.material);
-          if (!key) return;
-          const arr = pedidosPorNorm.get(key);
+        todosPedidos.forEach(p => {
+          const normKey = normalizeCode(p.material);
+          if (!normKey || !codeVariants.has(p.material) && !codeVariants.has(normKey)) return;
+          const arr = pedidosPorNorm.get(normKey);
           if (arr) arr.push(p);
-          else pedidosPorNorm.set(key, [p]);
+          else pedidosPorNorm.set(normKey, [p]);
         });
 
         pedidosPorNorm.forEach((pedidosMaterial, normKey) => {
+          // Deduplica por fornecedor, mantendo o pedido mais recente
           const fornMap = new Map<string, PedidoForn>();
           pedidosMaterial.forEach(p => {
             const key = p.cnpj ? p.cnpj.trim() : (p.cod_forn || '');
@@ -269,8 +236,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       setRmGroups(built);
     } catch (e: any) {
-      console.error('Erro ao montar consulta de fornecedores (Sem PO):', e);
-      setError('Falha ao consultar a base de fornecedores. Tente atualizar novamente.');
+      console.error('Erro ao montar fornecedores (Sem PO):', e);
+      setError('Falha ao montar dados. Tente atualizar novamente.');
       setRmGroups([]);
     } finally {
       setLoading(false);

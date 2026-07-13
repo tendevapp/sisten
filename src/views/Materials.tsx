@@ -17,11 +17,21 @@ const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
 const sanitizeTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
 
 export default function Materials({ user }: MaterialsProps) {
-  const [queryInput, setQueryInput] = useState('');
-  const [chips, setChips] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('Todas');
-  const [selectedCompany, setSelectedCompany] = useState('Todas');
-  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  // Carrega do cache se houver, senão usa os defaults
+  const pageCache = localDb.getPageCache('materials', {
+    queryInput: '',
+    chips: [],
+    selectedCategory: 'Todas',
+    selectedCompany: 'Todas',
+    onlyFavorites: false,
+    currentPage: 1
+  });
+
+  const [queryInput, setQueryInput] = useState(pageCache.queryInput);
+  const [chips, setChips] = useState<string[]>(pageCache.chips);
+  const [selectedCategory, setSelectedCategory] = useState(pageCache.selectedCategory);
+  const [selectedCompany, setSelectedCompany] = useState(pageCache.selectedCompany);
+  const [onlyFavorites, setOnlyFavorites] = useState(pageCache.onlyFavorites);
 
   const [results, setResults] = useState<Material[]>([]);
   const [totalResults, setTotalResults] = useState(0);
@@ -34,23 +44,42 @@ export default function Materials({ user }: MaterialsProps) {
 
   // Pagination — busca paginada no servidor (Supabase), não no array local,
   // pois o catálogo tem 180k+ linhas e não caberia na memória/localStorage.
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(pageCache.currentPage);
   const itemsPerPage = 50;
 
   const requestIdRef = useRef(0);
+  const isFirstRender = useRef(true);
+
+  // Efeito para salvar alterações no cache
+  useEffect(() => {
+    localDb.setPageCache('materials', {
+      queryInput,
+      chips,
+      selectedCategory,
+      selectedCompany,
+      onlyFavorites,
+      currentPage
+    });
+  }, [queryInput, chips, selectedCategory, selectedCompany, onlyFavorites, currentPage]);
 
   useEffect(() => {
     setFavorites(localDb.getFavorites(user.id));
     // Check initial search in URL
-    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
-    const qParam = urlParams.get('q');
+    const hashParts = window.location.hash.split('?');
+    const urlParams = hashParts[1] ? new URLSearchParams(hashParts[1]) : null;
+    const qParam = urlParams?.get('q');
     if (qParam) {
       setChips(qParam.split('+').filter(Boolean));
+      setQueryInput('');
     }
   }, [user]);
 
-  // Qualquer mudança de filtro volta para a primeira página
+  // Qualquer mudança de filtro volta para a primeira página (exceto na montagem)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [chips, selectedCategory, selectedCompany, onlyFavorites]);
 

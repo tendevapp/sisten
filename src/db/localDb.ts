@@ -7,7 +7,7 @@ import {
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
-  ActivityLog, EnrichedSAPRecord, ItemStatus
+  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor
 } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -20,6 +20,7 @@ class LocalDatabase {
   // e escrita (setStorageItem) passa por aqui, mantendo a API síncrona usada em toda
   // a aplicação mesmo com uma persistência assíncrona por trás.
   private cache = new Map<string, any>();
+  private pageCache = new Map<string, any>();
   private listeners = new Set<() => void>();
   private readonly migratedFlagKey = '__sisten_idb_migrated__';
 
@@ -260,6 +261,23 @@ class LocalDatabase {
     idbSet(key, value).catch(err => {
       console.warn(`Não foi possível persistir "${key}" no IndexedDB.`, err);
     });
+  }
+
+  public getPageCache<T>(pageKey: string, defaultValue: T): T {
+    return this.pageCache.has(pageKey) ? (this.pageCache.get(pageKey) as T) : defaultValue;
+  }
+
+  public setPageCache<T>(pageKey: string, value: T): void {
+    this.pageCache.set(pageKey, value);
+  }
+
+  public clearAllPageCachesExcept(exceptPageKey: string): void {
+    const keysToKeep = [exceptPageKey];
+    for (const key of Array.from(this.pageCache.keys())) {
+      if (!keysToKeep.includes(key)) {
+        this.pageCache.delete(key);
+      }
+    }
   }
 
   // Check and run seeds
@@ -1694,6 +1712,14 @@ class LocalDatabase {
   public getPedidos(): SAPPedido[] {
     const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
     return raw.map(p => this.normalizePedidoRow(p));
+  }
+
+  public getPedidosForn(): PedidoForn[] {
+    return this.getStorageItem<PedidoForn[]>(this.pedidosFornKey, []);
+  }
+
+  public getContatosForn(): ContatoFornecedor[] {
+    return this.getStorageItem<ContatoFornecedor[]>(this.contatosKey, []);
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {

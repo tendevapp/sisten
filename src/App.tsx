@@ -175,6 +175,10 @@ export default function App() {
       }
       const pathWithParams = hash.slice(1); // remove '#'
       const pathOnly = pathWithParams.split('?')[0] || '/';
+      
+      // Limpa os caches de todas as páginas ao mudar de rota, exceto a do Catálogo SAP
+      localDb.clearAllPageCachesExcept('materials');
+
       setCurrentPath(pathOnly);
     };
 

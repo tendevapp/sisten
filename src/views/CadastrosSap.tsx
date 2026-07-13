@@ -19,11 +19,29 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedReq, setSelectedReq] = useState<Request | null>(null);
   
+  // Carrega do cache
+  const pageCache = localDb.getPageCache('cadastros_sap', {
+    viewTab: 'fila',
+    statusFilter: 'todos',
+    typeFilter: 'todos',
+    search: ''
+  });
+
   // Filter state
-  const [viewTab, setViewTab] = useState<'meus' | 'fila' | 'todos'>('fila');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
-  const [typeFilter, setTypeFilter] = useState<string>('todos');
-  const [search, setSearch] = useState('');
+  const [viewTab, setViewTab] = useState<'meus' | 'fila' | 'todos'>(pageCache.viewTab as 'meus' | 'fila' | 'todos');
+  const [statusFilter, setStatusFilter] = useState<string>(pageCache.statusFilter);
+  const [typeFilter, setTypeFilter] = useState<string>(pageCache.typeFilter);
+  const [search, setSearch] = useState(pageCache.search);
+
+  // Efeito para salvar no cache
+  useEffect(() => {
+    localDb.setPageCache('cadastros_sap', {
+      viewTab,
+      statusFilter,
+      typeFilter,
+      search
+    });
+  }, [viewTab, statusFilter, typeFilter, search]);
 
   // Action fields
   const [question, setQuestion] = useState('');

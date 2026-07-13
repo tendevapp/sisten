@@ -18,9 +18,25 @@ interface MyRequestsProps {
 export default function MyRequests({ user }: MyRequestsProps) {
   const [requests, setRequests] = useState<Request[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todos');
-  const [typeFilter, setTypeFilter] = useState('Todos');
+  // Carrega do cache
+  const pageCache = localDb.getPageCache('my_requests', {
+    searchQuery: '',
+    statusFilter: 'Todos',
+    typeFilter: 'Todos'
+  });
+
+  const [searchQuery, setSearchQuery] = useState(pageCache.searchQuery);
+  const [statusFilter, setStatusFilter] = useState(pageCache.statusFilter);
+  const [typeFilter, setTypeFilter] = useState(pageCache.typeFilter);
+
+  // Efeito para salvar no cache
+  useEffect(() => {
+    localDb.setPageCache('my_requests', {
+      searchQuery,
+      statusFilter,
+      typeFilter
+    });
+  }, [searchQuery, statusFilter, typeFilter]);
   
   // New comment text
   const [newComment, setNewComment] = useState('');

@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Filter, X, Check, Star, AlertTriangle, Loader2,
   ChevronUp, ChevronDown, RefreshCw, Building2, ChevronsUpDown, Plus,
   Phone, Mail, Trash2
 } from 'lucide-react';
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import { ContatoFornecedor, Profile } from '../types';
 
 interface FornecedoresProps {
@@ -557,19 +558,45 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const [showCadastro, setShowCadastro] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<ContatoFornecedor | null>(null);
 
+  // Carrega do cache
+  const pageCache = localDb.getPageCache('fornecedores', {
+    searchRaw: '',
+    classificacaoFilter: '',
+    hasPhone: false,
+    hasEmail: false,
+    page: 0,
+    sortField: 'cod_vendor' as SortField,
+    sortDir: 'asc' as SortDir
+  });
+
   // Filtros
-  const [searchRaw, setSearchRaw] = useState('');
-  const [classificacaoFilter, setClassificacaoFilter] = useState('');
-  const [hasPhone, setHasPhone] = useState(false);
-  const [hasEmail, setHasEmail] = useState(false);
+  const [searchRaw, setSearchRaw] = useState(pageCache.searchRaw);
+  const [classificacaoFilter, setClassificacaoFilter] = useState(pageCache.classificacaoFilter);
+  const [hasPhone, setHasPhone] = useState(pageCache.hasPhone);
+  const [hasEmail, setHasEmail] = useState(pageCache.hasEmail);
   const search = useDebounce(searchRaw, 350);
 
   // Paginacao
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(pageCache.page);
 
   // Ordenacao
-  const [sortField, setSortField] = useState<SortField>('cod_vendor');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortField, setSortField] = useState<SortField>(pageCache.sortField);
+  const [sortDir, setSortDir] = useState<SortDir>(pageCache.sortDir);
+
+  const isFirstRender = useRef(true);
+
+  // Efeito para salvar no cache
+  useEffect(() => {
+    localDb.setPageCache('fornecedores', {
+      searchRaw,
+      classificacaoFilter,
+      hasPhone,
+      hasEmail,
+      page,
+      sortField,
+      sortDir
+    });
+  }, [searchRaw, classificacaoFilter, hasPhone, hasEmail, page, sortField, sortDir]);
 
   const loadData = useCallback(async () => {
     if (!supabase) { setError('Supabase não configurado.'); setLoading(false); return; }
@@ -606,7 +633,13 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     }
   }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir, page]);
 
-  useEffect(() => { setPage(0); }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir]);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    setPage(0);
+  }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir]);
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleSort = (field: SortField) => {
