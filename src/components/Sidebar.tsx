@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { 
   Home, Search, BarChart3, PlusCircle, List, FileCheck, 
   Database, LayoutDashboard, Upload, Users, Shield, 
-  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch
+  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -50,6 +50,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       items: [
         { label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, perm: { module: 'cadastro_sap', action: 'atender' } },
         { label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, perm: { module: 'sap', action: 'visualizar_painel' } },
+        { label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Itens Sem PO', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, perm: { module: 'sap', action: 'importar' } },

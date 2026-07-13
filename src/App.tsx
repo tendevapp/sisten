@@ -24,6 +24,7 @@ const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
 const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
+const Fornecedores = lazy(() => import('./views/Fornecedores'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -37,6 +38,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/materiais/busca',
   '/suprimentos/painel',
   '/suprimentos/fornecedores-sem-po',
+  '/suprimentos/fornecedores',
   '/suprimentos/cadastros-sap',
   '/helpdesk',
   '/helpdesk/relatorios',
@@ -266,6 +268,12 @@ export default function App() {
       case '/suprimentos/fornecedores-sem-po':
         if (localDb.hasPermission(user, 'sap', 'fornecedores')) {
           return <SuppliersNoPO user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/fornecedores':
+        if (user.roles.includes('admin') || user.roles.includes('comprador')) {
+          return <Fornecedores user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

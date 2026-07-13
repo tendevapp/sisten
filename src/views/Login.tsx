@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, MapPin, 
+import {
+  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, MapPin,
   ClipboardList, Headset, Package, BarChart3, CheckCircle2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
@@ -70,11 +70,6 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
     }
   };
 
-  const prefill = (em: string) => {
-    setEmail(em);
-    setPassword('ten123');
-    setError('');
-  };
 
   const features = [
     { icon: ClipboardList, title: 'Solicitações', desc: 'Abertura e acompanhamento de demandas' },
@@ -87,10 +82,10 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
     <div className="min-h-screen relative w-full overflow-hidden bg-slate-100 flex flex-col justify-between">
       {/* Imagem de fundo limpa (sem degradê sobreposto) */}
       <div className="absolute inset-0 z-0">
-        <img 
-          src="/bg-app.png" 
-          alt="" 
-          className="h-full w-full object-cover" 
+        <img
+          src="/bg-app.png"
+          alt=""
+          className="h-full w-full object-cover"
         />
       </div>
 
@@ -135,7 +130,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
           </div>
 
           {/* Lado direito — janela de login sobreposta */}
-          <div className="w-full max-w-md ml-auto z-20 mt-8 lg:mt-0">
+          <div className="w-full max-w-md ml-auto z-20 mt-8 lg:mt-48">
             {/* Logo no mobile */}
             <div className="lg:hidden flex justify-center mb-6">
               <img src="/logo-ten.png" alt="TEN" className="h-20 w-auto object-contain" />
@@ -194,17 +189,17 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                     )}
 
                     <div className="space-y-3 pt-2">
-                      <button 
-                        type="submit" 
-                        className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] text-white font-bold rounded-xl transition-colors text-base shadow-sm disabled:opacity-50 cursor-pointer" 
+                      <button
+                        type="submit"
+                        className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] text-white font-bold rounded-xl transition-colors text-base shadow-sm disabled:opacity-50 cursor-pointer"
                         disabled={resetLoading}
                       >
                         {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
                         Enviar Link de Recuperação
                       </button>
 
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => {
                           setIsForgotPassword(false);
                           setResetEmail('');
@@ -228,9 +223,9 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                         <p className="text-xs text-amber-700">
                           Seu cadastro foi realizado. Aguarde a autorização do administrador.
                         </p>
-                        <button 
+                        <button
                           type="button"
-                          className="mt-2 h-8 px-4 rounded-lg border border-amber-200 text-xs font-semibold text-amber-800 bg-white hover:bg-amber-50 transition-colors" 
+                          className="mt-2 h-8 px-4 rounded-lg border border-amber-200 text-xs font-semibold text-amber-800 bg-white hover:bg-amber-50 transition-colors"
                           onClick={() => setError('')}
                         >
                           Voltar ao login
@@ -249,8 +244,8 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                         <p className="text-xs text-red-700">
                           Procure o administrador para regularizar seu acesso.
                         </p>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           className="mt-2 h-8 px-4 rounded-lg border border-red-200 text-xs font-semibold text-red-800 bg-white hover:bg-red-50 transition-colors"
                           onClick={() => setError('')}
                         >
@@ -285,7 +280,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                         <label htmlFor="password" className="text-sm font-semibold text-slate-700">
                           Senha
                         </label>
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setIsForgotPassword(true)}
                           className="text-xs font-semibold text-[#0056c6] hover:underline cursor-pointer"
@@ -332,9 +327,9 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                       </div>
                     )}
 
-                    <button 
-                      type="submit" 
-                      className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] text-white font-bold rounded-xl transition-colors text-base shadow-sm mt-2 disabled:opacity-50 cursor-pointer" 
+                    <button
+                      type="submit"
+                      className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] text-white font-bold rounded-xl transition-colors text-base shadow-sm mt-2 disabled:opacity-50 cursor-pointer"
                       disabled={loading}
                     >
                       {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
@@ -351,40 +346,16 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                 </div>
 
                 <div className="text-center">
-                  <button 
-                    type="button" 
-                    onClick={() => onNavigate('/cadastro')} 
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('/cadastro')}
                     className="text-sm text-slate-600 cursor-pointer"
                   >
                     Não tem conta? <span className="text-[#0056c6] font-bold hover:underline">Solicitar cadastro</span>
                   </button>
                 </div>
 
-                {/* Acesso rápido demo */}
-                <div className="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4">
-                  <p className="text-xs font-bold text-slate-500 mb-3 text-left">
-                    Acesso rápido (demo — senha: ten123)
-                  </p>
-                  <div className="flex flex-wrap gap-2 justify-start">
-                    {[
-                      { l: 'Admin', e: 'admin@ten.com.br' },
-                      { l: 'Coord.', e: 'coord@ten.com.br' },
-                      { l: 'Gestor', e: 'gestor1@ten.com.br' },
-                      { l: 'Comprador', e: 'comprador1@ten.com.br' },
-                      { l: 'Solicitante', e: 'solicitante1@ten.com.br' },
-                      { l: 'Atendente', e: 'atendente1@ten.com.br' },
-                    ].map((u) => (
-                      <button
-                        key={u.e}
-                        type="button"
-                        onClick={() => prefill(u.e)}
-                        className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#0056c6] hover:bg-blue-50 transition-colors shadow-sm cursor-pointer"
-                      >
-                        {u.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
               </div>
             </div>
 
