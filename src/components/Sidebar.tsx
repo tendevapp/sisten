@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { 
   Home, Search, BarChart3, PlusCircle, List, FileCheck, 
   Database, LayoutDashboard, Upload, Users, Shield, 
-  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2
+  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -130,9 +130,17 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                   const isActive = currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path));
                   
                   return (
-                    <li key={itemIdx}>
-                      <button
-                        onClick={() => handleNavClick(item.path)}
+                    <li key={itemIdx} className="group/item relative">
+                      <a
+                        href={`#${item.path}`}
+                        onClick={(e) => {
+                          // Se o usuário clicar com Ctrl, Command ou Shift, deixa o comportamento padrão do navegador (abrir em nova aba/janela)
+                          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                            return;
+                          }
+                          e.preventDefault();
+                          handleNavClick(item.path);
+                        }}
                         className={`flex w-full items-center px-6 py-2 text-sm font-medium transition-all duration-150 ${
                           isActive 
                             ? 'border-l-4 border-emerald-500 bg-slate-800 text-emerald-400' 
@@ -141,8 +149,23 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                         title={item.label}
                       >
                         <Icon className={`h-5 w-5 shrink-0 ${collapsed ? 'mr-0' : 'mr-3'}`} />
-                        {!collapsed && <span className="truncate text-left">{item.label}</span>}
-                      </button>
+                        {!collapsed && (
+                          <div className="flex flex-1 items-center justify-between min-w-0">
+                            <span className="truncate text-left">{item.label}</span>
+                            <span 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                window.open(`#${item.path}`, '_blank');
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 p-0.5 rounded hover:bg-slate-700 text-slate-500 hover:text-white transition-opacity ml-1 cursor-pointer shrink-0"
+                              title="Abrir em nova aba"
+                            >
+                              <ArrowUpRight className="h-3.5 w-3.5" />
+                            </span>
+                          </div>
+                        )}
+                      </a>
                     </li>
                   );
                 })}
