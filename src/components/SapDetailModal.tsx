@@ -88,8 +88,8 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
   const [copiedCompra, setCopiedCompra] = useState(false);
 
   const handleCopyCompra = async () => {
-    const headers = "Item\tTexto Breve\tQtd\tTexto Técnico";
-    const dataRow = `${record.item_reqc || ''}\t${record.texto_breve || ''}\t${record.qtd_requisicao || ''} ${record.unidade_medida || ''}\t${techText || ''}`;
+    const headers = "Cód. Material\tTexto Breve\tQtd\tTexto Técnico";
+    const dataRow = `${record.material_code || ''}\t${record.texto_breve || ''}\t${record.qtd_requisicao || ''} ${record.unidade_medida || ''}\t${techText || ''}`;
     const tsv = `${headers}\n${dataRow}`;
     
     try {

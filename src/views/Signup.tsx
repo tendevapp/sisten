@@ -26,6 +26,11 @@ export default function Signup({ onNavigate }: SignupProps) {
 
   const sectors = localDb.getSectors();
 
+  const handleGoToLogin = () => {
+    sessionStorage.removeItem('is_signing_up');
+    onNavigate('/login');
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -47,6 +52,7 @@ export default function Signup({ onNavigate }: SignupProps) {
       return;
     }
 
+    sessionStorage.setItem('is_signing_up', 'true');
     setLoading(true);
     try {
       const res = await localDb.signup(name, email, sectorId, cargo, password);
@@ -54,9 +60,11 @@ export default function Signup({ onNavigate }: SignupProps) {
       if (res === 'sucesso') {
         setSuccess(true);
       } else {
+        sessionStorage.removeItem('is_signing_up');
         setError(res);
       }
     } catch (err) {
+      sessionStorage.removeItem('is_signing_up');
       setLoading(false);
       setError('Erro de comunicação com o servidor.');
     }
@@ -78,7 +86,7 @@ export default function Signup({ onNavigate }: SignupProps) {
         <div className="relative w-full max-w-md rounded-3xl bg-white p-8 sm:p-10 shadow-2xl border border-slate-100 text-left">
           {/* Back Button */}
           <button
-            onClick={() => onNavigate('/login')}
+            onClick={handleGoToLogin}
             className="flex items-center text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors mb-6 cursor-pointer"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -87,8 +95,8 @@ export default function Signup({ onNavigate }: SignupProps) {
 
           {!success ? (
             <>
-              <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">Solicitar cadastro</h3>
-              <p className="mt-1.5 text-sm text-slate-500">Crie seu perfil e aguarde liberação de acesso do administrador.</p>
+              <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">Cadastrar-se</h3>
+              <p className="mt-1.5 text-sm text-slate-500">Crie seu perfil para obter acesso imediato como Visualizador.</p>
 
               <form onSubmit={handleSignup} className="mt-6 space-y-4">
                 {error && (
@@ -200,24 +208,24 @@ export default function Signup({ onNavigate }: SignupProps) {
                   disabled={loading}
                   className="flex w-full items-center justify-center rounded-xl bg-[#0056c6] hover:bg-[#004bb0] py-2.5 text-sm font-bold text-white focus:outline-none disabled:opacity-50 transition-colors cursor-pointer"
                 >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Solicitar Cadastro'}
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Cadastrar-se'}
                 </button>
               </form>
             </>
           ) : (
             <div className="py-6 text-center">
               <CheckCircle2 className="mx-auto h-16 w-16 text-emerald-500 animate-bounce" />
-              <h3 className="mt-4 text-xl font-bold text-slate-900">Cadastro solicitado!</h3>
+              <h3 className="mt-4 text-xl font-bold text-slate-900">Cadastro realizado!</h3>
               <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-                Sua solicitação de acesso foi enviada com sucesso para a equipe de administração da Torres Eólicas do Nordeste (TEN).
+                Seu cadastro foi criado com sucesso na plataforma da Torres Eólicas do Nordeste (TEN).
               </p>
               <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-left text-xs text-slate-650 border border-slate-100">
                 <p className="font-bold">E-mail: <span className="font-semibold text-slate-900">{email}</span></p>
-                <p className="font-bold mt-1">Status: <span className="font-semibold text-amber-600">Aguardando Aprovação</span></p>
-                <p className="mt-2 text-slate-400">Assim que seu perfil for aprovado, você receberá permissão para efetuar login na plataforma.</p>
+                <p className="font-bold mt-1">Nível de Acesso: <span className="font-semibold text-emerald-600">Visualizador</span></p>
+                <p className="mt-2 text-slate-400">Seu acesso já está liberado. Clique no botão abaixo para fazer login e entrar no sistema.</p>
               </div>
               <button
-                onClick={() => onNavigate('/login')}
+                onClick={handleGoToLogin}
                 className="mt-6 w-full rounded-xl bg-slate-900 hover:bg-slate-800 py-2.5 text-sm font-bold text-white transition-colors cursor-pointer"
               >
                 Ir para o Login

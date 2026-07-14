@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { localDb } from './db/localDb';
-import { Profile } from './types';
+import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 
 // Components
@@ -66,6 +66,24 @@ function ViewLoadingFallback() {
 
 export default function App() {
   const [user, setUser] = useState<Profile | null>(null);
+  const [simulatedRole, setSimulatedRole] = useState<Role | null>(() => {
+    const saved = sessionStorage.getItem('simulated_role');
+    return (saved as Role) || null;
+  });
+
+  const handleSimulateRole = (role: Role | null) => {
+    setSimulatedRole(role);
+    if (role) {
+      sessionStorage.setItem('simulated_role', role);
+    } else {
+      sessionStorage.removeItem('simulated_role');
+    }
+  };
+
+  const activeUser = user && simulatedRole && user.roles.includes('admin')
+    ? { ...user, roles: [simulatedRole] }
+    : user;
+
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [loading, setLoading] = useState(true);
   // Incrementado quando a sincronização em segundo plano com o Supabase traz dados
@@ -131,6 +149,10 @@ export default function App() {
           if (event === 'PASSWORD_RECOVERY') {
             handleNavigate('/reset-password');
           } else if (session && session.user) {
+            if (sessionStorage.getItem('is_signing_up') === 'true') {
+              console.log('Ignorando login automático durante cadastro');
+              return;
+            }
             const { data: profile } = await supabase
               .from('profiles')
               .select('*')
@@ -238,6 +260,9 @@ export default function App() {
 
   // Render view depending on authorized route path
   const renderActiveView = () => {
+    const user = activeUser;
+    if (!user) return null;
+
     switch (currentPath) {
       case '/':
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -327,7 +352,7 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
       {/* Collapsible Sidebar */}
       <Sidebar 
-        user={user} 
+        user={activeUser} 
         currentPath={currentPath} 
         onNavigate={handleNavigate} 
         theme={theme}
@@ -339,6 +364,8 @@ export default function App() {
         {/* Dynamic Header */}
         <Header 
           user={user} 
+          simulatedRole={simulatedRole}
+          onSimulateRole={handleSimulateRole}
           onUserChange={handleUserSessionChange} 
           onNavigate={handleNavigate} 
         />

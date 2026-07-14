@@ -4,17 +4,19 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon } from 'lucide-react';
+import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile, Notification } from '../types';
+import { Profile, Notification, Role } from '../types';
 
 interface HeaderProps {
   user: Profile;
+  simulatedRole: Role | null;
+  onSimulateRole: (role: Role | null) => void;
   onUserChange: () => void;
   onNavigate: (path: string) => void;
 }
 
-export default function Header({ user, onUserChange, onNavigate }: HeaderProps) {
+export default function Header({ user, simulatedRole, onSimulateRole, onUserChange, onNavigate }: HeaderProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -100,8 +102,48 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
 
   const sector = localDb.getSectors().find(s => s.id === user.sector_id);
 
+  const rolesList = [
+    { value: 'admin', label: 'Administrador (Padrão)' },
+    { value: 'gestor', label: 'Gestor' },
+    { value: 'comprador', label: 'Comprador' },
+    { value: 'coordenador_suprimentos', label: 'Coordenador Suprimentos' },
+    { value: 'atendente', label: 'Atendente' },
+    { value: 'solicitante', label: 'Solicitante' },
+    { value: 'visualizador', label: 'Visualizador' },
+  ];
+
   return (
-    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-end border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-6 shadow-sm transition-colors">
+    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-6 shadow-sm transition-colors">
+      {/* Left side: Role Simulation (Only for Admins) */}
+      <div className="flex-1 flex justify-start">
+        {user.roles.includes('admin') && (
+          <div className="flex items-center space-x-2 bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-1.5 shadow-sm transition-all">
+            <div className="flex items-center text-amber-700 dark:text-amber-400">
+              <Eye className="h-4 w-4 mr-1.5 text-amber-600 dark:text-amber-500" />
+              <span className="text-xs font-semibold uppercase tracking-wider hidden md:inline">Simular Visão:</span>
+            </div>
+            <select
+              value={simulatedRole || 'admin'}
+              onChange={(e) => {
+                const val = e.target.value;
+                onSimulateRole(val === 'admin' ? null : (val as Role));
+              }}
+              className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 border-none focus:ring-0 focus:outline-none cursor-pointer py-0 pl-1 pr-6"
+            >
+              {rolesList.map((r) => (
+                <option 
+                  key={r.value} 
+                  value={r.value} 
+                  className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-normal"
+                >
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
       {/* Right side Controls */}
       <div className="flex items-center space-x-4">
         {/* Notifications */}
@@ -177,7 +219,9 @@ export default function Header({ user, onUserChange, onNavigate }: HeaderProps) 
             </div>
             <div className="hidden text-left lg:block">
               <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">{user.name}</p>
-              <p className="text-[11px] text-gray-400 dark:text-slate-400 truncate max-w-[120px]">{sector?.name || 'Sem Setor'} • {getRoleBadge(user.roles[0])}</p>
+              <p className="text-[11px] text-gray-400 dark:text-slate-400 truncate max-w-[150px]">
+                {sector?.name || 'Sem Setor'} • {simulatedRole ? `${getRoleBadge(simulatedRole)} (Simulado)` : getRoleBadge(user.roles[0])}
+              </p>
             </div>
             <ChevronDown className="h-4 w-4 text-gray-400" />
           </button>

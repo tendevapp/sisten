@@ -827,16 +827,18 @@ class LocalDatabase {
         return 'Erro ao recuperar perfil do usuário.';
       }
 
+      let mappedProfile: Profile;
+
       if (!profile) {
-        // Se o profile não foi criado pelo trigger, tentamos criar um perfil padrão pendente
+        // Se o profile não foi criado pelo trigger, tentamos criar um perfil padrão ativo como visualizador
         const newProfile: Profile = {
           id: data.user.id,
           email: data.user.email || email.toLowerCase(),
           name: data.user.user_metadata?.name || 'Novo Usuário',
           cargo: data.user.user_metadata?.cargo || '',
           sector_id: data.user.user_metadata?.sector_id || '1',
-          roles: ['pendente'],
-          status: 'pendente',
+          roles: ['visualizador'],
+          status: 'ativo',
           created_at: new Date().toISOString()
         };
 
@@ -848,14 +850,13 @@ class LocalDatabase {
           console.error('Erro ao inserir perfil padrão:', insertError);
         }
 
-        await supabase.auth.signOut();
-        return 'Cadastro realizado. Aguarde a autorização do administrador.';
+        mappedProfile = newProfile;
+      } else {
+        mappedProfile = {
+          ...profile,
+          roles: profile.roles || []
+        };
       }
-
-      const mappedProfile: Profile = {
-        ...profile,
-        roles: profile.roles || []
-      };
 
       if (mappedProfile.status === 'pendente') {
         await supabase.auth.signOut();
@@ -910,6 +911,9 @@ class LocalDatabase {
       if (!data.user) {
         return 'Falha ao criar cadastro.';
       }
+
+      // Desconectar o usuário imediatamente para evitar login automático do Supabase
+      await supabase.auth.signOut();
 
       this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
       return 'sucesso';
@@ -1028,8 +1032,7 @@ class LocalDatabase {
       admin: ['*'],
       visualizador: [
         'materiais.visualizar', 
-        'solicitacoes.visualizar_proprias', 
-        'sap.visualizar_painel'
+        'solicitacoes.visualizar_proprias'
       ],
       solicitante: [
         'materiais.visualizar', 
