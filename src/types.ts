@@ -292,6 +292,7 @@ export interface ContatoFornecedor {
   id: string;
   cod_vendor: string;
   fornecedor?: string;
+  nome_fantasia?: string;
   telefone?: string;
   email?: string;
   classificacao?: string;
@@ -303,6 +304,7 @@ export interface FornecedorMaterialRow {
   cod_forn: string;
   cnpj: string;
   fornecedor: string;
+  nome_fantasia?: string;
   regiao_uf: string;
   telefone: string;
   email: string;

@@ -85,7 +85,7 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
 
 export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) {
   const [loading, setLoading] = useState(true);
-  const [rmGroups, setRmGroups] = useState<RMGroup[]>([]);
+  const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +110,17 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [buyerFilter, setBuyerFilter] = useState('Todos');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [alertFilter, setAlertFilter] = useState('Todos');
+  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO'>('Todos');
+
+  const rmGroups = useMemo(() => {
+    if (poFilter === 'Sem PO') {
+      return rawRmGroups.map(g => {
+        const items = g.items.filter(it => it.record.status_requisicao === 'Sem PO');
+        return { rm: g.rm, items };
+      }).filter(g => g.items.length > 0);
+    }
+    return rawRmGroups;
+  }, [rawRmGroups, poFilter]);
 
   // Estado para controle de edição inline de cada item
   const [obsInputState, setObsInputState] = useState<Record<string, string>>({});
@@ -123,9 +134,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     setLoading(true);
     setError(null);
     try {
-      const semPoRecords = localDb
-        .getEnrichedSAPRequisicoes()
-        .filter(r => r.status_requisicao === 'Sem PO');
+      const allRecords = localDb.getEnrichedSAPRequisicoes();
+      const semPoRecords = allRecords;
 
       // Inicializa os inputs com os dados atuais salvos
       const initialObs: Record<string, string> = {};
@@ -234,11 +244,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         return { rm, items };
       });
 
-      setRmGroups(built);
+      setRawRmGroups(built);
     } catch (e: any) {
       console.error('Erro ao montar fornecedores (Sem PO):', e);
       setError('Falha ao montar dados. Tente atualizar novamente.');
-      setRmGroups([]);
+      setRawRmGroups([]);
     } finally {
       setLoading(false);
     }
@@ -448,14 +458,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   };
 
   const kpis = useMemo(() => {
+    let rmsSet = new Set<string>();
+    let itens = 0;
     let com = 0, sem = 0, criticos = 0;
     filteredGroups.forEach(g => g.items.forEach(it => {
+      if (it.record.status_requisicao !== 'Sem PO') return;
+      rmsSet.add(g.rm);
+      itens++;
       if (it.encontrado) com++; else sem++;
       const lvl = alertLevel(it.record.alerta || '');
       if (lvl === 'critico' || lvl === 'atencao') criticos++;
     }));
-    return { rms: filteredGroups.length, itens: filteredItemCount, com, sem, criticos };
-  }, [filteredGroups, filteredItemCount]);
+    return { rms: rmsSet.size, itens, com, sem, criticos };
+  }, [filteredGroups]);
 
   // Lista com as opções de status
   const itemStatusOptions: ItemStatus[] = [
@@ -497,13 +512,31 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         <div>
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <PackageSearch className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
-            Central de Compras — Itens Sem PO
+            Central de Compras
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Gestão operacional avançada de requisições pendentes. Localize fornecedores históricos, registre promessas de entrega e gerencie os status operacionais na mesma tela.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Filtro PO (Todos / Sem PO) */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
+            <button
+              onClick={() => setPoFilter('Todos')}
+              className={`px-3 py-1.5 rounded-md transition-all text-xs font-bold ${poFilter === 'Todos' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-455 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Exibir todos os registros enriquecidos (com e sem PO)"
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setPoFilter('Sem PO')}
+              className={`px-3 py-1.5 rounded-md transition-all text-xs font-bold ${poFilter === 'Sem PO' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-455 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Exibir apenas registros que não possuem documento de compra (pedido)"
+            >
+              Sem PO
+            </button>
+          </div>
+
           {/* View Toggles */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
@@ -761,6 +794,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                       </span>
                                     )}
                                   </div>
+                                  {f.nome_fantasia && f.nome_fantasia !== '—' && (
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                      Fantasia: {f.nome_fantasia}
+                                    </p>
+                                  )}
                                   <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
                                     Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
                                   </p>
@@ -776,19 +814,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                   </div>
                                 </div>
                                 <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
-                                  {f.telefone !== '—' && (
-                                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
+                                  {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                    <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
                                       <Phone className="h-3 w-3 text-slate-450" />
                                       <a
-                                        href={`tel:${f.telefone}`}
+                                        href={`tel:${singleTel}`}
                                         className="font-mono text-slate-705 dark:text-slate-305 hover:underline hover:text-emerald-650 cursor-pointer font-bold"
-                                        title={`Ligar: ${f.telefone}`}
+                                        title={`Ligar: ${singleTel}`}
                                       >
-                                        {f.telefone}
+                                        {singleTel}
                                       </a>
-                                      <ClipboardCopyButton text={f.telefone} label="telefone" />
+                                      <ClipboardCopyButton text={singleTel} label="telefone" />
                                     </div>
-                                  )}
+                                  ))}
                                   {f.email !== '—' && (
                                     <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
                                       <Mail className="h-3 w-3 text-slate-455" />
@@ -1000,6 +1038,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                                     </span>
                                                   )}
                                                 </div>
+                                                {f.nome_fantasia && f.nome_fantasia !== '—' && (
+                                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                                    Fantasia: {f.nome_fantasia}
+                                                  </p>
+                                                )}
                                                 <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
                                                   Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
                                                 </p>
@@ -1015,19 +1058,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                                 </div>
                                               </div>
                                               <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start md:items-end">
-                                                {f.telefone !== '—' && (
-                                                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
+                                                {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                                  <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
                                                     <Phone className="h-3 w-3 text-slate-455" />
                                                     <a
-                                                      href={`tel:${f.telefone}`}
+                                                      href={`tel:${singleTel}`}
                                                       className="font-mono text-slate-705 dark:text-slate-305 hover:underline hover:text-emerald-650 cursor-pointer font-bold"
-                                                      title={`Ligar: ${f.telefone}`}
+                                                      title={`Ligar: ${singleTel}`}
                                                     >
-                                                      {f.telefone}
+                                                      {singleTel}
                                                     </a>
-                                                    <ClipboardCopyButton text={f.telefone} label="telefone" />
+                                                    <ClipboardCopyButton text={singleTel} label="telefone" />
                                                   </div>
-                                                )}
+                                                ))}
                                                 {f.email !== '—' && (
                                                   <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
                                                     <Mail className="h-3 w-3 text-slate-455" />
@@ -1211,6 +1254,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                   <div className="flex items-center justify-between gap-1">
                                     <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={f.fornecedor}>
                                       {f.fornecedor}
+                                      {f.nome_fantasia && f.nome_fantasia !== '—' && (
+                                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
+                                          Fantasia: {f.nome_fantasia}
+                                        </span>
+                                      )}
                                     </span>
                                     <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
                                       {f.regiao_uf}
@@ -1224,14 +1272,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-                                    {f.telefone !== '—' && (
-                                      <div className="flex items-center gap-0.5 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px]">
-                                        <a href={`tel:${f.telefone}`} className="text-emerald-600 hover:underline font-bold font-mono" title={`Ligar: ${f.telefone}`}>
-                                          {f.telefone}
+                                    {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                      <div key={telIdx} className="flex items-center gap-0.5 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px]">
+                                        <a href={`tel:${singleTel}`} className="text-emerald-600 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
+                                          {singleTel}
                                         </a>
-                                        <ClipboardCopyButton text={f.telefone} label="telefone" />
+                                        <ClipboardCopyButton text={singleTel} label="telefone" />
                                       </div>
-                                    )}
+                                    ))}
                                     {f.email !== '—' && (
                                       <div className="flex items-center gap-0.5 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px]">
                                         <a href={`mailto:${f.email}`} className="text-blue-600 hover:underline font-bold break-all" title={f.email}>

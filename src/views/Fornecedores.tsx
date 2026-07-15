@@ -17,7 +17,7 @@ interface FornecedoresProps {
   user: Profile;
 }
 
-type SortField = 'cod_vendor' | 'fornecedor' | 'telefone' | 'email' | 'classificacao';
+type SortField = 'cod_vendor' | 'fornecedor' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
 type SortDir = 'asc' | 'desc';
 
 const CLASSIFICACOES = ['Preferencial', 'Aprovado', 'Em avaliação', 'Bloqueado', ''];
@@ -68,9 +68,10 @@ interface CadastroModalProps {
 function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   const [codVendor, setCodVendor] = useState('');
   const [fornecedor, setFornecedor] = useState('');
-  const [telefone, setTelefone] = useState('');
+  const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [emails, setEmails] = useState<string[]>(['']);
+  const [telefones, setTelefones] = useState<string[]>(['']);
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,6 +94,18 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
     setEmails(prev => prev.map((e, idx) => idx === index ? val : e));
   };
 
+  const handleAddTelefone = () => {
+    setTelefones(prev => [...prev, '']);
+  };
+
+  const handleRemoveTelefone = (index: number) => {
+    setTelefones(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleTelefoneChange = (index: number, val: string) => {
+    setTelefones(prev => prev.map((t, idx) => idx === index ? val : t));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!codVendor.trim()) { setError('Código SAP é obrigatório.'); return; }
@@ -107,10 +120,17 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
         .filter(Boolean)
         .join('; ');
 
+      // Filtra e junta os telefones com "; "
+      const telefonesFiltrados = telefones
+        .map(t => t.trim())
+        .filter(Boolean)
+        .join('; ');
+
       const payload = {
         cod_vendor: codVendor.trim(),
         fornecedor: fornecedor.trim() || null,
-        telefone: telefone.trim() || null,
+        nome_fantasia: nomeFantasia.trim() || null,
+        telefone: telefonesFiltrados || null,
         email: emailsFiltrados || null,
         classificacao: classificacao || null,
         created_at: new Date().toISOString(),
@@ -119,6 +139,9 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
 
       const { error: insErr } = await supabase.from('contatos').insert(payload);
       if (insErr) throw insErr;
+
+      // Sincroniza o banco local com o Supabase após a alteração
+      localDb.syncFromSupabase().catch(err => console.error('Erro ao sincronizar após cadastro:', err));
 
       onSaved();
       onClose();
@@ -139,7 +162,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-55 dark:bg-slate-800/50">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
               <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -151,7 +174,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-105 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -181,7 +204,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
 
               <div className="space-y-1.5">
                 <label htmlFor="new_fornecedor" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Nome do Fornecedor
+                  Razão Social
                 </label>
                 <input
                   id="new_fornecedor"
@@ -194,15 +217,15 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="new_telefone" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Telefone
+                <label htmlFor="new_nome_fantasia" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Nome Fantasia
                 </label>
                 <input
-                  id="new_telefone"
+                  id="new_nome_fantasia"
                   type="text"
-                  value={telefone}
-                  onChange={e => setTelefone(e.target.value)}
-                  placeholder="Ex: (11) 99999-9999"
+                  value={nomeFantasia}
+                  onChange={e => setNomeFantasia(e.target.value)}
+                  placeholder="Ex: Nome Fantasia Comercial"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
               </div>
@@ -225,41 +248,82 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
               </div>
             </div>
 
-            {/* Coluna da Direita: Lista Dinâmica de Emails */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
-                <button
-                  type="button"
-                  onClick={handleAddEmail}
-                  className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Adicionar E-mail
-                </button>
+            {/* Coluna da Direita: Listas Dinâmicas de E-mails e Telefones */}
+            <div className="space-y-5">
+              {/* Seção de E-mails */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
+                  <button
+                    type="button"
+                    onClick={handleAddEmail}
+                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Adicionar E-mail
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                  {emails.map((email, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => handleEmailChange(index, e.target.value)}
+                        placeholder={`E-mail ${index + 1}`}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      />
+                      {emails.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEmail(index)}
+                          className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
+                          title="Remover este e-mail"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-                {emails.map((email, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={e => handleEmailChange(index, e.target.value)}
-                      placeholder={`E-mail ${index + 1}`}
-                      className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                    />
-                    {emails.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveEmail(index)}
-                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
-                        title="Remover este e-mail"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+              {/* Seção de Telefones */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telefones de Contato</h3>
+                  <button
+                    type="button"
+                    onClick={handleAddTelefone}
+                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Adicionar Telefone
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                  {telefones.map((tel, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={tel}
+                        onChange={e => handleTelefoneChange(index, e.target.value)}
+                        placeholder={`Telefone ${index + 1}`}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      />
+                      {telefones.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTelefone(index)}
+                          className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
+                          title="Remover este telefone"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -305,13 +369,19 @@ interface EdicaoModalProps {
 
 function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) {
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
-  const [telefone, setTelefone] = useState(supplier.telefone || '');
+  const [nomeFantasia, setNomeFantasia] = useState(supplier.nome_fantasia || '');
   const [classificacao, setClassificacao] = useState(supplier.classificacao || '');
   
   // Converte a string de emails com ";" para um array editável
   const [emails, setEmails] = useState<string[]>(() => {
     if (!supplier.email) return [''];
     return supplier.email.split(';').map(e => e.trim()).filter(Boolean);
+  });
+
+  // Converte a string de telefones com ";" para um array editável
+  const [telefones, setTelefones] = useState<string[]>(() => {
+    if (!supplier.telefone) return [''];
+    return supplier.telefone.split(';').map(t => t.trim()).filter(Boolean);
   });
 
   const [saving, setSaving] = useState(false);
@@ -338,6 +408,21 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
     setEmails(prev => prev.map((e, idx) => idx === index ? val : e));
   };
 
+  const handleAddTelefone = () => {
+    if (!canEdit) return;
+    setTelefones(prev => [...prev, '']);
+  };
+
+  const handleRemoveTelefone = (index: number) => {
+    if (!canEdit) return;
+    setTelefones(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleTelefoneChange = (index: number, val: string) => {
+    if (!canEdit) return;
+    setTelefones(prev => prev.map((t, idx) => idx === index ? val : t));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) { setError('Supabase não configurado.'); return; }
@@ -350,11 +435,17 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
         .filter(Boolean)
         .join('; ');
 
+      const telefonesFiltrados = telefones
+        .map(t => t.trim())
+        .filter(Boolean)
+        .join('; ');
+
       const { error: upErr } = await supabase
         .from('contatos')
         .update({
           fornecedor: fornecedor.trim() || null,
-          telefone: telefone.trim() || null,
+          nome_fantasia: nomeFantasia.trim() || null,
+          telefone: telefonesFiltrados || null,
           email: emailsFiltrados || null,
           classificacao: classificacao || null,
           updated_at: new Date().toISOString()
@@ -362,6 +453,9 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
         .eq('id', supplier.id);
 
       if (upErr) throw upErr;
+
+      // Sincroniza o banco local com o Supabase após a alteração
+      localDb.syncFromSupabase().catch(err => console.error('Erro ao sincronizar após edição:', err));
 
       onSaved();
       onClose();
@@ -421,7 +515,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
 
               <div className="space-y-1.5">
                 <label htmlFor="edit_fornecedor" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Nome do Fornecedor
+                  Razão Social
                 </label>
                 <input
                   id="edit_fornecedor"
@@ -430,22 +524,22 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   value={fornecedor}
                   onChange={e => setFornecedor(e.target.value)}
                   placeholder="Ex: Empresa Ltda."
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="edit_telefone" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Telefone
+                <label htmlFor="edit_nome_fantasia" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Nome Fantasia
                 </label>
                 <input
-                  id="edit_telefone"
+                  id="edit_nome_fantasia"
                   type="text"
                   disabled={!canEdit}
-                  value={telefone}
-                  onChange={e => setTelefone(e.target.value)}
-                  placeholder="Ex: (11) 99999-9999"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  value={nomeFantasia}
+                  onChange={e => setNomeFantasia(e.target.value)}
+                  placeholder="Ex: Nome Fantasia Comercial"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
               </div>
 
@@ -458,7 +552,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   disabled={!canEdit}
                   value={classificacao}
                   onChange={e => setClassificacao(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
                 >
                   <option value="">— Sem classificação</option>
                   {CLASSIFICACOES.filter(Boolean).map(c => (
@@ -468,44 +562,88 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
               </div>
             </div>
 
-            {/* Coluna Direita: E-mails */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={handleAddEmail}
-                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                  >
-                    <Plus className="h-3.5 w-3.5" /> Adicionar E-mail
-                  </button>
-                )}
+            {/* Coluna Direita: Listas Dinâmicas de E-mails e Telefones */}
+            <div className="space-y-5">
+              {/* Seção de E-mails */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">E-mails de Contato</h3>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleAddEmail}
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Adicionar E-mail
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                  {emails.map((email, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="email"
+                        disabled={!canEdit}
+                        value={email}
+                        onChange={e => handleEmailChange(index, e.target.value)}
+                        placeholder={`E-mail ${index + 1}`}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      />
+                      {canEdit && emails.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEmail(index)}
+                          className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
+                          title="Remover este e-mail"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-                {emails.map((email, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="email"
-                      disabled={!canEdit}
-                      value={email}
-                      onChange={e => handleEmailChange(index, e.target.value)}
-                      placeholder={`E-mail ${index + 1}`}
-                      className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                    />
-                    {canEdit && emails.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveEmail(index)}
-                        className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
-                        title="Remover este e-mail"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+              {/* Seção de Telefones */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telefones de Contato</h3>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={handleAddTelefone}
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Adicionar Telefone
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                  {telefones.map((tel, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        disabled={!canEdit}
+                        value={tel}
+                        onChange={e => handleTelefoneChange(index, e.target.value)}
+                        placeholder={`Telefone ${index + 1}`}
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                      />
+                      {canEdit && telefones.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTelefone(index)}
+                          className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors shrink-0"
+                          title="Remover este telefone"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -795,6 +933,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                     {([
                       { field: 'cod_vendor', label: 'Cód. Vendor' },
                       { field: 'fornecedor', label: 'Fornecedor' },
+                      { field: 'nome_fantasia', label: 'Nome Fantasia' },
                       { field: 'telefone', label: 'Telefone' },
                       { field: 'email', label: 'E-mail' },
                       { field: 'classificacao', label: 'Classificação' },
@@ -859,9 +998,14 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           {row.fornecedor || <span className="text-slate-400 font-normal">—</span>}
                         </span>
                       </td>
+                      <td className="px-4 py-3.5 max-w-[200px]">
+                        <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={row.nome_fantasia || ''}>
+                          {row.nome_fantasia || <span className="text-slate-400 font-normal">—</span>}
+                        </span>
+                      </td>
                       <td className="px-4 py-3.5">
-                        <span className="text-sm text-slate-700 dark:text-slate-200">
-                          {row.telefone || <span className="text-slate-400">—</span>}
+                        <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={row.telefone ? row.telefone.split(';').join(', ') : ''}>
+                          {row.telefone ? row.telefone.split(';').join(', ') : <span className="text-slate-400">—</span>}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">

@@ -2040,6 +2040,7 @@ class LocalDatabase {
   private CONTATOS_COLUMNS = [
     { header: 'N° VENDOR', field: 'cod_vendor' },
     { header: 'FORNECEDORES', field: 'fornecedor' },
+    { header: 'NOME FANTASIA', field: 'nome_fantasia' },
     { header: 'TELEFONE', field: 'telefone' },
     { header: 'E-MAIL', field: 'email' },
     { header: 'CLASSIFICAÇÃO', field: 'classificacao' }
