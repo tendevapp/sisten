@@ -150,9 +150,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       setDateInputState(initialDates);
       setStatusInputState(initialStatus);
 
-      // Monta conjunto de variantes de codigo para matching tolerante a zeros
+      // Monta conjunto de variantes de codigo para matching tolerante a zeros (apenas para itens Sem PO)
       const codeVariants = new Set<string>();
       semPoRecords.forEach(r => {
+        if (r.status_requisicao !== 'Sem PO') return;
         const raw = (r.material_code || '').trim();
         if (!raw) return;
         codeVariants.add(raw);
@@ -231,7 +232,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       const rmMap = new Map<string, ItemNode[]>();
       const rmOrder: string[] = [];
       semPoRecords.forEach(record => {
-        const fornecedores = fornecedoresPorMaterial.get(normalizeCode(record.material_code)) || [];
+        const isSemPo = record.status_requisicao === 'Sem PO';
+        const fornecedores = isSemPo
+          ? (fornecedoresPorMaterial.get(normalizeCode(record.material_code)) || [])
+          : [];
         const node: ItemNode = { record, encontrado: fornecedores.length > 0, fornecedores };
         const rm = record.requisicao_de_compra || '—';
         if (!rmMap.has(rm)) { rmMap.set(rm, []); rmOrder.push(rm); }
