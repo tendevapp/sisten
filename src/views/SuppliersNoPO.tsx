@@ -308,6 +308,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     return Array.from(s).sort();
   }, [rmGroups]);
 
+  // Itens "Sem PO" sempre antes dos que já possuem PO (Processado), preservando a ordem
+  // original entre itens do mesmo status.
+  const poRank = (r: EnrichedSAPRecord): number => r.status_requisicao === 'Processado' ? 1 : 0;
+
   // Filtragem
   const filteredGroups = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -333,12 +337,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         }
         return true;
       });
-      if (items.length > 0) result.push({ rm: g.rm, items });
+      if (items.length > 0) result.push({ rm: g.rm, items: items.slice().sort((a, b) => poRank(a.record) - poRank(b.record)) });
     });
     return result;
   }, [rmGroups, searchQuery, buyerFilter, statusFilter, alertFilter]);
 
-  // Lista plana de itens filtrados
+  // Lista plana de itens filtrados (Sem PO sempre antes dos que já possuem PO)
   const filteredFlatItems = useMemo(() => {
     const list: { rm: string; item: ItemNode }[] = [];
     filteredGroups.forEach(g => {
@@ -346,7 +350,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         list.push({ rm: g.rm, item: it });
       });
     });
-    return list;
+    return list.slice().sort((a, b) => poRank(a.item.record) - poRank(b.item.record));
   }, [filteredGroups]);
 
   const totalItems = useMemo(() => rmGroups.reduce((s, g) => s + g.items.length, 0), [rmGroups]);
@@ -540,7 +544,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <PackageSearch className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
             Central de Compras
@@ -549,7 +553,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             Gestão operacional avançada de requisições pendentes. Localize fornecedores históricos, registre promessas de entrega e gerencie os status operacionais na mesma tela.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
           {/* Filtro PO (Todos / Sem PO) */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
@@ -608,7 +612,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               onClick={handleExportExcel}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
             >
-              <FileSpreadsheet className="h-4 w-4" /> Exportar Planilha
+              <FileSpreadsheet className="h-4 w-4" /> Exportar
             </button>
           )}
         </div>
