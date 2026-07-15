@@ -451,6 +451,33 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     },
   };
 
+  const formatDateBR = (d?: string): string => {
+    if (!d) return '—';
+    const parsed = new Date(d);
+    return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
+  };
+
+  // Badge de identificação visual: item já possui PO emitida vs. ainda em aberto (Sem PO)
+  const renderPOBadge = (r: EnrichedSAPRecord) => {
+    const hasPO = r.status_requisicao === 'Processado';
+    if (hasPO) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+          title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
+        >
+          <Check className="h-3 w-3 shrink-0" />
+          PO {r.documento_compra || '—'}{r.data_pedido ? ` • ${formatDateBR(r.data_pedido)}` : ''}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
+        Sem PO
+      </span>
+    );
+  };
+
   const worstLevel = (items: ItemNode[]): 'critico' | 'atencao' | 'monitorar' | 'ok' => {
     const order = ['ok', 'monitorar', 'atencao', 'critico'];
     let worst = 'ok';
@@ -740,7 +767,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           >
                             <Info className="h-4.5 w-4.5" />
                           </button>
-                          {r.alerta && (
+                          {renderPOBadge(r)}
+                          {r.status_requisicao !== 'Processado' && r.alerta && (
                             <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
                               {r.alerta}
                             </span>
@@ -766,10 +794,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
                         <span>•</span>
                         <span>Natureza: {r.natureza}</span>
-                        <span>•</span>
-                        <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
-                          Aberto há {r.dias_em_aberto}d
-                        </span>
+                        {r.status_requisicao !== 'Processado' && (
+                          <>
+                            <span>•</span>
+                            <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
+                              Aberto há {r.dias_em_aberto}d
+                            </span>
+                          </>
+                        )}
                       </div>
 
                       {/* Fornecedores Históricos */}
@@ -983,7 +1015,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                       >
                                         <Info className="h-3.5 w-3.5" />
                                       </button>
-                                      {r.alerta && (
+                                      {renderPOBadge(r)}
+                                      {r.status_requisicao !== 'Processado' && r.alerta && (
                                         <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${ALERT_STYLE[ilvl].chip}`}>
                                           {r.alerta}
                                         </span>
@@ -998,7 +1031,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                 <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end text-[11px] text-slate-450 dark:text-slate-500 font-semibold">
                                   <span>{r.qtd_requisicao} {r.unidade_medida}</span>
                                   <span>Status: <span className="font-bold text-slate-700 dark:text-slate-350">{r.item_status || 'Buscar Fornecedores'}</span></span>
-                                  <span>{r.dias_em_aberto}d aberto</span>
+                                  {r.status_requisicao !== 'Processado' && <span>{r.dias_em_aberto}d aberto</span>}
                                   <div className="flex items-center gap-2">
                                     {encontrado ? (
                                       <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 font-bold">
@@ -1187,6 +1220,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
                     <th className="py-3 px-3">RM / Item</th>
+                    <th className="py-3 px-3">PO</th>
                     <th className="py-3 px-3">Material</th>
                     <th className="py-3 px-3">Descrição</th>
                     <th className="py-3 px-3">Qtd / Un</th>
@@ -1206,6 +1240,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
                           <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
+                        </td>
+
+                        {/* PO Status */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {renderPOBadge(r)}
                         </td>
 
                         {/* Material Code (Clickable) */}
@@ -1228,10 +1267,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             {r.texto_breve}
                           </button>
                           <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex-wrap">
-                            <span>Aberto {r.dias_em_aberto}d</span>
-                            <span>•</span>
+                            {r.status_requisicao !== 'Processado' && (
+                              <>
+                                <span>Aberto {r.dias_em_aberto}d</span>
+                                <span>•</span>
+                              </>
+                            )}
                             <span>G: {r.grupo_comprador}</span>
-                            {r.alerta && (
+                            {r.status_requisicao !== 'Processado' && r.alerta && (
                               <>
                                 <span>•</span>
                                 <span className="text-amber-600 dark:text-amber-500">{r.alerta}</span>

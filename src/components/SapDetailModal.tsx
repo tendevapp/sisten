@@ -181,10 +181,23 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
               <Package className="h-5 w-5 text-emerald-600 dark:text-emerald-500" />
               Detalhamento SAP do Item
             </h3>
-            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
               <span className="font-mono font-bold">RM: {record.requisicao_de_compra || '—'}</span>
               <span>•</span>
               <span className="font-mono font-bold">Item: {record.item_reqc || '—'}</span>
+              {record.status_requisicao === 'Processado' ? (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+                  title={`PO ${record.documento_compra || '—'} emitida em ${record.data_pedido ? new Date(record.data_pedido).toLocaleDateString('pt-BR') : '—'}`}
+                >
+                  <Check className="h-3 w-3 shrink-0" />
+                  PO {record.documento_compra || '—'}{record.data_pedido ? ` • ${new Date(record.data_pedido).toLocaleDateString('pt-BR')}` : ''}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">
+                  Sem PO
+                </span>
+              )}
             </div>
           </div>
           <button

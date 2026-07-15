@@ -1773,14 +1773,18 @@ class LocalDatabase {
       const status_entrega = data_migo ? 'Entregue' : 'Não Entregue';
       const isDelivered = status_entrega === 'Entregue';
 
-      // data_referencia_prazo
-      const data_referencia_prazo = (hasPO && isDelivered && data_migo)
+      // data_referencia_prazo: uma vez emitida a PO, a responsabilidade não é mais do
+      // comprador, então a contagem de dias/atraso congela na data da PO (ou na data de
+      // entrega, se já entregue) em vez de continuar avançando com o dia atual.
+      const data_referencia_prazo = hasPO && isDelivered && data_migo
         ? new Date(data_migo)
+        : hasPO && p.data_pedido
+        ? new Date(p.data_pedido)
         : currentDate;
 
-      // Calculate days in open
+      // Calculate days in open (congela na data_referencia_prazo quando já há PO)
       const solDate = new Date(r.data_solicitacao);
-      const diffTimeSol = currentDate.getTime() - solDate.getTime();
+      const diffTimeSol = data_referencia_prazo.getTime() - solDate.getTime();
       const dias_em_aberto = Math.max(0, Math.floor(diffTimeSol / (1000 * 60 * 60 * 24)));
 
       // Buyer delay calculation: (data_referencia_prazo - data_solicitacao) - lead_time_compras_meta
