@@ -62,6 +62,7 @@ Contatos e classificação por fornecedor, alimentado por importação de planil
 | -------------------- | ------------------- | ------- |
 | N° VENDOR             | `cod_vendor`         | `text`  |
 | FORNECEDORES          | `fornecedor`          | `text`  |
+| NOME FANTASIA         | `nome_fantasia`      | `text`  |
 | TELEFONE               | `telefone`             | `text`  |
 | E-MAIL                 | `email`                | `text`  |
 | CLASSIFICAÇÃO          | `classificacao`        | `text`  |
@@ -71,6 +72,7 @@ CREATE TABLE public.contatos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cod_vendor TEXT UNIQUE,
   fornecedor TEXT,
+  nome_fantasia TEXT,
   telefone TEXT,
   email TEXT,
   classificacao TEXT,
@@ -80,6 +82,7 @@ CREATE TABLE public.contatos (
 
 ALTER TABLE public.contatos ENABLE ROW LEVEL SECURITY;
 ```
+
 
 `cod_vendor` é único e serve de chave para `upsert` (`onConflict: 'cod_vendor'`), igual ao
 padrão já usado para `materials.material_code` (`localDb.ts:1179`). O join com

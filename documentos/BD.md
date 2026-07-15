@@ -498,6 +498,7 @@ Cadastro de contatos e classificação mercadológica por fornecedor.
   | `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` |
   | `cod_vendor` | `text` | `unique`, `updatable` | - |
   | `fornecedor` | `text` | `nullable`, `updatable` | - |
+  | `nome_fantasia` | `text` | `nullable`, `updatable` | - |
   | `telefone` | `text` | `nullable`, `updatable` | - |
   | `email` | `text` | `nullable`, `updatable` | - |
   | `classificacao` | `text` | `nullable`, `updatable` | - |
