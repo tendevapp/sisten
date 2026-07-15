@@ -44,6 +44,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapLogs, setSapLogs] = useState<any[]>([]);
   const [sapLogStatus, setSapLogStatus] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
   const [sapProgress, setSapProgress] = useState(0);
+  const [sapLogMessage, setSapLogMessage] = useState('');
   const [sapLogError, setSapLogError] = useState('');
   const [currentSapUploadType, setCurrentSapUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [sapCsvText, setSapCsvText] = useState('');
@@ -746,15 +747,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     setLastUploadLog(null);
                     setTimeout(() => {
                       try {
-                        const headers = ['Material', 'TxtBreve', 'Cod Forn', 'CNPJ', 'Fornecedor', 'Rg', 'Data'];
+                        const headers = ['ReqC', 'Itm', 'Material', 'TxtBreve', 'Fornecedor', 'Nº ID fiscal 1', 'Nome 1', 'Rg', 'Data doc.', 'Valor líquido'];
                         const data = [
-                          ['10000123', 'Cabo de Cobre Flexível 4mm', 'F900213', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-06-01'],
-                          ['10000123', 'Cabo de Cobre Flexível 4mm', 'F800555', '98.765.432/0001-00', 'Alcoa Alumínio Brasil', 'RJ', '2026-07-01'],
-                          ['10000456', 'Disjuntor Termomagnético 50A', 'F900213', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-05-15'],
-                          ['10000789', 'Placa de Aço Laminado 2000x1000x10mm', 'F700333', '11.222.333/0001-44', 'Usiminas S.A.', 'MG', '2026-06-20']
+                          ['1100320195', '00020', '10000123', 'Cabo de Cobre Flexível 4mm', '1000015507', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-06-01', 500],
+                          ['1100320250', '00030', '10000123', 'Cabo de Cobre Flexível 4mm', 'F800555', '98.765.432/0001-00', 'Alcoa Alumínio Brasil', 'RJ', '2026-07-01', 1200],
+                          ['1100320250', '00040', '10000456', 'Disjuntor Termomagnético 50A', '1000015507', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-05-15', 300],
+                          ['1100327694', '00010', '10000789', 'Placa de Aço Laminado 2000x1000x10mm', 'F700333', '11.222.333/0001-44', 'Usiminas S.A.', 'MG', '2026-06-20', 4500]
                         ];
                         const rawRows = [headers, ...data];
-                        localDb.importPedidosForn(rawRows, 'historico_pedidos_simulado.xlsx').then(log => {
+                        localDb.importPedidosForn(rawRows, 'historico_pedidos_simulado.xlsx', (progress, message) => {
+                          setSapProgress(progress);
+                          if (message) setSapLogMessage(message);
+                        }).then(log => {
                           setLastUploadLog(log);
                           setSapLogStatus('success');
                           setSapLogError('');
@@ -977,7 +981,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
                             
-                            localDb.importPedidosForn(rawRows, file.name).then(log => {
+                            setSapProgress(0);
+                            setSapLogMessage('Lendo dados...');
+                            localDb.importPedidosForn(rawRows, file.name, (progress, message) => {
+                              setSapProgress(progress);
+                              if (message) setSapLogMessage(message);
+                            }).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
@@ -1074,7 +1083,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <div className="space-y-2 py-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                   <RefreshCw className="h-4 w-4 animate-spin text-emerald-600" />
-                  <span>Processando carga do SAP e recalculando metas de entrega...</span>
+                  <span>{sapLogMessage || 'Processando carga do SAP e recalculando metas de entrega...'}</span>
                   <span className="ml-auto tabular-nums text-emerald-600">{sapProgress}%</span>
                 </div>
                 <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -1163,7 +1172,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> Colunas Esperadas Ausentes:
                         </p>
                         <ul className="list-disc pl-4 space-y-0.5">
-                          {lastUploadLog.columns_missing.map((c: string) => <li key={c}>{c}</li>)}
+                          {lastUploadLog.columns_missing.map((c: string, idx: number) => <li key={`${c}_${idx}`}>{c}</li>)}
                         </ul>
                       </div>
                     )}
@@ -1173,7 +1182,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           <RefreshCw className="h-3.5 w-3.5 text-blue-600 animate-spin-slow" /> Colunas Novas Detectadas (Salvas em extra):
                         </p>
                         <ul className="list-disc pl-4 space-y-0.5 animate-pulse">
-                          {lastUploadLog.columns_new.map((c: string) => <li key={c}>{c}</li>)}
+                          {lastUploadLog.columns_new.map((c: string, idx: number) => <li key={`${c}_${idx}`}>{c}</li>)}
                         </ul>
                       </div>
                     )}

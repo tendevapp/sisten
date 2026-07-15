@@ -1712,13 +1712,44 @@ class LocalDatabase {
     };
   }
 
+  private normalizePedidoFornRow(p: any): PedidoForn {
+    const fornecedor_codigo = p.fornecedor_codigo || p.cod_forn || '';
+    const cnpj_fornecedor = p.cnpj_fornecedor || p.cnpj || '';
+    const fornecedor_name = p.fornecedor_name || p.fornecedor || '';
+    const preco_liquido = p.preco_liquido !== undefined && p.preco_liquido !== null
+      ? Number(p.preco_liquido)
+      : (p.valor_liquido !== undefined && p.valor_liquido !== null
+         ? Number(p.valor_liquido)
+         : Number(p.preco_liquido_unit || 0));
+    const data_pedido = p.data_pedido || p.data_doc || '';
+
+    return {
+      ...p,
+      ri: p.ri || '',
+      documento_compra: p.documento_compra || p.doc_compra || '',
+      item_pedido: p.item_pedido || p.item || '',
+      fornecedor_code: fornecedor_codigo,
+      fornecedor_name: fornecedor_name,
+      data_pedido: data_pedido,
+      data_entrega_sap: p.data_entrega_sap || p.dt_remessa || '',
+      valor_brl: p.valor_brl !== undefined ? Number(p.valor_brl) : (p.valor_em_brl !== undefined ? Number(p.valor_em_brl) : preco_liquido),
+      preco_liquido: preco_liquido,
+      
+      // Campos antigos para retrocompatibilidade
+      cod_forn: fornecedor_codigo,
+      cnpj: cnpj_fornecedor,
+      fornecedor: fornecedor_name
+    };
+  }
+
   public getPedidos(): SAPPedido[] {
     const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
     return raw.map(p => this.normalizePedidoRow(p));
   }
 
   public getPedidosForn(): PedidoForn[] {
-    return this.getStorageItem<PedidoForn[]>(this.pedidosFornKey, []);
+    const raw = this.getStorageItem<any[]>(this.pedidosFornKey, []);
+    return raw.map(p => this.normalizePedidoFornRow(p));
   }
 
   public getContatosForn(): ContatoFornecedor[] {
@@ -2460,13 +2491,15 @@ class LocalDatabase {
 
     const reqColIdx = mappedFields.findIndex(f => f === 'reqc');
     const itemColIdx = mappedFields.findIndex(f => f === 'item');
+    const itmLiberacaoColIdx = mappedFields.findIndex(f => f === 'itm_liberacao');
+    const itemRcCotIdx = mappedFields.findIndex(f => f === 'item_rc_cotacao');
     // o cabecalho no Excel pode ser 'E' (abreviado) ou 'Eflag_e' (nome completo)
     const eflagColByField = mappedFields.findIndex(f => f === 'eflag_e');
     const eflagColByHeader = headers.findIndex(h => h.trim().toUpperCase() === 'E' || h.trim().toUpperCase() === 'EFLAG_E');
     const eflagColIdx = eflagColByField !== -1 ? eflagColByField : eflagColByHeader;
 
-    if (reqColIdx === -1 || itemColIdx === -1) {
-      throw new Error('Formato rejeitado: Colunas obrigatórias do Pedido SAP (ReqC e Item) não encontradas.');
+    if (reqColIdx === -1 || (itemColIdx === -1 && itmLiberacaoColIdx === -1 && itemRcCotIdx === -1)) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do Pedido SAP (ReqC e Item/Itm ou Item RC Cot) não encontradas.');
     }
 
     // Busca os pedidos atuais diretamente do Supabase (fonte de verdade),
@@ -2494,7 +2527,10 @@ class LocalDatabase {
     dataRows.forEach((row, index) => {
       const fileRowIndex = index + 2;
       const reqNo = String(row[reqColIdx] || '').trim();
-      const itemNo = String(row[itemColIdx] || '').trim().padStart(5, '0');
+      const useItemRcCot = itemRcCotIdx !== -1 && row[itemRcCotIdx] !== undefined && row[itemRcCotIdx] !== '';
+      const useItmLiberacao = itmLiberacaoColIdx !== -1 && row[itmLiberacaoColIdx] !== undefined && row[itmLiberacaoColIdx] !== '';
+      const targetItemIdx = useItemRcCot ? itemRcCotIdx : (useItmLiberacao ? itmLiberacaoColIdx : itemColIdx);
+      const itemNo = String(row[targetItemIdx] || '').trim().padStart(5, '0');
       if (!reqNo || !itemNo || reqNo === 'undefined' || itemNo === '00000') {
         ignoredRows.push({
           row: fileRowIndex,
@@ -2747,96 +2783,338 @@ class LocalDatabase {
     }
   }
 
-  public async importPedidosForn(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+  public async importPedidosForn(
+    rawRows: any[][], 
+    filename: string,
+    onProgress?: (percent: number, message?: string) => void
+  ): Promise<SAPImportLog> {
     if (rawRows.length < 2) {
       throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
     }
 
+    const generateUUID = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
+    onProgress?.(2, 'Lendo cabeçalhos e reconciliando schema...');
     const headers = rawRows[0].map(h => String(h || '').trim());
     const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
 
-    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.PEDIDOSFORN_COLUMNS);
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ZL0132_COLUMNS);
 
-    const matColIdx = mappedFields.findIndex(f => f === 'material');
-    const fornColIdx = mappedFields.findIndex(f => f === 'cod_forn');
-    const dateColIdx = mappedFields.findIndex(f => f === 'data_pedido');
+    const reqColIdx = mappedFields.findIndex(f => f === 'reqc');
+    const itemColIdx = mappedFields.findIndex(f => f === 'item');
+    const itmLiberacaoColIdx = mappedFields.findIndex(f => f === 'itm_liberacao');
+    const itemRcCotIdx = mappedFields.findIndex(f => f === 'item_rc_cotacao');
+    const docCompraColIdx = mappedFields.findIndex(f => f === 'doc_compra');
+    // o cabecalho no Excel pode ser 'E' (abreviado) ou 'Eflag_e' (nome completo)
+    const eflagColByField = mappedFields.findIndex(f => f === 'eflag_e');
+    const eflagColByHeader = headers.findIndex(h => h.trim().toUpperCase() === 'E' || h.trim().toUpperCase() === 'EFLAG_E');
+    const eflagColIdx = eflagColByField !== -1 ? eflagColByField : eflagColByHeader;
 
-    if (matColIdx === -1 || fornColIdx === -1 || dateColIdx === -1) {
-      throw new Error('Formato rejeitado: Colunas obrigatórias (Material, Cod Forn, Data) não encontradas.');
+    if (reqColIdx === -1 || (itemColIdx === -1 && itmLiberacaoColIdx === -1 && itemRcCotIdx === -1)) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias (ReqC e Item/Itm ou Item RC Cot) não encontradas.');
     }
 
     const user = this.getCurrentUser();
     let inserted = 0;
     let updated = 0;
-    const dbRows: any[] = [];
+    const quantityChanges: any[] = [];
     const ignoredRows: any[] = [];
 
-    const txtBreveIdx = mappedFields.findIndex(f => f === 'txt_breve');
-    const cnpjIdx = mappedFields.findIndex(f => f === 'cnpj');
-    const fornecedorIdx = mappedFields.findIndex(f => f === 'fornecedor');
-    const regiaoIdx = mappedFields.findIndex(f => f === 'regiao_uf');
-    const precoLiquidoIdx = mappedFields.findIndex(f => f === 'preco_liquido');
+    // 1. Passo de pré-mapeamento e coleta dos RIs do arquivo
+    onProgress?.(5, 'Pré-mapeando linhas e gerando chaves RIs...');
+    const rawRecordsToProcess: any[] = [];
+    const risNoArquivo: string[] = [];
 
     dataRows.forEach((row, index) => {
       const fileRowIndex = index + 2;
-      const material = String(row[matColIdx] || '').trim();
-      const codForn = String(row[fornColIdx] || '').trim();
-      const rawDate = row[dateColIdx];
+      const reqNo = String(row[reqColIdx] || '').trim();
+      const useItemRcCot = itemRcCotIdx !== -1 && row[itemRcCotIdx] !== undefined && row[itemRcCotIdx] !== '';
+      const useItmLiberacao = itmLiberacaoColIdx !== -1 && row[itmLiberacaoColIdx] !== undefined && row[itmLiberacaoColIdx] !== '';
+      const targetItemIdx = useItemRcCot ? itemRcCotIdx : (useItmLiberacao ? itmLiberacaoColIdx : itemColIdx);
+      const itemNo = String(row[targetItemIdx] || '').trim().padStart(5, '0');
 
-      if (!material || !codForn || !rawDate) {
+      if (!reqNo || !itemNo || reqNo === 'undefined' || itemNo === '00000') {
         ignoredRows.push({
           row: fileRowIndex,
-          identifier: `Material: ${material}, Forn: ${codForn}`,
-          reason: 'Material, Código do Fornecedor ou Data vazios.'
+          identifier: reqNo ? `ReqC: ${reqNo}, Item: ${itemNo}` : 'N/A',
+          reason: 'Chave de Requisição (ReqC) ou Item de Requisição inválido/vazio'
         });
         return;
       }
 
-      let dataPedido: string | null = null;
-      if (rawDate) {
-        if (typeof rawDate === 'number') {
-          const dateObj = new Date((rawDate - 25569) * 86400 * 1000);
-          dataPedido = dateObj.toISOString().split('T')[0];
-        } else {
-          dataPedido = String(rawDate).split('T')[0];
+      const ri = reqNo + itemNo;
+
+      // Ignora registros com flag de exclusão (Eflag_e = L)
+      if (eflagColIdx !== -1) {
+        const eflagVal = String(row[eflagColIdx] || '').trim().toUpperCase();
+        if (eflagVal === 'L') {
+          ignoredRows.push({
+            row: fileRowIndex,
+            identifier: ri,
+            reason: 'Pedido excluído no SAP (Eflag_e = L)'
+          });
+          return;
         }
       }
 
-      const rawPreco = precoLiquidoIdx !== -1 ? row[precoLiquidoIdx] : null;
-      const precoLiquido = rawPreco !== null && rawPreco !== undefined && rawPreco !== ''
-        ? Number(String(rawPreco).replace(',', '.'))
-        : null;
+      const docCompra = docCompraColIdx !== -1 ? String(row[docCompraColIdx] || '').trim() : '';
 
-      dbRows.push({
-        material,
-        cod_forn: codForn,
-        data_pedido: dataPedido,
-        txt_breve: txtBreveIdx !== -1 ? String(row[txtBreveIdx] || '').trim() : null,
-        cnpj: cnpjIdx !== -1 ? String(row[cnpjIdx] || '').trim() : null,
-        fornecedor: fornecedorIdx !== -1 ? String(row[fornecedorIdx] || '').trim() : null,
-        regiao_uf: regiaoIdx !== -1 ? String(row[regiaoIdx] || '').trim() : null,
-        preco_liquido: precoLiquido !== null && !isNaN(precoLiquido) ? precoLiquido : null,
-        updated_at: new Date().toISOString()
+      rawRecordsToProcess.push({ fileRowIndex, ri, row, reqNo, itemNo, docCompra });
+      risNoArquivo.push(ri);
+    });
+
+    // 2. Buscar no Supabase apenas os registros de pedidosforn correspondentes aos RIs do arquivo
+    // Usamos lotes de 400 RIs por requisição e executamos de 10 em 10 em paralelo para não exceder limites de URI ou taxa de API
+    let existingMap = new Map<string, any>();
+    if (risNoArquivo.length > 0) {
+      try {
+        const batchSize = 400;
+        const concurrency = 10;
+        const allExistingRows: any[] = [];
+        
+        const allBatches: string[][] = [];
+        for (let i = 0; i < risNoArquivo.length; i += batchSize) {
+          allBatches.push(risNoArquivo.slice(i, i + batchSize));
+        }
+
+        for (let i = 0; i < allBatches.length; i += concurrency) {
+          const currentBatchIdx = Math.min(i + concurrency, allBatches.length);
+          const percent = 10 + Math.floor((i / allBatches.length) * 20);
+          onProgress?.(
+            percent,
+            `Verificando duplicidades no banco: RIs ${i * batchSize + 1} a ${Math.min(currentBatchIdx * batchSize, risNoArquivo.length)} de ${risNoArquivo.length}...`
+          );
+
+          const group = allBatches.slice(i, i + concurrency);
+          const promises = group.map(batch =>
+            supabase
+              .from('pedidosforn')
+              .select('id, ri, doc_compra, campos_extras, qtd_pedido')
+              .in('ri', batch)
+          );
+          
+          const results = await Promise.all(promises);
+          for (const res of results) {
+            if (res.error) throw res.error;
+            if (res.data) {
+              allExistingRows.push(...res.data);
+            }
+          }
+        }
+        
+        if (allExistingRows.length > 0) {
+          existingMap = new Map(allExistingRows.map(r => [r.ri + '_' + (r.doc_compra || ''), r]));
+        }
+      } catch (err) {
+        console.warn('Erro ao buscar pedidosforn existentes no Supabase, usando verificação em memória local.', err);
+      }
+    }
+
+    const newPedidosMap = new Map<string, any>();
+
+    // 3. Processar as linhas mapeando os valores
+    onProgress?.(32, 'Processando dados da planilha e identificando alterações de quantidade...');
+    rawRecordsToProcess.forEach(({ fileRowIndex, ri, row, reqNo, itemNo, docCompra }) => {
+      const record: any = {};
+      const campos_extras: Record<string, any> = {};
+
+      row.forEach((val, colIdx) => {
+        const field = mappedFields[colIdx];
+        const header = headers[colIdx];
+        if (field) {
+          if (field === 'qtd_pedido' || field === 'qtd_fornecida' || field === 'preco_liquido_unit' || field === 'valor_em_brl' || field === 'valor_liquido' || field === 'valor_efetivo') {
+            record[field] = val !== '' ? Number(val) : 0;
+          } else if (field === 'data_rc' || field === 'data_doc' || field === 'dt_remessa' || field === 'data_migo' || field === 'data_pc_sc' || field === 'modificado_em') {
+            if (val) {
+              if (typeof val === 'number') {
+                const dateObj = new Date((val - 25569) * 86400 * 1000);
+                record[field] = dateObj.toISOString().split('T')[0];
+              } else {
+                record[field] = String(val).split('T')[0];
+              }
+            } else {
+              record[field] = null;
+            }
+          } else {
+            record[field] = String(val).trim();
+          }
+        } else if (header) {
+          campos_extras[header] = val;
+        }
       });
+
+      const docCompraVal = record.doc_compra || docCompra || '';
+      const compositeKey = ri + '_' + docCompraVal;
+      const existing = existingMap.get(compositeKey);
+
+      if (newPedidosMap.has(compositeKey)) {
+        const existingInBatch = newPedidosMap.get(compositeKey)!;
+        const currentDataDoc = record.data_doc ? new Date(record.data_doc).getTime() : 0;
+        const existingDataDoc = existingInBatch.data_pedido ? new Date(existingInBatch.data_pedido).getTime() : 0;
+
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: ri + ' (PO: ' + docCompraVal + ')',
+          reason: `Registro com chave RI e PO duplicada no arquivo. Mantido apenas o documento com data mais recente.`
+        });
+
+        if (currentDataDoc > existingDataDoc) {
+          newPedidosMap.set(compositeKey, {
+            ri,
+            material: record.material || null,
+            txt_breve: record.txt_breve || null,
+            fornecedor_codigo: record.fornecedor_codigo || null,
+            cnpj_fornecedor: record.cnpj_fornecedor || null,
+            fornecedor_name: record.fornecedor_nome || null,
+            regiao_uf: record.regiao_uf || null,
+            data_pedido: record.data_doc || null,
+            campos_extras: { ...campos_extras, ...record },
+            record
+          });
+        }
+      } else {
+        const poObj = {
+          ri,
+          material: record.material || null,
+          txt_breve: record.txt_breve || null,
+          fornecedor_codigo: record.fornecedor_codigo || null,
+          cnpj_fornecedor: record.cnpj_fornecedor || null,
+          fornecedor_name: record.fornecedor_nome || null,
+          regiao_uf: record.regiao_uf || null,
+          data_pedido: record.data_doc || null,
+          campos_extras: { ...campos_extras, ...record },
+          record
+        };
+
+        if (existing) {
+          const oldQty = existing.campos_extras?.qtd_pedido || existing.qtd_pedido;
+          const newQty = record.qtd_pedido;
+          if (oldQty !== undefined && oldQty !== null && oldQty !== newQty) {
+            quantityChanges.push({
+              ri,
+              item: `${reqNo}/${itemNo}`,
+              oldQty,
+              newQty
+            });
+          }
+          updated++;
+        } else {
+          inserted++;
+        }
+
+        newPedidosMap.set(compositeKey, poObj);
+      }
     });
 
-    // Deduplica os registros em memória antes de enviar para o Supabase para evitar o erro:
-    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
-    const uniqueDbRowsMap = new Map<string, any>();
-    dbRows.forEach(item => {
-      const key = `${item.material}_${item.cod_forn}_${item.data_pedido}`;
-      uniqueDbRowsMap.set(key, item);
+    // 4. Montar os dados de banco finais
+    onProgress?.(38, 'Montando objetos de banco finais...');
+    const dbRowsToUpsert = Array.from(newPedidosMap.values()).map(p => {
+      const extr = p.campos_extras || {};
+      const docCompraVal = p.record?.doc_compra || extr.doc_compra || '';
+      const compositeKey = p.ri + '_' + docCompraVal;
+      const existing = existingMap.get(compositeKey);
+      
+      // Mescla com campos_extras antigos se o registro já existia para preservar dados históricos
+      const mergedExtras = existing && existing.campos_extras 
+        ? { ...existing.campos_extras, ...extr }
+        : extr;
+
+      return {
+        id: existing?.id || generateUUID(),
+        ri: p.ri,
+        n_acomp: extr.n_acomp || null,
+        eflag_e: extr.eflag_e || null,
+        reqc: extr.reqc || null,
+        data_rc: extr.data_rc || null,
+        tpdc: extr.tpdc || null,
+        requisitante: extr.requisitante || null,
+        criado_por_rc: extr.criado_por_rc || null,
+        item: p.item_pedido || extr.item || null,
+        material: p.material,
+        txt_breve: p.txt_breve,
+        tmatt: extr.tmatt || null,
+        grp_mercads: extr.grp_mercads || null,
+        empremp: extr.empremp || null,
+        cen_cen: extr.cen_cen || null,
+        dep_dep: extr.dep_dep || null,
+        tipo_doc_compra: extr.tipo_doc_compra || null,
+        doc_compra: extr.doc_compra || null,
+        criado_por_pedido: extr.criado_por_pedido || null,
+        data_doc: p.data_pedido,
+        dt_remessa: extr.dt_remessa || null,
+        data_migo: extr.data_migo || null,
+        est_liber: extr.est_liber || null,
+        estr: extr.estr || null,
+        codigo_liberacao_doc_compra: extr.codigo_liberacao_doc_compra || null,
+        itm_liberacao: extr.itm_liberacao || null,
+        criado_por_liberacao: extr.criado_por_liberacao || null,
+        qtd_pedido: extr.qtd_pedido || null,
+        por: extr.por || null,
+        qtd_fornecida: extr.qtd_fornecida || null,
+        crf: extr.crf || null,
+        ump_1: extr.ump_1 || null,
+        unidade_medida_pedido: extr.unidade_medida_pedido || null,
+        preco_liquido_unit: extr.preco_liquido_unit || null,
+        moeda_1: extr.moeda_1 || null,
+        valor_em_brl: extr.valor_em_brl || null,
+        moeda_2: extr.moeda_2 || null,
+        ump_2: extr.ump_2 || null,
+        valor_liquido: extr.valor_liquido || null,
+        fornecedor_codigo: p.fornecedor_codigo,
+        cnpj_fornecedor: p.cnpj_fornecedor,
+        fornecedor_nome: p.fornecedor_name,
+        regiao_uf: p.regiao_uf,
+        req_cotacao: extr.req_cotacao || null,
+        data_pc_sc: extr.data_pc_sc || null,
+        item_rc_cotacao: extr.item_rc_cotacao || null,
+        upp: extr.upp || null,
+        valor_efetivo: extr.valor_efetivo || null,
+        moeda_3: extr.moeda_3 || null,
+        doc_compra_ref: extr.doc_compra_ref || null,
+        itm_ref: extr.itm_ref || null,
+        ftf: extr.ftf || null,
+        posicao: extr.posicao || null,
+        condicao_pagamento: extr.condicao_pagamento || null,
+        criado_por_condicao: extr.criado_por_condicao || null,
+        contrato: extr.contrato || null,
+        item_contrato: extr.item_contrato || null,
+        cn_lcr_parcs: extr.cn_lcr_parcs || null,
+        categoria: extr.categoria || null,
+        grupo_mercadoria_curto: extr.grupo_mercadoria_curto || null,
+        ci: extr.ci || null,
+        unidade_medida_basica: extr.unidade_medida_basica || null,
+        ump_3: extr.ump_3 || null,
+        campos_extras: mergedExtras,
+        updated_at: new Date().toISOString()
+      };
     });
-    const finalDbRows = Array.from(uniqueDbRowsMap.values());
 
     try {
-      for (let i = 0; i < finalDbRows.length; i += 50) {
-        const { error } = await supabase.from('pedidosforn').upsert(finalDbRows.slice(i, i + 50), { onConflict: 'material,cod_forn,data_pedido' });
+      // 5. Enviar upsert apenas dos registros da planilha (lotes de 300 para evitar timeout)
+      for (let i = 0; i < dbRowsToUpsert.length; i += 300) {
+        const nextBatchLimit = Math.min(i + 300, dbRowsToUpsert.length);
+        const percent = 40 + Math.floor((i / dbRowsToUpsert.length) * 50);
+        onProgress?.(
+          percent,
+          `Enviando lotes para o banco: salvando registros ${i + 1} a ${nextBatchLimit} de ${dbRowsToUpsert.length}...`
+        );
+        const { error } = await supabase
+          .from('pedidosforn')
+          .upsert(dbRowsToUpsert.slice(i, i + 300), { onConflict: 'ri,doc_compra' });
         if (error) throw error;
       }
 
-      inserted = finalDbRows.length;
-
+      // 6. Gravar log da importação
+      onProgress?.(92, 'Gravando logs de importação e auditoria...');
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
       const logObj = {
         id: logId,
@@ -2850,21 +3128,30 @@ class LocalDatabase {
         records_eliminated: 0,
         columns_missing: missingColumns,
         columns_new: newColumns,
-        quantity_changes: [],
+        quantity_changes: quantityChanges,
         missing_ris: [],
         created_at: new Date().toISOString(),
         ignored_rows: ignoredRows
       };
 
       await supabase.from('import_logs').insert(logObj);
+      
+      // Sincroniza a tabela local
+      onProgress?.(95, 'Sincronizando cache local...');
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
-      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Historico Fornecedores', `Importou Historico Fornecedores (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
+      this.logActivity(
+        user?.id || 'sistema', 
+        'Suprimentos', 
+        'Importar Historico Fornecedores', 
+        `Importou Historico Fornecedores (${filename}). Lidos: ${dataRows.length}. Novos: ${inserted}. Atualizados: ${updated}.`
+      );
 
+      onProgress?.(100, 'Importação concluída com sucesso!');
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação de pedidosforn no Supabase:', e);

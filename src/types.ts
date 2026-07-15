@@ -274,15 +274,18 @@ export interface SAPImportLog {
   created_at: string;
 }
 
-export interface PedidoForn {
+export interface PedidoForn extends SAPPedido {
   id: string;
   material: string;
   txt_breve?: string;
+  regiao_uf?: string;
+  qtd_pedido?: number;
+  preco_liquido_unit?: number;
+  valor_liquido?: number;
+  // Campos antigos para retrocompatibilidade
   cod_forn?: string;
   cnpj?: string;
   fornecedor?: string;
-  regiao_uf?: string;
-  data_pedido?: string;
   preco_liquido?: number;
   created_at: string;
   updated_at?: string;
