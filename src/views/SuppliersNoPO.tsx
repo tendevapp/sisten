@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
-  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy
+  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -92,6 +92,70 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
   );
 };
 
+interface SearchInputProps {
+  onSearch: (value: string) => void;
+  initialValue: string;
+}
+
+const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) => {
+  const [value, setValue] = useState(initialValue);
+
+  // Sincroniza estado se initialValue mudar externamente
+  useEffect(() => {
+    setValue(initialValue);
+  }, [initialValue]);
+
+  const triggerSearch = (val: string) => {
+    // Executa de forma assíncrona no próximo tick do event loop.
+    // Isso garante que o navegador repinte o estado do input e dos botões imediatamente,
+    // dando feedback visual instantâneo antes que o processamento pesado de re-filtragem comece.
+    setTimeout(() => {
+      onSearch(val);
+    }, 10);
+  };
+
+  return (
+    <div className="relative flex-1 flex gap-2">
+      <div className="relative flex-1">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450 pointer-events-none" />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              triggerSearch(value);
+            }
+          }}
+          placeholder="Pesquisar por material, descrição, RM ou fornecedor... (Pressione Enter)"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
+        />
+      </div>
+      <button
+        onClick={() => triggerSearch(value)}
+        className="px-4 py-2.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+      >
+        <Search className="h-4 w-4" />
+        <span>Pesquisar</span>
+      </button>
+      <button
+        onClick={() => {
+          setValue('');
+          triggerSearch('');
+        }}
+        disabled={!value}
+        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border ${
+          value 
+            ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700' 
+            : 'bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-600 border-slate-100 dark:border-slate-850 cursor-not-allowed opacity-50'
+        }`}
+      >
+        <span>Limpar</span>
+      </button>
+    </div>
+  );
+});
+
 export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) {
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
@@ -102,16 +166,25 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Modal SAP
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
 
-  // Modos de Visualização: 'cards' | 'compact' | 'table'
-  const [viewMode, setViewMode] = useState<'cards' | 'compact' | 'table'>(() => {
+  // Modos de Visualização: 'cards' | 'table'
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     const saved = localStorage.getItem('sisten_suppliers_view_mode');
-    return (saved === 'cards' || saved === 'compact' || saved === 'table') ? saved : 'cards';
+    return (saved === 'cards' || saved === 'table') ? saved : 'cards';
   });
 
   // Salva preferência do modo de visualização
-  const handleViewModeChange = (mode: 'cards' | 'compact' | 'table') => {
+  const handleViewModeChange = (mode: 'cards' | 'table') => {
     setViewMode(mode);
     localStorage.setItem('sisten_suppliers_view_mode', mode);
+  };
+
+  const [tableShowSupplierFirst, setTableShowSupplierFirst] = useState<boolean>(() => {
+    return localStorage.getItem('sisten_suppliers_table_supplier_first') === 'true';
+  });
+
+  const handleTableShowSupplierFirstChange = (val: boolean) => {
+    setTableShowSupplierFirst(val);
+    localStorage.setItem('sisten_suppliers_table_supplier_first', String(val));
   };
 
   // Filters
@@ -120,6 +193,18 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [alertFilter, setAlertFilter] = useState('Todos');
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO'>('Todos');
+  const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
+
+  const handleSearch = useCallback((val: string) => {
+    setSearchQuery(val);
+  }, []);
+
+  // Paginação incremental para evitar travamento ao carregar listagens gigantescas (ex: ao limpar busca)
+  const [visibleCount, setVisibleCount] = useState(40);
+
+  useEffect(() => {
+    setVisibleCount(40);
+  }, [searchQuery, buyerFilter, statusFilter, alertFilter, poFilter, kpiFilter, viewMode]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -138,6 +223,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
+
+  const isModified = useCallback((ri: string, record: EnrichedSAPRecord) => {
+    const currentObs = obsInputState[ri] ?? '';
+    const originalObs = record.obs_comprador ?? '';
+
+    const currentDate = dateInputState[ri] ?? '';
+    const originalDate = record.data_entrega_prevista ?? '';
+
+    const currentStatus = statusInputState[ri] || 'Buscar Fornecedores';
+    const originalStatus = record.item_status || 'Buscar Fornecedores';
+
+    return currentObs !== originalObs || currentDate !== originalDate || currentStatus !== originalStatus;
+  }, [obsInputState, dateInputState, statusInputState]);
 
   // Data/hora da última atualização dos dados (última importação/refresh).
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -336,8 +434,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // original entre itens do mesmo status.
   const poRank = (r: EnrichedSAPRecord): number => r.status_requisicao === 'Processado' ? 1 : 0;
 
-  // Filtragem
-  const filteredGroups = useMemo(() => {
+  // Filtragem (Primeiro estágio sem KPI)
+  const filteredGroupsWithoutKpi = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const result: RMGroup[] = [];
     rmGroups.forEach(g => {
@@ -351,9 +449,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           const inRecord =
             (r.material_code || '').toLowerCase().includes(q) ||
             (r.texto_breve || '').toLowerCase().includes(q) ||
-            (r.requisitante_name || '').toLowerCase().includes(q);
+            (r.requisitante_name || '').toLowerCase().includes(q) ||
+            (r.fornecedor_name || '').toLowerCase().includes(q) ||
+            (r.fornecedor_code || '').toLowerCase().includes(q);
           const inFornecedor = it.fornecedores.some(f =>
             f.fornecedor.toLowerCase().includes(q) ||
+            (f.nome_fantasia || '').toLowerCase().includes(q) ||
             f.cnpj.toLowerCase().includes(q) ||
             f.cod_forn.toLowerCase().includes(q)
           );
@@ -361,10 +462,40 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         }
         return true;
       });
-      if (items.length > 0) result.push({ rm: g.rm, items: items.slice().sort((a, b) => poRank(a.record) - poRank(b.record)) });
+      if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
   }, [rmGroups, searchQuery, buyerFilter, statusFilter, alertFilter]);
+
+  // Filtragem (Segundo estágio aplicando KPI)
+  const filteredGroups = useMemo(() => {
+    if (kpiFilter === 'Todos') {
+      return filteredGroupsWithoutKpi.map(g => ({
+        ...g,
+        items: g.items.slice().sort((a, b) => poRank(a.record) - poRank(b.record))
+      }));
+    }
+    const result: RMGroup[] = [];
+    filteredGroupsWithoutKpi.forEach(g => {
+      const items = g.items.filter(it => {
+        const r = it.record;
+        if (kpiFilter === 'Com Fornecedor' && !it.encontrado) return false;
+        if (kpiFilter === 'Sem Histórico' && it.encontrado) return false;
+        if (kpiFilter === 'Críticos') {
+          const lvl = alertLevel(r.alerta || '');
+          return lvl === 'critico' || lvl === 'atencao';
+        }
+        return true;
+      });
+      if (items.length > 0) {
+        result.push({
+          rm: g.rm,
+          items: items.slice().sort((a, b) => poRank(a.record) - poRank(b.record))
+        });
+      }
+    });
+    return result;
+  }, [filteredGroupsWithoutKpi, kpiFilter]);
 
   // Lista plana de itens filtrados (Sem PO sempre antes dos que já possuem PO)
   const filteredFlatItems = useMemo(() => {
@@ -377,8 +508,77 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     return list.slice().sort((a, b) => poRank(a.item.record) - poRank(b.item.record));
   }, [filteredGroups]);
 
-  const totalItems = useMemo(() => rmGroups.reduce((s, g) => s + g.items.length, 0), [rmGroups]);
+  // Lista plana específica para tabela, opcionalmente expandida/ordenada por fornecedor
+  const flatTableItems = useMemo(() => {
+    const list: Array<{
+      rm: string;
+      item: ItemNode;
+      selectedSupplier?: any;
+    }> = [];
+
+    const q = searchQuery.trim().toLowerCase();
+
+    filteredGroups.forEach(g => {
+      g.items.forEach(it => {
+        const { encontrado, fornecedores } = it;
+        if (!tableShowSupplierFirst || !encontrado || fornecedores.length === 0) {
+          list.push({ rm: g.rm, item: it });
+        } else {
+          // Se o termo de busca estiver ativo, e o item em si NÃO bater com o termo de busca,
+          // mas um fornecedor da lista bater, nós devemos apenas listar os fornecedores que batem!
+          let showAllSuppliers = true;
+          if (q) {
+            const r = it.record;
+            const itemMatches =
+              (r.material_code || '').toLowerCase().includes(q) ||
+              (r.texto_breve || '').toLowerCase().includes(q) ||
+              (r.requisitante_name || '').toLowerCase().includes(q) ||
+              (r.fornecedor_name || '').toLowerCase().includes(q) ||
+              (r.fornecedor_code || '').toLowerCase().includes(q) ||
+              g.rm.toLowerCase().includes(q);
+            if (!itemMatches) {
+              showAllSuppliers = false;
+            }
+          }
+
+          fornecedores.forEach(f => {
+            if (showAllSuppliers) {
+              list.push({ rm: g.rm, item: it, selectedSupplier: f });
+            } else {
+              // Apenas inclui se o fornecedor bater com a busca
+              const supplierMatches =
+                f.fornecedor.toLowerCase().includes(q) ||
+                (f.nome_fantasia || '').toLowerCase().includes(q) ||
+                f.cnpj.toLowerCase().includes(q) ||
+                f.cod_forn.toLowerCase().includes(q);
+              if (supplierMatches) {
+                list.push({ rm: g.rm, item: it, selectedSupplier: f });
+              }
+            }
+          });
+        }
+      });
+    });
+
+    if (tableShowSupplierFirst) {
+      // Ordenação alfabética por nome do fornecedor
+      return list.sort((a, b) => {
+        const nameA = a.selectedSupplier?.fornecedor?.toLowerCase() || 'zzz_sem_fornecedor';
+        const nameB = b.selectedSupplier?.fornecedor?.toLowerCase() || 'zzz_sem_fornecedor';
+        return nameA.localeCompare(nameB);
+      });
+    }
+
+    // Ordenação padrão por status de PO
+    return list.sort((a, b) => poRank(a.item.record) - poRank(b.item.record));
+  }, [filteredGroups, tableShowSupplierFirst, searchQuery]);
+
+  const totalItemCount = useMemo(() => rmGroups.reduce((s, g) => s + g.items.length, 0), [rmGroups]);
   const filteredItemCount = useMemo(() => filteredGroups.reduce((s, g) => s + g.items.length, 0), [filteredGroups]);
+
+  const totalFilteredCount = useMemo(() => {
+    return viewMode === 'table' ? flatTableItems.length : filteredFlatItems.length;
+  }, [viewMode, flatTableItems.length, filteredFlatItems.length]);
 
   const toggleRM = (rm: string) => setExpandedRMs(prev => ({ ...prev, [rm]: !prev[rm] }));
   const toggleItem = (ri: string) => setExpandedItems(prev => ({ ...prev, [ri]: !prev[ri] }));
@@ -520,7 +720,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     let rmsSet = new Set<string>();
     let itens = 0;
     let com = 0, sem = 0, criticos = 0;
-    filteredGroups.forEach(g => g.items.forEach(it => {
+    filteredGroupsWithoutKpi.forEach(g => g.items.forEach(it => {
       if (it.record.status_requisicao !== 'Sem PO') return;
       rmsSet.add(g.rm);
       itens++;
@@ -529,7 +729,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (lvl === 'critico' || lvl === 'atencao') criticos++;
     }));
     return { rms: rmsSet.size, itens, com, sem, criticos };
-  }, [filteredGroups]);
+  }, [filteredGroupsWithoutKpi]);
 
   // Lista com as opções de status
   const itemStatusOptions: ItemStatus[] = [
@@ -552,7 +752,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       <select
         value={normalizedVal}
         onChange={(e) => setStatusInputState(prev => ({ ...prev, [ri]: e.target.value as ItemStatus | '' }))}
-        className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-emerald-600 focus:outline-none"
+        className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:outline-none"
       >
         <option value="">Selecione</option>
         {itemStatusOptions.map(opt => (
@@ -570,7 +770,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
         <div className="min-w-0">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-            <PackageSearch className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+            <PackageSearch className="h-7 w-7 text-[#0056c6] dark:text-blue-500" />
             Central de Compras
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -584,17 +784,17 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         </div>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
           {/* Filtro PO (Todos / Sem PO) */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
               onClick={() => setPoFilter('Todos')}
-              className={`px-3 py-1.5 rounded-md transition-all text-xs font-bold ${poFilter === 'Todos' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-455 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Todos' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir todos os registros enriquecidos (com e sem PO)"
             >
               Todos
             </button>
             <button
               onClick={() => setPoFilter('Sem PO')}
-              className={`px-3 py-1.5 rounded-md transition-all text-xs font-bold ${poFilter === 'Sem PO' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-455 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem PO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Exibir apenas registros que não possuem documento de compra (pedido)"
             >
               Sem PO
@@ -602,26 +802,18 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           </div>
 
           {/* View Toggles */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-lg p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
               onClick={() => handleViewModeChange('cards')}
-              className={`p-2 rounded-md transition-all flex items-center gap-1.5 text-xs font-bold ${viewMode === 'cards' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'cards' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Visualização em Cards"
             >
               <LayoutGrid className="h-4 w-4" />
               <span className="hidden sm:inline">Cards</span>
             </button>
             <button
-              onClick={() => handleViewModeChange('compact')}
-              className={`p-2 rounded-md transition-all flex items-center gap-1.5 text-xs font-bold ${viewMode === 'compact' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
-              title="Visualização em Lista Compacta"
-            >
-              <List className="h-4 w-4" />
-              <span className="hidden sm:inline">Compacto</span>
-            </button>
-            <button
               onClick={() => handleViewModeChange('table')}
-              className={`p-2 rounded-md transition-all flex items-center gap-1.5 text-xs font-bold ${viewMode === 'table' ? 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-400 shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'table' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Visualização em Tabela Plana"
             >
               <Table className="h-4 w-4" />
@@ -632,16 +824,30 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           <button
             onClick={() => buildSuppliersData(true)}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
+            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
           {filteredItemCount > 0 && (
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
             >
               <FileSpreadsheet className="h-4 w-4" /> Exportar
+            </button>
+          )}
+          {viewMode === 'table' && filteredItemCount > 0 && (
+            <button
+              onClick={() => handleTableShowSupplierFirstChange(!tableShowSupplierFirst)}
+              className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px] ${
+                tableShowSupplierFirst
+                  ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0056c6] dark:text-[#0056c6] border-blue-250 dark:border-blue-900/60 shadow-2xs'
+                  : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-855/40 text-slate-700 dark:text-slate-300'
+              }`}
+              title="Mostrar fornecedor como primeira coluna e ordenar por fornecedor"
+            >
+              <Users className="h-4 w-4" />
+              <span>{tableShowSupplierFirst ? 'Ordenar por RM' : 'Ver por Fornecedor'}</span>
             </button>
           )}
         </div>
@@ -650,54 +856,96 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+          {/* Card 1: RMs em aberto (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">RMs em aberto</span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600" />
+
+          {/* Card 2: Itens Sem PO (Filtra 'Todos') */}
+          <div
+            onClick={() => setKpiFilter('Todos')}
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
+              kpiFilter === 'Todos'
+                ? 'border-[#0056c6] ring-1 ring-[#0056c6]/20'
+                : 'border-slate-200/80 dark:border-slate-850'
+            }`}
+          >
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Itens Sem PO</span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
+            {kpiFilter === 'Todos' && (
+              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
+            )}
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+
+          {/* Card 3: Com Fornecedor */}
+          <div
+            onClick={() => setKpiFilter('Com Fornecedor')}
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
+              kpiFilter === 'Com Fornecedor'
+                ? 'border-emerald-500 ring-1 ring-emerald-500/20'
+                : 'border-slate-200/80 dark:border-slate-850'
+            }`}
+          >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Com Fornecedor</span>
             <p className="text-3xl font-black text-emerald-600 dark:text-emerald-500 mt-1">{kpis.com}</p>
+            {kpiFilter === 'Com Fornecedor' && (
+              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">Filtro Ativo</span>
+            )}
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+
+          {/* Card 4: Sem Histórico */}
+          <div
+            onClick={() => setKpiFilter('Sem Histórico')}
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
+              kpiFilter === 'Sem Histórico'
+                ? 'border-rose-500 ring-1 ring-rose-500/20'
+                : 'border-slate-200/80 dark:border-slate-850'
+            }`}
+          >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500 dark:bg-rose-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Sem Histórico</span>
             <p className="text-3xl font-black text-rose-600 dark:text-rose-500 mt-1">{kpis.sem}</p>
+            {kpiFilter === 'Sem Histórico' && (
+              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-rose-50 text-rose-600 dark:bg-rose-955/35">Filtro Ativo</span>
+            )}
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1">
+
+          {/* Card 5: Críticos / Em Atraso */}
+          <div
+            onClick={() => setKpiFilter('Críticos')}
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
+              kpiFilter === 'Críticos'
+                ? 'border-amber-500 ring-1 ring-amber-500/20'
+                : 'border-slate-200/80 dark:border-slate-850'
+            }`}
+          >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 dark:bg-amber-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Críticos / Em Atraso</span>
             <p className="text-3xl font-black text-amber-600 dark:text-amber-500 mt-1">{kpis.criticos}</p>
+            {kpiFilter === 'Críticos' && (
+              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
+            )}
           </div>
         </div>
       )}
-
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-col xl:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filtre rapidamente por código de material, descrição, requisição RM ou fornecedor..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
-            />
-          </div>
+          <SearchInput
+            initialValue={searchQuery}
+            onSearch={handleSearch}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[130px]">
               <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
               <select
                 value={buyerFilter}
                 onChange={(e) => setBuyerFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
               >
                 <option value="Todos">Comprador: Todos</option>
                 {buyerOptions.map(g => <option key={g} value={g}>Grupo {g}</option>)}
@@ -708,7 +956,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-55 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
               >
                 <option value="Todos">Status: Todos</option>
                 {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
@@ -719,7 +967,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               <select
                 value={alertFilter}
                 onChange={(e) => setAlertFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
               >
                 <option value="Todos">Alertas: Todos</option>
                 {alertOptions.map(s => <option key={s} value={s}>{s}</option>)}
@@ -759,14 +1007,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         <div className="space-y-4">
           {/* Summary / Expand Toggles */}
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
-            <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItems} totais</span>
-            {viewMode === 'compact' && filteredGroups.length > 0 && (
-              <button onClick={toggleExpandAll} className="text-emerald-650 hover:text-emerald-700 dark:text-emerald-450 dark:hover:text-emerald-350 cursor-pointer">
-                {allExpanded ? 'Colapsar todos' : 'Expandir todos'}
-              </button>
-            )}
+            <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
           </div>
-
           {filteredGroups.length === 0 && (
             <div className="flex items-center gap-3 p-6 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/50 dark:bg-amber-955/15 text-amber-800 dark:text-amber-300 text-sm font-semibold">
               <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
@@ -777,12 +1019,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           {/* VIEW: CARDS (Default) */}
           {viewMode === 'cards' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredFlatItems.map(({ rm, item: { record: r, encontrado, fornecedores } }) => {
+              {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores } }) => {
                 const ilvl = alertLevel(r.alerta || '');
                 const alertStyle = ALERT_STYLE[ilvl];
                 const itemSaveStatus = saveStatus[r.ri] || 'idle';
                 return (
-                  <div key={r.ri} className={`border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow relative ${encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
+                  <div key={r.ri} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
                     {/* Card Top */}
                     <div className="p-4 space-y-3 flex-1">
                       {/* Meta header */}
@@ -795,7 +1037,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setSelectedRecordForModal(r)}
-                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-450 cursor-pointer"
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-[#0056c6] dark:hover:text-emerald-450 cursor-pointer"
                             title="Ver detalhes SAP"
                           >
                             <Info className="h-4.5 w-4.5" />
@@ -811,7 +1053,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
                       {/* Title & Desc (Clickable to modal) */}
                       <div className="cursor-pointer group" onClick={() => setSelectedRecordForModal(r)}>
-                        <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
+                        <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
                           {r.material_code || '—'}
                           <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </h4>
@@ -821,7 +1063,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                       </div>
 
                       {/* Technical Specs Tags */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-450 dark:text-slate-500 font-bold bg-slate-55 dark:bg-slate-955 p-2 rounded-lg border border-slate-150 dark:border-slate-900">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-450 dark:text-slate-500 font-bold bg-slate-55 dark:bg-slate-955 p-2 rounded-xl border border-slate-150 dark:border-slate-900">
                         <span>Qtd: {r.qtd_requisicao} {r.unidade_medida}</span>
                         <span>•</span>
                         <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
@@ -844,14 +1086,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         </span>
                         
                         {!encontrado ? (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
+                          <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
                             <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
                             <span>Sem histórico de compras anteriores para este material.</span>
                           </div>
                         ) : (
                           <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                             {fornecedores.map((f, fIdx) => (
-                              <div key={fIdx} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/20 hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-3 text-left">
+                              <div key={fIdx} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/20 hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-3 text-left">
                                 <div className="min-w-0 flex-1 space-y-1.5">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="font-extrabold text-slate-850 dark:text-slate-200 break-words" title={f.fornecedor}>
@@ -884,11 +1126,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                 </div>
                                 <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
                                   {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                    <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
-                                      <Phone className="h-3 w-3 text-slate-450" />
+                                    <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs shrink-0">
+                                      <Phone className="h-3 w-3 text-slate-450 shrink-0" />
                                       <a
                                         href={`tel:${singleTel}`}
-                                        className="font-mono text-slate-705 dark:text-slate-305 hover:underline hover:text-emerald-650 cursor-pointer font-bold"
+                                        className="font-mono text-slate-705 dark:text-slate-355 hover:underline hover:text-[#0056c6] cursor-pointer font-bold"
                                         title={`Ligar: ${singleTel}`}
                                       >
                                         {singleTel}
@@ -897,12 +1139,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                     </div>
                                   ))}
                                   {f.email !== '—' && (
-                                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
-                                      <Mail className="h-3 w-3 text-slate-455" />
+                                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs max-w-full">
+                                      <Mail className="h-3 w-3 text-slate-455 shrink-0" />
                                       <a
                                         href={`mailto:${f.email}`}
-                                        className="text-slate-705 dark:text-slate-305 hover:underline hover:text-blue-655 break-all cursor-pointer font-bold"
-                                        title={`Email: ${f.email}`}
+                                        className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[150px] sm:max-w-[200px]"
+                                        title={f.email}
                                       >
                                         {f.email}
                                       </a>
@@ -934,7 +1176,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             type="date"
                             value={dateInputState[r.ri] || ''}
                             onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
+                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
                           />
                         </div>
                         <div className="space-y-1">
@@ -944,7 +1186,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             </label>
                             <button
                               onClick={() => handleViewHistory(r.ri)}
-                              className="text-[9px] font-bold text-slate-400 hover:text-emerald-600 dark:text-slate-500 dark:hover:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                              className="text-[9px] font-bold text-slate-400 hover:text-[#0056c6] dark:text-slate-500 dark:hover:text-emerald-450 flex items-center gap-0.5 cursor-pointer"
                               title="Histórico de alterações"
                             >
                               <History className="h-3 w-3" /> Histórico
@@ -955,28 +1197,37 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             value={obsInputState[r.ri] || ''}
                             onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
                             placeholder="Notas de compra..."
-                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
+                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
                           />
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
-                          {r.item_status_updated_at 
-                            ? `Alt: ${new Date(r.item_status_updated_at).toLocaleDateString('pt-BR')} por ${r.item_status_updated_by || 'Sistema'}`
-                            : r.obs_updated_at
-                            ? `Alt: ${new Date(r.obs_updated_at).toLocaleDateString('pt-BR')} por ${r.obs_updated_by || 'Sistema'}`
-                            : 'Ainda não editado'}
-                        </span>
+                      <div className="flex items-center justify-between pt-1 font-semibold">
+                        {isModified(r.ri, r) ? (
+                          <span className="text-[10px] text-amber-650 dark:text-amber-450 font-black flex items-center gap-1.5 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Pendente de salvar
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                            {r.item_status_updated_at 
+                              ? `Alt: ${new Date(r.item_status_updated_at).toLocaleDateString('pt-BR')} por ${r.item_status_updated_by || 'Sistema'}`
+                              : r.obs_updated_at
+                              ? `Alt: ${new Date(r.obs_updated_at).toLocaleDateString('pt-BR')} por ${r.obs_updated_by || 'Sistema'}`
+                              : 'Ainda não editado'}
+                          </span>
+                        )}
                         
                         <button
                           onClick={() => handleSaveFields(r.ri)}
                           disabled={itemSaveStatus === 'saving'}
                           type="button"
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] ${
                             itemSaveStatus === 'saved'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30'
-                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-450 border border-emerald-250 dark:border-emerald-900/30'
+                              : isModified(r.ri, r)
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
+                              : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
                           }`}
                         >
                           {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
@@ -994,257 +1245,6 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             </div>
           )}
 
-          {/* VIEW: COMPACT (Interactive list row click) */}
-          {viewMode === 'compact' && (
-            <div className="space-y-2">
-              {filteredGroups.map(g => {
-                const rmExpanded = !!expandedRMs[g.rm];
-                const lvl = worstLevel(g.items);
-                const rmBar = { critico: 'border-l-rose-500', atencao: 'border-l-amber-500', monitorar: 'border-l-sky-500', ok: 'border-l-emerald-500' }[lvl];
-                return (
-                  <div key={g.rm} className={`border border-slate-200 dark:border-slate-800 border-l-4 ${rmBar} rounded-xl shadow-xs overflow-hidden bg-white dark:bg-slate-900`}>
-                    {/* RM header */}
-                    <div
-                      onClick={() => toggleRM(g.rm)}
-                      className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-4.5 w-4.5 text-slate-500 dark:text-slate-400" />
-                        <div>
-                          <span className="font-mono font-black text-sm text-slate-800 dark:text-slate-100">RM {g.rm}</span>
-                          <span className="text-xs text-slate-500 dark:text-slate-400 ml-2">
-                            ({g.items.length} {g.items.length === 1 ? 'item' : 'itens'} · {g.items.filter(it => it.encontrado).length} com histórico)
-                          </span>
-                        </div>
-                      </div>
-                      <div>
-                        {rmExpanded ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-                      </div>
-                    </div>
-
-                    {/* Items row */}
-                    {rmExpanded && (
-                      <div className="border-t border-slate-100 dark:border-slate-850 divide-y divide-slate-100 dark:divide-slate-850">
-                        {g.items.map(({ record: r, encontrado, fornecedores }) => {
-                          const itemExpanded = !!expandedItems[r.ri];
-                          const ilvl = alertLevel(r.alerta || '');
-                          const itemSaveStatus = saveStatus[r.ri] || 'idle';
-                          return (
-                            <div key={r.ri} className="bg-white dark:bg-slate-900">
-                              <div
-                                onClick={() => toggleItem(r.ri)}
-                                className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer transition-colors ${itemExpanded ? 'bg-slate-50/70 dark:bg-slate-850/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-850/10'}`}
-                              >
-                                <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 mt-1.5 ${encontrado ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-205 hover:underline" onClick={(e) => { e.stopPropagation(); setSelectedRecordForModal(r); }}>
-                                        Item {r.item_reqc} • {r.material_code}
-                                      </span>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setSelectedRecordForModal(r); }}
-                                        className="p-0.5 hover:bg-slate-150 dark:hover:bg-slate-800 rounded text-slate-400"
-                                      >
-                                        <Info className="h-3.5 w-3.5" />
-                                      </button>
-                                      {renderPOBadge(r)}
-                                      {r.status_requisicao !== 'Processado' && r.alerta && (
-                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black uppercase ${ALERT_STYLE[ilvl].chip}`}>
-                                          {r.alerta}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-slate-600 dark:text-slate-300 font-bold truncate max-w-[500px] mt-0.5">
-                                      {r.texto_breve}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end text-[11px] text-slate-450 dark:text-slate-500 font-semibold">
-                                  <span>{r.qtd_requisicao} {r.unidade_medida}</span>
-                                  <span>Status: <span className="font-bold text-slate-700 dark:text-slate-350">{r.item_status || 'Buscar Fornecedores'}</span></span>
-                                  {r.status_requisicao !== 'Processado' && <span>{r.dias_em_aberto}d aberto</span>}
-                                  <div className="flex items-center gap-2">
-                                    {encontrado ? (
-                                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 font-bold">
-                                        {fornecedores.length} forn
-                                      </span>
-                                    ) : (
-                                      <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-400 font-bold uppercase tracking-wide text-[9px]">
-                                        Sem hist.
-                                      </span>
-                                    )}
-                                    {itemExpanded ? <ChevronDown className="h-4.5 w-4.5 text-slate-400" /> : <ChevronRight className="h-4.5 w-4.5 text-slate-400" />}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Dropdown panel for editing obs / viewing suppliers */}
-                              {itemExpanded && (
-                                <div className="px-4 pb-4 pt-1 bg-slate-50/50 dark:bg-slate-900/40 border-t border-slate-100 dark:border-slate-850">
-                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-2 pl-4 border-l-2 border-emerald-400/80">
-                                    {/* Fornecedores */}
-                                    <div className="space-y-2">
-                                      <h5 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-450 dark:text-slate-500">
-                                        Histórico de Fornecedores do Item
-                                      </h5>
-                                      {!encontrado ? (
-                                        <div className="p-3 rounded-lg border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/30 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
-                                          Nenhum fornecedor localizado anteriormente.
-                                        </div>
-                                      ) : (
-                                        <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
-                                          {fornecedores.map((f, idx) => (
-                                            <div key={idx} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/20 hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all flex flex-col md:flex-row md:items-center justify-between text-xs gap-3 text-left">
-                                              <div className="min-w-0 flex-1 space-y-1.5">
-                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                  <span className="font-extrabold text-slate-850 dark:text-slate-200 break-words" title={f.fornecedor}>
-                                                    {f.fornecedor}
-                                                  </span>
-                                                  {f.regiao_uf && f.regiao_uf !== '—' && (
-                                                    <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-800 text-[9px] font-black rounded text-slate-500 dark:text-slate-400">
-                                                      {f.regiao_uf}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                                {f.nome_fantasia && f.nome_fantasia !== '—' && (
-                                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                                                    Fantasia: {f.nome_fantasia}
-                                                  </p>
-                                                )}
-                                                <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
-                                                  Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
-                                                </p>
-                                                
-                                                {/* Preço e última compra */}
-                                                <div className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 w-fit shadow-3xs">
-                                                  <span>Preço: <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(f.preco_liquido)}</span></span>
-                                                  <span className="text-slate-200 dark:text-slate-800">|</span>
-                                                  <span className="flex items-center gap-0.5 text-slate-500 dark:text-slate-455">
-                                                    <Calendar className="h-3 w-3" />
-                                                    Compra: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                              <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start md:items-end">
-                                                {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                                  <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
-                                                    <Phone className="h-3 w-3 text-slate-455" />
-                                                    <a
-                                                      href={`tel:${singleTel}`}
-                                                      className="font-mono text-slate-705 dark:text-slate-305 hover:underline hover:text-emerald-650 cursor-pointer font-bold"
-                                                      title={`Ligar: ${singleTel}`}
-                                                    >
-                                                      {singleTel}
-                                                    </a>
-                                                    <ClipboardCopyButton text={singleTel} label="telefone" />
-                                                  </div>
-                                                ))}
-                                                {f.email !== '—' && (
-                                                  <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 shadow-3xs">
-                                                    <Mail className="h-3 w-3 text-slate-455" />
-                                                    <a
-                                                      href={`mailto:${f.email}`}
-                                                      className="text-slate-705 dark:text-slate-305 hover:underline hover:text-blue-650 break-all cursor-pointer font-bold"
-                                                      title={`Email: ${f.email}`}
-                                                    >
-                                                      {f.email}
-                                                    </a>
-                                                    <ClipboardCopyButton text={f.email} label="e-mail" />
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Inputs SAP Inline */}
-                                    <div className="space-y-3 bg-white dark:bg-slate-900/60 p-4 rounded-xl border border-slate-150 dark:border-slate-800 shadow-2xs">
-                                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                                        <h5 className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                                          Atualizar Status
-                                        </h5>
-                                        <button
-                                          onClick={() => handleViewHistory(r.ri)}
-                                          className="text-[10px] font-bold text-slate-400 hover:text-emerald-500 flex items-center gap-0.5 cursor-pointer"
-                                        >
-                                          <History className="h-3 w-3" /> Histórico
-                                        </button>
-                                      </div>
-                                      
-                                      <div className="space-y-2">
-                                        <div className="space-y-1">
-                                          <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 block">
-                                            Status do Item
-                                          </label>
-                                          {renderStatusSelect(r.ri, r.item_status || 'Buscar Fornecedores')}
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 block">
-                                            Promessa de Entrega
-                                          </label>
-                                          <input
-                                            type="date"
-                                            value={dateInputState[r.ri] || ''}
-                                            onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-emerald-600 focus:outline-none"
-                                          />
-                                        </div>
-                                        <div className="space-y-1">
-                                          <label className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 block">
-                                            Observação
-                                          </label>
-                                          <textarea
-                                            value={obsInputState[r.ri] || ''}
-                                            onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                                            rows={2}
-                                            placeholder="Descreva o status da compra..."
-                                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-emerald-600 focus:outline-none"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
-                                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-semibold">
-                                          {r.item_status_updated_at 
-                                            ? `Atualizado por ${r.item_status_updated_by || 'Comprador'}` 
-                                            : 'Sem registro de edição'}
-                                        </span>
-                                        <button
-                                          onClick={() => handleSaveFields(r.ri)}
-                                          disabled={itemSaveStatus === 'saving'}
-                                          type="button"
-                                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer ${
-                                            itemSaveStatus === 'saved'
-                                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200'
-                                              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                          }`}
-                                        >
-                                          {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                                          {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                                          {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
-                                          <span>
-                                            {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                                          </span>
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* VIEW: TABLE (Flat spreadsheet mode) */}
           {viewMode === 'table' && (
@@ -1252,12 +1252,13 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               <table className="min-w-full divide-y divide-slate-150 dark:divide-slate-800 text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
+                    {tableShowSupplierFirst && <th className="py-3 px-3">Fornecedor</th>}
                     <th className="py-3 px-3">RM / Item</th>
                     <th className="py-3 px-3">PO</th>
                     <th className="py-3 px-3">Material</th>
                     <th className="py-3 px-3">Descrição</th>
                     <th className="py-3 px-3">Qtd / Un</th>
-                    <th className="py-3 px-3">Histórico Fornecedores</th>
+                    {!tableShowSupplierFirst && <th className="py-3 px-3">Histórico Fornecedores</th>}
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Promessa Entrega</th>
                     <th className="py-3 px-3">Observação</th>
@@ -1265,10 +1266,64 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800 text-slate-705 dark:text-slate-350">
-                  {filteredFlatItems.map(({ rm, item: { record: r, encontrado, fornecedores } }) => {
+                  {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores }, selectedSupplier }) => {
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
                     return (
-                      <tr key={r.ri} className="hover:bg-slate-50/50 dark:hover:bg-slate-850/20 align-top transition-colors">
+                      <tr key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`} className={`hover:bg-slate-50/50 dark:hover:bg-slate-850/20 align-top transition-colors ${isModified(r.ri, r) ? 'bg-amber-50/15 dark:bg-amber-955/5' : ''}`}>
+                        {/* Column 1: Fornecedor (when focused) */}
+                        {tableShowSupplierFirst && (
+                          <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
+                            {!selectedSupplier ? (
+                              <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                Sem fornecedor
+                              </span>
+                            ) : (
+                              <div className="p-2 rounded bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[10px] space-y-1 text-left">
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={selectedSupplier.fornecedor}>
+                                    {selectedSupplier.fornecedor}
+                                    {selectedSupplier.nome_fantasia && selectedSupplier.nome_fantasia !== '—' && (
+                                      <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
+                                        Fantasia: {selectedSupplier.nome_fantasia}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
+                                    {selectedSupplier.regiao_uf}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                                  <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(selectedSupplier.preco_liquido)}</span></span>
+                                  <span className="flex items-center gap-0.5">
+                                    <Calendar className="h-2.5 w-2.5 text-slate-400" />
+                                    {selectedSupplier.ultima_data !== '—' ? (isNaN(Date.parse(selectedSupplier.ultima_data)) ? selectedSupplier.ultima_data : new Date(selectedSupplier.ultima_data).toLocaleDateString('pt-BR')) : '—'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
+                                  {selectedSupplier.telefone !== '—' && selectedSupplier.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                    <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
+                                      <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                                      <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
+                                        {singleTel}
+                                      </a>
+                                      <ClipboardCopyButton text={singleTel} label="telefone" />
+                                    </div>
+                                  ))}
+                                  {selectedSupplier.email !== '—' && (
+                                    <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
+                                      <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                                      <a href={`mailto:${selectedSupplier.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={selectedSupplier.email}>
+                                        {selectedSupplier.email}
+                                      </a>
+                                      <ClipboardCopyButton text={selectedSupplier.email} label="e-mail" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        )}
+
                         {/* RM / Item */}
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
@@ -1284,7 +1339,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <td className="py-3 px-3 font-mono font-semibold whitespace-nowrap">
                           <button
                             onClick={() => setSelectedRecordForModal(r)}
-                            className="hover:underline hover:text-emerald-600 dark:hover:text-emerald-450 cursor-pointer flex items-center gap-1 focus:outline-none"
+                            className="hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 cursor-pointer flex items-center gap-1 focus:outline-none"
                           >
                             {r.material_code}
                             <ArrowUpRight className="h-3.5 w-3.5" />
@@ -1295,7 +1350,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <td className="py-3 px-3 max-w-[280px] break-words font-medium text-slate-800 dark:text-slate-200">
                           <button
                             onClick={() => setSelectedRecordForModal(r)}
-                            className="text-left font-bold hover:underline hover:text-emerald-600 dark:hover:text-emerald-450 focus:outline-none"
+                            className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
                           >
                             {r.texto_breve}
                           </button>
@@ -1321,64 +1376,68 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           {r.qtd_requisicao} {r.unidade_medida}
                         </td>
 
-                        {/* Suppliers History */}
-                        <td className="py-3 px-3 max-w-[320px]">
-                          {!encontrado ? (
-                            <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-950/20 px-1.5 py-0.5 rounded">
-                              Sem fornecedor
-                            </span>
-                          ) : (
-                            <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
-                              {fornecedores.slice(0, 3).map((f, idx) => (
-                                <div key={idx} className="p-2 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px] space-y-1 text-left">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={f.fornecedor}>
-                                      {f.fornecedor}
-                                      {f.nome_fantasia && f.nome_fantasia !== '—' && (
-                                        <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
-                                          Fantasia: {f.nome_fantasia}
-                                        </span>
+                        {/* Column 6: Histórico Fornecedores (when NOT focused) */}
+                        {!tableShowSupplierFirst && (
+                          <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
+                            {!encontrado ? (
+                              <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
+                                Sem fornecedor
+                              </span>
+                            ) : (
+                              <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                                {fornecedores.slice(0, 3).map((f, idx) => (
+                                  <div key={idx} className="p-2 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px] space-y-1 text-left">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={f.fornecedor}>
+                                        {f.fornecedor}
+                                        {f.nome_fantasia && f.nome_fantasia !== '—' && (
+                                          <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
+                                            Fantasia: {f.nome_fantasia}
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
+                                        {f.regiao_uf}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                                      <span>Preço: <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(f.preco_liquido)}</span></span>
+                                      <span className="flex items-center gap-0.5">
+                                        <Calendar className="h-2.5 w-2.5 text-slate-400" />
+                                        {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
+                                      {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+                                        <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
+                                          <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                                          <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
+                                            {singleTel}
+                                          </a>
+                                          <ClipboardCopyButton text={singleTel} label="telefone" />
+                                        </div>
+                                      ))}
+                                      {f.email !== '—' && (
+                                        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
+                                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                                          <a href={`mailto:${f.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={f.email}>
+                                            {f.email}
+                                          </a>
+                                          <ClipboardCopyButton text={f.email} label="e-mail" />
+                                        </div>
                                       )}
-                                    </span>
-                                    <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
-                                      {f.regiao_uf}
-                                    </span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
-                                    <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(f.preco_liquido)}</span></span>
-                                    <span className="flex items-center gap-0.5">
-                                      <Calendar className="h-2.5 w-2.5 text-slate-400" />
-                                      {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-                                    {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                      <div key={telIdx} className="flex items-center gap-0.5 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px]">
-                                        <a href={`tel:${singleTel}`} className="text-emerald-600 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
-                                          {singleTel}
-                                        </a>
-                                        <ClipboardCopyButton text={singleTel} label="telefone" />
-                                      </div>
-                                    ))}
-                                    {f.email !== '—' && (
-                                      <div className="flex items-center gap-0.5 bg-white dark:bg-slate-900 px-1 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px]">
-                                        <a href={`mailto:${f.email}`} className="text-blue-600 hover:underline font-bold break-all" title={f.email}>
-                                          {f.email}
-                                        </a>
-                                        <ClipboardCopyButton text={f.email} label="e-mail" />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                              {fornecedores.length > 3 && (
-                                <span className="text-[10px] text-slate-400 block text-right font-bold italic">
-                                  + {fornecedores.length - 3} outros
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
+                                ))}
+                                {fornecedores.length > 3 && (
+                                  <span className="text-[10px] text-slate-400 block text-right font-bold italic">
+                                    + {fornecedores.length - 3} outros
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )}
 
                         {/* Status Select */}
                         <td className="py-2.5 px-3 min-w-[140px]">
@@ -1391,7 +1450,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             type="date"
                             value={dateInputState[r.ri] || ''}
                             onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                            className="text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 px-1.5 focus:border-emerald-600 focus:outline-none"
+                            className="text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 px-1.5 focus:border-[#0056c6] focus:outline-none transition-all"
                           />
                         </td>
 
@@ -1403,11 +1462,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                               value={obsInputState[r.ri] || ''}
                               onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
                               placeholder="Notas..."
-                              className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 pr-7 pl-2 focus:border-emerald-600 focus:outline-none"
+                              className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all"
                             />
                             <button
                               onClick={() => handleViewHistory(r.ri)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 cursor-pointer"
                               title="Ver histórico de alterações"
                             >
                               <History className="h-3 w-3" />
@@ -1420,17 +1479,20 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           <button
                             onClick={() => handleSaveFields(r.ri)}
                             disabled={itemSaveStatus === 'saving'}
-                            type="button"
-                            className={`p-1.5 rounded-lg border transition-all inline-flex items-center justify-center cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] ${
                               itemSaveStatus === 'saved'
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                                ? 'bg-emerald-100 text-emerald-850 dark:bg-emerald-955/40 dark:text-emerald-450 border border-emerald-250'
+                                : isModified(r.ri, r)
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
+                                : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
                             }`}
-                            title="Salvar"
                           >
-                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
                             {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
                             {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                            <span>
+                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                            </span>
                           </button>
                         </td>
                       </tr>
@@ -1438,6 +1500,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Load More Button */}
+          {totalFilteredCount > visibleCount && (
+            <div className="flex flex-col items-center justify-center pt-6 pb-2 border-t border-slate-100 dark:border-slate-850 mt-6 space-y-2">
+              <span className="text-xs text-slate-500 dark:text-slate-450 font-bold">
+                Exibindo {visibleCount} de {totalFilteredCount} itens localizados
+              </span>
+              <button
+                onClick={() => setVisibleCount(prev => prev + 40)}
+                className="px-5 py-2 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5"
+              >
+                <span>Carregar mais itens</span>
+                <ChevronDown className="h-4 w-4 text-slate-400" />
+              </button>
             </div>
           )}
         </div>

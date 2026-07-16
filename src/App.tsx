@@ -135,6 +135,10 @@ export default function App() {
             const mapped = { ...profile, roles: profile.roles || [] };
             localDb.setCurrentUser(mapped);
             setUser(mapped);
+            // Sincroniza logo de início se estiver com sessão ativa
+            localDb.syncFromSupabase().catch(err => {
+              console.error("Falha ao sincronizar cache local com o Supabase:", err);
+            });
           } else {
             await supabase.auth.signOut();
             localDb.setCurrentUser(null);
@@ -165,8 +169,13 @@ export default function App() {
               const mapped = { ...profile, roles: profile.roles || [] };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
+              // Sincroniza ao detectar login com sucesso
+              localDb.syncFromSupabase().catch(err => {
+                console.error("Falha ao sincronizar cache local com o Supabase:", err);
+              });
             }
           } else if (event === 'SIGNED_OUT') {
+            localDb.setCurrentUser(null);
             setUser(null);
           }
         });
@@ -179,12 +188,6 @@ export default function App() {
       }
 
       setLoading(false);
-
-      if (supabase) {
-        localDb.syncFromSupabase().catch(err => {
-          console.error("Falha ao sincronizar cache local com o Supabase:", err);
-        });
-      }
     })();
 
     const unsubscribe = localDb.subscribe(() => setDataVersion(v => v + 1));

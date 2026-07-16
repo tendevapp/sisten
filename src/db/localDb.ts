@@ -23,6 +23,7 @@ class LocalDatabase {
   private pageCache = new Map<string, any>();
   private listeners = new Set<() => void>();
   private readonly migratedFlagKey = '__sisten_idb_migrated__';
+  private syncPromise: Promise<void> | null = null;
 
   // Resolvida assim que o cache em memória estiver populado (a partir do IndexedDB,
   // com migração de dados legados do localStorage se necessário). App.tsx aguarda
@@ -130,55 +131,74 @@ class LocalDatabase {
       console.warn('Sincronização com o Supabase ignorada: cliente não inicializado.');
       return;
     }
-    console.log('Iniciando sincronização com o Supabase...');
 
-    // Carimbos de versão (1 request leve). As bases pesadas abaixo só são
-    // rebaixadas quando a versão muda; as tabelas pequenas/interativas
-    // (requests, notifications, etc.) continuam sincronizando normalmente.
-    const markers = await this.fetchRemoteMarkers();
+    const currentUser = this.getCurrentUser();
+    if (!currentUser) {
+      console.log('Sincronização com o Supabase ignorada: nenhum usuário autenticado.');
+      return;
+    }
 
-    // Envelopa uma tarefa de sync pesada num gate de versão: se o cache local
-    // já estiver na versão corrente, não baixa nada.
-    const gated = (dataset: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
-      const storageKey = this.storageKeyFor(dataset);
-      if (!this.needsSync(dataset, storageKey, markers)) {
-        console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
-        return;
+    if (this.syncPromise) {
+      return this.syncPromise;
+    }
+
+    this.syncPromise = (async () => {
+      try {
+        console.log('Iniciando sincronização com o Supabase...');
+
+        // Carimbos de versão (1 request leve). As bases pesadas abaixo só são
+        // rebaixadas quando a versão muda; as tabelas pequenas/interativas
+        // (requests, notifications, etc.) continuam sincronizando normalmente.
+        const markers = await this.fetchRemoteMarkers();
+
+        // Envelopa uma tarefa de sync pesada num gate de versão: se o cache local
+        // já estiver na versão corrente, não baixa nada.
+        const gated = (dataset: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
+          const storageKey = this.storageKeyFor(dataset);
+          if (!this.needsSync(dataset, storageKey, markers)) {
+            console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
+            return;
+          }
+          await task();
+          this.commitDatasetMeta(dataset, markers);
+        };
+
+        const tasks: Array<[string, () => Promise<void>]> = [
+          ['sectors', () => this.syncSectors()],
+          ['profiles', () => this.syncProfiles()],
+          ['buyer_groups', () => this.syncBuyerGroups()],
+          ['materials', gated('materials', () => this.syncMaterials())],
+          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true))],
+          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true))],
+          ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
+          ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
+          ['request_comments', () => this.syncComments()],
+          ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey)],
+          ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey)],
+          ['import_logs', () => this.syncSimpleTable('import_logs', this.importLogsKey)],
+          ['obs_historico', () => this.syncObsHistory()],
+          ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
+          ['sequences', () => this.syncSequences()],
+          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true))],
+          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
+          ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
+        ];
+
+        const results = await Promise.allSettled(tasks.map(([, task]) => task()));
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            console.error(`Falha ao sincronizar "${tasks[idx][0]}" com o Supabase:`, result.reason);
+          }
+        });
+
+        console.log('Sincronização com o Supabase concluída.');
+        this.notifyListeners();
+      } finally {
+        this.syncPromise = null;
       }
-      await task();
-      this.commitDatasetMeta(dataset, markers);
-    };
+    })();
 
-    const tasks: Array<[string, () => Promise<void>]> = [
-      ['sectors', () => this.syncSectors()],
-      ['profiles', () => this.syncProfiles()],
-      ['buyer_groups', () => this.syncBuyerGroups()],
-      ['materials', gated('materials', () => this.syncMaterials())],
-      ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true))],
-      ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true))],
-      ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
-      ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
-      ['request_comments', () => this.syncComments()],
-      ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey)],
-      ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey)],
-      ['import_logs', () => this.syncSimpleTable('import_logs', this.importLogsKey)],
-      ['obs_historico', () => this.syncObsHistory()],
-      ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
-      ['sequences', () => this.syncSequences()],
-      ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true))],
-      ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
-      ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
-    ];
-
-    const results = await Promise.allSettled(tasks.map(([, task]) => task()));
-    results.forEach((result, idx) => {
-      if (result.status === 'rejected') {
-        console.error(`Falha ao sincronizar "${tasks[idx][0]}" com o Supabase:`, result.reason);
-      }
-    });
-
-    console.log('Sincronização com o Supabase concluída.');
-    this.notifyListeners();
+    return this.syncPromise;
   }
 
   private async syncSectors(): Promise<void> {
