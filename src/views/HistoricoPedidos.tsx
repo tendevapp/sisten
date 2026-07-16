@@ -8,7 +8,7 @@ import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
   RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
   Copy, Check, ChevronDown, Users, SlidersHorizontal,
-  ArrowUp, ArrowDown, ArrowUpDown
+  ArrowUp, ArrowDown, ArrowUpDown, Clock
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -82,6 +82,15 @@ const formatDateBR = (d?: string): string => {
   if (!d || d === '—') return '—';
   const parsed = new Date(d);
   return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
+};
+
+// Data + hora para o rótulo "Dados atualizados em".
+const formatDateTimeBR = (d?: string | null): string => {
+  if (!d) return '—';
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime())
+    ? String(d)
+    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 const dateVal = (d?: string): number => {
@@ -217,19 +226,24 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
     });
   }, []);
 
-  // Carrega a view: tenta ao vivo no Supabase, com fallback para o cache local.
-  const load = useCallback(async () => {
+  // Data/hora da última atualização dos dados (última importação/refresh).
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // Carrega a view via cache versionado. Só rebaixa do Supabase quando a versão
+  // mudou (nova importação) ou quando forçado pelo botão "Atualizar".
+  const load = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
       let linhas: HistoricoPedidoView[];
       try {
-        linhas = await localDb.fetchHistoricoPedidos();
+        linhas = await localDb.fetchHistoricoPedidos(force);
       } catch (netErr) {
         console.warn('Falha ao buscar a view ao vivo; usando cache local.', netErr);
         linhas = localDb.getHistoricoPedidos();
       }
       setRows(buildRows(linhas));
+      setLastUpdated(localDb.getDatasetUpdatedAt('historico_pedidos'));
     } catch (e: any) {
       console.error('Erro ao montar histórico de pedidos:', e);
       setError('Falha ao carregar o histórico. Tente atualizar novamente.');
@@ -239,7 +253,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
     }
   }, [buildRows]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(false); }, [load]);
 
   // Opções de filtro derivadas dos dados.
   const ufOptions = useMemo(() => {
@@ -395,10 +409,15 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
           <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
             Consulte todo o histórico de compras por material. Cada linha é um pedido consolidado por fornecedor. Identifique fornecedores já utilizados e obtenha contato para agilizar cotações.
           </p>
+          {lastUpdated && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+            </p>
+          )}
         </div>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
           <button
-            onClick={load}
+            onClick={() => load(true)}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
           >

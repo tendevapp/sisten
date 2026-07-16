@@ -47,6 +47,25 @@ class LocalDatabase {
   private sequencesKey = 'sisten_sequences';
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
+
+  // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
+  // dataset pesado (versão + data da última importação + data do último download).
+  private datasetMetaPrefix = 'sisten_dsmeta_';
+
+  // Mapa dataset lógico -> chave de armazenamento local, usado pelo gate de versão.
+  // É um método (não campo) para não referenciar as chaves antes de sua
+  // inicialização na ordem de declaração dos campos da classe.
+  private storageKeyFor(dataset: string): string {
+    const map: Record<string, string> = {
+      materials: this.materialsKey,
+      requisicoes: this.requisicoesKey,
+      pedidos: this.pedidosKey,
+      historico_pedidos: this.historicoPedidosKey,
+      pedidosforn: this.pedidosFornKey,
+      contatos: this.contatosKey,
+    };
+    return map[dataset];
+  }
   private historicoPedidosKey = 'sisten_historico_pedidos';
 
   // Current logged in user profile (saved in session/localStorage)
@@ -113,13 +132,30 @@ class LocalDatabase {
     }
     console.log('Iniciando sincronização com o Supabase...');
 
+    // Carimbos de versão (1 request leve). As bases pesadas abaixo só são
+    // rebaixadas quando a versão muda; as tabelas pequenas/interativas
+    // (requests, notifications, etc.) continuam sincronizando normalmente.
+    const markers = await this.fetchRemoteMarkers();
+
+    // Envelopa uma tarefa de sync pesada num gate de versão: se o cache local
+    // já estiver na versão corrente, não baixa nada.
+    const gated = (dataset: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
+      const storageKey = this.storageKeyFor(dataset);
+      if (!this.needsSync(dataset, storageKey, markers)) {
+        console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
+        return;
+      }
+      await task();
+      this.commitDatasetMeta(dataset, markers);
+    };
+
     const tasks: Array<[string, () => Promise<void>]> = [
       ['sectors', () => this.syncSectors()],
       ['profiles', () => this.syncProfiles()],
       ['buyer_groups', () => this.syncBuyerGroups()],
-      ['materials', () => this.syncMaterials()],
-      ['view_enriched_requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true)],
-      ['view_enriched_pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true)],
+      ['materials', gated('materials', () => this.syncMaterials())],
+      ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true))],
+      ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true))],
       ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
       ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
       ['request_comments', () => this.syncComments()],
@@ -129,9 +165,9 @@ class LocalDatabase {
       ['obs_historico', () => this.syncObsHistory()],
       ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
       ['sequences', () => this.syncSequences()],
-      ['pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true)],
-      ['vw_historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true)],
-      ['contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true)],
+      ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true))],
+      ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
+      ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
     ];
 
     const results = await Promise.allSettled(tasks.map(([, task]) => task()));
@@ -174,12 +210,9 @@ class LocalDatabase {
   }
 
   private async syncMaterials(): Promise<void> {
-    const localCount = this.getMaterials().length;
-    // Se o banco local já possui catálogo, evita fazer 170 requests HTTP pesados sequenciais
-    if (localCount > 0) {
-      console.log(`syncMaterials: pulando download completo do catálogo pois já existem ${localCount} itens no IndexedDB.`);
-      return;
-    }
+    // O gate de versão (syncFromSupabase) já decide quando este download pesado
+    // do catálogo (~180k linhas) deve ocorrer: apenas na primeira vez ou quando
+    // a versão do dataset 'materials' muda após uma importação.
     const materials = await this.fetchAllFromTable<any>('materials');
     if (materials && materials.length > 0) {
       this.setStorageItem(this.materialsKey, materials);
@@ -279,6 +312,99 @@ class LocalDatabase {
       if (!keysToKeep.includes(key)) {
         this.pageCache.delete(key);
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cache versionado por importação — "baixar uma vez, revalidar barato".
+  //
+  // Cada base pesada guarda localmente um carimbo (versão + datas). Antes de
+  // rebaixar, o app compara a versão local com a versão remota (1 request leve
+  // para toda a tabela dataset_versions). Se forem iguais e houver cache, não
+  // baixa nada. Isso corta o egress recorrente de boot/navegação.
+  // ---------------------------------------------------------------------------
+
+  private datasetMetaKey(dataset: string): string {
+    return `${this.datasetMetaPrefix}${dataset}`;
+  }
+
+  private getDatasetMeta(dataset: string): { version: number; updatedAt: string | null; fetchedAt: string } | null {
+    return this.getStorageItem<{ version: number; updatedAt: string | null; fetchedAt: string } | null>(
+      this.datasetMetaKey(dataset),
+      null
+    );
+  }
+
+  // Busca todos os carimbos remotos de uma vez (1 request, poucas linhas).
+  // Retorna null quando a tabela ainda não existe (modo degradado seguro).
+  private async fetchRemoteMarkers(): Promise<Map<string, { version: number; updatedAt: string | null }> | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.from('dataset_versions').select('dataset, version, updated_at');
+      if (error) throw error;
+      const map = new Map<string, { version: number; updatedAt: string | null }>();
+      (data || []).forEach((r: any) => map.set(r.dataset, { version: Number(r.version), updatedAt: r.updated_at ?? null }));
+      return map;
+    } catch (err) {
+      console.warn('Tabela dataset_versions indisponível; sincronizando em modo degradado.', err);
+      return null;
+    }
+  }
+
+  // Decide se um dataset precisa ser rebaixado.
+  // Sem carimbo remoto: baixa só se não houver cache local (baixa uma vez e mantém).
+  // Com carimbo: baixa apenas quando a versão remota difere da local.
+  private needsSync(
+    dataset: string,
+    storageKey: string,
+    markers: Map<string, { version: number; updatedAt: string | null }> | null
+  ): boolean {
+    const hasCache = this.cache.has(storageKey);
+    const marker = markers?.get(dataset);
+    if (!marker) return !hasCache;
+    const meta = this.getDatasetMeta(dataset);
+    if (!meta || !hasCache) return true;
+    return marker.version !== meta.version;
+  }
+
+  // Persiste o carimbo local após um download bem-sucedido.
+  private commitDatasetMeta(
+    dataset: string,
+    markers: Map<string, { version: number; updatedAt: string | null }> | null
+  ): void {
+    const marker = markers?.get(dataset);
+    const now = new Date().toISOString();
+    this.setStorageItem(this.datasetMetaKey(dataset), {
+      version: marker?.version ?? 0,
+      updatedAt: marker?.updatedAt ?? now,
+      fetchedAt: now,
+    });
+  }
+
+  // Data/hora em que a base foi atualizada pela última vez (última importação),
+  // para exibição nas telas ("Dados atualizados em: ..."). Usa o carimbo remoto
+  // quando disponível; caso contrário, a data do último download local.
+  public getDatasetUpdatedAt(dataset: string): string | null {
+    const meta = this.getDatasetMeta(dataset);
+    if (!meta) return null;
+    return meta.updatedAt || meta.fetchedAt || null;
+  }
+
+  // Incrementa a versão de um dataset no servidor (após uma importação) e alinha
+  // o carimbo local, para que o próprio importador não rebaixe em seguida.
+  public async bumpDatasetVersion(dataset: string, rowCount?: number): Promise<void> {
+    if (!supabase) return;
+    try {
+      const user = this.getCurrentUser();
+      await supabase.rpc('bump_dataset_version', {
+        p_dataset: dataset,
+        p_rows: rowCount ?? null,
+        p_user: user?.name ?? null,
+      });
+      const markers = await this.fetchRemoteMarkers();
+      this.commitDatasetMeta(dataset, markers);
+    } catch (err) {
+      console.warn(`Falha ao incrementar a versão do dataset '${dataset}'.`, err);
     }
   }
 
@@ -1233,21 +1359,22 @@ class LocalDatabase {
   }
 
   public async importMaterials(materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[]): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
-    // Busca o catálogo atual completo diretamente do Supabase (fonte de verdade,
-    // paginado para não ser truncado em 1000 linhas), pois o cache local pode
-    // estar incompleto (ex.: cota do localStorage excedida em catálogos grandes).
-    // Sem isso, códigos já existentes fora da primeira página pareceriam "novos",
-    // ganhariam um id gerado localmente e violariam a constraint unique de
-    // material_code ao sincronizar.
-    let currentList = this.getMaterials();
-    try {
-      const remoteMaterials = await this.fetchAllFromTable<Material>('materials');
-      if (remoteMaterials.length > 0) currentList = remoteMaterials;
-    } catch (err) {
-      console.warn('Não foi possível buscar o catálogo completo do Supabase antes da importação; usando cache local.', err);
-    }
-
+    // Fonte de verdade das linhas completas: o cache local (IndexedDB, sem a
+    // antiga cota de ~5MB do localStorage — hoje é confiável e completo).
+    // Para evitar rebaixar o catálogo inteiro (~180k linhas x todas as colunas)
+    // só para deduplicar, buscamos APENAS a coluna material_code do Supabase —
+    // leve — para reconhecer códigos que já existem remotamente mas não no cache
+    // local. O upsert com onConflict:'material_code' resolve qualquer duplicata.
+    const currentList = this.getMaterials();
     const currentMap = new Map(currentList.map(m => [m.material_code, m]));
+
+    const remoteCodeSet = new Set<string>();
+    try {
+      const remoteCodes = await this.fetchAllFromTable<{ material_code: string }>('materials', 'material_code');
+      remoteCodes.forEach(r => { if (r.material_code) remoteCodeSet.add(r.material_code); });
+    } catch (err) {
+      console.warn('Não foi possível buscar a lista de códigos do catálogo no Supabase; usando apenas o cache local.', err);
+    }
 
     // Deduplica por material_code (última ocorrência prevalece), pois a própria
     // planilha SAP pode conter o mesmo código em mais de uma linha — duas linhas
@@ -1276,6 +1403,21 @@ class LocalDatabase {
           company: m.company,
           unit: m.unit,
           is_active: true
+        });
+        updated++;
+      } else if (remoteCodeSet.has(m.material_code)) {
+        // Existe no Supabase mas não no cache local: gera um id novo; o
+        // onConflict:'material_code' fará UPDATE da linha remota (sem duplicar).
+        newList.push({
+          id: 'm_' + Math.random().toString(36).substr(2, 9),
+          material_code: m.material_code,
+          description: m.description,
+          technical_text: m.technical_text,
+          category: getAutoCategory(m.description),
+          company: m.company,
+          unit: m.unit,
+          is_active: true,
+          created_at: new Date().toISOString()
         });
         updated++;
       } else {
@@ -1327,6 +1469,10 @@ class LocalDatabase {
         console.error(`Falha ao sincronizar lote de materiais com o Supabase (linhas ${i + 1}-${i + batch.length}):`, err);
       }
     }
+
+    // Incrementa a versão do dataset para que os demais clientes rebaixem o
+    // catálogo na próxima abertura (e alinha o carimbo local deste importador).
+    await this.bumpDatasetVersion('materials', newList.length);
 
     const user = this.getCurrentUser();
     this.logActivity(
@@ -1759,15 +1905,43 @@ class LocalDatabase {
     return this.getStorageItem<HistoricoPedidoView[]>(this.historicoPedidosKey, []);
   }
 
-  // Busca a view ao vivo no Supabase (paginada) e atualiza o cache local.
-  public async fetchHistoricoPedidos(): Promise<HistoricoPedidoView[]> {
-    const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos');
-    this.setStorageItem(this.historicoPedidosKey, rows);
-    return rows;
+  // Retorna o histórico usando cache versionado: só rebaixa a view do Supabase
+  // quando a versão do dataset mudou (nova importação) ou quando forçado pelo
+  // botão "Atualizar". Caso contrário devolve o cache local (0 egress).
+  public async fetchHistoricoPedidos(force = false): Promise<HistoricoPedidoView[]> {
+    if (!supabase) return this.getHistoricoPedidos();
+    try {
+      const markers = await this.fetchRemoteMarkers();
+      if (!force && !this.needsSync('historico_pedidos', this.historicoPedidosKey, markers)) {
+        return this.getHistoricoPedidos();
+      }
+      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos');
+      this.setStorageItem(this.historicoPedidosKey, rows);
+      this.commitDatasetMeta('historico_pedidos', markers);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao sincronizar histórico; usando cache local.', err);
+      return this.getHistoricoPedidos();
+    }
   }
 
   public getContatosForn(): ContatoFornecedor[] {
     return this.getStorageItem<ContatoFornecedor[]>(this.contatosKey, []);
+  }
+
+  // Chamado após cadastrar/editar um contato: rebaixa apenas a tabela de
+  // contatos (leve) e incrementa a versão do dataset, em vez de disparar o
+  // sync completo de todas as tabelas. Alinha o carimbo local e avisa os demais
+  // clientes (que rebaixarão contatos na próxima abertura).
+  public async syncContatos(): Promise<void> {
+    if (!supabase) return;
+    try {
+      await this.syncSimpleTable('contatos', this.contatosKey, true);
+      await this.bumpDatasetVersion('contatos', this.getContatosForn().length);
+      this.notifyListeners();
+    } catch (err) {
+      console.warn('Falha ao sincronizar contatos após escrita.', err);
+    }
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
@@ -2483,6 +2657,8 @@ class LocalDatabase {
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
+      await this.bumpDatasetVersion('requisicoes', this.getRequisicoes().length);
+
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ME5A', `Importou ME5A (${filename}). Lidos: ${dataRows.length}, novos: ${inserted}.`);
       onProgress?.(100);
       return logObj as any;
@@ -2787,6 +2963,9 @@ class LocalDatabase {
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('requisicoes', this.getRequisicoes().length);
+      await this.bumpDatasetVersion('pedidos', this.getPedidos().length);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ZL0132', `Importou ZL0132 (${filename}). Lidos: ${dataRows.length}.`);
       onProgress?.(100);
@@ -3159,15 +3338,17 @@ class LocalDatabase {
         console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
       }
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+      await this.bumpDatasetVersion('pedidosforn', this.getStorageItem<any[]>(this.pedidosFornKey, []).length);
+      await this.bumpDatasetVersion('historico_pedidos', this.getHistoricoPedidos().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
       this.logActivity(
-        user?.id || 'sistema', 
-        'Suprimentos', 
-        'Importar Historico Fornecedores', 
+        user?.id || 'sistema',
+        'Suprimentos',
+        'Importar Historico Fornecedores',
         `Importou Historico Fornecedores (${filename}). Lidos: ${dataRows.length}. Novos: ${inserted}. Atualizados: ${updated}.`
       );
 
@@ -3265,6 +3446,7 @@ class LocalDatabase {
 
       await supabase.from('import_logs').insert(logObj);
       await this.syncSimpleTable('contatos', this.contatosKey, true);
+      await this.bumpDatasetVersion('contatos', this.getContatosForn().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);

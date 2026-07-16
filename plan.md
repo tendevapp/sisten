@@ -1,124 +1,168 @@
 # Plano de Implementação — Redução de Egress (Supabase)
 
-> Objetivo: reduzir o consumo de egress do Supabase (hoje ~1–1,5 GB/dia em pico,
-> 2,86 GB no período contra o limite de 5 GB do Free Plan) sem alterar o
-> comportamento funcional percebido pelo usuário.
+> Objetivo: reduzir o egress do Supabase (hoje ~1–1,5 GB/dia em pico, 2,86 GB no
+> período contra o limite de 5 GB do Free Plan) adotando uma estratégia
+> **local-first**: baixar cada base pesada **uma vez**, mantê-la no IndexedDB e só
+> rebaixar quando ela realmente mudar (nova importação).
 
-## Diagnóstico
+---
 
-### 1. Sincronização full em cada boot (maior ofensor)
-[`App.tsx:184`](src/App.tsx#L184) chama `localDb.syncFromSupabase()` em **toda** inicialização do app.
-[`syncFromSupabase`](src/db/localDb.ts#L108-L144) baixa **17 tabelas/views inteiras** via
-[`fetchAllFromTable`](src/db/localDb.ts#L1219-L1231), com `select('*')` e paginação completa.
+## Princípio central: "baixar uma vez, revalidar barato"
 
-- Views `view_enriched_pedidos`, `view_enriched_requisicoes`, `pedidosforn`, `contatos`
-  usam `alwaysSet: true` → **sempre rebaixam tudo, sem guard de cache**.
-- Sem sync incremental: nunca filtra por `updated_at > último_sync`.
-- `select('*')` traz colunas pesadas (`campos_extras` JSON, textos técnicos, colunas
-  derivadas das views: `dias_em_aberto`, `faixa_atraso`, `alerta`, `status_atualizado`).
+As bases pesadas do app (**Catálogo SAP**, **Histórico de Pedidos**, **Pedidos/Itens
+sem PO**, **Contatos**) só mudam quando alguém faz uma **importação**. Entre importações,
+os dados são estáticos. Hoje o app os rebaixa em todo boot e em toda navegação — puro
+desperdício de egress.
 
-### 2. Catálogo SAP (Materials)
-- **Primeiro load em cada navegador/dispositivo**: [`syncMaterials`](src/db/localDb.ts#L174-L191)
-  baixa ~180k linhas com `select('*')`. Tem guard (pula se cache local existe), mas o
-  primeiro download é pesado e inclui `technical_text`.
-- **Toda importação** ([`importMaterials`](src/db/localDb.ts#L1233-L1246)) re-baixa o
-  catálogo **inteiro** com `fetchAllFromTable('materials', '*')` para deduplicar antes do
-  upsert. Egress massivo e recorrente a cada importação.
-- **Busca/listagem** ([`Materials.tsx:115`](src/views/Materials.tsx#L115)): paginada (50/pág,
-  bom), mas `select('*')` traz `technical_text` de todas as linhas exibidas sem necessidade.
-- **Export CSV** ([`Materials.tsx:200`](src/views/Materials.tsx#L200)): até 20k linhas com
-  `select('*')` — sob demanda, aceitável, mas otimizável.
+A solução é tratar cada base como um "arquivo versionado":
+1. Download completo **na primeira vez** (ou quando a versão muda) → salva no IndexedDB.
+2. Nas próximas vezes, buscar apenas um **carimbo de versão** (1 linha, poucos bytes)
+   e comparar com a versão local.
+   - Igual → usa o cache local. **Egress da base pesada = 0.**
+   - Diferente → rebaixa uma vez e atualiza o carimbo local.
+3. A importação (única operação que muda os dados) **incrementa o carimbo**.
 
-### 3. Syncs duplicados em telas
-- [`Fornecedores.tsx:144,458`](src/views/Fornecedores.tsx#L144) disparam
-  `syncFromSupabase()` **completo** após cada cadastro/edição de contato.
+É o mesmo princípio de um `ETag`/cache condicional HTTP, feito na camada do app.
+
+---
+
+## Diagnóstico atual
+
+### 1. Histórico de Pedidos baixado 3× por sessão (pior caso)
+`vw_historico_pedidos` (view/materialized view definida em
+[`criar_view_historico_pedidos.sql`](criar_view_historico_pedidos.sql)) é baixada inteira em:
+- **Boot** — [`syncFromSupabase`](src/db/localDb.ts#L133) com `alwaysSet: true`.
+- **Central de Compras** — [`SuppliersNoPO.tsx:178`](src/views/SuppliersNoPO.tsx#L178) chama
+  [`fetchHistoricoPedidos()`](src/db/localDb.ts#L1763) em todo mount.
+- **Histórico de Pedidos** — [`HistoricoPedidos.tsx:227`](src/views/HistoricoPedidos.tsx#L227)
+  idem, em todo mount.
+
+Nenhuma confere validade do cache — [`fetchHistoricoPedidos`](src/db/localDb.ts#L1763-L1767)
+sempre faz `fetchAllFromTable('vw_historico_pedidos')` (paginação completa).
+
+### 2. Sync full de tudo em cada boot
+[`App.tsx:184`](src/App.tsx#L184) → [`syncFromSupabase`](src/db/localDb.ts#L108) baixa 17
+tabelas/views inteiras via [`fetchAllFromTable`](src/db/localDb.ts#L1219) com `select('*')`.
+As bases pesadas (`pedidosforn`, `vw_historico_pedidos`, `contatos`, views enriquecidas)
+usam `alwaysSet: true` → sempre rebaixam tudo, sem guard.
+
+### 3. Catálogo SAP
+- Primeiro load: [`syncMaterials`](src/db/localDb.ts#L174) baixa ~180k linhas (`select('*')`).
+  Tem guard de cache (bom), mas o primeiro download é pesado.
+- **Toda importação** re-baixa o catálogo inteiro ([`importMaterials`](src/db/localDb.ts#L1242))
+  só para deduplicar.
+
+### 4. Syncs redundantes em telas
+- [`Fornecedores.tsx:144,458`](src/views/Fornecedores.tsx#L144) chamam `syncFromSupabase()`
+  **completo** após cada cadastro/edição.
+
+---
+
+## Arquitetura proposta
+
+### A) Tabela de versões (carimbo) no Supabase
+
+```sql
+create table if not exists public.dataset_versions (
+  dataset      text primary key,   -- 'materials' | 'historico_pedidos' | 'pedidosforn' | 'contatos' | 'requisicoes' | 'pedidos'
+  version      bigint not null default 1,
+  row_count    bigint,
+  updated_at   timestamptz not null default now(),
+  updated_by   text
+);
+
+grant select on public.dataset_versions to anon, authenticated;
+
+-- Incrementa a versão de um dataset (chamado ao fim de cada importação).
+create or replace function public.bump_dataset_version(p_dataset text, p_rows bigint, p_user text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.dataset_versions (dataset, version, row_count, updated_at, updated_by)
+  values (p_dataset, 1, p_rows, now(), p_user)
+  on conflict (dataset) do update
+    set version = dataset_versions.version + 1,
+        row_count = excluded.row_count,
+        updated_at = now(),
+        updated_by = excluded.updated_by;
+end; $$;
+
+grant execute on function public.bump_dataset_version(text, bigint, text) to anon, authenticated;
+```
+
+> Alternativa sem tabela nova: reutilizar `import_logs` pegando `max(created_at)` por
+> `type`. Funciona, mas a tabela dedicada é mais barata (1 linha por dataset) e explícita.
+
+### B) Camada de cache versionado no `localDb.ts`
+
+```ts
+// Carimbo local por dataset, guardado no IndexedDB junto do cache de dados.
+private versionKey = (ds: string) => `sisten_ver_${ds}`;
+
+// Baixa só se a versão remota for diferente da local. Retorna o cache (novo ou existente).
+private async syncVersioned<T>(dataset: string, remoteTable: string, storageKey: string): Promise<T[]> {
+  const { data: ver } = await supabase
+    .from('dataset_versions').select('version').eq('dataset', dataset).maybeSingle();
+  const remoteVersion = ver?.version ?? 0;
+  const localVersion = this.getStorageItem<number>(this.versionKey(dataset), -1);
+
+  if (remoteVersion === localVersion && this.cache.has(storageKey)) {
+    return this.getStorageItem<T[]>(storageKey, []);   // cache válido → 0 egress da base
+  }
+  const rows = await this.fetchAllFromTable<T>(remoteTable);   // rebaixa uma vez
+  this.setStorageItem(storageKey, rows);
+  this.setStorageItem(this.versionKey(dataset), remoteVersion);
+  return rows;
+}
+```
 
 ---
 
 ## Fases de implementação
 
-### FASE 1 — Ganhos rápidos no sync (impacto: −60 a −80% egress)
+### FASE 1 — Cache versionado das bases pesadas (impacto: −70 a −85% egress)
 
-**1.1 — Cache-guard + TTL nas fontes pesadas**
-- [ ] Criar helper `shouldSync(key, ttlMinutes)` usando `sisten_last_sync_<tabela>` no IndexedDB.
-- [ ] Em [`syncFromSupabase`](src/db/localDb.ts#L108), pular tabelas cujo último sync foi
-      há menos que o TTL (sugestão: 15 min para views SAP, 5 min para requests/notifications).
-- [ ] Substituir `alwaysSet: true` por lógica de guard nas 4 fontes pesadas.
-- [ ] Manter botão "Atualizar" em [`AdminPanel.tsx:390`](src/views/AdminPanel.tsx#L390) forçando sync completo (bypass do TTL).
+- [ ] **1.1** Criar tabela `dataset_versions` + função `bump_dataset_version` (SQL acima).
+- [ ] **1.2** Implementar `syncVersioned` e `versionKey` no [`localDb.ts`](src/db/localDb.ts).
+- [ ] **1.3** Migrar as bases pesadas para `syncVersioned` em
+      [`syncFromSupabase`](src/db/localDb.ts#L108): `materials`, `vw_historico_pedidos`,
+      `pedidosforn`, `contatos`, `view_enriched_requisicoes`, `view_enriched_pedidos`.
+      Remover o `alwaysSet: true` dessas fontes.
+- [ ] **1.4** Chamar `bump_dataset_version` ao fim de cada importação correspondente
+      (materiais, ME5A, ZL0132, PEDIDOSFORN, contatos). O import já roda; só adicionar 1 RPC.
 
-**1.2 — Sync incremental por `updated_at`**
-- [ ] Guardar `max(updated_at)` recebido por tabela após cada sync.
-- [ ] Em [`syncSimpleTable`](src/db/localDb.ts#L193), aplicar `.gt('updated_at', lastSync)`
-      e fazer **merge** no cache (upsert por id) em vez de substituir o array inteiro.
-- [ ] Pré-requisito: garantir coluna `updated_at` nas tabelas base e expô-la nas views
-      (ver seção Migrations SQL). Já existe em `pedidosforn` e `contatos`.
+### FASE 2 — Eliminar re-downloads nas telas (impacto: corta os 2×/3× por sessão)
 
-**1.3 — Colunas explícitas no lugar de `select('*')`**
-- [ ] Nos syncs de listagem, selecionar apenas as colunas usadas na UI. Prioridade:
-      `pedidosforn` (excluir `campos_extras`), views enriquecidas, `contatos`.
+- [ ] **2.1** [`fetchHistoricoPedidos`](src/db/localDb.ts#L1763): trocar por
+      `syncVersioned('historico_pedidos', 'vw_historico_pedidos', historicoPedidosKey)`.
+      Assim, abrir Central de Compras + Histórico não rebaixa se a versão não mudou.
+- [ ] **2.2** [`HistoricoPedidos.tsx:221`](src/views/HistoricoPedidos.tsx#L221) e
+      [`SuppliersNoPO.tsx:133`](src/views/SuppliersNoPO.tsx#L133): no mount, ler do cache
+      local (`getHistoricoPedidos`) e só disparar o `syncVersioned` uma vez. O botão
+      **"Atualizar"** de cada tela força bypass (rebaixa mesmo com versão igual).
+- [ ] **2.3** [`Fornecedores.tsx:144,458`](src/views/Fornecedores.tsx#L144): após
+      cadastro/edição de contato, chamar `bump_dataset_version('contatos')` + sync só de
+      `contatos`, em vez de `syncFromSupabase()` completo.
 
-### FASE 2 — Catálogo SAP (impacto: −10 a −20% adicional + corta picos de importação)
+### FASE 3 — Catálogo SAP: importação sem re-download total (impacto: corta picos de importação)
 
-**2.1 — Importação sem re-download total**
-- [ ] Em [`importMaterials`](src/db/localDb.ts#L1233), substituir o
-      `fetchAllFromTable('materials', '*')` por uma das opções:
-      (a) upsert com `onConflict: 'material_code'` deixando o Postgres resolver duplicatas
-      (elimina a necessidade de baixar o catálogo para deduplicar), ou
-      (b) baixar apenas `material_code` (uma coluna) para o diff, não `*`.
-- [ ] Recalcular soft-delete (`is_active=false` dos ausentes) via query server-side
-      (`NOT IN` / `EXCEPT`) em vez de comparar arrays em memória.
+- [ ] **3.1** [`importMaterials`](src/db/localDb.ts#L1233): eliminar o
+      `fetchAllFromTable('materials', '*')`. Deixar o Postgres deduplicar via
+      `upsert onConflict: 'material_code'`; se precisar do diff para soft-delete, baixar
+      apenas a coluna `material_code` (não `*`).
+- [ ] **3.2** [`Materials.tsx:115`](src/views/Materials.tsx#L115) e
+      [`:200`](src/views/Materials.tsx#L200): trocar `select('*')` por colunas explícitas
+      (`id,material_code,description,technical_text,category,company,unit`).
+- [ ] **3.3** Avaliar `count: 'planned'` no lugar de `'exact'` na busca paginada.
 
-**2.2 — Busca com colunas mínimas**
-- [ ] [`Materials.tsx:115`](src/views/Materials.tsx#L115): trocar `select('*', {count})` por
-      `select('id,material_code,description,technical_text,category,company,unit', {count})`.
-      (Já é o conjunto exibido; só remove colunas extras eventuais.)
-- [ ] Avaliar `count: 'estimated'` ou `'planned'` no lugar de `'exact'` para reduzir custo
-      quando a contagem exata não é crítica.
+### FASE 4 — Refinos e governança
 
-**2.3 — Export CSV enxuto**
-- [ ] [`Materials.tsx:200`](src/views/Materials.tsx#L200): `select` apenas das 6 colunas
-      exportadas no CSV, não `*`.
-
-### FASE 3 — Sync sob demanda por rota (impacto: menos egress por usuário)
-
-- [ ] Não sincronizar dados SAP (`pedidosforn`, `contatos`, views) no boot para todos.
-      Disparar sync dessas fontes apenas ao entrar nas rotas `/suprimentos/*`.
-      Solicitantes/atendentes deixam de baixar dados que nunca visualizam.
-- [ ] [`Fornecedores.tsx:144,458`](src/views/Fornecedores.tsx#L144): trocar
-      `syncFromSupabase()` completo por sync incremental só de `contatos`.
-
-### FASE 4 — Governança e medição
-
-- [ ] Logar tamanho/contagem de cada sync (dev) para medir antes/depois.
-- [ ] Mover colunas derivadas das views enriquecidas ([`types.ts:228-232`](src/types.ts#L228-L232))
-      para cálculo no cliente; trafegar só campos-base.
-- [ ] (Se aplicável) RLS + filtros por grupo de comprador/setor para não trafegar linhas
-      que o usuário não pode ver.
-
----
-
-## Migrations SQL necessárias (pré-requisito da Fase 1.2)
-
-```sql
--- Garantir updated_at nas tabelas base (exemplo para requests; repetir p/ demais)
-ALTER TABLE requests ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
-
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS trigger AS $$
-BEGIN NEW.updated_at = now(); RETURN NEW; END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_requests_updated_at
-  BEFORE UPDATE ON requests
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
--- Expor updated_at nas views enriquecidas (recriar a view incluindo a coluna base)
--- view_enriched_pedidos / view_enriched_requisicoes: adicionar b.updated_at no SELECT.
-```
-
-Tabelas que precisam de verificação/coluna `updated_at`: `requests`, `request_items`,
-`request_comments`, `request_status_history`, `notifications`, `import_logs`,
-`obs_historico`, `activity_logs`. (`pedidosforn`, `contatos` já possuem.)
+- [ ] **4.1** Sync sob demanda por rota: bases SAP (`pedidosforn`, views, `contatos`) só
+      sincronizam ao entrar em `/suprimentos/*`. Solicitantes/atendentes param de baixá-las.
+- [ ] **4.2** Colunas explícitas nos syncs versionados (excluir `campos_extras` de
+      `pedidosforn` quando não usado na listagem).
+- [ ] **4.3** Log de tamanho/contagem por sync (dev) para medir antes/depois.
+- [ ] **4.4** Mover colunas derivadas das views enriquecidas
+      ([`types.ts:228-232`](src/types.ts#L228-L232)) para cálculo no cliente.
 
 ---
 
@@ -126,20 +170,33 @@ Tabelas que precisam de verificação/coluna `updated_at`: `requests`, `request_
 
 | Ordem | Item | Risco | Ganho |
 |-------|------|-------|-------|
-| 1 | Fase 1.1 (cache-guard + TTL) | Baixo | Alto |
-| 2 | Fase 2.1 (importação sem re-download) | Médio | Alto (corta picos) |
-| 3 | Fase 1.3 + 2.2 + 2.3 (colunas explícitas) | Baixo | Médio |
-| 4 | Migrations + Fase 1.2 (incremental) | Médio | Alto |
-| 5 | Fase 3 (sync por rota) | Médio | Médio |
-| 6 | Fase 4 (governança) | Baixo | Contínuo |
+| 1 | Fase 1 (cache versionado) | Médio | Muito alto |
+| 2 | Fase 2 (cortar re-download das telas) | Baixo | Alto |
+| 3 | Fase 3.1 (importação de materiais) | Médio | Alto (picos) |
+| 4 | Fase 3.2/3.3 (colunas explícitas) | Baixo | Médio |
+| 5 | Fase 4 (sob demanda + governança) | Médio | Médio/contínuo |
 
-**Meta:** sair de ~GB/dia para dezenas de MB/dia em regime permanente, mantendo o app
-utilizável offline via cache IndexedDB.
+**Meta:** em regime permanente (sem importações), um boot + navegação completa deve
+transferir apenas os carimbos de versão (KBs) + tabelas pequenas (requests, notifications),
+não as bases pesadas. Sai-se de ~GB/dia para dezenas de MB/dia.
+
+---
+
+## Comportamento esperado por cenário
+
+| Cenário | Hoje | Depois |
+|---------|------|--------|
+| Boot sem mudança de dados | Baixa 17 tabelas inteiras | Baixa carimbos + tabelas pequenas |
+| Abrir Central de Compras | Rebaixa histórico inteiro | Lê cache local (0 egress) |
+| Abrir Histórico | Rebaixa histórico inteiro | Lê cache local (0 egress) |
+| Após importação PEDIDOSFORN | (igual) | Carimbo muda → rebaixa 1× e só essa base |
+| Importar catálogo de materiais | Re-baixa 180k linhas | Não baixa; Postgres deduplica |
 
 ## Checklist de verificação
 
-- [ ] Boot do app não dispara download full das views SAP quando cache é fresco (TTL válido).
+- [ ] Boot com dados inalterados não dispara download das bases pesadas (só carimbos).
+- [ ] Central de Compras + Histórico não rebaixam a view quando a versão não mudou.
+- [ ] Botão "Atualizar" continua forçando refresh real.
+- [ ] Importação incrementa o carimbo e a próxima abertura reflete os dados novos.
 - [ ] Importação de materiais não re-baixa o catálogo inteiro.
-- [ ] Buscas e exports selecionam apenas colunas necessárias.
-- [ ] Sync incremental traz apenas linhas com `updated_at` novo.
-- [ ] Egress diário medido antes/depois no dashboard do Supabase confirma a redução.
+- [ ] Egress diário medido no dashboard do Supabase confirma a queda.

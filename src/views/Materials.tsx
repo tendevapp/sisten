@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2 } from 'lucide-react';
+import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2, Clock } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
@@ -15,6 +15,18 @@ interface MaterialsProps {
 
 const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
 const sanitizeTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
+
+// Colunas realmente usadas na tela/exportação — evita trafegar colunas extras
+// da tabela materials (reduz egress vs. select('*')).
+const MATERIAL_COLS = 'id,material_code,description,technical_text,category,company,unit';
+
+const formatDateTimeBR = (d?: string | null): string => {
+  if (!d) return '—';
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime())
+    ? String(d)
+    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
 export default function Materials({ user }: MaterialsProps) {
   // Carrega do cache se houver, senão usa os defaults
@@ -41,6 +53,7 @@ export default function Materials({ user }: MaterialsProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   // Pagination — busca paginada no servidor (Supabase), não no array local,
   // pois o catálogo tem 180k+ linhas e não caberia na memória/localStorage.
@@ -64,6 +77,7 @@ export default function Materials({ user }: MaterialsProps) {
 
   useEffect(() => {
     setFavorites(localDb.getFavorites(user.id));
+    setLastUpdated(localDb.getDatasetUpdatedAt('materials'));
     // Check initial search in URL
     const hashParts = window.location.hash.split('?');
     const urlParams = hashParts[1] ? new URLSearchParams(hashParts[1]) : null;
@@ -112,7 +126,7 @@ export default function Materials({ user }: MaterialsProps) {
       }
 
       try {
-        let query = supabase.from('materials').select('*', { count: 'exact' }).eq('is_active', true);
+        let query = supabase.from('materials').select(MATERIAL_COLS, { count: 'exact' }).eq('is_active', true);
         if (onlyFavorites) {
           query = query.in('material_code', favorites);
         }
@@ -197,7 +211,7 @@ export default function Materials({ user }: MaterialsProps) {
       const pageSize = 1000;
       let from = 0;
       while (allRows.length < EXPORT_CAP) {
-        let query = supabase.from('materials').select('*').eq('is_active', true);
+        let query = supabase.from('materials').select(MATERIAL_COLS).eq('is_active', true);
         if (onlyFavorites) query = query.in('material_code', favorites);
         query = applyFilters(query);
         const { data, error } = await query.order('material_code', { ascending: true }).range(from, from + pageSize - 1);
@@ -242,6 +256,11 @@ export default function Materials({ user }: MaterialsProps) {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Catálogo de Materiais SAP</h2>
           <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips para busca cumulativa.</p>
+          {lastUpdated && (
+            <p className="mt-1.5 text-[11px] font-medium text-slate-400 flex items-center gap-1">
+              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+            </p>
+          )}
         </div>
         <button
           onClick={handleExportCSV}

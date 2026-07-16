@@ -140,8 +140,9 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
       const { error: insErr } = await supabase.from('contatos').insert(payload);
       if (insErr) throw insErr;
 
-      // Sincroniza o banco local com o Supabase após a alteração
-      localDb.syncFromSupabase().catch(err => console.error('Erro ao sincronizar após cadastro:', err));
+      // Rebaixa apenas os contatos (leve) e incrementa a versão do dataset,
+      // em vez do sync completo de todas as tabelas.
+      localDb.syncContatos().catch(err => console.error('Erro ao sincronizar após cadastro:', err));
 
       onSaved();
       onClose();
@@ -454,8 +455,9 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
 
       if (upErr) throw upErr;
 
-      // Sincroniza o banco local com o Supabase após a alteração
-      localDb.syncFromSupabase().catch(err => console.error('Erro ao sincronizar após edição:', err));
+      // Rebaixa apenas os contatos (leve) e incrementa a versão do dataset,
+      // em vez do sync completo de todas as tabelas.
+      localDb.syncContatos().catch(err => console.error('Erro ao sincronizar após edição:', err));
 
       onSaved();
       onClose();

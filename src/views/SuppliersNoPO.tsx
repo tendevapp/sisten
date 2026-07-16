@@ -46,6 +46,15 @@ const formatPreco = (v?: number | null): string =>
     ? '—'
     : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// Data + hora para o rótulo "Dados atualizados em".
+const formatDateTimeBR = (d?: string | null): string => {
+  if (!d) return '—';
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime())
+    ? String(d)
+    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 
 
 // Componente local de cópia rápida reutilizável
@@ -130,7 +139,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
 
-  const buildSuppliersData = useCallback(async () => {
+  // Data/hora da última atualização dos dados (última importação/refresh).
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const buildSuppliersData = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -175,7 +187,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         // local ficava defasada e itens com histórico surgiam como "Sem histórico".
         let linhasHistorico: HistoricoPedidoView[];
         try {
-          linhasHistorico = await localDb.fetchHistoricoPedidos();
+          linhasHistorico = await localDb.fetchHistoricoPedidos(force);
         } catch (netErr) {
           console.warn('Falha ao buscar histórico ao vivo; usando cache local.', netErr);
           linhasHistorico = localDb.getHistoricoPedidos();
@@ -260,6 +272,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       });
 
       setRawRmGroups(built);
+      setLastUpdated(localDb.getDatasetUpdatedAt('requisicoes'));
     } catch (e: any) {
       console.error('Erro ao montar fornecedores (Sem PO):', e);
       setError('Falha ao montar dados. Tente atualizar novamente.');
@@ -563,6 +576,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Gestão operacional avançada de requisições pendentes. Localize fornecedores históricos, registre promessas de entrega e gerencie os status operacionais na mesma tela.
           </p>
+          {lastUpdated && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+            </p>
+          )}
         </div>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
           {/* Filtro PO (Todos / Sem PO) */}
@@ -612,7 +630,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           </div>
 
           <button
-            onClick={buildSuppliersData}
+            onClick={() => buildSuppliersData(true)}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
           >
