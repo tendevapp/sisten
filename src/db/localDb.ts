@@ -360,10 +360,17 @@ class LocalDatabase {
     markers: Map<string, { version: number; updatedAt: string | null }> | null
   ): boolean {
     const hasCache = this.cache.has(storageKey);
-    const marker = markers?.get(dataset);
-    if (!marker) return !hasCache;
     const meta = this.getDatasetMeta(dataset);
+    // O carimbo local (meta) só é gravado após um download real bem-sucedido do
+    // Supabase (commitDatasetMeta). Sua AUSÊNCIA significa que o "cache" atual é
+    // apenas o dado semente (seed) pré-carregado no boot por initialize() — que
+    // precisa ser substituído pelos dados reais, inclusive em modo degradado
+    // (dataset_versions indisponível). Antes, a mera existência de cache (o seed)
+    // satisfazia hasCache e o download real nunca acontecia: a tela ficava presa
+    // nas ~99 linhas do mock em vez das milhares de linhas reais.
     if (!meta || !hasCache) return true;
+    const marker = markers?.get(dataset);
+    if (!marker) return false; // modo degradado, mas já temos um download real
     return marker.version !== meta.version;
   }
 
