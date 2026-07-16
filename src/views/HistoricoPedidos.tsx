@@ -7,20 +7,23 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
   RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
-  Table, Copy, Check, ChevronDown, Users, SlidersHorizontal,
+  Copy, Check, ChevronDown, Users, SlidersHorizontal,
   ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
-import { Profile, PedidoForn, ContatoFornecedor } from '../types';
+import { Profile, ContatoFornecedor, HistoricoPedidoView } from '../types';
 
 interface HistoricoPedidosProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
 
-// Fornecedor consolidado no histórico de um material.
-interface SupplierHist {
+// Uma linha da tabela = um pedido já consolidado pela view (fornecedor + Nº Pedido, CRF = 'x'),
+// enriquecido com os dados de contato do fornecedor.
+interface Row {
+  material: string;
+  txt_breve: string;
   cod_forn: string;
   cnpj: string;
   fornecedor: string;
@@ -29,57 +32,41 @@ interface SupplierHist {
   telefone: string;
   email: string;
   classificacao: string;
-  ultima_data: string;
-  preco_liquido?: number;
-  qtd_pedido?: number;
-  valor_liquido?: number;
-  num_pedidos: number;
-  rm: string;
   doc_compra: string;
+  rm: string;
   data_doc: string;
+  qtd?: number;
+  preco_unit?: number;
+  valor_total?: number;
 }
 
-// Agrupamento de todos os pedidos históricos por material (item).
-interface MaterialHistGroup {
-  material: string;
-  txt_breve: string;
-  fornecedores: SupplierHist[];
-  total_pedidos: number;
-  valor_total: number;
-  ultima_data: string;
-}
+type SortDir = 'asc' | 'desc';
 
 interface ColumnOption {
   id: string;
   label: string;
-  defaultVisible: boolean;
+  align?: 'left' | 'right';
+  sortable?: boolean;
 }
 
-const AVAILABLE_COLUMNS: ColumnOption[] = [
-  { id: 'material', label: 'Material', defaultVisible: true },
-  { id: 'descricao', label: 'Descrição', defaultVisible: true },
-  { id: 'fornecedor', label: 'Fornecedor', defaultVisible: true },
-  { id: 'uf', label: 'UF', defaultVisible: true },
-  { id: 'contato', label: 'Contato', defaultVisible: true },
-  { id: 'qtd', label: 'Quantidade', defaultVisible: true },
-  { id: 'preco', label: 'Preço Unit', defaultVisible: true },
-  { id: 'total', label: 'Valor Total', defaultVisible: true },
-  { id: 'rm', label: 'RM', defaultVisible: true },
-  { id: 'doc_compra', label: 'Nº Pedido', defaultVisible: true },
-  { id: 'data_doc', label: 'Data Pedido', defaultVisible: true },
+const COLUMNS: ColumnOption[] = [
+  { id: 'material', label: 'Material', sortable: true },
+  { id: 'descricao', label: 'Descrição', sortable: true },
+  { id: 'fornecedor', label: 'Fornecedor', sortable: true },
+  { id: 'uf', label: 'UF', sortable: true },
+  { id: 'contato', label: 'Contato' },
+  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true },
+  { id: 'preco', label: 'Preço Unit', align: 'right', sortable: true },
+  { id: 'total', label: 'Valor Total', align: 'right', sortable: true },
+  { id: 'rm', label: 'RM', sortable: true },
+  { id: 'doc_compra', label: 'Nº Pedido', sortable: true },
+  { id: 'data_doc', label: 'Data Pedido', sortable: true },
 ];
 
-// Colunas que suportam ordenação por clique no cabeçalho.
-type SortDir = 'asc' | 'desc';
+const STORAGE_COLS_KEY = 'sisten_historico_visible_columns';
+const PAGE_SIZE = 50;
 
-// Extrai o ano (YYYY) de uma data para o filtro de ano.
-const yearOf = (d?: string): string => {
-  if (!d || d === '—') return '';
-  const t = new Date(d);
-  return isNaN(t.getTime()) ? '' : String(t.getFullYear());
-};
-
-// Normaliza códigos de material para casar registros mesmo com diferença de zeros à esquerda.
+// Normaliza códigos de material para casar registros com diferença de zeros à esquerda.
 const normalizeCode = (c: any): string => {
   const s = String(c ?? '').trim();
   const stripped = s.replace(/^0+/, '');
@@ -101,6 +88,12 @@ const dateVal = (d?: string): number => {
   if (!d || d === '—') return 0;
   const t = new Date(d).getTime();
   return isNaN(t) ? 0 : t;
+};
+
+const yearOf = (d?: string): string => {
+  if (!d || d === '—') return '';
+  const t = new Date(d);
+  return isNaN(t.getTime()) ? '' : String(t.getFullYear());
 };
 
 // Botão de cópia rápida reutilizável.
@@ -164,12 +157,10 @@ const SortableTh = ({
   );
 };
 
-const PAGE_SIZE = 30;
-
 export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [groups, setGroups] = useState<MaterialHistGroup[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
@@ -177,289 +168,215 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
   const [classFilter, setClassFilter] = useState('Todos');
   const [yearFilter, setYearFilter] = useState('Todos');
 
-  // Ordenação por coluna
+  // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // Customização de colunas
+  // Colunas visíveis (todas por padrão; mescla com preferências salvas).
   const [showColMenu, setShowColMenu] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
-    // Todas as colunas visíveis por padrão; mescla com as preferências salvas
-    // (colunas ausentes nas preferências antigas assumem o padrão visível).
-    const defaults = AVAILABLE_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: col.defaultVisible }), {} as Record<string, boolean>);
-    const saved = localStorage.getItem('sisten_historico_visible_columns');
+    const defaults = COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {} as Record<string, boolean>);
+    const saved = localStorage.getItem(STORAGE_COLS_KEY);
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { ...defaults, ...parsed };
-      } catch {}
+      try { return { ...defaults, ...JSON.parse(saved) }; } catch {}
     }
     return defaults;
   });
-
   useEffect(() => {
-    localStorage.setItem('sisten_historico_visible_columns', JSON.stringify(visibleColumns));
+    localStorage.setItem(STORAGE_COLS_KEY, JSON.stringify(visibleColumns));
   }, [visibleColumns]);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const buildHistorico = useCallback(() => {
+  // Monta as linhas a partir das linhas da view + contatos.
+  const buildRows = useCallback((linhas: HistoricoPedidoView[]): Row[] => {
+    const contatos = localDb.getContatosForn();
+    const contatosMap = new Map<string, ContatoFornecedor>();
+    contatos.forEach(c => { if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c); });
+
+    return linhas.map(l => {
+      const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
+      return {
+        material: l.material || '—',
+        txt_breve: l.txt_breve || '—',
+        cod_forn: l.cod_forn || '—',
+        cnpj: l.cnpj || '—',
+        fornecedor: l.fornecedor || contato?.fornecedor || '—',
+        nome_fantasia: contato?.nome_fantasia || '—',
+        regiao_uf: l.regiao_uf || '—',
+        telefone: contato?.telefone || '—',
+        email: contato?.email || '—',
+        classificacao: contato?.classificacao || '—',
+        doc_compra: l.doc_compra || '—',
+        rm: l.reqc || '—',
+        data_doc: l.data_doc || '—',
+        qtd: l.qtd_pedido ?? undefined,
+        preco_unit: l.preco_liquido_unit ?? undefined,
+        valor_total: l.valor_liquido ?? undefined,
+      };
+    });
+  }, []);
+
+  // Carrega a view: tenta ao vivo no Supabase, com fallback para o cache local.
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const pedidos = localDb.getPedidosForn();
-      const contatos = localDb.getContatosForn();
-
-      // Indexa contatos por código de vendor para trazer telefone/e-mail.
-      const contatosMap = new Map<string, ContatoFornecedor>();
-      contatos.forEach(c => { if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c); });
-
-      // Agrupa pedidos por material (item do histórico).
-      const matMap = new Map<string, PedidoForn[]>();
-      pedidos.forEach(p => {
-        const key = normalizeCode(p.material);
-        if (!key) return;
-        const arr = matMap.get(key);
-        if (arr) arr.push(p);
-        else matMap.set(key, [p]);
-      });
-
-      const built: MaterialHistGroup[] = [];
-      matMap.forEach((lista) => {
-        // Consolida por pedido (Nº Pedido): itens do mesmo pedido somam quantidade e valor.
-        // Pedidos sem número recebem chave única para não se misturarem.
-        const pedMap = new Map<string, PedidoForn[]>();
-        let noDocCounter = 0;
-        lista.forEach(p => {
-          const doc = String((p as any).doc_compra || p.documento_compra || '').trim();
-          const key = doc || `__nodoc_${noDocCounter++}`;
-          const arr = pedMap.get(key);
-          if (arr) arr.push(p);
-          else pedMap.set(key, [p]);
-        });
-
-        const fornecedores: SupplierHist[] = Array.from(pedMap.values()).map((rows) => {
-          // Representante do pedido = ocorrência mais recente.
-          const p = rows.reduce((a, b) => dateVal(b.data_pedido) > dateVal(a.data_pedido) ? b : a, rows[0]);
-          const contato = p.cod_forn ? contatosMap.get(String(p.cod_forn).trim()) : undefined;
-
-          // Soma as quantidades e valores dos itens do mesmo pedido.
-          const qtd = rows.reduce((s, r) => s + (Number(r.qtd_pedido) || 0), 0);
-          const valorTotalItem = rows.reduce((s, r) => {
-            const v = r.valor_liquido !== undefined && r.valor_liquido !== null && r.valor_liquido !== 0
-              ? Number(r.valor_liquido)
-              : Number(r.preco_liquido || 0);
-            return s + v;
-          }, 0);
-
-          // Preço unitário = valor total somado / quantidade somada (fallback para o unitário do representante).
-          const precoUnit = qtd > 0
-            ? valorTotalItem / qtd
-            : (p.preco_liquido_unit ?? p.preco_liquido ?? undefined);
-
-          return {
-            cod_forn: p.cod_forn || '—',
-            cnpj: p.cnpj || '—',
-            fornecedor: p.fornecedor || contato?.fornecedor || '—',
-            nome_fantasia: contato?.nome_fantasia || '—',
-            regiao_uf: p.regiao_uf || '—',
-            telefone: contato?.telefone || '—',
-            email: contato?.email || '—',
-            classificacao: contato?.classificacao || '—',
-            ultima_data: p.data_pedido || '—',
-            preco_liquido: precoUnit ?? undefined,
-            qtd_pedido: qtd > 0 ? qtd : undefined,
-            valor_liquido: valorTotalItem > 0 ? valorTotalItem : undefined,
-            num_pedidos: rows.length,
-            rm: (p as any).reqc || p.ri || '—',
-            doc_compra: (p as any).doc_compra || p.documento_compra || '—',
-            data_doc: (p as any).data_doc || p.data_pedido || '—',
-          };
-        });
-
-        fornecedores.sort((a, b) => dateVal(b.ultima_data) - dateVal(a.ultima_data));
-
-        // Totais do material derivados dos pedidos consolidados.
-        const valorTotal = fornecedores.reduce((s, f) => s + (f.valor_liquido || 0), 0);
-        const ultimaData = fornecedores.reduce((m, f) => dateVal(f.ultima_data) > dateVal(m) ? f.ultima_data : m, '');
-
-        const first = lista.find(p => p.txt_breve && p.txt_breve.trim());
-        built.push({
-          material: lista[0].material || '—',
-          txt_breve: first?.txt_breve || '—',
-          fornecedores,
-          total_pedidos: fornecedores.length,
-          valor_total: valorTotal,
-          ultima_data: ultimaData,
-        });
-      });
-
-      // Histórico mais recente primeiro.
-      built.sort((a, b) => dateVal(b.ultima_data) - dateVal(a.ultima_data));
-      setGroups(built);
+      let linhas: HistoricoPedidoView[];
+      try {
+        linhas = await localDb.fetchHistoricoPedidos();
+      } catch (netErr) {
+        console.warn('Falha ao buscar a view ao vivo; usando cache local.', netErr);
+        linhas = localDb.getHistoricoPedidos();
+      }
+      setRows(buildRows(linhas));
     } catch (e: any) {
       console.error('Erro ao montar histórico de pedidos:', e);
-      setError('Falha ao montar o histórico. Tente atualizar novamente.');
-      setGroups([]);
+      setError('Falha ao carregar o histórico. Tente atualizar novamente.');
+      setRows([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildRows]);
 
-  useEffect(() => { buildHistorico(); }, [buildHistorico]);
+  useEffect(() => { load(); }, [load]);
 
   // Opções de filtro derivadas dos dados.
   const ufOptions = useMemo(() => {
     const s = new Set<string>();
-    groups.forEach(g => g.fornecedores.forEach(f => { if (f.regiao_uf && f.regiao_uf !== '—') s.add(f.regiao_uf); }));
+    rows.forEach(r => { if (r.regiao_uf && r.regiao_uf !== '—') s.add(r.regiao_uf); });
     return Array.from(s).sort();
-  }, [groups]);
+  }, [rows]);
 
   const classOptions = useMemo(() => {
     const s = new Set<string>();
-    groups.forEach(g => g.fornecedores.forEach(f => { if (f.classificacao && f.classificacao !== '—') s.add(f.classificacao); }));
+    rows.forEach(r => { if (r.classificacao && r.classificacao !== '—') s.add(r.classificacao); });
     return Array.from(s).sort();
-  }, [groups]);
+  }, [rows]);
 
   const yearOptions = useMemo(() => {
     const s = new Set<string>();
-    groups.forEach(g => g.fornecedores.forEach(f => { const y = yearOf(f.data_doc); if (y) s.add(y); }));
+    rows.forEach(r => { const y = yearOf(r.data_doc); if (y) s.add(y); });
     return Array.from(s).sort((a, b) => Number(b) - Number(a));
-  }, [groups]);
+  }, [rows]);
 
-  // Filtragem por busca (texto breve, código do material, fornecedor, CNPJ, código do fornecedor),
-  // por UF / classificação do fornecedor e por ano do pedido (filtra as linhas exibidas).
-  const filteredGroups = useMemo(() => {
+  // Filtragem por busca, UF, classificação e ano.
+  const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return groups.reduce<MaterialHistGroup[]>((acc, g) => {
-      const matchesUf = ufFilter === 'Todos' || g.fornecedores.some(f => f.regiao_uf === ufFilter);
-      const matchesClass = classFilter === 'Todos' || g.fornecedores.some(f => f.classificacao === classFilter);
-      if (!matchesUf || !matchesClass) return acc;
-
+    return rows.filter(r => {
+      if (ufFilter !== 'Todos' && r.regiao_uf !== ufFilter) return false;
+      if (classFilter !== 'Todos' && r.classificacao !== classFilter) return false;
+      if (yearFilter !== 'Todos' && yearOf(r.data_doc) !== yearFilter) return false;
       if (q) {
-        const inMaterial =
-          (g.material || '').toLowerCase().includes(q) ||
-          (g.txt_breve || '').toLowerCase().includes(q);
-        const inForn = g.fornecedores.some(f =>
-          f.fornecedor.toLowerCase().includes(q) ||
-          f.nome_fantasia.toLowerCase().includes(q) ||
-          f.cnpj.toLowerCase().includes(q) ||
-          f.cod_forn.toLowerCase().includes(q)
-        );
-        if (!inMaterial && !inForn) return acc;
+        const hit =
+          r.material.toLowerCase().includes(q) ||
+          r.txt_breve.toLowerCase().includes(q) ||
+          r.fornecedor.toLowerCase().includes(q) ||
+          r.nome_fantasia.toLowerCase().includes(q) ||
+          r.cnpj.toLowerCase().includes(q) ||
+          r.cod_forn.toLowerCase().includes(q) ||
+          r.rm.toLowerCase().includes(q) ||
+          r.doc_compra.toLowerCase().includes(q);
+        if (!hit) return false;
       }
+      return true;
+    });
+  }, [rows, searchQuery, ufFilter, classFilter, yearFilter]);
 
-      // Filtro de ano: mantém apenas os pedidos do ano selecionado.
-      const forns = yearFilter === 'Todos'
-        ? g.fornecedores
-        : g.fornecedores.filter(f => yearOf(f.data_doc) === yearFilter);
-      if (forns.length === 0) return acc;
-
-      acc.push({
-        ...g,
-        fornecedores: forns,
-        total_pedidos: forns.length,
-        valor_total: forns.reduce((s, f) => s + (f.valor_liquido || 0), 0),
-      });
-      return acc;
-    }, []);
-  }, [groups, searchQuery, ufFilter, classFilter, yearFilter]);
-
-  // Reinicia a paginação sempre que os filtros ou a ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, ufFilter, classFilter, yearFilter, sortColumn, sortDir]);
-
-  // Achata os grupos em linhas (uma por pedido) e aplica a ordenação por coluna.
+  // Ordenação: por coluna quando ativa; caso contrário material asc + data desc.
   const sortedRows = useMemo(() => {
-    const rows: { g: MaterialHistGroup; f: SupplierHist }[] = [];
-    filteredGroups.forEach(g => g.fornecedores.forEach(f => rows.push({ g, f })));
+    const arr = [...filteredRows];
     if (sortColumn) {
-      const getVal = (row: { g: MaterialHistGroup; f: SupplierHist }): string | number => {
-        const { g, f } = row;
+      const getVal = (r: Row): string | number => {
         switch (sortColumn) {
-          case 'material': return normalizeCode(g.material);
-          case 'descricao': return (g.txt_breve || '').toLowerCase();
-          case 'fornecedor': return (f.fornecedor || '').toLowerCase();
-          case 'uf': return (f.regiao_uf || '').toLowerCase();
-          case 'qtd': return f.qtd_pedido ?? -Infinity;
-          case 'preco': return f.preco_liquido ?? -Infinity;
-          case 'total': return f.valor_liquido ?? -Infinity;
-          case 'rm': return f.rm || '';
-          case 'doc_compra': return f.doc_compra || '';
-          case 'data_doc': return dateVal(f.data_doc);
+          case 'material': return normalizeCode(r.material);
+          case 'descricao': return r.txt_breve.toLowerCase();
+          case 'fornecedor': return r.fornecedor.toLowerCase();
+          case 'uf': return r.regiao_uf.toLowerCase();
+          case 'qtd': return r.qtd ?? -Infinity;
+          case 'preco': return r.preco_unit ?? -Infinity;
+          case 'total': return r.valor_total ?? -Infinity;
+          case 'rm': return r.rm;
+          case 'doc_compra': return r.doc_compra;
+          case 'data_doc': return dateVal(r.data_doc);
           default: return '';
         }
       };
       const dir = sortDir === 'asc' ? 1 : -1;
-      rows.sort((a, b) => {
+      arr.sort((a, b) => {
         const va = getVal(a), vb = getVal(b);
         if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
         return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * dir;
       });
+    } else {
+      arr.sort((a, b) => {
+        const m = normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true });
+        if (m !== 0) return m;
+        return dateVal(b.data_doc) - dateVal(a.data_doc);
+      });
     }
-    return rows;
-  }, [filteredGroups, sortColumn, sortDir]);
+    return arr;
+  }, [filteredRows, sortColumn, sortDir]);
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
-  // Alterna a ordenação ao clicar no cabeçalho.
+  // Reinicia a paginação quando filtros/ordenação mudam.
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, ufFilter, classFilter, yearFilter, sortColumn, sortDir]);
+
   const toggleSort = (col: string) => {
-    if (sortColumn === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(col);
-      setSortDir('asc');
-    }
+    if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(col); setSortDir('asc'); }
   };
 
-  // KPIs / indicadores.
+  // KPIs.
   const kpis = useMemo(() => {
-    const fornSet = new Set<string>();
-    let pedidos = 0;
+    const materiais = new Set<string>();
+    const fornecedores = new Set<string>();
     let valor = 0;
-    filteredGroups.forEach(g => {
-      pedidos += g.total_pedidos;
-      valor += g.valor_total;
-      g.fornecedores.forEach(f => {
-        const key = f.cnpj && f.cnpj !== '—' ? f.cnpj : f.cod_forn;
-        if (key && key !== '—') fornSet.add(key);
-      });
+    let qtd = 0;
+    filteredRows.forEach(r => {
+      materiais.add(normalizeCode(r.material));
+      const fk = r.cnpj && r.cnpj !== '—' ? r.cnpj : r.cod_forn;
+      if (fk && fk !== '—') fornecedores.add(fk);
+      valor += r.valor_total || 0;
+      qtd += r.qtd || 0;
     });
     return {
-      materiais: filteredGroups.length,
-      pedidos,
-      fornecedores: fornSet.size,
+      materiais: materiais.size,
+      pedidos: filteredRows.length,
+      fornecedores: fornecedores.size,
       valor,
-      ticket: pedidos > 0 ? valor / pedidos : 0,
+      precoMedio: qtd > 0 ? valor / qtd : 0,
     };
-  }, [filteredGroups]);
+  }, [filteredRows]);
 
-  const totalMateriais = groups.length;
+  const totalMateriais = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => s.add(normalizeCode(r.material)));
+    return s.size;
+  }, [rows]);
 
   const handleExportExcel = () => {
-    if (filteredGroups.length === 0) return;
-    const rows: any[] = [];
-    filteredGroups.forEach(g => {
-      g.fornecedores.forEach(f => {
-        rows.push({
-          'Código do Material': g.material,
-          'Descrição': g.txt_breve,
-          'Cód. Fornecedor': f.cod_forn,
-          'CNPJ': f.cnpj,
-          'Fornecedor': f.fornecedor,
-          'Nome Fantasia': f.nome_fantasia,
-          'UF': f.regiao_uf,
-          'Telefone': f.telefone,
-          'E-mail': f.email,
-          'Classificação': f.classificacao,
-          'Quantidade': f.qtd_pedido ?? '—',
-          'Preço Unitário': f.preco_liquido ?? '—',
-          'Valor Total': f.valor_liquido ?? '—',
-          'Nº Pedidos': f.num_pedidos,
-          'Última Compra': formatDateBR(f.ultima_data),
-        });
-      });
-    });
-    const ws = XLSX.utils.json_to_sheet(rows);
+    if (filteredRows.length === 0) return;
+    const data = filteredRows.map(r => ({
+      'Código do Material': r.material,
+      'Descrição': r.txt_breve,
+      'Cód. Fornecedor': r.cod_forn,
+      'CNPJ': r.cnpj,
+      'Fornecedor': r.fornecedor,
+      'Nome Fantasia': r.nome_fantasia,
+      'UF': r.regiao_uf,
+      'Telefone': r.telefone,
+      'E-mail': r.email,
+      'Classificação': r.classificacao,
+      'Quantidade': r.qtd ?? '—',
+      'Preço Unitário': r.preco_unit ?? '—',
+      'Valor Total': r.valor_total ?? '—',
+      'RM': r.rm,
+      'Nº Pedido': r.doc_compra,
+      'Data Pedido': formatDateBR(r.data_doc),
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Histórico de Pedidos');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -476,18 +393,18 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
             Histórico de Pedidos
           </h2>
           <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-            Consulte todo o histórico de compras por material. Identifique fornecedores já utilizados e obtenha contato e e-mail para agilizar cotações.
+            Consulte todo o histórico de compras por material. Cada linha é um pedido consolidado por fornecedor. Identifique fornecedores já utilizados e obtenha contato para agilizar cotações.
           </p>
         </div>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
           <button
-            onClick={buildHistorico}
+            onClick={load}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
-          {filteredGroups.length > 0 && (
+          {filteredRows.length > 0 && (
             <button
               onClick={handleExportExcel}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
@@ -499,7 +416,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
       </div>
 
       {/* KPIs */}
-      {!loading && !error && groups.length > 0 && (
+      {!loading && !error && rows.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
@@ -524,7 +441,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500 dark:bg-violet-600" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Preço Médio</span>
-            <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatPreco(kpis.ticket)}</p>
+            <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatPreco(kpis.precoMedio)}</p>
           </div>
         </div>
       )}
@@ -538,7 +455,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busque por texto breve, código do material, fornecedor ou CNPJ..."
+              placeholder="Busque por material, descrição, fornecedor, CNPJ, RM ou Nº do pedido..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
             />
           </div>
@@ -595,28 +512,27 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
         </div>
       )}
 
-      {!loading && !error && groups.length === 0 && (
+      {!loading && !error && rows.length === 0 && (
         <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
           <History className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-955/30 p-2.5 rounded-full mb-3" />
           <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum pedido histórico encontrado</h3>
           <p className="text-sm text-slate-555 dark:text-slate-455 mt-1 max-w-md">
-            Importe a base de pedidos (PEDIDOSFORN) em Cadastros SAP para visualizar o histórico de compras por material.
+            Importe a base de pedidos (PEDIDOSFORN) em Cadastros SAP e garanta que a view <span className="font-mono">vw_historico_pedidos</span> existe no banco.
           </p>
         </div>
       )}
 
       {/* Conteúdo */}
-      {!loading && !error && groups.length > 0 && (
+      {!loading && !error && rows.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
-            <span>Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length} pedidos · {filteredGroups.length} materiais ({totalMateriais} no total)</span>
-            
-            {/* Column selector drop-down */}
+            <span>Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length} pedidos · {kpis.materiais} materiais ({totalMateriais} no total)</span>
+
+            {/* Personalizar colunas */}
             <div className="relative">
               {showColMenu && (
                 <div className="fixed inset-0 z-20" onClick={() => setShowColMenu(false)} />
               )}
-              
               <button
                 onClick={() => setShowColMenu(!showColMenu)}
                 className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-705 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all z-30 relative cursor-pointer"
@@ -625,32 +541,27 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
                 <span>Personalizar Colunas</span>
                 <ChevronDown className="h-3 w-3 text-slate-400" />
               </button>
-              
               {showColMenu && (
                 <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">
                   <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Colunas Ativas</span>
-                    <button 
-                      onClick={() => {
-                        setVisibleColumns(AVAILABLE_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {}));
-                      }}
+                    <button
+                      onClick={() => setVisibleColumns(COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {}))}
                       className="text-[10px] text-blue-650 hover:underline font-semibold cursor-pointer"
                     >
                       Mostrar Todas
                     </button>
                   </div>
                   <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                    {AVAILABLE_COLUMNS.map((col) => (
-                      <label 
-                        key={col.id} 
+                    {COLUMNS.map((col) => (
+                      <label
+                        key={col.id}
                         className="flex items-center space-x-2 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs text-slate-600 dark:text-slate-400 transition-colors"
                       >
                         <input
                           type="checkbox"
                           checked={!!visibleColumns[col.id]}
-                          onChange={(e) => {
-                            setVisibleColumns(prev => ({ ...prev, [col.id]: e.target.checked }));
-                          }}
+                          onChange={(e) => setVisibleColumns(prev => ({ ...prev, [col.id]: e.target.checked }))}
                           className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
                         />
                         <span className="font-medium">{col.label}</span>
@@ -662,109 +573,103 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
             </div>
           </div>
 
-          {filteredGroups.length === 0 && (
+          {sortedRows.length === 0 && (
             <div className="flex items-center gap-3 p-6 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/50 dark:bg-amber-955/15 text-amber-800 dark:text-amber-300 text-sm font-semibold">
               <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
               Nenhum registro coincide com os critérios e filtros aplicados atualmente.
             </div>
           )}
 
-          {/* VIEW: TABLE ONLY */}
-          {filteredGroups.length > 0 && (
+          {sortedRows.length > 0 && (
             <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-955/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
-                      {visibleColumns.material && <SortableTh col="material" label="Material" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.descricao && <SortableTh col="descricao" label="Descrição" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.fornecedor && <SortableTh col="fornecedor" label="Fornecedor" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.uf && <SortableTh col="uf" label="UF" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.contato && <th className="px-3 py-2.5 font-black">Contato</th>}
-                      {visibleColumns.qtd && <SortableTh col="qtd" label="Qtd" align="right" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.preco && <SortableTh col="preco" label="Preço Unit" align="right" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.total && <SortableTh col="total" label="Valor Total" align="right" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.rm && <SortableTh col="rm" label="RM" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.doc_compra && <SortableTh col="doc_compra" label="Nº Pedido" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
-                      {visibleColumns.data_doc && <SortableTh col="data_doc" label="Data Pedido" sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />}
+                      {COLUMNS.map(col => (
+                        visibleColumns[col.id] && (
+                          col.sortable
+                            ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
+                            : <th key={col.id} className="px-3 py-2.5 font-black">{col.label}</th>
+                        )
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
-                    {visibleRows.map((row, idx) => {
-                      const { g, f } = row;
-                      // Exibe material/descrição apenas quando muda em relação à linha anterior.
-                      const isNewMaterial = idx === 0 || visibleRows[idx - 1].g.material !== g.material;
+                    {visibleRows.map((r, idx) => {
+                      // Material/descrição aparecem só quando mudam em relação à linha anterior.
+                      const isNewMaterial = idx === 0 || normalizeCode(visibleRows[idx - 1].material) !== normalizeCode(r.material);
                       return (
-                        <tr key={`${g.material}-${f.doc_compra}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
+                        <tr key={`${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
                           {visibleColumns.material && (
                             <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                              {isNewMaterial ? g.material : ''}
+                              {isNewMaterial ? r.material : ''}
                             </td>
                           )}
                           {visibleColumns.descricao && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[220px] truncate" title={g.txt_breve}>
-                              {isNewMaterial ? g.txt_breve : ''}
+                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[220px] truncate" title={r.txt_breve}>
+                              {isNewMaterial ? r.txt_breve : ''}
                             </td>
                           )}
                           {visibleColumns.fornecedor && (
-                            <td className="px-3 py-2 text-slate-800 dark:text-slate-200 font-semibold max-w-[200px] truncate" title={f.fornecedor}>
-                              {f.fornecedor}
+                            <td className="px-3 py-2 text-slate-800 dark:text-slate-200 font-semibold max-w-[200px] truncate" title={r.fornecedor}>
+                              {r.fornecedor}
                             </td>
                           )}
-                          {visibleColumns.uf && <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{f.regiao_uf}</td>}
+                          {visibleColumns.uf && <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{r.regiao_uf}</td>}
                           {visibleColumns.contato && (
                             <td className="px-3 py-2">
                               <div className="flex flex-col gap-1.5">
-                                {f.telefone !== '—' && (
+                                {r.telefone !== '—' && (
                                   <div className="flex items-center gap-1.5">
                                     <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <a href={`tel:${f.telefone.split(';')[0].trim()}`} className="font-mono text-slate-700 dark:text-slate-350 hover:text-emerald-600 font-bold hover:underline">
-                                      {f.telefone.split(';')[0].trim()}
+                                    <a href={`tel:${r.telefone.split(';')[0].trim()}`} className="font-mono text-slate-700 dark:text-slate-350 hover:text-emerald-600 font-bold hover:underline">
+                                      {r.telefone.split(';')[0].trim()}
                                     </a>
-                                    <ClipboardCopyButton text={f.telefone.split(';')[0].trim()} label="telefone" />
+                                    <ClipboardCopyButton text={r.telefone.split(';')[0].trim()} label="telefone" />
                                   </div>
                                 )}
-                                {f.email !== '—' && (
+                                {r.email !== '—' && (
                                   <div className="flex items-center gap-1.5">
                                     <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <a href={`mailto:${f.email}`} className="text-slate-650 dark:text-slate-355 hover:text-blue-600 font-bold hover:underline break-all">
-                                      {f.email}
+                                    <a href={`mailto:${r.email}`} className="text-slate-650 dark:text-slate-355 hover:text-blue-600 font-bold hover:underline break-all">
+                                      {r.email}
                                     </a>
-                                    <ClipboardCopyButton text={f.email} label="e-mail" />
+                                    <ClipboardCopyButton text={r.email} label="e-mail" />
                                   </div>
                                 )}
-                                {f.telefone === '—' && f.email === '—' && <span className="text-slate-400">—</span>}
+                                {r.telefone === '—' && r.email === '—' && <span className="text-slate-400">—</span>}
                               </div>
                             </td>
                           )}
                           {visibleColumns.qtd && (
                             <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-350">
-                              {f.qtd_pedido !== undefined ? f.qtd_pedido.toLocaleString('pt-BR') : '—'}
+                              {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
                             </td>
                           )}
                           {visibleColumns.preco && (
                             <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-350">
-                              {formatPreco(f.preco_liquido)}
+                              {formatPreco(r.preco_unit)}
                             </td>
                           )}
                           {visibleColumns.total && (
                             <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">
-                              {formatPreco(f.valor_liquido)}
+                              {formatPreco(r.valor_total)}
                             </td>
                           )}
                           {visibleColumns.rm && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={f.rm}>
-                              {f.rm}
+                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={r.rm}>
+                              {r.rm}
                             </td>
                           )}
                           {visibleColumns.doc_compra && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={f.doc_compra}>
-                              {f.doc_compra}
+                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={r.doc_compra}>
+                              {r.doc_compra}
                             </td>
                           )}
                           {visibleColumns.data_doc && (
                             <td className="px-3 py-2 text-slate-550 dark:text-slate-400 whitespace-nowrap">
-                              {formatDateBR(f.data_doc)}
+                              {formatDateBR(r.data_doc)}
                             </td>
                           )}
                         </tr>

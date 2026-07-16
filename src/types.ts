@@ -291,6 +291,22 @@ export interface PedidoForn extends SAPPedido {
   updated_at?: string;
 }
 
+// Linha da view vw_historico_pedidos: já agregada por fornecedor + pedido (CRF = 'x').
+export interface HistoricoPedidoView {
+  material: string;
+  txt_breve?: string;
+  cod_forn?: string;
+  cnpj?: string;
+  fornecedor?: string;
+  regiao_uf?: string;
+  doc_compra?: string;
+  reqc?: string;
+  data_doc?: string;
+  qtd_pedido?: number;
+  valor_liquido?: number;
+  preco_liquido_unit?: number;
+}
+
 export interface ContatoFornecedor {
   id: string;
   cod_vendor: string;

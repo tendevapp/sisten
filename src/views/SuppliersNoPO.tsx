@@ -12,7 +12,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import {
-  Profile, EnrichedSAPRecord, PedidoForn, ContatoFornecedor,
+  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
   FornecedorMaterialRow, SAPObsHistory, ItemStatus
 } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
@@ -130,7 +130,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
 
-  const buildSuppliersData = useCallback(() => {
+  const buildSuppliersData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -168,54 +168,65 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
       if (codeVariants.size > 0) {
-        // Usa dados ja sincronizados no IndexedDB — sem round-trips HTTP
-        const todosPedidos = localDb.getPedidosForn();
+        // Usa a MESMA fonte da página de Histórico de Pedidos: a view consolidada
+        // vw_historico_pedidos (fornecedor + pedido, CRF = 'x'), buscada ao vivo do
+        // Supabase com fallback para o cache local. Isso garante que "se aparece no
+        // Histórico, aparece aqui" — a leitura da tabela bruta pedidosforn do cache
+        // local ficava defasada e itens com histórico surgiam como "Sem histórico".
+        let linhasHistorico: HistoricoPedidoView[];
+        try {
+          linhasHistorico = await localDb.fetchHistoricoPedidos();
+        } catch (netErr) {
+          console.warn('Falha ao buscar histórico ao vivo; usando cache local.', netErr);
+          linhasHistorico = localDb.getHistoricoPedidos();
+        }
         const todosContatos = localDb.getContatosForn();
 
         // Monta mapa de contatos indexado por cod_vendor
         const contatosMap = new Map<string, ContatoFornecedor>();
         todosContatos.forEach(c => {
-          if (c.cod_vendor) contatosMap.set(c.cod_vendor, c);
+          if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
         });
 
-        // Filtra pedidos relevantes para os materiais desta pagina
-        const pedidosPorNorm = new Map<string, PedidoForn[]>();
-        todosPedidos.forEach(p => {
-          const normKey = normalizeCode(p.material);
-          if (!normKey || !codeVariants.has(p.material) && !codeVariants.has(normKey)) return;
-          const arr = pedidosPorNorm.get(normKey);
-          if (arr) arr.push(p);
-          else pedidosPorNorm.set(normKey, [p]);
+        // Filtra linhas do histórico relevantes para os materiais desta pagina
+        const linhasPorNorm = new Map<string, HistoricoPedidoView[]>();
+        linhasHistorico.forEach(l => {
+          const normKey = normalizeCode(l.material);
+          if (!normKey || (!codeVariants.has(l.material) && !codeVariants.has(normKey))) return;
+          const arr = linhasPorNorm.get(normKey);
+          if (arr) arr.push(l);
+          else linhasPorNorm.set(normKey, [l]);
         });
 
-        pedidosPorNorm.forEach((pedidosMaterial, normKey) => {
+        linhasPorNorm.forEach((linhasMaterial, normKey) => {
           // Deduplica por fornecedor, mantendo o pedido mais recente
-          const fornMap = new Map<string, PedidoForn>();
-          pedidosMaterial.forEach(p => {
-            const key = p.cnpj ? p.cnpj.trim() : (p.cod_forn || '');
+          const fornMap = new Map<string, HistoricoPedidoView>();
+          linhasMaterial.forEach(l => {
+            const key = l.cnpj ? l.cnpj.trim() : (l.cod_forn || '');
             if (!key) return;
             const existing = fornMap.get(key);
             if (!existing) {
-              fornMap.set(key, p);
+              fornMap.set(key, l);
             } else {
-              const dateA = p.data_pedido ? new Date(p.data_pedido).getTime() : 0;
-              const dateB = existing.data_pedido ? new Date(existing.data_pedido).getTime() : 0;
-              if (dateA > dateB) fornMap.set(key, p);
+              const dateA = l.data_doc ? new Date(l.data_doc).getTime() : 0;
+              const dateB = existing.data_doc ? new Date(existing.data_doc).getTime() : 0;
+              if (dateA > dateB) fornMap.set(key, l);
             }
           });
 
-          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(p => {
-            const contato = p.cod_forn ? contatosMap.get(p.cod_forn) : undefined;
+          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => {
+            const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
             return {
-              cod_forn: p.cod_forn || '—',
-              cnpj: p.cnpj || '—',
-              fornecedor: p.fornecedor || contato?.fornecedor || '—',
-              regiao_uf: p.regiao_uf || '—',
+              cod_forn: l.cod_forn || '—',
+              cnpj: l.cnpj || '—',
+              fornecedor: l.fornecedor || contato?.fornecedor || '—',
+              nome_fantasia: contato?.nome_fantasia || '—',
+              regiao_uf: l.regiao_uf || '—',
               telefone: contato?.telefone || '—',
               email: contato?.email || '—',
               classificacao: contato?.classificacao || '—',
-              ultima_data: p.data_pedido || '—',
-              preco_liquido: p.preco_liquido
+              ultima_data: l.data_doc || '—',
+              preco_liquido: l.preco_liquido_unit
             };
           });
 

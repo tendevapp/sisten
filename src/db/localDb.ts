@@ -7,7 +7,7 @@ import {
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
-  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor
+  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView
 } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -47,6 +47,7 @@ class LocalDatabase {
   private sequencesKey = 'sisten_sequences';
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
+  private historicoPedidosKey = 'sisten_historico_pedidos';
 
   // Current logged in user profile (saved in session/localStorage)
   private currentUserKey = 'sisten_current_user';
@@ -129,6 +130,7 @@ class LocalDatabase {
       ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
       ['sequences', () => this.syncSequences()],
       ['pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true)],
+      ['vw_historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true)],
       ['contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true)],
     ];
 
@@ -1752,6 +1754,18 @@ class LocalDatabase {
     return raw.map(p => this.normalizePedidoFornRow(p));
   }
 
+  // Linhas já agregadas pela view vw_historico_pedidos (fornecedor + pedido, CRF = 'x').
+  public getHistoricoPedidos(): HistoricoPedidoView[] {
+    return this.getStorageItem<HistoricoPedidoView[]>(this.historicoPedidosKey, []);
+  }
+
+  // Busca a view ao vivo no Supabase (paginada) e atualiza o cache local.
+  public async fetchHistoricoPedidos(): Promise<HistoricoPedidoView[]> {
+    const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos');
+    this.setStorageItem(this.historicoPedidosKey, rows);
+    return rows;
+  }
+
   public getContatosForn(): ContatoFornecedor[] {
     return this.getStorageItem<ContatoFornecedor[]>(this.contatosKey, []);
   }
@@ -3136,9 +3150,15 @@ class LocalDatabase {
 
       await supabase.from('import_logs').insert(logObj);
       
-      // Sincroniza a tabela local
+      // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos.
       onProgress?.(95, 'Sincronizando cache local...');
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
+      try {
+        await supabase.rpc('refresh_historico_pedidos');
+      } catch (err) {
+        console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
+      }
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
