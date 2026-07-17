@@ -68,6 +68,11 @@ class LocalDatabase {
     return map[dataset];
   }
   private historicoPedidosKey = 'sisten_historico_pedidos';
+  // Cache separado: histórico de fornecedores restrito aos materiais com
+  // requisição "Sem PO" em aberto (view vw_historico_fornecedores_sem_po).
+  // Usado pela tela "Central de Compras" para sugerir fornecedores sem
+  // precisar baixar o histórico completo de compras nem cortar por data.
+  private historicoSemPOKey = 'sisten_historico_sem_po';
 
   // Current logged in user profile (saved in session/localStorage)
   private currentUserKey = 'sisten_current_user';
@@ -168,8 +173,8 @@ class LocalDatabase {
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
           ['materials', gated('materials', () => this.syncMaterials())],
-          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true))],
-          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true))],
+          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01')))],
+          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01')))],
           ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
           ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
           ['request_comments', () => this.syncComments()],
@@ -179,8 +184,8 @@ class LocalDatabase {
           ['obs_historico', () => this.syncObsHistory()],
           ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
           ['sequences', () => this.syncSequences()],
-          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true))],
-          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
+          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01')))],
+          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01')))],
           ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
         ];
 
@@ -245,8 +250,13 @@ class LocalDatabase {
     }
   }
 
-  private async syncSimpleTable(table: string, storageKey: string, alwaysSet: boolean = false): Promise<void> {
-    const rows = await this.fetchAllFromTable<any>(table);
+  private async syncSimpleTable(
+    table: string, 
+    storageKey: string, 
+    alwaysSet: boolean = false, 
+    filterFn?: (query: any) => any
+  ): Promise<void> {
+    const rows = await this.fetchAllFromTable<any>(table, '*', 1000, filterFn);
     if (alwaysSet || (rows && rows.length > 0)) {
       this.setStorageItem(storageKey, rows || []);
     }
@@ -1371,11 +1381,20 @@ class LocalDatabase {
   // PostgREST limita cada select a um máximo de linhas (geralmente 1000) mesmo sem
   // filtro. Para tabelas grandes (catálogo de materiais com 180k+ linhas) é preciso
   // paginar com .range() até esgotar os resultados.
-  private async fetchAllFromTable<T>(table: string, selectCols: string = '*', pageSize = 1000): Promise<T[]> {
+  private async fetchAllFromTable<T>(
+    table: string, 
+    selectCols: string = '*', 
+    pageSize = 1000,
+    filterFn?: (query: any) => any
+  ): Promise<T[]> {
     const allRows: T[] = [];
     let from = 0;
     while (true) {
-      const { data, error } = await supabase.from(table).select(selectCols).range(from, from + pageSize - 1);
+      let query = supabase.from(table).select(selectCols);
+      if (filterFn) {
+        query = filterFn(query);
+      }
+      const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
       allRows.push(...(data as T[]));
@@ -1942,13 +1961,56 @@ class LocalDatabase {
       if (!force && !this.needsSync('historico_pedidos', this.historicoPedidosKey, markers)) {
         return this.getHistoricoPedidos();
       }
-      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos');
+      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos', '*', 1000, q => q.gte('data_doc', '2026-01-01'));
       this.setStorageItem(this.historicoPedidosKey, rows);
       this.commitDatasetMeta('historico_pedidos', markers);
       return rows;
     } catch (err) {
       console.warn('Falha ao sincronizar histórico; usando cache local.', err);
       return this.getHistoricoPedidos();
+    }
+  }
+
+  // Linhas da view enxuta vw_historico_fornecedores_sem_po (só materiais com
+  // requisição "Sem PO" em aberto). Ver comentário de historicoSemPOKey.
+  public getHistoricoFornecedoresSemPO(): HistoricoPedidoView[] {
+    return this.getStorageItem<HistoricoPedidoView[]>(this.historicoSemPOKey, []);
+  }
+
+  // Como a view já filtra pelos materiais em aberto (conjunto pequeno), não é
+  // preciso cortar por data: baixa o histórico completo desses materiais,
+  // incluindo compras antigas — que é justamente o que a tela de compras
+  // precisa para sugerir fornecedores quando ainda não há PO.
+  public async fetchHistoricoFornecedoresSemPO(force = false): Promise<HistoricoPedidoView[]> {
+    if (!supabase) return this.getHistoricoFornecedoresSemPO();
+    try {
+      const markers = await this.fetchRemoteMarkers();
+      // Meta própria ('historico_sem_po'), independente da meta de
+      // 'historico_pedidos' — são caches locais distintos e não podem
+      // compartilhar o mesmo carimbo de "última sincronização", senão um
+      // rebaixa e "adianta o relógio" do outro sem realmente atualizá-lo.
+      // A versão comparada, porém, é a de 'historico_pedidos' (mesma origem
+      // de dados, bumped nas importações de ZL0132/pedidosforn).
+      const metaDataset = 'historico_sem_po';
+      const hasCache = this.cache.has(this.historicoSemPOKey);
+      const meta = this.getDatasetMeta(metaDataset);
+      const marker = markers?.get('historico_pedidos');
+      const upToDate = !!meta && hasCache && (!marker || meta.version === marker.version);
+      if (!force && upToDate) {
+        return this.getHistoricoFornecedoresSemPO();
+      }
+      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_fornecedores_sem_po');
+      this.setStorageItem(this.historicoSemPOKey, rows);
+      const now = new Date().toISOString();
+      this.setStorageItem(this.datasetMetaKey(metaDataset), {
+        version: marker?.version ?? 0,
+        updatedAt: marker?.updatedAt ?? now,
+        fetchedAt: now,
+      });
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao sincronizar histórico de fornecedores (Sem PO); usando cache local.', err);
+      return this.getHistoricoFornecedoresSemPO();
     }
   }
 
@@ -1972,13 +2034,51 @@ class LocalDatabase {
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
-    const reqs = this.getRequisicoes().filter(r => !r.codigo_de_eliminacao);
+    // status_processamento 'B' só indica "bloqueada aguardando liberação" quando a
+    // requisição ainda NÃO tem PO (status_requisicao 'Sem PO'). Em requisições já
+    // processadas (com PO) o mesmo código 'B' aparece por outro motivo (praticamente
+    // todas as "Processado" trazem 'B'), então o filtro não pode ser global — senão
+    // some com os itens já processados da tela inteira (Todos/Sem MIGO).
+    const reqs = this.getRequisicoes().filter(r => {
+      if (r.codigo_de_eliminacao) return false;
+      const raw = r as any;
+      if (raw.status_requisicao === 'Sem PO' && raw.status_processamento === 'B') return false;
+      return true;
+    });
     const peds = this.getPedidos();
     const pedsMap = new Map(peds.map(p => [p.ri, p]));
 
     const currentDate = new Date('2026-07-05T06:31:00-07:00'); // current mock time from metadata
 
     return reqs.map(r => {
+      // view_enriched_requisicoes já calcula tudo isso no servidor (join completo
+      // e sem corte de data contra pedidos/pedidosforn). Usar esses valores direto
+      // evita recalcular localmente contra o cache de "pedidos", que pode ter mais
+      // de um PO por RI (o Map abaixo indexado só por ri perde essa informação) e
+      // é sincronizado com corte de data — causando "Sem PO"/"Sem MIGO" errados.
+      // Só recalcula localmente quando os campos não vêm prontos (modo semente/offline).
+      const raw = r as any;
+      if (raw.status_requisicao === 'Sem PO' || raw.status_requisicao === 'Processado') {
+        return {
+          ...r,
+          item_pedido: raw.item_pedido,
+          fornecedor_code: raw.fornecedor_code,
+          fornecedor_name: raw.fornecedor_name,
+          data_pedido: raw.data_pedido,
+          data_entrega_sap: raw.data_entrega_sap,
+          documento_compra: raw.documento_compra,
+          data_migo: raw.data_migo,
+          natureza: raw.natureza,
+          status_requisicao: raw.status_requisicao,
+          lead_time_compras_meta: raw.lead_time_compras_meta,
+          dias_em_aberto: raw.dias_em_aberto,
+          atraso_comprador: raw.atraso_comprador,
+          faixa_atraso: raw.faixa_atraso,
+          alerta: raw.alerta,
+          status_atualizado: raw.status_atualizado
+        } as EnrichedSAPRecord;
+      }
+
       const p = (pedsMap.get(r.ri) || {}) as Partial<SAPPedido>;
 
       // Derived nature mapping
@@ -1999,7 +2099,7 @@ class LocalDatabase {
       else if (td === 'ZR17') natureza = 'Serviço - MP';
 
       // Status
-      const pedidoVal = (r.pedido || (r as any).documento_compra || p.documento_compra || '').trim();
+      const pedidoVal = (p.documento_compra || '').trim();
       const hasPO = !!pedidoVal && pedidoVal !== '—' && pedidoVal !== '0' && pedidoVal !== 'undefined' && pedidoVal !== 'null';
       const status_requisicao = hasPO ? 'Processado' : 'Sem PO';
 
@@ -2083,7 +2183,8 @@ class LocalDatabase {
         fornecedor_name: p.fornecedor_name,
         data_pedido: p.data_pedido,
         data_entrega_sap: p.data_entrega_sap,
-        documento_compra: pedidoVal,
+        documento_compra: p.documento_compra || r.pedido || null,
+        data_migo,
         natureza,
         status_requisicao,
         lead_time_compras_meta,
@@ -2189,7 +2290,7 @@ class LocalDatabase {
             created_at: new Date().toISOString()
           });
 
-          const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
+          const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
           if (updatedReqs) {
             const mappedReqs = updatedReqs.map(ur => ({
               ...ur,
@@ -2450,7 +2551,7 @@ class LocalDatabase {
     // atualizada.
     let current = this.getRequisicoes();
     try {
-      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes');
+      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
       if (remoteReqs.length > 0) current = remoteReqs.map(r => this.normalizeRequisicaoRow(r));
     } catch (err) {
       console.warn('Não foi possível buscar as requisições atuais do Supabase antes da importação; usando cache local.', err);
@@ -2664,7 +2765,7 @@ class LocalDatabase {
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -2725,13 +2826,13 @@ class LocalDatabase {
     // "novos", duplicando linhas em vez de atualizá-las.
     let current = this.getPedidos();
     try {
-      const remotePeds = await this.fetchAllFromTable<any>('pedidos');
+      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
-      console.warn('Não foi possível buscar os pedidos atuais do Supabase antes da importação; usando cache local.', err);
+      console.warn('Não foi possível buscar os pedidos atuais (pedidosforn) do Supabase antes da importação; usando cache local.', err);
     }
     onProgress?.(10);
-    const currentMap = new Map(current.map(p => [p.ri, p]));
+    const currentMap = new Map(current.map(p => [p.ri + '_' + (p.documento_compra || ''), p]));
     const user = this.getCurrentUser();
 
     let inserted = 0;
@@ -2800,23 +2901,25 @@ class LocalDatabase {
         }
       });
 
-      const existing = currentMap.get(ri);
+      const docCompraVal = record.doc_compra || '';
+      const compositeKey = ri + '_' + docCompraVal;
+      const existing = currentMap.get(compositeKey);
 
-      if (newPedidosMap.has(ri)) {
-        const existingInBatch = newPedidosMap.get(ri)!;
+      if (newPedidosMap.has(compositeKey)) {
+        const existingInBatch = newPedidosMap.get(compositeKey)!;
         const currentDataDoc = record.data_doc ? new Date(record.data_doc).getTime() : 0;
         const existingDataDoc = existingInBatch.data_pedido ? new Date(existingInBatch.data_pedido).getTime() : 0;
         
         ignoredRows.push({
           row: fileRowIndex,
-          identifier: ri,
-          reason: `Registro com chave RI duplicada no arquivo. Mantido apenas o documento com data mais recente (${currentDataDoc > existingDataDoc ? 'linha atual' : 'linha anterior'}).`
+          identifier: ri + ' (PO: ' + docCompraVal + ')',
+          reason: `Registro com chave RI e PO duplicada no arquivo. Mantido apenas o documento com data mais recente.`
         });
 
         if (currentDataDoc > existingDataDoc) {
-          newPedidosMap.set(ri, {
+          newPedidosMap.set(compositeKey, {
             ri,
-            documento_compra: record.doc_compra || '4600000001',
+            documento_compra: docCompraVal,
             item_pedido: record.item || '00010',
             fornecedor_code: record.fornecedor_codigo || '300001',
             fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
@@ -2828,7 +2931,7 @@ class LocalDatabase {
       } else {
         const poObj = {
           ri,
-          documento_compra: record.doc_compra || '4600000001',
+          documento_compra: docCompraVal,
           item_pedido: record.item || '00010',
           fornecedor_code: record.fornecedor_codigo || '300001',
           fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
@@ -2838,9 +2941,9 @@ class LocalDatabase {
         };
 
         if (existing) {
-          const oldQty = existing.campos_extras?.qtd_pedido;
+          const oldQty = existing.campos_extras?.qtd_pedido || (existing as any).qtd_pedido;
           const newQty = record.qtd_pedido;
-          if (oldQty !== undefined && oldQty !== newQty) {
+          if (oldQty !== undefined && oldQty !== null && oldQty !== newQty) {
             quantityChanges.push({
               ri,
               item: `${reqNo}/${itemNo}`,
@@ -2853,22 +2956,41 @@ class LocalDatabase {
           inserted++;
         }
 
-        newPedidosMap.set(ri, poObj);
+        newPedidosMap.set(compositeKey, poObj);
       }
     });
 
     const newPedidosArray = Array.from(newPedidosMap.values());
-    const mergedPedidosMap = new Map(current.map(p => [p.ri, p]));
+    const mergedPedidosMap = new Map(current.map(p => [p.ri + '_' + (p.documento_compra || ''), p]));
     newPedidosArray.forEach(p => {
-      mergedPedidosMap.set(p.ri, p);
+      mergedPedidosMap.set(p.ri + '_' + p.documento_compra, p);
     });
     const finalPedidosArray = Array.from(mergedPedidosMap.values());
     this.setStorageItem(this.pedidosKey, finalPedidosArray);
 
+    const generateUUID = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+
     try {
       const dbRows = finalPedidosArray.map(p => {
         const extr = p.campos_extras || {};
+        const compositeKey = p.ri + '_' + p.documento_compra;
+        const existing = currentMap.get(compositeKey);
+
+        const mergedExtras = existing && existing.campos_extras 
+          ? { ...existing.campos_extras, ...extr }
+          : extr;
+
         return {
+          id: (existing as any)?.id || generateUUID(),
           ri: p.ri,
           n_acomp: extr.n_acomp || null,
           eflag_e: extr.eflag_e || null,
@@ -2933,13 +3055,14 @@ class LocalDatabase {
           ci: extr.ci || null,
           unidade_medida_basica: extr.unidade_medida_basica || null,
           ump_3: extr.ump_3 || null,
-          campos_extras: extr
+          campos_extras: mergedExtras,
+          updated_at: new Date().toISOString()
         };
       });
 
       const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        const { error } = await supabase.from('pedidos').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri' });
+        const { error } = await supabase.from('pedidosforn').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri,doc_compra' });
         if (error) throw error;
         const batchIndex = Math.floor(i / 50) + 1;
         onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
@@ -2966,8 +3089,17 @@ class LocalDatabase {
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes');
-      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos');
+      // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
+      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
+      try {
+        await supabase.rpc('refresh_historico_pedidos');
+      } catch (err) {
+        console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
+      }
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
+      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -2993,6 +3125,8 @@ class LocalDatabase {
 
       await this.bumpDatasetVersion('requisicoes', this.getRequisicoes().length);
       await this.bumpDatasetVersion('pedidos', this.getPedidos().length);
+      await this.bumpDatasetVersion('pedidosforn', this.getStorageItem<any[]>(this.pedidosFornKey, []).length);
+      await this.bumpDatasetVersion('historico_pedidos', this.getHistoricoPedidos().length);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar ZL0132', `Importou ZL0132 (${filename}). Lidos: ${dataRows.length}.`);
       onProgress?.(100);

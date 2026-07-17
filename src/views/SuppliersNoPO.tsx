@@ -12,7 +12,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import {
-  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
+  Profile, EnrichedSAPRecord, HistoricoPedidoView,
   FornecedorMaterialRow, SAPObsHistory, ItemStatus
 } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
@@ -192,7 +192,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [buyerFilter, setBuyerFilter] = useState('Todos');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [alertFilter, setAlertFilter] = useState('Todos');
-  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO'>('Todos');
+  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
 
   const handleSearch = useCallback((val: string) => {
@@ -210,6 +210,16 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     if (poFilter === 'Sem PO') {
       return rawRmGroups.map(g => {
         const items = g.items.filter(it => it.record.status_requisicao === 'Sem PO');
+        return { rm: g.rm, items };
+      }).filter(g => g.items.length > 0);
+    }
+    if (poFilter === 'Sem MIGO') {
+      return rawRmGroups.map(g => {
+        const items = g.items.filter(it => {
+          const hasPO = it.record.status_requisicao === 'Processado';
+          const hasMigo = !!it.record.data_migo;
+          return hasPO && !hasMigo;
+        });
         return { rm: g.rm, items };
       }).filter(g => g.items.length > 0);
     }
@@ -278,26 +288,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
       if (codeVariants.size > 0) {
-        // Usa a MESMA fonte da página de Histórico de Pedidos: a view consolidada
-        // vw_historico_pedidos (fornecedor + pedido, CRF = 'x'), buscada ao vivo do
-        // Supabase com fallback para o cache local. Isso garante que "se aparece no
-        // Histórico, aparece aqui" — a leitura da tabela bruta pedidosforn do cache
-        // local ficava defasada e itens com histórico surgiam como "Sem histórico".
+        // Usa a view enxuta vw_historico_fornecedores_sem_po (fornecedor + pedido,
+        // CRF = 'x', restrita aos materiais com requisição "Sem PO" em aberto),
+        // buscada ao vivo do Supabase com fallback para o cache local. Por ser
+        // restrita aos materiais realmente pendentes, não precisa de corte de
+        // data — traz o histórico completo (inclusive compras antigas) sem
+        // baixar a tabela de pedidos inteira.
         let linhasHistorico: HistoricoPedidoView[];
         try {
-          linhasHistorico = await localDb.fetchHistoricoPedidos(force);
+          linhasHistorico = await localDb.fetchHistoricoFornecedoresSemPO(force);
         } catch (netErr) {
           console.warn('Falha ao buscar histórico ao vivo; usando cache local.', netErr);
-          linhasHistorico = localDb.getHistoricoPedidos();
+          linhasHistorico = localDb.getHistoricoFornecedoresSemPO();
         }
-        const todosContatos = localDb.getContatosForn();
-
-        // Monta mapa de contatos indexado por cod_vendor
-        const contatosMap = new Map<string, ContatoFornecedor>();
-        todosContatos.forEach(c => {
-          if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
-        });
-
         // Filtra linhas do histórico relevantes para os materiais desta pagina
         const linhasPorNorm = new Map<string, HistoricoPedidoView[]>();
         linhasHistorico.forEach(l => {
@@ -324,21 +327,19 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             }
           });
 
-          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => {
-            const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
-            return {
-              cod_forn: l.cod_forn || '—',
-              cnpj: l.cnpj || '—',
-              fornecedor: l.fornecedor || contato?.fornecedor || '—',
-              nome_fantasia: contato?.nome_fantasia || '—',
-              regiao_uf: l.regiao_uf || '—',
-              telefone: contato?.telefone || '—',
-              email: contato?.email || '—',
-              classificacao: contato?.classificacao || '—',
-              ultima_data: l.data_doc || '—',
-              preco_liquido: l.preco_liquido_unit
-            };
-          });
+          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => ({
+            cod_forn: l.cod_forn || '—',
+            cnpj: l.cnpj || '—',
+            fornecedor: l.fornecedor || '—',
+            nome_fantasia: l.nome_fantasia || '—',
+            regiao_uf: l.regiao_uf || '—',
+            telefone: l.telefone || '—',
+            email: l.email || '—',
+            classificacao: l.classificacao || '—',
+            ultima_data: l.data_doc || '—',
+            preco_liquido: l.preco_liquido_unit,
+            data_migo: l.data_migo || undefined
+          }));
 
           list.sort((a, b) => {
             const dateA = a.ultima_data !== '—' ? new Date(a.ultima_data).getTime() : 0;
@@ -615,13 +616,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           'Dias em Aberto': r.dias_em_aberto ?? '—',
           'Status do Item': r.item_status || 'Buscar Fornecedores',
           'Observação Comprador': obsInputState[r.ri] || '',
-          'Entrega Prevista': dateInputState[r.ri] || ''
+          'Entrega Prevista': dateInputState[r.ri] || '',
+          'Data de Solicitação': r.data_solicitacao ? formatDateBR(r.data_solicitacao) : '—'
         };
         if (!encontrado || fornecedores.length === 0) {
           dataToExport.push({
             ...base,
             'Cód. Fornecedor': '—', 'CNPJ': '—', 'Fornecedor': 'Material sem histórico de fornecedores',
-            'UF': '—', 'Telefone': '—', 'E-mail': '—', 'Classificação': '—', 'Preço Líquido': '—', 'Última Compra': '—'
+            'UF': '—', 'Telefone': '—', 'E-mail': '—', 'Classificação': '—', 'Preço Líquido': '—', 'Última Compra': '—', 'Data MIGO': '—'
           });
         } else {
           fornecedores.forEach(f => {
@@ -631,7 +633,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               'UF': f.regiao_uf, 'Telefone': f.telefone, 'E-mail': f.email,
               'Classificação': f.classificacao,
               'Preço Líquido': f.preco_liquido !== undefined && f.preco_liquido !== null ? f.preco_liquido : '—',
-              'Última Compra': f.ultima_data
+              'Última Compra': f.ultima_data,
+              'Data MIGO': f.data_migo ? formatDateBR(f.data_migo) : 'Sem MIGO'
             });
           });
         }
@@ -685,18 +688,36 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
   };
 
+  // Badge compacto de MIGO por fornecedor histórico (vem de vw_historico_fornecedores_sem_po.data_migo)
+  const renderMigoInfo = (dataMigo?: string) => (
+    <span className={`flex items-center gap-0.5 ${dataMigo ? 'text-emerald-600 dark:text-emerald-450' : 'text-amber-600 dark:text-amber-450'}`}>
+      {dataMigo ? `MIGO: ${formatDateBR(dataMigo)}` : 'Sem MIGO'}
+    </span>
+  );
+
   // Badge de identificação visual: item já possui PO emitida vs. ainda em aberto (Sem PO)
   const renderPOBadge = (r: EnrichedSAPRecord) => {
     const hasPO = r.status_requisicao === 'Processado';
     if (hasPO) {
+      const dataMigo = r.data_migo;
       return (
-        <span
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
-          title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
-        >
-          <Check className="h-3 w-3 shrink-0" />
-          PO {r.documento_compra || '—'}{r.data_pedido ? ` • ${formatDateBR(r.data_pedido)}` : ''}
-        </span>
+        <div className="inline-flex flex-wrap items-center gap-1.5">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
+            title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
+          >
+            <Check className="h-3 w-3 shrink-0" />
+            PO {r.documento_compra || '—'}{r.data_pedido ? ` • ${formatDateBR(r.data_pedido)}` : ''}
+          </span>
+          {!dataMigo && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-amber-100 dark:bg-amber-955/40 text-amber-700 dark:text-amber-450 border border-amber-250 dark:border-amber-900/50"
+              title="Item comprado mas sem registro de entrada física/nota fiscal (Sem MIGO)"
+            >
+              Sem MIGO
+            </span>
+          )}
+        </div>
       );
     }
     return (
@@ -721,7 +742,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     let itens = 0;
     let com = 0, sem = 0, criticos = 0;
     filteredGroupsWithoutKpi.forEach(g => g.items.forEach(it => {
-      if (it.record.status_requisicao !== 'Sem PO') return;
+      if (poFilter === 'Sem PO' && it.record.status_requisicao !== 'Sem PO') return;
+      if (poFilter === 'Sem MIGO') {
+        const hasPO = it.record.status_requisicao === 'Processado';
+        const hasMigo = !!it.record.data_migo;
+        if (!hasPO || hasMigo) return;
+      }
       rmsSet.add(g.rm);
       itens++;
       if (it.encontrado) com++; else sem++;
@@ -729,7 +755,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (lvl === 'critico' || lvl === 'atencao') criticos++;
     }));
     return { rms: rmsSet.size, itens, com, sem, criticos };
-  }, [filteredGroupsWithoutKpi]);
+  }, [filteredGroupsWithoutKpi, poFilter]);
 
   // Lista com as opções de status
   const itemStatusOptions: ItemStatus[] = [
@@ -783,7 +809,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           )}
         </div>
         <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
-          {/* Filtro PO (Todos / Sem PO) */}
+          {/* Filtro PO (Todos / Sem PO / Sem MIGO) */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
               onClick={() => setPoFilter('Todos')}
@@ -798,6 +824,13 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               title="Exibir apenas registros que não possuem documento de compra (pedido)"
             >
               Sem PO
+            </button>
+            <button
+              onClick={() => setPoFilter('Sem MIGO')}
+              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Sem MIGO' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Exibir apenas registros que possuem pedido (PO) mas sem data de MIGO (ainda não entregues)"
+            >
+              Sem MIGO
             </button>
           </div>
 
@@ -873,7 +906,9 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             }`}
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Itens Sem PO</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+              {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : 'Total Itens'}
+            </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
             {kpiFilter === 'Todos' && (
               <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-blue-50 text-[#0056c6] dark:bg-blue-950/40">Filtro Ativo</span>
@@ -1122,6 +1157,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                       <Calendar className="h-3 w-3" />
                                       Compra: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
                                     </span>
+                                    <span className="text-slate-200 dark:text-slate-800">|</span>
+                                    {renderMigoInfo(f.data_migo)}
                                   </div>
                                 </div>
                                 <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
@@ -1299,6 +1336,9 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                     {selectedSupplier.ultima_data !== '—' ? (isNaN(Date.parse(selectedSupplier.ultima_data)) ? selectedSupplier.ultima_data : new Date(selectedSupplier.ultima_data).toLocaleDateString('pt-BR')) : '—'}
                                   </span>
                                 </div>
+                                <div className="text-[9px] font-bold">
+                                  {renderMigoInfo(selectedSupplier.data_migo)}
+                                </div>
                                 <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
                                   {selectedSupplier.telefone !== '—' && selectedSupplier.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
                                     <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
@@ -1406,6 +1446,9 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                         <Calendar className="h-2.5 w-2.5 text-slate-400" />
                                         {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
                                       </span>
+                                    </div>
+                                    <div className="text-right">
+                                      {renderMigoInfo(f.data_migo)}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
                                       {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (

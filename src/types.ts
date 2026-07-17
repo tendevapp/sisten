@@ -222,6 +222,7 @@ export interface EnrichedSAPRecord extends SAPRequisicao {
   fornecedor_name?: string;
   data_pedido?: string;
   data_entrega_sap?: string;
+  data_migo?: string | null;
   natureza: string;
   status_requisicao: 'Sem PO' | 'Processado';
   lead_time_compras_meta: number;
@@ -305,6 +306,12 @@ export interface HistoricoPedidoView {
   qtd_pedido?: number;
   valor_liquido?: number;
   preco_liquido_unit?: number;
+  // Presentes apenas em vw_historico_fornecedores_sem_po (join com contatos + data_migo do pedido).
+  telefone?: string;
+  email?: string;
+  classificacao?: string;
+  nome_fantasia?: string;
+  data_migo?: string | null;
 }
 
 export interface ContatoFornecedor {
@@ -330,6 +337,7 @@ export interface FornecedorMaterialRow {
   classificacao: string;
   ultima_data: string;
   preco_liquido?: number;
+  data_migo?: string;
 }
 
 export interface MaterialFornecedoresGroup {
