@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
-  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users
+  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -1581,9 +1581,18 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   Histórico de Alterações SAP
                 </h3>
               </div>
-              <span className="font-mono text-xs bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-350 px-2 py-0.5 rounded">
-                RI: {historyOpenRi}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-350 px-2 py-0.5 rounded">
+                  RI: {historyOpenRi}
+                </span>
+                <button
+                  onClick={() => setHistoryOpenRi(null)}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                  aria-label="Fechar janela"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-5 max-h-[350px] overflow-y-auto space-y-4">
