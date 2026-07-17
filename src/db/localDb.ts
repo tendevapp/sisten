@@ -1881,7 +1881,7 @@ class LocalDatabase {
       codigo_de_eliminacao: r.codigo_de_eliminacao !== undefined ? r.codigo_de_eliminacao : (r.eliminado || false),
       presente_ultima_carga: r.presente_ultima_carga !== undefined ? r.presente_ultima_carga : true,
       pedido: r.pedido || '',
-      item_status: r.item_status || 'Buscar Fornecedores',
+      item_status: r.item_status || 'Aguardando Cotação',
       item_status_updated_at: r.item_status_updated_at || '',
       item_status_updated_by: r.item_status_updated_by || ''
     };
@@ -2207,10 +2207,11 @@ class LocalDatabase {
     if (t === 'aguardando solicitante' || f === 'aguardando solicitante') return true;
 
     const transitions: Record<string, string[]> = {
-      'buscar fornecedores': ['cotação enviada'],
-      'cotação enviada': ['análise de cotações', 'buscar fornecedores'],
-      'análise de cotações': ['pedido enviado', 'cotação enviada'],
-      'pedido enviado': ['aguardando coleta', 'análise de cotações'],
+      'aguardando cotação': ['cotação enviada'],
+      'cotação enviada': ['análise de cotações', 'aguardando cotação'],
+      'análise de cotações': ['aguardando aprovação po', 'cotação enviada'],
+      'aguardando aprovação po': ['pedido enviado', 'análise de cotações'],
+      'pedido enviado': ['aguardando coleta', 'aguardando aprovação po'],
       'aguardando coleta': ['em rota de entrega', 'pedido enviado'],
       'em rota de entrega': ['entregue', 'aguardando coleta'],
       'entregue': ['inativo'],
@@ -2302,7 +2303,7 @@ class LocalDatabase {
               data_solicitacao: ur.data_da_solicitacao,
               data_remessa: ur.remessas_de_ate,
               material_code: ur.material,
-              item_status: ur.item_status || 'Buscar Fornecedores',
+              item_status: ur.item_status || 'Aguardando Cotação',
               item_status_updated_at: ur.item_status_updated_at || '',
               item_status_updated_by: ur.item_status_updated_by || ''
             }));

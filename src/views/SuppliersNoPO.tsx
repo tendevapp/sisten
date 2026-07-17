@@ -241,8 +241,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     const currentDate = dateInputState[ri] ?? '';
     const originalDate = record.data_entrega_prevista ?? '';
 
-    const currentStatus = statusInputState[ri] || 'Buscar Fornecedores';
-    const originalStatus = record.item_status || 'Buscar Fornecedores';
+    const currentStatus = statusInputState[ri] || 'Aguardando Cotação';
+    const originalStatus = record.item_status || 'Aguardando Cotação';
 
     return currentObs !== originalObs || currentDate !== originalDate || currentStatus !== originalStatus;
   }, [obsInputState, dateInputState, statusInputState]);
@@ -264,7 +264,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       semPoRecords.forEach(r => {
         initialObs[r.ri] = r.obs_comprador || '';
         initialDates[r.ri] = r.data_entrega_prevista || '';
-        initialStatus[r.ri] = r.item_status || 'Buscar Fornecedores';
+        initialStatus[r.ri] = r.item_status || 'Aguardando Cotação';
       });
       setObsInputState(initialObs);
       setDateInputState(initialDates);
@@ -614,7 +614,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           'Status': r.status_atualizado || '—',
           'Alerta': r.alerta || '—',
           'Dias em Aberto': r.dias_em_aberto ?? '—',
-          'Status do Item': r.item_status || 'Buscar Fornecedores',
+          'Status do Item': r.item_status || 'Aguardando Cotação',
           'Observação Comprador': obsInputState[r.ri] || '',
           'Entrega Prevista': dateInputState[r.ri] || '',
           'Data de Solicitação': r.data_solicitacao ? formatDateBR(r.data_solicitacao) : '—'
@@ -759,9 +759,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Lista com as opções de status
   const itemStatusOptions: ItemStatus[] = [
-    'Buscar Fornecedores',
+    'Aguardando Cotação',
     'Cotação enviada',
     'Análise de Cotações',
+    'Aguardando Aprovação PO',
     'Pedido Enviado',
     'Aguardando Coleta',
     'Em rota de entrega',
@@ -1203,7 +1204,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
                             Status do Item
                           </label>
-                          {renderStatusSelect(r.ri, r.item_status || 'Buscar Fornecedores')}
+                          {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
@@ -1484,7 +1485,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
                         {/* Status Select */}
                         <td className="py-2.5 px-3 min-w-[140px]">
-                          {renderStatusSelect(r.ri, r.item_status || 'Buscar Fornecedores')}
+                          {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
                         </td>
 
                         {/* Delivery Date */}

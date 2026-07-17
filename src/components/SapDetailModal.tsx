@@ -17,9 +17,10 @@ interface SapDetailModalProps {
 }
 
 const itemStatusOptions: ItemStatus[] = [
-  'Buscar Fornecedores',
+  'Aguardando Cotação',
   'Cotação enviada',
   'Análise de Cotações',
+  'Aguardando Aprovação PO',
   'Pedido Enviado',
   'Aguardando Coleta',
   'Em rota de entrega',
@@ -34,12 +35,12 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
 
   // Edição inline de Status do Item e Observações do comprador
-  const [statusInput, setStatusInput] = useState<ItemStatus | ''>(record.item_status || 'Buscar Fornecedores');
+  const [statusInput, setStatusInput] = useState<ItemStatus | ''>(record.item_status || 'Aguardando Cotação');
   const [obsInput, setObsInput] = useState<string>(record.obs_comprador || '');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   useEffect(() => {
-    setStatusInput(record.item_status || 'Buscar Fornecedores');
+    setStatusInput(record.item_status || 'Aguardando Cotação');
     setObsInput(record.obs_comprador || '');
   }, [record.ri]);
 

@@ -146,9 +146,10 @@ function SapObservationForm({ ri, initialComment, initialDate, initialStatus, on
   };
 
   const itemStatusOptions: ItemStatus[] = [
-    'Buscar Fornecedores',
+    'Aguardando Cotação',
     'Cotação enviada',
     'Análise de Cotações',
+    'Aguardando Aprovação PO',
     'Pedido Enviado',
     'Aguardando Coleta',
     'Em rota de entrega',
