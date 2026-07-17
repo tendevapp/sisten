@@ -254,6 +254,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     setLoading(true);
     setError(null);
     try {
+      // Atualiza status/previsão de entrega/observação com o que está no
+      // Supabase antes de montar a tela, para refletir edições feitas por
+      // outros usuários (que não disparam um sync completo do dataset).
+      await localDb.refreshBuyerFieldsFromSupabase();
+
       const allRecords = localDb.getEnrichedSAPRequisicoes();
       const semPoRecords = allRecords;
 

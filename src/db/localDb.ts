@@ -2319,6 +2319,55 @@ class LocalDatabase {
     return false;
   }
 
+  // Busca leve (poucas colunas) dos campos editáveis pelo comprador
+  // (status, previsão de entrega, observação) direto do Supabase, e mescla
+  // no cache local por 'ri'. Diferente do sync completo (gated por
+  // dataset_versions, só disparado em reimportações), este método roda a
+  // cada carregamento da tela "Itens sem PO" para que edições feitas por
+  // outros usuários apareçam sem depender de um novo import de dados SAP.
+  public async refreshBuyerFieldsFromSupabase(): Promise<boolean> {
+    try {
+      const rows = await this.fetchAllFromTable<{
+        ri: string;
+        item_status: ItemStatus | null;
+        item_status_updated_at: string | null;
+        item_status_updated_by: string | null;
+        obs_comprador: string | null;
+        data_entrega_prevista: string | null;
+        obs_updated_at: string | null;
+        obs_updated_by: string | null;
+      }>(
+        'requisicoes',
+        'ri,item_status,item_status_updated_at,item_status_updated_by,obs_comprador,data_entrega_prevista,obs_updated_at,obs_updated_by',
+        1000,
+        q => q.gte('data_da_solicitacao', '2026-01-01')
+      );
+
+      const updatesByRi = new Map(rows.map(r => [r.ri, r]));
+      const localReqs = this.getStorageItem<any[]>(this.requisicoesKey, []);
+      const merged = localReqs.map(r => {
+        const upd = updatesByRi.get(r.ri);
+        if (!upd) return r;
+        return {
+          ...r,
+          item_status: upd.item_status || r.item_status,
+          item_status_updated_at: upd.item_status_updated_at || r.item_status_updated_at,
+          item_status_updated_by: upd.item_status_updated_by || r.item_status_updated_by,
+          obs_comprador: upd.obs_comprador ?? r.obs_comprador,
+          data_entrega_prevista: upd.data_entrega_prevista ?? r.data_entrega_prevista,
+          obs_updated_at: upd.obs_updated_at || r.obs_updated_at,
+          obs_updated_by: upd.obs_updated_by || r.obs_updated_by
+        };
+      });
+
+      this.setStorageItem(this.requisicoesKey, merged);
+      return true;
+    } catch (e) {
+      console.error("Erro ao atualizar status/obs/data de entrega a partir do Supabase:", e);
+      return false;
+    }
+  }
+
   public getObsHistory(ri: string): SAPObsHistory[] {
     return this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []).filter(h => h.ri === ri);
   }
