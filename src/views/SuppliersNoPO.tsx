@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
-  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X
+  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -32,6 +32,89 @@ interface RMGroup {
   rm: string;
   items: ItemNode[];
 }
+
+interface QuoteItemEntry {
+  record: EnrichedSAPRecord;
+  rm: string;
+}
+
+const CARTA_CONVITE_HEADER = `Prezado Fornecedor,
+
+A Empresa TORRES EÓLICAS DO NORDESTE S/A, inscrita no CNPJ nº 13.892.216/0002-31, convida V.S.ª a apresentar proposta para fornecimento dos materiais conforme especificados em Carta Convite.
+
+INSTRUÇÕES ÀS PROPONENTES
+1.1.     Emitir a proposta em nome da TORRES EÓLICAS DO NORDESTE S/A.
+1.2.     Mencionar o número da Carta Convite na proposta e no assunto do e-mail.
+1.3.     A proposta deverá ser apresentada até 48h do recebimento deste e-mail.
+
+MATERIAL/PRODUTO
+`;
+
+const CARTA_CONVITE_FOOTER = `
+CONDIÇÕES DE PARTICIPAÇÃO
+3.1.     Apresentar propostas técnica e comercial em separado;
+3.2.    Especificar de forma técnica e detalhada o produto, material ou serviço;
+3.3.    Fornecer ficha técnica, croqui ou desenho quando necessário;
+3.4.    Apresentar preços unitários em moeda "REAL";
+3.5.    Destacar alíquotas de impostos incidentes mediante a legislação em vigor;
+3.6.    Informar condições de pagamento;
+3.7.    Informar prazo de fornecimento;
+3.8.    Mencionar validade da proposta;
+3.9.    Informar Razão Social e CNPJ.
+3.10.                     Informar NCM do item.
+
+APRESENTAÇÃO DE PROPOSTAS E CONDIÇÕES OBRIGATÓRIAS
+4.1.     Propostas recebidas após o encerramento do prazo estabelecido para apresentação serão automaticamente desconsideradas;
+4.2.     Propostas com pendências de informações, sejam técnicas ou comerciais serão automaticamente desclassificadas;
+4.3.     Questionamentos técnicos, comercial ou documental devem ser levantados e esclarecidos no decorrer do processo de cotação, caso ocorra mudanças nas características do objeto, seja material, serviço ou mão de abra, hipótese na qual o processo atual será paralisado para os devidos ajustes e reaberto ao mercado quando sanados tais pendenciais.
+
+DISPOSIÇÕES GERAIS
+5.1.     O proponente deve declarar em proposta o aceite e de acordo com as condições estabelecidas nesta Carta Convite;
+1.1.     Verificar e se inteirar de todos os documentos e informações relacionadas nessa carta/convite, examinando detalhadamente todos os dados e informações nela contidos e que não haja discrepâncias nos dados fornecidos;
+5.2.     Conferir os valores e informações existentes em sua proposta e assumir integral responsabilidade por eventuais erros e/ou omissões que nela venham a ser constatados;
+5.3.     Na hipótese de V. Sas. vir a declinar do convite ora feito, agradeceremos que o façam por e-mail em até 24 horas da apresentação da carta convite;
+5.4.     Pedimos notar que este convite não estabelece nenhum tipo de obrigação entre V. Sas. e a TEN, a qual cabe exclusivamente arbitrar qual dentre as propostas recebidas atende melhor o seu interesse ou desclassificá-las todas, sem que isso possa ensejar reclamação de qualquer natureza, por qualquer dos PROPONENTES;
+5.5.     A TEN se reserva o direito de contratar a totalidade ou parte do escopo, bem como de alterar as especificações básicas desta carta convite, podendo neste caso haver revisão da(s) partes(s) afetada(s) da proposta;
+5.6.     Será (ao) vencedor(es) a(s) proponente(s) que apresentar (em) as melhores condições técnicas, preços (custo-benefício);
+5.7.     Ao responder a Carta Convite a Proponente declara estar ciente das condições de fornecimento proposto pela TEN, bem como, ofertar e prestar o serviço em conformidade com as melhores práticas de mercado e leis governamentais.
+
+DESTINAÇÃO DESTA CARTA CONVITE
+Individual e intransferível.
+
+Demais informações que se façam necessárias além das contidas nesta Carta Convite, favor entrar em contato.
+
+FINEZA, SEMPRE MANTER O NOSSO Nº DE COTAÇÃO NO ASSUNTO DO E-MAIL, BEM COMO MANTER TODAS AS PESSOAS COPIADAS. `;
+
+// Monta a lista de itens em blocos rotulados (não em tabela de colunas alinhadas), pois o
+// Texto Técnico costuma ser longo demais para caber em uma coluna sem quebrar a leitura.
+const buildQuoteItemsTable = (items: QuoteItemEntry[]): string => {
+  const materialsByCode = new Map<string, string>();
+  localDb.getMaterials().forEach(m => {
+    materialsByCode.set(normalizeCode(m.material_code), m.technical_text || '—');
+  });
+
+  // Remove duplicatas exatas (mesmo material na mesma RM aparecendo mais de uma vez)
+  const seen = new Set<string>();
+  const dedupedItems = items.filter(({ record: r, rm }) => {
+    const key = `${normalizeCode(r.material_code)}|${rm}|${r.item_reqc}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return dedupedItems.map(({ record: r, rm }, idx) => {
+    const techText = materialsByCode.get(normalizeCode(r.material_code)) || '—';
+    return [
+      `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}`,
+      `   RM: ${rm || '—'}   |   Unidade: ${r.unidade_medida || '—'}   |   Quantidade: ${r.qtd_requisicao ?? '—'}`,
+      `   Texto Técnico: ${techText}`
+    ].join('\n');
+  }).join('\n\n');
+};
+
+const buildQuoteText = (items: QuoteItemEntry[]): string => {
+  return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items) + '\n' + CARTA_CONVITE_FOOTER;
+};
 
 // Normaliza códigos de material para casar registros mesmo com diferença de zeros à
 // esquerda.
@@ -166,6 +249,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Modal SAP
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
 
+  // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
+  const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
+  const [quoteModal, setQuoteModal] = useState<{ supplier: FornecedorMaterialRow; text: string; rms: string[] } | null>(null);
+
   // Modos de Visualização: 'cards' | 'table'
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     const saved = localStorage.getItem('sisten_suppliers_view_mode');
@@ -225,6 +312,32 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }
     return rawRmGroups;
   }, [rawRmGroups, poFilter]);
+
+  // Resolve o escopo escolhido ("apenas este item" ou "todos do fornecedor") e monta o
+  // texto da cotação. No escopo "todos", varre rawRmGroups inteiro (ignora filtros/busca
+  // ativos) para não perder itens do mesmo fornecedor espalhados em RMs diferentes.
+  const handleConfirmQuoteScope = (scope: 'single' | 'all') => {
+    if (!quoteChoicePending) return;
+    const { supplier, record, rm } = quoteChoicePending;
+
+    let items: QuoteItemEntry[];
+    if (scope === 'single') {
+      items = [{ record, rm }];
+    } else {
+      items = [];
+      rawRmGroups.forEach(g => {
+        g.items.forEach(it => {
+          if (it.fornecedores.some(f => f.cod_forn === supplier.cod_forn)) {
+            items.push({ record: it.record, rm: g.rm });
+          }
+        });
+      });
+    }
+
+    const rms = Array.from(new Set(items.map(it => it.rm).filter(Boolean)));
+    setQuoteModal({ supplier, text: buildQuoteText(items), rms });
+    setQuoteChoicePending(null);
+  };
 
   // Estado para controle de edição inline de cada item
   const [obsInputState, setObsInputState] = useState<Record<string, string>>({});
@@ -604,6 +717,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   const handleExportExcel = () => {
     if (filteredGroups.length === 0) return;
+    const materialsByCode = new Map<string, string>();
+    localDb.getMaterials().forEach(m => {
+      materialsByCode.set(normalizeCode(m.material_code), m.technical_text || '');
+    });
     const dataToExport: any[] = [];
     filteredGroups.forEach(g => {
       g.items.forEach(({ record: r, encontrado, fornecedores }) => {
@@ -612,6 +729,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           'Item': r.item_reqc || '—',
           'Código do Material': r.material_code || '—',
           'Descrição': r.texto_breve || '—',
+          'Texto Técnico': materialsByCode.get(normalizeCode(r.material_code)) || '—',
           'Qtd.': r.qtd_requisicao ?? '—',
           'Un.': r.unidade_medida || '—',
           'Grupo Comprador': r.grupo_comprador || '—',
@@ -1525,24 +1643,36 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
                         {/* Save Action */}
                         <td className="py-2.5 px-3 text-center">
-                          <button
-                            onClick={() => handleSaveFields(r.ri)}
-                            disabled={itemSaveStatus === 'saving'}
-                            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] ${
-                              itemSaveStatus === 'saved'
-                                ? 'bg-emerald-100 text-emerald-850 dark:bg-emerald-955/40 dark:text-emerald-450 border border-emerald-250'
-                                : isModified(r.ri, r)
-                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
-                                : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
-                            }`}
-                          >
-                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                            {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                            {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
-                            <span>
-                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                            </span>
-                          </button>
+                          <div className="flex flex-col items-center gap-1.5">
+                            <button
+                              onClick={() => handleSaveFields(r.ri)}
+                              disabled={itemSaveStatus === 'saving'}
+                              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] ${
+                                itemSaveStatus === 'saved'
+                                  ? 'bg-emerald-100 text-emerald-850 dark:bg-emerald-955/40 dark:text-emerald-450 border border-emerald-250'
+                                  : isModified(r.ri, r)
+                                  ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
+                                  : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
+                              }`}
+                            >
+                              {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
+                              {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+                              {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                              <span>
+                                {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                              </span>
+                            </button>
+                            {tableShowSupplierFirst && selectedSupplier && (
+                              <button
+                                onClick={() => setQuoteChoicePending({ supplier: selectedSupplier, record: r, rm })}
+                                className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                title="Enviar cotação para este fornecedor"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                <span>Cotação</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1637,6 +1767,111 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 className="px-4 py-2 bg-slate-850 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-750 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
               >
                 Fechar janela
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Escolha de escopo da cotação */}
+      {quoteChoicePending && (
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-scale-up">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm">Enviar Cotação</h3>
+              <button
+                onClick={() => setQuoteChoicePending(null)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                aria-label="Fechar janela"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Fornecedor: <span className="font-bold text-slate-850 dark:text-slate-200">{quoteChoicePending.supplier.fornecedor}</span>
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-450">Quais itens devem entrar no texto da cotação?</p>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  onClick={() => handleConfirmQuoteScope('single')}
+                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                >
+                  Apenas este item
+                </button>
+                <button
+                  onClick={() => handleConfirmQuoteScope('all')}
+                  className="w-full px-4 py-2.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  Todos os itens deste fornecedor
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Texto da Cotação gerado */}
+      {quoteModal && (
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-3xl shadow-xl overflow-hidden animate-scale-up flex flex-col max-h-[85vh]">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Send className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
+                <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm truncate">
+                  Cotação — {quoteModal.supplier.fornecedor}
+                </h3>
+              </div>
+              <button
+                onClick={() => setQuoteModal(null)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer shrink-0"
+                aria-label="Fechar janela"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1">
+              <textarea
+                value={quoteModal.text}
+                onChange={(e) => setQuoteModal(prev => prev ? { ...prev, text: e.target.value } : prev)}
+                className="w-full h-[50vh] font-mono text-xs leading-relaxed rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 p-3 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 shrink-0">
+              <button
+                onClick={() => setQuoteModal(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                Fechar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(quoteModal.text);
+                  } catch (err) {
+                    console.error('Falha ao copiar texto da cotação:', err);
+                  }
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                <span>Copiar Texto</span>
+              </button>
+              <button
+                onClick={() => {
+                  const supplierEmail = quoteModal.supplier.email !== '—' ? quoteModal.supplier.email : '';
+                  const subject = `Cotação RM ${quoteModal.rms.join(', ')}`;
+                  const mailtoUrl = `mailto:${encodeURIComponent(supplierEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                  window.location.href = mailtoUrl;
+                }}
+                title="Abre o cliente de e-mail padrão (ex: Outlook) com o texto preenchido. Cotações muito longas podem ser truncadas pelo limite de tamanho do mailto."
+                className="px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                <span>Abrir no Outlook</span>
               </button>
             </div>
           </div>
