@@ -200,6 +200,7 @@ export interface SAPRequisicao {
   data_solicitacao: string;
   data_remessa: string;
   requisitante_name: string;
+  area_solicitante?: string;
   tipo_documento: string; // ZR01, ZR02, ZR03...
   codigo_de_eliminacao: boolean;
   presente_ultima_carga: boolean;
@@ -222,6 +223,7 @@ export interface EnrichedSAPRecord extends SAPRequisicao {
   fornecedor_code?: string;
   fornecedor_name?: string;
   data_pedido?: string;
+  criado_por_pedido?: string; // login SAP de quem lançou o PO (ex.: ISANTOS) — usado para atribuir "pedido colocado" ao comprador
   data_entrega_sap?: string;
   data_migo?: string | null;
   natureza: string;
@@ -243,6 +245,7 @@ export interface SAPPedido {
   fornecedor_name: string;
   data_pedido: string;
   data_entrega_sap: string;
+  criado_por_pedido?: string;
   valor_brl?: number;
   preco_liquido?: number;
   campos_extras: Record<string, any>;

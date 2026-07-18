@@ -2067,6 +2067,7 @@ class LocalDatabase {
           data_pedido: raw.data_pedido,
           data_entrega_sap: raw.data_entrega_sap,
           documento_compra: raw.documento_compra,
+          criado_por_pedido: raw.criado_por_pedido,
           data_migo: raw.data_migo,
           natureza: raw.natureza,
           status_requisicao: raw.status_requisicao,
@@ -2184,6 +2185,7 @@ class LocalDatabase {
         data_pedido: p.data_pedido,
         data_entrega_sap: p.data_entrega_sap,
         documento_compra: p.documento_compra || r.pedido || null,
+        criado_por_pedido: (p as any).criado_por_pedido,
         data_migo,
         natureza,
         status_requisicao,
@@ -3139,14 +3141,16 @@ class LocalDatabase {
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
-      // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
-      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
+      // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos — com o
+      // mesmo corte de data usado na sincronização periódica (sem ele, cada
+      // importação rebaixava as tabelas inteiras: ~66 mil e ~61 mil linhas).
+      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       try {
         await supabase.rpc('refresh_historico_pedidos');
       } catch (err) {
         console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
       }
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
 
       const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
       const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
@@ -3540,17 +3544,48 @@ class LocalDatabase {
 
       await supabase.from('import_logs').insert(logObj);
       
-      // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos.
+      // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos —
+      // com o mesmo corte de data da sincronização periódica (sem ele, rebaixava as tabelas
+      // inteiras: ~66 mil e ~61 mil linhas a cada importação).
       onProgress?.(95, 'Sincronizando cache local...');
-      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true);
+      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       try {
         await supabase.rpc('refresh_historico_pedidos');
       } catch (err) {
         console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
       }
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
+
+      // pedidosforn alimenta view_enriched_pedidos/view_enriched_requisicoes (status_requisicao,
+      // documento_compra, data_pedido, criado_por_pedido) — sem reidratar e bumpar 'requisicoes'/
+      // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
+      // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
+      onProgress?.(96, 'Atualizando requisições e pedidos com os novos POs...');
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
+      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
+
+      if (updatedReqs) {
+        const mappedReqs = updatedReqs.map(ur => ({
+          ...ur,
+          tipo_documento: ur.tipo_de_documento,
+          requisitante_name: ur.requisitante,
+          qtd_requisicao: ur.qtd_solicitada,
+          unidade_medida: ur.unidade_de_medida,
+          grupo_comprador: ur.grupo_de_compradores,
+          data_solicitacao: ur.data_da_solicitacao,
+          data_remessa: ur.remessas_de_ate,
+          material_code: ur.material
+        }));
+        this.setStorageItem(this.requisicoesKey, mappedReqs);
+      }
+      if (updatedPeds) {
+        this.setStorageItem(this.pedidosKey, updatedPeds);
+      }
+
       await this.bumpDatasetVersion('pedidosforn', this.getStorageItem<any[]>(this.pedidosFornKey, []).length);
       await this.bumpDatasetVersion('historico_pedidos', this.getHistoricoPedidos().length);
+      await this.bumpDatasetVersion('requisicoes', this.getRequisicoes().length);
+      await this.bumpDatasetVersion('pedidos', this.getPedidos().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);

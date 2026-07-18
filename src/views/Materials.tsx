@@ -16,6 +16,32 @@ interface MaterialsProps {
 const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
 const sanitizeTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
 
+// Reordena os resultados já paginados priorizando, na exibição, os materiais cuja
+// descrição contém os termos pesquisados (em vez de deixar valer só material_code/
+// technical_text). Não altera a busca no servidor — é um ajuste só de exibição.
+const sortByDescriptionRelevance = (items: Material[], chips: string[]): Material[] => {
+  const terms = chips.map(sanitizeTerm).filter(Boolean).map(t => t.toLowerCase());
+  if (!terms.length) return items;
+
+  // Por termo: descrição começando com a palavra > palavra inteira em qualquer
+  // posição > apenas substring solta. Ex.: buscando "valvula", "Válvula gaveta..."
+  // vem antes de "Suporte para válvula...".
+  const termScore = (description: string, term: string) => {
+    if (description.startsWith(term)) return 3;
+    const wordBoundaryRegex = new RegExp(`\\b${term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`);
+    if (wordBoundaryRegex.test(description)) return 2;
+    if (description.includes(term)) return 1;
+    return 0;
+  };
+
+  const scoreOf = (item: Material) => {
+    const description = (item.description || '').toLowerCase();
+    return terms.reduce((score, term) => score + termScore(description, term), 0);
+  };
+
+  return [...items].sort((a, b) => scoreOf(b) - scoreOf(a));
+};
+
 // Colunas realmente usadas na tela/exportação — evita trafegar colunas extras
 // da tabela materials (reduz egress vs. select('*')).
 const MATERIAL_COLS = 'id,material_code,description,technical_text,category,company,unit';
@@ -139,7 +165,7 @@ export default function Materials({ user }: MaterialsProps) {
         if (error) throw error;
         if (requestIdRef.current !== thisRequestId) return; // resposta obsoleta
 
-        setResults(data || []);
+        setResults(sortByDescriptionRelevance(data || [], chips));
         setTotalResults(count || 0);
       } catch (err) {
         console.error('Erro ao buscar materiais no Supabase:', err);

@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { 
   Home, Search, BarChart3, PlusCircle, List, FileCheck, 
   Database, LayoutDashboard, Upload, Users, Shield, 
-  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History
+  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -54,6 +54,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         { label: 'Itens Sem PO', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Histórico', path: '/suprimentos/historico', icon: History, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
+        { label: 'Demandas', path: '/suprimentos/demandas', icon: TrendingUp, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, perm: { module: 'sap', action: 'importar' } },
       ],
     },

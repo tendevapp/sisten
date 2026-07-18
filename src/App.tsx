@@ -18,6 +18,7 @@ const MyRequests = lazy(() => import('./views/MyRequests'));
 const Approvals = lazy(() => import('./views/Approvals'));
 const SapPanel = lazy(() => import('./views/SapPanel'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
+const DemandDashboard = lazy(() => import('./views/DemandDashboard'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
@@ -38,6 +39,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/aprovacoes',
   '/materiais/busca',
   '/suprimentos/painel',
+  '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
   '/suprimentos/historico',
   '/suprimentos/fornecedores',
@@ -296,6 +298,12 @@ export default function App() {
       case '/suprimentos/dashboards':
         if (localDb.hasPermission(user, 'sap', 'dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/demandas':
+        if (localDb.hasPermission(user, 'sap', 'dashboards')) {
+          return <DemandDashboard />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
