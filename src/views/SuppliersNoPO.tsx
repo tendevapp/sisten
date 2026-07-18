@@ -7,7 +7,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
-  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send
+  LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
+  MessageCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -114,6 +115,24 @@ const buildQuoteItemsTable = (items: QuoteItemEntry[]): string => {
 
 const buildQuoteText = (items: QuoteItemEntry[]): string => {
   return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items) + '\n' + CARTA_CONVITE_FOOTER;
+};
+
+// Versão resumida para WhatsApp: saudação curta + RMs + tabela de itens, sem o texto
+// jurídico completo da Carta Convite (não cabe bem em mensagem de chat).
+const buildWhatsAppText = (items: QuoteItemEntry[], rms: string[]): string => {
+  return `Prezado Fornecedor,\n\nA Empresa TORRES EÓLICAS DO NORDESTE S/A, inscrita no CNPJ nº 13.892.216/0002-31, convida V.S.ª a apresentar proposta para fornecimento dos materiais conforme especificados RM ${rms.join(', ')}\n\n` +
+    buildQuoteItemsTable(items);
+};
+
+// Extrai o primeiro telefone válido do campo (pode vir com múltiplos números separados
+// por ";") e normaliza para o formato aceito pelo wa.me (só dígitos, com DDI 55 se faltar).
+const extractWhatsAppNumber = (telefone: string): string | null => {
+  if (!telefone || telefone === '—') return null;
+  const first = telefone.split(';')[0].trim();
+  const digits = first.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length <= 11) return `55${digits}`;
+  return digits;
 };
 
 // Normaliza códigos de material para casar registros mesmo com diferença de zeros à
@@ -251,7 +270,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
   const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
-  const [quoteModal, setQuoteModal] = useState<{ supplier: FornecedorMaterialRow; text: string; rms: string[] } | null>(null);
+  const [quoteModal, setQuoteModal] = useState<{ supplier: FornecedorMaterialRow; text: string; rms: string[]; items: QuoteItemEntry[] } | null>(null);
 
   // Modos de Visualização: 'cards' | 'table'
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
@@ -335,7 +354,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }
 
     const rms = Array.from(new Set(items.map(it => it.rm).filter(Boolean)));
-    setQuoteModal({ supplier, text: buildQuoteText(items), rms });
+    setQuoteModal({ supplier, text: buildQuoteText(items), rms, items });
     setQuoteChoicePending(null);
   };
 
@@ -1873,6 +1892,28 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 <Mail className="h-3.5 w-3.5" />
                 <span>Abrir no Outlook</span>
               </button>
+              {(() => {
+                const waNumber = extractWhatsAppNumber(quoteModal.supplier.telefone);
+                return (
+                  <button
+                    onClick={() => {
+                      if (!waNumber) return;
+                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms);
+                      window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(waText)}`, '_blank', 'noopener,noreferrer');
+                    }}
+                    disabled={!waNumber}
+                    title={waNumber ? 'Abre o WhatsApp Web/App com a mensagem preenchida para o fornecedor' : 'Fornecedor sem telefone cadastrado'}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 ${
+                      waNumber
+                        ? 'bg-[#25D366] hover:bg-[#1fbd59] text-white cursor-pointer'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                    }`}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    <span>WhatsApp</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
