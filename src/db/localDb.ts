@@ -10,6 +10,7 @@ import {
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
   RastreioMensagem
 } from '../types';
+import { CompradorInfo } from '../lib/demandas';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
@@ -44,6 +45,7 @@ class LocalDatabase {
   private obsHistoryKey = 'sisten_obs_history';
   private importLogsKey = 'sisten_import_logs';
   private buyerGroupsKey = 'sisten_buyer_groups';
+  private compradoresKey = 'sisten_compradores';
   private logsKey = 'sisten_activity_logs';
   private favoritesKey = 'sisten_favorites';
   private sequencesKey = 'sisten_sequences';
@@ -173,6 +175,7 @@ class LocalDatabase {
           ['sectors', () => this.syncSectors()],
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
+          ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true)],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
@@ -1301,6 +1304,13 @@ class LocalDatabase {
     return this.getStorageItem<UserBuyerGroup[]>(this.buyerGroupsKey, []);
   }
 
+  // Cadastro de compradores por grupo de compras SAP (grupo_compras, nome,
+  // login SAP e e-mail do usuário SISTEN correspondente). Fonte primária para
+  // rotear notificações de mensagens ao comprador responsável pelo grupo.
+  public getCompradores(): CompradorInfo[] {
+    return this.getStorageItem<CompradorInfo[]>(this.compradoresKey, []);
+  }
+
   public getBuyerGroupsForUser(userId: string): UserBuyerGroup[] {
     return this.getBuyerGroups().filter(bg => bg.user_id === userId);
   }
@@ -1647,8 +1657,11 @@ class LocalDatabase {
 
   // Resolve os destinatários da notificação de uma nova mensagem:
   //  - todos os outros participantes que já escreveram na thread; e
-  //  - se o autor não é comprador e nenhum comprador participou ainda,
-  //    os compradores do grupo do item (via buyer_groups).
+  //  - se o autor não é comprador e nenhum comprador participou ainda, o
+  //    comprador responsável pelo grupo do item — resolvido via cadastro
+  //    de compradores (compradores.grupo_compras -> email -> profile),
+  //    com fallback para buyer_groups (associação por profile/admin) caso
+  //    o cadastro de compradores não tenha e-mail para o grupo.
   private resolveRastreioRecipients(
     autorId: string, autorEhComprador: boolean,
     participantes: string[], grupoComprador?: string
@@ -1660,9 +1673,20 @@ class LocalDatabase {
       p => participantes.includes(p.id) && p.roles.includes('comprador')
     );
     if (!autorEhComprador && !compradorNoThread && grupoComprador) {
-      this.getBuyerGroups()
-        .filter(bg => bg.group_code === grupoComprador)
-        .forEach(bg => { if (bg.user_id && bg.user_id !== autorId) set.add(bg.user_id); });
+      const emailsPorGrupo = this.getCompradores()
+        .filter(c => c.grupo_compras === grupoComprador && c.email)
+        .map(c => (c.email as string).trim().toLowerCase());
+
+      if (emailsPorGrupo.length > 0) {
+        this.getProfiles()
+          .filter(p => emailsPorGrupo.includes((p.email || '').trim().toLowerCase()))
+          .forEach(p => { if (p.id !== autorId) set.add(p.id); });
+      } else {
+        // Fallback: associação manual comprador <-> grupo (tela Grupos Comprador).
+        this.getBuyerGroups()
+          .filter(bg => bg.group_code === grupoComprador)
+          .forEach(bg => { if (bg.user_id && bg.user_id !== autorId) set.add(bg.user_id); });
+      }
     }
     // Só usuários ativos.
     const ativos = new Set(this.getProfiles().filter(p => p.status === 'ativo').map(p => p.id));

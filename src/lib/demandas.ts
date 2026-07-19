@@ -115,6 +115,9 @@ export interface CompradorInfo {
   grupo_compras: string;
   nome_comprador: string;
   usuario_sistema?: string | null;
+  // E-mail do usuário SISTEN correspondente, usado para rotear notificações
+  // (ex.: mensagens do Rastreio Compras) diretamente ao comprador do grupo.
+  email?: string | null;
 }
 
 // Atribui o comprador responsável por um registro: prioriza quem de fato
