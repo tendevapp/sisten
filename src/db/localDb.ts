@@ -4048,6 +4048,33 @@ class LocalDatabase {
     return false;
   }
 
+  // Define o grupo de compras SAP (ex.: 314, 358) associado a este usuário,
+  // editável na tela de Gestão de Usuários (Admin). Vazio remove a associação.
+  public updateUserGrupoCompras(userId: string, grupoCompras: string): boolean {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    const value = grupoCompras.trim() || null;
+    users[idx].grupo_compras = value;
+    this.setStorageItem(this.profilesKey, users);
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Grupo de compras de ${users[idx].name} definido como "${value ?? '—'}".`);
+
+    if (supabase) {
+      supabase.from('profiles')
+        .update({ grupo_compras: value })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) console.error('Erro ao sincronizar grupo de compras no Supabase:', error);
+        })
+        .catch(err => {
+          console.error('Falha de escrita do grupo de compras no Supabase:', err);
+        });
+    }
+
+    return true;
+  }
+
   public toggleSectorSupport(sectorId: string): void {
     const sectors = this.getSectors();
     const idx = sectors.findIndex(s => s.id === sectorId);

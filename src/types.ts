@@ -32,6 +32,9 @@ export interface Profile {
   roles: Role[];
   status: UserStatus;
   created_at: string;
+  // Número do grupo de compras SAP (ex.: 314, 358) atribuído ao usuário pelo
+  // admin, usado para identificar de qual grupo ele é o comprador responsável.
+  grupo_compras?: string | null;
 }
 
 export interface ActivityLog {
