@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck,
   Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -36,6 +36,8 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       items: [
         { label: 'Início', path: '/', icon: Home, perm: { module: 'solicitacoes', action: 'visualizar_proprias' } },
         { label: 'Catálogo SAP', path: '/materiais/busca', icon: Search, perm: { module: 'materiais', action: 'visualizar' } },
+        // Rastreio Compras é acessível a todos os perfis (sem gate de permissão).
+        { label: 'Rastreio Compras', path: '/rastreio', icon: Route, perm: { module: 'solicitacoes', action: 'visualizar_proprias' }, universal: true },
         { label: 'Relatórios', path: '/relatorios', icon: BarChart3, perm: { module: 'materiais', action: 'visualizar' } },
       ],
     },
@@ -136,7 +138,8 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       <div className="flex-1 overflow-y-auto py-4">
         {navItems.map((group, groupIdx) => {
           // Filter items based on user permission
-          const visibleItems = group.items.filter(item => 
+          const visibleItems = group.items.filter(item =>
+            ('universal' in item && item.universal) ||
             localDb.hasPermission(user, item.perm.module, item.perm.action)
           );
 

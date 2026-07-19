@@ -8,15 +8,16 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle
+  MessageCircle, Flag
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import {
   Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
-  FornecedorMaterialRow, SAPObsHistory, ItemStatus
+  FornecedorMaterialRow, SAPObsHistory, ItemStatus, RastreioPrioridade
 } from '../types';
+import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
 import SapDetailModal from '../components/SapDetailModal';
 
 interface SuppliersNoPOProps {
@@ -299,6 +300,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [alertFilter, setAlertFilter] = useState('Todos');
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
+  const [prioridadeFilter, setPrioridadeFilter] = useState<'Todos' | '1' | '2' | '3' | '4' | '5' | 'Nenhuma'>('Todos');
+
+  // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
+  const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
 
   const handleSearch = useCallback((val: string) => {
     setSearchQuery(val);
@@ -309,7 +314,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, buyerFilter, statusFilter, alertFilter, poFilter, kpiFilter, viewMode]);
+  }, [searchQuery, buyerFilter, statusFilter, alertFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -374,6 +379,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
+  const [historyCommentDraft, setHistoryCommentDraft] = useState('');
+  const [historySaving, setHistorySaving] = useState(false);
 
   const isModified = useCallback((ri: string, record: EnrichedSAPRecord) => {
     const currentObs = obsInputState[ri] ?? '';
@@ -402,6 +409,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       const allRecords = localDb.getEnrichedSAPRequisicoes();
       const semPoRecords = allRecords;
+
+      // Prioridades solicitadas pelos usuários no Rastreio Compras — nível
+      // atual (mais recente) por item, para o comprador acompanhar aqui.
+      setPrioridadesMap(latestPriorityByRi(localDb.getRastreioPrioridades()));
 
       // Inicializa os inputs com os dados atuais salvos
       const initialObs: Record<string, string> = {};
@@ -596,7 +607,25 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const handleViewHistory = (ri: string) => {
     const hist = localDb.getObsHistory(ri);
     setHistoryData(hist.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    setHistoryCommentDraft(obsInputState[ri] || '');
     setHistoryOpenRi(ri);
+  };
+
+  // Salva o comentário digitado direto no modal de histórico.
+  const handleSaveHistoryComment = (ri: string) => {
+    setHistorySaving(true);
+    const comment = historyCommentDraft;
+    const date = dateInputState[ri] || '';
+    const status = statusInputState[ri];
+
+    localDb.updateBuyerFields(ri, comment, date, status);
+    setObsInputState(prev => ({ ...prev, [ri]: comment }));
+
+    setTimeout(() => {
+      setHistorySaving(false);
+      setHistoryOpenRi(null);
+      buildSuppliersData();
+    }, 400);
   };
 
   // Opções de filtro
@@ -633,6 +662,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         if (buyerFilter !== 'Todos' && r.grupo_comprador !== buyerFilter) return false;
         if (statusFilter !== 'Todos' && r.status_atualizado !== statusFilter) return false;
         if (alertFilter !== 'Todos' && r.alerta !== alertFilter) return false;
+        if (prioridadeFilter !== 'Todos') {
+          const nivel = prioridadesMap.get(r.ri)?.nivel;
+          if (prioridadeFilter === 'Nenhuma' ? nivel !== undefined : String(nivel) !== prioridadeFilter) return false;
+        }
         if (q) {
           const inRecord =
             (r.material_code || '').toLowerCase().includes(q) ||
@@ -653,7 +686,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, buyerFilter, statusFilter, alertFilter]);
+  }, [rmGroups, searchQuery, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1241,6 +1274,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 {alertOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+            <div className="relative min-w-[150px]">
+              <Flag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
+              <select
+                value={prioridadeFilter}
+                onChange={(e) => setPrioridadeFilter(e.target.value as typeof prioridadeFilter)}
+                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
+              >
+                <option value="Todos">Prioridade: Todas</option>
+                <option value="5">Grau 5</option>
+                <option value="4">Grau 4</option>
+                <option value="3">Grau 3</option>
+                <option value="2">Grau 2</option>
+                <option value="1">Grau 1</option>
+                <option value="Nenhuma">Sem solicitação</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -1552,6 +1601,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                     <th className="py-3 px-3">Descrição</th>
                     <th className="py-3 px-3">Qtd / Un</th>
                     {!tableShowSupplierFirst && <th className="py-3 px-3">{poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'}</th>}
+                    <th className="py-3 px-3">Prioridade</th>
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Promessa Entrega</th>
                     <th className="py-3 px-3">Observação</th>
@@ -1740,6 +1790,23 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           </td>
                         )}
 
+                        {/* Prioridade solicitada (Rastreio Compras) */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {(() => {
+                            const p = prioridadesMap.get(r.ri);
+                            if (!p) return <span className="text-slate-300 dark:text-slate-600">—</span>;
+                            const meta = priorityMeta(p.nivel);
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold ${meta.badge}`}
+                                title={`Solicitado por ${p.solicitante_nome} em ${new Date(p.created_at).toLocaleString('pt-BR')}`}
+                              >
+                                <Flag className="h-2.5 w-2.5" /> Grau {p.nivel}
+                              </span>
+                            );
+                          })()}
+                        </td>
+
                         {/* Status Select */}
                         <td className="py-2.5 px-3 min-w-[140px]">
                           {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
@@ -1865,6 +1932,29 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   aria-label="Fechar janela"
                 >
                   <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-5 pt-4 space-y-1.5">
+              <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
+                Novo comentário
+              </label>
+              <textarea
+                value={historyCommentDraft}
+                onChange={(e) => setHistoryCommentDraft(e.target.value)}
+                placeholder="Digite a observação para o fornecedor/comprador..."
+                rows={3}
+                className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-2 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={() => historyOpenRi && handleSaveHistoryComment(historyOpenRi)}
+                  disabled={historySaving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0056c6] hover:bg-[#004bb0] text-white text-[11px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
+                >
+                  {historySaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  {historySaving ? 'Salvando...' : 'Salvar comentário'}
                 </button>
               </div>
             </div>

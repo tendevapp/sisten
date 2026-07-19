@@ -28,6 +28,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
+  // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
+  const [grupoComprasInputs, setGrupoComprasInputs] = useState<Record<string, string>>({});
 
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -106,6 +108,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       setSelectedProfileId(null);
       setEditingRole('');
       loadData();
+    }
+  };
+
+  const handleSaveGrupoCompras = (id: string) => {
+    const value = grupoComprasInputs[id] ?? '';
+    const ok = localDb.updateUserGrupoCompras(id, value);
+    if (ok) {
+      loadData();
+      setGrupoComprasInputs(prev => { const next = { ...prev }; delete next[id]; return next; });
     }
   };
 
@@ -410,6 +421,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <th className="py-2.5">Nome</th>
                     <th className="py-2.5">E-mail</th>
                     <th className="py-2.5">Cargo / Setor</th>
+                    <th className="py-2.5">Grupo Compras</th>
                     <th className="py-2.5">Nível de Acesso (Role)</th>
                     <th className="py-2.5 text-center">Ações</th>
                   </tr>
@@ -427,6 +439,34 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                       <td className="py-3 text-slate-500">{p.email}</td>
                       <td className="py-3 text-slate-600 font-medium">{p.cargo} • Setor {p.sector_id}</td>
+                      <td className="py-3">
+                        {(() => {
+                          const current = p.grupo_compras || '';
+                          const value = grupoComprasInputs[p.id] ?? current;
+                          const dirty = value.trim() !== current.trim();
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={value}
+                                onChange={(e) => setGrupoComprasInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && dirty) handleSaveGrupoCompras(p.id); }}
+                                placeholder="Ex: 314"
+                                className="w-20 rounded border border-slate-200 py-1 px-2 text-xs font-mono focus:outline-none focus:border-emerald-600 bg-white"
+                              />
+                              {dirty && (
+                                <button
+                                  onClick={() => handleSaveGrupoCompras(p.id)}
+                                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white p-1 shrink-0"
+                                  title="Salvar grupo de compras"
+                                >
+                                  <Save className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="py-3">
                         {selectedProfileId === p.id ? (
                           <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>

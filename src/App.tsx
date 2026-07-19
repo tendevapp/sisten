@@ -27,6 +27,7 @@ const Reports = lazy(() => import('./views/Reports'));
 const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
+const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -55,6 +56,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/importar',
   '/suprimentos/importar/log',
   '/suprimentos/grupos-comprador',
+  '/rastreio',
 ]);
 
 function ViewLoadingFallback() {
@@ -280,6 +282,10 @@ export default function App() {
       
       case '/materiais/busca':
         return <Materials user={user} />;
+
+      // Rastreio Compras: acesso universal (todos os perfis), somente leitura.
+      case '/rastreio':
+        return <RastreioCompras user={user} onNavigate={handleNavigate} />;
       
       case '/solicitacoes/nova':
         return <NewRequest user={user} onNavigate={handleNavigate} />;

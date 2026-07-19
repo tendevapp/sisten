@@ -32,6 +32,9 @@ export interface Profile {
   roles: Role[];
   status: UserStatus;
   created_at: string;
+  // Número do grupo de compras SAP (ex.: 314, 358) atribuído ao usuário pelo
+  // admin, usado para identificar de qual grupo ele é o comprador responsável.
+  grupo_compras?: string | null;
 }
 
 export interface ActivityLog {
@@ -172,6 +175,36 @@ export interface Notification {
   is_read: boolean;
   request_id?: string;
   request_number?: string;
+  created_at: string;
+  // Identificador de contexto genérico (sem FK), para notificações de
+  // domínios que não são "requests" — ex.: "rastreio:<ri>" para mensagens
+  // do Rastreio Compras. request_id não serve: tem FK para requests(id).
+  context_key?: string | null;
+}
+
+// Mensagem de conversa de um item de compra (pagina Rastreio Compras).
+// Thread identificada por `ri` (requisicao + item).
+export interface RastreioMensagem {
+  id: string;
+  ri: string;
+  rm?: string;
+  autor_id: string;
+  autor_nome: string;
+  autor_role?: string;
+  mensagem: string;
+  created_at: string;
+}
+
+// Pedido de priorizacao de um item de compra, na mesma escala de
+// criticidade (1-5) usada em Nova Solicitacao. Mantém histórico — o nível
+// atual de um item é o registro mais recente por `ri`.
+export interface RastreioPrioridade {
+  id: string;
+  ri: string;
+  rm?: string;
+  nivel: number; // 1-5
+  solicitante_id: string;
+  solicitante_nome: string;
   created_at: string;
 }
 
