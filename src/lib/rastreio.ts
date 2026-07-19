@@ -7,7 +7,41 @@
 // Mantida isolada da UI para facilitar leitura, reuso e testes futuros.
 
 import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { EnrichedSAPRecord } from '../types';
+import { EnrichedSAPRecord, RastreioPrioridade } from '../types';
+
+// Escala de criticidade/prioridade (1-5), mesma usada em Nova Solicitação
+// (canal de compra), reaproveitada aqui para o pedido de priorização feito
+// pelo usuário direto no item, na página Rastreio Compras.
+export interface PriorityLevelMeta {
+  level: number;
+  label: string;
+  dot: string;
+  badge: string;
+}
+
+export const PRIORITY_LEVELS: PriorityLevelMeta[] = [
+  { level: 1, label: 'Posso aguardar. Demanda planejada, sem pressão de prazo.', dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600' },
+  { level: 2, label: 'Tem prazo, mas há fôlego. Preciso em 2–4 semanas.', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30' },
+  { level: 3, label: 'Começa a apertar. Preciso em 1–2 semanas.', dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30' },
+  { level: 4, label: 'Situação crítica. Preciso em menos de 7 dias.', dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30' },
+  { level: 5, label: 'Produção parada ou risco de segurança. Preciso imediatamente.', dot: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/30' },
+];
+
+export const priorityMeta = (level: number): PriorityLevelMeta =>
+  PRIORITY_LEVELS.find(p => p.level === level) || PRIORITY_LEVELS[0];
+
+// Nível de prioridade atual por `ri`: o pedido mais recente (histórico
+// preservado — o comprador pode ver reforços/escaladas ao longo do tempo).
+export function latestPriorityByRi(prioridades: RastreioPrioridade[]): Map<string, RastreioPrioridade> {
+  const map = new Map<string, RastreioPrioridade>();
+  prioridades.forEach(p => {
+    const atual = map.get(p.ri);
+    if (!atual || new Date(p.created_at).getTime() > new Date(atual.created_at).getTime()) {
+      map.set(p.ri, p);
+    }
+  });
+  return map;
+}
 
 // Uma linha de rastreio = uma requisição/item enriquecido, já mapeado para os
 // campos que a tela exibe. Sem preços/valores — é uma visão não financeira.

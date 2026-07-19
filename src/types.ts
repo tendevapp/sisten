@@ -195,6 +195,19 @@ export interface RastreioMensagem {
   created_at: string;
 }
 
+// Pedido de priorizacao de um item de compra, na mesma escala de
+// criticidade (1-5) usada em Nova Solicitacao. Mantém histórico — o nível
+// atual de um item é o registro mais recente por `ri`.
+export interface RastreioPrioridade {
+  id: string;
+  ri: string;
+  rm?: string;
+  nivel: number; // 1-5
+  solicitante_id: string;
+  solicitante_nome: string;
+  created_at: string;
+}
+
 export type ItemStatus =
   | 'Aguardando Cotação'
   | 'Cotação enviada'

@@ -8,8 +8,9 @@ import {
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
-  RastreioMensagem
+  RastreioMensagem, RastreioPrioridade
 } from '../types';
+import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -46,6 +47,7 @@ class LocalDatabase {
   private importLogsKey = 'sisten_import_logs';
   private buyerGroupsKey = 'sisten_buyer_groups';
   private compradoresKey = 'sisten_compradores';
+  private prioridadesKey = 'sisten_rastreio_prioridades';
   private logsKey = 'sisten_activity_logs';
   private favoritesKey = 'sisten_favorites';
   private sequencesKey = 'sisten_sequences';
@@ -176,6 +178,7 @@ class LocalDatabase {
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
           ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true)],
+          ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true)],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
@@ -1311,6 +1314,12 @@ class LocalDatabase {
     return this.getStorageItem<CompradorInfo[]>(this.compradoresKey, []);
   }
 
+  // Pedidos de priorização feitos sobre itens de compra (Rastreio Compras),
+  // todos os registros (histórico completo, não só o mais recente por RI).
+  public getRastreioPrioridades(): RastreioPrioridade[] {
+    return this.getStorageItem<RastreioPrioridade[]>(this.prioridadesKey, []);
+  }
+
   public getBuyerGroupsForUser(userId: string): UserBuyerGroup[] {
     return this.getBuyerGroups().filter(bg => bg.user_id === userId);
   }
@@ -1663,13 +1672,43 @@ class LocalDatabase {
     if (error) console.error('Falha ao inserir notificações de mensagem (Rastreio Compras):', error);
   }
 
+  // Resolve o(s) comprador(es) responsável(is) por um grupo de compras SAP,
+  // unindo todas as fontes disponíveis (mais robusto que depender de uma só):
+  //  1) cadastro de compradores (compradores.grupo_compras -> email -> profile);
+  //  2) grupo de compras atribuído direto ao perfil (Admin > Usuários);
+  //  3) fallback: associação manual comprador <-> grupo (tela Grupos Comprador),
+  //     usada só se as duas primeiras fontes não encontrarem ninguém.
+  // Reutilizado tanto para notificar mensagens quanto pedidos de prioridade.
+  private resolveCompradorIdsForGrupo(grupoComprador: string, excludeId?: string): string[] {
+    const set = new Set<string>();
+    const profiles = this.getProfiles();
+
+    const emailsPorGrupo = this.getCompradores()
+      .filter(c => c.grupo_compras === grupoComprador && c.email)
+      .map(c => (c.email as string).trim().toLowerCase());
+    profiles
+      .filter(p => emailsPorGrupo.includes((p.email || '').trim().toLowerCase()))
+      .forEach(p => set.add(p.id));
+
+    profiles
+      .filter(p => (p.grupo_compras || '').trim() === grupoComprador)
+      .forEach(p => set.add(p.id));
+
+    if (set.size === 0) {
+      this.getBuyerGroups()
+        .filter(bg => bg.group_code === grupoComprador)
+        .forEach(bg => { if (bg.user_id) set.add(bg.user_id); });
+    }
+
+    const ativos = new Set(profiles.filter(p => p.status === 'ativo').map(p => p.id));
+    return Array.from(set).filter(id => ativos.has(id) && id !== excludeId);
+  }
+
   // Resolve os destinatários da notificação de uma nova mensagem:
   //  - todos os outros participantes que já escreveram na thread; e
-  //  - se o autor não é comprador e nenhum comprador participou ainda, o
-  //    comprador responsável pelo grupo do item — resolvido via cadastro
-  //    de compradores (compradores.grupo_compras -> email -> profile),
-  //    com fallback para buyer_groups (associação por profile/admin) caso
-  //    o cadastro de compradores não tenha e-mail para o grupo.
+  //  - se o autor não é comprador e nenhum comprador participou ainda, o(s)
+  //    comprador(es) responsável(is) pelo grupo do item (ver
+  //    resolveCompradorIdsForGrupo).
   private resolveRastreioRecipients(
     autorId: string, autorEhComprador: boolean,
     participantes: string[], grupoComprador?: string
@@ -1681,20 +1720,7 @@ class LocalDatabase {
       p => participantes.includes(p.id) && p.roles.includes('comprador')
     );
     if (!autorEhComprador && !compradorNoThread && grupoComprador) {
-      const emailsPorGrupo = this.getCompradores()
-        .filter(c => c.grupo_compras === grupoComprador && c.email)
-        .map(c => (c.email as string).trim().toLowerCase());
-
-      if (emailsPorGrupo.length > 0) {
-        this.getProfiles()
-          .filter(p => emailsPorGrupo.includes((p.email || '').trim().toLowerCase()))
-          .forEach(p => { if (p.id !== autorId) set.add(p.id); });
-      } else {
-        // Fallback: associação manual comprador <-> grupo (tela Grupos Comprador).
-        this.getBuyerGroups()
-          .filter(bg => bg.group_code === grupoComprador)
-          .forEach(bg => { if (bg.user_id && bg.user_id !== autorId) set.add(bg.user_id); });
-      }
+      this.resolveCompradorIdsForGrupo(grupoComprador, autorId).forEach(id => set.add(id));
     }
     // Só usuários ativos.
     const ativos = new Set(this.getProfiles().filter(p => p.status === 'ativo').map(p => p.id));
@@ -1741,6 +1767,53 @@ class LocalDatabase {
     const desc = `${user.name}: ${preview}`;
     this.insertNotifications(recipients, title, desc, 'info', `${this.RASTREIO_NOTIF_PREFIX}${ri}`, ctx.rm)
       .catch(err => console.error('Falha ao notificar destinatários da mensagem:', err));
+
+    return row;
+  }
+
+  // Registra um pedido de priorização sobre um item (RI), na escala de
+  // criticidade 1-5, e notifica o(s) comprador(es) responsável(is) pelo
+  // grupo do item. Mantém histórico — cada chamada cria um novo registro,
+  // permitindo reforçar/escalar a prioridade ao longo do tempo.
+  public async setRastreioPrioridade(
+    ri: string, rm: string | undefined, nivel: number, grupoComprador?: string
+  ): Promise<RastreioPrioridade> {
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Usuário não autenticado.');
+    if (!Number.isInteger(nivel) || nivel < 1 || nivel > 5) throw new Error('Nível de prioridade inválido.');
+
+    const row: RastreioPrioridade = {
+      id: 'rp_' + Math.random().toString(36).substr(2, 9),
+      ri, rm,
+      nivel,
+      solicitante_id: user.id,
+      solicitante_nome: user.name,
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('rastreio_prioridades').insert({
+      id: row.id, ri: row.ri, rm: row.rm ?? null, nivel: row.nivel,
+      solicitante_id: row.solicitante_id, solicitante_nome: row.solicitante_nome,
+      created_at: row.created_at,
+    });
+    if (error) throw error;
+
+    // Atualiza o cache local imediatamente, sem esperar o próximo sync — assim
+    // a tela Itens Sem PO já reflete o pedido recém-feito.
+    const cached = this.getRastreioPrioridades();
+    cached.push(row);
+    this.setStorageItem(this.prioridadesKey, cached);
+
+    // Notifica o(s) comprador(es) responsável(is) pelo grupo do item.
+    if (grupoComprador) {
+      const recipients = this.resolveCompradorIdsForGrupo(grupoComprador, user.id);
+      const meta = priorityMeta(nivel);
+      const title = `Prioridade solicitada — RM ${rm || ri}: Grau ${nivel}`;
+      const desc = `${user.name} pediu prioridade Grau ${nivel} (${meta.label})`;
+      this.insertNotifications(recipients, title, desc, nivel >= 4 ? 'alert' : 'info', `${this.RASTREIO_NOTIF_PREFIX}${ri}`, rm)
+        .catch(err => console.error('Falha ao notificar comprador sobre prioridade:', err));
+    }
 
     return row;
   }

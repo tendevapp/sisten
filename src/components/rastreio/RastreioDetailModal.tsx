@@ -6,11 +6,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X, Send, MessageSquare, Loader2, Package, Building2, MapPin, Calendar,
-  Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle, History,
+  Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle, History, Flag, Check,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
-import { Profile, RastreioMensagem, SAPObsHistory } from '../../types';
-import { RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR } from '../../lib/rastreio';
+import { Profile, RastreioMensagem, RastreioPrioridade, SAPObsHistory } from '../../types';
+import {
+  RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR,
+  PRIORITY_LEVELS, priorityMeta, latestPriorityByRi,
+} from '../../lib/rastreio';
 
 // Uma entrada da linha do tempo da conversa: mensagem de chat ou uma
 // atualização de observação registrada pelo comprador (histórico de
@@ -67,6 +70,40 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
   }, [messages, obsHistory]);
+
+  // Pedidos de priorização deste item (RI). O nível atual é o mais recente;
+  // histórico completo fica disponível para o comprador acompanhar escaladas.
+  const [prioridades, setPrioridades] = useState<RastreioPrioridade[]>(
+    () => localDb.getRastreioPrioridades().filter(p => p.ri === row.ri)
+  );
+  const currentPriority = useMemo(() => latestPriorityByRi(prioridades).get(row.ri), [prioridades, row.ri]);
+  const [selectedPriority, setSelectedPriority] = useState<number | null>(null);
+  const [savingPriority, setSavingPriority] = useState(false);
+  const [priorityError, setPriorityError] = useState<string | null>(null);
+  const [prioritySaved, setPrioritySaved] = useState(false);
+
+  const handleSavePriority = async () => {
+    if (!selectedPriority || savingPriority) return;
+    setSavingPriority(true);
+    setPriorityError(null);
+    try {
+      const saved = await localDb.setRastreioPrioridade(
+        row.ri,
+        row.rm !== '—' ? row.rm : undefined,
+        selectedPriority,
+        row.grupoComprador || undefined
+      );
+      setPrioridades(prev => [...prev, saved]);
+      setSelectedPriority(null);
+      setPrioritySaved(true);
+      setTimeout(() => setPrioritySaved(false), 3000);
+    } catch (e) {
+      console.error('Erro ao salvar prioridade:', e);
+      setPriorityError('Falha ao salvar. Tente novamente.');
+    } finally {
+      setSavingPriority(false);
+    }
+  };
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -146,6 +183,11 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${deliveryMeta.badge}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${deliveryMeta.dot}`} />{deliveryMeta.label}
               </span>
+              {currentPriority && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${priorityMeta(currentPriority.nivel).badge}`} title={`Solicitado por ${currentPriority.solicitante_nome}`}>
+                  <Flag className="h-2.5 w-2.5" /> Prioridade {currentPriority.nivel}
+                </span>
+              )}
             </div>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{row.descricao}</p>
           </div>
@@ -173,6 +215,61 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
                 </Field>
               </div>
             )}
+          </div>
+
+          {/* Solicitar Prioridade */}
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+              <Flag className="h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Solicitar Prioridade
+            </h4>
+            {currentPriority ? (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                Prioridade atual: <span className="font-bold text-slate-700 dark:text-slate-300">Grau {currentPriority.nivel}</span> · solicitado por {currentPriority.solicitante_nome} em {formatDateTimeBR(currentPriority.created_at)}
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                Nenhuma prioridade solicitada ainda. Escolha um grau na escala de criticidade para pedir atenção do comprador.
+              </p>
+            )}
+
+            <div className="grid grid-cols-5 gap-1.5">
+              {PRIORITY_LEVELS.map(p => {
+                const selected = selectedPriority === p.level;
+                return (
+                  <button
+                    key={p.level}
+                    type="button"
+                    onClick={() => setSelectedPriority(p.level)}
+                    title={p.label}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center transition-all ${selected ? `${p.badge} ring-2 ring-offset-1 ring-offset-white dark:ring-offset-slate-900` : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'}`}
+                  >
+                    <span className={`h-2.5 w-2.5 rounded-full ${p.dot}`} />
+                    <span className="text-[10px] font-black">Grau {p.level}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={handleSavePriority}
+                disabled={!selectedPriority || savingPriority}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              >
+                {savingPriority ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
+                Salvar prioridade
+              </button>
+              {prioritySaved && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                  <Check className="h-3.5 w-3.5" /> Comprador notificado
+                </span>
+              )}
+              {priorityError && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="h-3.5 w-3.5" /> {priorityError}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Conversa */}
