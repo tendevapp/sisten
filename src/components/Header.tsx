@@ -48,12 +48,13 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     localDb.markNotificationAsRead(notif.id);
     setNotifications(localDb.getNotifications(user.id));
     setShowNotifications(false);
-    if (notif.request_id) {
-      // Notificações de mensagens do Rastreio Compras: abrem a conversa do item.
-      if (notif.request_id.startsWith('rastreio:')) {
-        const ri = notif.request_id.slice('rastreio:'.length);
-        onNavigate(`/rastreio?ri=${encodeURIComponent(ri)}`);
-      } else if (notif.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
+    // Notificações de mensagens do Rastreio Compras: abrem a conversa do item.
+    // Usa context_key (sem FK) em vez de request_id (tem FK para requests).
+    if (notif.context_key?.startsWith('rastreio:')) {
+      const ri = notif.context_key.slice('rastreio:'.length);
+      onNavigate(`/rastreio?ri=${encodeURIComponent(ri)}`);
+    } else if (notif.request_id) {
+      if (notif.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
         onNavigate('/solicitacoes/aprovacoes');
       } else {
         onNavigate(`/solicitacoes/minhas?id=${notif.request_id}`);

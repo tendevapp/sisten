@@ -176,6 +176,10 @@ export interface Notification {
   request_id?: string;
   request_number?: string;
   created_at: string;
+  // Identificador de contexto genérico (sem FK), para notificações de
+  // domínios que não são "requests" — ex.: "rastreio:<ri>" para mensagens
+  // do Rastreio Compras. request_id não serve: tem FK para requests(id).
+  context_key?: string | null;
 }
 
 // Mensagem de conversa de um item de compra (pagina Rastreio Compras).

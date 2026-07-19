@@ -1635,9 +1635,16 @@ class LocalDatabase {
   // Insere notificações (uma por destinatário) diretamente no Supabase.
   // A política de INSERT permite gravar para qualquer user_id; cada destinatário
   // só lê as próprias (RLS de SELECT por auth.uid()).
+  //
+  // `contextKey` é um identificador livre (sem FK) usado por notificações que
+  // não se referem a uma linha de `requests` — ex.: mensagens do Rastreio
+  // Compras. NÃO usar `request_id` para isso: a coluna tem foreign key para
+  // requests(id) e o insert falha (violação de FK) para qualquer valor que
+  // não seja um id real de requests. Essa falha é assíncrona e não lança na
+  // UI, então passou despercebida até ser diagnosticada via banco.
   private async insertNotifications(
     userIds: string[], title: string, description: string,
-    type: Notification['type'], reqId: string, reqNo?: string
+    type: Notification['type'], contextKey: string, reqNo?: string
   ): Promise<void> {
     if (!supabase || userIds.length === 0) return;
     const rows = userIds.map(uid => ({
@@ -1647,12 +1654,13 @@ class LocalDatabase {
       description,
       type,
       is_read: false,
-      request_id: reqId,
+      request_id: null,
+      context_key: contextKey,
       request_number: reqNo ?? null,
       created_at: new Date().toISOString(),
     }));
     const { error } = await supabase.from('notifications').insert(rows);
-    if (error) console.warn('Falha ao inserir notificações:', error);
+    if (error) console.error('Falha ao inserir notificações de mensagem (Rastreio Compras):', error);
   }
 
   // Resolve os destinatários da notificação de uma nova mensagem:
@@ -1731,7 +1739,8 @@ class LocalDatabase {
     const preview = row.mensagem.length > 90 ? row.mensagem.slice(0, 90) + '…' : row.mensagem;
     const title = `Nova mensagem — RM ${ctx.rm || row.rm || ri}`;
     const desc = `${user.name}: ${preview}`;
-    this.insertNotifications(recipients, title, desc, 'info', `${this.RASTREIO_NOTIF_PREFIX}${ri}`, ctx.rm).catch(() => {});
+    this.insertNotifications(recipients, title, desc, 'info', `${this.RASTREIO_NOTIF_PREFIX}${ri}`, ctx.rm)
+      .catch(err => console.error('Falha ao notificar destinatários da mensagem:', err));
 
     return row;
   }
@@ -1741,8 +1750,8 @@ class LocalDatabase {
   public getUnreadRastreioRis(userId: string): Set<string> {
     const prefix = this.RASTREIO_NOTIF_PREFIX;
     const ris = this.getStorageItem<Notification[]>(this.notificationsKey, [])
-      .filter(n => n.user_id === userId && !n.is_read && (n.request_id || '').startsWith(prefix))
-      .map(n => (n.request_id || '').slice(prefix.length));
+      .filter(n => n.user_id === userId && !n.is_read && (n.context_key || '').startsWith(prefix))
+      .map(n => (n.context_key || '').slice(prefix.length));
     return new Set(ris);
   }
 
@@ -1755,7 +1764,7 @@ class LocalDatabase {
     const affected: string[] = [];
     let changed = false;
     notifs.forEach(n => {
-      if (n.user_id === userId && !n.is_read && n.request_id === target) {
+      if (n.user_id === userId && !n.is_read && n.context_key === target) {
         n.is_read = true; changed = true; affected.push(n.id);
       }
     });
