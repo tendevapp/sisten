@@ -17,14 +17,16 @@ export interface PriorityLevelMeta {
   label: string;
   dot: string;
   badge: string;
+  /** Cor hexadecimal correspondente, para uso em contextos sem Tailwind (ex.: <option> de <select>). */
+  hex: string;
 }
 
 export const PRIORITY_LEVELS: PriorityLevelMeta[] = [
-  { level: 1, label: 'Posso aguardar. Demanda planejada, sem pressão de prazo.', dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600' },
-  { level: 2, label: 'Tem prazo, mas há fôlego. Preciso em 2–4 semanas.', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30' },
-  { level: 3, label: 'Começa a apertar. Preciso em 1–2 semanas.', dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30' },
-  { level: 4, label: 'Situação crítica. Preciso em menos de 7 dias.', dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30' },
-  { level: 5, label: 'Produção parada ou risco de segurança. Preciso imediatamente.', dot: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/30' },
+  { level: 1, label: 'Posso aguardar. Demanda planejada, sem pressão de prazo.', dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600', hex: '#94a3b8' },
+  { level: 2, label: 'Tem prazo, mas há fôlego. Preciso em 2–4 semanas.', dot: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30', hex: '#10b981' },
+  { level: 3, label: 'Começa a apertar. Preciso em 1–2 semanas.', dot: 'bg-amber-500', badge: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30', hex: '#f59e0b' },
+  { level: 4, label: 'Situação crítica. Preciso em menos de 7 dias.', dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30', hex: '#f97316' },
+  { level: 5, label: 'Produção parada ou risco de segurança. Preciso imediatamente.', dot: 'bg-red-500', badge: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/30', hex: '#ef4444' },
 ];
 
 export const priorityMeta = (level: number): PriorityLevelMeta =>

@@ -232,23 +232,26 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               </p>
             )}
 
-            <div className="grid grid-cols-5 gap-1.5">
-              {PRIORITY_LEVELS.map(p => {
-                const selected = selectedPriority === p.level;
-                return (
-                  <button
-                    key={p.level}
-                    type="button"
-                    onClick={() => setSelectedPriority(p.level)}
-                    title={p.label}
-                    className={`flex flex-col items-center gap-1 rounded-lg border px-1.5 py-2 text-center transition-all ${selected ? `${p.badge} ring-2 ring-offset-1 ring-offset-white dark:ring-offset-slate-900` : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400'}`}
-                  >
-                    <span className={`h-2.5 w-2.5 rounded-full ${p.dot}`} />
-                    <span className="text-[10px] font-black">Grau {p.level}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <select
+              value={selectedPriority ?? ''}
+              onChange={(e) => setSelectedPriority(e.target.value ? Number(e.target.value) : null)}
+              style={{ borderLeftColor: selectedPriority !== null ? priorityMeta(selectedPriority).hex : undefined, borderLeftWidth: selectedPriority !== null ? 4 : undefined }}
+              className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 py-2 px-2.5 focus:border-emerald-500 focus:outline-none transition-all"
+            >
+              <option value="" disabled>Selecione um grau de criticidade...</option>
+              {PRIORITY_LEVELS.map(p => (
+                <option key={p.level} value={p.level} style={{ color: p.hex }}>
+                  ● Grau {p.level} — {p.label}
+                </option>
+              ))}
+            </select>
+            {selectedPriority !== null && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className={`h-2 w-2 rounded-full ${priorityMeta(selectedPriority).dot}`} />
+                <span style={{ color: priorityMeta(selectedPriority).hex }} className="font-bold">Grau {selectedPriority}</span>
+                {priorityMeta(selectedPriority).label}
+              </p>
+            )}
 
             <div className="mt-3 flex items-center gap-2">
               <button
