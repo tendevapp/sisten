@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { 
-  FileEdit, ShoppingCart, Database, List, Users, CheckSquare, 
+import React, { useState, useEffect } from 'react';
+import {
+  FileEdit, ShoppingCart, Database, List, Users, CheckSquare,
   Layers, ChevronRight, ArrowUpRight, AlertTriangle, Plus, Search, Radio, ShieldAlert
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import { Profile } from '../types';
 
 interface DashboardProps {
@@ -18,7 +19,17 @@ interface DashboardProps {
 
 export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const requests = localDb.getRequests();
-  const materialsCount = localDb.getMaterials().length;
+  // Contagem leve (head:true) em vez de baixar o catálogo inteiro (~172k linhas)
+  // só para exibir um número no KPI de admin.
+  const [materialsCount, setMaterialsCount] = useState(0);
+  useEffect(() => {
+    if (!user.roles.includes('admin') || !supabase) return;
+    supabase
+      .from('materials')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .then(({ count }) => setMaterialsCount(count || 0));
+  }, [user.roles]);
   const profiles = localDb.getProfiles();
   const sapEnriched = localDb.getEnrichedSAPRequisicoes();
 

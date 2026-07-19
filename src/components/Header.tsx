@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye } from 'lucide-react';
+import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye, Menu } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 
@@ -14,9 +14,10 @@ interface HeaderProps {
   onSimulateRole: (role: Role | null) => void;
   onUserChange: () => void;
   onNavigate: (path: string) => void;
+  onOpenMobileMenu: () => void;
 }
 
-export default function Header({ user, simulatedRole, onSimulateRole, onUserChange, onNavigate }: HeaderProps) {
+export default function Header({ user, simulatedRole, onSimulateRole, onUserChange, onNavigate, onOpenMobileMenu }: HeaderProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -113,13 +114,22 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   ];
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-6 shadow-sm transition-colors">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-3 sm:px-6 shadow-sm transition-colors gap-2">
+      {/* Mobile menu trigger */}
+      <button
+        onClick={onOpenMobileMenu}
+        className="lg:hidden shrink-0 rounded-lg p-2 -ml-1 text-slate-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
+        aria-label="Abrir menu de navegação"
+      >
+        <Menu className="h-5.5 w-5.5" />
+      </button>
+
       {/* Left side: Role Simulation (Only for Admins) */}
-      <div className="flex-1 flex justify-start">
+      <div className="flex-1 flex justify-start min-w-0 overflow-hidden">
         {user.roles.includes('admin') && (
-          <div className="flex items-center space-x-2 bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-1.5 shadow-sm transition-all">
-            <div className="flex items-center text-amber-700 dark:text-amber-400">
-              <Eye className="h-4 w-4 mr-1.5 text-amber-600 dark:text-amber-500" />
+          <div className="flex items-center space-x-2 bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-lg px-2 sm:px-3 py-1.5 shadow-sm transition-all max-w-full overflow-hidden">
+            <div className="flex items-center text-amber-700 dark:text-amber-400 shrink-0">
+              <Eye className="h-4 w-4 sm:mr-1.5 text-amber-600 dark:text-amber-500" />
               <span className="text-xs font-semibold uppercase tracking-wider hidden md:inline">Simular Visão:</span>
             </div>
             <select
@@ -128,12 +138,12 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                 const val = e.target.value;
                 onSimulateRole(val === 'admin' ? null : (val as Role));
               }}
-              className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 border-none focus:ring-0 focus:outline-none cursor-pointer py-0 pl-1 pr-6"
+              className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-200 border-none focus:ring-0 focus:outline-none cursor-pointer py-0 pl-1 pr-5 min-w-0 truncate"
             >
               {rolesList.map((r) => (
-                <option 
-                  key={r.value} 
-                  value={r.value} 
+                <option
+                  key={r.value}
+                  value={r.value}
                   className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-normal"
                 >
                   {r.label}
@@ -145,7 +155,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
       </div>
 
       {/* Right side Controls */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
         {/* Notifications */}
         <div className="relative">
           <button
@@ -164,7 +174,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-3 w-80 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
+            <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-3 w-auto sm:w-80 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
               <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 px-4 py-3">
                 <h3 className="font-semibold text-gray-800 dark:text-slate-100 text-sm">Notificações</h3>
                 <span className="rounded-full bg-gray-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">

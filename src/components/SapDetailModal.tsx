@@ -58,14 +58,6 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
   useEffect(() => {
     if (!record.material_code) return;
 
-    // 1. Busca no cache local
-    const localMat = localDb.getMaterials().find(m => m.material_code === record.material_code);
-    if (localMat && localMat.technical_text) {
-      setTechText(localMat.technical_text);
-      return;
-    }
-
-    // 2. Busca assíncrona no Supabase como fallback
     setIsLoadingTechText(true);
     supabase
       .from('materials')

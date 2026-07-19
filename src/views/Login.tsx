@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, MapPin,
-  ClipboardList, Headset, Package, BarChart3, CheckCircle2
+  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, MapPin, CheckCircle2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -70,14 +69,6 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
     }
   };
 
-
-  const features = [
-    { icon: ClipboardList, title: 'Solicitações', desc: 'Abertura e acompanhamento de demandas' },
-    { icon: Headset, title: 'Helpdesk', desc: 'Suporte ágil para TI, Facilities e outros setores' },
-    { icon: Package, title: 'Suprimentos', desc: 'Gestão de compras e controle de materiais' },
-    { icon: BarChart3, title: 'Relatórios', desc: 'Indicadores e dashboards para decisões assertivas' },
-  ];
-
   return (
     <div className="min-h-screen relative w-full overflow-hidden bg-slate-100 flex flex-col justify-between">
       {/* Imagem de fundo limpa (sem degradê sobreposto) */}
@@ -114,19 +105,6 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
             <p className="mt-1.5 text-base text-slate-600 max-w-lg leading-relaxed">
               Gerencie materiais, solicitações, helpdesk e suprimentos em uma única plataforma, com segurança e agilidade.
             </p>
-
-            {/* 4 colunas horizontais de features (alinhadas lado a lado) */}
-            <div className="grid grid-cols-4 gap-4 mt-8 w-full">
-              {features.map((f) => (
-                <div key={f.title} className="flex flex-col items-start text-left">
-                  <div className="h-12 w-12 rounded-2xl bg-blue-50/90 border border-blue-100/50 flex items-center justify-center mb-3 shadow-3xs">
-                    <f.icon className="h-6 w-6 text-[#0056c6]" />
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-sm tracking-tight">{f.title}</h3>
-                  <p className="text-[11px] text-slate-500 mt-1 leading-snug max-w-[125px]">{f.desc}</p>
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Lado direito — janela de login sobreposta */}

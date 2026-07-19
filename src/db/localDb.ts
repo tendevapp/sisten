@@ -172,7 +172,10 @@ class LocalDatabase {
           ['sectors', () => this.syncSectors()],
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
-          ['materials', gated('materials', () => this.syncMaterials())],
+          // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
+          // consultado direto no Supabase por toda tela que precisa dele (busca,
+          // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
+          // era o maior consumidor de egress do projeto.
           ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01')))],
           ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01')))],
           ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
@@ -1405,14 +1408,13 @@ class LocalDatabase {
   }
 
   public async importMaterials(materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[]): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
-    // Fonte de verdade das linhas completas: o cache local (IndexedDB, sem a
-    // antiga cota de ~5MB do localStorage — hoje é confiável e completo).
-    // Para evitar rebaixar o catálogo inteiro (~180k linhas x todas as colunas)
-    // só para deduplicar, buscamos APENAS a coluna material_code do Supabase —
-    // leve — para reconhecer códigos que já existem remotamente mas não no cache
-    // local. O upsert com onConflict:'material_code' resolve qualquer duplicata.
-    const currentList = this.getMaterials();
-    const currentMap = new Map(currentList.map(m => [m.material_code, m]));
+    // O Supabase é a única fonte de verdade aqui (o cache local não guarda mais
+    // o catálogo inteiro). Para evitar rebaixar ~180k linhas x todas as colunas só
+    // para deduplicar, buscamos APENAS a coluna material_code — leve — para
+    // reconhecer códigos que já existem remotamente. O upsert com
+    // onConflict:'material_code' resolve qualquer duplicata.
+    const currentList: Material[] = [];
+    const currentMap = new Map<string, Material>();
 
     const remoteCodeSet = new Set<string>();
     try {
@@ -1482,16 +1484,27 @@ class LocalDatabase {
       }
     });
 
-    // Handle soft deletes for missing ones
-    currentList.forEach(existing => {
-      if (!importedCodes.has(existing.material_code)) {
-        newList.push({
-          ...existing,
-          is_active: false
+    // Handle soft deletes for missing ones: busca do Supabase (não do cache local,
+    // que não guarda mais o catálogo inteiro) apenas as linhas dos códigos que
+    // existiam remotamente e não vieram nesta planilha.
+    const codesToDeactivate = Array.from(remoteCodeSet).filter(code => !importedCodes.has(code));
+    for (let i = 0; i < codesToDeactivate.length; i += 500) {
+      const chunk = codesToDeactivate.slice(i, i + 500);
+      try {
+        const { data, error } = await supabase
+          .from('materials')
+          .select('id, material_code, description, technical_text, category, company, unit, created_at')
+          .in('material_code', chunk)
+          .eq('is_active', true);
+        if (error) throw error;
+        data?.forEach((existing: any) => {
+          newList.push({ ...existing, is_active: false });
+          deactivated++;
         });
-        deactivated++;
+      } catch (err) {
+        console.warn('Falha ao buscar materiais a desativar no Supabase.', err);
       }
-    });
+    }
 
     try {
       this.setStorageItem(this.materialsKey, newList);
@@ -2293,23 +2306,37 @@ class LocalDatabase {
             created_at: new Date().toISOString()
           });
 
-          const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
-          if (updatedReqs) {
-            const mappedReqs = updatedReqs.map(ur => ({
-              ...ur,
-              tipo_documento: ur.tipo_de_documento,
-              requisitante_name: ur.requisitante,
-              qtd_requisicao: ur.qtd_solicitada,
-              unidade_medida: ur.unidade_de_medida,
-              grupo_comprador: ur.grupo_de_compradores,
-              data_solicitacao: ur.data_da_solicitacao,
-              data_remessa: ur.remessas_de_ate,
-              material_code: ur.material,
-              item_status: ur.item_status || 'Aguardando Cotação',
-              item_status_updated_at: ur.item_status_updated_at || '',
-              item_status_updated_by: ur.item_status_updated_by || ''
-            }));
-            this.setStorageItem(this.requisicoesKey, mappedReqs);
+          // Rebaixa só a linha alterada (não a view inteira, ~657kB) e mescla no
+          // cache local pelo 'ri' — uma edição pontual não justifica reler toda a
+          // base de requisições em aberto.
+          const { data: updatedRow } = await supabase
+            .from('view_enriched_requisicoes')
+            .select('*')
+            .eq('ri', ri)
+            .maybeSingle();
+          if (updatedRow) {
+            const mapped = {
+              ...updatedRow,
+              tipo_documento: updatedRow.tipo_de_documento,
+              requisitante_name: updatedRow.requisitante,
+              qtd_requisicao: updatedRow.qtd_solicitada,
+              unidade_medida: updatedRow.unidade_de_medida,
+              grupo_comprador: updatedRow.grupo_de_compradores,
+              data_solicitacao: updatedRow.data_da_solicitacao,
+              data_remessa: updatedRow.remessas_de_ate,
+              material_code: updatedRow.material,
+              item_status: updatedRow.item_status || 'Aguardando Cotação',
+              item_status_updated_at: updatedRow.item_status_updated_at || '',
+              item_status_updated_by: updatedRow.item_status_updated_by || ''
+            };
+            const latestReqs = this.getRequisicoes();
+            const latestIdx = latestReqs.findIndex(r => r.ri === ri);
+            if (latestIdx !== -1) {
+              latestReqs[latestIdx] = mapped as any;
+            } else {
+              latestReqs.push(mapped as any);
+            }
+            this.setStorageItem(this.requisicoesKey, latestReqs);
           }
         } catch (e) {
           console.error("Erro ao sincronizar updateBuyerFields no Supabase:", e);
@@ -3107,7 +3134,10 @@ class LocalDatabase {
           ci: extr.ci || null,
           unidade_medida_basica: extr.unidade_medida_basica || null,
           ump_3: extr.ump_3 || null,
-          campos_extras: mergedExtras,
+          // Todo campo mapeado já vira sua própria coluna acima; gravar o blob
+          // inteiro de novo em campos_extras só duplicava a linha (chegou a ~96MB
+          // de redundância pura na tabela). Mantido vazio.
+          campos_extras: {},
           updated_at: new Date().toISOString()
         };
       });
@@ -3501,7 +3531,9 @@ class LocalDatabase {
         ci: extr.ci || null,
         unidade_medida_basica: extr.unidade_medida_basica || null,
         ump_3: extr.ump_3 || null,
-        campos_extras: mergedExtras,
+        // Ver comentário equivalente em importZL0132Raw: campos_extras duplicava
+        // colunas já mapeadas acima e inflava a tabela; mantido vazio.
+        campos_extras: {},
         updated_at: new Date().toISOString()
       };
     });

@@ -4,10 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  Home, Search, BarChart3, PlusCircle, List, FileCheck, 
-  Database, LayoutDashboard, Upload, Users, Shield, 
-  Map, Settings, HelpCircle, ChevronRight, Menu, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp
+import {
+  Home, Search, BarChart3, PlusCircle, List, FileCheck,
+  Database, LayoutDashboard, Upload, Users, Shield,
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -19,9 +19,11 @@ interface SidebarProps {
   onNavigate: (path: string) => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
 }
 
-export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTheme }: SidebarProps) {
+export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTheme, mobileOpen, onCloseMobile }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const getSectorsWithHelpdesk = () => {
@@ -81,32 +83,54 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
 
   const handleNavClick = (path: string) => {
     onNavigate(path);
+    onCloseMobile();
   };
 
   return (
-    <aside 
-      className={`relative flex flex-col border-r border-gray-800 bg-slate-900 text-slate-300 transition-all duration-300 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
-    >
-      {/* Brand logo container */}
-      <div className="flex h-16 items-center justify-between px-3 border-b border-gray-800 bg-slate-950">
-        {!collapsed ? (
-          <div className="flex items-center overflow-hidden flex-1 mr-2 select-none">
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs lg:hidden animate-fade-in"
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-gray-800 bg-slate-900 text-slate-300 transition-transform duration-300 ease-out w-72 shadow-2xl
+          lg:static lg:z-auto lg:shadow-none lg:transition-[width] lg:duration-300
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
+          ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
+      >
+        {/* Brand logo container */}
+        <div className="flex h-16 items-center justify-between px-3 border-b border-gray-800 bg-slate-950 shrink-0">
+          {/* Full logo: always on mobile drawer, only when expanded on desktop */}
+          <div className={`items-center overflow-hidden flex-1 mr-2 select-none flex ${collapsed ? 'lg:hidden' : ''}`}>
             <SistenLogo className="max-w-[155px] object-contain" />
           </div>
-        ) : (
-          <div className="flex w-full justify-center mr-1 select-none">
-            <SistenLogo iconOnly />
-          </div>
-        )}
-        <button 
-          onClick={() => setCollapsed(!collapsed)}
-          className="rounded p-1 hover:bg-slate-800 text-slate-400 hover:text-white shrink-0"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-      </div>
+          {/* Icon-only logo: desktop collapsed state only */}
+          {collapsed && (
+            <div className="hidden lg:flex w-full justify-center mr-1 select-none">
+              <SistenLogo iconOnly />
+            </div>
+          )}
+          {/* Mobile: close drawer. Desktop: collapse/expand rail. */}
+          <button
+            onClick={onCloseMobile}
+            className="rounded p-1 hover:bg-slate-800 text-slate-400 hover:text-white shrink-0 lg:hidden"
+            aria-label="Fechar menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden lg:block rounded p-1 hover:bg-slate-800 text-slate-400 hover:text-white shrink-0"
+            aria-label="Recolher menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
 
       {/* Nav groups */}
       <div className="flex-1 overflow-y-auto py-4">
@@ -199,6 +223,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
           </button>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }

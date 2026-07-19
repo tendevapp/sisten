@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import { EnrichedSAPRecord } from '../../types';
 import { bucketDate, resolveDataCorte, CompradorInfo, Granularidade, resolveComprador } from '../../lib/demandas';
 
@@ -84,6 +84,14 @@ export default function QuantidadesPeriodoTable({ records, compradores, granular
   const metricaColClass = 'sticky left-0 z-10 bg-white w-20 py-1.5 pr-2';
   const compradorColClass = 'sticky left-20 z-10 bg-white w-40 py-1.5 pr-4';
 
+  // As colunas mais recentes (mais relevantes) ficam à direita; abre a tabela
+  // já rolada para lá em vez de exibir o início do período por padrão.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [columns]);
+
   return (
     <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
       <div>
@@ -98,7 +106,7 @@ export default function QuantidadesPeriodoTable({ records, compradores, granular
           Nenhuma demanda no período/filtro selecionado.
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div ref={scrollRef} className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-slate-100 text-xs font-semibold text-slate-400 uppercase tracking-wider">

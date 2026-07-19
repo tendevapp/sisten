@@ -8,14 +8,19 @@ import {
   BarChart3, FileText, Download, Filter, Calendar, RefreshCw, Layers, Key, Headphones, CheckSquare, Star
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Request, Material } from '../types';
+import { supabase } from '../db/supabaseClient';
+import { Request } from '../types';
 
 interface ReportsProps {
   user: any;
 }
 
 export default function Reports({ user }: ReportsProps) {
-  const [materials, setMaterials] = useState<Material[]>([]);
+  // Agregados de materiais vêm da view vw_materials_stats (poucas linhas, uma por
+  // combinação empresa/categoria) em vez do catálogo inteiro (~172k linhas).
+  const [materialsByCompany, setMaterialsByCompany] = useState<Record<string, number>>({});
+  const [materialsByCategory, setMaterialsByCategory] = useState<Record<string, number>>({});
+  const [activeMaterialsCount, setActiveMaterialsCount] = useState(0);
   const [requests, setRequests] = useState<Request[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('todos');
   const [dateRange, setDateRange] = useState<'all' | '30' | '90'>('all');
@@ -27,25 +32,31 @@ export default function Reports({ user }: ReportsProps) {
 
   const loadData = () => {
     setLoading(true);
-    // Simulate slight load
-    setTimeout(() => {
-      setMaterials(localDb.getMaterials());
-      setRequests(localDb.getRequests());
-      setLoading(false);
-    }, 400);
+    setRequests(localDb.getRequests());
+
+    supabase
+      ?.from('vw_materials_stats')
+      .select('company, category, total')
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.warn('Falha ao carregar vw_materials_stats:', error);
+          setLoading(false);
+          return;
+        }
+        const byCompany: Record<string, number> = {};
+        const byCategory: Record<string, number> = {};
+        let total = 0;
+        data.forEach((row: any) => {
+          byCompany[row.company] = (byCompany[row.company] || 0) + row.total;
+          byCategory[row.category] = (byCategory[row.category] || 0) + row.total;
+          total += row.total;
+        });
+        setMaterialsByCompany(byCompany);
+        setMaterialsByCategory(byCategory);
+        setActiveMaterialsCount(total);
+        setLoading(false);
+      });
   };
-
-  // 1. Materials Stats
-  const activeMaterials = materials.filter(m => m.is_active !== false);
-  const materialsByCompany = activeMaterials.reduce((acc, m) => {
-    acc[m.company] = (acc[m.company] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const materialsByCategory = activeMaterials.reduce((acc, m) => {
-    acc[m.category] = (acc[m.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
 
   // 2. Request stats
   const totalRequests = requests.length;
@@ -80,39 +91,10 @@ export default function Reports({ user }: ReportsProps) {
     ? ((slaMetCount / helpdeskTickets.length) * 10000 / 100).toFixed(1)
     : '100';
 
-  const exportCSV = (reportType: string) => {
-    let headers: string[] = [];
-    let rows: string[][] = [];
-    let filename = '';
-
-    if (reportType === 'materials') {
-      headers = ['Codigo_SAP', 'Descricao', 'Categoria', 'Empresa', 'Unidade', 'Ativo'];
-      rows = activeMaterials.map(m => [
-        m.material_code,
-        `"${m.description.replace(/"/g, '""')}"`,
-        m.category,
-        m.company,
-        m.unit,
-        'Sim'
-      ]);
-      filename = 'SISTEN_Relatorio_Catalogo_Materiais.csv';
-    } else {
-      headers = ['Numero', 'Tipo_Solicitacao', 'Solicitante', 'Setor_ID', 'Criticidade', 'Status', 'Data_Criacao'];
-      rows = requests.map(r => [
-        r.number,
-        r.type,
-        `"${r.solicitante_name.replace(/"/g, '""')}"`,
-        r.solicitante_sector_id,
-        String(r.criticality),
-        r.status,
-        r.created_at
-      ]);
-      filename = 'SISTEN_Relatorio_Solicitacoes.csv';
-    }
-
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+  const downloadCsv = (headers: string[], rows: string[][], filename: string) => {
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
       + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
-    
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -120,6 +102,47 @@ export default function Reports({ user }: ReportsProps) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // O cat\u00E1logo completo s\u00F3 \u00E9 buscado no Supabase no momento do export (a\u00E7\u00E3o
+  // pontual do usu\u00E1rio), n\u00E3o a cada carregamento da tela.
+  const exportMaterialsCSV = async () => {
+    if (!supabase) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('materials')
+      .select('material_code, description, category, company, unit')
+      .eq('is_active', true)
+      .order('material_code');
+    setLoading(false);
+    if (error || !data) {
+      console.warn('Falha ao exportar cat\u00E1logo de materiais:', error);
+      return;
+    }
+    const headers = ['Codigo_SAP', 'Descricao', 'Categoria', 'Empresa', 'Unidade', 'Ativo'];
+    const rows = data.map((m: any) => [
+      m.material_code,
+      `"${String(m.description).replace(/"/g, '""')}"`,
+      m.category,
+      m.company,
+      m.unit,
+      'Sim'
+    ]);
+    downloadCsv(headers, rows, 'SISTEN_Relatorio_Catalogo_Materiais.csv');
+  };
+
+  const exportRequestsCSV = () => {
+    const headers = ['Numero', 'Tipo_Solicitacao', 'Solicitante', 'Setor_ID', 'Criticidade', 'Status', 'Data_Criacao'];
+    const rows = requests.map(r => [
+      r.number,
+      r.type,
+      `"${r.solicitante_name.replace(/"/g, '""')}"`,
+      r.solicitante_sector_id,
+      String(r.criticality),
+      r.status,
+      r.created_at
+    ]);
+    downloadCsv(headers, rows, 'SISTEN_Relatorio_Solicitacoes.csv');
   };
 
   return (
@@ -171,8 +194,8 @@ export default function Reports({ user }: ReportsProps) {
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                 <Layers className="h-4 w-4 text-emerald-600" /> Catálogo SAP
               </h3>
-              <button 
-                onClick={() => exportCSV('materials')}
+              <button
+                onClick={exportMaterialsCSV}
                 className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
               >
                 <Download className="h-3 w-3" /> Exportar CSV
@@ -182,7 +205,7 @@ export default function Reports({ user }: ReportsProps) {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <span className="text-[10px] font-semibold text-slate-400 uppercase">Itens Ativos</span>
-                <p className="text-xl font-black text-slate-800 mt-1">{activeMaterials.length}</p>
+                <p className="text-xl font-black text-slate-800 mt-1">{activeMaterialsCount}</p>
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <span className="text-[10px] font-semibold text-slate-400 uppercase">Categorias</span>
@@ -198,9 +221,9 @@ export default function Reports({ user }: ReportsProps) {
                   <span className="text-slate-800 font-bold">{materialsByCompany['TEN2'] || 0} itens</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5">
-                  <div 
-                    className="bg-emerald-600 h-1.5 rounded-full" 
-                    style={{ width: `${activeMaterials.length ? ((materialsByCompany['TEN2'] || 0) / activeMaterials.length * 100) : 0}%` }}
+                  <div
+                    className="bg-emerald-600 h-1.5 rounded-full"
+                    style={{ width: `${activeMaterialsCount ? ((materialsByCompany['TEN2'] || 0) / activeMaterialsCount * 100) : 0}%` }}
                   />
                 </div>
 
@@ -209,9 +232,9 @@ export default function Reports({ user }: ReportsProps) {
                   <span className="text-slate-800 font-bold">{materialsByCompany['AG'] || 0} itens</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5">
-                  <div 
-                    className="bg-blue-600 h-1.5 rounded-full" 
-                    style={{ width: `${activeMaterials.length ? ((materialsByCompany['AG'] || 0) / activeMaterials.length * 100) : 0}%` }}
+                  <div
+                    className="bg-blue-600 h-1.5 rounded-full"
+                    style={{ width: `${activeMaterialsCount ? ((materialsByCompany['AG'] || 0) / activeMaterialsCount * 100) : 0}%` }}
                   />
                 </div>
               </div>
@@ -240,7 +263,7 @@ export default function Reports({ user }: ReportsProps) {
                 <CheckSquare className="h-4 w-4 text-emerald-600" /> Fluxo de Solicitações
               </h3>
               <button 
-                onClick={() => exportCSV('requests')}
+                onClick={exportRequestsCSV}
                 className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
               >
                 <Download className="h-3 w-3" /> Exportar CSV

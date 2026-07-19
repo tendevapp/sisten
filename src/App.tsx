@@ -94,6 +94,9 @@ export default function App() {
   // novos, para que a tela ativa possa se atualizar sem esperar o usuário navegar.
   const [dataVersion, setDataVersion] = useState(0);
 
+  // Mobile off-canvas sidebar
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   // Theme management (Dark / Light Mode)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
@@ -225,6 +228,7 @@ export default function App() {
 
   const handleNavigate = (path: string) => {
     window.location.hash = path;
+    setMobileSidebarOpen(false);
   };
 
   const handleLoginSuccess = (authenticatedUser: Profile) => {
@@ -369,28 +373,31 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
-      {/* Collapsible Sidebar */}
-      <Sidebar 
-        user={activeUser} 
-        currentPath={currentPath} 
-        onNavigate={handleNavigate} 
+      {/* Collapsible / off-canvas Sidebar */}
+      <Sidebar
+        user={activeUser}
+        currentPath={currentPath}
+        onNavigate={handleNavigate}
         theme={theme}
         toggleTheme={toggleTheme}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
       />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors">
+      <div className="flex flex-1 flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-950 transition-colors min-w-0">
         {/* Dynamic Header */}
-        <Header 
-          user={user} 
+        <Header
+          user={user}
           simulatedRole={simulatedRole}
           onSimulateRole={handleSimulateRole}
-          onUserChange={handleUserSessionChange} 
-          onNavigate={handleNavigate} 
+          onUserChange={handleUserSessionChange}
+          onNavigate={handleNavigate}
+          onOpenMobileMenu={() => setMobileSidebarOpen(true)}
         />
 
         {/* Dynamic scrollable main pane view */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6">
           <Suspense fallback={<ViewLoadingFallback />}>
             {/*
               A chave inclui dataVersion para forçar remontagem quando a sincronização

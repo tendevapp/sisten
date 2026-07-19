@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import {
-  Profile, EnrichedSAPRecord, HistoricoPedidoView,
+  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
   FornecedorMaterialRow, SAPObsHistory, ItemStatus
 } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
@@ -88,12 +89,7 @@ FINEZA, SEMPRE MANTER O NOSSO Nº DE COTAÇÃO NO ASSUNTO DO E-MAIL, BEM COMO MA
 
 // Monta a lista de itens em blocos rotulados (não em tabela de colunas alinhadas), pois o
 // Texto Técnico costuma ser longo demais para caber em uma coluna sem quebrar a leitura.
-const buildQuoteItemsTable = (items: QuoteItemEntry[]): string => {
-  const materialsByCode = new Map<string, string>();
-  localDb.getMaterials().forEach(m => {
-    materialsByCode.set(normalizeCode(m.material_code), m.technical_text || '—');
-  });
-
+const buildQuoteItemsTable = (items: QuoteItemEntry[], techTextByCode: Map<string, string>): string => {
   // Remove duplicatas exatas (mesmo material na mesma RM aparecendo mais de uma vez)
   const seen = new Set<string>();
   const dedupedItems = items.filter(({ record: r, rm }) => {
@@ -104,7 +100,7 @@ const buildQuoteItemsTable = (items: QuoteItemEntry[]): string => {
   });
 
   return dedupedItems.map(({ record: r, rm }, idx) => {
-    const techText = materialsByCode.get(normalizeCode(r.material_code)) || '—';
+    const techText = techTextByCode.get(normalizeCode(r.material_code)) || '—';
     return [
       `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}`,
       `   RM: ${rm || '—'}   |   Unidade: ${r.unidade_medida || '—'}   |   Quantidade: ${r.qtd_requisicao ?? '—'}`,
@@ -113,15 +109,15 @@ const buildQuoteItemsTable = (items: QuoteItemEntry[]): string => {
   }).join('\n\n');
 };
 
-const buildQuoteText = (items: QuoteItemEntry[]): string => {
-  return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items) + '\n' + CARTA_CONVITE_FOOTER;
+const buildQuoteText = (items: QuoteItemEntry[], techTextByCode: Map<string, string>): string => {
+  return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items, techTextByCode) + '\n' + CARTA_CONVITE_FOOTER;
 };
 
 // Versão resumida para WhatsApp: saudação curta + RMs + tabela de itens, sem o texto
 // jurídico completo da Carta Convite (não cabe bem em mensagem de chat).
-const buildWhatsAppText = (items: QuoteItemEntry[], rms: string[]): string => {
+const buildWhatsAppText = (items: QuoteItemEntry[], rms: string[], techTextByCode: Map<string, string>): string => {
   return `Prezado Fornecedor,\n\nA Empresa TORRES EÓLICAS DO NORDESTE S/A, inscrita no CNPJ nº 13.892.216/0002-31, convida V.S.ª a apresentar proposta para fornecimento dos materiais conforme especificados RM ${rms.join(', ')}\n\n` +
-    buildQuoteItemsTable(items);
+    buildQuoteItemsTable(items, techTextByCode);
 };
 
 // Extrai o primeiro telefone válido do campo (pode vir com múltiplos números separados
@@ -261,6 +257,9 @@ const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) =>
 export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) {
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
+  // Texto técnico por código, buscado só para os materiais desta página (Sem PO),
+  // não mais do catálogo inteiro em cache local.
+  const [techTextByCode, setTechTextByCode] = useState<Map<string, string>>(new Map());
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -354,8 +353,18 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }
 
     const rms = Array.from(new Set(items.map(it => it.rm).filter(Boolean)));
-    setQuoteModal({ supplier, text: buildQuoteText(items), rms, items });
+    setQuoteModal({ supplier, text: buildQuoteText(items, techTextByCode), rms, items });
     setQuoteChoicePending(null);
+  };
+
+  // Ação "Cotação" por item (visão por RM / cards): abre o Outlook com todos os e-mails
+  // de fornecedores históricos do item em cópia oculta (BCC), sem escolher um fornecedor específico.
+  const handleSendItemQuoteToAllSuppliers = (record: EnrichedSAPRecord, rm: string, fornecedores: FornecedorMaterialRow[]) => {
+    const bccEmails = Array.from(new Set(fornecedores.map(f => f.email).filter(e => e && e !== '—')));
+    const text = buildQuoteText([{ record, rm }], techTextByCode);
+    const subject = `Cotação RM ${rm}`;
+    const mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccEmails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+    window.location.href = mailtoUrl;
   };
 
   // Estado para controle de edição inline de cada item
@@ -422,22 +431,60 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         codeVariants.add(raw.padStart(8, '0'));
       });
 
+      if (codeVariants.size > 0 && supabase) {
+        try {
+          const codesArr = Array.from(codeVariants);
+          const techMap = new Map<string, string>();
+          for (let i = 0; i < codesArr.length; i += 500) {
+            const { data, error } = await supabase
+              .from('materials')
+              .select('material_code, technical_text')
+              .in('material_code', codesArr.slice(i, i + 500));
+            if (error) throw error;
+            data?.forEach((m: any) => {
+              if (m.technical_text) techMap.set(normalizeCode(m.material_code), m.technical_text);
+            });
+          }
+          setTechTextByCode(techMap);
+        } catch (err) {
+          console.warn('Falha ao buscar texto técnico dos materiais Sem PO:', err);
+        }
+      } else {
+        setTechTextByCode(new Map());
+      }
+
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
-      if (codeVariants.size > 0) {
-        // Usa a view enxuta vw_historico_fornecedores_sem_po (fornecedor + pedido,
-        // CRF = 'x', restrita aos materiais com requisição "Sem PO" em aberto),
-        // buscada ao vivo do Supabase com fallback para o cache local. Por ser
-        // restrita aos materiais realmente pendentes, não precisa de corte de
-        // data — traz o histórico completo (inclusive compras antigas) sem
-        // baixar a tabela de pedidos inteira.
-        let linhasHistorico: HistoricoPedidoView[];
+      if (codeVariants.size > 0 && supabase) {
+        // A view vw_historico_fornecedores_sem_po (fornecedor + pedido + contato +
+        // MIGO, CRF = 'x') não existe no banco — busca-se direto na tabela
+        // pedidosforn (que já traz data_migo) filtrando pelos materiais em
+        // aberto, e o contato (telefone/e-mail/nome fantasia) é resolvido no
+        // cliente via localDb.getContatosForn(), igual ao HistoricoPedidos.tsx.
+        // Sem corte de data: os materiais já vêm restritos ao conjunto pendente,
+        // então convém trazer o histórico completo (inclusive compras antigas).
+        let linhasHistorico: HistoricoPedidoView[] = [];
         try {
-          linhasHistorico = await localDb.fetchHistoricoFornecedoresSemPO(force);
+          const codesArr = Array.from(codeVariants);
+          for (let i = 0; i < codesArr.length; i += 200) {
+            const { data, error } = await supabase
+              .from('pedidosforn')
+              .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, data_migo')
+              .ilike('crf', 'x')
+              .in('material', codesArr.slice(i, i + 200));
+            if (error) throw error;
+            if (data) linhasHistorico.push(...(data as HistoricoPedidoView[]));
+          }
         } catch (netErr) {
-          console.warn('Falha ao buscar histórico ao vivo; usando cache local.', netErr);
-          linhasHistorico = localDb.getHistoricoFornecedoresSemPO();
+          console.warn('Falha ao buscar histórico de fornecedores (Sem PO).', netErr);
+          linhasHistorico = [];
         }
+
+        const contatosMap = new Map<string, ContatoFornecedor>();
+        localDb.getContatosForn().forEach(c => {
+          if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
+        });
+
         // Filtra linhas do histórico relevantes para os materiais desta pagina
         const linhasPorNorm = new Map<string, HistoricoPedidoView[]>();
         linhasHistorico.forEach(l => {
@@ -464,19 +511,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             }
           });
 
-          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => ({
-            cod_forn: l.cod_forn || '—',
-            cnpj: l.cnpj || '—',
-            fornecedor: l.fornecedor || '—',
-            nome_fantasia: l.nome_fantasia || '—',
-            regiao_uf: l.regiao_uf || '—',
-            telefone: l.telefone || '—',
-            email: l.email || '—',
-            classificacao: l.classificacao || '—',
-            ultima_data: l.data_doc || '—',
-            preco_liquido: l.preco_liquido_unit,
-            data_migo: l.data_migo || undefined
-          }));
+          const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => {
+            const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
+            return {
+              cod_forn: l.cod_forn || '—',
+              cnpj: l.cnpj || '—',
+              fornecedor: l.fornecedor || contato?.fornecedor || '—',
+              nome_fantasia: contato?.nome_fantasia || '—',
+              regiao_uf: l.regiao_uf || '—',
+              telefone: contato?.telefone || '—',
+              email: contato?.email || '—',
+              classificacao: contato?.classificacao || '—',
+              ultima_data: l.data_doc || '—',
+              preco_liquido: l.preco_liquido_unit,
+              data_migo: l.data_migo || undefined
+            };
+          });
 
           list.sort((a, b) => {
             const dateA = a.ultima_data !== '—' ? new Date(a.ultima_data).getTime() : 0;
@@ -736,10 +786,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   const handleExportExcel = () => {
     if (filteredGroups.length === 0) return;
-    const materialsByCode = new Map<string, string>();
-    localDb.getMaterials().forEach(m => {
-      materialsByCode.set(normalizeCode(m.material_code), m.technical_text || '');
-    });
+    const materialsByCode = techTextByCode;
     const dataToExport: any[] = [];
     filteredGroups.forEach(g => {
       g.items.forEach(({ record: r, encontrado, fornecedores }) => {
@@ -761,7 +808,21 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           'Entrega Prevista': dateInputState[r.ri] || '',
           'Data de Solicitação': r.data_solicitacao ? formatDateBR(r.data_solicitacao) : '—'
         };
-        if (!encontrado || fornecedores.length === 0) {
+        if (r.status_requisicao === 'Processado') {
+          // Item já possui PO emitida: exporta os dados do pedido de compra ao invés do
+          // histórico de fornecedores (que não se aplica a itens já comprados).
+          dataToExport.push({
+            ...base,
+            'PO': r.documento_compra || '—',
+            'Item PO': r.item_pedido || '—',
+            'Fornecedor do PO': r.fornecedor_name || '—',
+            'Cód. Fornecedor do PO': r.fornecedor_code || '—',
+            'Data do Pedido': r.data_pedido ? formatDateBR(r.data_pedido) : '—',
+            'Data Entrega SAP': r.data_entrega_sap ? formatDateBR(r.data_entrega_sap) : '—',
+            'Data MIGO': r.data_migo ? formatDateBR(r.data_migo) : 'Sem MIGO',
+            'Comprador (PO)': r.criado_por_pedido || '—'
+          });
+        } else if (!encontrado || fornecedores.length === 0) {
           dataToExport.push({
             ...base,
             'Cód. Fornecedor': '—', 'CNPJ': '—', 'Fornecedor': 'Material sem histórico de fornecedores',
@@ -868,6 +929,35 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       </span>
     );
   };
+
+  // Bloco com os dados do Pedido de Compra (PO) já emitido para o item — usado no lugar do
+  // histórico de fornecedores quando o item já possui PO (ex.: itens "Sem MIGO").
+  const renderPOInfoBlock = (r: EnrichedSAPRecord) => (
+    <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="font-extrabold text-slate-850 dark:text-slate-200">PO {r.documento_compra || '—'}</span>
+        {r.item_pedido && (
+          <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-500 dark:text-slate-400">
+            Item {r.item_pedido}
+          </span>
+        )}
+      </div>
+      <p className="text-slate-700 dark:text-slate-300 font-bold break-words">
+        {r.fornecedor_name || 'Fornecedor não identificado'}
+        {r.fornecedor_code && <span className="text-slate-450 dark:text-slate-500 font-semibold"> ({r.fornecedor_code})</span>}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-450 font-semibold">
+        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
+        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-150/50 dark:border-slate-750">
+        {renderMigoInfo(r.data_migo || undefined)}
+        {r.criado_por_pedido && (
+          <span className="text-slate-400 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
+        )}
+      </div>
+    </div>
+  );
 
   const worstLevel = (items: ItemNode[]): 'critico' | 'atencao' | 'monitorar' | 'ok' => {
     const order = ['ok', 'monitorar', 'atencao', 'critico'];
@@ -1257,12 +1347,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         )}
                       </div>
 
+                      {/* Informações do Pedido de Compra (PO) já emitido */}
+                      {r.status_requisicao === 'Processado' && (
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                            Informações do Pedido de Compra (PO)
+                          </span>
+                          {renderPOInfoBlock(r)}
+                        </div>
+                      )}
+
                       {/* Fornecedores Históricos */}
                       <div className="space-y-1.5 pt-1">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                           Fornecedores com Histórico ({fornecedores.length})
                         </span>
-                        
+
                         {!encontrado ? (
                           <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-rose-150 dark:border-rose-900/40 bg-rose-50/20 dark:bg-rose-955/5 text-rose-800 dark:text-rose-455 text-xs">
                             <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
@@ -1397,26 +1497,39 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                               : 'Ainda não editado'}
                           </span>
                         )}
-                        
-                        <button
-                          onClick={() => handleSaveFields(r.ri)}
-                          disabled={itemSaveStatus === 'saving'}
-                          type="button"
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] ${
-                            itemSaveStatus === 'saved'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-450 border border-emerald-250 dark:border-emerald-900/30'
-                              : isModified(r.ri, r)
-                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
-                              : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
-                          }`}
-                        >
-                          {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                          {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-                          {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
-                          <span>
-                            {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
-                          </span>
-                        </button>
+
+                        <div className="flex items-center gap-2">
+                          {encontrado && (
+                            <button
+                              onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
+                              type="button"
+                              title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              <span>Cotação</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleSaveFields(r.ri)}
+                            disabled={itemSaveStatus === 'saving'}
+                            type="button"
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 active:translate-y-[1px] ${
+                              itemSaveStatus === 'saved'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-450 border border-emerald-250 dark:border-emerald-900/30'
+                                : isModified(r.ri, r)
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md border border-amber-500 animate-pulse-subtle'
+                                : 'bg-[#0056c6] hover:bg-[#004bb0] text-white'
+                            }`}
+                          >
+                            {itemSaveStatus === 'saving' && <RefreshCw className="h-3 w-3 animate-spin" />}
+                            {itemSaveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+                            {itemSaveStatus === 'idle' && <Save className="h-3.5 w-3.5" />}
+                            <span>
+                              {itemSaveStatus === 'saving' ? 'Salvando...' : itemSaveStatus === 'saved' ? 'Salvo!' : 'Salvar'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1438,7 +1551,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                     <th className="py-3 px-3">Material</th>
                     <th className="py-3 px-3">Descrição</th>
                     <th className="py-3 px-3">Qtd / Un</th>
-                    {!tableShowSupplierFirst && <th className="py-3 px-3">Histórico Fornecedores</th>}
+                    {!tableShowSupplierFirst && <th className="py-3 px-3">{poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'}</th>}
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Promessa Entrega</th>
                     <th className="py-3 px-3">Observação</th>
@@ -1559,10 +1672,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           {r.qtd_requisicao} {r.unidade_medida}
                         </td>
 
-                        {/* Column 6: Histórico Fornecedores (when NOT focused) */}
+                        {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) */}
                         {!tableShowSupplierFirst && (
                           <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
-                            {!encontrado ? (
+                            {r.status_requisicao === 'Processado' ? (
+                              renderPOInfoBlock(r)
+                            ) : !encontrado ? (
                               <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                 Sem fornecedor
                               </span>
@@ -1686,6 +1801,16 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                 onClick={() => setQuoteChoicePending({ supplier: selectedSupplier, record: r, rm })}
                                 className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
                                 title="Enviar cotação para este fornecedor"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                                <span>Cotação</span>
+                              </button>
+                            )}
+                            {!tableShowSupplierFirst && encontrado && fornecedores.length > 0 && (
+                              <button
+                                onClick={() => handleSendItemQuoteToAllSuppliers(r, rm, fornecedores)}
+                                className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 mx-auto min-w-[76px] cursor-pointer active:scale-95 active:translate-y-[1px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                title="Enviar cotação por e-mail para todos os fornecedores deste item (em cópia oculta)"
                               >
                                 <Send className="h-3.5 w-3.5" />
                                 <span>Cotação</span>
@@ -1898,7 +2023,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   <button
                     onClick={() => {
                       if (!waNumber) return;
-                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms);
+                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms, techTextByCode);
                       window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(waText)}`, '_blank', 'noopener,noreferrer');
                     }}
                     disabled={!waNumber}
