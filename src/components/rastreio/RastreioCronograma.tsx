@@ -58,9 +58,11 @@ function EntryCard({ row, delivery, compact, onOpen, unread }: { row: RastreioRo
 }
 
 function Legend() {
+  // O cronograma só exibe itens ainda não entregues com data prevista, então
+  // só "no prazo" e "atrasado" chegam a aparecer aqui.
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-      {(['entregue', 'no_prazo', 'atrasado', 'sem_data'] as DeliveryStatus[]).map(s => (
+      {(['no_prazo', 'atrasado'] as DeliveryStatus[]).map(s => (
         <span key={s} className="inline-flex items-center gap-1">
           <span className={`h-2 w-2 rounded-full ${DELIVERY_STATUS_META[s].dot}`} />{DELIVERY_STATUS_META[s].label}
         </span>
@@ -129,7 +131,7 @@ export default function RastreioCronograma({ rows, hoje, onOpenRow, unreadRis }:
         <Legend />
         {omitidos > 0 && (
           <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
-            {omitidos.toLocaleString('pt-BR')} sem data prevista (não exibidos)
+            {omitidos.toLocaleString('pt-BR')} já entregues ou sem data prevista (não exibidos)
           </span>
         )}
       </div>

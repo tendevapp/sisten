@@ -177,9 +177,11 @@ export function anoOptions(rows: RastreioRow[]): string[] {
 
 // --- Cronograma: agrupamento por data prevista de entrega -------------------
 
-// Só entram no cronograma linhas com data prevista válida.
+// Só entram no cronograma linhas com data prevista válida e que ainda não
+// foram entregues (sem MIGO) — o cronograma é uma agenda do que falta
+// receber, não um histórico do que já chegou.
 export function schedulableRows(rows: RastreioRow[]): RastreioRow[] {
-  return rows.filter(r => parseDate(r.dataPrevista) !== null);
+  return rows.filter(r => parseDate(r.dataPrevista) !== null && !hasValue(r.dataEntrega));
 }
 
 // Entregas previstas para um dia específico.
