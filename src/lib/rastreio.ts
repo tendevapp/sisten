@@ -151,13 +151,14 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
   });
 }
 
-// Ordenação padrão: por data de entrega (MIGO) crescente e, em empate,
-// descrição crescente. Registros sem MIGO (em aberto) vão para o fim.
+// Ordenação padrão: registros sem entrega (sem MIGO) primeiro — são os que
+// precisam de acompanhamento —, seguidos dos já entregues; em cada grupo,
+// ordena por descrição crescente.
 export function defaultSort(rows: RastreioRow[]): RastreioRow[] {
   return [...rows].sort((a, b) => {
-    const ma = parseDate(a.dataEntrega)?.getTime() ?? Infinity;
-    const mb = parseDate(b.dataEntrega)?.getTime() ?? Infinity;
-    if (ma !== mb) return ma - mb;
+    const aEntregue = hasValue(a.dataEntrega);
+    const bEntregue = hasValue(b.dataEntrega);
+    if (aEntregue !== bEntregue) return aEntregue ? 1 : -1;
     return a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true });
   });
 }
