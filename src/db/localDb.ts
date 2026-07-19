@@ -1701,7 +1701,11 @@ class LocalDatabase {
     if (!supabase) throw new Error('Sem conexão com o servidor.');
     const user = this.getCurrentUser();
     if (!user) throw new Error('Usuário não autenticado.');
-    const autorEhComprador = user.roles.includes('comprador') || user.roles.includes('coordenador_suprimentos') || user.roles.includes('admin');
+    // Só a role 'comprador' de fato representa o comprador responsável por um
+    // grupo. 'admin' e 'coordenador_suprimentos' não devem pular o roteamento
+    // por grupo: um admin escrevendo a primeira mensagem em um item ainda
+    // precisa notificar o comprador responsável pelo grupo daquele item.
+    const autorEhComprador = user.roles.includes('comprador');
     const autorRole = user.roles[0] || '';
 
     const row: RastreioMensagem = {
