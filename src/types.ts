@@ -175,6 +175,19 @@ export interface Notification {
   created_at: string;
 }
 
+// Mensagem de conversa de um item de compra (pagina Rastreio Compras).
+// Thread identificada por `ri` (requisicao + item).
+export interface RastreioMensagem {
+  id: string;
+  ri: string;
+  rm?: string;
+  autor_id: string;
+  autor_nome: string;
+  autor_role?: string;
+  mensagem: string;
+  created_at: string;
+}
+
 export type ItemStatus =
   | 'Aguardando Cotação'
   | 'Cotação enviada'

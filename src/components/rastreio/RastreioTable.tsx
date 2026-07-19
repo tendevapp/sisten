@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowUpDown, MessageSquare } from 'lucide-react';
 import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR } from '../../lib/rastreio';
 
 export type SortDir = 'asc' | 'desc';
@@ -14,24 +14,26 @@ export interface ColumnOption {
   label: string;
   align?: 'left' | 'right';
   sortable?: boolean;
+  // Largura (table-fixed) e classe de visibilidade responsiva, para caber todas
+  // as colunas sem scroll lateral: colunas de menor prioridade somem em telas
+  // menores; o detalhe completo fica no modal.
+  width: string;
+  cls?: string;
 }
 
-// Colunas da tabela de rastreio. `descricao` combina material + texto breve.
 export const RASTREIO_COLUMNS: ColumnOption[] = [
-  { id: 'rm', label: 'RM', sortable: true },
-  { id: 'po', label: 'PO', sortable: true },
-  { id: 'descricao', label: 'Item / Descrição', sortable: true },
-  { id: 'fornecedor', label: 'Fornecedor', sortable: true },
-  { id: 'setor', label: 'Setor', sortable: true },
-  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true },
-  { id: 'dataCriacao', label: 'Criação', sortable: true },
-  { id: 'dataPrevista', label: 'Prev. Entrega', sortable: true },
-  { id: 'dataEntrega', label: 'Entrega (MIGO)', sortable: true },
-  { id: 'status', label: 'Status', sortable: true },
-  { id: 'observacoes', label: 'Observações' },
+  { id: 'rm', label: 'RM', sortable: true, width: 'w-[9%]' },
+  { id: 'po', label: 'PO', sortable: true, width: 'w-[9%]' },
+  { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[24%]' },
+  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[15%]', cls: 'hidden sm:table-cell' },
+  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[11%]', cls: 'hidden xl:table-cell' },
+  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]', cls: 'hidden xl:table-cell' },
+  { id: 'dataCriacao', label: 'Criação', sortable: true, width: 'w-[8%]', cls: 'hidden xl:table-cell' },
+  { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]', cls: 'hidden md:table-cell' },
+  { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]', cls: 'hidden md:table-cell' },
+  { id: 'status', label: 'Status', sortable: true, width: 'w-[12%]' },
 ];
 
-// Estilo do badge por status operacional (item_status).
 const ITEM_STATUS_STYLE: Record<string, string> = {
   'Entregue': 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30',
   'Em rota de entrega': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30',
@@ -47,118 +49,126 @@ const ITEM_STATUS_STYLE: Record<string, string> = {
 const DEFAULT_STATUS_STYLE = 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600';
 
 const SortableTh = ({
-  col, label, align = 'left', sortColumn, sortDir, onSort,
+  col, label, align = 'left', width, cls, sortColumn, sortDir, onSort,
 }: {
-  col: string; label: string; align?: 'left' | 'right';
+  col: string; label: string; align?: 'left' | 'right'; width: string; cls?: string;
   sortColumn: string | null; sortDir: SortDir; onSort: (col: string) => void;
 }) => {
   const active = sortColumn === col;
   return (
-    <th className={`px-3 py-2.5 font-black ${align === 'right' ? 'text-right' : 'text-left'}`}>
+    <th className={`px-2 py-2 font-black ${width} ${cls || ''} ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <button
         onClick={() => onSort(col)}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
+        className={`inline-flex items-center gap-0.5 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer max-w-full ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
         title={`Ordenar por ${label}`}
       >
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
         {active
-          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600" />}
+          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)
+          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600 shrink-0" />}
       </button>
     </th>
   );
 };
 
 interface RastreioTableProps {
-  rows: RastreioRow[]; // fatia já paginada e ordenada
+  rows: RastreioRow[];
   hoje: Date;
   visibleColumns: Record<string, boolean>;
   sortColumn: string | null;
   sortDir: SortDir;
   onSort: (col: string) => void;
+  onOpenRow: (row: RastreioRow) => void;
+  unreadRis: Set<string>;
 }
 
-export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort }: RastreioTableProps) {
+export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort, onOpenRow, unreadRis }: RastreioTableProps) {
+  const cols = RASTREIO_COLUMNS.filter(c => visibleColumns[c.id]);
   return (
     <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
-              {RASTREIO_COLUMNS.map(col => (
-                visibleColumns[col.id] && (
-                  col.sortable
-                    ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
-                    : <th key={col.id} className="px-3 py-2.5 font-black">{col.label}</th>
-                )
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {rows.map((r, idx) => {
-              const delivery: DeliveryStatus = deriveDeliveryStatus(r, hoje);
-              return (
-                <tr key={`${r.ri}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors align-top">
-                  {visibleColumns.rm && (
-                    <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{r.rm}</td>
-                  )}
-                  {visibleColumns.po && (
-                    <td className="px-3 py-2 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      {r.po}
-                      {r.statusReq === 'Sem PO' && r.po === '—' && (
-                        <span className="ml-1 text-[9px] font-bold uppercase text-amber-600 dark:text-amber-500">sem po</span>
-                      )}
-                    </td>
-                  )}
-                  {visibleColumns.descricao && (
-                    <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[260px]">
-                      <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500">{r.material}</div>
-                      <div className="truncate" title={r.descricao}>{r.descricao}</div>
-                    </td>
-                  )}
-                  {visibleColumns.fornecedor && (
-                    <td className="px-3 py-2 text-slate-800 dark:text-slate-200 font-semibold max-w-[190px] truncate" title={r.fornecedor}>{r.fornecedor}</td>
-                  )}
-                  {visibleColumns.setor && (
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 max-w-[150px] truncate" title={r.setor}>{r.setor}</td>
-                  )}
-                  {visibleColumns.qtd && (
-                    <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      {r.qtd !== undefined ? `${r.qtd.toLocaleString('pt-BR')}${r.unidade !== '—' ? ` ${r.unidade}` : ''}` : '—'}
-                    </td>
-                  )}
-                  {visibleColumns.dataCriacao && (
-                    <td className="px-3 py-2 text-slate-550 dark:text-slate-400 whitespace-nowrap">{formatDateBR(r.dataCriacao)}</td>
-                  )}
-                  {visibleColumns.dataPrevista && (
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className={`h-1.5 w-1.5 rounded-full ${DELIVERY_STATUS_META[delivery].dot}`} />
-                        <span className="text-slate-600 dark:text-slate-300">{formatDateBR(r.dataPrevista)}</span>
-                      </span>
-                    </td>
-                  )}
-                  {visibleColumns.dataEntrega && (
-                    <td className="px-3 py-2 whitespace-nowrap font-medium text-emerald-600 dark:text-emerald-400">{formatDateBR(r.dataEntrega)}</td>
-                  )}
-                  {visibleColumns.status && (
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}>
-                        {r.status}
-                      </span>
-                    </td>
-                  )}
-                  {visibleColumns.observacoes && (
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-400 max-w-[220px]">
-                      <span className="line-clamp-2" title={r.observacoes}>{r.observacoes}</span>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <table className="w-full table-fixed text-[11px]">
+        <thead>
+          <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
+            {cols.map(col => (
+              col.sortable
+                ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} cls={col.cls} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
+                : <th key={col.id} className={`px-2 py-2 font-black ${col.width} ${col.cls || ''}`}>{col.label}</th>
+            ))}
+            <th className="w-[44px] px-2 py-2" aria-label="Ações" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {rows.map((r, idx) => {
+            const delivery: DeliveryStatus = deriveDeliveryStatus(r, hoje);
+            const unread = unreadRis.has(r.ri);
+            return (
+              <tr
+                key={`${r.ri}-${idx}`}
+                onClick={() => onOpenRow(r)}
+                className="hover:bg-emerald-50/40 dark:hover:bg-emerald-500/5 transition-colors align-top cursor-pointer"
+              >
+                {visibleColumns.rm && (
+                  <td className="px-2 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-200 truncate">{r.rm}</td>
+                )}
+                {visibleColumns.po && (
+                  <td className="px-2 py-1.5 font-mono text-slate-700 dark:text-slate-300 truncate">
+                    {r.po !== '—' ? r.po : <span className="text-[9px] font-bold uppercase text-amber-600 dark:text-amber-500">sem po</span>}
+                  </td>
+                )}
+                {visibleColumns.descricao && (
+                  <td className="px-2 py-1.5 text-slate-700 dark:text-slate-300">
+                    <div className="font-mono text-[9px] text-slate-400 dark:text-slate-500 truncate">{r.material}</div>
+                    <div className="truncate" title={r.descricao}>{r.descricao}</div>
+                  </td>
+                )}
+                {visibleColumns.fornecedor && (
+                  <td className="hidden sm:table-cell px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold truncate" title={r.fornecedor}>{r.fornecedor}</td>
+                )}
+                {visibleColumns.setor && (
+                  <td className="hidden xl:table-cell px-2 py-1.5 text-slate-600 dark:text-slate-400 truncate" title={r.setor}>{r.setor}</td>
+                )}
+                {visibleColumns.qtd && (
+                  <td className="hidden xl:table-cell px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate">
+                    {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
+                  </td>
+                )}
+                {visibleColumns.dataCriacao && (
+                  <td className="hidden xl:table-cell px-2 py-1.5 text-slate-550 dark:text-slate-400 truncate">{formatDateBR(r.dataCriacao)}</td>
+                )}
+                {visibleColumns.dataPrevista && (
+                  <td className="hidden md:table-cell px-2 py-1.5 truncate">
+                    <span className="inline-flex items-center gap-1">
+                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DELIVERY_STATUS_META[delivery].dot}`} />
+                      <span className="text-slate-600 dark:text-slate-300">{formatDateBR(r.dataPrevista)}</span>
+                    </span>
+                  </td>
+                )}
+                {visibleColumns.dataEntrega && (
+                  <td className="hidden md:table-cell px-2 py-1.5 truncate font-medium text-emerald-600 dark:text-emerald-400">{formatDateBR(r.dataEntrega)}</td>
+                )}
+                {visibleColumns.status && (
+                  <td className="px-2 py-1.5">
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`} title={r.status}>
+                      {r.status}
+                    </span>
+                  </td>
+                )}
+                <td className="px-1 py-1.5 text-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenRow(r); }}
+                    className="relative inline-flex items-center justify-center h-7 w-7 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                    title="Ver detalhes e conversa"
+                    aria-label="Ver detalhes e conversa"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {unread && <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

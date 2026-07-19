@@ -17,19 +17,23 @@ type Mode = 'diario' | 'semanal' | 'mensal';
 interface RastreioCronogramaProps {
   rows: RastreioRow[]; // linhas já filtradas (a agenda usa só as com data prevista)
   hoje: Date;
+  onOpenRow?: (row: RastreioRow) => void;
+  unreadRis?: Set<string>;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // Cartão de uma entrega no cronograma: item, qtd, PO e fornecedor.
-function EntryCard({ row, delivery, compact }: { row: RastreioRow; delivery: DeliveryStatus; compact?: boolean }) {
+function EntryCard({ row, delivery, compact, onOpen, unread }: { row: RastreioRow; delivery: DeliveryStatus; compact?: boolean; onOpen?: (row: RastreioRow) => void; unread?: boolean }) {
   const meta = DELIVERY_STATUS_META[delivery];
   return (
     <div
-      className={`rounded-lg border-l-4 bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 shadow-xs ${compact ? 'p-2' : 'p-2.5'}`}
+      onClick={onOpen ? () => onOpen(row) : undefined}
+      className={`relative rounded-lg border-l-4 bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 shadow-xs ${compact ? 'p-2' : 'p-2.5'} ${onOpen ? 'cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-500/40 hover:bg-emerald-50/30 dark:hover:bg-emerald-500/5 transition-colors' : ''}`}
       style={{ borderLeftColor: 'transparent' }}
       title={`${row.descricao} · PO ${row.po} · ${row.fornecedor}`}
     >
+      {unread && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />}
       <div className="flex items-start gap-1.5">
         <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
         <div className="min-w-0 flex-1">
@@ -65,7 +69,7 @@ function Legend() {
   );
 }
 
-export default function RastreioCronograma({ rows, hoje }: RastreioCronogramaProps) {
+export default function RastreioCronograma({ rows, hoje, onOpenRow, unreadRis }: RastreioCronogramaProps) {
   const [mode, setMode] = useState<Mode>('semanal');
   const [refDate, setRefDate] = useState<Date>(hoje);
 
@@ -130,14 +134,16 @@ export default function RastreioCronograma({ rows, hoje }: RastreioCronogramaPro
         )}
       </div>
 
-      {mode === 'diario' && <DailyView rows={agendaRows} refDate={refDate} hoje={hoje} />}
-      {mode === 'semanal' && <WeeklyView rows={agendaRows} refDate={refDate} hoje={hoje} />}
+      {mode === 'diario' && <DailyView rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis} />}
+      {mode === 'semanal' && <WeeklyView rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis} />}
       {mode === 'mensal' && (
         <MonthlyView
           rows={agendaRows}
           refDate={refDate}
           hoje={hoje}
           onSelectDay={(d) => { setRefDate(d); setMode('diario'); }}
+          onOpen={onOpenRow}
+          unreadRis={unreadRis}
         />
       )}
     </div>
@@ -154,17 +160,19 @@ function EmptyDay({ label }: { label: string }) {
   );
 }
 
-function DailyView({ rows, refDate, hoje }: { rows: RastreioRow[]; refDate: Date; hoje: Date }) {
+type ViewExtras = { onOpen?: (row: RastreioRow) => void; unreadRis?: Set<string> };
+
+function DailyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const entries = useMemo(() => entriesForDay(rows, refDate), [rows, refDate]);
   if (entries.length === 0) return <EmptyDay label="para este dia" />;
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {entries.map((r, i) => <EntryCard key={`${r.ri}-${i}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} />)}
+      {entries.map((r, i) => <EntryCard key={`${r.ri}-${i}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
     </div>
   );
 }
 
-function WeeklyView({ rows, refDate, hoje }: { rows: RastreioRow[]; refDate: Date; hoje: Date }) {
+function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const days = useMemo(() => weekDays(refDate), [refDate]);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
@@ -180,7 +188,7 @@ function WeeklyView({ rows, refDate, hoje }: { rows: RastreioRow[]; refDate: Dat
             <div className="space-y-1.5">
               {entries.length === 0
                 ? <p className="px-0.5 py-2 text-[10px] text-slate-300 dark:text-slate-600">—</p>
-                : entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact />)}
+                : entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
             </div>
           </div>
         );
@@ -189,7 +197,7 @@ function WeeklyView({ rows, refDate, hoje }: { rows: RastreioRow[]; refDate: Dat
   );
 }
 
-function MonthlyView({ rows, refDate, hoje, onSelectDay }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void }) {
+function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void } & ViewExtras) {
   const weeks = useMemo(() => monthMatrix(refDate), [refDate]);
   const weekdayHeaders = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
@@ -258,7 +266,7 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay }: { rows: RastreioRow[]
                     <span className="text-slate-400 dark:text-slate-500 font-semibold">· {entries.length}</span>
                   </div>
                   <div className="space-y-1.5">
-                    {entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} />)}
+                    {entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
                   </div>
                 </div>
               );

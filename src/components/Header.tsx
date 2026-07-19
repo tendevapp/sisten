@@ -27,12 +27,19 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   useEffect(() => {
     setNotifications(localDb.getNotifications(user.id));
     setAllProfiles(localDb.getProfiles().filter(p => p.status === 'ativo'));
-    
-    // Quick polling simulation for notification updates
+
+    // Atualiza o cache local de notificações (leve) para captar mensagens novas.
+    localDb.refreshNotificationsFromSupabase().then(() => setNotifications(localDb.getNotifications(user.id)));
+
+    // Reflete no cache local a cada 4s (barato).
     const interval = setInterval(() => {
       setNotifications(localDb.getNotifications(user.id));
     }, 4000);
-    return () => clearInterval(interval);
+    // Busca notificações novas do servidor periodicamente (mais espaçado, egress).
+    const netInterval = setInterval(() => {
+      localDb.refreshNotificationsFromSupabase().then(() => setNotifications(localDb.getNotifications(user.id)));
+    }, 30000);
+    return () => { clearInterval(interval); clearInterval(netInterval); };
   }, [user]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -42,7 +49,11 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     setNotifications(localDb.getNotifications(user.id));
     setShowNotifications(false);
     if (notif.request_id) {
-      if (notif.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
+      // Notificações de mensagens do Rastreio Compras: abrem a conversa do item.
+      if (notif.request_id.startsWith('rastreio:')) {
+        const ri = notif.request_id.slice('rastreio:'.length);
+        onNavigate(`/rastreio?ri=${encodeURIComponent(ri)}`);
+      } else if (notif.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
         onNavigate('/solicitacoes/aprovacoes');
       } else {
         onNavigate(`/solicitacoes/minhas?id=${notif.request_id}`);

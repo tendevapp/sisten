@@ -7,7 +7,8 @@ import {
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
-  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView
+  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
+  RastreioMensagem
 } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -1572,6 +1573,170 @@ class LocalDatabase {
     if (idx !== -1) {
       notifications[idx].is_read = true;
       this.setStorageItem(this.notificationsKey, notifications);
+      // Persiste no Supabase — o sync de notificações substitui o cache local,
+      // então sem isso o "lido" voltaria a "não lido" na próxima sincronização.
+      const nid = notifications[idx].id;
+      (async () => {
+        try { if (supabase) await supabase.from('notifications').update({ is_read: true }).eq('id', nid); }
+        catch (e) { console.warn('Falha ao marcar notificação como lida no Supabase:', e); }
+      })();
+    }
+  }
+
+  // ============================================================
+  // Rastreio Compras — mensagens (conversas) e notificações
+  // ============================================================
+
+  // Marcador usado no campo request_id das notificações de mensagens, para o
+  // Header distinguir e rotear para a página Rastreio Compras.
+  private RASTREIO_NOTIF_PREFIX = 'rastreio:';
+
+  // Busca leve das notificações do próprio usuário (RLS filtra por auth.uid()).
+  // Chamada periodicamente pelo Header para que mensagens novas apareçam sem
+  // depender de um sync completo de dados.
+  public async refreshNotificationsFromSupabase(): Promise<void> {
+    try {
+      if (!supabase) return;
+      const user = this.getCurrentUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (data) this.setStorageItem(this.notificationsKey, data as Notification[]);
+    } catch (e) {
+      console.warn('Falha ao atualizar notificações:', e);
+    }
+  }
+
+  public async fetchRastreioMensagens(ri: string): Promise<RastreioMensagem[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('rastreio_mensagens')
+      .select('*')
+      .eq('ri', ri)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []) as RastreioMensagem[];
+  }
+
+  // Insere notificações (uma por destinatário) diretamente no Supabase.
+  // A política de INSERT permite gravar para qualquer user_id; cada destinatário
+  // só lê as próprias (RLS de SELECT por auth.uid()).
+  private async insertNotifications(
+    userIds: string[], title: string, description: string,
+    type: Notification['type'], reqId: string, reqNo?: string
+  ): Promise<void> {
+    if (!supabase || userIds.length === 0) return;
+    const rows = userIds.map(uid => ({
+      id: 'n_' + Math.random().toString(36).substr(2, 9),
+      user_id: uid,
+      title,
+      description,
+      type,
+      is_read: false,
+      request_id: reqId,
+      request_number: reqNo ?? null,
+      created_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('notifications').insert(rows);
+    if (error) console.warn('Falha ao inserir notificações:', error);
+  }
+
+  // Resolve os destinatários da notificação de uma nova mensagem:
+  //  - todos os outros participantes que já escreveram na thread; e
+  //  - se o autor não é comprador e nenhum comprador participou ainda,
+  //    os compradores do grupo do item (via buyer_groups).
+  private resolveRastreioRecipients(
+    autorId: string, autorEhComprador: boolean,
+    participantes: string[], grupoComprador?: string
+  ): string[] {
+    const set = new Set<string>();
+    participantes.forEach(id => { if (id && id !== autorId) set.add(id); });
+
+    const compradorNoThread = this.getProfiles().some(
+      p => participantes.includes(p.id) && p.roles.includes('comprador')
+    );
+    if (!autorEhComprador && !compradorNoThread && grupoComprador) {
+      this.getBuyerGroups()
+        .filter(bg => bg.group_code === grupoComprador)
+        .forEach(bg => { if (bg.user_id && bg.user_id !== autorId) set.add(bg.user_id); });
+    }
+    // Só usuários ativos.
+    const ativos = new Set(this.getProfiles().filter(p => p.status === 'ativo').map(p => p.id));
+    return Array.from(set).filter(id => ativos.has(id));
+  }
+
+  // Envia uma mensagem na thread do item e dispara as notificações.
+  public async sendRastreioMensagem(
+    ri: string, mensagem: string,
+    ctx: { rm?: string; descricao?: string; grupoComprador?: string; participantesPrevios: string[] }
+  ): Promise<RastreioMensagem> {
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Usuário não autenticado.');
+    const autorEhComprador = user.roles.includes('comprador') || user.roles.includes('coordenador_suprimentos') || user.roles.includes('admin');
+    const autorRole = user.roles[0] || '';
+
+    const row: RastreioMensagem = {
+      id: 'rm_' + Math.random().toString(36).substr(2, 9),
+      ri,
+      rm: ctx.rm,
+      autor_id: user.id,
+      autor_nome: user.name,
+      autor_role: autorRole,
+      mensagem: mensagem.trim(),
+      created_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('rastreio_mensagens').insert({
+      id: row.id, ri: row.ri, rm: row.rm ?? null,
+      autor_id: row.autor_id, autor_nome: row.autor_nome, autor_role: row.autor_role ?? null,
+      mensagem: row.mensagem, created_at: row.created_at,
+    });
+    if (error) throw error;
+
+    // Notifica destinatários (não bloqueia o retorno).
+    const recipients = this.resolveRastreioRecipients(user.id, autorEhComprador, ctx.participantesPrevios, ctx.grupoComprador);
+    const preview = row.mensagem.length > 90 ? row.mensagem.slice(0, 90) + '…' : row.mensagem;
+    const title = `Nova mensagem — RM ${ctx.rm || row.rm || ri}`;
+    const desc = `${user.name}: ${preview}`;
+    this.insertNotifications(recipients, title, desc, 'info', `${this.RASTREIO_NOTIF_PREFIX}${ri}`, ctx.rm).catch(() => {});
+
+    return row;
+  }
+
+  // Conjunto de `ri` com mensagens não lidas para o usuário (a partir das
+  // notificações locais marcadas como rastreio: e não lidas).
+  public getUnreadRastreioRis(userId: string): Set<string> {
+    const prefix = this.RASTREIO_NOTIF_PREFIX;
+    const ris = this.getStorageItem<Notification[]>(this.notificationsKey, [])
+      .filter(n => n.user_id === userId && !n.is_read && (n.request_id || '').startsWith(prefix))
+      .map(n => (n.request_id || '').slice(prefix.length));
+    return new Set(ris);
+  }
+
+  // Marca como lidas (local + Supabase) todas as notificações de mensagens do
+  // `ri` para o usuário — chamado ao abrir a conversa.
+  public markRastreioThreadRead(ri: string, userId: string): void {
+    const prefix = this.RASTREIO_NOTIF_PREFIX;
+    const target = `${prefix}${ri}`;
+    const notifs = this.getStorageItem<Notification[]>(this.notificationsKey, []);
+    const affected: string[] = [];
+    let changed = false;
+    notifs.forEach(n => {
+      if (n.user_id === userId && !n.is_read && n.request_id === target) {
+        n.is_read = true; changed = true; affected.push(n.id);
+      }
+    });
+    if (changed) this.setStorageItem(this.notificationsKey, notifs);
+    if (affected.length > 0) {
+      (async () => {
+        try { if (supabase) await supabase.from('notifications').update({ is_read: true }).in('id', affected); }
+        catch (e) { console.warn('Falha ao marcar thread como lida no Supabase:', e); }
+      })();
     }
   }
 

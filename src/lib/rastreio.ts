@@ -25,18 +25,22 @@ export interface RastreioRow {
   dataCriacao: string;   // data_pedido / data_solicitacao
   dataPrevista: string;  // data_entrega_prevista / data_entrega_sap
   dataEntrega: string;   // data_migo
-  status: string;        // item_status
+  status: string;        // status exibido (Entregue quando há MIGO; senão item_status)
   statusReq: string;     // status_requisicao ('Sem PO' | 'Processado')
   observacoes: string;   // obs_comprador
+  grupoComprador: string; // grupo_comprador (roteamento de notificações)
 }
 
 export type DeliveryStatus = 'entregue' | 'no_prazo' | 'atrasado' | 'sem_data';
+
+export type DeliveryScope = 'todos' | 'aberto'; // 'aberto' = ainda sem entrega (MIGO)
 
 export interface RastreioFilters {
   query: string;
   status: string; // 'Todos' ou um item_status
   setor: string;  // 'Todos' ou um setor
   ano: string;    // 'Todos' ou um ano (YYYY)
+  scope: DeliveryScope;
 }
 
 const EMPTY = '—';
@@ -94,9 +98,14 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
       dataCriacao: hasValue(txt(r.data_pedido)) ? txt(r.data_pedido) : txt(raw.data_solicitacao),
       dataPrevista: hasValue(txt(r.data_entrega_prevista)) ? txt(r.data_entrega_prevista) : txt(r.data_entrega_sap),
       dataEntrega: txt(r.data_migo),
-      status: txt(r.item_status) === EMPTY ? 'Sem status' : txt(r.item_status),
+      // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
+      // independentemente do item_status registrado.
+      status: hasValue(txt(r.data_migo))
+        ? 'Entregue'
+        : (txt(r.item_status) === EMPTY ? 'Sem status' : txt(r.item_status)),
       statusReq: txt(r.status_requisicao),
       observacoes: txt(r.obs_comprador),
+      grupoComprador: txt(r.grupo_comprador) === EMPTY ? '' : txt(r.grupo_comprador),
     };
   });
 }
@@ -124,6 +133,7 @@ export const DELIVERY_STATUS_META: Record<DeliveryStatus, { label: string; dot: 
 export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): RastreioRow[] {
   const q = f.query.trim().toLowerCase();
   return rows.filter(r => {
+    if (f.scope === 'aberto' && hasValue(r.dataEntrega)) return false;
     if (f.status !== 'Todos' && r.status !== f.status) return false;
     if (f.setor !== 'Todos' && r.setor !== f.setor) return false;
     if (f.ano !== 'Todos' && yearOf(r.dataCriacao) !== f.ano) return false;
@@ -138,6 +148,17 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
       if (!hit) return false;
     }
     return true;
+  });
+}
+
+// Ordenação padrão: por data de entrega (MIGO) crescente e, em empate,
+// descrição crescente. Registros sem MIGO (em aberto) vão para o fim.
+export function defaultSort(rows: RastreioRow[]): RastreioRow[] {
+  return [...rows].sort((a, b) => {
+    const ma = parseDate(a.dataEntrega)?.getTime() ?? Infinity;
+    const mb = parseDate(b.dataEntrega)?.getTime() ?? Infinity;
+    if (ma !== mb) return ma - mb;
+    return a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true });
   });
 }
 

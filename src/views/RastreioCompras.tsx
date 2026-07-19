@@ -13,11 +13,12 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import {
-  RastreioRow, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
-  statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate,
+  RastreioRow, DeliveryScope, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
+  statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort,
 } from '../lib/rastreio';
 import RastreioTable, { RASTREIO_COLUMNS, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
+import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
 
 interface RastreioComprasProps {
   user: Profile;
@@ -29,7 +30,7 @@ type Tab = 'tabela' | 'cronograma';
 const STORAGE_COLS_KEY = 'sisten_rastreio_visible_columns';
 const PAGE_SIZE = 50;
 
-export default function RastreioCompras(_props: RastreioComprasProps) {
+export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
@@ -42,6 +43,12 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [setorFilter, setSetorFilter] = useState('Todos');
   const [anoFilter, setAnoFilter] = useState('Todos');
+  const [scope, setScope] = useState<DeliveryScope>('todos');
+
+  // Modal de detalhes + conversa
+  const [selectedRow, setSelectedRow] = useState<RastreioRow | null>(null);
+  const [unreadRis, setUnreadRis] = useState<Set<string>>(() => localDb.getUnreadRastreioRis(user.id));
+  const refreshUnread = useCallback(() => setUnreadRis(localDb.getUnreadRastreioRis(user.id)), [user.id]);
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -96,13 +103,13 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
   const anoOpts = useMemo(() => anoOptions(rows), [rows]);
 
   const filteredRows = useMemo(
-    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter }),
-    [rows, searchQuery, statusFilter, setorFilter, anoFilter]
+    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope }),
+    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope]
   );
 
-  // Ordenação da tabela.
+  // Ordenação da tabela. Sem coluna ativa, usa o padrão (MIGO ↑, descrição ↑).
   const sortedRows = useMemo(() => {
-    if (!sortColumn) return filteredRows;
+    if (!sortColumn) return defaultSort(filteredRows);
     const dir = sortDir === 'asc' ? 1 : -1;
     const getVal = (r: RastreioRow): string | number => {
       switch (sortColumn) {
@@ -128,7 +135,26 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, statusFilter, setorFilter, anoFilter, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir]);
+
+  // Deep-link: notificação de mensagem abre a conversa do item (#/rastreio?ri=...).
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const hash = window.location.hash || '';
+    const qIndex = hash.indexOf('?');
+    if (qIndex === -1) return;
+    const ri = new URLSearchParams(hash.slice(qIndex + 1)).get('ri');
+    if (ri) {
+      const match = rows.find(r => r.ri === ri);
+      if (match) setSelectedRow(match);
+    }
+  }, [rows]);
+
+  // Reavalia indicadores de não-lido periodicamente (o Header sincroniza notifs).
+  useEffect(() => {
+    const t = setInterval(refreshUnread, 5000);
+    return () => clearInterval(t);
+  }, [refreshUnread]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -280,20 +306,36 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
-        <button
-          onClick={() => setTab('tabela')}
-          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === 'tabela' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-        >
-          <TableIcon className="h-4 w-4" /> Tabela
-        </button>
-        <button
-          onClick={() => setTab('cronograma')}
-          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === 'cronograma' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-        >
-          <CalendarRange className="h-4 w-4" /> Cronograma
-        </button>
+      {/* Tabs + escopo de entrega */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
+          <button
+            onClick={() => setTab('tabela')}
+            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === 'tabela' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
+            <TableIcon className="h-4 w-4" /> Tabela
+          </button>
+          <button
+            onClick={() => setTab('cronograma')}
+            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === 'cronograma' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          >
+            <CalendarRange className="h-4 w-4" /> Cronograma
+          </button>
+        </div>
+
+        {/* Todos / Em aberto (sem MIGO) */}
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
+          {([['todos', 'Todos'], ['aberto', 'Em aberto']] as [DeliveryScope, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => setScope(val)}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${scope === val ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              title={val === 'aberto' ? 'Somente itens ainda não entregues (sem MIGO)' : 'Todos os registros'}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Filtros */}
@@ -432,6 +474,8 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
                     sortColumn={sortColumn}
                     sortDir={sortDir}
                     onSort={toggleSort}
+                    onOpenRow={setSelectedRow}
+                    unreadRis={unreadRis}
                   />
                   {visibleCount < sortedRows.length && (
                     <div className="flex justify-center pt-2">
@@ -448,8 +492,19 @@ export default function RastreioCompras(_props: RastreioComprasProps) {
             </div>
           )}
 
-          {tab === 'cronograma' && <RastreioCronograma rows={filteredRows} hoje={hoje} />}
+          {tab === 'cronograma' && <RastreioCronograma rows={filteredRows} hoje={hoje} onOpenRow={setSelectedRow} unreadRis={unreadRis} />}
         </>
+      )}
+
+      {/* Modal de detalhes + conversa */}
+      {selectedRow && (
+        <RastreioDetailModal
+          row={selectedRow}
+          user={user}
+          hoje={hoje}
+          onClose={() => setSelectedRow(null)}
+          onThreadRead={refreshUnread}
+        />
       )}
     </div>
   );
