@@ -3,14 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X, Send, MessageSquare, Loader2, Package, Building2, MapPin, Calendar,
-  Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle,
+  Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle, History,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
-import { Profile, RastreioMensagem } from '../../types';
+import { Profile, RastreioMensagem, SAPObsHistory } from '../../types';
 import { RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR } from '../../lib/rastreio';
+
+// Uma entrada da linha do tempo da conversa: mensagem de chat ou uma
+// atualização de observação registrada pelo comprador (histórico de
+// obs_comprador, vindo da tela Itens Sem PO). Mescladas por data para dar
+// o contexto completo da negociação num único lugar.
+type TimelineEntry =
+  | { kind: 'msg'; created_at: string; msg: RastreioMensagem }
+  | { kind: 'obs'; created_at: string; obs: SAPObsHistory };
 
 interface Props {
   row: RastreioRow;
@@ -41,6 +49,24 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
 
   const delivery = deriveDeliveryStatus(row, hoje);
   const deliveryMeta = DELIVERY_STATUS_META[delivery];
+
+  // Histórico de observações do comprador para este item (RI), registrado a
+  // cada atualização feita na tela Itens Sem PO. Só entram entradas com texto
+  // (mudanças só de status não trazem comentário e ficariam vazias aqui).
+  const obsHistory = useMemo(
+    () => localDb.getObsHistory(row.ri).filter(h => (h.obs_comprador || '').trim().length > 0),
+    [row.ri]
+  );
+
+  // Linha do tempo unificada: mensagens do chat + histórico de observações,
+  // ordenados cronologicamente.
+  const timeline = useMemo<TimelineEntry[]>(() => {
+    const msgEntries: TimelineEntry[] = messages.map(m => ({ kind: 'msg', created_at: m.created_at, msg: m }));
+    const obsEntries: TimelineEntry[] = obsHistory.map(h => ({ kind: 'obs', created_at: h.created_at, obs: h }));
+    return [...msgEntries, ...obsEntries].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [messages, obsHistory]);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -158,12 +184,27 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <div ref={listRef} className="space-y-2.5 max-h-[34vh] overflow-y-auto pr-1">
               {loadingMsgs ? (
                 <div className="flex items-center justify-center py-8 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>
-              ) : messages.length === 0 ? (
+              ) : timeline.length === 0 ? (
                 <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-6">
-                  Nenhuma mensagem ainda. Escreva abaixo para iniciar a conversa com o comprador.
+                  Nenhuma mensagem ou observação ainda. Escreva abaixo para iniciar a conversa com o comprador.
                 </p>
               ) : (
-                messages.map(m => {
+                timeline.map((entry, idx) => {
+                  if (entry.kind === 'obs') {
+                    const h = entry.obs;
+                    return (
+                      <div key={`obs-${h.id}-${idx}`} className="flex justify-center">
+                        <div className="max-w-[90%] w-full rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/15 px-3 py-2">
+                          <p className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                            <History className="h-3 w-3 shrink-0" /> Observação do comprador — {h.user_name}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{h.obs_comprador}</p>
+                          <p className="mt-0.5 text-[9px] text-amber-600/80 dark:text-amber-500/70">{formatDateTimeBR(h.created_at)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  const m = entry.msg;
                   const mine = m.autor_id === user.id;
                   return (
                     <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>

@@ -96,7 +96,11 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
       qtd: typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
       unidade: txt(r.unidade_medida),
       dataCriacao: hasValue(txt(r.data_pedido)) ? txt(r.data_pedido) : txt(raw.data_solicitacao),
-      dataPrevista: hasValue(txt(r.data_entrega_prevista)) ? txt(r.data_entrega_prevista) : txt(r.data_entrega_sap),
+      // Data prevista = a promessa de entrega inserida pelo comprador na tela
+      // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como
+      // fallback: é a data de remessa do próprio SAP, não a promessa do
+      // comprador, e misturar as duas confundiria a origem do prazo exibido.
+      dataPrevista: txt(r.data_entrega_prevista),
       dataEntrega: txt(r.data_migo),
       // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
       // independentemente do item_status registrado.
