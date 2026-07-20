@@ -294,6 +294,16 @@ export interface SAPObsHistory {
   created_at: string;
 }
 
+export interface CotacaoHistoricoEntry {
+  id: string;
+  ri: string;
+  rm: string;
+  cod_forn: string;
+  fornecedor_nome: string;
+  user_name: string;
+  created_at: string;
+}
+
 export interface SAPImportLog {
   id: string;
   type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS';
