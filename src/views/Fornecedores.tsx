@@ -12,6 +12,8 @@ import {
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { ContatoFornecedor, Profile } from '../types';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
+import Pagination from '../components/ui/Pagination';
 
 interface FornecedoresProps {
   user: Profile;
@@ -84,12 +86,6 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const handleAddEmail = () => {
     setEmails(prev => [...prev, '']);
@@ -168,30 +164,21 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-55 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-              <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Novo Fornecedor</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Preencha os dados cadastrais</p>
-            </div>
+    <Modal onClose={onClose} ariaLabel="Novo Fornecedor">
+      <ModalHeader onClose={onClose}>
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+            <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-105 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div>
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">Novo Fornecedor</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Preencha os dados cadastrais</p>
+          </div>
         </div>
+      </ModalHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+        <ModalBody className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Coluna da Esquerda: Dados Básicos */}
@@ -360,27 +347,27 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
               <span>{error}</span>
             </div>
           )}
+        </ModalBody>
 
-          <div className="flex gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !codVendor.trim()}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              {saving ? 'Salvando...' : 'Cadastrar'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 sm:flex-initial rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !codVendor.trim()}
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {saving ? 'Salvando...' : 'Cadastrar'}
+          </button>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 
@@ -412,12 +399,6 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const handleAddEmail = () => {
     if (!canEdit) return;
@@ -495,34 +476,25 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-              <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                {canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                SAP Código: <span className="font-mono font-semibold">{supplier.cod_vendor}</span>
-              </p>
-            </div>
+    <Modal onClose={onClose} ariaLabel={canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'}>
+      <ModalHeader onClose={onClose}>
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+            <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div>
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100">
+              {canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              SAP Código: <span className="font-mono font-semibold">{supplier.cod_vendor}</span>
+            </p>
+          </div>
         </div>
+      </ModalHeader>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+        <ModalBody className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Coluna Esquerda: Campos Principais */}
@@ -698,29 +670,29 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
               <span>{error}</span>
             </div>
           )}
+        </ModalBody>
 
-          <div className="flex gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+        <ModalFooter>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 sm:flex-initial rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+          >
+            {canEdit ? 'Cancelar' : 'Fechar'}
+          </button>
+          {canEdit && (
             <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              type="submit"
+              disabled={saving}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
             >
-              {canEdit ? 'Cancelar' : 'Fechar'}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {saving ? 'Salvando...' : 'Editar e salvar'}
             </button>
-            {canEdit && (
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                {saving ? 'Salvando...' : 'Editar e salvar'}
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-    </div>
+          )}
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 
@@ -969,7 +941,67 @@ export default function Fornecedores({ user }: FornecedoresProps) {
               <button onClick={loadData} className="text-xs text-blue-500 hover:underline">Tentar novamente</button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Mobile: lista em cards (evita scroll horizontal em tabela larga) */}
+            <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="p-4 animate-pulse space-y-2">
+                    <div className="h-4 w-2/3 rounded bg-slate-100 dark:bg-slate-800" />
+                    <div className="h-3 w-1/2 rounded bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                ))
+              ) : rows.length === 0 ? (
+                <div className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                  <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
+                  {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
+                  {canEdit && !hasFilters && (
+                    <button
+                      onClick={() => setShowCadastro(true)}
+                      className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Cadastrar primeiro fornecedor
+                    </button>
+                  )}
+                </div>
+              ) : rows.map(row => (
+                <button
+                  key={row.id}
+                  onClick={() => setSelectedSupplier(row)}
+                  className="w-full text-left p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0 truncate">
+                      {row.fornecedor || row.nome_fantasia || '— Sem razão social —'}
+                    </span>
+                    <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5 shrink-0">
+                      {row.cod_vendor}
+                    </span>
+                  </div>
+                  {row.nome_contato && (
+                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{row.nome_contato}</p>
+                  )}
+                  <div className="mt-1.5 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
+                    {row.telefone && (
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Phone className="h-3 w-3 shrink-0" /> {splitMultiValues(row.telefone).join(', ')}
+                      </span>
+                    )}
+                    {row.email && (
+                      <span className="flex items-center gap-1.5 truncate">
+                        <Mail className="h-3 w-3 shrink-0" /> {splitMultiValues(row.email).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                  {classifBadge(row.classificacao) && <div className="mt-2">{classifBadge(row.classificacao)}</div>}
+                </button>
+              ))}
+            </div>
+
+            {/* Desktop: tabela completa */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
@@ -1080,48 +1112,18 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* Paginacao */}
           {!loading && !error && totalCount > PAGE_SIZE && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Página {page + 1} de {totalPages} &nbsp;·&nbsp; {totalCount.toLocaleString('pt-BR')} registros
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  ← Anterior
-                </button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const start = Math.max(0, Math.min(page - 2, totalPages - 5));
-                  const p = start + i;
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                        p === page
-                          ? 'bg-blue-500 text-white'
-                          : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {p + 1}
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Próxima →
-                </button>
-              </div>
-            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+              info={<>Página {page + 1} de {totalPages} · {totalCount.toLocaleString('pt-BR')} registros</>}
+            />
           )}
         </div>
       </div>

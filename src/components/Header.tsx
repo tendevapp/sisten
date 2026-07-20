@@ -175,7 +175,9 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
               setShowNotifications(!showNotifications);
               setShowProfileMenu(false);
             }}
-            className="relative rounded-full p-1.5 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
+            aria-label={unreadCount > 0 ? `Notificações (${unreadCount} não lidas)` : 'Notificações'}
+            aria-expanded={showNotifications}
+            className="relative rounded-full p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
           >
             <Bell className="h-6 w-6" />
             {unreadCount > 0 && (
@@ -234,6 +236,8 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
               setShowProfileMenu(!showProfileMenu);
               setShowNotifications(false);
             }}
+            aria-label="Menu do perfil"
+            aria-expanded={showProfileMenu}
             className="flex items-center space-x-3 rounded-lg p-1.5 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors focus:outline-none"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white font-bold">

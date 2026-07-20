@@ -55,7 +55,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         { label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, perm: { module: 'cadastro_sap', action: 'atender' } },
         { label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, perm: { module: 'sap', action: 'visualizar_painel' } },
         { label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, perm: { module: 'sap', action: 'fornecedores' } },
-        { label: 'Itens Sem PO', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
+        { label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Histórico', path: '/suprimentos/historico', icon: History, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Demandas', path: '/suprimentos/demandas', icon: TrendingUp, perm: { module: 'sap', action: 'dashboards' } },
@@ -187,7 +187,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                                 e.preventDefault();
                                 window.open(`#${item.path}`, '_blank');
                               }}
-                              className="opacity-0 group-hover/item:opacity-100 p-0.5 rounded hover:bg-slate-700 text-slate-500 hover:text-white transition-opacity ml-1 cursor-pointer shrink-0"
+                              className="opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 p-2 -m-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white transition-opacity ml-1 cursor-pointer shrink-0"
                               title="Abrir em nova aba"
                             >
                               <ArrowUpRight className="h-3.5 w-3.5" />

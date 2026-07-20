@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, EnrichedSAPRecord, SAPPedido, ItemStatus } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
+import { useToast } from '../components/ui/Toast';
 
 const allColsMe5a = [
   { key: 'Status', label: 'Status' },
@@ -328,6 +329,7 @@ interface SapPanelProps {
 }
 
 export default function SapPanel({ user, onNavigate }: SapPanelProps) {
+  const toast = useToast();
   // Core datasets
   const [records, setRecords] = useState<EnrichedSAPRecord[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
@@ -666,7 +668,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
       loadData();
     } else {
       setSyncStatus('failed');
-      alert('Instabilidade de rede detectada. Os dados foram retidos em fila offline para sincronização.');
+      toast.warning('Instabilidade de rede detectada. Os dados foram retidos em fila offline para sincronização.');
     }
   };
 
@@ -771,7 +773,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
     }
 
     if (dataToExport.length === 0) {
-      alert('Nenhum dado disponivel para exportar. Verifique os filtros ativos.');
+      toast.info('Nenhum dado disponível para exportar. Verifique os filtros ativos.');
       return;
     }
 
@@ -782,7 +784,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
       XLSX.writeFile(workbook, filename, { bookType: 'xlsx' });
     } catch (err) {
       console.error('Erro ao exportar planilha:', err);
-      alert('Nao foi possivel gerar a planilha. Tente novamente.');
+      toast.error('Não foi possível gerar a planilha. Tente novamente.');
     }
   };
 
@@ -1253,7 +1255,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                               onClick={() => startEditing(r, 'obs')}
                             >
                               <span className="text-slate-600 truncate max-w-[110px]">{r.obs_comprador || '—'}</span>
-                              <Edit3 className="h-3 w-3 text-slate-300 opacity-0 group-hover:opacity-100 ml-1 transition-opacity shrink-0" />
+                              <Edit3 className="h-3 w-3 text-slate-300 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 ml-1 transition-opacity shrink-0" />
                             </div>
                           )}
                         </td>

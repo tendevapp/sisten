@@ -19,6 +19,7 @@ import {
 import RastreioTable, { RASTREIO_COLUMNS, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
+import { useToast } from '../components/ui/Toast';
 
 interface RastreioComprasProps {
   user: Profile;
@@ -31,6 +32,7 @@ const STORAGE_COLS_KEY = 'sisten_rastreio_visible_columns';
 const PAGE_SIZE = 50;
 
 export default function RastreioCompras({ user }: RastreioComprasProps) {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
@@ -217,7 +219,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         <td>${esc(r.status)}</td>
       </tr>`).join('');
     const win = window.open('', '_blank');
-    if (!win) { alert('Permita pop-ups para exportar em PDF.'); return; }
+    if (!win) { toast.warning('Permita pop-ups para exportar em PDF.'); return; }
     win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Rastreio Compras</title>
       <style>
         * { font-family: Arial, Helvetica, sans-serif; }

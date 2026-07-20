@@ -403,7 +403,7 @@ export default function App() {
         />
 
         {/* Dynamic scrollable main pane view */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <Suspense fallback={<ViewLoadingFallback />}>
             {/*
               A chave inclui dataVersion para forçar remontagem quando a sincronização

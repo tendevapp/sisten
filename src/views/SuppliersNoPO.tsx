@@ -1193,7 +1193,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             </p>
           )}
         </div>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
           {/* Filtro PO (Todos / Sem PO / Sem MIGO) */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
@@ -1520,7 +1520,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                       <div className="cursor-pointer group" onClick={() => setSelectedRecordForModal(r)}>
                         <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
                           {r.material_code || '—'}
-                          <ArrowUpRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <ArrowUpRight className="h-3 w-3 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
                         </h4>
                         <p className="text-sm text-slate-700 dark:text-slate-250 mt-1 font-semibold leading-relaxed line-clamp-2">
                           {r.texto_breve || 'Descrição não cadastrada'}

@@ -415,7 +415,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
             </p>
           )}
         </div>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
           <button
             onClick={() => load(true)}
             disabled={loading}
@@ -601,7 +601,50 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
 
           {sortedRows.length > 0 && (
             <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
-              <div className="overflow-x-auto">
+              {/* Mobile: cards (evita scroll horizontal na tabela densa) */}
+              <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {visibleRows.map((r, idx) => (
+                  <div key={`m-${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{r.material}</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{r.txt_breve}</p>
+                      </div>
+                      {r.valor_total !== undefined && (
+                        <span className="shrink-0 text-sm font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{r.fornecedor}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      {r.qtd !== undefined && <span>Qtd: <strong className="text-slate-700 dark:text-slate-300">{r.qtd.toLocaleString('pt-BR')}</strong></span>}
+                      {r.preco_unit !== undefined && <span>Unit: <strong className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unit)}</strong></span>}
+                      {r.doc_compra !== '—' && <span className="font-mono">PO {r.doc_compra}</span>}
+                      {r.data_doc && <span>{formatDateBR(r.data_doc)}</span>}
+                    </div>
+                    {(r.telefone !== '—' || r.email !== '—') && (
+                      <div className="flex flex-col gap-1 pt-1">
+                        {r.telefone !== '—' && (
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                            <a href={`tel:${r.telefone.split(';')[0].trim()}`} className="font-mono font-bold text-slate-700 dark:text-slate-350">{r.telefone.split(';')[0].trim()}</a>
+                            <ClipboardCopyButton text={r.telefone.split(';')[0].trim()} label="telefone" />
+                          </div>
+                        )}
+                        {r.email !== '—' && (
+                          <div className="flex items-center gap-1.5 text-xs min-w-0">
+                            <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                            <a href={`mailto:${r.email}`} className="font-bold text-slate-650 dark:text-slate-355 truncate">{r.email}</a>
+                            <ClipboardCopyButton text={r.email} label="e-mail" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: tabela */}
+              <div className="hidden lg:block overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-955/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">

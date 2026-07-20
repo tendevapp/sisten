@@ -570,6 +570,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         <label className="text-[10px] font-bold text-slate-500">Qtd *</label>
                         <input
                           type="number"
+                          inputMode="numeric"
                           required
                           min={1}
                           value={it.quantity}
@@ -635,6 +636,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         <label className="text-[10px] font-bold text-slate-500">Estimativa (R$)</label>
                         <input
                           type="number"
+                          inputMode="decimal"
                           min={0}
                           placeholder="R$ Estimado"
                           value={it.estimated_value}

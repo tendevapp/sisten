@@ -408,7 +408,60 @@ export default function Materials({ user }: MaterialsProps) {
 
       {/* Materials Results Table */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile: lista em cards */}
+        <div className="lg:hidden divide-y divide-gray-100 dark:divide-slate-800">
+          {isLoading ? (
+            <div className="py-10 text-center text-slate-400">
+              <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Buscando materiais...
+            </div>
+          ) : results.length === 0 ? (
+            <div className="py-10 px-4 text-center text-slate-400 text-sm">
+              Nenhum material correspondente aos filtros. Tente remover termos da busca.
+            </div>
+          ) : (
+            results.map((m) => {
+              const isFav = favorites.includes(m.material_code);
+              return (
+                <div key={m.id} className="p-4">
+                  <div className="flex items-start gap-2">
+                    <button
+                      onClick={() => handleToggleFavorite(m.material_code)}
+                      className="p-1.5 -m-1 focus:outline-none shrink-0"
+                      aria-label={isFav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                    >
+                      <Star className={`h-5 w-5 ${isFav ? 'fill-amber-400 stroke-amber-400' : 'text-slate-300'}`} />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">{m.material_code}</span>
+                        <button
+                          onClick={() => handleCopyCode(m.material_code)}
+                          className="p-1.5 -m-1 text-slate-400 hover:text-slate-600 focus:outline-none shrink-0"
+                          aria-label="Copiar código"
+                        >
+                          {copiedCode === m.material_code
+                            ? <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                        <span className={`ml-auto inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${m.company === 'AG' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                          {m.company}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">{m.unit}</span>
+                      </div>
+                      <p className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-100">{highlightText(m.description, chips)}</p>
+                      {m.technical_text && (
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{highlightText(m.technical_text, chips)}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-gray-100 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">

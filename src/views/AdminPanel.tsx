@@ -13,12 +13,14 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
 import { Profile, Sector, Material } from '../types';
+import { useToast } from '../components/ui/Toast';
 
 interface AdminPanelProps {
   user: Profile;
 }
 
 export default function AdminPanel({ user }: AdminPanelProps) {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<
     'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config'
   >('usuarios');
@@ -1655,7 +1657,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       onClick={() => {
                         const list = buyerGroupsInput.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
                         if (buyerPrimaryGroup && !list.includes(buyerPrimaryGroup.trim().toUpperCase())) {
-                          alert('O grupo principal deve estar presente na lista de grupos.');
+                          toast.warning('O grupo principal deve estar presente na lista de grupos.');
                           return;
                         }
                         localDb.updateBuyerGroups(selectedBuyerId, list, buyerPrimaryGroup.trim().toUpperCase());

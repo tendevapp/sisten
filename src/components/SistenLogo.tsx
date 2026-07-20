@@ -147,9 +147,7 @@ export default function SistenLogo({ className = '', iconOnly = false }: SistenL
       <text
         x="165"
         y="98"
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="1.8"
+        fill="#ffffff"
         fontSize="56"
         fontWeight="800"
         fontFamily="system-ui, -apple-system, sans-serif"
@@ -179,9 +177,7 @@ export default function SistenLogo({ className = '', iconOnly = false }: SistenL
       <text
         x="264"
         y="155"
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="1"
+        fill="#ffffff"
         fontSize="20"
         fontWeight="700"
         fontFamily="system-ui, -apple-system, sans-serif"
