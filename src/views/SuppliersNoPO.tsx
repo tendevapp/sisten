@@ -1708,11 +1708,37 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
 
           {/* VIEW: TABLE (Flat spreadsheet mode) */}
-          {viewMode === 'table' && (
+          {(() => {
+            const visibleTableRis = Array.from(new Set(flatTableItems.map(x => x.item.record.ri)));
+            const allTableRisSelected = visibleTableRis.length > 0 && visibleTableRis.every(ri => selectedRis.has(ri));
+            const someTableRisSelected = visibleTableRis.some(ri => selectedRis.has(ri));
+            const toggleSelectAllTable = () => {
+              setSelectedRis(prev => {
+                const next = new Set(prev);
+                if (allTableRisSelected) {
+                  visibleTableRis.forEach(ri => next.delete(ri));
+                } else {
+                  visibleTableRis.forEach(ri => next.add(ri));
+                }
+                return next;
+              });
+            };
+            return (
+          viewMode === 'table' && (
             <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <table className="min-w-full divide-y divide-slate-150 dark:divide-slate-800 text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
+                    <th className="py-3 px-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={allTableRisSelected}
+                        ref={el => { if (el) el.indeterminate = someTableRisSelected && !allTableRisSelected; }}
+                        onChange={toggleSelectAllTable}
+                        className="cursor-pointer"
+                        aria-label="Selecionar todos os itens visíveis"
+                      />
+                    </th>
                     {tableShowSupplierFirst && <th className="py-3 px-3">Fornecedor</th>}
                     <th className="py-3 px-3">RM / Item</th>
                     <th className="py-3 px-3">PO</th>
@@ -1732,6 +1758,15 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
                     return (
                       <tr key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`} className={`hover:bg-slate-50/50 dark:hover:bg-slate-850/20 align-top transition-colors ${isModified(r.ri, r) ? 'bg-amber-50/15 dark:bg-amber-955/5' : ''}`}>
+                        <td className="py-3 px-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedRis.has(r.ri)}
+                            onChange={() => toggleSelectRi(r.ri)}
+                            className="cursor-pointer"
+                            aria-label={`Selecionar item ${r.item_reqc}`}
+                          />
+                        </td>
                         {/* Column 1: Fornecedor (when focused) */}
                         {tableShowSupplierFirst && (
                           <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
@@ -2010,7 +2045,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 </tbody>
               </table>
             </div>
-          )}
+          ));})()}
 
           {/* Load More Button */}
           {totalFilteredCount > visibleCount && (
