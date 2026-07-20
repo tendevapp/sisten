@@ -1445,6 +1445,28 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
             <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
           </div>
+          {selectedRis.size > 0 && (
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-250 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20">
+              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                {selectedRis.size} {selectedRis.size === 1 ? 'item selecionado' : 'itens selecionados'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearSelection}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all cursor-pointer"
+                >
+                  Limpar seleção
+                </button>
+                <button
+                  onClick={handleSendBulkQuote}
+                  className="px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Enviar Cotação</span>
+                </button>
+              </div>
+            </div>
+          )}
           {filteredGroups.length === 0 && (
             <div className="flex items-center gap-3 p-6 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/50 dark:bg-amber-955/15 text-amber-800 dark:text-amber-300 text-sm font-semibold">
               <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
