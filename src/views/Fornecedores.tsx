@@ -17,10 +17,18 @@ interface FornecedoresProps {
   user: Profile;
 }
 
-type SortField = 'cod_vendor' | 'fornecedor' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
+type SortField = 'cod_vendor' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
 type SortDir = 'asc' | 'desc';
 
 const CLASSIFICACOES = ['Preferencial', 'Aprovado', 'Em avaliação', 'Bloqueado', ''];
+
+// Contatos e telefones podem vir de planilhas importadas usando diferentes
+// separadores (";", ",", "/" ou quebras de linha). Normaliza tudo para uma
+// lista de valores individuais.
+function splitMultiValues(raw?: string | null): string[] {
+  if (!raw) return [];
+  return raw.split(/[;,/\n]+/).map(v => v.trim()).filter(Boolean);
+}
 
 const CLASSIFICACAO_OPTS = [
   { value: '', label: 'Todas classificações' },
@@ -68,6 +76,7 @@ interface CadastroModalProps {
 function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   const [codVendor, setCodVendor] = useState('');
   const [fornecedor, setFornecedor] = useState('');
+  const [nomeContato, setNomeContato] = useState('');
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [emails, setEmails] = useState<string[]>(['']);
@@ -129,6 +138,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
       const payload = {
         cod_vendor: codVendor.trim(),
         fornecedor: fornecedor.trim() || null,
+        nome_contato: nomeContato.trim() || null,
         nome_fantasia: nomeFantasia.trim() || null,
         telefone: telefonesFiltrados || null,
         email: emailsFiltrados || null,
@@ -227,6 +237,20 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
                   value={nomeFantasia}
                   onChange={e => setNomeFantasia(e.target.value)}
                   placeholder="Ex: Nome Fantasia Comercial"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="new_nome_contato" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Contato
+                </label>
+                <input
+                  id="new_nome_contato"
+                  type="text"
+                  value={nomeContato}
+                  onChange={e => setNomeContato(e.target.value)}
+                  placeholder="Ex: Nome do responsável"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
               </div>
@@ -370,19 +394,20 @@ interface EdicaoModalProps {
 
 function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) {
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
+  const [nomeContato, setNomeContato] = useState(supplier.nome_contato || '');
   const [nomeFantasia, setNomeFantasia] = useState(supplier.nome_fantasia || '');
   const [classificacao, setClassificacao] = useState(supplier.classificacao || '');
   
-  // Converte a string de emails com ";" para um array editável
+  // Converte a string de emails (possivelmente com múltiplos valores) em um array editável
   const [emails, setEmails] = useState<string[]>(() => {
-    if (!supplier.email) return [''];
-    return supplier.email.split(';').map(e => e.trim()).filter(Boolean);
+    const parsed = splitMultiValues(supplier.email);
+    return parsed.length ? parsed : [''];
   });
 
-  // Converte a string de telefones com ";" para um array editável
+  // Converte a string de telefones (possivelmente com múltiplos valores) em um array editável
   const [telefones, setTelefones] = useState<string[]>(() => {
-    if (!supplier.telefone) return [''];
-    return supplier.telefone.split(';').map(t => t.trim()).filter(Boolean);
+    const parsed = splitMultiValues(supplier.telefone);
+    return parsed.length ? parsed : [''];
   });
 
   const [saving, setSaving] = useState(false);
@@ -445,6 +470,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
         .from('contatos')
         .update({
           fornecedor: fornecedor.trim() || null,
+          nome_contato: nomeContato.trim() || null,
           nome_fantasia: nomeFantasia.trim() || null,
           telefone: telefonesFiltrados || null,
           email: emailsFiltrados || null,
@@ -541,6 +567,21 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   value={nomeFantasia}
                   onChange={e => setNomeFantasia(e.target.value)}
                   placeholder="Ex: Nome Fantasia Comercial"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="edit_nome_contato" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Contato
+                </label>
+                <input
+                  id="edit_nome_contato"
+                  type="text"
+                  disabled={!canEdit}
+                  value={nomeContato}
+                  onChange={e => setNomeContato(e.target.value)}
+                  placeholder="Ex: Nome do responsável"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
               </div>
@@ -936,6 +977,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       { field: 'cod_vendor', label: 'Cód. Vendor' },
                       { field: 'fornecedor', label: 'Fornecedor' },
                       { field: 'nome_fantasia', label: 'Nome Fantasia' },
+                      { field: 'nome_contato', label: 'Contato' },
                       { field: 'telefone', label: 'Telefone' },
                       { field: 'email', label: 'E-mail' },
                       { field: 'classificacao', label: 'Classificação' },
@@ -960,7 +1002,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                   {loading ? (
                     Array.from({ length: 8 }).map((_, i) => (
                       <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
-                        {Array.from({ length: 6 }).map((_, j) => (
+                        {Array.from({ length: 7 }).map((_, j) => (
                           <td key={j} className="px-4 py-3">
                             <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
                           </td>
@@ -969,7 +1011,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                     ))
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                      <td colSpan={7} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
                         <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                         {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1005,14 +1047,19 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           {row.nome_fantasia || <span className="text-slate-400 font-normal">—</span>}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={row.telefone ? row.telefone.split(';').join(', ') : ''}>
-                          {row.telefone ? row.telefone.split(';').join(', ') : <span className="text-slate-400">—</span>}
+                      <td className="px-4 py-3.5 max-w-[180px]">
+                        <span className="text-sm text-slate-700 dark:text-slate-200 truncate block" title={row.nome_contato || ''}>
+                          {row.nome_contato || <span className="text-slate-400 font-normal">—</span>}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="text-sm text-slate-700 dark:text-slate-200" title={row.email}>
-                          {row.email || <span className="text-slate-400">—</span>}
+                        <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={splitMultiValues(row.telefone).join(', ')}>
+                          {row.telefone ? splitMultiValues(row.telefone).join(', ') : <span className="text-slate-400">—</span>}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="text-sm text-slate-700 dark:text-slate-200" title={splitMultiValues(row.email).join(', ')}>
+                          {row.email ? splitMultiValues(row.email).join(', ') : <span className="text-slate-400">—</span>}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">

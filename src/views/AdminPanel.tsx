@@ -824,11 +824,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     setLastUploadLog(null);
                     setTimeout(() => {
                       try {
-                        const headers = ['N° VENDOR', 'FORNECEDORES', 'TELEFONE', 'E-MAIL', 'CLASSIFICAÇÃO'];
+                        const headers = ['N° VENDOR', 'FORNECEDORES', 'Contato', 'NOME FANTASIA', 'TELEFONE', 'E-MAIL', 'CLASSIFICAÇÃO'];
                         const data = [
-                          ['F900213', 'Metalúrgica Gerdau S.A.', '(11) 98888-7777', 'vendas@gerdau.com.br', 'Parceiro Estratégico'],
-                          ['F800555', 'Alcoa Alumínio Brasil', '(21) 2555-1234', 'comercial@alcoa.com', 'Homologado'],
-                          ['F700333', 'Usiminas S.A.', '(31) 3499-8000', 'atendimento@usiminas.com', 'Preferencial']
+                          ['F900213', 'Metalúrgica Gerdau S.A.', 'Carlos Silva', 'Gerdau', '(11) 98888-7777', 'vendas@gerdau.com.br', 'Parceiro Estratégico'],
+                          ['F800555', 'Alcoa Alumínio Brasil', 'Ana Souza', 'Alcoa', '(21) 2555-1234', 'comercial@alcoa.com', 'Homologado'],
+                          ['F700333', 'Usiminas S.A.', 'João Pereira', 'Usiminas', '(31) 3499-8000', 'atendimento@usiminas.com', 'Preferencial']
                         ];
                         const rawRows = [headers, ...data];
                         localDb.importContatos(rawRows, 'contatos_fornecedores_simulado.xlsx').then(log => {

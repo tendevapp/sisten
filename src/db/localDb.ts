@@ -2745,6 +2745,7 @@ class LocalDatabase {
   private CONTATOS_COLUMNS = [
     { header: 'N° VENDOR', field: 'cod_vendor' },
     { header: 'FORNECEDORES', field: 'fornecedor' },
+    { header: 'Contato', field: 'nome_contato' },
     { header: 'NOME FANTASIA', field: 'nome_fantasia' },
     { header: 'TELEFONE', field: 'telefone' },
     { header: 'E-MAIL', field: 'email' },
@@ -2816,6 +2817,17 @@ class LocalDatabase {
     { header: 'Unidade de medida básica', field: 'unidade_medida_basica' },
     { header: 'UMP', field: 'ump_3' }
   ];
+
+  // Planilhas importadas podem trazer múltiplos e-mails/telefones em uma única
+  // célula usando separadores variados (",", "/", quebra de linha). Normaliza
+  // tudo para o formato "; " usado pelo restante do app (tela de Fornecedores,
+  // Histórico de Pedidos, etc.).
+  private normalizeMultiValue(raw: any): string | null {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+    const parts = value.split(/[;,/\n]+/).map(v => v.trim()).filter(Boolean);
+    return parts.length ? parts.join('; ') : null;
+  }
 
   private reconcileSchema(headers: string[], expectedColumns: { header: string; field: string }[]): {
     mappedFields: (string | null)[];
@@ -3936,6 +3948,8 @@ class LocalDatabase {
     const ignoredRows: any[] = [];
 
     const fornColIdx = mappedFields.findIndex(f => f === 'fornecedor');
+    const contatoColIdx = mappedFields.findIndex(f => f === 'nome_contato');
+    const nomeFantasiaColIdx = mappedFields.findIndex(f => f === 'nome_fantasia');
     const telColIdx = mappedFields.findIndex(f => f === 'telefone');
     const emailColIdx = mappedFields.findIndex(f => f === 'email');
     const classColIdx = mappedFields.findIndex(f => f === 'classificacao');
@@ -3956,8 +3970,10 @@ class LocalDatabase {
       dbRows.push({
         cod_vendor: codVendor,
         fornecedor: fornColIdx !== -1 ? String(row[fornColIdx] || '').trim() : null,
-        telefone: telColIdx !== -1 ? String(row[telColIdx] || '').trim() : null,
-        email: emailColIdx !== -1 ? String(row[emailColIdx] || '').trim() : null,
+        nome_contato: contatoColIdx !== -1 ? String(row[contatoColIdx] || '').trim() : null,
+        nome_fantasia: nomeFantasiaColIdx !== -1 ? String(row[nomeFantasiaColIdx] || '').trim() : null,
+        telefone: telColIdx !== -1 ? this.normalizeMultiValue(row[telColIdx]) : null,
+        email: emailColIdx !== -1 ? this.normalizeMultiValue(row[emailColIdx]) : null,
         classificacao: classColIdx !== -1 ? String(row[classColIdx] || '').trim() : null,
         updated_at: new Date().toISOString()
       });

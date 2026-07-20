@@ -355,6 +355,7 @@ export interface ContatoFornecedor {
   id: string;
   cod_vendor: string;
   fornecedor?: string;
+  nome_contato?: string;
   nome_fantasia?: string;
   telefone?: string;
   email?: string;
