@@ -2229,14 +2229,32 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       )}
 
       {/* Texto da Cotação gerado */}
-      {quoteModal && (
+      {(() => {
+        if (!quoteModal) return null;
+        const suppliersInvolved = quoteModal.toSupplier ? [quoteModal.toSupplier] : quoteModal.bccSuppliers;
+        const warnings: { rm: string; itemLabel: string; fornecedor: string; userName: string; createdAt: string }[] = [];
+        quoteModal.items.forEach(({ record, rm }) => {
+          suppliersInvolved.forEach(f => {
+            const hist = cotacaoHistoricoByKey.get(historicoKey(record.ri, f.cod_forn));
+            if (hist && hist.length > 0) {
+              warnings.push({
+                rm,
+                itemLabel: `Item ${record.item_reqc}`,
+                fornecedor: f.fornecedor,
+                userName: hist[0].user_name,
+                createdAt: hist[0].created_at
+              });
+            }
+          });
+        });
+        return (
         <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-3xl shadow-xl overflow-hidden animate-scale-up flex flex-col max-h-[85vh]">
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <Send className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
                 <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm truncate">
-                  Cotação — {quoteModal.supplier.fornecedor}
+                  {quoteModal.title}
                 </h3>
               </div>
               <button
@@ -2247,6 +2265,25 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {warnings.length > 0 && (
+              <div className="mx-5 mt-4 p-3 rounded-xl border border-amber-250 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  <span>Cotação já enviada anteriormente para {warnings.length === 1 ? 'este item/fornecedor' : 'estes itens/fornecedores'}:</span>
+                </div>
+                <ul className="pl-5 list-disc space-y-0.5">
+                  {warnings.slice(0, 5).map((w, idx) => (
+                    <li key={idx}>
+                      RM {w.rm} / {w.itemLabel} → {w.fornecedor} — enviado por {w.userName} em {new Date(w.createdAt).toLocaleString('pt-BR')}
+                    </li>
+                  ))}
+                </ul>
+                {warnings.length > 5 && (
+                  <p className="pl-5 italic">+ {warnings.length - 5} outras</p>
+                )}
+              </div>
+            )}
 
             <div className="p-5 overflow-y-auto flex-1">
               <textarea
@@ -2279,10 +2316,41 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               </button>
               <button
                 onClick={() => {
-                  const supplierEmail = quoteModal.supplier.email !== '—' ? quoteModal.supplier.email : '';
                   const subject = `Cotação RM ${quoteModal.rms.join(', ')}`;
-                  const mailtoUrl = `mailto:${encodeURIComponent(supplierEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                  let mailtoUrl: string;
+                  const suppliersSent = quoteModal.toSupplier ? [quoteModal.toSupplier] : quoteModal.bccSuppliers;
+                  if (quoteModal.toSupplier) {
+                    const supplierEmail = quoteModal.toSupplier.email !== '—' ? quoteModal.toSupplier.email : '';
+                    mailtoUrl = `mailto:${encodeURIComponent(supplierEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                  } else {
+                    const bccEmails = quoteModal.bccSuppliers.map(f => f.email).filter(e => e && e !== '—');
+                    mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccEmails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(quoteModal.text)}`;
+                  }
                   window.location.href = mailtoUrl;
+
+                  const historyEntries = quoteModal.items.flatMap(({ record, rm }) =>
+                    suppliersSent
+                      .filter(f => f.cod_forn && f.cod_forn !== '—')
+                      .map(f => ({ ri: record.ri, rm, codForn: f.cod_forn, fornecedorNome: f.fornecedor }))
+                  );
+                  if (historyEntries.length > 0) {
+                    localDb.logCotacaoEnviada(historyEntries);
+                    setCotacaoHistoricoByKey(prev => {
+                      const next = new Map(prev);
+                      const nowIso = new Date().toISOString();
+                      const userName = user?.name || 'Sistema';
+                      historyEntries.forEach(e => {
+                        const key = historicoKey(e.ri, e.codForn);
+                        const list = next.get(key) ? [...next.get(key)!] : [];
+                        list.unshift({ id: 'local', ri: e.ri, rm: e.rm, cod_forn: e.codForn, fornecedor_nome: e.fornecedorNome, user_name: userName, created_at: nowIso });
+                        next.set(key, list);
+                      });
+                      return next;
+                    });
+                  }
+
+                  setQuoteModal(null);
+                  clearSelection();
                 }}
                 title="Abre o cliente de e-mail padrão (ex: Outlook) com o texto preenchido. Cotações muito longas podem ser truncadas pelo limite de tamanho do mailto."
                 className="px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
@@ -2291,7 +2359,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 <span>Abrir no Outlook</span>
               </button>
               {(() => {
-                const waNumber = extractWhatsAppNumber(quoteModal.supplier.telefone);
+                const waNumber = quoteModal.toSupplier ? extractWhatsAppNumber(quoteModal.toSupplier.telefone) : null;
                 return (
                   <button
                     onClick={() => {
@@ -2315,7 +2383,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             </div>
           </div>
         </div>
-      )}
+      );})()}
 
       {/* Modal Universal de Detalhes SAP */}
       {selectedRecordForModal && (
