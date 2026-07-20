@@ -15,7 +15,8 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import {
   Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
-  FornecedorMaterialRow, SAPObsHistory, ItemStatus, RastreioPrioridade
+  FornecedorMaterialRow, SAPObsHistory, ItemStatus, RastreioPrioridade,
+  CotacaoHistoricoEntry
 } from '../types';
 import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
 import SapDetailModal from '../components/SapDetailModal';
@@ -139,6 +140,10 @@ const normalizeCode = (c: any): string => {
   const stripped = s.replace(/^0+/, '');
   return stripped.length > 0 ? stripped : (s.length > 0 ? '0' : '');
 };
+
+// Chave de agrupamento do histórico de cotação enviada: um item (ri) pode já
+// ter sido cotado para um fornecedor e não para outro.
+const historicoKey = (ri: string, codForn: string): string => `${ri}|${codForn}`;
 
 const formatPreco = (v?: number | null): string =>
   v === undefined || v === null || isNaN(v)
@@ -271,6 +276,24 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
   const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
   const [quoteModal, setQuoteModal] = useState<{ supplier: FornecedorMaterialRow; text: string; rms: string[]; items: QuoteItemEntry[] } | null>(null);
+
+  // Seleção múltipla de itens para envio de cotação em lote (checkbox na
+  // tabela e nos cards, compartilhada entre os dois modos de visualização).
+  const [selectedRis, setSelectedRis] = useState<Set<string>>(new Set());
+
+  const toggleSelectRi = useCallback((ri: string) => {
+    setSelectedRis(prev => {
+      const next = new Set(prev);
+      if (next.has(ri)) next.delete(ri); else next.add(ri);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedRis(new Set()), []);
+
+  // Histórico de cotações já enviadas, por item+fornecedor (ri|cod_forn),
+  // usado para avisar o comprador na tela de texto da cotação.
+  const [cotacaoHistoricoByKey, setCotacaoHistoricoByKey] = useState<Map<string, CotacaoHistoricoEntry[]>>(new Map());
 
   // Modos de Visualização: 'cards' | 'table'
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
@@ -470,6 +493,35 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         }
       } else {
         setTechTextByCode(new Map());
+      }
+
+      // Histórico de cotações já enviadas (item+fornecedor), para avisar o
+      // comprador na tela de texto da cotação quando reabrir um envio.
+      const risForHistory = Array.from(new Set(semPoRecords.map(r => r.ri).filter(Boolean)));
+      if (risForHistory.length > 0 && supabase) {
+        try {
+          const historyMap = new Map<string, CotacaoHistoricoEntry[]>();
+          for (let i = 0; i < risForHistory.length; i += 200) {
+            const { data, error } = await supabase
+              .from('cotacao_historico')
+              .select('id, ri, rm, cod_forn, fornecedor_nome, user_name, created_at')
+              .in('ri', risForHistory.slice(i, i + 200));
+            if (error) throw error;
+            (data || []).forEach((row: any) => {
+              const key = historicoKey(row.ri, row.cod_forn);
+              const list = historyMap.get(key) || [];
+              list.push(row as CotacaoHistoricoEntry);
+              historyMap.set(key, list);
+            });
+          }
+          historyMap.forEach(list => list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+          setCotacaoHistoricoByKey(historyMap);
+        } catch (err) {
+          console.warn('Falha ao buscar histórico de cotações enviadas:', err);
+          setCotacaoHistoricoByKey(new Map());
+        }
+      } else {
+        setCotacaoHistoricoByKey(new Map());
       }
 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
