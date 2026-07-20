@@ -2699,6 +2699,39 @@ class LocalDatabase {
     return this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []).filter(h => h.ri === ri);
   }
 
+  // Grava, de forma assíncrona (fire-and-forget, mesmo padrão de
+  // updateBuyerFields), um registro de envio de cotação por item+fornecedor.
+  // Log append-only: usado só para avisar o comprador "cotação já enviada
+  // antes" na tela de texto da cotação, não bloqueia nem precisa de retorno.
+  public logCotacaoEnviada(entries: { ri: string; rm: string; codForn: string; fornecedorNome: string }[]): void {
+    if (entries.length === 0) return;
+
+    const user = this.getCurrentUser();
+    const userId = user?.id || 'sistema';
+    const userName = user?.name || 'Sistema';
+    const nowIso = new Date().toISOString();
+
+    const rows = entries.map(e => ({
+      id: 'ch_' + Math.random().toString(36).substr(2, 9),
+      ri: e.ri,
+      rm: e.rm,
+      cod_forn: e.codForn,
+      fornecedor_nome: e.fornecedorNome,
+      user_id: userId,
+      user_name: userName,
+      created_at: nowIso
+    }));
+
+    (async () => {
+      try {
+        const { error } = await supabase.from('cotacao_historico').insert(rows);
+        if (error) throw error;
+      } catch (e) {
+        console.error('Erro ao gravar histórico de cotação enviada no Supabase:', e);
+      }
+    })();
+  }
+
   // Schema tolerant columns definitions
   private ME5A_COLUMNS = [
     { header: 'Tipo de documento', field: 'tipo_de_documento' },
