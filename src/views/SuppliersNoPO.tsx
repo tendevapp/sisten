@@ -275,7 +275,18 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
   const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
-  const [quoteModal, setQuoteModal] = useState<{ supplier: FornecedorMaterialRow; text: string; rms: string[]; items: QuoteItemEntry[] } | null>(null);
+  // toSupplier: envio direto a um único fornecedor (campo "Para"). bccSuppliers:
+  // lista de fornecedores em cópia oculta (fluxo "todos os fornecedores do
+  // item" e fluxo em lote). Os dois fluxos são mutuamente exclusivos: quando
+  // toSupplier está definido, bccSuppliers é ignorado no envio.
+  const [quoteModal, setQuoteModal] = useState<{
+    title: string;
+    toSupplier?: FornecedorMaterialRow;
+    bccSuppliers: FornecedorMaterialRow[];
+    text: string;
+    rms: string[];
+    items: QuoteItemEntry[];
+  } | null>(null);
 
   // Seleção múltipla de itens para envio de cotação em lote (checkbox na
   // tabela e nos cards, compartilhada entre os dois modos de visualização).
@@ -381,18 +392,66 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }
 
     const rms = Array.from(new Set(items.map(it => it.rm).filter(Boolean)));
-    setQuoteModal({ supplier, text: buildQuoteText(items, techTextByCode), rms, items });
+    setQuoteModal({
+      title: `Cotação — ${supplier.fornecedor}`,
+      toSupplier: supplier,
+      bccSuppliers: [],
+      text: buildQuoteText(items, techTextByCode),
+      rms,
+      items
+    });
     setQuoteChoicePending(null);
   };
 
-  // Ação "Cotação" por item (visão por RM / cards): abre o Outlook com todos os e-mails
-  // de fornecedores históricos do item em cópia oculta (BCC), sem escolher um fornecedor específico.
+  // Ação "Cotação" por item (visão por RM / cards): abre a tela de prévia do
+  // texto com todos os fornecedores históricos do item em cópia oculta (BCC),
+  // sem escolher um fornecedor específico. Passa pelo mesmo modal de prévia
+  // (quoteModal) para que o aviso de "cotação já enviada" e o registro de
+  // histórico funcionem aqui também.
   const handleSendItemQuoteToAllSuppliers = (record: EnrichedSAPRecord, rm: string, fornecedores: FornecedorMaterialRow[]) => {
-    const bccEmails = Array.from(new Set(fornecedores.map(f => f.email).filter(e => e && e !== '—')));
-    const text = buildQuoteText([{ record, rm }], techTextByCode);
-    const subject = `Cotação RM ${rm}`;
-    const mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccEmails.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
-    window.location.href = mailtoUrl;
+    const bccSuppliers = fornecedores.filter(f => f.email && f.email !== '—');
+    const items: QuoteItemEntry[] = [{ record, rm }];
+    setQuoteModal({
+      title: `Cotação — RM ${rm} / Item ${record.item_reqc}`,
+      toSupplier: undefined,
+      bccSuppliers,
+      text: buildQuoteText(items, techTextByCode),
+      rms: [rm],
+      items
+    });
+  };
+
+  // Envio em lote: monta um único texto de cotação para todos os itens
+  // marcados por checkbox (em qualquer modo de visualização), com BCC sendo
+  // a união dos fornecedores históricos de todos esses itens. Varre
+  // rawRmGroups (não os itens filtrados) para não perder itens selecionados
+  // que tenham saído do filtro/busca ativos depois de marcados.
+  const handleSendBulkQuote = () => {
+    if (selectedRis.size === 0) return;
+
+    const items: QuoteItemEntry[] = [];
+    const supplierByCod = new Map<string, FornecedorMaterialRow>();
+    rawRmGroups.forEach(g => {
+      g.items.forEach(it => {
+        if (!selectedRis.has(it.record.ri)) return;
+        items.push({ record: it.record, rm: g.rm });
+        it.fornecedores.forEach(f => {
+          if (f.email && f.email !== '—' && f.cod_forn && f.cod_forn !== '—') {
+            supplierByCod.set(f.cod_forn, f);
+          }
+        });
+      });
+    });
+
+    const rms = Array.from(new Set(items.map(it => it.rm).filter(Boolean)));
+    setQuoteModal({
+      title: `Cotação — ${items.length} ${items.length === 1 ? 'item selecionado' : 'itens selecionados'}`,
+      toSupplier: undefined,
+      bccSuppliers: Array.from(supplierByCod.values()),
+      text: buildQuoteText(items, techTextByCode),
+      rms,
+      items
+    });
   };
 
   // Estado para controle de edição inline de cada item
