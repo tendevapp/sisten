@@ -402,6 +402,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     setLoading(true);
     setError(null);
     try {
+      // No refresh manual (botão "Atualizar"), roda o sync completo (gated por
+      // dataset_versions) para pegar PROs/status novos de uma importação SAP
+      // recente sem depender de um novo login — sem isso, o botão só atualizava
+      // os campos do comprador e a PO recém-importada continuava "Sem PO" até
+      // o usuário deslogar/logar de novo.
+      if (force) {
+        await localDb.syncFromSupabase();
+      }
       // Atualiza status/previsão de entrega/observação com o que está no
       // Supabase antes de montar a tela, para refletir edições feitas por
       // outros usuários (que não disparam um sync completo do dataset).

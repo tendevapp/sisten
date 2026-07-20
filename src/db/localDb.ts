@@ -455,6 +455,29 @@ class LocalDatabase {
     }
   }
 
+  // Recalcula as materialized views derivadas de pedidosforn (mv_historico_pedidos e
+  // mv_pedido_atual_por_ri, via a RPC refresh_historico_pedidos). É chamada logo após
+  // toda importação SAP que grava em pedidosforn, ANTES de reidratar as views enriquecidas
+  // e de bumpar as versões dos datasets — se isso falhar silenciosamente, os clientes
+  // acabam cacheando a versão nova do dataset com dados antigos da mat view (PO some/não
+  // aparece até a próxima importação). Por isso tenta de novo uma vez e, se persistir,
+  // propaga o erro em vez de deixar a importação seguir com cache desatualizado para todos.
+  private async refreshPedidosMatViews(): Promise<void> {
+    if (!supabase) return;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const { error } = await supabase.rpc('refresh_historico_pedidos');
+        if (error) throw error;
+        return;
+      } catch (err) {
+        if (attempt === 2) {
+          throw new Error(`Falha ao recalcular as materialized views de pedidos (refresh_historico_pedidos) após ${attempt} tentativas: ${err}`);
+        }
+        console.warn(`Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos). Tentando novamente...`, err);
+      }
+    }
+  }
+
   // Check and run seeds
   private initialize() {
     // 1. Sectors
@@ -3462,11 +3485,7 @@ class LocalDatabase {
       // mesmo corte de data usado na sincronização periódica (sem ele, cada
       // importação rebaixava as tabelas inteiras: ~66 mil e ~61 mil linhas).
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
-      try {
-        await supabase.rpc('refresh_historico_pedidos');
-      } catch (err) {
-        console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
-      }
+      await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
 
       const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
@@ -3868,11 +3887,7 @@ class LocalDatabase {
       // inteiras: ~66 mil e ~61 mil linhas a cada importação).
       onProgress?.(95, 'Sincronizando cache local...');
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
-      try {
-        await supabase.rpc('refresh_historico_pedidos');
-      } catch (err) {
-        console.warn('Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos).', err);
-      }
+      await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
 
       // pedidosforn alimenta view_enriched_pedidos/view_enriched_requisicoes (status_requisicao,

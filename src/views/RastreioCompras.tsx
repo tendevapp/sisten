@@ -79,6 +79,11 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     setError(null);
     try {
       if (force) {
+        // Roda o sync completo (gated por dataset_versions) para pegar POs/status
+        // novos de uma importação SAP recente sem depender de um novo login — sem
+        // isso, "Atualizar" só puxava os campos do comprador e uma PO recém-
+        // importada continuava "Sem PO" até o usuário deslogar/logar de novo.
+        try { await localDb.syncFromSupabase(); } catch (e) { console.warn('Falha ao sincronizar dataset completo:', e); }
         // Reflete edições de obs/status/previsão feitas no Painel SAP por outros
         // usuários (que não disparam um sync completo do dataset).
         try { await localDb.refreshBuyerFieldsFromSupabase(); } catch (e) { console.warn('Falha ao atualizar campos do comprador:', e); }
