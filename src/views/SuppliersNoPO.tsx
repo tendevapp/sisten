@@ -1466,6 +1466,13 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                       {/* Meta header */}
                       <div className="flex items-center justify-between flex-wrap gap-1.5">
                         <div className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedRis.has(r.ri)}
+                            onChange={() => toggleSelectRi(r.ri)}
+                            className="cursor-pointer"
+                            aria-label={`Selecionar item ${r.item_reqc}`}
+                          />
                           <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
                           <span className="text-[10px] text-slate-350">•</span>
                           <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
