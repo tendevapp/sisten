@@ -20,6 +20,7 @@ import {
 } from '../types';
 import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
 import SapDetailModal from '../components/SapDetailModal';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 
 interface SuppliersNoPOProps {
   user: Profile;
@@ -260,6 +261,24 @@ const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) =>
   );
 });
 
+/**
+ * Descarta valores marcados que saíram da lista de opções — acontece quando os
+ * filtros são dependentes e outro filtro selecionado depois restringe o conjunto.
+ * Sem isso a listagem ficaria vazia por causa de um valor invisível na UI.
+ */
+function useSaneamento(
+  selecionados: Set<string>,
+  setSelecionados: React.Dispatch<React.SetStateAction<Set<string>>>,
+  disponiveis: Set<string> | string[],
+) {
+  useEffect(() => {
+    if (selecionados.size === 0) return;
+    const validos = Array.isArray(disponiveis) ? new Set(disponiveis) : disponiveis;
+    const restantes = Array.from(selecionados).filter(v => validos.has(v));
+    if (restantes.length !== selecionados.size) setSelecionados(new Set(restantes));
+  }, [disponiveis, selecionados, setSelecionados]);
+}
+
 export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) {
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
@@ -329,12 +348,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [buyerFilter, setBuyerFilter] = useState('Todos');
-  const [statusFilter, setStatusFilter] = useState('Todos');
-  const [alertFilter, setAlertFilter] = useState('Todos');
+  // Filtros de seleção múltipla: conjunto vazio = sem restrição ("Todos").
+  const [rmFilter, setRmFilter] = useState<Set<string>>(new Set());
+  const [buyerFilter, setBuyerFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
-  const [prioridadeFilter, setPrioridadeFilter] = useState<'Todos' | '1' | '2' | '3' | '4' | '5' | 'Nenhuma'>('Todos');
+  const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
   const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
@@ -348,7 +369,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, buyerFilter, statusFilter, alertFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
+  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -747,24 +768,59 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }, 400);
   };
 
-  // Opções de filtro
-  const buyerOptions = useMemo(() => {
-    const s = new Set<string>();
-    rmGroups.forEach(g => g.items.forEach(it => { if (it.record.grupo_comprador) s.add(it.record.grupo_comprador); }));
-    return Array.from(s).sort();
-  }, [rmGroups]);
+  // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
+  // ativos (menos o próprio), então escolher um comprador restringe as RMs exibidas,
+  // escolher uma RM restringe os compradores, e assim por diante.
+  const { rmOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions } = useMemo(() => {
+    type Campo = 'rm' | 'buyer' | 'status' | 'alert' | 'prioridade';
+    const passa = (rm: string, it: RMGroup['items'][number], exceto: Campo) => {
+      const r = it.record;
+      if (exceto !== 'rm' && rmFilter.size > 0 && !rmFilter.has(rm)) return false;
+      if (exceto !== 'buyer' && buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
+      if (exceto !== 'status' && statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
+      if (exceto !== 'alert' && alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
+      if (exceto !== 'prioridade' && prioridadeFilter.size > 0) {
+        const nivel = prioridadesMap.get(r.ri)?.nivel;
+        if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
+      }
+      return true;
+    };
 
-  const statusOptions = useMemo(() => {
-    const s = new Set<string>();
-    rmGroups.forEach(g => g.items.forEach(it => { if (it.record.status_atualizado) s.add(it.record.status_atualizado); }));
-    return Array.from(s).sort();
-  }, [rmGroups]);
+    const rms = new Set<string>();
+    const buyers = new Set<string>();
+    const statuses = new Set<string>();
+    const alerts = new Set<string>();
+    const prioridades = new Set<string>();
 
-  const alertOptions = useMemo(() => {
-    const s = new Set<string>();
-    rmGroups.forEach(g => g.items.forEach(it => { if (it.record.alerta) s.add(it.record.alerta); }));
-    return Array.from(s).sort();
-  }, [rmGroups]);
+    rmGroups.forEach(g => g.items.forEach(it => {
+      const r = it.record;
+      if (g.rm && passa(g.rm, it, 'rm')) rms.add(g.rm);
+      if (r.grupo_comprador && passa(g.rm, it, 'buyer')) buyers.add(r.grupo_comprador);
+      if (r.status_atualizado && passa(g.rm, it, 'status')) statuses.add(r.status_atualizado);
+      if (r.alerta && passa(g.rm, it, 'alert')) alerts.add(r.alerta);
+      if (passa(g.rm, it, 'prioridade')) {
+        const nivel = prioridadesMap.get(r.ri)?.nivel;
+        prioridades.add(nivel === undefined ? 'Nenhuma' : String(nivel));
+      }
+    }));
+
+    return {
+      rmOptions: Array.from(rms).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+      buyerOptions: Array.from(buyers).sort(),
+      statusOptions: Array.from(statuses).sort(),
+      alertOptions: Array.from(alerts).sort(),
+      // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
+      prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
+    };
+  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
+
+  // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
+  // selecionado depois), ele é descartado em vez de zerar a listagem.
+  useSaneamento(rmFilter, setRmFilter, rmOptions);
+  useSaneamento(buyerFilter, setBuyerFilter, buyerOptions);
+  useSaneamento(statusFilter, setStatusFilter, statusOptions);
+  useSaneamento(alertFilter, setAlertFilter, alertOptions);
+  useSaneamento(prioridadeFilter, setPrioridadeFilter, prioridadeOptions);
 
   // Itens "Sem PO" sempre antes dos que já possuem PO (Processado), preservando a ordem
   // original entre itens do mesmo status.
@@ -775,15 +831,16 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     const q = searchQuery.trim().toLowerCase();
     const result: RMGroup[] = [];
     rmGroups.forEach(g => {
+      if (rmFilter.size > 0 && !rmFilter.has(g.rm)) return;
       const rmMatchesSearch = q ? g.rm.toLowerCase().includes(q) : false;
       const items = g.items.filter(it => {
         const r = it.record;
-        if (buyerFilter !== 'Todos' && r.grupo_comprador !== buyerFilter) return false;
-        if (statusFilter !== 'Todos' && r.status_atualizado !== statusFilter) return false;
-        if (alertFilter !== 'Todos' && r.alerta !== alertFilter) return false;
-        if (prioridadeFilter !== 'Todos') {
+        if (buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
+        if (statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
+        if (alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
+        if (prioridadeFilter.size > 0) {
           const nivel = prioridadesMap.get(r.ri)?.nivel;
-          if (prioridadeFilter === 'Nenhuma' ? nivel !== undefined : String(nivel) !== prioridadeFilter) return false;
+          if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
         }
         if (q) {
           const inRecord =
@@ -805,7 +862,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
+  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1360,55 +1417,49 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             onSearch={handleSearch}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[130px]">
-              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
-              <select
-                value={buyerFilter}
-                onChange={(e) => setBuyerFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
-              >
-                <option value="Todos">Comprador: Todos</option>
-                {buyerOptions.map(g => <option key={g} value={g}>Grupo {g}</option>)}
-              </select>
-            </div>
-            <div className="relative min-w-[130px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-55 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
-              >
-                <option value="Todos">Status: Todos</option>
-                {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="relative min-w-[130px]">
-              <AlertTriangle className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
-              <select
-                value={alertFilter}
-                onChange={(e) => setAlertFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
-              >
-                <option value="Todos">Alertas: Todos</option>
-                {alertOptions.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="relative min-w-[150px]">
-              <Flag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
-              <select
-                value={prioridadeFilter}
-                onChange={(e) => setPrioridadeFilter(e.target.value as typeof prioridadeFilter)}
-                className="w-full pl-8 pr-8 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none transition-all"
-              >
-                <option value="Todos">Prioridade: Todas</option>
-                <option value="5">Grau 5</option>
-                <option value="4">Grau 4</option>
-                <option value="3">Grau 3</option>
-                <option value="2">Grau 2</option>
-                <option value="1">Grau 1</option>
-                <option value="Nenhuma">Sem solicitação</option>
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="RM"
+              icon={FileText}
+              allLabel="Todas"
+              options={rmOptions}
+              selected={rmFilter}
+              onChange={setRmFilter}
+            />
+            <MultiSelectFilter
+              label="Comprador"
+              icon={User}
+              options={buyerOptions}
+              selected={buyerFilter}
+              onChange={setBuyerFilter}
+              renderOption={g => `Grupo ${g}`}
+              className="min-w-[140px]"
+            />
+            <MultiSelectFilter
+              label="Status"
+              icon={Filter}
+              options={statusOptions}
+              selected={statusFilter}
+              onChange={setStatusFilter}
+              className="min-w-[140px]"
+            />
+            <MultiSelectFilter
+              label="Alertas"
+              icon={AlertTriangle}
+              options={alertOptions}
+              selected={alertFilter}
+              onChange={setAlertFilter}
+              className="min-w-[140px]"
+            />
+            <MultiSelectFilter
+              label="Prioridade"
+              icon={Flag}
+              allLabel="Todas"
+              options={prioridadeOptions}
+              selected={prioridadeFilter}
+              onChange={setPrioridadeFilter}
+              renderOption={n => (n === 'Nenhuma' ? 'Sem solicitação' : `Grau ${n}`)}
+              searchable={false}
+            />
           </div>
         </div>
       </div>
