@@ -2345,17 +2345,11 @@ class LocalDatabase {
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
-    // status_processamento 'B' só indica "bloqueada aguardando liberação" quando a
-    // requisição ainda NÃO tem PO (status_requisicao 'Sem PO'). Em requisições já
-    // processadas (com PO) o mesmo código 'B' aparece por outro motivo (praticamente
-    // todas as "Processado" trazem 'B'), então o filtro não pode ser global — senão
-    // some com os itens já processados da tela inteira (Todos/Sem MIGO).
-    const reqs = this.getRequisicoes().filter(r => {
-      if (r.codigo_de_eliminacao) return false;
-      const raw = r as any;
-      if (raw.status_requisicao === 'Sem PO' && raw.status_processamento === 'B') return false;
-      return true;
-    });
+    // Itens com status_processamento 'B' ("Sem PO") já foram escondidos daqui por
+    // serem lidos como "bloqueada aguardando liberação". Na prática o ME5A traz o
+    // campo `pedido` preenchido em todos eles — é o ZL0132 que ainda não chegou —
+    // e o comprador precisa enxergá-los, então só a eliminação exclui o registro.
+    const reqs = this.getRequisicoes().filter(r => !r.codigo_de_eliminacao);
     const peds = this.getPedidos();
     const pedsMap = new Map(peds.map(p => [p.ri, p]));
 
@@ -2733,6 +2727,18 @@ class LocalDatabase {
   }
 
   // Schema tolerant columns definitions
+  // Apelido usado na aplicação -> coluna crua do ME5A/Supabase. Usado na
+  // reimportação para manter os dois lados em sincronia (ver importME5ARaw).
+  private ME5A_ALIASES: Array<[string, string]> = [
+    ['tipo_documento', 'tipo_de_documento'],
+    ['requisitante_name', 'requisitante'],
+    ['material_code', 'material'],
+    ['unidade_medida', 'unidade_de_medida'],
+    ['grupo_comprador', 'grupo_de_compradores'],
+    ['data_solicitacao', 'data_da_solicitacao'],
+    ['data_remessa', 'remessas_de_ate'],
+  ];
+
   private ME5A_COLUMNS = [
     { header: 'Tipo de documento', field: 'tipo_de_documento' },
     { header: 'Requisição de compra', field: 'requisicao_de_compra' },
@@ -3054,14 +3060,23 @@ class LocalDatabase {
           });
         }
 
-        newReqsMap.set(ri, {
+        const merged: any = {
           ...existing,
           ...record,
           qtd_requisicao: record.qtd_solicitada,
           presente_ultima_carga: true,
           eliminado: isEliminated,
           campos_extras: { ...existing.campos_extras, ...campos_extras }
+        };
+        // O registro existente carrega os apelidos normalizados (grupo_comprador,
+        // material_code, ...) e sobrevive ao spread do `record`, que traz apenas os
+        // nomes crus do SAP. Como a gravação prioriza o apelido, um valor alterado
+        // no ME5A — típico do grupo de compradores, que muda de dono — seria
+        // descartado. Por isso os apelidos são redefinidos a cada importação.
+        this.ME5A_ALIASES.forEach(([alias, raw]) => {
+          if (raw in record) merged[alias] = record[raw];
         });
+        newReqsMap.set(ri, merged);
         updated++;
       } else {
         newReqsMap.set(ri, {
