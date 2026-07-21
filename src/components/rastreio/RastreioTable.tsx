@@ -14,23 +14,22 @@ export interface ColumnOption {
   label: string;
   align?: 'left' | 'right';
   sortable?: boolean;
-  // Largura (table-fixed) e classe de visibilidade responsiva, para caber todas
-  // as colunas sem scroll lateral: colunas de menor prioridade somem em telas
-  // menores; o detalhe completo fica no modal.
+  // Largura proporcional (table-fixed). Nenhuma coluna é escondida em telas
+  // pequenas: como na Central de Compras, a tabela mantém todas as colunas e o
+  // container rola horizontalmente (min-width na <table>).
   width: string;
-  cls?: string;
 }
 
 export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'rm', label: 'RM', sortable: true, width: 'w-[9%]' },
   { id: 'po', label: 'PO', sortable: true, width: 'w-[9%]' },
   { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[24%]' },
-  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[15%]', cls: 'hidden sm:table-cell' },
-  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[11%]', cls: 'hidden xl:table-cell' },
-  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]', cls: 'hidden xl:table-cell' },
-  { id: 'dataCriacao', label: 'Criação', sortable: true, width: 'w-[8%]', cls: 'hidden xl:table-cell' },
-  { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]', cls: 'hidden md:table-cell' },
-  { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]', cls: 'hidden md:table-cell' },
+  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[15%]' },
+  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[11%]' },
+  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]' },
+  { id: 'dataCriacao', label: 'Criação', sortable: true, width: 'w-[8%]' },
+  { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]' },
+  { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]' },
   { id: 'status', label: 'Status', sortable: true, width: 'w-[12%]' },
 ];
 
@@ -49,14 +48,14 @@ const ITEM_STATUS_STYLE: Record<string, string> = {
 const DEFAULT_STATUS_STYLE = 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600';
 
 const SortableTh = ({
-  col, label, align = 'left', width, cls, sortColumn, sortDir, onSort,
+  col, label, align = 'left', width, sortColumn, sortDir, onSort,
 }: {
-  col: string; label: string; align?: 'left' | 'right'; width: string; cls?: string;
+  col: string; label: string; align?: 'left' | 'right'; width: string;
   sortColumn: string | null; sortDir: SortDir; onSort: (col: string) => void;
 }) => {
   const active = sortColumn === col;
   return (
-    <th className={`px-2 py-2 font-black ${width} ${cls || ''} ${align === 'right' ? 'text-right' : 'text-left'}`}>
+    <th className={`px-2 py-2 font-black ${width} ${align === 'right' ? 'text-right' : 'text-left'}`}>
       <button
         onClick={() => onSort(col)}
         className={`inline-flex items-center gap-0.5 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer max-w-full ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
@@ -85,14 +84,14 @@ interface RastreioTableProps {
 export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort, onOpenRow, unreadRis }: RastreioTableProps) {
   const cols = RASTREIO_COLUMNS.filter(c => visibleColumns[c.id]);
   return (
-    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
-      <table className="w-full table-fixed text-[11px]">
+    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto bg-white dark:bg-slate-900 shadow-xs">
+      <table className="w-full min-w-[1100px] table-fixed text-[11px]">
         <thead>
           <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
             {cols.map(col => (
               col.sortable
-                ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} cls={col.cls} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
-                : <th key={col.id} className={`px-2 py-2 font-black ${col.width} ${col.cls || ''}`}>{col.label}</th>
+                ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
+                : <th key={col.id} className={`px-2 py-2 font-black ${col.width}`}>{col.label}</th>
             ))}
             <th className="w-[44px] px-2 py-2" aria-label="Ações" />
           </tr>
@@ -122,21 +121,21 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                   </td>
                 )}
                 {visibleColumns.fornecedor && (
-                  <td className="hidden sm:table-cell px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold truncate" title={r.fornecedor}>{r.fornecedor}</td>
+                  <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold truncate" title={r.fornecedor}>{r.fornecedor}</td>
                 )}
                 {visibleColumns.setor && (
-                  <td className="hidden xl:table-cell px-2 py-1.5 text-slate-600 dark:text-slate-400 truncate" title={r.setor}>{r.setor}</td>
+                  <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 truncate" title={r.setor}>{r.setor}</td>
                 )}
                 {visibleColumns.qtd && (
-                  <td className="hidden xl:table-cell px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate">
+                  <td className="px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate">
                     {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
                   </td>
                 )}
                 {visibleColumns.dataCriacao && (
-                  <td className="hidden xl:table-cell px-2 py-1.5 text-slate-550 dark:text-slate-400 truncate">{formatDateBR(r.dataCriacao)}</td>
+                  <td className="px-2 py-1.5 text-slate-550 dark:text-slate-400 truncate">{formatDateBR(r.dataCriacao)}</td>
                 )}
                 {visibleColumns.dataPrevista && (
-                  <td className="hidden md:table-cell px-2 py-1.5 truncate">
+                  <td className="px-2 py-1.5 truncate">
                     <span className="inline-flex items-center gap-1">
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DELIVERY_STATUS_META[delivery].dot}`} />
                       <span className="text-slate-600 dark:text-slate-300">{formatDateBR(r.dataPrevista)}</span>
@@ -144,7 +143,7 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                   </td>
                 )}
                 {visibleColumns.dataEntrega && (
-                  <td className="hidden md:table-cell px-2 py-1.5 truncate font-medium text-emerald-600 dark:text-emerald-400">{formatDateBR(r.dataEntrega)}</td>
+                  <td className="px-2 py-1.5 truncate font-medium text-emerald-600 dark:text-emerald-400">{formatDateBR(r.dataEntrega)}</td>
                 )}
                 {visibleColumns.status && (
                   <td className="px-2 py-1.5">
