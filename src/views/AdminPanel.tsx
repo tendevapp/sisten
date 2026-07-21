@@ -401,7 +401,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 onClick={async () => {
                   setSyncing(true);
                   try {
-                    await localDb.syncFromSupabase();
+                    await localDb.syncFromSupabase(true);
                   } catch (err) {
                     console.error('Falha de sincronização explícita no painel admin:', err);
                   } finally {

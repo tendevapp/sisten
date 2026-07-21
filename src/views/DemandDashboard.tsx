@@ -43,7 +43,7 @@ export default function DemandDashboard() {
   const refresh = useCallback(async () => {
     setSyncing(true);
     try {
-      await localDb.syncFromSupabase();
+      await localDb.syncFromSupabase(true);
     } catch (err) {
       console.error('Falha ao sincronizar demandas:', err);
     } finally {

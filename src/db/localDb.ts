@@ -136,7 +136,14 @@ class LocalDatabase {
   // Cada tabela é sincronizada de forma independente e em paralelo (Promise.allSettled):
   // uma falha isolada (ex.: uma view indisponível) não deve mais abortar a sincronização
   // das demais tabelas, e o tempo total passa a ser o da tabela mais lenta, não a soma de todas.
-  public async syncFromSupabase(): Promise<void> {
+  /**
+   * @param force Ignora o gate de versão e rebaixa as bases pesadas mesmo que o
+   * carimbo local esteja igual ao remoto. Usado pelos botões "Atualizar" das
+   * telas: sem isso o clique não trazia nada quando a versão não havia mudado —
+   * e o usuário não tinha como escapar de um cache local corrompido ou de um
+   * dado corrigido no banco sem passar por uma reimportação.
+   */
+  public async syncFromSupabase(force = false): Promise<void> {
     if (!supabase) {
       console.warn('Sincronização com o Supabase ignorada: cliente não inicializado.');
       return;
@@ -149,7 +156,10 @@ class LocalDatabase {
     }
 
     if (this.syncPromise) {
-      return this.syncPromise;
+      // Num sync forçado, espera o que está em andamento (pode ser um sync
+      // gated, que não baixaria nada) e só então roda o download completo.
+      if (!force) return this.syncPromise;
+      await this.syncPromise.catch(() => {});
     }
 
     this.syncPromise = (async () => {
@@ -165,7 +175,7 @@ class LocalDatabase {
         // já estiver na versão corrente, não baixa nada.
         const gated = (dataset: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
           const storageKey = this.storageKeyFor(dataset);
-          if (!this.needsSync(dataset, storageKey, markers)) {
+          if (!force && !this.needsSync(dataset, storageKey, markers)) {
             console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
             return;
           }
