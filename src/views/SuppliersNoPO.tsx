@@ -31,6 +31,12 @@ interface ItemNode {
   record: EnrichedSAPRecord;
   encontrado: boolean;
   fornecedores: FornecedorMaterialRow[];
+  /**
+   * Fornecedor com quem o PO foi fechado (itens já processados, visão Sem MIGO).
+   * Nesses itens o histórico do material não interessa — o comprador precisa
+   * falar com quem tem o pedido para cobrar a entrega/MIGO.
+   */
+  poFornecedor?: FornecedorMaterialRow;
 }
 
 interface RMGroup {
@@ -140,6 +146,31 @@ const normalizeCode = (c: any): string => {
   const s = String(c ?? '').trim();
   const stripped = s.replace(/^0+/, '');
   return stripped.length > 0 ? stripped : (s.length > 0 ? '0' : '');
+};
+
+// Monta a ficha do fornecedor com quem o PO foi fechado. Nome e código vêm do
+// próprio pedido (não do histórico do material) e o contato é resolvido no
+// cadastro local, tolerando diferença de zeros à esquerda no código.
+const buildPoFornecedor = (
+  r: EnrichedSAPRecord,
+  contatos: Map<string, ContatoFornecedor>
+): FornecedorMaterialRow => {
+  const code = String(r.fornecedor_code || '').trim();
+  const contato = code
+    ? (contatos.get(code) || contatos.get(normalizeCode(code)) || contatos.get(code.padStart(10, '0')))
+    : undefined;
+  return {
+    cod_forn: code || '—',
+    fornecedor: r.fornecedor_name || contato?.fornecedor || '—',
+    nome_fantasia: contato?.nome_fantasia || '—',
+    cnpj: '—',
+    regiao_uf: '—',
+    telefone: contato?.telefone || '—',
+    email: contato?.email || '—',
+    classificacao: contato?.classificacao || '—',
+    ultima_data: r.data_pedido || '—',
+    data_migo: r.data_migo || undefined
+  };
 };
 
 // Chave de agrupamento do histórico de cotação enviada: um item (ri) pode já
@@ -606,6 +637,13 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
+      // Cadastro local de contatos, usado tanto pelo histórico (Sem PO) quanto
+      // pela ficha do fornecedor do PO (itens já processados / Sem MIGO).
+      const contatosMap = new Map<string, ContatoFornecedor>();
+      localDb.getContatosForn().forEach(c => {
+        if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
+      });
+
       if (codeVariants.size > 0 && supabase) {
         // A view vw_historico_fornecedores_sem_po (fornecedor + pedido + contato +
         // MIGO, CRF = 'x') não existe no banco — busca-se direto na tabela
@@ -630,11 +668,6 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           console.warn('Falha ao buscar histórico de fornecedores (Sem PO).', netErr);
           linhasHistorico = [];
         }
-
-        const contatosMap = new Map<string, ContatoFornecedor>();
-        localDb.getContatosForn().forEach(c => {
-          if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
-        });
 
         // Filtra linhas do histórico relevantes para os materiais desta pagina
         const linhasPorNorm = new Map<string, HistoricoPedidoView[]>();
@@ -696,7 +729,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         const fornecedores = isSemPo
           ? (fornecedoresPorMaterial.get(normalizeCode(record.material_code)) || [])
           : [];
-        const node: ItemNode = { record, encontrado: fornecedores.length > 0, fornecedores };
+        const poFornecedor = !isSemPo && (record.fornecedor_code || record.fornecedor_name)
+          ? buildPoFornecedor(record, contatosMap)
+          : undefined;
+        const node: ItemNode = { record, encontrado: fornecedores.length > 0, fornecedores, poFornecedor };
         const rm = record.requisicao_de_compra || '—';
         if (!rmMap.has(rm)) { rmMap.set(rm, []); rmOrder.push(rm); }
         rmMap.get(rm)!.push(node);
@@ -1141,7 +1177,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Bloco com os dados do Pedido de Compra (PO) já emitido para o item — usado no lugar do
   // histórico de fornecedores quando o item já possui PO (ex.: itens "Sem MIGO").
-  const renderPOInfoBlock = (r: EnrichedSAPRecord) => (
+  const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow) => (
     <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="font-extrabold text-slate-850 dark:text-slate-200">PO {r.documento_compra || '—'}</span>
@@ -1152,9 +1188,33 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         )}
       </div>
       <p className="text-slate-700 dark:text-slate-300 font-bold break-words">
-        {r.fornecedor_name || 'Fornecedor não identificado'}
+        {r.fornecedor_name || poForn?.fornecedor || 'Fornecedor não identificado'}
         {r.fornecedor_code && <span className="text-slate-450 dark:text-slate-500 font-semibold"> ({r.fornecedor_code})</span>}
+        {poForn?.nome_fantasia && poForn.nome_fantasia !== '—' && (
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+            Fantasia: {poForn.nome_fantasia}
+          </span>
+        )}
       </p>
+      {/* Contato do fornecedor do PO: é com ele que o comprador cobra a entrega/MIGO. */}
+      {poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {poForn.telefone !== '—' && poForn.telefone.split(';').map(t => t.trim()).filter(Boolean).map((tel, telIdx) => (
+            <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
+              <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+              <a href={`tel:${tel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${tel}`}>{tel}</a>
+              <ClipboardCopyButton text={tel} label="telefone" />
+            </div>
+          ))}
+          {poForn.email !== '—' && (
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
+              <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+              <a href={`mailto:${poForn.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={poForn.email}>{poForn.email}</a>
+              <ClipboardCopyButton text={poForn.email} label="e-mail" />
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-450 font-semibold">
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
@@ -1528,7 +1588,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           {/* VIEW: CARDS (Default) */}
           {viewMode === 'cards' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores } }) => {
+              {filteredFlatItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor } }) => {
                 const ilvl = alertLevel(r.alerta || '');
                 const alertStyle = ALERT_STYLE[ilvl];
                 const itemSaveStatus = saveStatus[r.ri] || 'idle';
@@ -1601,11 +1661,13 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                             Informações do Pedido de Compra (PO)
                           </span>
-                          {renderPOInfoBlock(r)}
+                          {renderPOInfoBlock(r, poFornecedor)}
                         </div>
                       )}
 
-                      {/* Fornecedores Históricos */}
+                      {/* Fornecedores Históricos — só interessa enquanto o item não tem PO.
+                          Com o pedido fechado, o fornecedor relevante é o do PO acima. */}
+                      {r.status_requisicao !== 'Processado' && (
                       <div className="space-y-1.5 pt-1">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
                           Fornecedores com Histórico ({fornecedores.length})
@@ -1685,6 +1747,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
 
                     {/* Card Actions (Painel SAP Inline - Renomeado para Atualizar Status) */}
@@ -1834,7 +1897,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150 dark:divide-slate-800 text-slate-705 dark:text-slate-350">
-                  {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores }, selectedSupplier }) => {
+                  {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor }, selectedSupplier }) => {
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
                     return (
                       <tr key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`} className={`hover:bg-slate-50/50 dark:hover:bg-slate-850/20 align-top transition-colors ${isModified(r.ri, r) ? 'bg-amber-50/15 dark:bg-amber-955/5' : ''}`}>
@@ -1850,7 +1913,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         {/* Column 1: Fornecedor (when focused) */}
                         {tableShowSupplierFirst && (
                           <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
-                            {!selectedSupplier ? (
+                            {/* Item já comprado: mostra o fornecedor do PO, não o histórico. */}
+                            {!selectedSupplier && r.status_requisicao === 'Processado' ? (
+                              renderPOInfoBlock(r, poFornecedor)
+                            ) : !selectedSupplier ? (
                               <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                 Sem fornecedor
                               </span>
@@ -1960,7 +2026,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         {!tableShowSupplierFirst && (
                           <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
                             {r.status_requisicao === 'Processado' ? (
-                              renderPOInfoBlock(r)
+                              renderPOInfoBlock(r, poFornecedor)
                             ) : !encontrado ? (
                               <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                 Sem fornecedor
