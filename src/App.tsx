@@ -2,6 +2,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
+import { trackLogin, trackPageView } from './lib/usageTracker';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -21,6 +22,7 @@ const SapDashboards = lazy(() => import('./views/SapDashboards'));
 const DemandDashboard = lazy(() => import('./views/DemandDashboard'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
+const UsageDashboard = lazy(() => import('./views/UsageDashboard'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
@@ -53,6 +55,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/admin/permissoes',
   '/admin/importacao-materiais',
   '/admin/helpdesk',
+  '/admin/uso',
   '/suprimentos/importar',
   '/suprimentos/importar/log',
   '/suprimentos/grupos-comprador',
@@ -142,6 +145,7 @@ export default function App() {
             const mapped = { ...profile, roles: profile.roles || [] };
             localDb.setCurrentUser(mapped);
             setUser(mapped);
+            trackLogin(mapped);
             // Sincroniza logo de início se estiver com sessão ativa
             localDb.syncFromSupabase().catch(err => {
               console.error("Falha ao sincronizar cache local com o Supabase:", err);
@@ -176,6 +180,7 @@ export default function App() {
               const mapped = { ...profile, roles: profile.roles || [] };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
+              trackLogin(mapped);
               // Sincroniza ao detectar login com sucesso
               localDb.syncFromSupabase().catch(err => {
                 console.error("Falha ao sincronizar cache local com o Supabase:", err);
@@ -227,6 +232,16 @@ export default function App() {
       }
     };
   }, []);
+
+  // Telemetria de navegação: registra uma visualização de página sempre que a
+  // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
+  useEffect(() => {
+    if (user) {
+      trackPageView(user, currentPath);
+    }
+    // Depende de user?.id (não do objeto user) para não re-registrar a mesma
+    // página quando o objeto de usuário é recriado (edição de perfil, sync).
+  }, [currentPath, user?.id]);
 
   const handleNavigate = (path: string) => {
     window.location.hash = path;
@@ -358,6 +373,12 @@ export default function App() {
 
       case '/relatorios':
         return <Reports user={user} />;
+
+      case '/admin/uso':
+        if (user.roles.includes('admin')) {
+          return <UsageDashboard />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/admin/usuarios':
       case '/admin/setores':

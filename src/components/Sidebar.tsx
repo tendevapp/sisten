@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck,
   Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route, Activity
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -72,6 +72,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     {
       group: 'ADMINISTRAÇÃO',
       items: [
+        { label: 'Uso do App', path: '/admin/uso', icon: Activity, perm: { module: 'admin', action: 'uso' } },
         { label: 'Usuários', path: '/admin/usuarios', icon: Users, perm: { module: 'admin', action: 'usuarios' } },
         { label: 'Setores', path: '/admin/setores', icon: Map, perm: { module: 'admin', action: 'setores' } },
         { label: 'Permissões', path: '/admin/permissoes', icon: Shield, perm: { module: 'admin', action: 'auditoria' } },
