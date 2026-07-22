@@ -213,7 +213,7 @@ export default function DemandDashboard() {
       />
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        <CriticidadeChart records={materiais} />
+        <CriticidadeChart records={filtered} />
         <AreaSolicitanteChart records={filtered} />
       </div>
 

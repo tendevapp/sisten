@@ -27,6 +27,20 @@ export function classifyCriticidade(requisicaoDeCompra: string | null | undefine
   return null;
 }
 
+// Criticidade a partir da `natureza` derivada (tipo_documento) — funciona tanto
+// para materiais (Normal/Urgente/Máquina Parada) quanto para serviços (Serviço -
+// Normal/Urgente/MP), ao contrário de `classifyCriticidade`, que só lê o prefixo
+// 11/12/13 da RM e portanto não distingue urgência de serviço (todos prefixo 17).
+// Mesma regra usada no cálculo de lead time em localDb.ts.
+export function classifyCriticidadeNatureza(natureza: string | null | undefined): Criticidade | null {
+  const n = (natureza || '').toLowerCase();
+  if (!n) return null;
+  if (n.includes('urgente')) return 'urgente';
+  if (n.includes('máquina parada') || n.includes('maquina parada') || /\bmp\b/.test(n)) return 'maquina_parada';
+  if (n.includes('normal')) return 'normal';
+  return null;
+}
+
 export const CRITICIDADE_LABEL: Record<Criticidade, string> = {
   normal: 'Normal',
   urgente: 'Urgente',
@@ -46,9 +60,9 @@ export const DEMANDA_COLORS = {
   pedido: '#059669',      // emerald-600
   aberto: '#dc2626',      // red-600
   acumulado: '#7c3aed',   // violet-600
-  normal: '#059669',      // emerald-600 (mesmo tom de "pedido/ok")
+  normal: '#059669',      // emerald-600
   urgente: '#f59e0b',     // amber-500
-  maquinaParada: '#dc2626', // red-600
+  maquinaParada: '#991b1b', // red-800 (mais escuro que "aberto" red-600, p/ não colidir)
   material: '#059669',    // emerald-600
   servico: '#2563eb',     // blue-600
 } as const;
