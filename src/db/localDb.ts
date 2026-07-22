@@ -648,6 +648,18 @@ class LocalDatabase {
       this.setStorageItem(this.buyerGroupsKey, buyerGroups);
     }
 
+    if (!this.cache.has(this.compradoresKey)) {
+      const seededCompradores: CompradorInfo[] = [
+        { grupo_compras: '314', nome_comprador: 'Comprador 314' },
+        { grupo_compras: '358', nome_comprador: 'Comprador 358' },
+        { grupo_compras: '447', nome_comprador: 'Comprador 447' },
+        { grupo_compras: '575', nome_comprador: 'Comprador 575' },
+        { grupo_compras: '588', nome_comprador: 'Comprador 588' },
+        { grupo_compras: '602', nome_comprador: 'Jamille' }
+      ];
+      this.setStorageItem(this.compradoresKey, seededCompradores);
+    }
+
     // 5. Materials Catalog Seed (exactly 200)
     if (!this.cache.has(this.materialsKey)) {
       this.setStorageItem(this.materialsKey, generateMaterials());
@@ -1344,7 +1356,19 @@ class LocalDatabase {
   // login SAP e e-mail do usuário SISTEN correspondente). Fonte primária para
   // rotear notificações de mensagens ao comprador responsável pelo grupo.
   public getCompradores(): CompradorInfo[] {
-    return this.getStorageItem<CompradorInfo[]>(this.compradoresKey, []);
+    const list = this.getStorageItem<CompradorInfo[]>(this.compradoresKey, [
+      { grupo_compras: '314', nome_comprador: 'Comprador 314' },
+      { grupo_compras: '358', nome_comprador: 'Comprador 358' },
+      { grupo_compras: '447', nome_comprador: 'Comprador 447' },
+      { grupo_compras: '575', nome_comprador: 'Comprador 575' },
+      { grupo_compras: '588', nome_comprador: 'Comprador 588' },
+      { grupo_compras: '602', nome_comprador: 'Jamille' }
+    ]);
+    if (!list.some(c => c.grupo_compras === '602')) {
+      list.push({ grupo_compras: '602', nome_comprador: 'Jamille' });
+      this.setStorageItem(this.compradoresKey, list);
+    }
+    return list;
   }
 
   // Pedidos de priorização feitos sobre itens de compra (Rastreio Compras),

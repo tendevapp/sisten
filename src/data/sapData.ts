@@ -16,7 +16,7 @@ export function generateSAPSeedData(): { requisicoes: SAPRequisicao[]; pedidos: 
     'RAFAEL COSTA', 'JULIA ALVES', 'LUCAS FERREIRA', 'GUSTAVO SILVA'
   ];
 
-  const compradores = ['314', '358', '447', '575', '588'];
+  const compradores = ['314', '358', '447', '575', '588', '602'];
   const tiposDoc = ['ZR01', 'ZR02', 'ZR03', 'ZR11']; // Normal, Urgente, Máquina Parada, Serviço
 
   // Generate 100 requisitions
