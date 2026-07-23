@@ -55,13 +55,8 @@ A Empresa TORRES EÓLICAS DO NORDESTE S/A, inscrita no CNPJ nº 13.892.216/0002-
 
 INSTRUÇÕES ÀS PROPONENTES
 1.1.     Emitir a proposta em nome da TORRES EÓLICAS DO NORDESTE S/A.
-1.2.     Mencionar o número da Carta Convite na proposta e no assunto do e-mail.
-1.3.     A proposta deverá ser apresentada até 48h do recebimento deste e-mail.
+1.2.     A proposta deverá ser apresentada até 48h do recebimento deste e-mail.
 
-MATERIAL/PRODUTO
-`;
-
-const CARTA_CONVITE_FOOTER = `
 CONDIÇÕES DE PARTICIPAÇÃO
 3.1.     Apresentar propostas técnica e comercial em separado;
 3.2.    Especificar de forma técnica e detalhada o produto, material ou serviço;
@@ -71,9 +66,15 @@ CONDIÇÕES DE PARTICIPAÇÃO
 3.6.    Informar condições de pagamento;
 3.7.    Informar prazo de fornecimento;
 3.8.    Mencionar validade da proposta;
-3.9.    Informar Razão Social e CNPJ.
-3.10.                     Informar NCM do item.
+3.9.    Informar Razão Social e CNPJ e regime tributário.
+3.10.  Informar NCM do item.
+3.11.  Redução de base de cálculo.
+3.12.  Se tem Substituição tributária.
 
+MATERIAL/PRODUTO
+`;
+
+const CARTA_CONVITE_FOOTER = `
 APRESENTAÇÃO DE PROPOSTAS E CONDIÇÕES OBRIGATÓRIAS
 4.1.     Propostas recebidas após o encerramento do prazo estabelecido para apresentação serão automaticamente desconsideradas;
 4.2.     Propostas com pendências de informações, sejam técnicas ou comerciais serão automaticamente desclassificadas;
@@ -359,7 +360,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Modos de Visualização: 'cards' | 'table'
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     const saved = localStorage.getItem('sisten_suppliers_view_mode');
-    return (saved === 'cards' || saved === 'table') ? saved : 'cards';
+    return (saved === 'cards' || saved === 'table') ? saved : 'table';
   });
 
   // Salva preferência do modo de visualização
@@ -1337,20 +1338,20 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           {/* View Toggles */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button
-              onClick={() => handleViewModeChange('cards')}
-              className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'cards' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
-              title="Visualização em Cards"
-            >
-              <LayoutGrid className="h-4 w-4" />
-              <span className="hidden sm:inline">Cards</span>
-            </button>
-            <button
               onClick={() => handleViewModeChange('table')}
               className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'table' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
               title="Visualização em Tabela Plana"
             >
               <Table className="h-4 w-4" />
               <span className="hidden sm:inline">Tabela</span>
+            </button>
+            <button
+              onClick={() => handleViewModeChange('cards')}
+              className={`p-2 rounded-lg transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer ${viewMode === 'cards' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Visualização em Cards"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">Cards</span>
             </button>
           </div>
 
