@@ -512,6 +512,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [dateInputState, setDateInputState] = useState<Record<string, string>>({});
   const [statusInputState, setStatusInputState] = useState<Record<string, ItemStatus | ''>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
+  // Salvamento em lote: salva de uma vez todos os itens com edições pendentes.
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<SAPObsHistory[]>([]);
   const [historyCommentDraft, setHistoryCommentDraft] = useState('');
@@ -529,6 +531,17 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
     return currentObs !== originalObs || currentDate !== originalDate || currentStatus !== originalStatus;
   }, [obsInputState, dateInputState, statusInputState]);
+
+  // RIs de todos os itens (em qualquer filtro/visão) com edições ainda não
+  // salvas — base para o botão "Salvar tudo" do topo. Varre rawRmGroups inteiro
+  // para não perder edições em itens que saíram do filtro ativo.
+  const modifiedRis = useMemo(() => {
+    const list: string[] = [];
+    rawRmGroups.forEach(g => g.items.forEach(it => {
+      if (isModified(it.record.ri, it.record)) list.push(it.record.ri);
+    }));
+    return list;
+  }, [rawRmGroups, isModified]);
 
   // Data/hora da última atualização dos dados (última importação/refresh).
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -776,6 +789,38 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         buildSuppliersData();
       }, 1500);
     }, 400);
+  };
+
+  // Salva de uma vez todos os itens com edições pendentes (obs, previsão e
+  // status). Reaproveita updateBuyerFields por item e recarrega a tela uma
+  // única vez ao final.
+  const handleSaveAllFields = () => {
+    const alterados = modifiedRis;
+    if (alterados.length === 0 || bulkSaving) return;
+
+    setBulkSaving(true);
+    setSaveStatus(prev => {
+      const next = { ...prev };
+      alterados.forEach(ri => { next[ri] = 'saving'; });
+      return next;
+    });
+
+    alterados.forEach(ri => {
+      localDb.updateBuyerFields(ri, obsInputState[ri] || '', dateInputState[ri] || '', statusInputState[ri]);
+    });
+
+    setTimeout(() => {
+      setSaveStatus(prev => {
+        const next = { ...prev };
+        alterados.forEach(ri => { next[ri] = 'saved'; });
+        return next;
+      });
+      setTimeout(() => {
+        setBulkSaving(false);
+        // Recarrega os dados locais para refletir o que foi salvo.
+        buildSuppliersData();
+      }, 1200);
+    }, 500);
   };
 
   // Carrega histórico de observações de uma RM/Item específica
@@ -1555,6 +1600,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
             <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
           </div>
+          {modifiedRis.length > 0 && (
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-300 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20">
+              <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                {modifiedRis.length} {modifiedRis.length === 1 ? 'item com alteração não salva' : 'itens com alterações não salvas'}
+              </span>
+              <button
+                onClick={handleSaveAllFields}
+                disabled={bulkSaving}
+                type="button"
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {bulkSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                <span>{bulkSaving ? 'Salvando...' : `Salvar tudo (${modifiedRis.length})`}</span>
+              </button>
+            </div>
+          )}
           {selectedRis.size > 0 && (
             <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-250 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
