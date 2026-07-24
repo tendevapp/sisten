@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { ArrowUp, ArrowDown, ArrowUpDown, MessageSquare } from 'lucide-react';
-import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR } from '../../lib/rastreio';
+import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatBRL } from '../../lib/rastreio';
 
 export type SortDir = 'asc' | 'desc';
 
@@ -23,10 +23,12 @@ export interface ColumnOption {
 export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'rm', label: 'RM', sortable: true, width: 'w-[9%]' },
   { id: 'po', label: 'PO', sortable: true, width: 'w-[9%]' },
-  { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[24%]' },
-  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[15%]' },
-  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[11%]' },
+  { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[20%]' },
+  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[13%]' },
+  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[10%]' },
   { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]' },
+  { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[9%]' },
+  { id: 'valorTotal', label: 'Valor total', align: 'right', sortable: true, width: 'w-[10%]' },
   { id: 'dataCriacao', label: 'Criação', sortable: true, width: 'w-[8%]' },
   { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]' },
   { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]' },
@@ -85,7 +87,7 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
   const cols = RASTREIO_COLUMNS.filter(c => visibleColumns[c.id]);
   return (
     <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto bg-white dark:bg-slate-900 shadow-xs">
-      <table className="w-full min-w-[1100px] table-fixed text-[11px]">
+      <table className="w-full min-w-[1300px] table-fixed text-[11px]">
         <thead>
           <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
             {cols.map(col => (
@@ -129,6 +131,16 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                 {visibleColumns.qtd && (
                   <td className="px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate">
                     {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
+                  </td>
+                )}
+                {visibleColumns.precoUnitario && (
+                  <td className="px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate" title={r.precoUnitario !== undefined ? formatBRL(r.precoUnitario) : undefined}>
+                    {formatBRL(r.precoUnitario)}
+                  </td>
+                )}
+                {visibleColumns.valorTotal && (
+                  <td className="px-2 py-1.5 text-right font-bold text-slate-800 dark:text-slate-200 truncate" title={r.valorTotal !== undefined ? formatBRL(r.valorTotal) : undefined}>
+                    {formatBRL(r.valorTotal)}
                   </td>
                 )}
                 {visibleColumns.dataCriacao && (

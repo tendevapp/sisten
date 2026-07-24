@@ -46,7 +46,7 @@ export function latestPriorityByRi(prioridades: RastreioPrioridade[]): Map<strin
 }
 
 // Uma linha de rastreio = uma requisição/item enriquecido, já mapeado para os
-// campos que a tela exibe. Sem preços/valores — é uma visão não financeira.
+// campos que a tela exibe. Inclui preço do pedido (só em itens já com PO).
 export interface RastreioRow {
   ri: string;
   rm: string;          // requisicao_de_compra
@@ -58,6 +58,8 @@ export interface RastreioRow {
   setor: string;       // area_solicitante / requisitante_name
   qtd?: number;        // qtd_requisicao
   unidade: string;     // unidade_medida
+  precoUnitario?: number; // preço líquido unitário do pedido (só itens com PO)
+  valorTotal?: number;    // valor líquido da linha do pedido em BRL (só itens com PO)
   dataCriacao: string;   // data_pedido / data_solicitacao
   dataPrevista: string;  // data_entrega_prevista / data_entrega_sap
   dataEntrega: string;   // data_migo
@@ -111,6 +113,12 @@ export const formatDateTimeBR = (d?: string | null): string => {
     : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// Formata valor monetário em BRL, com fallback para '—' quando ausente.
+export const formatBRL = (v?: number | null): string =>
+  v === undefined || v === null || isNaN(v)
+    ? EMPTY
+    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 export const yearOf = (d?: string): string => {
   const parsed = parseDate(d);
   return parsed ? String(parsed.getFullYear()) : '';
@@ -131,6 +139,8 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
       setor: txt(r.area_solicitante) !== EMPTY ? txt(r.area_solicitante) : txt(r.requisitante_name),
       qtd: typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
       unidade: txt(r.unidade_medida),
+      precoUnitario: typeof r.preco_unitario === 'number' ? r.preco_unitario : undefined,
+      valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
       dataCriacao: hasValue(txt(r.data_pedido)) ? txt(r.data_pedido) : txt(raw.data_solicitacao),
       // Data prevista = a promessa de entrega inserida pelo comprador na tela
       // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como

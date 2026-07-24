@@ -408,6 +408,14 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
                   </div>
                 </div>
                 <div className="space-y-0.5">
+                  <span className="text-slate-400 dark:text-slate-500 block">Preço Unitário</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{formatPreco(record.preco_unitario)}</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-slate-400 dark:text-slate-500 block">Valor Total</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-450">{formatPreco(record.valor_total)}</span>
+                </div>
+                <div className="space-y-0.5">
                   <span className="text-slate-400 dark:text-slate-500 block">Data Pedido</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {record.data_pedido ? new Date(record.data_pedido).toLocaleDateString('pt-BR') : '—'}

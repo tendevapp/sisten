@@ -1106,6 +1106,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             'Item PO': r.item_pedido || '—',
             'Fornecedor do PO': r.fornecedor_name || '—',
             'Cód. Fornecedor do PO': r.fornecedor_code || '—',
+            'Preço Unitário (R$)': r.preco_unitario ?? '—',
+            'Valor Total (R$)': r.valor_total ?? '—',
             'Data do Pedido': r.data_pedido ? formatDateBR(r.data_pedido) : '—',
             'Data Entrega SAP': r.data_entrega_sap ? formatDateBR(r.data_entrega_sap) : '—',
             'Data MIGO': r.data_migo ? formatDateBR(r.data_migo) : 'Sem MIGO',
@@ -1263,6 +1265,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
       </div>
+      {(r.preco_unitario !== undefined || r.valor_total !== undefined) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-bold">
+          <span className="text-slate-500 dark:text-slate-450">Unit.: <span className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unitario)}</span></span>
+          <span className="text-slate-500 dark:text-slate-450">Total: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(r.valor_total)}</span></span>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-150/50 dark:border-slate-750">
         {renderMigoInfo(r.data_migo || undefined)}
         {r.criado_por_pedido && (

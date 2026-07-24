@@ -259,6 +259,11 @@ export interface EnrichedSAPRecord extends SAPRequisicao {
   criado_por_pedido?: string; // login SAP de quem lançou o PO (ex.: ISANTOS) — usado para atribuir "pedido colocado" ao comprador
   data_entrega_sap?: string;
   data_migo?: string | null;
+  // Preço do pedido, presente só em itens já processados (com PO). Vem do
+  // pedido casado por `ri` (view_enriched_pedidos): preco_unitario = preço
+  // líquido unitário; valor_total = valor líquido da linha em BRL.
+  preco_unitario?: number;
+  valor_total?: number;
   natureza: string;
   status_requisicao: 'Sem PO' | 'Processado';
   lead_time_compras_meta: number;
@@ -281,6 +286,7 @@ export interface SAPPedido {
   criado_por_pedido?: string;
   valor_brl?: number;
   preco_liquido?: number;
+  por?: string; // "Por" (Preiseinheit) do SAP: base de preço. Unitário = preco_liquido / por (vazio = 1).
   campos_extras: Record<string, any>;
 }
 

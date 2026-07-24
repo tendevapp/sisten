@@ -126,6 +126,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         case 'fornecedor': return r.fornecedor.toLowerCase();
         case 'setor': return r.setor.toLowerCase();
         case 'qtd': return r.qtd ?? -Infinity;
+        case 'precoUnitario': return r.precoUnitario ?? -Infinity;
+        case 'valorTotal': return r.valorTotal ?? -Infinity;
         case 'dataCriacao': return parseDate(r.dataCriacao)?.getTime() ?? 0;
         case 'dataPrevista': return parseDate(r.dataPrevista)?.getTime() ?? 0;
         case 'dataEntrega': return parseDate(r.dataEntrega)?.getTime() ?? 0;
@@ -192,6 +194,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       'Setor': r.setor,
       'Quantidade': r.qtd ?? '—',
       'Unidade': r.unidade,
+      'Preço Unit. (R$)': r.precoUnitario ?? '—',
+      'Valor Total (R$)': r.valorTotal ?? '—',
       'Data Criação': formatDateBR(r.dataCriacao),
       'Prev. Entrega': formatDateBR(r.dataPrevista),
       'Entrega (MIGO)': formatDateBR(r.dataEntrega),

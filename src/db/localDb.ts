@@ -2378,6 +2378,16 @@ class LocalDatabase {
     }
   }
 
+  // Preço unitário de um pedido = preço líquido (por base de preço) dividido
+  // pela coluna "Por" do SAP (Preiseinheit). Ex.: preço 177,63 "por" 100 →
+  // 1,7763/unidade. "Por" vazio/ausente/não-numérico é tratado como 1.
+  private precoUnitarioDoPedido(ped?: Partial<SAPPedido>): number | undefined {
+    if (!ped || ped.preco_liquido === undefined || ped.preco_liquido === null || isNaN(ped.preco_liquido)) return undefined;
+    const porNum = Number(String(ped.por ?? '').trim().replace(',', '.'));
+    const divisor = isNaN(porNum) || porNum === 0 ? 1 : porNum;
+    return ped.preco_liquido / divisor;
+  }
+
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
     // Itens com status_processamento 'B' ("Sem PO") já foram escondidos daqui por
     // serem lidos como "bloqueada aguardando liberação". Na prática o ME5A traz o
@@ -2398,6 +2408,9 @@ class LocalDatabase {
       // Só recalcula localmente quando os campos não vêm prontos (modo semente/offline).
       const raw = r as any;
       if (raw.status_requisicao === 'Sem PO' || raw.status_requisicao === 'Processado') {
+        // Preço não vem em view_enriched_requisicoes; casa-se o pedido por `ri`
+        // (view_enriched_pedidos) só para itens já processados (com PO).
+        const ped = raw.status_requisicao === 'Processado' ? pedsMap.get(r.ri) : undefined;
         return {
           ...r,
           item_pedido: raw.item_pedido,
@@ -2408,6 +2421,8 @@ class LocalDatabase {
           documento_compra: raw.documento_compra,
           criado_por_pedido: raw.criado_por_pedido,
           data_migo: raw.data_migo,
+          preco_unitario: this.precoUnitarioDoPedido(ped),
+          valor_total: ped ? ped.valor_brl : undefined,
           natureza: raw.natureza,
           status_requisicao: raw.status_requisicao,
           lead_time_compras_meta: raw.lead_time_compras_meta,
@@ -2526,6 +2541,8 @@ class LocalDatabase {
         documento_compra: p.documento_compra || r.pedido || null,
         criado_por_pedido: (p as any).criado_por_pedido,
         data_migo,
+        preco_unitario: hasPO ? this.precoUnitarioDoPedido(p) : undefined,
+        valor_total: hasPO ? p.valor_brl : undefined,
         natureza,
         status_requisicao,
         lead_time_compras_meta,
@@ -2876,7 +2893,7 @@ class LocalDatabase {
     { header: 'Itm', field: 'itm_liberacao' },
     { header: 'Criado por', field: 'criado_por_liberacao' },
     { header: 'Qtd.pedido', field: 'qtd_pedido' },
-    { header: 'por', field: 'por_unidade' },
+    { header: 'por', field: 'por' },
     { header: 'Qtd.fornecida', field: 'qtd_fornecida' },
     { header: 'CRF', field: 'crf' },
     { header: 'UMP', field: 'ump_1' },

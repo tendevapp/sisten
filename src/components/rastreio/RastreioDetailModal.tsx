@@ -7,11 +7,12 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   X, Send, MessageSquare, Loader2, Package, Building2, MapPin, Calendar,
   Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle, History, Flag, Check,
+  CircleDollarSign,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, RastreioMensagem, RastreioPrioridade, SAPObsHistory } from '../../types';
 import {
-  RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR,
+  RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR, formatBRL,
   PRIORITY_LEVELS, priorityMeta, latestPriorityByRi,
 } from '../../lib/rastreio';
 
@@ -203,6 +204,14 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <Field label="Fornecedor" icon={Truck}>{row.fornecedor}</Field>
             <Field label="Setor" icon={Building2}>{row.setor}</Field>
             <Field label="Quantidade" icon={Package}>{row.qtd !== undefined ? `${row.qtd.toLocaleString('pt-BR')}${row.unidade !== '—' ? ` ${row.unidade}` : ''}` : '—'}</Field>
+            {row.precoUnitario !== undefined && (
+              <Field label="Preço unit." icon={CircleDollarSign}>{formatBRL(row.precoUnitario)}</Field>
+            )}
+            {row.valorTotal !== undefined && (
+              <Field label="Valor total" icon={CircleDollarSign}>
+                <span className="text-emerald-600 dark:text-emerald-400">{formatBRL(row.valorTotal)}</span>
+              </Field>
+            )}
             <Field label="Status" icon={MapPin}>{row.status}</Field>
             <Field label="Data criação" icon={Calendar}>{formatDateBR(row.dataCriacao)}</Field>
             <Field label="Prev. entrega" icon={Calendar}>{formatDateBR(row.dataPrevista)}</Field>
