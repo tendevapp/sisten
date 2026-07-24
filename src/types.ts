@@ -359,6 +359,7 @@ export interface HistoricoPedidoView {
   qtd_pedido?: number;
   valor_liquido?: number;
   preco_liquido_unit?: number;
+  por?: string; // base de preço do SAP; unitário = preco_liquido_unit / por (vazio = 1)
   // Presentes apenas em vw_historico_fornecedores_sem_po (join com contatos + data_migo do pedido).
   telefone?: string;
   email?: string;

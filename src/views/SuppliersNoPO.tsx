@@ -183,6 +183,15 @@ const formatPreco = (v?: number | null): string =>
     ? '—'
     : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// Preço unitário = preço líquido dividido pela coluna "Por" (Preiseinheit) do
+// SAP. "Por" vazio/nulo/não-numérico/zero é tratado como 1.
+const precoUnitarioPorBase = (preco?: number | null, por?: string | null): number | undefined => {
+  if (preco === undefined || preco === null || isNaN(preco)) return undefined;
+  const porNum = Number(String(por ?? '').trim().replace(',', '.'));
+  const divisor = isNaN(porNum) || porNum === 0 ? 1 : porNum;
+  return preco / divisor;
+};
+
 // Data + hora para o rótulo "Dados atualizados em".
 const formatDateTimeBR = (d?: string | null): string => {
   if (!d) return '—';
@@ -670,7 +679,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           for (let i = 0; i < codesArr.length; i += 200) {
             const { data, error } = await supabase
               .from('pedidosforn')
-              .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, data_migo')
+              .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, por, data_migo')
               .ilike('crf', 'x')
               .in('material', codesArr.slice(i, i + 200));
             if (error) throw error;
@@ -719,7 +728,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               email: contato?.email || '—',
               classificacao: contato?.classificacao || '—',
               ultima_data: l.data_doc || '—',
-              preco_liquido: l.preco_liquido_unit,
+              preco_liquido: precoUnitarioPorBase(l.preco_liquido_unit, l.por),
               data_migo: l.data_migo || undefined
             };
           });
