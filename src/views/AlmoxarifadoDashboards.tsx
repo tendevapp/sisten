@@ -7,8 +7,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, ClasseAbc } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
+import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -47,6 +48,19 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   useEffect(() => { load(false); }, [load]);
 
   const kpi = useMemo(() => calcularKpis(rows), [rows]);
+
+  // Classificação sobre a posição inteira (`rows`), nunca sobre o filtro — ver
+  // classifyABC. O resumo, sim, respeita o filtro vigente.
+  const mapaAbc = useMemo(() => classifyABC(rows), [rows]);
+  const resumoAbc = useMemo(() => resumirAbc(rows, mapaAbc), [rows, mapaAbc]);
+
+  const irParaEstoque = useCallback((query: string) => {
+    onNavigate(`/almoxarifado/estoque?${query}`);
+  }, [onNavigate]);
+
+  const abrirClasseAbc = useCallback((classe: ClasseAbc) => {
+    irParaEstoque(`abc=${classe}`);
+  }, [irParaEstoque]);
 
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
@@ -97,6 +111,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
       {!loading && !error && rows.length > 0 && (
         <>
           <EstoqueKpis kpi={kpi} />
+          <CurvaAbcChart resumo={resumoAbc} onSelecionar={abrirClasseAbc} />
         </>
       )}
     </div>
