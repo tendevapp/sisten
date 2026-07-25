@@ -66,6 +66,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       group: 'ALMOXARIFADO',
       items: [
         { label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, perm: { module: 'almoxarifado', action: 'visualizar' } },
+        { label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, perm: { module: 'almoxarifado', action: 'visualizar' } },
       ],
     },
     {

@@ -31,6 +31,7 @@ const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
+const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -62,6 +63,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/grupos-comprador',
   '/rastreio',
   '/almoxarifado/estoque',
+  '/almoxarifado/dashboards',
 ]);
 
 function ViewLoadingFallback() {
@@ -379,6 +381,12 @@ export default function App() {
       case '/almoxarifado/estoque':
         if (localDb.hasPermission(user, 'almoxarifado', 'visualizar')) {
           return <Estoque user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/dashboards':
+        if (localDb.hasPermission(user, 'almoxarifado', 'visualizar')) {
+          return <AlmoxarifadoDashboards user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
