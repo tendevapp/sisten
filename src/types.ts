@@ -390,6 +390,17 @@ export interface EstoqueItem {
   imported_at?: string;
 }
 
+// Uma linha da view `vw_estoque_analise`: enriquecimento por material da posição
+// de estoque com o último preço efetivamente pago. Agregado no Postgres porque o
+// cache local de `pedidosforn` cobre apenas 2026 e a comparação precisa de todo
+// o histórico.
+export interface EstoqueAnalise {
+  material: string;
+  ultimo_preco_unit?: number | null;
+  data_ultima_compra?: string | null;
+  ultimo_fornecedor?: string | null;
+}
+
 export interface ContatoFornecedor {
   id: string;
   cod_vendor: string;

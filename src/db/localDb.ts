@@ -5,10 +5,10 @@
 
 import { 
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
-  RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
+  RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao,
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
-  RastreioMensagem, RastreioPrioridade, EstoqueItem
+  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -54,6 +54,7 @@ class LocalDatabase {
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
   private estoqueKey = 'sisten_estoque';
+  private estoqueAnaliseKey = 'sisten_estoque_analise';
 
   // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
   // dataset pesado (versão + data da última importação + data do último download).
@@ -2339,6 +2340,30 @@ class LocalDatabase {
     } catch (err) {
       console.warn('Falha ao buscar a posição de estoque; usando cache local.', err);
       return this.getEstoque();
+    }
+  }
+
+  // Enriquecimento por material (último preço pago), lido de vw_estoque_analise.
+  // Mesma política de `fetchEstoque`: busca sob demanda, cache em memória por
+  // sessão, e fora do `syncFromSupabase` para não cobrar egress de quem nunca
+  // abre o módulo. Em falha devolve o cache local — quem consome detecta a lista
+  // vazia e degrada só o painel que depende dela.
+  public getEstoqueAnalise(): EstoqueAnalise[] {
+    return this.getStorageItem<EstoqueAnalise[]>(this.estoqueAnaliseKey, []);
+  }
+
+  public async fetchEstoqueAnalise(force = false): Promise<EstoqueAnalise[]> {
+    if (!supabase) return this.getEstoqueAnalise();
+    if (!force && this.cache.has(this.estoqueAnaliseKey)) {
+      return this.getEstoqueAnalise();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<EstoqueAnalise>('vw_estoque_analise', '*', 1000);
+      this.setStorageItem(this.estoqueAnaliseKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar a análise de estoque; usando cache local.', err);
+      return this.getEstoqueAnalise();
     }
   }
 
