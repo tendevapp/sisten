@@ -7,9 +7,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, ClasseAbc } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, ClasseAbc } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
+import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -53,6 +54,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   // classifyABC. O resumo, sim, respeita o filtro vigente.
   const mapaAbc = useMemo(() => classifyABC(rows), [rows]);
   const resumoAbc = useMemo(() => resumirAbc(rows, mapaAbc), [rows, mapaAbc]);
+  const porDeposito = useMemo(() => agregarPor(rows, 'deposito'), [rows]);
 
   const irParaEstoque = useCallback((query: string) => {
     onNavigate(`/almoxarifado/estoque?${query}`);
@@ -112,6 +114,10 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
         <>
           <EstoqueKpis kpi={kpi} />
           <CurvaAbcChart resumo={resumoAbc} onSelecionar={abrirClasseAbc} />
+          <ValorPorDepositoChart
+            dados={porDeposito}
+            onSelecionar={(dep) => irParaEstoque(`deposito=${encodeURIComponent(dep)}`)}
+          />
         </>
       )}
     </div>
