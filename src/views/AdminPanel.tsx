@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Map, Shield, Upload, Check, X, AlertTriangle, 
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
@@ -46,6 +46,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // SAP ME5A/ZL0132 upload simulation states
   const [sapLogPreview, setSapLogPreview] = useState<any[]>([]);
   const [sapLogs, setSapLogs] = useState<any[]>([]);
+  // A sincronização com o Supabase não garante ordem de retorno; sem isso,
+  // uma carga recém-feita podia aparecer no meio/fim da lista em vez do topo,
+  // dando a falsa impressão de que o log não tinha sido salvo.
+  const sortedSapLogs = useMemo(
+    () => [...sapLogs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [sapLogs]
+  );
   const [sapLogStatus, setSapLogStatus] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
   const [sapProgress, setSapProgress] = useState(0);
   const [sapLogMessage, setSapLogMessage] = useState('');
@@ -706,7 +713,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
               <FileSpreadsheet className="h-5 w-5 text-emerald-700" /> Carga de Dados do SAP e Fornecedores
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              O sistema sincroniza a fila de solicitações e ordens de compra cruzando as requisições abertas (ME5A), ordens de compra emitidas (ZL0132), histórico de compras por fornecedor (PedidosForn) e contatos.
+              O sistema sincroniza a fila de solicitações e ordens de compra cruzando as requisições abertas (ME5A), posição de estoque (ZL0024), histórico de compras por fornecedor (PedidosForn) e contatos.
               Você pode carregar arquivos nos formatos XLSX, XLS ou CSV, ou simular cargas integradas demonstrativas.
             </p>
 
@@ -750,37 +757,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
                   <FileSpreadsheet className="h-4 w-4" /> Alimentar Fila SAP (ME5A)
-                </button>
-
-                <button
-                  onClick={() => {
-                    setSapLogStatus('saving');
-                    setLastUploadLog(null);
-                    setTimeout(() => {
-                      try {
-                        const headers = ['ReqC', 'Item', 'Doc.compra', 'Itm', 'Fornecedor', 'Nome 1', 'Data doc.', 'Dt.remessa', 'Qtd.pedido'];
-                        const data = [
-                          ['1000000123', '00010', '4500123456', '00010', 'F900213', 'Metalúrgica Gerdau S.A.', new Date().toISOString().split('T')[0], new Date(Date.now() + 10 * 24 * 3600 * 1000).toISOString().split('T')[0], 150]
-                        ];
-                        const rawRows = [headers, ...data];
-                        localDb.importZL0132Raw(rawRows, 'sap_export_zl0132_simulado.xlsx').then(log => {
-                          setLastUploadLog(log);
-                          setSapLogStatus('success');
-                          setSapLogError('');
-                          loadData();
-                        }).catch(err => {
-                          setSapLogError(err.message || 'Erro ao simular ZL0132.');
-                          setSapLogStatus('error');
-                        });
-                      } catch (err: any) {
-                        setSapLogError(err.message || 'Erro ao simular ZL0132.');
-                        setSapLogStatus('error');
-                      }
-                    }, 800);
-                  }}
-                  className="rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Vincular Pedidos Emitidos (ZL0132)
                 </button>
 
                 <button
@@ -922,12 +898,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
               </div>
 
-              {/* ZL0132 Upload Card */}
+              {/* ZL0024 Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Transação ZL0132 (Pedidos de Compra)
+                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Transação ZL0024 (Posição de Estoque)
                 </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para cruzar requisições com números de PO emitidos.</p>
+                <p className="text-[10px] text-slate-400">Substitui integralmente a posição de estoque anterior — a última carga é sempre a mais atual.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
@@ -959,7 +935,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
-                            localDb.importZL0132Raw(rawRows, file.name, setSapProgress).then(log => {
+                            localDb.importZL0024Raw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
@@ -972,7 +948,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             setSapLogStatus('error');
                           }
                         };
-                        
+
                         if (fileExtension === 'csv') {
                           r.readAsText(file);
                         } else {
@@ -983,7 +959,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0132</p>
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0024</p>
                 </div>
               </div>
 
@@ -1273,7 +1249,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-600">
-                  {sapLogs.length === 0 ? (
+                  {sortedSapLogs.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="py-12 text-center">
                         <div className="flex flex-col items-center gap-2 text-slate-400">
@@ -1284,7 +1260,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                     </tr>
                   ) : (
-                    sapLogs.map((log) => {
+                    sortedSapLogs.map((log) => {
                       const isExpanded = expandedLogId === log.id;
                       const totalImported = (log.records_inserted || 0) + (log.records_updated || 0);
                       const totalIgnored = (log.ignored_rows?.length || 0);
@@ -1310,6 +1286,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-blue-100 text-blue-800'
                                   : log.type === 'PEDIDOSFORN'
                                   ? 'bg-indigo-100 text-indigo-800'
+                                  : log.type === 'ZL0024'
+                                  ? 'bg-amber-100 text-amber-800'
                                   : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {log.type}
