@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck,
   Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route, Activity
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route, Activity, Boxes
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -60,6 +60,12 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Demandas', path: '/suprimentos/demandas', icon: TrendingUp, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, perm: { module: 'sap', action: 'importar' } },
+      ],
+    },
+    {
+      group: 'ALMOXARIFADO',
+      items: [
+        { label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, perm: { module: 'almoxarifado', action: 'visualizar' } },
       ],
     },
     {

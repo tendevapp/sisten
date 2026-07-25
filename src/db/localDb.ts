@@ -8,7 +8,7 @@ import {
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao, 
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
-  RastreioMensagem, RastreioPrioridade
+  RastreioMensagem, RastreioPrioridade, EstoqueItem
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -53,6 +53,7 @@ class LocalDatabase {
   private sequencesKey = 'sisten_sequences';
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
+  private estoqueKey = 'sisten_estoque';
 
   // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
   // dataset pesado (versão + data da última importação + data do último download).
@@ -1267,14 +1268,15 @@ class LocalDatabase {
         'compras.visualizar_setor'
       ],
       comprador: [
-        'materiais.visualizar', 
-        'solicitacoes.criar', 
+        'materiais.visualizar',
+        'solicitacoes.criar',
         'solicitacoes.visualizar_proprias',
-        'compras.vincular_rm', 
-        'sap.visualizar_painel', 
+        'compras.vincular_rm',
+        'sap.visualizar_painel',
         'sap.editar_campos_comprador',
         'cadastro_sap.atender',
-        'sap.fornecedores'
+        'sap.fornecedores',
+        'almoxarifado.visualizar'
       ],
       coordenador_suprimentos: [
         'materiais.visualizar', 
@@ -1285,10 +1287,11 @@ class LocalDatabase {
         'sap.editar_todos_grupos', 
         'sap.importar', 
         'sap.dashboards', 
-        'sap.gerenciar_grupos', 
+        'sap.gerenciar_grupos',
         'sap.exportar',
         'cadastro_sap.atender',
-        'sap.fornecedores'
+        'sap.fornecedores',
+        'almoxarifado.visualizar'
       ],
       atendente: [
         'materiais.visualizar', 
@@ -2316,6 +2319,29 @@ class LocalDatabase {
     }
   }
 
+  // Posição de estoque (ZL0024). Diferente das views pesadas, a tabela `estoque`
+  // é pequena (~2 mil linhas) e não entra na sincronização periódica: a tela do
+  // Almoxarifado busca sob demanda. Cacheia em memória para não refazer a query
+  // a cada navegação na mesma sessão; `force` (botão "Atualizar") ignora o cache.
+  public getEstoque(): EstoqueItem[] {
+    return this.getStorageItem<EstoqueItem[]>(this.estoqueKey, []);
+  }
+
+  public async fetchEstoque(force = false): Promise<EstoqueItem[]> {
+    if (!supabase) return this.getEstoque();
+    if (!force && this.cache.has(this.estoqueKey)) {
+      return this.getEstoque();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<EstoqueItem>('estoque', '*', 1000);
+      this.setStorageItem(this.estoqueKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar a posição de estoque; usando cache local.', err);
+      return this.getEstoque();
+    }
+  }
+
   // Linhas da view enxuta vw_historico_fornecedores_sem_po (só materiais com
   // requisição "Sem PO" em aberto). Ver comentário de historicoSemPOKey.
   public getHistoricoFornecedoresSemPO(): HistoricoPedidoView[] {
@@ -2863,6 +2889,25 @@ class LocalDatabase {
     { header: 'TELEFONE', field: 'telefone' },
     { header: 'E-MAIL', field: 'email' },
     { header: 'CLASSIFICAÇÃO', field: 'classificacao' }
+  ];
+
+  private ESTOQUE_COLUMNS = [
+    { header: 'Cen.', field: 'centro' },
+    { header: 'Dep.', field: 'deposito' },
+    { header: 'Tipo de material', field: 'tipo_material' },
+    { header: 'Material', field: 'material' },
+    { header: 'Referência Fabricante', field: 'referencia_fabricante' },
+    { header: 'TxtBreveMaterial', field: 'txt_breve_material' },
+    { header: 'Stock UL (Dep)', field: 'quantidade' },
+    { header: 'UMB', field: 'umb' },
+    { header: 'PMM', field: 'preco_medio' },
+    { header: 'Val.Total (depósito)', field: 'valor_total' },
+    { header: 'GrpMercad', field: 'grp_mercad' },
+    { header: 'Class. Item', field: 'class_item' },
+    { header: 'Grupo de mercadorias', field: 'grupo_mercadorias' },
+    { header: 'Grupo de mercadorias', field: 'aplicacao' },
+    { header: 'Texto Pedido Compra', field: 'texto_pedido_compra' },
+    { header: 'Nome 1', field: 'empresa' }
   ];
 
   private ZL0132_COLUMNS = [
@@ -4140,6 +4185,139 @@ class LocalDatabase {
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação de contatos no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // Posição de estoque (ZL0024): é uma foto do momento, não um histórico
+  // incremental — diferente das demais importações SAP, a carga mais recente
+  // é sempre a única fonte de verdade. Por isso substitui o conteúdo inteiro
+  // da tabela (delete + insert) em vez de comparar/mesclar com o que já existe.
+  public async importZL0024Raw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ESTOQUE_COLUMNS);
+
+    const materialColIdx = mappedFields.findIndex(f => f === 'material');
+    if (materialColIdx === -1) {
+      throw new Error('Formato rejeitado: Coluna obrigatória "Material" não encontrada.');
+    }
+
+    const colIdx = (field: string) => mappedFields.findIndex(f => f === field);
+    const centroColIdx = colIdx('centro');
+    const depositoColIdx = colIdx('deposito');
+    const tipoMaterialColIdx = colIdx('tipo_material');
+    const refFabricanteColIdx = colIdx('referencia_fabricante');
+    const txtBreveColIdx = colIdx('txt_breve_material');
+    const quantidadeColIdx = colIdx('quantidade');
+    const umbColIdx = colIdx('umb');
+    const precoMedioColIdx = colIdx('preco_medio');
+    const valorTotalColIdx = colIdx('valor_total');
+    const grpMercadColIdx = colIdx('grp_mercad');
+    const classItemColIdx = colIdx('class_item');
+    const grupoMercadoriasColIdx = colIdx('grupo_mercadorias');
+    const aplicacaoColIdx = colIdx('aplicacao');
+    const textoPedidoCompraColIdx = colIdx('texto_pedido_compra');
+    const empresaColIdx = colIdx('empresa');
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const strAt = (row: any[], idx: number) => idx !== -1 ? String(row[idx] ?? '').trim() || null : null;
+    const numAt = (row: any[], idx: number) => idx !== -1 ? (Number(row[idx]) || 0) : null;
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const material = strAt(row, materialColIdx);
+
+      if (!material) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Material vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        centro: strAt(row, centroColIdx),
+        deposito: strAt(row, depositoColIdx),
+        tipo_material: strAt(row, tipoMaterialColIdx),
+        material,
+        referencia_fabricante: strAt(row, refFabricanteColIdx),
+        txt_breve_material: strAt(row, txtBreveColIdx),
+        quantidade: numAt(row, quantidadeColIdx),
+        umb: strAt(row, umbColIdx),
+        preco_medio: numAt(row, precoMedioColIdx),
+        valor_total: numAt(row, valorTotalColIdx),
+        grp_mercad: strAt(row, grpMercadColIdx),
+        class_item: strAt(row, classItemColIdx),
+        grupo_mercadorias: strAt(row, grupoMercadoriasColIdx),
+        aplicacao: strAt(row, aplicacaoColIdx),
+        texto_pedido_compra: strAt(row, textoPedidoCompraColIdx),
+        empresa: strAt(row, empresaColIdx),
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const { count: previousCount } = await supabase
+        .from('estoque')
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from('estoque').delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from('estoque').insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ZL0024',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Posição de Estoque', `Importou Posição de Estoque ZL0024 (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de posição de estoque (ZL0024) no Supabase:', e);
       throw e;
     }
   }

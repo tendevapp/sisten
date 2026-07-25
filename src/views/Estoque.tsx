@@ -1,0 +1,606 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  Boxes, Search, FileSpreadsheet, AlertCircle, RefreshCw, Filter,
+  Package, DollarSign, Layers, Warehouse, ChevronDown, SlidersHorizontal,
+  ArrowUp, ArrowDown, ArrowUpDown, Clock, PackageCheck, X
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { localDb } from '../db/localDb';
+import { Profile, EstoqueItem } from '../types';
+
+interface EstoqueProps {
+  user: Profile;
+}
+
+type SortDir = 'asc' | 'desc';
+
+interface ColumnOption {
+  id: keyof EstoqueItem;
+  label: string;
+  align?: 'left' | 'right';
+  sortable?: boolean;
+  numeric?: boolean;
+}
+
+// Ordem de exibição das colunas na tabela. `defaultVisible` controla o subconjunto
+// essencial mostrado por padrão; as demais ficam disponíveis em "Personalizar Colunas".
+const COLUMNS: (ColumnOption & { defaultVisible: boolean })[] = [
+  { id: 'material', label: 'Material', sortable: true, defaultVisible: true },
+  { id: 'txt_breve_material', label: 'Descrição', sortable: true, defaultVisible: true },
+  { id: 'deposito', label: 'Depósito', sortable: true, defaultVisible: true },
+  { id: 'quantidade', label: 'Quantidade', align: 'right', sortable: true, numeric: true, defaultVisible: true },
+  { id: 'umb', label: 'UMB', sortable: true, defaultVisible: true },
+  { id: 'preco_medio', label: 'Preço Médio', align: 'right', sortable: true, numeric: true, defaultVisible: true },
+  { id: 'valor_total', label: 'Valor Total', align: 'right', sortable: true, numeric: true, defaultVisible: true },
+  { id: 'centro', label: 'Centro', sortable: true, defaultVisible: false },
+  { id: 'tipo_material', label: 'Tipo Material', sortable: true, defaultVisible: false },
+  { id: 'referencia_fabricante', label: 'Ref. Fabricante', sortable: true, defaultVisible: false },
+  { id: 'grp_mercad', label: 'GrpMercad', sortable: true, defaultVisible: false },
+  { id: 'class_item', label: 'Class. Item', sortable: true, defaultVisible: false },
+  { id: 'grupo_mercadorias', label: 'Grupo Mercadorias', sortable: true, defaultVisible: false },
+  { id: 'aplicacao', label: 'Aplicação', sortable: true, defaultVisible: false },
+  { id: 'texto_pedido_compra', label: 'Texto Pedido Compra', sortable: true, defaultVisible: false },
+  { id: 'empresa', label: 'Empresa', sortable: true, defaultVisible: false },
+];
+
+const STORAGE_COLS_KEY = 'sisten_estoque_visible_columns';
+const PAGE_SIZE = 50;
+
+const formatPreco = (v?: number | null): string =>
+  v === undefined || v === null || isNaN(v)
+    ? '—'
+    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const formatQtd = (v?: number | null): string =>
+  v === undefined || v === null || isNaN(v)
+    ? '—'
+    : v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+
+const formatDateTimeBR = (d?: string | null): string => {
+  if (!d) return '—';
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime())
+    ? String(d)
+    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// Normaliza códigos de material para ordenação numérica ignorando zeros à esquerda.
+const normalizeCode = (c: any): string => {
+  const s = String(c ?? '').trim();
+  const stripped = s.replace(/^0+/, '');
+  return stripped.length > 0 ? stripped : (s.length > 0 ? '0' : '');
+};
+
+// Cabeçalho de coluna com ordenação por clique.
+const SortableTh = ({
+  col, label, align = 'left', sortColumn, sortDir, onSort,
+}: {
+  col: string;
+  label: string;
+  align?: 'left' | 'right';
+  sortColumn: string | null;
+  sortDir: SortDir;
+  onSort: (col: string) => void;
+}) => {
+  const active = sortColumn === col;
+  return (
+    <th className={`px-3 py-2.5 font-black ${align === 'right' ? 'text-right' : 'text-left'}`}>
+      <button
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
+        title={`Ordenar por ${label}`}
+      >
+        <span>{label}</span>
+        {active
+          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600" />}
+      </button>
+    </th>
+  );
+};
+
+export default function Estoque({ user }: EstoqueProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<EstoqueItem[]>([]);
+
+  // Filtros
+  // `searchInput` é o texto digitado; `searchQuery` é o termo efetivamente
+  // aplicado — a busca só filtra ao pressionar Enter ou clicar em "Pesquisar".
+  const [searchInput, setSearchInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [depositoFilter, setDepositoFilter] = useState('Todos');
+  const [tipoFilter, setTipoFilter] = useState('Todos');
+  const [classFilter, setClassFilter] = useState('Todos');
+  const [apenasComSaldo, setApenasComSaldo] = useState(false);
+
+  // Ordenação
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // Colunas visíveis (subconjunto essencial por padrão; mescla com preferências salvas).
+  const [showColMenu, setShowColMenu] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    const defaults = COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: col.defaultVisible }), {} as Record<string, boolean>);
+    const saved = localStorage.getItem(STORAGE_COLS_KEY);
+    if (saved) {
+      try { return { ...defaults, ...JSON.parse(saved) }; } catch {}
+    }
+    return defaults;
+  });
+  useEffect(() => {
+    localStorage.setItem(STORAGE_COLS_KEY, JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const load = useCallback(async (force = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await localDb.fetchEstoque(force);
+      setRows(data);
+    } catch (e: any) {
+      console.error('Erro ao carregar a posição de estoque:', e);
+      setError('Falha ao carregar o estoque. Tente atualizar novamente.');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(false); }, [load]);
+
+  // Data/hora da última importação (imported_at mais recente das linhas).
+  const lastUpdated = useMemo(() => {
+    let max = '';
+    rows.forEach(r => { if (r.imported_at && r.imported_at > max) max = r.imported_at; });
+    return max || null;
+  }, [rows]);
+
+  // Opções de filtro derivadas dos dados.
+  const depositoOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => { if (r.deposito) s.add(r.deposito); });
+    return Array.from(s).sort();
+  }, [rows]);
+
+  const tipoOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => { if (r.tipo_material) s.add(r.tipo_material); });
+    return Array.from(s).sort();
+  }, [rows]);
+
+  const classOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => { if (r.class_item) s.add(r.class_item); });
+    return Array.from(s).sort();
+  }, [rows]);
+
+  // Filtragem por busca, depósito, tipo, classificação e saldo.
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return rows.filter(r => {
+      if (depositoFilter !== 'Todos' && r.deposito !== depositoFilter) return false;
+      if (tipoFilter !== 'Todos' && r.tipo_material !== tipoFilter) return false;
+      if (classFilter !== 'Todos' && r.class_item !== classFilter) return false;
+      if (apenasComSaldo && !((r.quantidade ?? 0) > 0)) return false;
+      if (q) {
+        const hit =
+          (r.material || '').toLowerCase().includes(q) ||
+          (r.txt_breve_material || '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [rows, searchQuery, depositoFilter, tipoFilter, classFilter, apenasComSaldo]);
+
+  // Ordenação: por coluna quando ativa; caso contrário material asc.
+  const sortedRows = useMemo(() => {
+    const arr = [...filteredRows];
+    const colDef = COLUMNS.find(c => c.id === sortColumn);
+    if (sortColumn && colDef) {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      arr.sort((a, b) => {
+        if (colDef.numeric) {
+          const va = (a[sortColumn as keyof EstoqueItem] as number) ?? -Infinity;
+          const vb = (b[sortColumn as keyof EstoqueItem] as number) ?? -Infinity;
+          return (va - vb) * dir;
+        }
+        if (sortColumn === 'material') {
+          return normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true }) * dir;
+        }
+        const va = String(a[sortColumn as keyof EstoqueItem] ?? '').toLowerCase();
+        const vb = String(b[sortColumn as keyof EstoqueItem] ?? '').toLowerCase();
+        return va.localeCompare(vb, 'pt-BR', { numeric: true }) * dir;
+      });
+    } else {
+      arr.sort((a, b) => normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true }));
+    }
+    return arr;
+  }, [filteredRows, sortColumn, sortDir]);
+
+  const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
+
+  // Reinicia a paginação quando filtros/ordenação mudam.
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoFilter, classFilter, apenasComSaldo, sortColumn, sortDir]);
+
+  const handleSearch = () => setSearchQuery(searchInput.trim());
+  const handleClearSearch = () => { setSearchInput(''); setSearchQuery(''); };
+
+  const toggleSort = (col: string) => {
+    if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(col); setSortDir('asc'); }
+  };
+
+  // KPIs.
+  const kpis = useMemo(() => {
+    const materiais = new Set<string>();
+    let qtd = 0;
+    let valor = 0;
+    filteredRows.forEach(r => {
+      if (r.material) materiais.add(normalizeCode(r.material));
+      qtd += r.quantidade || 0;
+      valor += r.valor_total || 0;
+    });
+    return {
+      itens: filteredRows.length,
+      materiais: materiais.size,
+      quantidade: qtd,
+      valor,
+    };
+  }, [filteredRows]);
+
+  const handleExportExcel = () => {
+    if (filteredRows.length === 0) return;
+    const data = filteredRows.map(r => ({
+      'Centro': r.centro ?? '',
+      'Depósito': r.deposito ?? '',
+      'Tipo de Material': r.tipo_material ?? '',
+      'Material': r.material ?? '',
+      'Referência Fabricante': r.referencia_fabricante ?? '',
+      'Descrição': r.txt_breve_material ?? '',
+      'Quantidade': r.quantidade ?? '',
+      'UMB': r.umb ?? '',
+      'Preço Médio': r.preco_medio ?? '',
+      'Valor Total': r.valor_total ?? '',
+      'GrpMercad': r.grp_mercad ?? '',
+      'Class. Item': r.class_item ?? '',
+      'Grupo de Mercadorias': r.grupo_mercadorias ?? '',
+      'Aplicação': r.aplicacao ?? '',
+      'Texto Pedido Compra': r.texto_pedido_compra ?? '',
+      'Empresa': r.empresa ?? '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Estoque');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    XLSX.writeFile(wb, `estoque_${timestamp}.xlsx`);
+  };
+
+  const renderCell = (r: EstoqueItem, colId: keyof EstoqueItem) => {
+    switch (colId) {
+      case 'material':
+        return <span className="font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{r.material || '—'}</span>;
+      case 'quantidade':
+        return formatQtd(r.quantidade);
+      case 'preco_medio':
+        return formatPreco(r.preco_medio);
+      case 'valor_total':
+        return <span className="font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>;
+      default:
+        return (r[colId] as string) || '—';
+    }
+  };
+
+  return (
+    <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
+            <Boxes className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+            Estoque
+          </h2>
+          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
+            Posição atual de estoque por material e depósito, importada da transação ZL0024. Use os filtros, a busca e as colunas personalizáveis para encontrar itens rapidamente.
+          </p>
+          {lastUpdated && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
+              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
+          <button
+            onClick={() => load(true)}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+          </button>
+          {filteredRows.length > 0 && (
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Exportar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* KPIs */}
+      {!loading && !error && rows.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Layers className="h-3 w-3" /> Itens em Estoque</span>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens.toLocaleString('pt-BR')}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Package className="h-3 w-3" /> Materiais</span>
+            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.materiais.toLocaleString('pt-BR')}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500 dark:bg-violet-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><PackageCheck className="h-3 w-3" /> Quantidade Total</span>
+            <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatQtd(kpis.quantidade)}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Valor Total</span>
+            <p className="text-xl font-black text-emerald-600 dark:text-emerald-500 mt-2 leading-tight">{formatPreco(kpis.valor)}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
+        <div className="flex flex-col xl:flex-row gap-3">
+          <div className="flex flex-1 gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+                placeholder="Busque por material ou descrição..."
+                className="w-full pl-10 pr-9 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
+              />
+              {searchInput && (
+                <button
+                  onClick={handleClearSearch}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-150 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={handleSearch}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 whitespace-nowrap"
+            >
+              <Search className="h-3.5 w-3.5" /> Pesquisar
+            </button>
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="flex items-center gap-1.5 px-4 py-2.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+              >
+                <X className="h-3.5 w-3.5" /> Limpar
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[140px]">
+              <Warehouse className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
+              <select
+                value={depositoFilter}
+                onChange={(e) => setDepositoFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Depósito: Todos</option>
+                {depositoOptions.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="relative min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={tipoFilter}
+                onChange={(e) => setTipoFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Tipo: Todos</option>
+                {tipoOptions.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="relative min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Class. Item: Todos</option>
+                {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none whitespace-nowrap">
+              <input
+                type="checkbox"
+                checked={apenasComSaldo}
+                onChange={(e) => setApenasComSaldo(e.target.checked)}
+                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+              />
+              Apenas com saldo
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Loading / erro / vazio */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center p-20 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl space-y-4">
+          <RefreshCw className="h-8 w-8 text-emerald-600 animate-spin" />
+          <span className="text-sm font-bold text-slate-600 dark:text-slate-300">Carregando posição de estoque...</span>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="flex items-center gap-3.5 p-5 border border-rose-200 dark:border-rose-900/50 rounded-xl bg-rose-50/50 dark:bg-rose-955/15 text-rose-800 dark:text-rose-300">
+          <AlertCircle className="h-6 w-6 text-rose-550 shrink-0" />
+          <span className="text-sm font-medium">{error}</span>
+        </div>
+      )}
+
+      {!loading && !error && rows.length === 0 && (
+        <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
+          <Boxes className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-955/30 p-2.5 rounded-full mb-3" />
+          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum item de estoque encontrado</h3>
+          <p className="text-sm text-slate-555 dark:text-slate-455 mt-1 max-w-md">
+            Importe a posição de estoque (transação ZL0024) na aba "Importar SAP" do painel administrativo.
+          </p>
+        </div>
+      )}
+
+      {/* Conteúdo */}
+      {!loading && !error && rows.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
+            <span>Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length.toLocaleString('pt-BR')} itens</span>
+
+            {/* Personalizar colunas */}
+            <div className="relative">
+              {showColMenu && (
+                <div className="fixed inset-0 z-20" onClick={() => setShowColMenu(false)} />
+              )}
+              <button
+                onClick={() => setShowColMenu(!showColMenu)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-705 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all z-30 relative cursor-pointer"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
+                <span>Personalizar Colunas</span>
+                <ChevronDown className="h-3 w-3 text-slate-400" />
+              </button>
+              {showColMenu && (
+                <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 z-30 p-3 text-left">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Colunas Ativas</span>
+                    <button
+                      onClick={() => setVisibleColumns(COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {}))}
+                      className="text-[10px] text-blue-650 hover:underline font-semibold cursor-pointer"
+                    >
+                      Mostrar Todas
+                    </button>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+                    {COLUMNS.map((col) => (
+                      <label
+                        key={col.id}
+                        className="flex items-center space-x-2 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs text-slate-600 dark:text-slate-400 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!visibleColumns[col.id]}
+                          onChange={(e) => setVisibleColumns(prev => ({ ...prev, [col.id]: e.target.checked }))}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                        />
+                        <span className="font-medium">{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {sortedRows.length === 0 && (
+            <div className="flex items-center gap-3 p-6 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/50 dark:bg-amber-955/15 text-amber-800 dark:text-amber-300 text-sm font-semibold">
+              <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+              Nenhum registro coincide com os critérios e filtros aplicados atualmente.
+            </div>
+          )}
+
+          {sortedRows.length > 0 && (
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
+              {/* Mobile: cards (evita scroll horizontal na tabela densa) */}
+              <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                {visibleRows.map((r, idx) => (
+                  <div key={`m-${r.id}-${idx}`} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{r.material || '—'}</p>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{r.txt_breve_material || '—'}</p>
+                      </div>
+                      {r.valor_total !== undefined && (
+                        <span className="shrink-0 text-sm font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>Qtd: <strong className="text-slate-700 dark:text-slate-300">{formatQtd(r.quantidade)}</strong> {r.umb || ''}</span>
+                      {r.preco_medio !== undefined && <span>PMM: <strong className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_medio)}</strong></span>}
+                      {r.deposito && <span className="font-mono">Dep {r.deposito}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: tabela */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-955/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
+                      {COLUMNS.map(col => (
+                        visibleColumns[col.id] && (
+                          <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
+                        )
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
+                    {visibleRows.map((r, idx) => (
+                      <tr key={`${r.id}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
+                        {COLUMNS.map(col => (
+                          visibleColumns[col.id] && (
+                            <td
+                              key={col.id}
+                              className={`px-3 py-2 ${col.align === 'right' ? 'text-right' : 'text-left'} ${col.numeric ? 'font-medium text-slate-700 dark:text-slate-350' : 'text-slate-700 dark:text-slate-300'} ${col.id === 'txt_breve_material' || col.id === 'texto_pedido_compra' || col.id === 'aplicacao' ? 'max-w-[240px] truncate' : ''}`}
+                              title={col.id === 'txt_breve_material' || col.id === 'texto_pedido_compra' || col.id === 'aplicacao' ? String(r[col.id] ?? '') : undefined}
+                            >
+                              {renderCell(r, col.id)}
+                            </td>
+                          )
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Load more */}
+          {visibleCount < sortedRows.length && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all"
+              >
+                <ChevronDown className="h-4 w-4" /> Carregar mais {Math.min(PAGE_SIZE, sortedRows.length - visibleCount)} itens
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

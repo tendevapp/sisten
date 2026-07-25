@@ -312,7 +312,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024';
   user_name: string;
   filename: string;
   records_read: number;
@@ -366,6 +366,28 @@ export interface HistoricoPedidoView {
   classificacao?: string;
   nome_fantasia?: string;
   data_migo?: string | null;
+}
+
+// Uma linha da tabela `estoque` (importação ZL0024 — posição de estoque).
+export interface EstoqueItem {
+  id: number;
+  centro?: string;
+  deposito?: string;
+  tipo_material?: string;
+  material?: string;
+  referencia_fabricante?: string;
+  txt_breve_material?: string;
+  quantidade?: number;
+  umb?: string;
+  preco_medio?: number;
+  valor_total?: number;
+  grp_mercad?: string;
+  class_item?: string;
+  grupo_mercadorias?: string;
+  aplicacao?: string;
+  texto_pedido_compra?: string;
+  empresa?: string;
+  imported_at?: string;
 }
 
 export interface ContatoFornecedor {

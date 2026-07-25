@@ -30,6 +30,7 @@ const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
+const Estoque = lazy(() => import('./views/Estoque'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -60,6 +61,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/importar/log',
   '/suprimentos/grupos-comprador',
   '/rastreio',
+  '/almoxarifado/estoque',
 ]);
 
 function ViewLoadingFallback() {
@@ -373,6 +375,12 @@ export default function App() {
 
       case '/relatorios':
         return <Reports user={user} />;
+
+      case '/almoxarifado/estoque':
+        if (localDb.hasPermission(user, 'almoxarifado', 'visualizar')) {
+          return <Estoque user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/admin/uso':
         if (user.roles.includes('admin')) {
