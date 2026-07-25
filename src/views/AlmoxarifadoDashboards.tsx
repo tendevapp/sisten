@@ -13,6 +13,7 @@ import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
 import ComposicaoChart from '../components/almoxarifado/ComposicaoChart';
 import ConcentracaoChart from '../components/almoxarifado/ConcentracaoChart';
+import TopMateriaisChart from '../components/almoxarifado/TopMateriaisChart';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -147,6 +148,12 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
               dados={porAplicacao}
             />
           </div>
+
+          <TopMateriaisChart
+            itens={rows}
+            mapaAbc={mapaAbc}
+            onSelecionar={(mat) => irParaEstoque(`material=${encodeURIComponent(mat)}`)}
+          />
         </>
       )}
     </div>
