@@ -7,10 +7,12 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, ClasseAbc } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
+import ComposicaoChart from '../components/almoxarifado/ComposicaoChart';
+import ConcentracaoChart from '../components/almoxarifado/ConcentracaoChart';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -55,6 +57,12 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   const mapaAbc = useMemo(() => classifyABC(rows), [rows]);
   const resumoAbc = useMemo(() => resumirAbc(rows, mapaAbc), [rows, mapaAbc]);
   const porDeposito = useMemo(() => agregarPor(rows, 'deposito'), [rows]);
+  const porTipo = useMemo(() => agregarPor(rows, 'tipo_material'), [rows]);
+  const porClasse = useMemo(() => agregarPor(rows, 'class_item', 'Sem classe'), [rows]);
+  // Top 10 mais "Outros": são 113 grupos de mercadoria e 62 aplicações, e o
+  // ranking inteiro seria ilegível.
+  const porGrupo = useMemo(() => topN(agregarPor(rows, 'grupo_mercadorias'), 10), [rows]);
+  const porAplicacao = useMemo(() => topN(agregarPor(rows, 'aplicacao'), 10), [rows]);
 
   const irParaEstoque = useCallback((query: string) => {
     onNavigate(`/almoxarifado/estoque?${query}`);
@@ -118,6 +126,27 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
             dados={porDeposito}
             onSelecionar={(dep) => irParaEstoque(`deposito=${encodeURIComponent(dep)}`)}
           />
+
+          <ComposicaoChart
+            porTipo={porTipo}
+            porClasse={porClasse}
+            onSelecionarTipo={(t) => irParaEstoque(`tipo=${encodeURIComponent(t)}`)}
+            onSelecionarClasse={(c) => irParaEstoque(`classe=${encodeURIComponent(c)}`)}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ConcentracaoChart
+              titulo="Concentração por Grupo de Mercadoria"
+              subtitulo="Top 10 grupos por valor imobilizado; os demais somados em Outros."
+              dados={porGrupo}
+              onSelecionar={(g) => irParaEstoque(`grupo=${encodeURIComponent(g)}`)}
+            />
+            <ConcentracaoChart
+              titulo="Concentração por Aplicação"
+              subtitulo="Top 10 aplicações por valor imobilizado; as demais somadas em Outros."
+              dados={porAplicacao}
+            />
+          </div>
         </>
       )}
     </div>
