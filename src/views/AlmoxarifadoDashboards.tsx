@@ -7,13 +7,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
 import ComposicaoChart from '../components/almoxarifado/ComposicaoChart';
 import ConcentracaoChart from '../components/almoxarifado/ConcentracaoChart';
 import TopMateriaisChart from '../components/almoxarifado/TopMateriaisChart';
+import CompraEvitavelPanel from '../components/almoxarifado/CompraEvitavelPanel';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -106,6 +107,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   // ranking inteiro seria ilegível.
   const porGrupo = useMemo(() => topN(agregarPor(filtrados, 'grupo_mercadorias'), 10), [filtrados]);
   const porAplicacao = useMemo(() => topN(agregarPor(filtrados, 'aplicacao'), 10), [filtrados]);
+  const compraEvitavel = useMemo(() => acharCompraEvitavel(filtrados, requisicoes), [filtrados, requisicoes]);
 
   const selectClass = 'rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-2 px-3 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer';
 
@@ -212,6 +214,10 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
           </div>
 
           <EstoqueKpis kpi={kpi} />
+          <CompraEvitavelPanel
+            dados={compraEvitavel}
+            onSelecionar={(mat) => irParaEstoque(`material=${encodeURIComponent(mat)}`)}
+          />
           <CurvaAbcChart resumo={resumoAbc} onSelecionar={abrirClasseAbc} />
           <ValorPorDepositoChart
             dados={porDeposito}
