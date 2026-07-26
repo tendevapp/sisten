@@ -46,9 +46,18 @@ Servem de referência para validar a implementação.
 | Grupos de mercadoria | 113 |
 | Aplicações | 62 |
 | Curva ABC | A = 254 itens (80% do valor) · B = 529 · C = 1.269 |
-| Materiais com RM aberta e saldo | 50 |
+| Materiais com RM aberta e saldo | 50 (medido na tabela `requisicoes` inteira, na data do design) |
 | Materiais com último preço > PMM + 20% | 135 |
 | Materiais com último preço < PMM − 20% | 522 |
+
+O valor de 50 acima é o medido originalmente para este design, sobre a tabela
+`requisicoes` completa. A regra que o código de fato implementa
+(`localDb.getEnrichedSAPRequisicoes()`, consumida por `acharCompraEvitavel` em
+`src/lib/almoxarifado.ts`) filtra a partir de 2026-01-01, exclui requisições
+com `codigo_de_eliminacao = true` mas **não** exclui `status_processamento =
+'B'` — o que produz **51 materiais** (52 linhas de RM), não 50. O plano de
+implementação já usa 51 como gabarito de verificação da tela; este número
+histórico de design fica registrado aqui só para contexto.
 
 Concentração por depósito, que justifica o painel correspondente: o depósito 0004
 guarda R$ 7,70 M em 1.488 itens, enquanto o 0090 guarda R$ 2,86 M em apenas 30 —

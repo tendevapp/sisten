@@ -12,6 +12,10 @@ interface ComposicaoChartProps {
   porClasse: Agregado[];
   onSelecionarTipo?: (tipo: string) => void;
   onSelecionarClasse?: (classe: string) => void;
+  // Rótulos sintéticos (agregados de campo vazio) que não correspondem a um
+  // valor real de filtro — clicar neles não deve navegar, senão o usuário cai
+  // num filtro que não existe como opção na tela de destino.
+  roteulosNaoClicaveis?: string[];
 }
 
 const CORES = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#ef4444', '#14b8a6', '#94a3b8'];
@@ -28,7 +32,7 @@ function ChartTooltip({ active, payload }: any) {
   );
 }
 
-function Rosca({ titulo, dados, onSelecionar }: { titulo: string; dados: Agregado[]; onSelecionar?: (chave: string) => void }) {
+function Rosca({ titulo, dados, onSelecionar, roteulosNaoClicaveis }: { titulo: string; dados: Agregado[]; onSelecionar?: (chave: string) => void; roteulosNaoClicaveis: string[] }) {
   const total = dados.reduce((a, d) => a + d.valor, 0);
   return (
     <div className="space-y-2">
@@ -46,7 +50,10 @@ function Rosca({ titulo, dados, onSelecionar }: { titulo: string; dados: Agregad
               outerRadius={82}
               paddingAngle={2}
               cursor={onSelecionar ? 'pointer' : undefined}
-              onClick={(d: any) => onSelecionar?.(d?.payload?.chave)}
+              onClick={(d: any) => {
+                const chave = d?.payload?.chave;
+                if (chave && !roteulosNaoClicaveis.includes(chave)) onSelecionar?.(chave);
+              }}
             >
               {dados.map((d, i) => <Cell key={d.chave} fill={CORES[i % CORES.length]} />)}
             </Pie>
@@ -59,7 +66,7 @@ function Rosca({ titulo, dados, onSelecionar }: { titulo: string; dados: Agregad
   );
 }
 
-export default function ComposicaoChart({ porTipo, porClasse, onSelecionarTipo, onSelecionarClasse }: ComposicaoChartProps) {
+export default function ComposicaoChart({ porTipo, porClasse, onSelecionarTipo, onSelecionarClasse, roteulosNaoClicaveis = ['Sem classe', 'Não informado'] }: ComposicaoChartProps) {
   return (
     <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-4">
       <div>
@@ -69,8 +76,8 @@ export default function ComposicaoChart({ porTipo, porClasse, onSelecionarTipo, 
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Rosca titulo="Por tipo de material" dados={porTipo} onSelecionar={onSelecionarTipo} />
-        <Rosca titulo="Por classe de item" dados={porClasse} onSelecionar={onSelecionarClasse} />
+        <Rosca titulo="Por tipo de material" dados={porTipo} onSelecionar={onSelecionarTipo} roteulosNaoClicaveis={roteulosNaoClicaveis} />
+        <Rosca titulo="Por classe de item" dados={porClasse} onSelecionar={onSelecionarClasse} roteulosNaoClicaveis={roteulosNaoClicaveis} />
       </div>
     </div>
   );

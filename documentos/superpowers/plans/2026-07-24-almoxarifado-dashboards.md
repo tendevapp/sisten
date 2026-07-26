@@ -44,7 +44,7 @@ Extraídos do Postgres em 2026-07-24. São o gabarito de verificação: o que a 
 | Depósitos | 12 |
 | Curva ABC | A = 254 · B = 529 · C = 1.269 |
 | Top depósito por valor | 0004 — R$ 7.701.437,90 em 1.488 itens |
-| Compra evitável | 64 materiais (66 linhas de RM) |
+| Compra evitável | 51 materiais (52 linhas de RM) |
 | Divergência de PMM | 657 materiais fora de ±20% — 135 acima, 522 abaixo |
 | Itens sem classe de item | 82 itens — R$ 223.990,92 |
 | Itens sem grupo de mercadoria | 0 |
@@ -52,7 +52,7 @@ Extraídos do Postgres em 2026-07-24. São o gabarito de verificação: o que a 
 
 Duas observações que evitam caça a fantasma:
 
-A spec cita 50 materiais em compra evitável; o valor correto para a tela é **64**. Os 50 vieram de uma consulta sobre a tabela `requisicoes` inteira; a tela usa `localDb.getEnrichedSAPRequisicoes()`, cujo cache é filtrado a partir de 2026-01-01 e que descarta `status_processamento = 'B'`. O gabarito de 64 foi medido com essa mesma definição.
+A spec cita 50 materiais em compra evitável; o valor correto para a tela é **51**. Os 50 vieram de uma consulta sobre a tabela `requisicoes` inteira; a tela usa `localDb.getEnrichedSAPRequisicoes()`, cujo cache é filtrado a partir de 2026-01-01. Essa função exclui requisições com `codigo_de_eliminacao = true`, mas **não** exclui `status_processamento = 'B'` (comportamento documentado e intencional em `src/db/localDb.ts`, por volta da linha 2443-2447). O gabarito de 51 foi medido com essa mesma definição — a versão anterior deste plano tinha a lógica de filtro invertida nos dois critérios (excluía `status_processamento = 'B'`, que a tela inclui, e não excluía eliminadas, que a tela exclui), o que produzia 64 em vez de 51.
 
 Os contadores de "sem grupo de mercadoria" e "sem PMM" valem zero hoje. O painel da Tarefa 9 tem que renderizar bem com zero — não é bug, é a base estando limpa nesses dois campos.
 
@@ -2007,18 +2007,18 @@ npm run lint
 
 - [ ] **Passo 4: Conferir contra o SQL**
 
-Este SQL reproduz exatamente a definição usada no cliente — cache a partir de 2026-01-01, `status_requisicao = 'Sem PO'`, descartando `status_processamento = 'B'`:
+Este SQL reproduz exatamente a definição usada no cliente — cache a partir de 2026-01-01, `status_requisicao = 'Sem PO'`, excluindo apenas `codigo_de_eliminacao = true` (requisições com `status_processamento = 'B'` **permanecem** incluídas, pois `getEnrichedSAPRequisicoes()` não as descarta):
 
 ```sql
 select count(distinct v.material) materiais, count(*) linhas_rm
 from view_enriched_requisicoes v
 where v.data_da_solicitacao >= '2026-01-01'
   and v.status_requisicao = 'Sem PO'
-  and coalesce(v.status_processamento,'') <> 'B'
+  and coalesce(v.codigo_de_eliminacao, false) = false
   and exists (select 1 from estoque e where e.material = v.material and coalesce(e.quantidade,0) > 0);
 ```
 
-Esperado sem nenhum filtro na tela: **64 materiais**.
+Esperado sem nenhum filtro na tela: **51 materiais** (52 linhas de RM).
 
 Se aparecer 0, a causa mais provável é o cache de requisições estar vazio nesta sessão — abra `#/suprimentos/painel` uma vez para forçar o sync e volte. A spec menciona 50; esse número veio de uma consulta sobre a tabela `requisicoes` inteira, com definição diferente, e não é o gabarito desta tela.
 
@@ -2648,4 +2648,4 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 
 **Consistência de nomes.** `classifyABC`, `agregarPor`, `topN`, `calcularKpis`, `resumirAbc`, `acharCompraEvitavel`, `acharDivergenciaPmm`, `acharLacunasCadastro`, `normalizeCode`, `formatBRL`, `formatBRLCompacto`, `formatQtd`, `formatDateBR`, `formatDateTimeBR` e `CLASSE_ABC_COR` são definidos na Tarefa 2 e usados com a mesma grafia nas tarefas 3 a 11. `EstoqueAnalise` é definido na Tarefa 1 e consumido nas tarefas 2 e 9. `Agregado` é produzido por `agregarPor` e consumido por `ValorPorDepositoChart`, `ComposicaoChart` e `ConcentracaoChart`.
 
-**Pontos de atenção deixados explícitos no plano.** A Tarefa 7 alerta sobre ordem de declaração de `filtrados`. A Tarefa 11 alerta sobre a mudança de `ColumnOption['id']` para `ColumnId`. A Tarefa 8 explica por que o gabarito é 64 e não os 50 citados na spec, e o que fazer se a tela mostrar zero.
+**Pontos de atenção deixados explícitos no plano.** A Tarefa 7 alerta sobre ordem de declaração de `filtrados`. A Tarefa 11 alerta sobre a mudança de `ColumnOption['id']` para `ColumnId`. A Tarefa 8 explica por que o gabarito é 51 e não os 50 citados na spec (nem os 64 de uma versão anterior deste plano, que tinha a lógica de filtro invertida), e o que fazer se a tela mostrar zero.
