@@ -6,7 +6,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Activity, Users, MousePointerClick, Clock, RefreshCw, AlertTriangle,
-  LogIn, FileText, Calendar
+  LogIn, FileText, Calendar, ChevronRight, ChevronDown
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar,
@@ -36,6 +36,7 @@ interface UserSummary {
   favorite_pages: { path: string; page_label: string | null; visits: number }[];
 }
 interface TimelineRow { event_type: string; path: string | null; page_label: string | null; created_at: string; }
+interface PageUserRow { user_id: string; user_name: string | null; email: string | null; visits: number; last_visit: string | null; }
 
 const DOW_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -70,6 +71,10 @@ export default function UsageDashboard() {
   const [byHour, setByHour] = useState<HourRow[]>([]);
   const [userSummary, setUserSummary] = useState<UserSummary | null>(null);
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
+
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [pageUsers, setPageUsers] = useState<Map<string, PageUserRow[]>>(new Map());
+  const [pageUsersLoading, setPageUsersLoading] = useState<Set<string>>(new Set());
 
   const { fromISO, toISO } = useMemo(() => {
     const to = new Date();
@@ -138,6 +143,43 @@ export default function UsageDashboard() {
   }, [fromISO, toISO, granularity, selectedUser]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  useEffect(() => {
+    setExpandedPaths(new Set());
+    setPageUsers(new Map());
+    setPageUsersLoading(new Set());
+  }, [fromISO, toISO, selectedUser]);
+
+  const togglePageUsers = useCallback((path: string) => {
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+        return next;
+      }
+      next.add(path);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    expandedPaths.forEach(path => {
+      if (pageUsers.has(path) || pageUsersLoading.has(path)) return;
+      setPageUsersLoading(prev => new Set(prev).add(path));
+      supabase.rpc('usage_page_users', { p_path: path, p_from: fromISO, p_to: toISO })
+        .then(({ data, error }) => {
+          setPageUsers(prev => new Map(prev).set(path, error ? [] : (data as PageUserRow[]) || []));
+        })
+        .finally(() => {
+          setPageUsersLoading(prev => {
+            const next = new Set(prev);
+            next.delete(path);
+            return next;
+          });
+        });
+    });
+  }, [expandedPaths, fromISO, toISO, pageUsers, pageUsersLoading]);
 
   const hourMap = useMemo(() => {
     const m = new Map<string, number>();
@@ -331,13 +373,55 @@ export default function UsageDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {pageRanking.slice(0, 12).map(r => (
-                      <tr key={r.path}>
-                        <td className="py-2 font-medium text-slate-700 dark:text-slate-300">{r.page_label || labelForPath(r.path)}</td>
-                        <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{r.visits}</td>
-                        <td className="py-2 text-right text-slate-500">{fmtDwell(r.avg_dwell_seconds)}</td>
-                      </tr>
-                    ))}
+                    {pageRanking.slice(0, 12).map(r => {
+                      const isOpen = expandedPaths.has(r.path);
+                      const isLoadingUsers = pageUsersLoading.has(r.path);
+                      const users = pageUsers.get(r.path);
+                      return (
+                        <React.Fragment key={r.path}>
+                          <tr
+                            onClick={() => togglePageUsers(r.path)}
+                            className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                          >
+                            <td className="py-2 font-medium text-slate-700 dark:text-slate-300">
+                              <span className="flex items-center gap-1.5">
+                                {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                {r.page_label || labelForPath(r.path)}
+                              </span>
+                            </td>
+                            <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{r.visits}</td>
+                            <td className="py-2 text-right text-slate-500">{fmtDwell(r.avg_dwell_seconds)}</td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={3} className="pb-2 pt-0">
+                                <div className="ml-5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-2">
+                                  {isLoadingUsers ? (
+                                    <p className="flex items-center gap-2 text-[11px] text-slate-400 py-1">
+                                      <RefreshCw className="h-3 w-3 animate-spin" /> Carregando usuários...
+                                    </p>
+                                  ) : !users || users.length === 0 ? (
+                                    <p className="text-[11px] text-slate-400 py-1">Nenhum usuário no período.</p>
+                                  ) : (
+                                    <ul className="space-y-1">
+                                      {users.map(u => (
+                                        <li key={u.user_id} className="flex items-center justify-between text-[11px] gap-2">
+                                          <span className="font-medium text-slate-600 dark:text-slate-300 truncate">{u.user_name || u.email || u.user_id}</span>
+                                          <span className="flex items-center gap-3 shrink-0 text-slate-400">
+                                            <span className="font-mono text-slate-500">{u.visits}</span>
+                                            <span>{fmtDateTime(u.last_visit)}</span>
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
