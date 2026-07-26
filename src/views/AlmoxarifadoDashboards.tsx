@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X, Info } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
@@ -16,6 +16,7 @@ import ConcentracaoChart from '../components/almoxarifado/ConcentracaoChart';
 import TopMateriaisChart from '../components/almoxarifado/TopMateriaisChart';
 import CompraEvitavelPanel from '../components/almoxarifado/CompraEvitavelPanel';
 import DivergenciaPmmPanel from '../components/almoxarifado/DivergenciaPmmPanel';
+import QualidadeCadastroPanel from '../components/almoxarifado/QualidadeCadastroPanel';
 
 interface AlmoxarifadoDashboardsProps {
   user: Profile;
@@ -110,6 +111,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   const porAplicacao = useMemo(() => topN(agregarPor(filtrados, 'aplicacao'), 10), [filtrados]);
   const compraEvitavel = useMemo(() => acharCompraEvitavel(filtrados, requisicoes), [filtrados, requisicoes]);
   const divergenciaPmm = useMemo(() => acharDivergenciaPmm(filtrados, analise), [filtrados, analise]);
+  const lacunas = useMemo(() => acharLacunasCadastro(filtrados), [filtrados]);
   // A análise vazia com estoque carregado significa que a view não respondeu.
   const analiseIndisponivel = rows.length > 0 && analise.length === 0;
 
@@ -259,6 +261,19 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
             mapaAbc={mapaAbc}
             onSelecionar={(mat) => irParaEstoque(`material=${encodeURIComponent(mat)}`)}
           />
+
+          <QualidadeCadastroPanel lacunas={lacunas} totalItens={filtrados.length} />
+
+          {/* Declara o que a página não mede. Sem isso, alguém acaba lendo valor
+              imobilizado como se fosse indicador de giro. */}
+          <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs text-slate-500 dark:text-slate-400">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-slate-400 dark:text-slate-500" />
+            <p>
+              Esta página analisa a <strong className="text-slate-700 dark:text-slate-300">posição de estoque vigente</strong>, importada da transação ZL0024.
+              Giro, cobertura e obsolescência não são exibidos porque dependem do histórico de movimentos de material (MB51/MB5B), ainda não importado —
+              calculá-los sobre os dados atuais produziria números incorretos. Valor imobilizado alto não significa item parado.
+            </p>
+          </div>
         </>
       )}
     </div>
