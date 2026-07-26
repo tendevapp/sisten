@@ -12,6 +12,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem } from '../types';
+import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode } from '../lib/almoxarifado';
 
 interface EstoqueProps {
   user: Profile;
@@ -19,8 +20,10 @@ interface EstoqueProps {
 
 type SortDir = 'asc' | 'desc';
 
+type ColumnId = keyof EstoqueItem | 'classe_abc';
+
 interface ColumnOption {
-  id: keyof EstoqueItem;
+  id: ColumnId;
   label: string;
   align?: 'left' | 'right';
   sortable?: boolean;
@@ -32,6 +35,7 @@ interface ColumnOption {
 const COLUMNS: (ColumnOption & { defaultVisible: boolean })[] = [
   { id: 'material', label: 'Material', sortable: true, defaultVisible: true },
   { id: 'txt_breve_material', label: 'Descrição', sortable: true, defaultVisible: true },
+  { id: 'classe_abc', label: 'ABC', sortable: true, defaultVisible: true },
   { id: 'deposito', label: 'Depósito', sortable: true, defaultVisible: true },
   { id: 'quantidade', label: 'Quantidade', align: 'right', sortable: true, numeric: true, defaultVisible: true },
   { id: 'umb', label: 'UMB', sortable: true, defaultVisible: true },
@@ -67,13 +71,6 @@ const formatDateTimeBR = (d?: string | null): string => {
   return isNaN(parsed.getTime())
     ? String(d)
     : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-// Normaliza códigos de material para ordenação numérica ignorando zeros à esquerda.
-const normalizeCode = (c: any): string => {
-  const s = String(c ?? '').trim();
-  const stripped = s.replace(/^0+/, '');
-  return stripped.length > 0 ? stripped : (s.length > 0 ? '0' : '');
 };
 
 // Cabeçalho de coluna com ordenação por clique.
@@ -117,6 +114,8 @@ export default function Estoque({ user }: EstoqueProps) {
   const [depositoFilter, setDepositoFilter] = useState('Todos');
   const [tipoFilter, setTipoFilter] = useState('Todos');
   const [classFilter, setClassFilter] = useState('Todos');
+  const [abcFilter, setAbcFilter] = useState<'Todos' | ClasseAbc>('Todos');
+  const [grupoFilter, setGrupoFilter] = useState('Todos');
   const [apenasComSaldo, setApenasComSaldo] = useState(false);
 
   // Ordenação
@@ -156,12 +155,48 @@ export default function Estoque({ user }: EstoqueProps) {
 
   useEffect(() => { load(false); }, [load]);
 
+  // Deep link vindo dos dashboards do almoxarifado: pré-aplica o recorte que o
+  // usuário clicou no gráfico.
+  useEffect(() => {
+    const hash = window.location.hash;
+    const qIndex = hash.indexOf('?');
+    if (qIndex === -1) return;
+    const params = new URLSearchParams(hash.slice(qIndex + 1));
+
+    const deposito = params.get('deposito');
+    if (deposito) setDepositoFilter(deposito);
+
+    const tipo = params.get('tipo');
+    if (tipo) setTipoFilter(tipo);
+
+    const classe = params.get('classe');
+    if (classe) setClassFilter(classe);
+
+    const grupo = params.get('grupo');
+    if (grupo) setGrupoFilter(grupo);
+
+    const abc = params.get('abc');
+    if (abc === 'A' || abc === 'B' || abc === 'C') setAbcFilter(abc);
+
+    // Material entra na busca já aplicada, para que o campo mostre o termo e o
+    // botão "Limpar" apareça — senão o usuário não tem como sair do recorte.
+    const material = params.get('material');
+    if (material) {
+      setSearchInput(material);
+      setSearchQuery(material);
+    }
+  }, []);
+
   // Data/hora da última importação (imported_at mais recente das linhas).
   const lastUpdated = useMemo(() => {
     let max = '';
     rows.forEach(r => { if (r.imported_at && r.imported_at > max) max = r.imported_at; });
     return max || null;
   }, [rows]);
+
+  // Classificação sobre a posição inteira, não sobre `filteredRows`: a classe de
+  // um material não pode mudar conforme o filtro da tela.
+  const mapaAbc = useMemo(() => classifyABC(rows), [rows]);
 
   // Opções de filtro derivadas dos dados.
   const depositoOptions = useMemo(() => {
@@ -182,13 +217,21 @@ export default function Estoque({ user }: EstoqueProps) {
     return Array.from(s).sort();
   }, [rows]);
 
-  // Filtragem por busca, depósito, tipo, classificação e saldo.
+  const grupoOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => { if (r.grupo_mercadorias) s.add(r.grupo_mercadorias); });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [rows]);
+
+  // Filtragem por busca, depósito, tipo, classificação, ABC, grupo e saldo.
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter(r => {
       if (depositoFilter !== 'Todos' && r.deposito !== depositoFilter) return false;
       if (tipoFilter !== 'Todos' && r.tipo_material !== tipoFilter) return false;
       if (classFilter !== 'Todos' && r.class_item !== classFilter) return false;
+      if (abcFilter !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFilter) return false;
+      if (grupoFilter !== 'Todos' && r.grupo_mercadorias !== grupoFilter) return false;
       if (apenasComSaldo && !((r.quantidade ?? 0) > 0)) return false;
       if (q) {
         const hit =
@@ -198,7 +241,7 @@ export default function Estoque({ user }: EstoqueProps) {
       }
       return true;
     });
-  }, [rows, searchQuery, depositoFilter, tipoFilter, classFilter, apenasComSaldo]);
+  }, [rows, searchQuery, depositoFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
 
   // Ordenação: por coluna quando ativa; caso contrário material asc.
   const sortedRows = useMemo(() => {
@@ -212,6 +255,11 @@ export default function Estoque({ user }: EstoqueProps) {
           const vb = (b[sortColumn as keyof EstoqueItem] as number) ?? -Infinity;
           return (va - vb) * dir;
         }
+        if (sortColumn === 'classe_abc') {
+          const va = mapaAbc.get(normalizeCode(a.material)) || 'C';
+          const vb = mapaAbc.get(normalizeCode(b.material)) || 'C';
+          return va.localeCompare(vb) * dir;
+        }
         if (sortColumn === 'material') {
           return normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true }) * dir;
         }
@@ -223,12 +271,12 @@ export default function Estoque({ user }: EstoqueProps) {
       arr.sort((a, b) => normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true }));
     }
     return arr;
-  }, [filteredRows, sortColumn, sortDir]);
+  }, [filteredRows, sortColumn, sortDir, mapaAbc]);
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoFilter, classFilter, apenasComSaldo, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
 
   const handleSearch = () => setSearchQuery(searchInput.trim());
   const handleClearSearch = () => { setSearchInput(''); setSearchQuery(''); };
@@ -259,6 +307,7 @@ export default function Estoque({ user }: EstoqueProps) {
   const handleExportExcel = () => {
     if (filteredRows.length === 0) return;
     const data = filteredRows.map(r => ({
+      'Classe ABC': mapaAbc.get(normalizeCode(r.material)) || 'C',
       'Centro': r.centro ?? '',
       'Depósito': r.deposito ?? '',
       'Tipo de Material': r.tipo_material ?? '',
@@ -283,10 +332,22 @@ export default function Estoque({ user }: EstoqueProps) {
     XLSX.writeFile(wb, `estoque_${timestamp}.xlsx`);
   };
 
-  const renderCell = (r: EstoqueItem, colId: keyof EstoqueItem) => {
+  const renderCell = (r: EstoqueItem, colId: ColumnId) => {
     switch (colId) {
       case 'material':
         return <span className="font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{r.material || '—'}</span>;
+      case 'classe_abc': {
+        const classe = mapaAbc.get(normalizeCode(r.material)) || 'C';
+        return (
+          <span
+            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-black text-white"
+            style={{ backgroundColor: CLASSE_ABC_COR[classe] }}
+            title={`Classe ${classe} da curva ABC`}
+          >
+            {classe}
+          </span>
+        );
+      }
       case 'quantidade':
         return formatQtd(r.quantidade);
       case 'preco_medio':
@@ -294,7 +355,7 @@ export default function Estoque({ user }: EstoqueProps) {
       case 'valor_total':
         return <span className="font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>;
       default:
-        return (r[colId] as string) || '—';
+        return (r[colId as keyof EstoqueItem] as string) || '—';
     }
   };
 
@@ -432,6 +493,30 @@ export default function Estoque({ user }: EstoqueProps) {
               >
                 <option value="Todos">Class. Item: Todos</option>
                 {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="relative min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={abcFilter}
+                onChange={(e) => setAbcFilter(e.target.value as 'Todos' | ClasseAbc)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Curva ABC: Todas</option>
+                <option value="A">Classe A</option>
+                <option value="B">Classe B</option>
+                <option value="C">Classe C</option>
+              </select>
+            </div>
+            <div className="relative min-w-[160px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={grupoFilter}
+                onChange={(e) => setGrupoFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Grupo: Todos</option>
+                {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none whitespace-nowrap">
