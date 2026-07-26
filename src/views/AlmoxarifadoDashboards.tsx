@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, AlertCircle, Boxes } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
@@ -26,6 +26,13 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   const [rows, setRows] = useState<EstoqueItem[]>([]);
   const [analise, setAnalise] = useState<EstoqueAnalise[]>([]);
   const [requisicoes, setRequisicoes] = useState<EnrichedSAPRecord[]>([]);
+
+  // Filtros compartilhados por todos os painéis.
+  const [depositoFiltro, setDepositoFiltro] = useState('Todos');
+  const [tipoFiltro, setTipoFiltro] = useState('Todos');
+  const [classeFiltro, setClasseFiltro] = useState('Todos');
+  const [abcFiltro, setAbcFiltro] = useState<'Todos' | ClasseAbc>('Todos');
+  const [grupoFiltro, setGrupoFiltro] = useState('Todos');
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -51,19 +58,56 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
 
   useEffect(() => { load(false); }, [load]);
 
-  const kpi = useMemo(() => calcularKpis(rows), [rows]);
-
   // Classificação sobre a posição inteira (`rows`), nunca sobre o filtro — ver
   // classifyABC. O resumo, sim, respeita o filtro vigente.
   const mapaAbc = useMemo(() => classifyABC(rows), [rows]);
-  const resumoAbc = useMemo(() => resumirAbc(rows, mapaAbc), [rows, mapaAbc]);
-  const porDeposito = useMemo(() => agregarPor(rows, 'deposito'), [rows]);
-  const porTipo = useMemo(() => agregarPor(rows, 'tipo_material'), [rows]);
-  const porClasse = useMemo(() => agregarPor(rows, 'class_item', 'Sem classe'), [rows]);
+
+  const opcoes = useMemo(() => {
+    const depositos = new Set<string>();
+    const tipos = new Set<string>();
+    const classes = new Set<string>();
+    const grupos = new Set<string>();
+    rows.forEach(r => {
+      if (r.deposito) depositos.add(r.deposito);
+      if (r.tipo_material) tipos.add(r.tipo_material);
+      if (r.class_item) classes.add(r.class_item);
+      if (r.grupo_mercadorias) grupos.add(r.grupo_mercadorias);
+    });
+    const ordenar = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return { depositos: ordenar(depositos), tipos: ordenar(tipos), classes: ordenar(classes), grupos: ordenar(grupos) };
+  }, [rows]);
+
+  const filtrados = useMemo(() => rows.filter(r => {
+    if (depositoFiltro !== 'Todos' && r.deposito !== depositoFiltro) return false;
+    if (tipoFiltro !== 'Todos' && r.tipo_material !== tipoFiltro) return false;
+    if (classeFiltro !== 'Todos' && r.class_item !== classeFiltro) return false;
+    if (grupoFiltro !== 'Todos' && r.grupo_mercadorias !== grupoFiltro) return false;
+    if (abcFiltro !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFiltro) return false;
+    return true;
+  }), [rows, depositoFiltro, tipoFiltro, classeFiltro, grupoFiltro, abcFiltro, mapaAbc]);
+
+  const filtroAtivo = depositoFiltro !== 'Todos' || tipoFiltro !== 'Todos'
+    || classeFiltro !== 'Todos' || grupoFiltro !== 'Todos' || abcFiltro !== 'Todos';
+
+  const limparFiltros = useCallback(() => {
+    setDepositoFiltro('Todos');
+    setTipoFiltro('Todos');
+    setClasseFiltro('Todos');
+    setGrupoFiltro('Todos');
+    setAbcFiltro('Todos');
+  }, []);
+
+  const kpi = useMemo(() => calcularKpis(filtrados), [filtrados]);
+  const resumoAbc = useMemo(() => resumirAbc(filtrados, mapaAbc), [filtrados, mapaAbc]);
+  const porDeposito = useMemo(() => agregarPor(filtrados, 'deposito'), [filtrados]);
+  const porTipo = useMemo(() => agregarPor(filtrados, 'tipo_material'), [filtrados]);
+  const porClasse = useMemo(() => agregarPor(filtrados, 'class_item', 'Sem classe'), [filtrados]);
   // Top 10 mais "Outros": são 113 grupos de mercadoria e 62 aplicações, e o
   // ranking inteiro seria ilegível.
-  const porGrupo = useMemo(() => topN(agregarPor(rows, 'grupo_mercadorias'), 10), [rows]);
-  const porAplicacao = useMemo(() => topN(agregarPor(rows, 'aplicacao'), 10), [rows]);
+  const porGrupo = useMemo(() => topN(agregarPor(filtrados, 'grupo_mercadorias'), 10), [filtrados]);
+  const porAplicacao = useMemo(() => topN(agregarPor(filtrados, 'aplicacao'), 10), [filtrados]);
+
+  const selectClass = 'rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-2 px-3 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer';
 
   const irParaEstoque = useCallback((query: string) => {
     onNavigate(`/almoxarifado/estoque?${query}`);
@@ -121,6 +165,52 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
 
       {!loading && !error && rows.length > 0 && (
         <>
+          <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <Filter className="h-3 w-3" /> Filtros
+            </span>
+
+            <select value={depositoFiltro} onChange={e => setDepositoFiltro(e.target.value)} className={selectClass}>
+              <option value="Todos">Depósito: Todos</option>
+              {opcoes.depositos.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+
+            <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={selectClass}>
+              <option value="Todos">Tipo: Todos</option>
+              {opcoes.tipos.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+
+            <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} className={selectClass}>
+              <option value="Todos">Class. Item: Todos</option>
+              {opcoes.classes.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <select value={abcFiltro} onChange={e => setAbcFiltro(e.target.value as 'Todos' | ClasseAbc)} className={selectClass}>
+              <option value="Todos">Curva ABC: Todas</option>
+              <option value="A">Classe A</option>
+              <option value="B">Classe B</option>
+              <option value="C">Classe C</option>
+            </select>
+
+            <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={selectClass}>
+              <option value="Todos">Grupo: Todos</option>
+              {opcoes.grupos.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+
+            {filtroAtivo && (
+              <button
+                onClick={limparFiltros}
+                className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" /> Limpar
+              </button>
+            )}
+
+            <span className="ml-auto text-xs font-bold text-slate-400 dark:text-slate-500">
+              {filtrados.length.toLocaleString('pt-BR')} de {rows.length.toLocaleString('pt-BR')} itens
+            </span>
+          </div>
+
           <EstoqueKpis kpi={kpi} />
           <CurvaAbcChart resumo={resumoAbc} onSelecionar={abrirClasseAbc} />
           <ValorPorDepositoChart
@@ -150,7 +240,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
           </div>
 
           <TopMateriaisChart
-            itens={rows}
+            itens={filtrados}
             mapaAbc={mapaAbc}
             onSelecionar={(mat) => irParaEstoque(`material=${encodeURIComponent(mat)}`)}
           />
