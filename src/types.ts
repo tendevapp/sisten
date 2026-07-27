@@ -360,13 +360,19 @@ export interface HistoricoPedidoView {
   valor_liquido?: number;
   preco_liquido_unit?: number;
   por?: string; // base de preço do SAP; unitário = preco_liquido_unit / por (vazio = 1)
-  // Presentes apenas em vw_historico_fornecedores_sem_po (join com contatos + data_migo do pedido).
+  // Enriquecidos a partir do JOIN com contatos e cidadeforn.
   telefone?: string;
   email?: string;
   classificacao?: string;
   nome_fantasia?: string;
+  pais?: string;
+  cidade?: string;
+  localidade?: string;
+  rua?: string;
+  codigo_postal?: string;
   data_migo?: string | null;
 }
+
 
 // Uma linha da tabela `estoque` (importação ZL0024 — posição de estoque).
 export interface EstoqueItem {
@@ -420,6 +426,10 @@ export interface FornecedorMaterialRow {
   fornecedor: string;
   nome_fantasia?: string;
   regiao_uf: string;
+  pais?: string;
+  cidade?: string;
+  rua?: string;
+  codigo_postal?: string;
   telefone: string;
   email: string;
   classificacao: string;
@@ -428,10 +438,24 @@ export interface FornecedorMaterialRow {
   data_migo?: string;
 }
 
+
 export interface MaterialFornecedoresGroup {
   codigo: string;
   descricao?: string;
   encontrado: boolean;
   fornecedores: FornecedorMaterialRow[];
 }
+
+export interface CidadeForn {
+  id?: string;
+  forn_codigo: string;
+  forn_nome?: string;
+  rua?: string;
+  pais?: string;
+  codigo_postal?: string;
+  localidade?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 

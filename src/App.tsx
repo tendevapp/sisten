@@ -19,7 +19,6 @@ const MyRequests = lazy(() => import('./views/MyRequests'));
 const Approvals = lazy(() => import('./views/Approvals'));
 const SapPanel = lazy(() => import('./views/SapPanel'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
-const DemandDashboard = lazy(() => import('./views/DemandDashboard'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
 const UsageDashboard = lazy(() => import('./views/UsageDashboard'));
@@ -36,7 +35,7 @@ const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
 // quando a sincronização em segundo plano chega, pois isso apagaria o estado local.
-// As demais (Início, Relatórios, Dashboards) são de leitura e podem remontar para
+// As demais (Início, Relatórios) são de leitura e podem remontar para
 // refletir os dados recém-sincronizados.
 const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/nova',
@@ -44,6 +43,10 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/aprovacoes',
   '/materiais/busca',
   '/suprimentos/painel',
+  // A página de Gestão de Suprimentos passou a manter filtros e aba ativa —
+  // remontá-la a cada sincronização em segundo plano jogaria fora o recorte
+  // que o usuário acabou de montar.
+  '/suprimentos/dashboards',
   '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
   '/suprimentos/historico',
@@ -237,15 +240,51 @@ export default function App() {
     };
   }, []);
 
+  // Sincronização automática em segundo plano:
+  // 1. Verifica atualizações periodicamente (a cada 2 minutos) comparando carimbos de versão leves.
+  // 2. Verifica atualizações imediatamente sempre que o usuário retornar o foco/visibilidade para a aba.
+
+  useEffect(() => {
+    if (!user || !supabase) return;
+
+    // Polling leve a cada 2 minutos
+    const intervalId = setInterval(() => {
+      localDb.syncFromSupabase().catch(err => {
+        console.warn("Falha na sincronização periódica automática:", err);
+      });
+    }, 2 * 60 * 1000);
+
+    // Verificação instantânea ao reativar a aba (focus / visibilitychange)
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        localDb.syncFromSupabase().catch(err => {
+          console.warn("Falha na sincronização ao focar a página:", err);
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocusOrVisible);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
+    };
+  }, [user?.id]);
+
   // Telemetria de navegação: registra uma visualização de página sempre que a
   // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
   useEffect(() => {
     if (user) {
       trackPageView(user, currentPath);
+      // Força verificação de versão leve a cada troca de rota
+      localDb.syncFromSupabase().catch(() => {});
     }
     // Depende de user?.id (não do objeto user) para não re-registrar a mesma
     // página quando o objeto de usuário é recriado (edição de perfil, sync).
   }, [currentPath, user?.id]);
+
 
   const handleNavigate = (path: string) => {
     window.location.hash = path;
@@ -330,9 +369,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      // Rota histórica: a antiga tela de Demandas virou uma aba da página de
+      // Gestão de Suprimentos. Mantida viva para não quebrar link salvo — abre
+      // a mesma página já na aba correspondente.
       case '/suprimentos/demandas':
         if (localDb.hasPermission(user, 'sap', 'dashboards')) {
-          return <DemandDashboard />;
+          return <SapDashboards onNavigate={handleNavigate} abaInicial="demandas" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

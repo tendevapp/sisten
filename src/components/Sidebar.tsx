@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck,
   Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, TrendingUp, Route, Activity, Boxes
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, Route, Activity, Boxes
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -57,8 +57,9 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         { label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Histórico', path: '/suprimentos/historico', icon: History, perm: { module: 'sap', action: 'fornecedores' } },
+        // Demandas deixou de ser um item próprio: virou uma aba dentro de
+        // Dashboards, para que o mesmo filtro valha para todas as leituras.
         { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
-        { label: 'Demandas', path: '/suprimentos/demandas', icon: TrendingUp, perm: { module: 'sap', action: 'dashboards' } },
         { label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, perm: { module: 'sap', action: 'importar' } },
       ],
     },

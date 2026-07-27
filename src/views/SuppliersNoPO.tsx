@@ -8,16 +8,18 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag
+  MessageCircle, Flag, MapPin
 } from 'lucide-react';
+
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import {
-  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor,
+  Profile, EnrichedSAPRecord, HistoricoPedidoView, ContatoFornecedor, CidadeForn,
   FornecedorMaterialRow, SAPObsHistory, ItemStatus, RastreioPrioridade,
   CotacaoHistoricoEntry
 } from '../types';
+
 import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
@@ -659,12 +661,16 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
 
-      // Cadastro local de contatos, usado tanto pelo histórico (Sem PO) quanto
-      // pela ficha do fornecedor do PO (itens já processados / Sem MIGO).
+      // Cadastro local de contatos e cidades/endereços
       const contatosMap = new Map<string, ContatoFornecedor>();
       localDb.getContatosForn().forEach(c => {
         if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
       });
+      const cidadesMap = new Map<string, CidadeForn>();
+      localDb.getCidadeForn().forEach(cf => {
+        if (cf.forn_codigo) cidadesMap.set(String(cf.forn_codigo).trim(), cf);
+      });
+
 
       if (codeVariants.size > 0 && supabase) {
         // A view vw_historico_fornecedores_sem_po (fornecedor + pedido + contato +
@@ -719,12 +725,17 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
           const list: FornecedorMaterialRow[] = Array.from(fornMap.values()).map(l => {
             const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
+            const cidForn = l.cod_forn ? cidadesMap.get(String(l.cod_forn).trim()) : undefined;
             return {
               cod_forn: l.cod_forn || '—',
               cnpj: l.cnpj || '—',
-              fornecedor: l.fornecedor || contato?.fornecedor || '—',
+              fornecedor: l.fornecedor || contato?.fornecedor || cidForn?.forn_nome || '—',
               nome_fantasia: contato?.nome_fantasia || '—',
               regiao_uf: l.regiao_uf || '—',
+              pais: l.pais || cidForn?.pais || '—',
+              cidade: l.cidade || l.localidade || cidForn?.localidade || '—',
+              rua: l.rua || cidForn?.rua || '—',
+              codigo_postal: l.codigo_postal || cidForn?.codigo_postal || '—',
               telefone: contato?.telefone || '—',
               email: contato?.email || '—',
               classificacao: contato?.classificacao || '—',
@@ -733,6 +744,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               data_migo: l.data_migo || undefined
             };
           });
+
 
           list.sort((a, b) => {
             const dateA = a.ultima_data !== '—' ? new Date(a.ultima_data).getTime() : 0;
@@ -1776,9 +1788,16 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                       Fantasia: {f.nome_fantasia}
                                     </p>
                                   )}
+                                  {(f.cidade || f.pais) && (f.cidade !== '—' || f.pais !== '—') && (
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                                      <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                                      {[f.rua, f.cidade, f.pais].filter(x => x && x !== '—').join(', ')}
+                                    </p>
+                                  )}
                                   <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
                                     Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
                                   </p>
+
                                   
                                   {/* Detalhes de preço e data */}
                                   <div className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 w-fit shadow-3xs">

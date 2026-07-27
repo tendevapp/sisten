@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
-import { Profile, ContatoFornecedor, HistoricoPedidoView } from '../types';
+import { Profile, ContatoFornecedor, CidadeForn, HistoricoPedidoView } from '../types';
+
 import { formatInt } from '../lib/format';
 import {
   TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
@@ -32,6 +33,10 @@ interface Row {
   fornecedor: string;
   nome_fantasia: string;
   regiao_uf: string;
+  pais?: string;
+  cidade?: string;
+  rua?: string;
+  codigo_postal?: string;
   telefone: string;
   email: string;
   classificacao: string;
@@ -56,7 +61,8 @@ const COLUMNS: ColumnOption[] = [
   { id: 'material', label: 'Material', sortable: true },
   { id: 'descricao', label: 'Descrição', sortable: true },
   { id: 'fornecedor', label: 'Fornecedor', sortable: true },
-  { id: 'uf', label: 'UF', sortable: true },
+  { id: 'cidade', label: 'Cidade', sortable: true },
+  { id: 'estado', label: 'Estado (UF)', sortable: true },
   { id: 'contato', label: 'Contato' },
   { id: 'qtd', label: 'Qtd', align: 'right', sortable: true },
   { id: 'preco', label: 'Preço Unit', align: 'right', sortable: true },
@@ -65,6 +71,8 @@ const COLUMNS: ColumnOption[] = [
   { id: 'doc_compra', label: 'Nº Pedido', sortable: true },
   { id: 'data_doc', label: 'Data Pedido', sortable: true },
 ];
+
+
 
 const STORAGE_COLS_KEY = 'sisten_historico_visible_columns';
 const PAGE_SIZE = 50;
@@ -180,16 +188,26 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
     const contatosMap = new Map<string, ContatoFornecedor>();
     contatos.forEach(c => { if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c); });
 
+    const cidades = localDb.getCidadeForn();
+    const cidadesMap = new Map<string, CidadeForn>();
+    cidades.forEach(cf => { if (cf.forn_codigo) cidadesMap.set(String(cf.forn_codigo).trim(), cf); });
+
     return linhas.map(l => {
       const contato = l.cod_forn ? contatosMap.get(String(l.cod_forn).trim()) : undefined;
+      const cidForn = l.cod_forn ? cidadesMap.get(String(l.cod_forn).trim()) : undefined;
+
       return {
         material: l.material || '—',
         txt_breve: l.txt_breve || '—',
         cod_forn: l.cod_forn || '—',
         cnpj: l.cnpj || '—',
-        fornecedor: l.fornecedor || contato?.fornecedor || '—',
+        fornecedor: l.fornecedor || contato?.fornecedor || cidForn?.forn_nome || '—',
         nome_fantasia: contato?.nome_fantasia || '—',
         regiao_uf: l.regiao_uf || '—',
+        pais: l.pais || cidForn?.pais || '—',
+        cidade: l.cidade || l.localidade || cidForn?.localidade || '—',
+        rua: l.rua || cidForn?.rua || '—',
+        codigo_postal: l.codigo_postal || cidForn?.codigo_postal || '—',
         telefone: contato?.telefone || '—',
         email: contato?.email || '—',
         classificacao: contato?.classificacao || '—',
@@ -202,6 +220,7 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
       };
     });
   }, []);
+
 
   // Data/hora da última atualização dos dados (última importação/refresh).
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -283,8 +302,10 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
           case 'material': return normalizeCode(r.material);
           case 'descricao': return r.txt_breve.toLowerCase();
           case 'fornecedor': return r.fornecedor.toLowerCase();
-          case 'uf': return r.regiao_uf.toLowerCase();
+          case 'cidade': return (r.cidade || '').toLowerCase();
+          case 'estado': case 'uf': return r.regiao_uf.toLowerCase();
           case 'qtd': return r.qtd ?? -Infinity;
+
           case 'preco': return r.preco_unit ?? -Infinity;
           case 'total': return r.valor_total ?? -Infinity;
           case 'rm': return r.rm;
@@ -356,8 +377,13 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
       'CNPJ': r.cnpj,
       'Fornecedor': r.fornecedor,
       'Nome Fantasia': r.nome_fantasia,
-      'UF': r.regiao_uf,
+      'Rua': r.rua || '—',
+      'Cidade': r.cidade || '—',
+      'Estado (UF)': r.regiao_uf || '—',
+      'País': r.pais || '—',
+      'Código Postal': r.codigo_postal || '—',
       'Telefone': r.telefone,
+
       'E-mail': r.email,
       'Classificação': r.classificacao,
       'Quantidade': r.qtd ?? '—',
@@ -653,7 +679,12 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
                             {visibleColumns.fornecedor && (
                               <Td strong truncate title={r.fornecedor} className="max-w-[200px]">{r.fornecedor}</Td>
                             )}
-                            {visibleColumns.uf && <Td>{r.regiao_uf}</Td>}
+                            {visibleColumns.cidade && (
+                              <Td truncate title={r.cidade || '—'}>{r.cidade || '—'}</Td>
+                            )}
+                            {visibleColumns.estado && <Td>{r.regiao_uf || '—'}</Td>}
+
+
                             {visibleColumns.contato && (
                               <Td>
                                 <div className="flex flex-col gap-1.5">

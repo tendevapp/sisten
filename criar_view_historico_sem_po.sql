@@ -34,10 +34,16 @@ select
   c.email,
   c.classificacao,
   c.nome_fantasia,
+  cf.pais,
+  cf.localidade as cidade,
+  cf.rua,
+  cf.codigo_postal,
   m.data_migo
 from public.mv_historico_pedidos h
 left join public.contatos c
   on c.cod_vendor = h.cod_forn
+left join public.cidadeforn cf
+  on cf.forn_codigo = h.cod_forn
 left join lateral (
   select max(p.data_migo) as data_migo
   from public.pedidosforn p
@@ -46,6 +52,7 @@ left join lateral (
     and p.doc_compra = h.doc_compra
     and lower(coalesce(p.crf, '')) = 'x'
 ) m on true
+
 where h.material in (
   select distinct v.material
   from public.view_enriched_requisicoes v

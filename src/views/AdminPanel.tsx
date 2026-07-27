@@ -828,11 +828,44 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 >
                   <FileSpreadsheet className="h-4 w-4" /> Alimentar Contatos (Contatos)
                 </button>
+                <button
+                  onClick={() => {
+                    setSapLogStatus('saving');
+                    setLastUploadLog(null);
+                    setTimeout(() => {
+                      try {
+                        const headers = ['Fornecedor', 'Nome do fornecedor', 'Rua', 'País', 'Código postal', 'Local'];
+                        const data = [
+                          ['1000000084', 'Agcomex Comercial Exportadora, Lda', 'R. Dr. Geraldo Campos Moreira, 375', 'BR', '04571-020', 'SÃO PAULO'],
+                          ['1000000106', 'Aguiar & Silva, Lda', 'Rua Juvenal F. Pestana, 10', 'PT', '9350-219', 'Ribeira Brava'],
+                          ['1000000113', 'Air Liquide Soldadura, Lda', 'Rua Dr. Loureiro Borges 4-2º', 'PT', '1495-131', 'Algés']
+                        ];
+                        const rawRows = [headers, ...data];
+                        localDb.importCidadeForn(rawRows, 'cidadeforn_simulado.xlsx').then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          setSapLogError('');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Erro ao simular Cidades Fornecedores.');
+                          setSapLogStatus('error');
+                        });
+                      } catch (err: any) {
+                        setSapLogError(err.message || 'Erro ao simular Cidades Fornecedores.');
+                        setSapLogStatus('error');
+                      }
+                    }, 800);
+                  }}
+                  className="rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Endereços/Cidades (CidadeForn)
+                </button>
               </div>
             </div>
 
             {/* Custom file parser */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5 pt-1">
+
               {/* ME5A Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
@@ -1095,7 +1128,72 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
                 </div>
               </div>
+
+              {/* CidadeForn Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-purple-500" /> Cidades & Endereços (CidadeForn)
+                </h4>
+                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar ruas, países e localidades dos fornecedores.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+                        
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+                            
+                            localDb.importCidadeForn(rawRows, file.name).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogStatus('error');
+                          }
+                        };
+                        
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV CidadeForn</p>
+                </div>
+              </div>
             </div>
+
 
             {sapLogStatus === 'saving' && (
               <div className="space-y-2 py-2">

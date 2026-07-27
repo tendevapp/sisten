@@ -7,7 +7,8 @@ import {
   Profile, Sector, Material, Request, RequestItem, RequestComment, 
   RequestStatusHistory, RequestAttachment, Notification, SAPRequisicao,
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
-  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, HistoricoPedidoView,
+  ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
+
   RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
@@ -53,6 +54,7 @@ class LocalDatabase {
   private sequencesKey = 'sisten_sequences';
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
+  private cidadeFornKey = 'sisten_cidadeforn';
   private estoqueKey = 'sisten_estoque';
   private estoqueAnaliseKey = 'sisten_estoque_analise';
 
@@ -71,9 +73,11 @@ class LocalDatabase {
       historico_pedidos: this.historicoPedidosKey,
       pedidosforn: this.pedidosFornKey,
       contatos: this.contatosKey,
+      cidadeforn: this.cidadeFornKey,
     };
     return map[dataset];
   }
+
   private historicoPedidosKey = 'sisten_historico_pedidos';
   // Cache separado: histórico de fornecedores restrito aos materiais com
   // requisição "Sem PO" em aberto (view vw_historico_fornecedores_sem_po).
@@ -209,7 +213,9 @@ class LocalDatabase {
           ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01')))],
           ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01')))],
           ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
+          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true))],
         ];
+
 
         const results = await Promise.allSettled(tasks.map(([, task]) => task()));
         results.forEach((result, idx) => {
@@ -2916,6 +2922,16 @@ class LocalDatabase {
     { header: 'CLASSIFICAÇÃO', field: 'classificacao' }
   ];
 
+  private CIDADEFORN_COLUMNS = [
+    { header: 'Fornecedor', field: 'forn_codigo' },
+    { header: 'Nome do fornecedor', field: 'forn_nome' },
+    { header: 'Rua', field: 'rua' },
+    { header: 'País', field: 'pais' },
+    { header: 'Código postal', field: 'codigo_postal' },
+    { header: 'Local', field: 'localidade' }
+  ];
+
+
   private ESTOQUE_COLUMNS = [
     { header: 'Cen.', field: 'centro' },
     { header: 'Dep.', field: 'deposito' },
@@ -4213,6 +4229,124 @@ class LocalDatabase {
       throw e;
     }
   }
+
+  public getCidadeForn(): CidadeForn[] {
+    return this.getStorageItem<CidadeForn[]>(this.cidadeFornKey, []);
+  }
+
+  public async importCidadeForn(rawRows: any[][], filename: string): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.CIDADEFORN_COLUMNS);
+
+    const fornCodColIdx = mappedFields.findIndex(f => f === 'forn_codigo');
+    if (fornCodColIdx === -1) {
+      throw new Error('Formato rejeitado: Coluna obrigatória "Fornecedor" não encontrada.');
+    }
+
+    const user = this.getCurrentUser();
+    let inserted = 0;
+    let updated = 0;
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const fornNomeColIdx = mappedFields.findIndex(f => f === 'forn_nome');
+    const ruaColIdx = mappedFields.findIndex(f => f === 'rua');
+    const paisColIdx = mappedFields.findIndex(f => f === 'pais');
+    const codPostalColIdx = mappedFields.findIndex(f => f === 'codigo_postal');
+    const localidadeColIdx = mappedFields.findIndex(f => f === 'localidade');
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const fornCodigo = String(row[fornCodColIdx] || '').trim();
+
+      if (!fornCodigo) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Código do Fornecedor (Fornecedor) vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        forn_codigo: fornCodigo,
+        forn_nome: fornNomeColIdx !== -1 ? String(row[fornNomeColIdx] || '').trim() : null,
+        rua: ruaColIdx !== -1 ? String(row[ruaColIdx] || '').trim() : null,
+        pais: paisColIdx !== -1 ? String(row[paisColIdx] || '').trim() : null,
+        codigo_postal: codPostalColIdx !== -1 ? String(row[codPostalColIdx] || '').trim() : null,
+        localidade: localidadeColIdx !== -1 ? String(row[localidadeColIdx] || '').trim() : null,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    // Deduplica em memória pelo código do fornecedor
+    const uniqueDbRowsMap = new Map<string, any>();
+    dbRows.forEach(item => {
+      uniqueDbRowsMap.set(item.forn_codigo, item);
+    });
+    const finalDbRows = Array.from(uniqueDbRowsMap.values());
+
+    try {
+      for (let i = 0; i < finalDbRows.length; i += 50) {
+        const batch = finalDbRows.slice(i, i + 50);
+        let { error } = await supabase.from('cidadeforn').upsert(batch, { onConflict: 'forn_codigo' });
+        if (error) {
+          // Se falhar o upsert por causa do onConflict ou RLS/permissão do upsert, tenta o insert direto
+          const { error: insertErr } = await supabase.from('cidadeforn').insert(batch);
+          if (insertErr) {
+            console.error('Erro no Supabase ao salvar cidadeforn:', insertErr);
+            throw new Error(`Erro no Supabase: ${insertErr.message || 'Falha de permissão RLS ou chave única na tabela cidadeforn'}`);
+          }
+        }
+      }
+
+
+
+
+      inserted = finalDbRows.length;
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'CIDADEFORN',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        created_at: new Date().toISOString(),
+        ignored_rows: ignoredRows
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      await this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true);
+      await this.bumpDatasetVersion('cidadeforn', this.getCidadeForn().length);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Cidades Fornecedores', `Importou Endereços/Cidades Fornecedores (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
+
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de cidadeforn no Supabase:', e);
+      throw e;
+    }
+  }
+
 
   // Posição de estoque (ZL0024): é uma foto do momento, não um histórico
   // incremental — diferente das demais importações SAP, a carga mais recente

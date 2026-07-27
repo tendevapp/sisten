@@ -23,8 +23,11 @@ const PATH_LABELS: Record<string, string> = {
   '/solicitacoes/minhas': 'Minhas Solicitações',
   '/solicitacoes/aprovacoes': 'Aprovações',
   '/suprimentos/painel': 'Painel SAP',
-  '/suprimentos/dashboards': 'Dashboards SAP',
-  '/suprimentos/demandas': 'Demandas',
+  '/suprimentos/dashboards': 'Gestão de Suprimentos',
+  // Rota histórica da antiga tela de Demandas, hoje uma aba da anterior. O
+  // rótulo distingue as duas no relatório de uso: quem chega por aqui veio de
+  // link salvo, não do menu.
+  '/suprimentos/demandas': 'Gestão de Suprimentos (link antigo)',
   '/suprimentos/fornecedores-sem-po': 'Central Compras',
   '/suprimentos/historico': 'Histórico',
   '/suprimentos/fornecedores': 'Fornecedores',

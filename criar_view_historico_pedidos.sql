@@ -52,13 +52,22 @@ create unique index if not exists mv_historico_pedidos_uidx
 create index if not exists mv_historico_pedidos_material_idx
   on public.mv_historico_pedidos (material);
 
--- View fina com o nome que o app consulta (leitura rápida, sem agregação).
+-- View fina com o nome que o app consulta (leitura rápida, com enrichment de contato e localização).
 create or replace view public.vw_historico_pedidos as
-  select * from public.mv_historico_pedidos;
+  select
+    h.*,
+    cf.pais,
+    cf.localidade as cidade,
+    cf.rua,
+    cf.codigo_postal
+  from public.mv_historico_pedidos h
+  left join public.cidadeforn cf
+    on cf.forn_codigo = h.cod_forn;
 
 -- Permissões de leitura (Supabase anon/authenticated).
 grant select on public.mv_historico_pedidos to anon, authenticated;
 grant select on public.vw_historico_pedidos to anon, authenticated;
+
 
 -- Função para recalcular a materialized view após importações (chamada via RPC).
 create or replace function public.refresh_historico_pedidos()

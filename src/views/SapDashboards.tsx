@@ -1,283 +1,294 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Painel de gestão de suprimentos.
+ *
+ * Consolida o que antes eram duas telas — a antiga /suprimentos/dashboards
+ * (contagens de status, sem filtro algum) e /suprimentos/demandas (fluxo
+ * RM→PO, com filtros próprios). Separadas, obrigavam o gestor a comparar
+ * indicadores apurados sobre recortes diferentes.
+ *
+ * Este arquivo é o *shell*: lê os dados uma vez, mantém o estado de filtro e
+ * de aba, calcula o recorte atual e o da janela anterior, e entrega tudo
+ * pronto para a aba ativa. Nenhuma aba busca dado próprio — assim o filtro
+ * escolhido uma vez atravessa as quatro leituras.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  LayoutDashboard, TrendingUp, AlertTriangle, Clock, CheckCircle, Users,
-} from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity } from 'lucide-react';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
-import { formatInt, formatPctInt } from '../lib/format';
-import { useChartTokens } from '../lib/chartTokens';
-import ChartCard from '../components/charts/ChartCard';
-import KpiCard from '../components/charts/KpiCard';
+import {
+  classifyTipoDemanda, classifyCriticidade, resolveDataCorte, resolveComprador, CompradorInfo,
+} from '../lib/demandas';
+import { janelaPadrao, janelaAnterior } from '../lib/suprimentos';
+import FiltrosSuprimentos, { EstadoFiltros } from '../components/suprimentos/FiltrosSuprimentos';
+import TabVisaoGeral from '../components/suprimentos/TabVisaoGeral';
+import TabDemandas from '../components/suprimentos/TabDemandas';
+import TabCarteira from '../components/suprimentos/TabCarteira';
+import TabFornecedores from '../components/suprimentos/TabFornecedores';
+
+export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores';
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
+  /** Aba de entrada. /suprimentos/demandas abre direto em 'demandas'. */
+  abaInicial?: AbaSuprimentos;
 }
 
-// Os três níveis de alerta são *status*, não identidade: escala reservada, e
-// cada um sempre acompanhado de ícone e rótulo.
-const NIVEIS = [
-  { chave: '⚠️ AÇÃO URGENTE', rotulo: 'Crítico', detalhe: 'Escalação pendente', token: 'var(--status-critical)' },
-  { chave: '⚡ ACOMPANHAR', rotulo: 'Atenção', detalhe: 'Em acompanhamento', token: 'var(--status-warning)' },
-  { chave: '✅ OK', rotulo: 'OK / Monitoramento', detalhe: 'Dentro da meta', token: 'var(--status-good)' },
-] as const;
+const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergunta: string }[] = [
+  { id: 'geral', rotulo: 'Visão Geral', icone: Activity, pergunta: 'Como está o setor — melhorou ou piorou?' },
+  { id: 'demandas', rotulo: 'Demandas', icone: TrendingUp, pergunta: 'O fluxo da requisição até o pedido está fluindo?' },
+  { id: 'carteira', rotulo: 'Carteira & Compradores', icone: Users, pergunta: 'Quem está sobrecarregado e quem está entregando?' },
+  { id: 'fornecedores', rotulo: 'Fornecedores & Spend', icone: Building2, pergunta: 'Para onde vai o dinheiro e quem cumpre prazo?' },
+];
 
-export default function SapDashboards({ onNavigate }: SapDashboardsProps) {
+/** Janela padrão: últimos 90 dias — larga o bastante para o ciclo RM→PO fechar. */
+const DIAS_PADRAO = 90;
+
+function filtrosIniciais(): EstadoFiltros {
+  const j = janelaPadrao(DIAS_PADRAO);
+  return {
+    granularidade: 'semana',
+    dateFrom: j.de,
+    dateTo: j.ate,
+    tipo: 'todos',
+    criticidade: 'todas',
+    area: 'todas',
+    comprador: 'todos',
+  };
+}
+
+export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapDashboardsProps) {
   const [records, setRecords] = useState<EnrichedSAPRecord[]>([]);
-  const tokens = useChartTokens();
+  const [compradores, setCompradores] = useState<CompradorInfo[]>([]);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [aba, setAba] = useState<AbaSuprimentos>(abaInicial);
+  const [filtros, setFiltros] = useState<EstadoFiltros>(filtrosIniciais);
 
-  useEffect(() => {
+  /* Dados --------------------------------------------------------------- */
+
+  const loadRecords = useCallback(() => {
     setRecords(localDb.getEnrichedSAPRequisicoes());
   }, []);
 
-  const m = useMemo(() => {
-    const total = records.length;
-    const withPO = records.filter(r => r.status_requisicao === 'Processado').length;
-    const withoutPO = records.filter(r => r.status_requisicao === 'Sem PO').length;
-    const critical = records.filter(r => r.alerta === '⚠️ ESCALAR IMEDIATAMENTE' || r.alerta === '⚠️ AÇÃO URGENTE').length;
-    const attention = records.filter(r => r.alerta === '⚡ ACOMPANHAR').length;
-    const ok = records.filter(r => r.alerta === '✅ OK' || r.alerta === '📋 MONITORAR').length;
-    const totalOpenDays = records.reduce((acc, r) => acc + (r.dias_em_aberto || 0), 0);
-    const avgOpenDays = total > 0 ? Math.round(totalOpenDays / total) : 0;
+  const loadCompradores = useCallback(async () => {
+    if (!supabase) return;
+    const { data } = await supabase.from('compradores').select('grupo_compras, nome_comprador, usuario_sistema');
+    if (data) setCompradores(data as CompradorInfo[]);
+  }, []);
 
-    const groupCounts: Record<string, number> = {};
+  const refresh = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await localDb.syncFromSupabase(true);
+    } catch (err) {
+      console.error('Falha ao sincronizar suprimentos:', err);
+    } finally {
+      loadRecords();
+      setLastSync(new Date());
+      setSyncing(false);
+    }
+  }, [loadRecords]);
+
+  useEffect(() => {
+    loadRecords();
+    loadCompradores();
+    setLastSync(new Date());
+  }, [loadRecords, loadCompradores]);
+
+  /* Aba na URL ---------------------------------------------------------- */
+
+  // A aba ativa vai para a query da hash para o link ser compartilhável e o
+  // botão voltar do navegador funcionar. `replaceState` em vez de navegação
+  // para não empilhar uma entrada de histórico por clique em aba.
+  const trocarAba = useCallback((nova: AbaSuprimentos) => {
+    setAba(nova);
+    const base = (window.location.hash || '#/suprimentos/dashboards').slice(1).split('?')[0];
+    window.history.replaceState(null, '', `#${base}?tab=${nova}`);
+  }, []);
+
+  useEffect(() => {
+    const q = (window.location.hash || '').split('?')[1];
+    const tab = new URLSearchParams(q || '').get('tab') as AbaSuprimentos | null;
+    if (tab && ABAS.some(a => a.id === tab)) setAba(tab);
+    else setAba(abaInicial);
+  }, [abaInicial]);
+
+  /* Filtros ------------------------------------------------------------- */
+
+  const atualizarFiltros = useCallback((patch: Partial<EstadoFiltros>) => {
+    setFiltros(f => ({ ...f, ...patch }));
+  }, []);
+
+  const resetarFiltros = useCallback(() => setFiltros(filtrosIniciais()), []);
+
+  const areas = useMemo(() => {
+    const s = new Set<string>();
     records.forEach(r => {
-      groupCounts[r.grupo_comprador] = (groupCounts[r.grupo_comprador] || 0) + 1;
+      const a = r.area_solicitante?.trim();
+      if (a) s.add(a);
     });
-    const sortedGroups = Object.entries(groupCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    return { total, withPO, withoutPO, critical, attention, ok, avgOpenDays, sortedGroups };
+    return Array.from(s).sort();
   }, [records]);
 
-  const conversao = m.total > 0 ? (m.withPO / m.total) * 100 : 0;
+  const compradorFiltroNome = useMemo(
+    () => compradores.find(c => c.grupo_compras === filtros.comprador)?.nome_comprador,
+    [compradores, filtros.comprador]
+  );
 
-  const handleDrilldown = (filterType: string, value: string) => {
-    let q = '';
-    if (filterType === 'status') q = `status=${value}`;
-    else if (filterType === 'alert') q = `alert=${value}`;
-    else if (filterType === 'buyer') q = `buyer=${value}`;
-    onNavigate(`/suprimentos/painel?${q}`);
-  };
+  /**
+   * Aplica todos os recortes exceto o de data, que varia entre a janela atual e
+   * a de comparação. Separar assim evita repetir a lógica de filtro duas vezes
+   * e garante que os dois períodos sejam recortados exatamente pelos mesmos
+   * critérios — se divergirem, a variação deixa de significar o que promete.
+   */
+  const aplicarRecortes = useCallback((r: EnrichedSAPRecord): boolean => {
+    if (filtros.tipo !== 'todos' && classifyTipoDemanda(r.requisicao_de_compra) !== filtros.tipo) return false;
+    if (filtros.criticidade !== 'todas' && classifyCriticidade(r.requisicao_de_compra) !== filtros.criticidade) return false;
+    if (filtros.area !== 'todas' && (r.area_solicitante?.trim() || 'Não informada') !== filtros.area) return false;
+    // Filtra pelo mesmo comprador "resolvido" usado nos gráficos e tabelas —
+    // comparar só `grupo_comprador` deixa passar RMs de um comprador cujo PO
+    // foi colocado por outro (cobertura entre compradores).
+    if (filtros.comprador !== 'todos' && resolveComprador(r, compradores) !== compradorFiltroNome) return false;
+    return true;
+  }, [filtros.tipo, filtros.criticidade, filtros.area, filtros.comprador, compradores, compradorFiltroNome]);
 
-  const niveis = [
-    { ...NIVEIS[0], valor: m.critical, cor: tokens.status.critical },
-    { ...NIVEIS[1], valor: m.attention, cor: tokens.status.warning },
-    { ...NIVEIS[2], valor: m.ok, cor: tokens.status.good },
-  ];
-  const totalNiveis = niveis.reduce((a, n) => a + n.valor, 0);
+  const dentroDoPeriodo = useCallback((r: EnrichedSAPRecord, de: string, ate: string): boolean => {
+    if (!de && !ate) return true;
+    // Corte por data_pedido quando já há PO colocado (senão uma RM antiga que
+    // só ganha PO dentro do período filtrado reaparece com a data de
+    // solicitação, fora do período); enquanto aberta, o corte é pela data de
+    // solicitação.
+    const corte = resolveDataCorte(r);
+    if (de && corte < de) return false;
+    if (ate && corte > ate) return false;
+    return true;
+  }, []);
+
+  const filtrados = useMemo(
+    () => records.filter(r => aplicarRecortes(r) && dentroDoPeriodo(r, filtros.dateFrom, filtros.dateTo)),
+    [records, aplicarRecortes, dentroDoPeriodo, filtros.dateFrom, filtros.dateTo]
+  );
+
+  /**
+   * Mesmo recorte na janela imediatamente anterior, de igual duração. Fica
+   * vazio quando o período não tem as duas pontas definidas — sem duração não
+   * existe janela comparável, e o DeltaBadge trata a ausência exibindo "—".
+   */
+  const { filtradosAnterior, temComparacao } = useMemo(() => {
+    const janela = janelaAnterior(filtros.dateFrom, filtros.dateTo);
+    if (!janela) return { filtradosAnterior: [] as EnrichedSAPRecord[], temComparacao: false };
+    return {
+      filtradosAnterior: records.filter(r => aplicarRecortes(r) && dentroDoPeriodo(r, janela.de, janela.ate)),
+      temComparacao: true,
+    };
+  }, [records, aplicarRecortes, dentroDoPeriodo, filtros.dateFrom, filtros.dateTo]);
+
+  /* Drill-down ---------------------------------------------------------- */
+
+  const drilldown = useCallback((tipo: 'status' | 'alert' | 'buyer', valor: string) => {
+    const chave = tipo === 'status' ? 'status' : tipo === 'alert' ? 'alert' : 'buyer';
+    onNavigate(`/suprimentos/painel?${chave}=${encodeURIComponent(valor)}`);
+  }, [onNavigate]);
+
+  const abaAtiva = ABAS.find(a => a.id === aba) ?? ABAS[0];
 
   return (
     <div className="space-y-6 text-left">
-      <div className="reveal">
-        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
-          <LayoutDashboard className="h-7 w-7" style={{ color: 'var(--brand)' }} />
-          Analytics &amp; Dashboards SAP
-        </h2>
-        <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-          Indicadores consolidados de eficiência, criticidade, gargalos de atendimento e lead time.
-        </p>
-      </div>
-
-      <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4 stagger">
-        <KpiCard
-          label="Índice de Conversão"
-          value={conversao}
-          format={formatPctInt}
-          detail={`${formatInt(m.withPO)} de ${formatInt(m.total)} requisições convertidas em pedido`}
-          icon={TrendingUp}
-          accent="var(--series-3)"
-          share={conversao / 100}
-          emphasize
-        />
-        <KpiCard
-          label="Atrasos Críticos"
-          value={m.critical}
-          format={formatInt}
-          detail="Acima de 30 dias abertos sem PO"
-          icon={AlertTriangle}
-          accent="var(--status-critical)"
-          share={m.total > 0 ? m.critical / m.total : undefined}
-          emphasize
-          onClick={() => handleDrilldown('alert', '⚠️ AÇÃO URGENTE')}
-        />
-        <KpiCard
-          label="Tempo Médio em Aberto"
-          value={m.avgOpenDays}
-          format={v => `${formatInt(v)} dias`}
-          detail="Média de processamento total"
-          icon={Clock}
-          accent="var(--series-1)"
-        />
-        <KpiCard
-          label="Atendidos"
-          value={m.withPO}
-          format={formatInt}
-          detail="Pedidos concluídos na base SAP"
-          icon={CheckCircle}
-          accent="var(--series-3)"
-          share={m.total > 0 ? m.withPO / m.total : undefined}
-          onClick={() => handleDrilldown('status', 'Com PO')}
-        />
-      </div>
-
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        {/* Funil de conversão. A sequência é real (sem PO → com PO), então a
-            numeração dos passos carrega informação e a rampa ordinal de um
-            matiz só mostra o avanço na própria cor. */}
-        <ChartCard
-          title="Fluxo de Conversão"
-          description="Onde as requisições estão no caminho até virar pedido. Clique num passo para filtrar o painel."
-          height={260}
-          empty={m.total === 0}
-          emptyMessage="Nenhuma requisição importada."
-        >
-          <ol className="space-y-3 py-2 stagger">
-            {[
-              { passo: 1, rotulo: 'Aguardando cotação / pedido', valor: m.withoutPO, destino: 'Sem PO', cor: 'var(--atraso-2)' },
-              { passo: 2, rotulo: 'Convertido em pedido SAP', valor: m.withPO, destino: 'Com PO', cor: 'var(--atraso-4)' },
-            ].map(e => {
-              const pct = m.total > 0 ? (e.valor / m.total) * 100 : 0;
-              return (
-                <li key={e.passo}>
-                  <button
-                    onClick={() => handleDrilldown('status', e.destino)}
-                    className="w-full rounded-lg border p-3.5 text-left group transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2"
-                    style={{ borderColor: 'var(--hairline)', outlineColor: e.cor }}
-                  >
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                        Passo {e.passo}
-                      </span>
-                      <span className="text-[11px] font-semibold tabular" style={{ color: 'var(--ink-muted)' }}>
-                        {formatPctInt(pct)}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold mt-1" style={{ color: 'var(--ink-primary)' }}>{e.rotulo}</p>
-                    <p className="text-xl font-black mt-0.5 tabular" style={{ color: 'var(--ink-primary)' }}>
-                      {formatInt(e.valor)} RIs
-                    </p>
-                    <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
-                      <div
-                        className="h-full rounded-full transition-[width] duration-700 ease-out"
-                        style={{ width: `${pct}%`, background: e.cor }}
-                      />
-                    </div>
-                    <p className="mt-1.5 text-[10px] group-hover:underline" style={{ color: 'var(--ink-muted)' }}>
-                      Filtrar no painel →
-                    </p>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </ChartCard>
-
-        {/* Níveis de alerta. Era um SVG desenhado à mão em que os três arcos
-            começavam todos no zero com strokeDasharray="251" — o anel verde
-            cobria a circunferência inteira sempre, independentemente do dado.
-            Aqui é uma barra 100% empilhada, que é parte-do-todo lida sem
-            precisar comparar ângulos. */}
-        <ChartCard
-          title="Níveis de Alerta"
-          description="Distribuição das requisições por severidade. Clique num nível para filtrar o painel."
-          height={260}
-          empty={totalNiveis === 0}
-          emptyMessage="Nenhuma requisição classificada."
-        >
-          <div className="space-y-4">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black tabular" style={{ color: 'var(--ink-primary)' }}>
-                {formatInt(m.total)}
-              </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                itens totais
-              </span>
-            </div>
-
-            <div className="flex h-7 w-full gap-[2px] rounded-md overflow-hidden">
-              {niveis.map(n => (
-                <div
-                  key={n.chave}
-                  className="h-full first:rounded-l-md last:rounded-r-md transition-[filter] duration-200 hover:brightness-110"
-                  style={{
-                    width: `${totalNiveis > 0 ? (n.valor / totalNiveis) * 100 : 0}%`,
-                    background: n.token,
-                  }}
-                  title={`${n.rotulo}: ${formatInt(n.valor)}`}
-                />
-              ))}
-            </div>
-
-            <ul className="space-y-1.5">
-              {niveis.map(n => (
-                <li key={n.chave}>
-                  <button
-                    onClick={() => handleDrilldown('alert', n.chave)}
-                    className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg text-left transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-1"
-                    style={{ outlineColor: n.token }}
-                  >
-                    <span className="h-3 w-3 rounded-full shrink-0" style={{ background: n.token }} aria-hidden="true" />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                        {n.rotulo}: {formatInt(n.valor)} itens
-                      </span>
-                      <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>{n.detalhe}</span>
-                    </span>
-                    <span className="text-xs font-semibold tabular shrink-0" style={{ color: 'var(--ink-secondary)' }}>
-                      {formatPctInt(totalNiveis > 0 ? (n.valor / totalNiveis) * 100 : 0)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </ChartCard>
-      </div>
-
-      <ChartCard
-        title="Top Grupos de Compras por Volume"
-        icon={Users}
-        description="Os cinco grupos com mais itens atribuídos. Clique num grupo para ver seus itens no painel."
-        height={180}
-        empty={m.sortedGroups.length === 0}
-        emptyMessage="Nenhum grupo de compras na base."
-      >
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 stagger">
-          {m.sortedGroups.map(([group, val], idx) => {
-            const percentage = m.total > 0 ? (val / m.total) * 100 : 0;
-            return (
-              <button
-                key={group}
-                onClick={() => handleDrilldown('buyer', group)}
-                className="rounded-xl border p-4 text-left space-y-2 cursor-pointer group transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ borderColor: 'var(--hairline)', outlineColor: 'var(--series-1)' }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded tabular"
-                    style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
-                  >
-                    #{idx + 1}
-                  </span>
-                  <span className="text-xs font-extrabold truncate" style={{ color: 'var(--ink-primary)' }}>{group}</span>
-                </div>
-                <p className="text-lg font-black tabular" style={{ color: 'var(--ink-primary)' }}>{formatInt(val)} itens</p>
-                <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
-                  <div
-                    className="h-full rounded-full transition-[width] duration-700 ease-out"
-                    style={{ width: `${percentage}%`, background: 'var(--series-1)' }}
-                  />
-                </div>
-                <p className="text-[10px] group-hover:underline" style={{ color: 'var(--ink-muted)' }}>Visualizar itens →</p>
-              </button>
-            );
-          })}
+      {/* Cabeçalho */}
+      <div className="flex items-start justify-between flex-wrap gap-3 reveal">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
+            <LayoutDashboard className="h-7 w-7" style={{ color: 'var(--brand)' }} />
+            Gestão de Suprimentos
+          </h2>
+          <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
+            {abaAtiva.pergunta}
+          </p>
         </div>
-      </ChartCard>
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
+          {lastSync && <span className="tabular">Atualizado às {lastSync.toLocaleTimeString('pt-BR')}</span>}
+          <button
+            onClick={refresh}
+            disabled={syncing}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', outlineColor: 'var(--brand)' }}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div
+        className="flex gap-1 overflow-x-auto border-b"
+        style={{ borderColor: 'var(--hairline)' }}
+        role="tablist"
+        aria-label="Perspectivas de gestão"
+      >
+        {ABAS.map(a => {
+          const Icone = a.icone;
+          const ativa = a.id === aba;
+          return (
+            <button
+              key={a.id}
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => trocarAba(a.id)}
+              title={a.pergunta}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-t"
+              style={{
+                borderColor: ativa ? 'var(--brand)' : 'transparent',
+                color: ativa ? 'var(--brand)' : 'var(--ink-muted)',
+                outlineColor: 'var(--brand)',
+              }}
+            >
+              <Icone className="h-4 w-4" aria-hidden="true" />
+              {a.rotulo}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filtro global — o mesmo recorte vale para as quatro abas */}
+      <FiltrosSuprimentos
+        filtros={filtros}
+        onChange={atualizarFiltros}
+        onReset={resetarFiltros}
+        areas={areas}
+        compradores={compradores}
+        totalFiltrado={filtrados.length}
+        mostrarGranularidade={aba === 'demandas' || aba === 'carteira'}
+      />
+
+      {aba === 'geral' && (
+        <TabVisaoGeral
+          records={filtrados}
+          recordsAnterior={filtradosAnterior}
+          temComparacao={temComparacao}
+          onDrilldown={drilldown}
+        />
+      )}
+
+      {aba === 'demandas' && (
+        <TabDemandas records={filtrados} granularidade={filtros.granularidade} />
+      )}
+
+      {aba === 'carteira' && (
+        <TabCarteira
+          records={filtrados}
+          compradores={compradores}
+          granularidade={filtros.granularidade}
+          onSelecionarComprador={nome => drilldown('buyer', nome)}
+        />
+      )}
+
+      {aba === 'fornecedores' && <TabFornecedores records={filtrados} />}
     </div>
   );
 }
