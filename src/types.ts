@@ -35,6 +35,10 @@ export interface Profile {
   // Número do grupo de compras SAP (ex.: 314, 358) atribuído ao usuário pelo
   // admin, usado para identificar de qual grupo ele é o comprador responsável.
   grupo_compras?: string | null;
+  // Override de acesso a páginas/feature flags por usuário, definido pelo
+  // admin em "Módulos de acesso". Só chaves desviadas do padrão do perfil
+  // aparecem aqui — chave ausente = segue o defaultRoles da página.
+  page_access?: Record<string, boolean>;
 }
 
 export interface ActivityLog {
