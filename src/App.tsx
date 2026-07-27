@@ -3,6 +3,7 @@ import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
+import { canAccessPage, pageIdForPath } from './lib/pages';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -102,7 +103,7 @@ export default function App() {
   };
 
   const activeUser = user && simulatedRole && user.roles.includes('admin')
-    ? { ...user, roles: [simulatedRole] }
+    ? { ...user, roles: [simulatedRole], page_access: {} }
     : user;
 
   const [currentPath, setCurrentPath] = useState<string>('/');
@@ -361,19 +362,19 @@ export default function App() {
         return <MyRequests user={user} />;
       
       case '/solicitacoes/aprovacoes':
-        if (user.roles.includes('gestor') || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos')) {
+        if (canAccessPage(user, 'sol_aprovacoes')) {
           return <Approvals user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/painel':
-        if (localDb.hasPermission(user, 'sap', 'visualizar_painel')) {
+        if (canAccessPage(user, 'sup_painel')) {
           return <SapPanel user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/dashboards':
-        if (localDb.hasPermission(user, 'sap', 'dashboards')) {
+        if (canAccessPage(user, 'sup_dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -382,7 +383,7 @@ export default function App() {
       // Gestão de Suprimentos. Mantida viva para não quebrar link salvo — abre
       // a mesma página já na aba correspondente.
       case '/suprimentos/demandas':
-        if (localDb.hasPermission(user, 'sap', 'dashboards')) {
+        if (canAccessPage(user, 'sup_dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} abaInicial="demandas" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -390,37 +391,37 @@ export default function App() {
       // Rota histórica: a Análise de Compras virou uma aba da página de
       // Dashboards. Mantida viva para não quebrar link salvo.
       case '/suprimentos/historico/dashboards':
-        if (localDb.hasPermission(user, 'sap', 'dashboards')) {
+        if (canAccessPage(user, 'sup_dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} abaInicial="compras" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/fornecedores-sem-po':
-        if (localDb.hasPermission(user, 'sap', 'fornecedores')) {
+        if (canAccessPage(user, 'sup_central_compras')) {
           return <SuppliersNoPO user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/historico':
-        if (localDb.hasPermission(user, 'sap', 'fornecedores')) {
+        if (canAccessPage(user, 'sup_historico')) {
           return <HistoricoPedidos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/fornecedores':
-        if (user.roles.includes('admin') || user.roles.includes('comprador')) {
+        if (canAccessPage(user, 'sup_fornecedores')) {
           return <Fornecedores user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/helpdesk':
-        if (user.roles.includes('atendente') || user.roles.includes('admin')) {
+        if (canAccessPage(user, 'helpdesk_atendimento')) {
           return <Helpdesk user={user} onNavigate={handleNavigate} initialView="atendimento" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/helpdesk/relatorios':
-        if (user.roles.includes('atendente') || user.roles.includes('admin')) {
+        if (canAccessPage(user, 'helpdesk_relatorios')) {
           return <Helpdesk user={user} onNavigate={handleNavigate} initialView="dashboard" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -429,7 +430,7 @@ export default function App() {
         return <ProfileView user={user} onNavigate={handleNavigate} onProfileUpdate={handleUserSessionChange} />;
 
       case '/suprimentos/cadastros-sap':
-        if (user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos') || user.roles.includes('comprador')) {
+        if (canAccessPage(user, 'sup_cadastros_sap')) {
           return <CadastrosSap user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -438,19 +439,19 @@ export default function App() {
         return <Reports user={user} />;
 
       case '/almoxarifado/estoque':
-        if (localDb.hasPermission(user, 'almoxarifado', 'visualizar')) {
+        if (canAccessPage(user, 'almox_estoque')) {
           return <Estoque user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/almoxarifado/dashboards':
-        if (localDb.hasPermission(user, 'almoxarifado', 'visualizar')) {
+        if (canAccessPage(user, 'almox_dashboards')) {
           return <AlmoxarifadoDashboards user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/admin/uso':
-        if (user.roles.includes('admin')) {
+        if (canAccessPage(user, 'admin_uso')) {
           return <UsageDashboard />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -463,7 +464,7 @@ export default function App() {
       case '/suprimentos/importar/log':
       case '/suprimentos/grupos-comprador':
       case '/admin/helpdesk':
-        if (user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos')) {
+        if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;

@@ -4,13 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Home, Search, BarChart3, PlusCircle, List, FileCheck,
-  Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, Route, Activity, Boxes, Info
-} from 'lucide-react';
+import { Menu, X, Sun, Moon, ArrowUpRight } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
+import { PAGES, canAccessPage } from '../lib/pages';
 import SistenLogo from './SistenLogo';
 
 interface SidebarProps {
@@ -30,71 +27,11 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     return localDb.getSectors().filter(s => s.helpdesk_enabled);
   };
 
-  const navItems = [
-    {
-      group: 'GERAL',
-      items: [
-        { label: 'Início', path: '/', icon: Home, perm: { module: 'solicitacoes', action: 'visualizar_proprias' } },
-        { label: 'Catálogo SAP', path: '/materiais/busca', icon: Search, perm: { module: 'materiais', action: 'visualizar' } },
-        // Rastreio Compras é acessível a todos os perfis (sem gate de permissão).
-        { label: 'Rastreio Compras', path: '/rastreio', icon: Route, perm: { module: 'solicitacoes', action: 'visualizar_proprias' }, universal: true },
-        { label: 'Relatórios', path: '/relatorios', icon: BarChart3, perm: { module: 'materiais', action: 'visualizar' } },
-        // Sobre é acessível a todos os perfis (sem gate de permissão).
-        { label: 'Sobre o SISTEN', path: '/sobre', icon: Info, perm: { module: 'solicitacoes', action: 'visualizar_proprias' }, universal: true },
-      ],
-    },
-    {
-      group: 'SOLICITAÇÕES',
-      items: [
-        { label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, perm: { module: 'solicitacoes', action: 'criar' } },
-        { label: 'Minhas Solicitações', path: '/solicitacoes/minhas', icon: List, perm: { module: 'solicitacoes', action: 'visualizar_proprias' } },
-        { label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, perm: { module: 'compras', action: 'visualizar_setor' } },
-      ],
-    },
-    {
-      group: 'SUPRIMENTOS',
-      items: [
-        { label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, perm: { module: 'cadastro_sap', action: 'atender' } },
-        { label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, perm: { module: 'sap', action: 'visualizar_painel' } },
-        { label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, perm: { module: 'sap', action: 'fornecedores' } },
-        { label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
-        // A Análise de Compras não tem item próprio: é uma aba de Dashboards,
-        // para que as leituras de suprimentos vivam todas na mesma página.
-        { label: 'Histórico', path: '/suprimentos/historico', icon: History, perm: { module: 'sap', action: 'fornecedores' } },
-        // Demandas deixou de ser um item próprio: virou uma aba dentro de
-        // Dashboards, para que o mesmo filtro valha para todas as leituras.
-        { label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, perm: { module: 'sap', action: 'dashboards' } },
-        { label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, perm: { module: 'sap', action: 'importar' } },
-      ],
-    },
-    {
-      group: 'ALMOXARIFADO',
-      items: [
-        { label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, perm: { module: 'almoxarifado', action: 'visualizar' } },
-        { label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, perm: { module: 'almoxarifado', action: 'visualizar' } },
-      ],
-    },
-    {
-      group: 'HELPDESK',
-      items: [
-        { label: 'Atendimento', path: '/helpdesk', icon: Radio, perm: { module: 'chamados', action: 'atender_setor' } },
-        { label: 'Relatórios Helpdesk', path: '/helpdesk/relatorios', icon: BarChart3, perm: { module: 'chamados', action: 'atender_setor' } },
-      ],
-    },
-    {
-      group: 'ADMINISTRAÇÃO',
-      items: [
-        { label: 'Uso do App', path: '/admin/uso', icon: Activity, perm: { module: 'admin', action: 'uso' } },
-        { label: 'Usuários', path: '/admin/usuarios', icon: Users, perm: { module: 'admin', action: 'usuarios' } },
-        { label: 'Setores', path: '/admin/setores', icon: Map, perm: { module: 'admin', action: 'setores' } },
-        { label: 'Permissões', path: '/admin/permissoes', icon: Shield, perm: { module: 'admin', action: 'auditoria' } },
-        { label: 'Import. Materiais', path: '/admin/importacao-materiais', icon: Upload, perm: { module: 'admin', action: 'importacao_materiais' } },
-        { label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, perm: { module: 'sap', action: 'importar' } },
-        { label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, perm: { module: 'sap', action: 'gerenciar_grupos' } },
-        { label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, perm: { module: 'admin', action: 'usuarios' } },
-      ],
-    },
-  ];
+  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'HELPDESK', 'ADMINISTRAÇÃO'];
+  const navItems = groupOrder.map(group => ({
+    group,
+    items: PAGES.filter(p => p.group === group),
+  }));
 
   const handleNavClick = (path: string) => {
     onNavigate(path);
@@ -166,10 +103,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
       <div className="flex-1 overflow-y-auto py-4">
         {navItems.map((group, groupIdx) => {
           // Filter items based on user permission
-          const visibleItems = group.items.filter(item =>
-            ('universal' in item && item.universal) ||
-            localDb.hasPermission(user, item.perm.module, item.perm.action)
-          );
+          const visibleItems = group.items.filter(item => canAccessPage(user, item.id));
 
           if (visibleItems.length === 0) return null;
 
