@@ -21,6 +21,7 @@ import {
 import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 
 interface SuppliersNoPOProps {
   user: Profile;
@@ -1945,39 +1946,55 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             };
             return (
           viewMode === 'table' && (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-              <table className="min-w-full divide-y divide-slate-150 dark:divide-slate-800 text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="py-3 px-3 w-8">
-                      <input
-                        type="checkbox"
-                        checked={allTableRisSelected}
-                        ref={el => { if (el) el.indeterminate = someTableRisSelected && !allTableRisSelected; }}
-                        onChange={toggleSelectAllTable}
-                        className="cursor-pointer"
-                        aria-label="Selecionar todos os itens visíveis"
-                      />
-                    </th>
-                    {tableShowSupplierFirst && <th className="py-3 px-3">Fornecedor</th>}
-                    <th className="py-3 px-3">RM / Item</th>
-                    <th className="py-3 px-3">PO</th>
-                    <th className="py-3 px-3">Material</th>
-                    <th className="py-3 px-3">Descrição</th>
-                    <th className="py-3 px-3">Qtd / Un</th>
-                    {!tableShowSupplierFirst && <th className="py-3 px-3">{poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'}</th>}
-                    <th className="py-3 px-3">Prioridade</th>
-                    <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-3">Promessa Entrega</th>
-                    <th className="py-3 px-3">Observação</th>
-                    <th className="py-3 px-3 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-150 dark:divide-slate-800 text-slate-705 dark:text-slate-350">
+            <TableShell>
+              <table className="min-w-full text-left text-xs">
+                {/* Cabeçalho fixo: esta lista chega a centenas de itens com
+                    células editáveis, e o cabeçalho rolava para fora da tela —
+                    quem editava a 40ª linha não sabia mais qual era a coluna. */}
+                <TableHeadRow>
+                  <Th width="w-8">
+                    <input
+                      type="checkbox"
+                      checked={allTableRisSelected}
+                      ref={el => { if (el) el.indeterminate = someTableRisSelected && !allTableRisSelected; }}
+                      onChange={toggleSelectAllTable}
+                      className="cursor-pointer"
+                      aria-label="Selecionar todos os itens visíveis"
+                    />
+                  </Th>
+                  {tableShowSupplierFirst && <Th label="Fornecedor" />}
+                  <Th label="RM / Item" />
+                  <Th label="PO" />
+                  <Th label="Material" />
+                  <Th label="Descrição" />
+                  <Th label="Qtd / Un" />
+                  {!tableShowSupplierFirst && <Th label={poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'} />}
+                  <Th label="Prioridade" />
+                  <Th label="Status" />
+                  <Th label="Promessa Entrega" />
+                  <Th label="Observação" />
+                  <Th label="Ações" align="center" />
+                </TableHeadRow>
+                <tbody className="divide-y" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
                   {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor }, selectedSupplier }) => {
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
                     return (
-                      <tr key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`} className={`hover:bg-slate-50/50 dark:hover:bg-slate-850/20 align-top transition-colors ${isModified(r.ri, r) ? 'bg-amber-50/15 dark:bg-amber-955/5' : ''}`}>
+                      // Linha alterada e ainda não salva ganha uma faixa na
+                      // borda esquerda além do fundo: o tingimento sozinho era
+                      // fraco demais para achar a alteração numa lista longa.
+                      <tr
+                        key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`}
+                        className="align-top transition-colors duration-150 hover:bg-[var(--surface-raised)]"
+                        style={{
+                          borderColor: 'var(--hairline)',
+                          ...(isModified(r.ri, r)
+                            ? {
+                                background: 'color-mix(in srgb, var(--status-warning) 7%, transparent)',
+                                boxShadow: 'inset 3px 0 0 0 var(--status-warning)',
+                              }
+                            : null),
+                        }}
+                      >
                         <td className="py-3 px-3">
                           <input
                             type="checkbox"
@@ -2267,7 +2284,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   })}
                 </tbody>
               </table>
-            </div>
+            </TableShell>
           ));})()}
 
           {/* Load More Button */}

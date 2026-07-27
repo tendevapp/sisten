@@ -5,11 +5,17 @@
 
 import React from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, Cell, ResponsiveContainer } from 'recharts';
-import { AbcResumo, ClasseAbc, CLASSE_ABC_COR, formatBRL, formatBRLCompacto } from '../../lib/almoxarifado';
+import { Layers } from 'lucide-react';
+import { AbcResumo, ClasseAbc, formatBRL, formatBRLCompacto } from '../../lib/almoxarifado';
+import { formatInt, formatPct, formatPctInt } from '../../lib/format';
+import { useChartConfig } from '../charts/chartDefaults';
+import ChartCard from '../charts/ChartCard';
+import ChartTooltip from '../charts/ChartTooltip';
 
 interface CurvaAbcChartProps {
   resumo: AbcResumo[];
   onSelecionar?: (classe: ClasseAbc) => void;
+  loading?: boolean;
 }
 
 const DESCRICAO: Record<ClasseAbc, string> = {
@@ -18,85 +24,111 @@ const DESCRICAO: Record<ClasseAbc, string> = {
   C: 'Baixo valor — controle simplificado',
 };
 
-function ChartTooltip({ active, payload }: any) {
+function TooltipConteudo({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as AbcResumo;
   return (
-    <div style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', padding: '8px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-      <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>Classe {row.classe}</div>
-      <div style={{ color: '#475569' }}>{DESCRICAO[row.classe]}</div>
-      <div style={{ marginTop: 4, color: '#0f172a' }}>{formatBRL(row.valor)} — {row.pctValor.toFixed(1)}% do valor</div>
-      <div style={{ color: '#475569' }}>{row.materiais.toLocaleString('pt-BR')} materiais</div>
-      <div style={{ color: '#475569' }}>Acumulado: {row.pctAcumulado.toFixed(1)}%</div>
-    </div>
+    <ChartTooltip
+      title={`Classe ${row.classe}`}
+      subtitle={DESCRICAO[row.classe]}
+      rows={[
+        { label: 'Valor imobilizado', value: formatBRL(row.valor) },
+        { label: 'Participação', value: formatPct(row.pctValor) },
+        { label: 'Materiais', value: formatInt(row.materiais) },
+      ]}
+      footer={`Acumulado até esta classe: ${formatPct(row.pctAcumulado)}`}
+    />
   );
 }
 
-export default function CurvaAbcChart({ resumo, onSelecionar }: CurvaAbcChartProps) {
+export default function CurvaAbcChart({ resumo, onSelecionar, loading }: CurvaAbcChartProps) {
+  const c = useChartConfig();
   const total = resumo.reduce((a, r) => a + r.valor, 0);
 
   return (
-    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Curva ABC</h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-          Classificação por valor imobilizado acumulado — A até 80%, B até 95%, C o restante. Clique numa classe para ver os itens.
-        </p>
-      </div>
-
-      {total <= 0 ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-400 dark:text-slate-500">
-          Nenhum item no filtro selecionado.
+    <ChartCard
+      title="Curva ABC"
+      icon={Layers}
+      description="Classificação por valor imobilizado acumulado — A até 80%, B até 95%, C o restante. Clique numa classe para ver os itens."
+      loading={loading}
+      empty={total <= 0}
+      emptyMessage="Nenhum item no filtro selecionado."
+      footer={
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 stagger">
+          {resumo.map(r => (
+            <button
+              key={r.classe}
+              onClick={() => onSelecionar?.(r.classe)}
+              className="rounded-lg border p-3 text-left transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5 cursor-pointer group focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{ borderColor: 'var(--hairline)', outlineColor: c.tokens.abc[r.classe] }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--surface-raised)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-black" style={{ color: 'var(--ink-primary)' }}>
+                  <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: c.tokens.abc[r.classe] }} aria-hidden="true" />
+                  Classe {r.classe}
+                </span>
+                <span className="text-[10px] font-bold tabular" style={{ color: 'var(--ink-muted)' }}>
+                  {formatPct(r.pctValor)} do valor
+                </span>
+              </div>
+              <p className="text-base font-black mt-1.5 tabular" style={{ color: 'var(--ink-primary)' }}>
+                {formatInt(r.materiais)} materiais
+              </p>
+              <p className="text-[11px] tabular" style={{ color: 'var(--ink-secondary)' }}>{formatBRL(r.valor)}</p>
+              <p className="text-[10px] mt-1 group-hover:underline" style={{ color: 'var(--ink-muted)' }}>
+                {DESCRICAO[r.classe]}
+              </p>
+            </button>
+          ))}
         </div>
-      ) : (
-        <>
-          <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={resumo} margin={{ top: 28, right: 48, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-              <XAxis dataKey="classe" tick={{ fontSize: 12, fill: '#334155', fontWeight: 700 }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-              <YAxis yAxisId="valor" tickFormatter={(v: number) => formatBRLCompacto(v)} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={72} />
-              <YAxis yAxisId="pct" orientation="right" domain={[0, 100]} unit="%" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} />
-              <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" formatter={(v: string) => (v === 'valor' ? 'Valor imobilizado' : '% acumulado')} />
-              <Bar
-                yAxisId="valor"
-                dataKey="valor"
-                maxBarSize={96}
-                radius={[4, 4, 0, 0]}
-                cursor={onSelecionar ? 'pointer' : undefined}
-                onClick={(d: any) => onSelecionar?.(d?.payload?.classe)}
-              >
-                {resumo.map(r => <Cell key={r.classe} fill={CLASSE_ABC_COR[r.classe]} />)}
-                <LabelList
-                  dataKey="pctValor"
-                  position="top"
-                  formatter={(v: number) => (v > 0 ? `${v.toFixed(0)}%` : '')}
-                  style={{ fontSize: 12, fontWeight: 700, fill: '#0f172a' }}
-                />
-              </Bar>
-              <Line yAxisId="pct" dataKey="pctAcumulado" stroke="#0f172a" strokeWidth={2} dot={{ r: 4, fill: '#0f172a' }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {resumo.map(r => (
-              <button
-                key={r.classe}
-                onClick={() => onSelecionar?.(r.classe)}
-                className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 text-left hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black" style={{ color: CLASSE_ABC_COR[r.classe] }}>Classe {r.classe}</span>
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{r.pctValor.toFixed(1)}% do valor</span>
-                </div>
-                <p className="text-base font-black text-slate-800 dark:text-slate-100 mt-1">{r.materiais.toLocaleString('pt-BR')} materiais</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">{formatBRL(r.valor)}</p>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 group-hover:underline">{DESCRICAO[r.classe]}</p>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+      }
+    >
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={resumo} margin={{ top: 28, right: 48, left: 0, bottom: 0 }}>
+          <CartesianGrid {...c.grid} />
+          <XAxis dataKey="classe" {...c.xAxis} tick={{ ...c.xAxis.tick, fontWeight: 700 }} />
+          <YAxis yAxisId="valor" {...c.yAxis} tickFormatter={formatBRLCompacto} width={72} />
+          <YAxis yAxisId="pct" orientation="right" domain={[0, 100]} unit="%" {...c.yAxis} width={44} />
+          <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />
+          <Legend
+            {...c.legend}
+            formatter={(v: string) => (v === 'valor' ? 'Valor imobilizado' : '% acumulado')}
+          />
+          <Bar
+            yAxisId="valor"
+            dataKey="valor"
+            // A cor real de cada barra vem das <Cell>, mas a legenda lê o fill
+            // da própria <Bar> — sem ele o marcador da legenda saía preto nos
+            // dois temas. O passo do meio da rampa representa o conjunto.
+            fill={c.tokens.abc.B}
+            maxBarSize={96}
+            radius={c.radius.top}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.payload?.classe)}
+            {...c.animation}
+          >
+            {resumo.map(r => <Cell key={r.classe} fill={c.tokens.abc[r.classe]} />)}
+            {/* Rótulo direto: as três classes cabem, e ele é o canal de leitura
+                que dispensa o leitor de comparar alturas de barra. */}
+            <LabelList
+              dataKey="pctValor"
+              position="top"
+              formatter={(v: number) => (v > 0 ? formatPctInt(v) : '')}
+              style={c.labelOnSurface}
+            />
+          </Bar>
+          <Line
+            yAxisId="pct"
+            dataKey="pctAcumulado"
+            stroke={c.tokens.inkPrimary}
+            strokeWidth={2}
+            dot={{ r: 4, fill: c.tokens.inkPrimary, stroke: c.tokens.surface, strokeWidth: 2 }}
+            {...c.animation}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }

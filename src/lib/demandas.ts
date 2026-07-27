@@ -53,30 +53,92 @@ export const TIPO_DEMANDA_LABEL: Record<TipoDemanda, string> = {
   outro: 'Outros',
 };
 
-// Paleta categórica validada (node scripts/validate_palette.js, modo claro —
-// os painéis de suprimentos não têm variante escura de conteúdo, só a sidebar).
+/**
+ * Cores das séries de demandas, como referências a token.
+ *
+ * Duas escalas diferentes convivem aqui, de propósito:
+ *
+ * - Identidade (requisitado, pedido, aberto, material, serviço) usa slots
+ *   categóricos em ordem fixa. Ficam nos três primeiros slots, os únicos que
+ *   passam a validação de todos-os-pares nos dois temas.
+ * - Criticidade (normal, urgente, máquina parada) usa a escala de *status*:
+ *   ela significa gravidade, não identidade. Status é reservado e vem sempre
+ *   acompanhado de rótulo — nunca cor sozinha.
+ *
+ * Valem em CSS. No Recharts, use `useChartTokens()`: `var()` não resolve em
+ * atributo de apresentação SVG.
+ */
 export const DEMANDA_COLORS = {
-  requisitado: '#2563eb', // blue-600
-  pedido: '#059669',      // emerald-600
-  aberto: '#dc2626',      // red-600
-  acumulado: '#7c3aed',   // violet-600
-  normal: '#059669',      // emerald-600
-  urgente: '#f59e0b',     // amber-500
-  maquinaParada: '#991b1b', // red-800 (mais escuro que "aberto" red-600, p/ não colidir)
-  material: '#059669',    // emerald-600
-  servico: '#2563eb',     // blue-600
+  requisitado: 'var(--series-1)',   // azul
+  pedido: 'var(--series-3)',        // água
+  aberto: 'var(--series-2)',        // laranja
+  acumulado: 'var(--series-7)',     // violeta
+  material: 'var(--series-1)',
+  servico: 'var(--series-2)',
+  normal: 'var(--status-good)',
+  urgente: 'var(--status-warning)',
+  maquinaParada: 'var(--status-critical)',
 } as const;
+
+/**
+ * Mesmo mapa, mas por chave do objeto devolvido por `useChartTokens()` — é o
+ * que os gráficos consomem.
+ */
+export type DemandaSerie = keyof typeof DEMANDA_COLORS;
+
+export function demandaColor(tokens: {
+  series: string[];
+  status: Record<'good' | 'warning' | 'serious' | 'critical', string>;
+}, serie: DemandaSerie): string {
+  switch (serie) {
+    case 'requisitado':
+    case 'material':
+      return tokens.series[0];
+    case 'aberto':
+    case 'servico':
+      return tokens.series[1];
+    case 'pedido':
+      return tokens.series[2];
+    case 'acumulado':
+      return tokens.series[6];
+    case 'normal':
+      return tokens.status.good;
+    case 'urgente':
+      return tokens.status.warning;
+    case 'maquinaParada':
+      return tokens.status.critical;
+  }
+}
 
 // Faixas de atraso do backlog (espelha a regra de `localDb.ts`, do menos ao
 // mais grave) e sua severidade visual — usado no gráfico de Atraso/SLA.
 export const FAIXA_ATRASO_ORDER = ['Sem Atraso', '1-7 dias', '8-15 dias', '16-30 dias', 'Acima 30 dias'] as const;
 
+/**
+ * Faixa de atraso é escala *ordinal*: as faixas têm ordem, e trocá-las mudaria
+ * o sentido. Por isso é uma rampa de um matiz só, do passo mais fraco (sem
+ * atraso) ao mais forte (acima de 30 dias) — o leitor vê a ordem na própria
+ * cor. O arco-íris verde→lima→âmbar→laranja→vermelho anterior gastava cinco
+ * matizes para codificar uma coisa que é uma dimensão só, e colidia com a
+ * escala de status usada na criticidade.
+ *
+ * A gravidade não fica só na cor: a faixa crítica leva ícone e rótulo.
+ */
 export const FAIXA_ATRASO_COLOR: Record<string, string> = {
-  'Sem Atraso': '#059669',   // emerald-600
-  '1-7 dias': '#84cc16',     // lime-500
-  '8-15 dias': '#f59e0b',    // amber-500
-  '16-30 dias': '#f97316',   // orange-500
-  'Acima 30 dias': '#dc2626', // red-600
+  'Sem Atraso': 'var(--atraso-1)',
+  '1-7 dias': 'var(--atraso-2)',
+  '8-15 dias': 'var(--atraso-3)',
+  '16-30 dias': 'var(--atraso-4)',
+  'Acima 30 dias': 'var(--atraso-5)',
+};
+
+/** Índice da faixa na rampa, para os gráficos lerem de `useChartTokens().atraso`. */
+export const FAIXA_ATRASO_INDEX: Record<string, number> = {
+  'Sem Atraso': 0,
+  '1-7 dias': 1,
+  '8-15 dias': 2,
+  '16-30 dias': 3,
+  'Acima 30 dias': 4,
 };
 
 // Agrupamento temporal compartilhado pelos gráficos e tabelas de demandas.

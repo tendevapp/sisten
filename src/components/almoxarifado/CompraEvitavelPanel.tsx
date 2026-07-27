@@ -7,15 +7,18 @@ import React, { useState } from 'react';
 import { AlertTriangle, FileSpreadsheet, ChevronDown, CheckCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { CompraEvitavel, formatBRL, formatQtd } from '../../lib/almoxarifado';
+import { formatInt } from '../../lib/format';
+import ChartCard from '../charts/ChartCard';
 
 interface CompraEvitavelPanelProps {
   dados: CompraEvitavel[];
   onSelecionar?: (material: string) => void;
+  loading?: boolean;
 }
 
 const PAGINA = 10;
 
-export default function CompraEvitavelPanel({ dados, onSelecionar }: CompraEvitavelPanelProps) {
+export default function CompraEvitavelPanel({ dados, onSelecionar, loading }: CompraEvitavelPanelProps) {
   const [visiveis, setVisiveis] = useState(PAGINA);
   const valorEmRisco = dados.reduce((a, d) => a + d.valorEstoque, 0);
 
@@ -37,58 +40,65 @@ export default function CompraEvitavelPanel({ dados, onSelecionar }: CompraEvita
   };
 
   return (
-    <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" /> Compra Evitável
-          </h3>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-            Materiais com requisição de compra aberta e saldo disponível em estoque. Confirme o saldo antes de seguir com a cotação.
-          </p>
-        </div>
-        {dados.length > 0 && (
+    <ChartCard
+      title="Compra Evitável"
+      icon={AlertTriangle}
+      description="Materiais com requisição de compra aberta e saldo disponível em estoque. Confirme o saldo antes de seguir com a cotação."
+      height={260}
+      loading={loading}
+      actions={
+        dados.length > 0 ? (
           <button
             onClick={exportar}
-            className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 shrink-0 h-9"
+            className="flex items-center gap-2 px-3 py-2 text-white rounded-lg text-xs font-bold transition-transform duration-150 shadow-sm cursor-pointer active:scale-95 shrink-0 h-9 focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{ background: 'var(--brand)', outlineColor: 'var(--brand)' }}
           >
-            <FileSpreadsheet className="h-3.5 w-3.5" /> Exportar {dados.length}
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Exportar {formatInt(dados.length)}
           </button>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       {dados.length === 0 ? (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 text-sm font-semibold">
-          <CheckCircle className="h-5 w-5 shrink-0" />
+        // Estado bom também é informação: diz o que foi verificado, não só que
+        // a lista está vazia.
+        <div
+          className="flex items-center gap-3 p-4 rounded-lg text-sm font-semibold"
+          style={{ background: 'var(--brand-wash)', color: 'var(--ink-primary)' }}
+        >
+          <CheckCircle className="h-5 w-5 shrink-0" style={{ color: 'var(--status-good)' }} />
           Nenhuma requisição aberta para material com saldo em estoque.
         </div>
       ) : (
-        <>
-          <div className="flex flex-wrap gap-4 text-xs">
-            <span className="text-slate-500 dark:text-slate-400">
-              <strong className="text-amber-600 dark:text-amber-500 text-base font-black">{dados.length}</strong> materiais
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+            <span style={{ color: 'var(--ink-muted)' }}>
+              <strong className="text-base font-black tabular" style={{ color: 'var(--status-warning)' }}>
+                {formatInt(dados.length)}
+              </strong>{' '}
+              materiais
             </span>
-            <span className="text-slate-500 dark:text-slate-400">
-              <strong className="text-slate-800 dark:text-slate-200">{formatBRL(valorEmRisco)}</strong> já em estoque
+            <span style={{ color: 'var(--ink-muted)' }}>
+              <strong className="tabular" style={{ color: 'var(--ink-primary)' }}>{formatBRL(valorEmRisco)}</strong> já em estoque
             </span>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
             {dados.slice(0, visiveis).map(d => (
               <button
                 key={d.material}
                 onClick={() => onSelecionar?.(d.material)}
-                className="w-full text-left py-2.5 group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors px-2 -mx-2 rounded"
+                className="w-full text-left py-2.5 group cursor-pointer px-2 -mx-2 rounded transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-1"
+                style={{ borderColor: 'var(--hairline)', outlineColor: 'var(--status-warning)' }}
                 title={`Ver ${d.material} na posição de estoque`}
               >
                 <div className="flex items-baseline gap-2 text-xs">
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200 shrink-0 group-hover:text-emerald-600 dark:group-hover:text-emerald-500">
+                  <span className="font-mono font-bold shrink-0" style={{ color: 'var(--ink-primary)' }}>
                     {d.material}
                   </span>
-                  <span className="truncate text-slate-600 dark:text-slate-400 flex-1">{d.descricao || '—'}</span>
-                  <span className="shrink-0 font-bold text-slate-700 dark:text-slate-300 tabular-nums">{formatBRL(d.valorEstoque)}</span>
+                  <span className="truncate flex-1" style={{ color: 'var(--ink-secondary)' }}>{d.descricao || '—'}</span>
+                  <span className="shrink-0 font-bold tabular" style={{ color: 'var(--ink-primary)' }}>{formatBRL(d.valorEstoque)}</span>
                 </div>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[10px] mt-0.5 tabular" style={{ color: 'var(--ink-muted)' }}>
                   Saldo {formatQtd(d.saldo)} {d.umb} · solicitado {formatQtd(d.qtdSolicitada)} {d.umb} · RM {d.rms.join(', ') || '—'}
                 </p>
               </button>
@@ -98,13 +108,14 @@ export default function CompraEvitavelPanel({ dados, onSelecionar }: CompraEvita
           {visiveis < dados.length && (
             <button
               onClick={() => setVisiveis(v => v + PAGINA)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 border rounded-lg text-xs font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)]"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
             >
               <ChevronDown className="h-3.5 w-3.5" /> Ver mais {Math.min(PAGINA, dados.length - visiveis)}
             </button>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </ChartCard>
   );
 }

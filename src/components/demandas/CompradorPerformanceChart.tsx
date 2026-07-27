@@ -5,15 +5,25 @@
 
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, ResponsiveContainer } from 'recharts';
+import { UserCheck } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { DEMANDA_COLORS, CompradorInfo, resolveComprador } from '../../lib/demandas';
+import { demandaColor, CompradorInfo, resolveComprador } from '../../lib/demandas';
+import { formatInt, formatPctInt } from '../../lib/format';
+import { useChartConfig } from '../charts/chartDefaults';
+import ChartCard from '../charts/ChartCard';
+import ChartTooltip from '../charts/ChartTooltip';
 
 interface CompradorPerformanceChartProps {
   records: EnrichedSAPRecord[];
   compradores: CompradorInfo[];
+  loading?: boolean;
 }
 
-export default function CompradorPerformanceChart({ records, compradores }: CompradorPerformanceChartProps) {
+export default function CompradorPerformanceChart({ records, compradores, loading }: CompradorPerformanceChartProps) {
+  const c = useChartConfig();
+  const corPedido = demandaColor(c.tokens, 'pedido');
+  const corAberto = demandaColor(c.tokens, 'aberto');
+
   const data = useMemo(() => {
     const byBuyer = new Map<string, { comprador: string; requisitadas: number; pedidos: number }>();
     records.forEach(r => {
@@ -28,37 +38,71 @@ export default function CompradorPerformanceChart({ records, compradores }: Comp
       .sort((a, b) => b.requisitadas - a.requisitadas);
   }, [records, compradores]);
 
-  return (
-    <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Desempenho por Comprador</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Requisições de material atribuídas x pedidos colocados</p>
-      </div>
+  function TooltipConteudo({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload;
+    const conversao = row.requisitadas > 0 ? (row.pedidos / row.requisitadas) * 100 : 0;
+    return (
+      <ChartTooltip
+        title={row.comprador}
+        subtitle={`${formatInt(row.requisitadas)} RM atribuídas`}
+        rows={[
+          { label: 'Pedidos colocados', value: formatInt(row.pedidos), color: corPedido },
+          { label: 'Em aberto', value: formatInt(row.aberto), color: corAberto },
+        ]}
+        footer={`Conversão: ${formatPctInt(conversao)}`}
+      />
+    );
+  }
 
-      {data.length === 0 ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-400">
-          Nenhuma demanda no período/filtro selecionado.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={data} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-            <XAxis dataKey="comprador" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={36} />
-            <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="requisitadas" name="RM Atribuídas" fill={DEMANDA_COLORS.requisitado} radius={[4, 4, 0, 0]} barSize={18}>
-              <LabelList dataKey="requisitadas" position="top" style={{ fontSize: 10, fill: '#334155' }} />
-            </Bar>
-            <Bar dataKey="pedidos" name="Pedidos Colocados" fill={DEMANDA_COLORS.pedido} radius={[4, 4, 0, 0]} barSize={18}>
-              <LabelList dataKey="pedidos" position="top" style={{ fontSize: 10, fill: '#334155' }} />
-            </Bar>
-            <Bar dataKey="aberto" name="Aberto" fill={DEMANDA_COLORS.aberto} radius={[4, 4, 0, 0]} barSize={18}>
-              <LabelList dataKey="aberto" position="top" style={{ fontSize: 10, fill: '#334155' }} />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-    </div>
+  return (
+    <ChartCard
+      title="Desempenho por Comprador"
+      icon={UserCheck}
+      description="RM atribuídas repartidas entre pedidos já colocados e o que segue em aberto. A altura total da barra é a carga do comprador."
+      height={320}
+      loading={loading}
+      empty={data.length === 0}
+      emptyMessage="Nenhuma demanda no período/filtro selecionado."
+    >
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={data} margin={{ top: 24, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid {...c.grid} />
+          <XAxis dataKey="comprador" {...c.xAxis} tick={{ ...c.xAxis.tick, fontSize: 11, fontWeight: 500 }} />
+          <YAxis allowDecimals={false} {...c.yAxis} width={36} />
+          <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />
+          <Legend {...c.legend} />
+          {/* Empilhado, não agrupado: "RM atribuídas" é a soma de pedidos +
+              aberto, então plotar as três lado a lado desenhava o total duas
+              vezes e fazia a carga do comprador parecer o dobro. Empilhando, a
+              altura total é a carga e os segmentos são a repartição. */}
+          <Bar
+            dataKey="pedidos"
+            name="Pedidos colocados"
+            stackId="rm"
+            fill={corPedido}
+            barSize={26}
+            stroke={c.tokens.surface}
+            strokeWidth={c.stackGap}
+            {...c.animation}
+          />
+          <Bar
+            dataKey="aberto"
+            name="Em aberto"
+            stackId="rm"
+            fill={corAberto}
+            radius={c.radius.top}
+            barSize={26}
+            stroke={c.tokens.surface}
+            strokeWidth={c.stackGap}
+            {...c.animation}
+          >
+            {/* Só o total ganha rótulo direto: um número em cada segmento
+                transformaria o gráfico numa tabela mal formatada. */}
+            <LabelList dataKey="requisitadas" position="top" formatter={formatInt} style={c.labelOnSurface} />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }

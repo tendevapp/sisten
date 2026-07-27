@@ -5,16 +5,26 @@
 
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, ResponsiveContainer } from 'recharts';
+import { Building2 } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { classifyTipoDemanda, DEMANDA_COLORS } from '../../lib/demandas';
+import { classifyTipoDemanda, demandaColor } from '../../lib/demandas';
+import { formatInt } from '../../lib/format';
+import { useChartConfig } from '../charts/chartDefaults';
+import ChartCard from '../charts/ChartCard';
+import ChartTooltip from '../charts/ChartTooltip';
 
 interface AreaSolicitanteChartProps {
   records: EnrichedSAPRecord[];
+  loading?: boolean;
 }
 
 const TOP_N = 10;
 
-export default function AreaSolicitanteChart({ records }: AreaSolicitanteChartProps) {
+export default function AreaSolicitanteChart({ records, loading }: AreaSolicitanteChartProps) {
+  const c = useChartConfig();
+  const corMaterial = demandaColor(c.tokens, 'material');
+  const corServico = demandaColor(c.tokens, 'servico');
+
   const data = useMemo(() => {
     const byArea = new Map<string, { area: string; material: number; servico: number }>();
     records.forEach(r => {
@@ -31,32 +41,77 @@ export default function AreaSolicitanteChart({ records }: AreaSolicitanteChartPr
       .reverse(); // maior no topo em barra horizontal
   }, [records]);
 
-  return (
-    <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Volume por Área Solicitante</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Top {TOP_N} áreas por requisições de materiais e serviços</p>
-      </div>
+  function TooltipConteudo({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload;
+    return (
+      <ChartTooltip
+        title={row.area}
+        subtitle={`${formatInt(row.total)} requisições`}
+        rows={[
+          { label: 'Materiais', value: formatInt(row.material), color: corMaterial },
+          { label: 'Serviços', value: formatInt(row.servico), color: corServico },
+        ]}
+      />
+    );
+  }
 
-      {data.length === 0 ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-400">
-          Nenhuma demanda no período/filtro selecionado.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={Math.max(280, data.length * 34)}>
-          <BarChart data={data} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-            <YAxis type="category" dataKey="area" tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} width={140} />
-            <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="material" name="Materiais" stackId="a" fill={DEMANDA_COLORS.material} radius={[0, 0, 0, 0]} barSize={18} />
-            <Bar dataKey="servico" name="Serviços" stackId="a" fill={DEMANDA_COLORS.servico} radius={[0, 4, 4, 0]} barSize={18}>
-              <LabelList dataKey="total" position="right" style={{ fontSize: 10, fontWeight: 600, fill: '#334155' }} />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-    </div>
+  return (
+    <ChartCard
+      title="Volume por Área Solicitante"
+      icon={Building2}
+      description={`Top ${TOP_N} áreas por requisições de materiais e serviços`}
+      height={280}
+      loading={loading}
+      empty={data.length === 0}
+      emptyMessage="Nenhuma demanda no período/filtro selecionado."
+    >
+      <ResponsiveContainer width="100%" height={Math.max(280, data.length * 34)}>
+        <BarChart data={data} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
+          <CartesianGrid {...c.grid} vertical horizontal={false} />
+          <XAxis type="number" allowDecimals={false} {...c.yAxis} axisLine={{ stroke: c.tokens.axis }} />
+          <YAxis
+            type="category"
+            dataKey="area"
+            tick={{ fontSize: 11, fill: c.tokens.labelStrong }}
+            axisLine={false}
+            tickLine={false}
+            width={140}
+          />
+          <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />
+          <Legend {...c.legend} />
+          {/* O vão de 2px entre os dois segmentos é a superfície aparecendo —
+              separa as cores sem precisar de contorno. */}
+          <Bar
+            dataKey="material"
+            name="Materiais"
+            stackId="a"
+            fill={corMaterial}
+            barSize={18}
+            stroke={c.tokens.surface}
+            strokeWidth={c.stackGap}
+            {...c.animation}
+          />
+          <Bar
+            dataKey="servico"
+            name="Serviços"
+            stackId="a"
+            fill={corServico}
+            radius={c.radius.right}
+            barSize={18}
+            stroke={c.tokens.surface}
+            strokeWidth={c.stackGap}
+            {...c.animation}
+          >
+            <LabelList
+              dataKey="total"
+              position="right"
+              formatter={formatInt}
+              style={{ ...c.labelOnSurface, fontSize: 10 }}
+            />
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }

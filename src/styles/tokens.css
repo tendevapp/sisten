@@ -1,0 +1,222 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Tokens visuais do SISTEN.
+ *
+ * Fonte única de superfícies, tinta, cromo de gráfico e cores de série. Existe
+ * para que os gráficos parem de carregar hex fixo de tema claro (era o motivo
+ * de rótulos pretos e tooltips brancos no tema escuro) e para que o tema escuro
+ * deixe de depender do bloco de `!important` no index.css.
+ *
+ * As cores de série NÃO são escolhidas a olho: saem da paleta documentada em
+ * skills/dataviz/references/palette.md e foram validadas contra as superfícies
+ * reais deste app com scripts/validate_palette.js — categórica, rampa ordinal
+ * ABC e rampa de faixa de atraso, nos dois temas.
+ *
+ * Ao mexer em qualquer cor de série, rode o validador de novo.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Superfícies -------------------------------------------------------- */
+  --surface-page: #f1f5f9;
+  --surface-card: #ffffff;
+  --surface-raised: #f8fafc;   /* linhas de tabela em hover, chips, trilhos */
+  --surface-sunken: #f1f5f9;   /* trilho de barra de progresso, skeleton */
+
+  --hairline: #e2e8f0;         /* borda padrão de card */
+  --hairline-strong: #cbd5e1;  /* divisores e eixos */
+
+  /* Tinta -------------------------------------------------------------- */
+  --ink-primary: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #64748b;
+  --ink-inverse: #ffffff;
+
+  /* Marca -------------------------------------------------------------- */
+  --brand: #059669;
+  --brand-strong: #047857;
+  --brand-wash: rgba(5, 150, 105, 0.08);
+
+  /* Cromo de gráfico --------------------------------------------------- */
+  --chart-grid: #e2e8f0;
+  --chart-axis: #cbd5e1;
+  --chart-label: #64748b;       /* ticks */
+  --chart-label-strong: #334155;/* rótulo de categoria no eixo X */
+  --chart-value: #0f172a;       /* números impressos sobre a superfície */
+  --chart-value-on-mark: #ffffff; /* números impressos dentro da marca */
+  --chart-cursor: rgba(15, 23, 42, 0.05);
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #e2e8f0;
+  --chart-tooltip-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.18);
+
+  /* Série categórica (identidade) — ordem fixa, nunca ciclada ----------- */
+  --series-1: #2a78d6;  /* azul     */
+  --series-2: #eb6834;  /* laranja  */
+  --series-3: #1baf7a;  /* água     */
+  --series-4: #eda100;  /* amarelo  */
+  --series-5: #e87ba4;  /* magenta  */
+  --series-6: #008300;  /* verde    */
+  --series-7: #4a3aa7;  /* violeta  */
+  --series-8: #e34948;  /* vermelho */
+
+  /* Rampa ordinal ABC (A = mais valor = passo mais escuro) -------------- */
+  --abc-a: #1c5cab;
+  --abc-b: #3987e5;
+  --abc-c: #86b6ef;
+
+  /* Rampa ordinal de faixa de atraso (sem atraso → acima de 30 dias) ---- */
+  --atraso-1: #86b6ef;
+  --atraso-2: #5598e7;
+  --atraso-3: #2a78d6;
+  --atraso-4: #1c5cab;
+  --atraso-5: #104281;
+
+  /* Status — escala reservada, sempre com ícone + rótulo ---------------- */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Movimento ---------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --surface-page: #0a0e17;
+  --surface-card: #0f1422;
+  --surface-raised: #171e30;
+  /* No tema escuro o "rebaixado" precisa ser mais claro que o card, não mais
+     escuro: trilho de barra e skeleton no tom da página sumiam contra a
+     superfície do card, que já é escura. */
+  --surface-sunken: #1e2637;
+
+  --hairline: #1e293b;
+  --hairline-strong: #334155;
+
+  --ink-primary: #f8fafc;
+  --ink-secondary: #cbd5e1;
+  --ink-muted: #94a3b8;
+  --ink-inverse: #0a0e17;
+
+  --brand: #10b981;
+  --brand-strong: #34d399;
+  --brand-wash: rgba(16, 185, 129, 0.1);
+
+  --chart-grid: #1e293b;
+  --chart-axis: #334155;
+  --chart-label: #94a3b8;
+  --chart-label-strong: #cbd5e1;
+  --chart-value: #f8fafc;
+  --chart-value-on-mark: #ffffff;
+  --chart-cursor: rgba(148, 163, 184, 0.1);
+  --chart-tooltip-bg: #171e30;
+  --chart-tooltip-border: #334155;
+  --chart-tooltip-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.6);
+
+  /* Mesmas oito famílias, passos escolhidos para a superfície escura —
+     não é um flip automático da coluna clara. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
+  /* Rampas ordinais invertem a âncora: no escuro, "mais" = passo mais claro. */
+  --abc-a: #b7d3f6;
+  --abc-b: #5598e7;
+  --abc-c: #184f95;
+
+  --atraso-1: #184f95;
+  --atraso-2: #256abf;
+  --atraso-3: #5598e7;
+  --atraso-4: #9ec5f4;
+  --atraso-5: #cde2fb;
+
+  /* Status é fixo: os mesmos quatro passos nos dois temas. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+}
+
+/* --------------------------------------------------------------------- */
+/* Números                                                                */
+/* --------------------------------------------------------------------- */
+
+/* Algarismos de largura fixa onde os números precisam alinhar na vertical
+   ou mudar de valor sem "dançar": ticks de eixo, colunas de tabela e os
+   valores de KPI que animam na entrada. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* --------------------------------------------------------------------- */
+/* Entrada de página: revelação escalonada                                */
+/* --------------------------------------------------------------------- */
+
+@keyframes sisten-reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Aplique em um container: cada filho direto entra em sequência. O atraso
+   para no 8º filho para que listas longas não fiquem esperando. */
+.stagger > * {
+  animation: sisten-reveal var(--dur-slow) var(--ease-out) backwards;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 45ms; }
+.stagger > *:nth-child(3) { animation-delay: 90ms; }
+.stagger > *:nth-child(4) { animation-delay: 135ms; }
+.stagger > *:nth-child(5) { animation-delay: 180ms; }
+.stagger > *:nth-child(6) { animation-delay: 225ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(n + 8) { animation-delay: 315ms; }
+
+.reveal {
+  animation: sisten-reveal var(--dur-slow) var(--ease-out) backwards;
+}
+
+/* --------------------------------------------------------------------- */
+/* Skeleton                                                               */
+/* --------------------------------------------------------------------- */
+
+@keyframes sisten-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.skeleton {
+  background-color: var(--surface-sunken);
+  border-radius: 6px;
+  animation: sisten-pulse 1.6s ease-in-out infinite;
+}
+
+/* --------------------------------------------------------------------- */
+/* Movimento reduzido                                                     */
+/* --------------------------------------------------------------------- */
+
+/* O bloco global em index.css já reduz durações. Aqui removemos também o
+   deslocamento de entrada, que é o que causa enjoo — opacidade sozinha é
+   segura e mantém a hierarquia de leitura. */
+@media (prefers-reduced-motion: reduce) {
+  .stagger > *,
+  .reveal {
+    animation: none !important;
+  }
+  .skeleton {
+    animation: none !important;
+  }
+}

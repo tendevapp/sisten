@@ -7,12 +7,16 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Boxes, Search, FileSpreadsheet, AlertCircle, RefreshCw, Filter,
   Package, DollarSign, Layers, Warehouse, ChevronDown, SlidersHorizontal,
-  ArrowUp, ArrowDown, ArrowUpDown, Clock, PackageCheck, X
+  Clock, PackageCheck, X
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem } from '../types';
 import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode } from '../lib/almoxarifado';
+import { formatBRL, formatQtd, formatDateTimeBR, formatInt } from '../lib/format';
+import {
+  TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
+} from '../components/ui/DataTable';
 
 interface EstoqueProps {
   user: Profile;
@@ -55,51 +59,10 @@ const COLUMNS: (ColumnOption & { defaultVisible: boolean })[] = [
 const STORAGE_COLS_KEY = 'sisten_estoque_visible_columns';
 const PAGE_SIZE = 50;
 
-const formatPreco = (v?: number | null): string =>
-  v === undefined || v === null || isNaN(v)
-    ? '—'
-    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const formatQtd = (v?: number | null): string =>
-  v === undefined || v === null || isNaN(v)
-    ? '—'
-    : v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-
-const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-// Cabeçalho de coluna com ordenação por clique.
-const SortableTh = ({
-  col, label, align = 'left', sortColumn, sortDir, onSort,
-}: {
-  col: string;
-  label: string;
-  align?: 'left' | 'right';
-  sortColumn: string | null;
-  sortDir: SortDir;
-  onSort: (col: string) => void;
-}) => {
-  const active = sortColumn === col;
-  return (
-    <th className={`px-3 py-2.5 font-black ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <button
-        onClick={() => onSort(col)}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
-        title={`Ordenar por ${label}`}
-      >
-        <span>{label}</span>
-        {active
-          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600" />}
-      </button>
-    </th>
-  );
-};
+// Formatação vem de lib/format.ts. Este arquivo mantinha cópias próprias de
+// formatBRL/formatQtd/formatDateTimeBR que criavam um Intl novo por célula —
+// caro numa tabela de milhares de linhas.
+const formatPreco = formatBRL;
 
 export default function Estoque({ user }: EstoqueProps) {
   const [loading, setLoading] = useState(true);
@@ -339,9 +302,11 @@ export default function Estoque({ user }: EstoqueProps) {
       case 'classe_abc': {
         const classe = mapaAbc.get(normalizeCode(r.material)) || 'C';
         return (
+          // Contornado, não preenchido: a rampa ABC tem passos claros (C no
+          // tema claro, A no escuro) que não sustentam texto branco em cima.
           <span
-            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-black text-white"
-            style={{ backgroundColor: CLASSE_ABC_COR[classe] }}
+            className="inline-block rounded border px-1.5 py-0.5 text-[10px] font-black"
+            style={{ borderColor: CLASSE_ABC_COR[classe], color: 'var(--ink-primary)' }}
             title={`Classe ${classe} da curva ABC`}
           >
             {classe}
@@ -538,36 +503,40 @@ export default function Estoque({ user }: EstoqueProps) {
       </div>
 
       {/* Loading / erro / vazio */}
+      {/* Esqueleto com o número real de colunas visíveis: o spinner centralizado
+          que existia aqui trocava de tamanho ao virar tabela e a página saltava. */}
       {loading && (
-        <div className="flex flex-col items-center justify-center p-20 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl space-y-4">
-          <RefreshCw className="h-8 w-8 text-emerald-600 animate-spin" />
-          <span className="text-sm font-bold text-slate-600 dark:text-slate-300">Carregando posição de estoque...</span>
-        </div>
+        <TableSkeleton columns={COLUMNS.filter(c => visibleColumns[c.id]).length || 8} />
       )}
 
       {!loading && error && (
-        <div className="flex items-center gap-3.5 p-5 border border-rose-200 dark:border-rose-900/50 rounded-xl bg-rose-50/50 dark:bg-rose-955/15 text-rose-800 dark:text-rose-300">
-          <AlertCircle className="h-6 w-6 text-rose-550 shrink-0" />
+        <div
+          className="flex items-center gap-3.5 p-5 border rounded-xl"
+          style={{
+            borderColor: 'var(--status-critical)',
+            background: 'color-mix(in srgb, var(--status-critical) 8%, transparent)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          <AlertCircle className="h-6 w-6 shrink-0" style={{ color: 'var(--status-critical)' }} />
           <span className="text-sm font-medium">{error}</span>
         </div>
       )}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
-          <Boxes className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-955/30 p-2.5 rounded-full mb-3" />
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum item de estoque encontrado</h3>
-          <p className="text-sm text-slate-555 dark:text-slate-455 mt-1 max-w-md">
-            Importe a posição de estoque (transação ZL0024) na aba "Importar SAP" do painel administrativo.
-          </p>
-        </div>
+        <TableEmpty
+          icon={Boxes}
+          title="Nenhum item de estoque encontrado"
+          hint={'Importe a posição de estoque (transação ZL0024) na aba "Importar SAP" do painel administrativo.'}
+        />
       )}
 
       {/* Conteúdo */}
       {!loading && !error && rows.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
-            <span>Exibindo {Math.min(visibleCount, sortedRows.length)} de {sortedRows.length.toLocaleString('pt-BR')} itens</span>
-
+          {/* A contagem "exibindo X de Y" ficava aqui e no rodapé; agora só no
+              rodapé, junto do controle que muda esse número. */}
+          <div className="flex items-center justify-end text-xs px-1 font-bold" style={{ color: 'var(--ink-muted)' }}>
             {/* Personalizar colunas */}
             <div className="relative">
               {showColMenu && (
@@ -621,73 +590,90 @@ export default function Estoque({ user }: EstoqueProps) {
           )}
 
           {sortedRows.length > 0 && (
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
+            <>
               {/* Mobile: cards (evita scroll horizontal na tabela densa) */}
-              <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              <div
+                className="lg:hidden rounded-xl border overflow-hidden divide-y"
+                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+              >
                 {visibleRows.map((r, idx) => (
-                  <div key={`m-${r.id}-${idx}`} className="p-4 space-y-2">
+                  <div key={`m-${r.id}-${idx}`} className="p-4 space-y-2" style={{ borderColor: 'var(--hairline)' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{r.material || '—'}</p>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{r.txt_breve_material || '—'}</p>
+                        <p className="font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{r.material || '—'}</p>
+                        <p className="text-xs line-clamp-2" style={{ color: 'var(--ink-secondary)' }}>{r.txt_breve_material || '—'}</p>
                       </div>
                       {r.valor_total !== undefined && (
-                        <span className="shrink-0 text-sm font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>
+                        <span className="shrink-0 text-sm font-bold whitespace-nowrap tabular" style={{ color: 'var(--ink-primary)' }}>
+                          {formatPreco(r.valor_total)}
+                        </span>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      <span>Qtd: <strong className="text-slate-700 dark:text-slate-300">{formatQtd(r.quantidade)}</strong> {r.umb || ''}</span>
-                      {r.preco_medio !== undefined && <span>PMM: <strong className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_medio)}</strong></span>}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                      <span>Qtd: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatQtd(r.quantidade)}</strong> {r.umb || ''}</span>
+                      {r.preco_medio !== undefined && <span>PMM: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatPreco(r.preco_medio)}</strong></span>}
                       {r.deposito && <span className="font-mono">Dep {r.deposito}</span>}
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Desktop: tabela */}
-              <div className="hidden lg:block overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-955/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
+              {/* Desktop: tabela com cabeçalho fixo — a lista chega a milhares
+                  de linhas e o cabeçalho rolava para fora da tela. */}
+              <div className="hidden lg:block">
+                <TableShell>
+                  <table className="w-full text-xs">
+                    <TableHeadRow>
                       {COLUMNS.map(col => (
-                        visibleColumns[col.id] && (
-                          <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
-                        )
+                        visibleColumns[col.id] ? (
+                          <SortableTh
+                            key={col.id}
+                            col={col.id}
+                            label={col.label}
+                            align={col.align}
+                            sortColumn={sortColumn}
+                            sortDir={sortDir}
+                            onSort={toggleSort}
+                          />
+                        ) : null
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
-                    {visibleRows.map((r, idx) => (
-                      <tr key={`${r.id}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
-                        {COLUMNS.map(col => (
-                          visibleColumns[col.id] && (
-                            <td
-                              key={col.id}
-                              className={`px-3 py-2 ${col.align === 'right' ? 'text-right' : 'text-left'} ${col.numeric ? 'font-medium text-slate-700 dark:text-slate-350' : 'text-slate-700 dark:text-slate-300'} ${col.id === 'txt_breve_material' || col.id === 'texto_pedido_compra' || col.id === 'aplicacao' ? 'max-w-[240px] truncate' : ''}`}
-                              title={col.id === 'txt_breve_material' || col.id === 'texto_pedido_compra' || col.id === 'aplicacao' ? String(r[col.id] ?? '') : undefined}
-                            >
-                              {renderCell(r, col.id)}
-                            </td>
-                          )
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </TableHeadRow>
+                    <TableBody>
+                      {visibleRows.map((r, idx) => {
+                        const longa = (id: ColumnId) =>
+                          id === 'txt_breve_material' || id === 'texto_pedido_compra' || id === 'aplicacao';
+                        return (
+                          <Tr key={`${r.id}-${idx}`}>
+                            {COLUMNS.map(col => (
+                              visibleColumns[col.id] ? (
+                                <Td
+                                  key={col.id}
+                                  align={col.align}
+                                  numeric={col.numeric}
+                                  truncate={longa(col.id)}
+                                  title={longa(col.id) ? String(r[col.id as keyof EstoqueItem] ?? '') : undefined}
+                                >
+                                  {renderCell(r, col.id)}
+                                </Td>
+                              ) : null
+                            ))}
+                          </Tr>
+                        );
+                      })}
+                    </TableBody>
+                  </table>
+                </TableShell>
               </div>
-            </div>
+            </>
           )}
 
-          {/* Load more */}
-          {visibleCount < sortedRows.length && (
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-                className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all"
-              >
-                <ChevronDown className="h-4 w-4" /> Carregar mais {Math.min(PAGE_SIZE, sortedRows.length - visibleCount)} itens
-              </button>
-            </div>
+          {sortedRows.length > 0 && (
+            <TableFooter
+              shown={visibleRows.length}
+              total={sortedRows.length}
+              loadStep={PAGE_SIZE}
+              onLoadMore={visibleCount < sortedRows.length ? () => setVisibleCount(c => c + PAGE_SIZE) : undefined}
+            />
           )}
         </div>
       )}

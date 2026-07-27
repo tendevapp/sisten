@@ -5,25 +5,35 @@
 
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer } from 'recharts';
+import { Timer, AlertTriangle } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { FAIXA_ATRASO_ORDER, FAIXA_ATRASO_COLOR, CompradorInfo, resolveComprador } from '../../lib/demandas';
+import { FAIXA_ATRASO_ORDER, FAIXA_ATRASO_INDEX, CompradorInfo, resolveComprador } from '../../lib/demandas';
+import { formatInt } from '../../lib/format';
+import { useChartConfig } from '../charts/chartDefaults';
+import ChartCard from '../charts/ChartCard';
+import ChartTooltip from '../charts/ChartTooltip';
 
 interface AtrasoChartProps {
   records: EnrichedSAPRecord[];
   compradores: CompradorInfo[];
+  loading?: boolean;
 }
 
 const TOP_N_COMPRADORES = 8;
 
-function severityColor(atrasoMedio: number): string {
-  if (atrasoMedio > 30) return FAIXA_ATRASO_COLOR['Acima 30 dias'];
-  if (atrasoMedio > 15) return FAIXA_ATRASO_COLOR['16-30 dias'];
-  if (atrasoMedio > 7) return FAIXA_ATRASO_COLOR['8-15 dias'];
-  if (atrasoMedio > 0) return FAIXA_ATRASO_COLOR['1-7 dias'];
-  return FAIXA_ATRASO_COLOR['Sem Atraso'];
+/** Posição do atraso médio na mesma rampa ordinal das faixas. */
+function faixaDoAtraso(atrasoMedio: number): number {
+  if (atrasoMedio > 30) return 4;
+  if (atrasoMedio > 15) return 3;
+  if (atrasoMedio > 7) return 2;
+  if (atrasoMedio > 0) return 1;
+  return 0;
 }
 
-export default function AtrasoChart({ records, compradores }: AtrasoChartProps) {
+const FAIXA_LABEL = FAIXA_ATRASO_ORDER;
+
+export default function AtrasoChart({ records, compradores, loading }: AtrasoChartProps) {
+  const c = useChartConfig();
   const backlog = useMemo(() => records.filter(r => r.status_requisicao !== 'Processado'), [records]);
 
   const faixaData = useMemo(() => {
@@ -51,59 +61,138 @@ export default function AtrasoChart({ records, compradores }: AtrasoChartProps) 
       .reverse();
   }, [backlog, compradores]);
 
-  return (
-    <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Atraso do Backlog (SLA)</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Itens ainda sem pedido (Sem PO) — {backlog.length} em aberto no filtro</p>
-      </div>
+  const criticos = faixaData.find(f => f.faixa === 'Acima 30 dias')?.count ?? 0;
 
-      {backlog.length === 0 ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-400">
-          Nenhum item em aberto no período/filtro selecionado.
+  function TooltipFaixa({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload;
+    const pct = backlog.length > 0 ? (row.count / backlog.length) * 100 : 0;
+    return (
+      <ChartTooltip
+        title={row.faixa}
+        rows={[
+          { label: 'Itens em aberto', value: formatInt(row.count), color: c.tokens.atraso[FAIXA_ATRASO_INDEX[row.faixa]] },
+          { label: 'Do backlog', value: `${pct.toFixed(1)}%` },
+        ]}
+      />
+    );
+  }
+
+  function TooltipComprador({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload;
+    return (
+      <ChartTooltip
+        title={row.comprador}
+        rows={[
+          { label: 'Atraso médio', value: `${formatInt(row.atrasoMedio)} dias`, color: c.tokens.atraso[faixaDoAtraso(row.atrasoMedio)] },
+          { label: 'Itens em aberto', value: formatInt(row.qtd) },
+        ]}
+      />
+    );
+  }
+
+  return (
+    <ChartCard
+      title="Atraso do Backlog (SLA)"
+      icon={Timer}
+      description={`Itens ainda sem pedido (Sem PO) — ${formatInt(backlog.length)} em aberto no filtro`}
+      loading={loading}
+      empty={backlog.length === 0}
+      emptyMessage="Nenhum item em aberto no período/filtro selecionado."
+      actions={
+        criticos > 0 ? (
+          // A gravidade não fica só na cor da barra: sai também como número,
+          // com ícone e rótulo, no topo do painel.
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
+            style={{
+              background: 'color-mix(in srgb, var(--status-critical) 12%, transparent)',
+              color: 'var(--ink-primary)',
+            }}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" style={{ color: 'var(--status-critical)' }} aria-hidden="true" />
+            {formatInt(criticos)} acima de 30 dias
+          </span>
+        ) : undefined
+      }
+    >
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink-secondary)' }}>
+            Distribuição por faixa de atraso
+          </p>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={faixaData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid {...c.grid} />
+              <XAxis dataKey="faixa" {...c.xAxis} tick={{ ...c.xAxis.tick, fontSize: 10, fontWeight: 500 }} />
+              <YAxis allowDecimals={false} {...c.yAxis} width={30} />
+              <Tooltip content={<TooltipFaixa />} cursor={c.cursor} />
+              {/* Rampa ordinal: a faixa mais grave é o passo mais forte, então a
+                  ordem das faixas se lê na própria cor. */}
+              <Bar dataKey="count" radius={c.radius.top} barSize={36} {...c.animation}>
+                {faixaData.map(d => (
+                  <Cell key={d.faixa} fill={c.tokens.atraso[FAIXA_ATRASO_INDEX[d.faixa]]} />
+                ))}
+                <LabelList dataKey="count" position="top" formatter={formatInt} style={c.labelOnSurface} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      ) : (
-        <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-          <div>
-            <p className="text-xs font-semibold text-slate-500 mb-2">Distribuição por faixa de atraso</p>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={faixaData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="faixa" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={30} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={36}>
-                  {faixaData.map(d => <Cell key={d.faixa} fill={FAIXA_ATRASO_COLOR[d.faixa]} />)}
-                  <LabelList dataKey="count" position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#0f172a' }} />
+
+        <div>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--ink-secondary)' }}>
+            Atraso médio por comprador (dias, piores no topo)
+          </p>
+          {compradorData.length === 0 ? (
+            <div className="flex items-center justify-center h-64 text-sm" style={{ color: 'var(--ink-muted)' }}>
+              Sem dados de comprador.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(260, compradorData.length * 32)}>
+              <BarChart data={compradorData} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
+                <CartesianGrid {...c.grid} vertical horizontal={false} />
+                <XAxis type="number" allowDecimals={false} {...c.yAxis} axisLine={{ stroke: c.tokens.axis }} />
+                <YAxis
+                  type="category"
+                  dataKey="comprador"
+                  tick={{ fontSize: 11, fill: c.tokens.labelStrong }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={110}
+                />
+                <Tooltip content={<TooltipComprador />} cursor={c.cursor} />
+                <Bar dataKey="atrasoMedio" radius={c.radius.right} barSize={18} {...c.animation}>
+                  {compradorData.map(d => (
+                    <Cell key={d.comprador} fill={c.tokens.atraso[faixaDoAtraso(d.atrasoMedio)]} />
+                  ))}
+                  <LabelList
+                    dataKey="atrasoMedio"
+                    position="right"
+                    formatter={(v: number) => `${v}d`}
+                    style={{ ...c.labelOnSurface, fontSize: 10 }}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-slate-500 mb-2">Atraso médio por comprador (dias, piores no topo)</p>
-            {compradorData.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-sm text-slate-400">Sem dados de comprador.</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={Math.max(260, compradorData.length * 32)}>
-                <BarChart data={compradorData} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-                  <YAxis type="category" dataKey="comprador" tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} width={110} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                    formatter={(value: number, _name, item) => [`${value} dias (${item.payload.qtd} itens)`, 'Atraso médio']}
-                  />
-                  <Bar dataKey="atrasoMedio" radius={[0, 4, 4, 0]} barSize={18}>
-                    {compradorData.map(d => <Cell key={d.comprador} fill={severityColor(d.atrasoMedio)} />)}
-                    <LabelList dataKey="atrasoMedio" position="right" formatter={(v: number) => `${v}d`} style={{ fontSize: 10, fontWeight: 600, fill: '#0f172a' }} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+
+      {/* A rampa precisa de chave de leitura: sem ela o tom sozinho não diz qual
+          faixa é qual. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1">
+        {FAIXA_LABEL.map(f => (
+          <span key={f} className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+            <span
+              className="h-2.5 w-2.5 rounded-[3px]"
+              style={{ background: c.tokens.atraso[FAIXA_ATRASO_INDEX[f]] }}
+              aria-hidden="true"
+            />
+            {f}
+          </span>
+        ))}
+      </div>
+    </ChartCard>
   );
 }

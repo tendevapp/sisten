@@ -7,12 +7,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
   RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
-  Copy, Check, ChevronDown, Users, SlidersHorizontal,
-  ArrowUp, ArrowDown, ArrowUpDown, Clock
+  Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, ContatoFornecedor, HistoricoPedidoView } from '../types';
+import { formatInt } from '../lib/format';
+import {
+  TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
+} from '../components/ui/DataTable';
 
 interface HistoricoPedidosProps {
   user: Profile;
@@ -138,33 +141,7 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
   );
 };
 
-// Cabeçalho de coluna com ordenação por clique.
-const SortableTh = ({
-  col, label, align = 'left', sortColumn, sortDir, onSort,
-}: {
-  col: string;
-  label: string;
-  align?: 'left' | 'right';
-  sortColumn: string | null;
-  sortDir: SortDir;
-  onSort: (col: string) => void;
-}) => {
-  const active = sortColumn === col;
-  return (
-    <th className={`px-3 py-2.5 font-black ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <button
-        onClick={() => onSort(col)}
-        className={`inline-flex items-center gap-1 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
-        title={`Ordenar por ${label}`}
-      >
-        <span>{label}</span>
-        {active
-          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600" />}
-      </button>
-    </th>
-  );
-};
+// SortableTh, a casca da tabela e os estados vazios vêm de components/ui/DataTable.
 
 export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
   const [loading, setLoading] = useState(true);
@@ -518,27 +495,29 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
 
       {/* Loading / erro / vazio */}
       {loading && (
-        <div className="flex flex-col items-center justify-center p-20 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl space-y-4">
-          <RefreshCw className="h-8 w-8 text-emerald-600 animate-spin" />
-          <span className="text-sm font-bold text-slate-600 dark:text-slate-300">Carregando histórico de pedidos...</span>
-        </div>
+        <TableSkeleton columns={COLUMNS.filter(c => visibleColumns[c.id]).length || 8} />
       )}
 
       {!loading && error && (
-        <div className="flex items-center gap-3.5 p-5 border border-rose-200 dark:border-rose-900/50 rounded-xl bg-rose-50/50 dark:bg-rose-955/15 text-rose-800 dark:text-rose-300">
-          <AlertCircle className="h-6 w-6 text-rose-550 shrink-0" />
+        <div
+          className="flex items-center gap-3.5 p-5 border rounded-xl"
+          style={{
+            borderColor: 'var(--status-critical)',
+            background: 'color-mix(in srgb, var(--status-critical) 8%, transparent)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          <AlertCircle className="h-6 w-6 shrink-0" style={{ color: 'var(--status-critical)' }} />
           <span className="text-sm font-medium">{error}</span>
         </div>
       )}
 
       {!loading && !error && rows.length === 0 && (
-        <div className="flex flex-col items-center justify-center p-16 border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 rounded-xl text-center">
-          <History className="h-12 w-12 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-955/30 p-2.5 rounded-full mb-3" />
-          <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Nenhum pedido histórico encontrado</h3>
-          <p className="text-sm text-slate-555 dark:text-slate-455 mt-1 max-w-md">
-            Importe a base de pedidos (PEDIDOSFORN) em Cadastros SAP e garanta que a view <span className="font-mono">vw_historico_pedidos</span> existe no banco.
-          </p>
-        </div>
+        <TableEmpty
+          icon={History}
+          title="Nenhum pedido histórico encontrado"
+          hint="Importe a base de pedidos (PEDIDOSFORN) em Cadastros SAP e garanta que a view vw_historico_pedidos existe no banco."
+        />
       )}
 
       {/* Conteúdo */}
@@ -600,9 +579,12 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
           )}
 
           {sortedRows.length > 0 && (
-            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-xs">
+            <>
               {/* Mobile: cards (evita scroll horizontal na tabela densa) */}
-              <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
+              <div
+                className="lg:hidden rounded-xl border overflow-hidden divide-y"
+                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+              >
                 {visibleRows.map((r, idx) => (
                   <div key={`m-${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -643,116 +625,101 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
                 ))}
               </div>
 
-              {/* Desktop: tabela */}
-              <div className="hidden lg:block overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-955/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
+              {/* Desktop: tabela com cabeçalho fixo. */}
+              <div className="hidden lg:block">
+                <TableShell>
+                  <table className="w-full text-xs">
+                    <TableHeadRow>
                       {COLUMNS.map(col => (
-                        visibleColumns[col.id] && (
+                        visibleColumns[col.id] ? (
                           col.sortable
                             ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} sortColumn={sortColumn} sortDir={sortDir} onSort={toggleSort} />
-                            : <th key={col.id} className="px-3 py-2.5 font-black">{col.label}</th>
-                        )
+                            : <Th key={col.id} label={col.label} align={col.align} />
+                        ) : null
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
-                    {visibleRows.map((r, idx) => {
-                      // Material/descrição aparecem só quando mudam em relação à linha anterior.
-                      const isNewMaterial = idx === 0 || normalizeCode(visibleRows[idx - 1].material) !== normalizeCode(r.material);
-                      return (
-                        <tr key={`${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-850/30 transition-colors">
-                          {visibleColumns.material && (
-                            <td className="px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                              {isNewMaterial ? r.material : ''}
-                            </td>
-                          )}
-                          {visibleColumns.descricao && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 max-w-[220px] truncate" title={r.txt_breve}>
-                              {isNewMaterial ? r.txt_breve : ''}
-                            </td>
-                          )}
-                          {visibleColumns.fornecedor && (
-                            <td className="px-3 py-2 text-slate-800 dark:text-slate-200 font-semibold max-w-[200px] truncate" title={r.fornecedor}>
-                              {r.fornecedor}
-                            </td>
-                          )}
-                          {visibleColumns.uf && <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{r.regiao_uf}</td>}
-                          {visibleColumns.contato && (
-                            <td className="px-3 py-2">
-                              <div className="flex flex-col gap-1.5">
-                                {r.telefone !== '—' && (
-                                  <div className="flex items-center gap-1.5">
-                                    <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <a href={`tel:${r.telefone.split(';')[0].trim()}`} className="font-mono text-slate-700 dark:text-slate-350 hover:text-emerald-600 font-bold hover:underline">
-                                      {r.telefone.split(';')[0].trim()}
-                                    </a>
-                                    <ClipboardCopyButton text={r.telefone.split(';')[0].trim()} label="telefone" />
-                                  </div>
-                                )}
-                                {r.email !== '—' && (
-                                  <div className="flex items-center gap-1.5">
-                                    <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <a href={`mailto:${r.email}`} className="text-slate-650 dark:text-slate-355 hover:text-blue-600 font-bold hover:underline break-all">
-                                      {r.email}
-                                    </a>
-                                    <ClipboardCopyButton text={r.email} label="e-mail" />
-                                  </div>
-                                )}
-                                {r.telefone === '—' && r.email === '—' && <span className="text-slate-400">—</span>}
-                              </div>
-                            </td>
-                          )}
-                          {visibleColumns.qtd && (
-                            <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-350">
-                              {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
-                            </td>
-                          )}
-                          {visibleColumns.preco && (
-                            <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-350">
-                              {formatPreco(r.preco_unit)}
-                            </td>
-                          )}
-                          {visibleColumns.total && (
-                            <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">
-                              {formatPreco(r.valor_total)}
-                            </td>
-                          )}
-                          {visibleColumns.rm && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={r.rm}>
-                              {r.rm}
-                            </td>
-                          )}
-                          {visibleColumns.doc_compra && (
-                            <td className="px-3 py-2 text-slate-700 dark:text-slate-300 font-mono" title={r.doc_compra}>
-                              {r.doc_compra}
-                            </td>
-                          )}
-                          {visibleColumns.data_doc && (
-                            <td className="px-3 py-2 text-slate-550 dark:text-slate-400 whitespace-nowrap">
-                              {formatDateBR(r.data_doc)}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                    </TableHeadRow>
+                    <TableBody>
+                      {visibleRows.map((r, idx) => {
+                        // Material/descrição aparecem só quando mudam em relação à linha anterior.
+                        const isNewMaterial = idx === 0 || normalizeCode(visibleRows[idx - 1].material) !== normalizeCode(r.material);
+                        return (
+                          <Tr key={`${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`}>
+                            {visibleColumns.material && (
+                              <Td mono strong className="whitespace-nowrap">{isNewMaterial ? r.material : ''}</Td>
+                            )}
+                            {visibleColumns.descricao && (
+                              <Td truncate title={r.txt_breve}>{isNewMaterial ? r.txt_breve : ''}</Td>
+                            )}
+                            {visibleColumns.fornecedor && (
+                              <Td strong truncate title={r.fornecedor} className="max-w-[200px]">{r.fornecedor}</Td>
+                            )}
+                            {visibleColumns.uf && <Td>{r.regiao_uf}</Td>}
+                            {visibleColumns.contato && (
+                              <Td>
+                                <div className="flex flex-col gap-1.5">
+                                  {r.telefone !== '—' && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Phone className="h-3 w-3 shrink-0" style={{ color: 'var(--ink-muted)' }} />
+                                      <a
+                                        href={`tel:${r.telefone.split(';')[0].trim()}`}
+                                        className="font-mono font-bold hover:underline tabular"
+                                        style={{ color: 'var(--ink-secondary)' }}
+                                      >
+                                        {r.telefone.split(';')[0].trim()}
+                                      </a>
+                                      <ClipboardCopyButton text={r.telefone.split(';')[0].trim()} label="telefone" />
+                                    </div>
+                                  )}
+                                  {r.email !== '—' && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Mail className="h-3 w-3 shrink-0" style={{ color: 'var(--ink-muted)' }} />
+                                      <a
+                                        href={`mailto:${r.email}`}
+                                        className="font-bold hover:underline break-all"
+                                        style={{ color: 'var(--ink-secondary)' }}
+                                      >
+                                        {r.email}
+                                      </a>
+                                      <ClipboardCopyButton text={r.email} label="e-mail" />
+                                    </div>
+                                  )}
+                                  {r.telefone === '—' && r.email === '—' && (
+                                    <span style={{ color: 'var(--ink-muted)' }}>—</span>
+                                  )}
+                                </div>
+                              </Td>
+                            )}
+                            {visibleColumns.qtd && (
+                              <Td align="right" numeric>{r.qtd !== undefined ? formatInt(r.qtd) : '—'}</Td>
+                            )}
+                            {visibleColumns.preco && (
+                              <Td align="right" numeric>{formatPreco(r.preco_unit)}</Td>
+                            )}
+                            {visibleColumns.total && (
+                              <Td align="right" numeric strong className="whitespace-nowrap">{formatPreco(r.valor_total)}</Td>
+                            )}
+                            {visibleColumns.rm && <Td mono title={r.rm}>{r.rm}</Td>}
+                            {visibleColumns.doc_compra && <Td mono title={r.doc_compra}>{r.doc_compra}</Td>}
+                            {visibleColumns.data_doc && (
+                              <Td numeric className="whitespace-nowrap">{formatDateBR(r.data_doc)}</Td>
+                            )}
+                          </Tr>
+                        );
+                      })}
+                    </TableBody>
+                  </table>
+                </TableShell>
               </div>
-            </div>
+            </>
           )}
 
-          {/* Load more */}
-          {visibleCount < sortedRows.length && (
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-                className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all"
-              >
-                <ChevronDown className="h-4 w-4" /> Carregar mais {Math.min(PAGE_SIZE, sortedRows.length - visibleCount)} pedidos
-              </button>
-            </div>
+          {sortedRows.length > 0 && (
+            <TableFooter
+              shown={visibleRows.length}
+              total={sortedRows.length}
+              loadStep={PAGE_SIZE}
+              onLoadMore={visibleCount < sortedRows.length ? () => setVisibleCount(c => c + PAGE_SIZE) : undefined}
+            />
           )}
         </div>
       )}

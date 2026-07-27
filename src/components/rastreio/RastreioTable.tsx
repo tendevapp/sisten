@@ -4,10 +4,14 @@
  */
 
 import React from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatBRL } from '../../lib/rastreio';
+import { formatInt } from '../../lib/format';
+import {
+  TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, SortDir,
+} from '../ui/DataTable';
 
-export type SortDir = 'asc' | 'desc';
+export type { SortDir };
 
 export interface ColumnOption {
   id: string;
@@ -49,29 +53,6 @@ const ITEM_STATUS_STYLE: Record<string, string> = {
 };
 const DEFAULT_STATUS_STYLE = 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/40 dark:text-slate-300 dark:border-slate-600';
 
-const SortableTh = ({
-  col, label, align = 'left', width, sortColumn, sortDir, onSort,
-}: {
-  col: string; label: string; align?: 'left' | 'right'; width: string;
-  sortColumn: string | null; sortDir: SortDir; onSort: (col: string) => void;
-}) => {
-  const active = sortColumn === col;
-  return (
-    <th className={`px-2 py-2 font-black ${width} ${align === 'right' ? 'text-right' : 'text-left'}`}>
-      <button
-        onClick={() => onSort(col)}
-        className={`inline-flex items-center gap-0.5 uppercase tracking-wider hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer max-w-full ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-emerald-600 dark:text-emerald-500' : ''}`}
-        title={`Ordenar por ${label}`}
-      >
-        <span className="truncate">{label}</span>
-        {active
-          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)
-          : <ArrowUpDown className="h-3 w-3 text-slate-300 dark:text-slate-600 shrink-0" />}
-      </button>
-    </th>
-  );
-};
-
 interface RastreioTableProps {
   rows: RastreioRow[];
   hoje: Date;
@@ -86,100 +67,115 @@ interface RastreioTableProps {
 export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort, onOpenRow, unreadRis }: RastreioTableProps) {
   const cols = RASTREIO_COLUMNS.filter(c => visibleColumns[c.id]);
   return (
-    <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto bg-white dark:bg-slate-900 shadow-xs">
+    <TableShell>
+      {/* min-width força a rolagem horizontal em vez de espremer 12 colunas;
+          table-fixed mantém as larguras estáveis entre uma página e outra. */}
       <table className="w-full min-w-[1300px] table-fixed text-[11px]">
-        <thead>
-          <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-500 dark:text-slate-400 text-left uppercase tracking-wider text-[10px]">
-            {cols.map(col => (
-              col.sortable
-                ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
-                : <th key={col.id} className={`px-2 py-2 font-black ${col.width}`}>{col.label}</th>
-            ))}
-            <th className="w-[44px] px-2 py-2" aria-label="Ações" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+        <TableHeadRow>
+          {cols.map(col => (
+            col.sortable
+              ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
+              : <Th key={col.id} label={col.label} align={col.align} width={col.width} />
+          ))}
+          <Th label="" width="w-[44px]" />
+        </TableHeadRow>
+        <TableBody>
           {rows.map((r, idx) => {
             const delivery: DeliveryStatus = deriveDeliveryStatus(r, hoje);
             const unread = unreadRis.has(r.ri);
             return (
-              <tr
-                key={`${r.ri}-${idx}`}
-                onClick={() => onOpenRow(r)}
-                className="hover:bg-emerald-50/40 dark:hover:bg-emerald-500/5 transition-colors align-top cursor-pointer"
-              >
-                {visibleColumns.rm && (
-                  <td className="px-2 py-1.5 font-mono font-bold text-slate-800 dark:text-slate-200 truncate">{r.rm}</td>
-                )}
+              <Tr key={`${r.ri}-${idx}`} onClick={() => onOpenRow(r)}>
+                {visibleColumns.rm && <Td mono strong truncate className="py-1.5 px-2">{r.rm}</Td>}
                 {visibleColumns.po && (
-                  <td className="px-2 py-1.5 font-mono text-slate-700 dark:text-slate-300 truncate">
-                    {r.po !== '—' ? r.po : <span className="text-[9px] font-bold uppercase text-amber-600 dark:text-amber-500">sem po</span>}
-                  </td>
+                  <Td mono truncate className="py-1.5 px-2">
+                    {r.po !== '—'
+                      ? r.po
+                      : (
+                        <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--status-warning)' }}>
+                          sem po
+                        </span>
+                      )}
+                  </Td>
                 )}
                 {visibleColumns.descricao && (
-                  <td className="px-2 py-1.5 text-slate-700 dark:text-slate-300">
-                    <div className="font-mono text-[9px] text-slate-400 dark:text-slate-500 truncate">{r.material}</div>
+                  <Td className="py-1.5 px-2">
+                    <div className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</div>
                     <div className="truncate" title={r.descricao}>{r.descricao}</div>
-                  </td>
+                  </Td>
                 )}
                 {visibleColumns.fornecedor && (
-                  <td className="px-2 py-1.5 text-slate-800 dark:text-slate-200 font-semibold truncate" title={r.fornecedor}>{r.fornecedor}</td>
+                  <Td strong truncate title={r.fornecedor} className="py-1.5 px-2">{r.fornecedor}</Td>
                 )}
                 {visibleColumns.setor && (
-                  <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 truncate" title={r.setor}>{r.setor}</td>
+                  <Td truncate title={r.setor} className="py-1.5 px-2">{r.setor}</Td>
                 )}
                 {visibleColumns.qtd && (
-                  <td className="px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate">
-                    {r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}
-                  </td>
+                  <Td align="right" numeric truncate className="py-1.5 px-2">
+                    {r.qtd !== undefined ? formatInt(r.qtd) : '—'}
+                  </Td>
                 )}
                 {visibleColumns.precoUnitario && (
-                  <td className="px-2 py-1.5 text-right font-medium text-slate-700 dark:text-slate-300 truncate" title={r.precoUnitario !== undefined ? formatBRL(r.precoUnitario) : undefined}>
+                  <Td align="right" numeric truncate className="py-1.5 px-2" title={r.precoUnitario !== undefined ? formatBRL(r.precoUnitario) : undefined}>
                     {formatBRL(r.precoUnitario)}
-                  </td>
+                  </Td>
                 )}
                 {visibleColumns.valorTotal && (
-                  <td className="px-2 py-1.5 text-right font-bold text-slate-800 dark:text-slate-200 truncate" title={r.valorTotal !== undefined ? formatBRL(r.valorTotal) : undefined}>
+                  <Td align="right" numeric strong truncate className="py-1.5 px-2" title={r.valorTotal !== undefined ? formatBRL(r.valorTotal) : undefined}>
                     {formatBRL(r.valorTotal)}
-                  </td>
+                  </Td>
                 )}
                 {visibleColumns.dataCriacao && (
-                  <td className="px-2 py-1.5 text-slate-550 dark:text-slate-400 truncate">{formatDateBR(r.dataCriacao)}</td>
+                  <Td numeric truncate className="py-1.5 px-2">{formatDateBR(r.dataCriacao)}</Td>
                 )}
                 {visibleColumns.dataPrevista && (
-                  <td className="px-2 py-1.5 truncate">
+                  <Td truncate className="py-1.5 px-2">
+                    {/* O ponto colorido é o alerta de prazo; a data ao lado é o
+                        dado. Cor sozinha não carrega o status — o título do
+                        ponto nomeia a situação. */}
                     <span className="inline-flex items-center gap-1">
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DELIVERY_STATUS_META[delivery].dot}`} />
-                      <span className="text-slate-600 dark:text-slate-300">{formatDateBR(r.dataPrevista)}</span>
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${DELIVERY_STATUS_META[delivery].dot}`}
+                        title={DELIVERY_STATUS_META[delivery].label}
+                      />
+                      <span className="tabular">{formatDateBR(r.dataPrevista)}</span>
                     </span>
-                  </td>
+                  </Td>
                 )}
                 {visibleColumns.dataEntrega && (
-                  <td className="px-2 py-1.5 truncate font-medium text-emerald-600 dark:text-emerald-400">{formatDateBR(r.dataEntrega)}</td>
+                  <Td numeric truncate className="py-1.5 px-2 font-medium">{formatDateBR(r.dataEntrega)}</Td>
                 )}
                 {visibleColumns.status && (
-                  <td className="px-2 py-1.5">
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`} title={r.status}>
+                  <Td className="py-1.5 px-2">
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9px] font-bold truncate max-w-full ${ITEM_STATUS_STYLE[r.status] || DEFAULT_STATUS_STYLE}`}
+                      title={r.status}
+                    >
                       {r.status}
                     </span>
-                  </td>
+                  </Td>
                 )}
                 <td className="px-1 py-1.5 text-center">
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenRow(r); }}
-                    className="relative inline-flex items-center justify-center h-7 w-7 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                    className="relative inline-flex items-center justify-center h-7 w-7 rounded-lg transition-colors duration-150 hover:bg-[var(--brand-wash)] focus-visible:outline-2 focus-visible:outline-offset-1"
+                    style={{ color: 'var(--ink-muted)', outlineColor: 'var(--brand)' }}
                     title="Ver detalhes e conversa"
-                    aria-label="Ver detalhes e conversa"
+                    aria-label={unread ? 'Ver detalhes e conversa — há mensagens não lidas' : 'Ver detalhes e conversa'}
                   >
                     <MessageSquare className="h-4 w-4" />
-                    {unread && <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />}
+                    {unread && (
+                      <span
+                        className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full ring-2"
+                        style={{ background: 'var(--status-critical)', ['--tw-ring-color' as any]: 'var(--surface-card)' }}
+                      />
+                    )}
                   </button>
                 </td>
-              </tr>
+              </Tr>
             );
           })}
-        </tbody>
+        </TableBody>
       </table>
-    </div>
+    </TableShell>
   );
 }

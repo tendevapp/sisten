@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ClipboardList, CheckCircle2, CircleDashed, Timer } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
@@ -15,6 +15,8 @@ import AreaSolicitanteChart from '../components/demandas/AreaSolicitanteChart';
 import CompradorPerformanceChart from '../components/demandas/CompradorPerformanceChart';
 import QuantidadesPeriodoTable from '../components/demandas/QuantidadesPeriodoTable';
 import AtrasoChart from '../components/demandas/AtrasoChart';
+import KpiCard from '../components/charts/KpiCard';
+import { formatInt, formatPctInt } from '../lib/format';
 
 export default function DemandDashboard() {
   const [records, setRecords] = useState<EnrichedSAPRecord[]>([]);
@@ -109,21 +111,24 @@ export default function DemandDashboard() {
     return { totalRequisitado, totalPedido, totalAberto, pctProcessado, atrasoMedio };
   }, [filtered]);
 
-  const selectClass = 'rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer';
+  const selectClass = 'rounded-lg border py-1.5 px-3 text-xs cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1 border-[var(--hairline)] bg-[var(--surface-card)] text-[var(--ink-secondary)] focus:outline-[var(--brand)]';
 
   return (
     <div className="space-y-6 text-left">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3 reveal">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Acompanhamento de Demandas</h2>
-          <p className="mt-1 text-sm text-slate-500">Requisições de materiais (RI 11/12/13) e serviços (RI 17) — requisitado x pedido, criticidade, área e comprador.</p>
+          <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>Acompanhamento de Demandas</h2>
+          <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
+            Requisições de materiais (RI 11/12/13) e serviços (RI 17) — requisitado x pedido, criticidade, área e comprador.
+          </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          {lastSync && <span>Atualizado às {lastSync.toLocaleTimeString('pt-BR')}</span>}
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
+          {lastSync && <span className="tabular">Atualizado às {lastSync.toLocaleTimeString('pt-BR')}</span>}
           <button
             onClick={refresh}
             disabled={syncing}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', outlineColor: 'var(--brand)' }}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
             Atualizar
@@ -132,34 +137,68 @@ export default function DemandDashboard() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">Total Requisitado</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{kpis.totalRequisitado}</p>
-        </div>
-        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">% Processado</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-700">{kpis.pctProcessado}%</p>
-          <p className="text-[11px] text-slate-400">{kpis.totalPedido} pedidos colocados</p>
-        </div>
-        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">Total Aberto</p>
-          <p className="mt-1 text-2xl font-bold text-red-600">{kpis.totalAberto}</p>
-        </div>
-        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-400">Atraso Médio (aberto)</p>
-          <p className="mt-1 text-2xl font-bold text-amber-600">{kpis.atrasoMedio}d</p>
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 stagger">
+        <KpiCard
+          label="Total Requisitado"
+          value={kpis.totalRequisitado}
+          format={formatInt}
+          detail="itens no filtro"
+          icon={ClipboardList}
+          accent="var(--series-1)"
+        />
+        <KpiCard
+          label="% Processado"
+          value={kpis.pctProcessado}
+          format={formatPctInt}
+          detail={`${formatInt(kpis.totalPedido)} pedidos colocados`}
+          icon={CheckCircle2}
+          accent="var(--series-3)"
+          share={kpis.pctProcessado / 100}
+          emphasize
+        />
+        <KpiCard
+          label="Total Aberto"
+          value={kpis.totalAberto}
+          format={formatInt}
+          detail="ainda sem pedido"
+          icon={CircleDashed}
+          accent="var(--series-2)"
+          share={kpis.totalRequisitado > 0 ? kpis.totalAberto / kpis.totalRequisitado : undefined}
+        />
+        <KpiCard
+          label="Atraso Médio (aberto)"
+          value={kpis.atrasoMedio}
+          format={v => `${formatInt(v)}d`}
+          detail="média dos itens em aberto"
+          icon={Timer}
+          // Escala de status: atraso médio significa gravidade, e o limite de
+          // 30 dias é o mesmo usado na faixa crítica do backlog.
+          accent={kpis.atrasoMedio > 30 ? 'var(--status-critical)' : kpis.atrasoMedio > 7 ? 'var(--status-warning)' : 'var(--status-good)'}
+          share={Math.min(1, kpis.atrasoMedio / 30)}
+        />
       </div>
 
       {/* Filtros */}
-      <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-0.5">
+      <div
+        className="rounded-xl border p-4 flex flex-wrap items-center gap-3 sticky top-2 z-10 backdrop-blur-sm"
+        style={{
+          borderColor: 'var(--hairline)',
+          background: 'color-mix(in srgb, var(--surface-card) 92%, transparent)',
+          boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
+        }}
+      >
+        <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }} role="group" aria-label="Granularidade">
           {(['dia', 'semana', 'mes'] as Granularidade[]).map(g => (
             <button
               key={g}
               onClick={() => setGranularidade(g)}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${granularidade === g ? 'bg-emerald-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              aria-pressed={granularidade === g}
+              className="px-3 py-1 text-xs font-medium rounded-md transition-colors duration-150"
+              style={
+                granularidade === g
+                  ? { background: 'var(--brand)', color: '#ffffff' }
+                  : { color: 'var(--ink-muted)' }
+              }
             >
               {g === 'dia' ? 'Dia' : g === 'semana' ? 'Semana' : 'Mês'}
             </button>
@@ -167,7 +206,7 @@ export default function DemandDashboard() {
         </div>
 
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={selectClass} title="Data inicial" />
-        <span className="text-xs text-slate-400">até</span>
+        <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>até</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={selectClass} title="Data final" />
 
         <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value as any)} className={selectClass}>
@@ -193,7 +232,9 @@ export default function DemandDashboard() {
           {compradores.map(c => <option key={c.grupo_compras} value={c.grupo_compras}>{c.nome_comprador}</option>)}
         </select>
 
-        <span className="ml-auto text-xs text-slate-400">{filtered.length} requisições no filtro</span>
+        <span className="ml-auto text-xs tabular" style={{ color: 'var(--ink-muted)' }}>
+          {formatInt(filtered.length)} requisições no filtro
+        </span>
       </div>
 
       {/* Gráfico geral */}

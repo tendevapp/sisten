@@ -5,21 +5,32 @@
 
 import React, { useMemo } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, ResponsiveContainer } from 'recharts';
+import { Siren } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { classifyTipoDemanda, classifyCriticidadeNatureza, CRITICIDADE_LABEL, DEMANDA_COLORS, Criticidade } from '../../lib/demandas';
+import { classifyTipoDemanda, classifyCriticidadeNatureza, CRITICIDADE_LABEL, demandaColor, Criticidade } from '../../lib/demandas';
+import { formatInt, formatPctInt } from '../../lib/format';
+import { ChartTokens } from '../../lib/chartTokens';
+import { useChartConfig } from '../charts/chartDefaults';
+import ChartCard from '../charts/ChartCard';
+import ChartTooltip from '../charts/ChartTooltip';
 
 interface CriticidadeChartProps {
   // Deve receber materiais + serviços (ex.: `filtered`); o próprio gráfico separa
   // por tipo e classifica a criticidade a partir da natureza (serve para ambos).
   records: EnrichedSAPRecord[];
+  loading?: boolean;
 }
 
 const ORDER: Criticidade[] = ['normal', 'urgente', 'maquina_parada'];
-const COLOR: Record<Criticidade, string> = {
-  normal: DEMANDA_COLORS.normal,
-  urgente: DEMANDA_COLORS.urgente,
-  maquina_parada: DEMANDA_COLORS.maquinaParada,
-};
+
+// Criticidade significa gravidade, não identidade: usa a escala de *status*
+// (bom → crítico), que é reservada e nunca vira "série 4" de outro gráfico. A
+// gravidade também aparece no rótulo, nunca só na cor.
+function criticidadeColor(tokens: ChartTokens, k: Criticidade): string {
+  if (k === 'normal') return demandaColor(tokens, 'normal');
+  if (k === 'urgente') return demandaColor(tokens, 'urgente');
+  return demandaColor(tokens, 'maquinaParada');
+}
 
 interface Row {
   tipo: string;
@@ -29,31 +40,9 @@ interface Row {
   total: number;
 }
 
-// Tooltip próprio: com o total carregado numa linha invisível (ver abaixo), o
-// tooltip padrão do Recharts mostraria uma linha extra "total" solta no meio
-// das criticidades. Aqui organizamos total no topo e cada criticidade abaixo.
-function ChartTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const row = payload[0].payload as Row;
-  const rows = ORDER.map(c => ({ color: COLOR[c], label: CRITICIDADE_LABEL[c], value: row[c] }));
-  return (
-    <div style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', padding: '8px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-      <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{row.tipo} — {row.total} no total</div>
-      {rows.map(r => {
-        const pct = row.total > 0 ? Math.round((r.value / row.total) * 100) : 0;
-        return (
-          <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color, display: 'inline-block' }} />
-            <span style={{ color: '#475569', flex: 1 }}>{r.label}</span>
-            <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.value} ({pct}%)</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+export default function CriticidadeChart({ records, loading }: CriticidadeChartProps) {
+  const c = useChartConfig();
 
-export default function CriticidadeChart({ records }: CriticidadeChartProps) {
   const { data, total } = useMemo(() => {
     const base: Record<'material' | 'servico', Row> = {
       material: { tipo: 'Materiais', normal: 0, urgente: 0, maquina_parada: 0, total: 0 },
@@ -63,52 +52,87 @@ export default function CriticidadeChart({ records }: CriticidadeChartProps) {
     records.forEach(r => {
       const tipo = classifyTipoDemanda(r.requisicao_de_compra);
       if (tipo !== 'material' && tipo !== 'servico') return;
-      const c = classifyCriticidadeNatureza((r as any).natureza);
-      if (!c) return;
-      base[tipo][c] += 1;
+      const k = classifyCriticidadeNatureza((r as any).natureza);
+      if (!k) return;
+      base[tipo][k] += 1;
       base[tipo].total += 1;
       t += 1;
     });
     return { data: [base.material, base.servico] as Row[], total: t };
   }, [records]);
 
-  return (
-    <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Requisições por Criticidade</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Materiais e serviços por natureza (Normal, Urgente, Máquina Parada) — total e composição no mesmo eixo — {total} requisições</p>
-      </div>
+  // Tooltip próprio: com o total carregado numa linha invisível (ver abaixo), o
+  // tooltip padrão do Recharts mostraria uma linha "total" solta no meio das
+  // criticidades. Aqui o total vai no topo e as criticidades abaixo.
+  function TooltipConteudo({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload as Row;
+    return (
+      <ChartTooltip
+        title={row.tipo}
+        subtitle={`${formatInt(row.total)} requisições no total`}
+        rows={ORDER.map(k => ({
+          color: criticidadeColor(c.tokens, k),
+          label: CRITICIDADE_LABEL[k],
+          value: `${formatInt(row[k])} (${formatPctInt(row.total > 0 ? (row[k] / row.total) * 100 : 0)})`,
+        }))}
+      />
+    );
+  }
 
-      {total === 0 ? (
-        <div className="flex items-center justify-center h-64 text-sm text-slate-400">
-          Nenhuma requisição no período/filtro selecionado.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={data} margin={{ top: 28, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-            <XAxis dataKey="tipo" tick={{ fontSize: 12, fill: '#334155', fontWeight: 600 }} axisLine={{ stroke: '#cbd5e1' }} tickLine={false} />
-            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={36} />
-            <Tooltip content={<ChartTooltip />} />
-            <Legend
-              formatter={(value: string) => CRITICIDADE_LABEL[value as Criticidade]}
-              wrapperStyle={{ fontSize: 12 }}
-              iconType="circle"
+  return (
+    <ChartCard
+      title="Requisições por Criticidade"
+      icon={Siren}
+      description={`Materiais e serviços por natureza (Normal, Urgente, Máquina Parada) — total e composição no mesmo eixo — ${formatInt(total)} requisições`}
+      height={300}
+      loading={loading}
+      empty={total === 0}
+      emptyMessage="Nenhuma requisição no período/filtro selecionado."
+    >
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={data} margin={{ top: 28, right: 16, left: 0, bottom: 0 }}>
+          <CartesianGrid {...c.grid} />
+          <XAxis dataKey="tipo" {...c.xAxis} />
+          <YAxis allowDecimals={false} {...c.yAxis} width={36} />
+          <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />
+          <Legend
+            {...c.legend}
+            formatter={(value: string) => CRITICIDADE_LABEL[value as Criticidade]}
+          />
+          {ORDER.map((k, i) => (
+            <Bar
+              key={k}
+              dataKey={k}
+              stackId="crit"
+              fill={criticidadeColor(c.tokens, k)}
+              maxBarSize={96}
+              radius={i === ORDER.length - 1 ? c.radius.top : undefined}
+              stroke={c.tokens.surface}
+              strokeWidth={c.stackGap}
+              {...c.animation}
+            >
+              <LabelList
+                dataKey={k}
+                position="center"
+                formatter={(v: number) => (v > 0 ? formatInt(v) : '')}
+                style={c.labelOnMark}
+              />
+            </Bar>
+          ))}
+          {/* Linha invisível só para posicionar o rótulo do TOTAL no topo da
+              pilha — não depende do último segmento (Máquina Parada) ter valor
+              > 0, que era o problema quando esse segmento ficava em zero. */}
+          <Line dataKey="total" stroke="transparent" dot={false} activeDot={false} legendType="none" isAnimationActive={false}>
+            <LabelList
+              dataKey="total"
+              position="top"
+              formatter={(v: number) => (v > 0 ? formatInt(v) : '')}
+              style={{ ...c.labelOnSurface, fontSize: 13 }}
             />
-            {ORDER.map((c, i) => (
-              <Bar key={c} dataKey={c} stackId="crit" fill={COLOR[c]} maxBarSize={96} radius={i === ORDER.length - 1 ? [4, 4, 0, 0] : undefined}>
-                <LabelList dataKey={c} position="center" formatter={(v: number) => (v > 0 ? v : '')} style={{ fontSize: 12, fontWeight: 700, fill: '#fff' }} />
-              </Bar>
-            ))}
-            {/* Linha invisível só para posicionar o rótulo do TOTAL no topo da
-                pilha — não depende do último segmento (Máquina Parada) ter valor
-                > 0, que era o problema quando esse segmento ficava em zero. */}
-            <Line dataKey="total" stroke="transparent" dot={false} activeDot={false} legendType="none" isAnimationActive={false}>
-              <LabelList dataKey="total" position="top" formatter={(v: number) => (v > 0 ? v : '')} style={{ fontSize: 13, fontWeight: 700, fill: '#0f172a' }} />
-            </Line>
-          </ComposedChart>
-        </ResponsiveContainer>
-      )}
-    </div>
+          </Line>
+        </ComposedChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }

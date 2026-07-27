@@ -4,68 +4,81 @@
  */
 
 import React from 'react';
+import { LucideIcon } from 'lucide-react';
 import { Agregado, formatBRL } from '../../lib/almoxarifado';
+import { formatInt, formatPct } from '../../lib/format';
+import ChartCard from '../charts/ChartCard';
 
 interface ConcentracaoChartProps {
   titulo: string;
   subtitulo: string;
   dados: Agregado[];
+  icon?: LucideIcon;
   // 'Outros' agrega várias categorias, então não é um destino de filtro válido.
   onSelecionar?: (chave: string) => void;
+  loading?: boolean;
 }
 
-export default function ConcentracaoChart({ titulo, subtitulo, dados, onSelecionar }: ConcentracaoChartProps) {
+export default function ConcentracaoChart({ titulo, subtitulo, dados, icon, onSelecionar, loading }: ConcentracaoChartProps) {
   const maior = dados.reduce((m, d) => Math.max(m, d.valor), 0);
   const total = dados.reduce((a, d) => a + d.valor, 0);
 
   return (
-    <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-4">
-      <div>
-        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">{titulo}</h3>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{subtitulo}</p>
+    <ChartCard
+      title={titulo}
+      description={subtitulo}
+      icon={icon}
+      height={240}
+      loading={loading}
+      empty={dados.length === 0}
+      emptyMessage="Nenhum item no filtro selecionado."
+    >
+      <div className="space-y-2.5 stagger">
+        {dados.map(d => {
+          const largura = maior > 0 ? (d.valor / maior) * 100 : 0;
+          const pct = total > 0 ? (d.valor / total) * 100 : 0;
+          const agregado = d.chave === 'Outros';
+          const clicavel = !!onSelecionar && !agregado;
+          return (
+            <button
+              key={d.chave}
+              onClick={clicavel ? () => onSelecionar?.(d.chave) : undefined}
+              disabled={!clicavel}
+              className={`w-full text-left group rounded-md px-1.5 py-1 -mx-1.5 transition-colors duration-150
+                ${clicavel ? 'cursor-pointer hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-1' : 'cursor-default'}`}
+              style={{ outlineColor: 'var(--series-1)' }}
+              title={clicavel ? `Ver itens de ${d.chave}` : undefined}
+            >
+              <div className="flex items-baseline justify-between gap-3 text-xs">
+                <span
+                  className={`truncate font-semibold ${agregado ? 'italic' : ''}`}
+                  style={{ color: agregado ? 'var(--ink-muted)' : 'var(--ink-secondary)' }}
+                >
+                  {d.chave}
+                </span>
+                <span className="shrink-0 font-bold tabular" style={{ color: 'var(--ink-primary)' }}>
+                  {formatBRL(d.valor)}{' '}
+                  <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>({formatPct(pct)})</span>
+                </span>
+              </div>
+              {/* O trilho é a superfície rebaixada; a barra cresce a partir de
+                  zero na entrada, o que ancora a leitura na linha de base. */}
+              <div className="mt-1 h-2 w-full rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)' }}>
+                <div
+                  className="h-full rounded-full transition-[width] duration-700 ease-out"
+                  style={{
+                    width: `${largura}%`,
+                    background: agregado ? 'var(--ink-muted)' : 'var(--series-1)',
+                  }}
+                />
+              </div>
+              <p className="mt-0.5 text-[10px] tabular" style={{ color: 'var(--ink-muted)' }}>
+                {formatInt(d.itens)} itens · {formatInt(d.materiais)} materiais
+              </p>
+            </button>
+          );
+        })}
       </div>
-
-      {dados.length === 0 ? (
-        <div className="flex items-center justify-center h-48 text-sm text-slate-400 dark:text-slate-500">
-          Nenhum item no filtro selecionado.
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {dados.map(d => {
-            const largura = maior > 0 ? (d.valor / maior) * 100 : 0;
-            const pct = total > 0 ? (d.valor / total) * 100 : 0;
-            const agregado = d.chave === 'Outros';
-            const clicavel = !!onSelecionar && !agregado;
-            return (
-              <button
-                key={d.chave}
-                onClick={clicavel ? () => onSelecionar?.(d.chave) : undefined}
-                disabled={!clicavel}
-                className={`w-full text-left group ${clicavel ? 'cursor-pointer' : 'cursor-default'}`}
-                title={clicavel ? `Ver itens de ${d.chave}` : undefined}
-              >
-                <div className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className={`truncate font-semibold ${agregado ? 'text-slate-400 dark:text-slate-500 italic' : 'text-slate-700 dark:text-slate-300'} ${clicavel ? 'group-hover:text-emerald-600 dark:group-hover:text-emerald-500' : ''}`}>
-                    {d.chave}
-                  </span>
-                  <span className="shrink-0 font-bold text-slate-600 dark:text-slate-400 tabular-nums">
-                    {formatBRL(d.valor)} <span className="text-slate-400 dark:text-slate-500 font-medium">({pct.toFixed(1)}%)</span>
-                  </span>
-                </div>
-                <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${agregado ? 'bg-slate-300 dark:bg-slate-700' : 'bg-emerald-500 dark:bg-emerald-600'}`}
-                    style={{ width: `${largura}%` }}
-                  />
-                </div>
-                <p className="mt-0.5 text-[10px] text-slate-400 dark:text-slate-500">
-                  {d.itens.toLocaleString('pt-BR')} itens · {d.materiais.toLocaleString('pt-BR')} materiais
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    </ChartCard>
   );
 }

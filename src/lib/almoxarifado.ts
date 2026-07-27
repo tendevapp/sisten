@@ -7,10 +7,20 @@ import { EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
 
 export type ClasseAbc = 'A' | 'B' | 'C';
 
+/**
+ * Cor das classes ABC em contexto CSS (badge, ponto de legenda).
+ *
+ * A/B/C é escala *ordinal*, não categórica: a ordem carrega significado. O
+ * verde/âmbar/cinza anterior tomava emprestado o vocabulário de status e lia
+ * como "A é bom, C é ruim" — C é só barato. Agora é uma rampa de um matiz só,
+ * do passo mais forte (A) ao mais fraco (C), validada nos dois temas.
+ *
+ * Em SVG do Recharts `var()` não resolve em atributo: lá use `useChartTokens().abc`.
+ */
 export const CLASSE_ABC_COR: Record<ClasseAbc, string> = {
-  A: '#059669',
-  B: '#f59e0b',
-  C: '#94a3b8',
+  A: 'var(--abc-a)',
+  B: 'var(--abc-b)',
+  C: 'var(--abc-c)',
 };
 
 // Normaliza códigos de material ignorando zeros à esquerda, para que o mesmo
@@ -21,40 +31,9 @@ export const normalizeCode = (c: any): string => {
   return stripped.length > 0 ? stripped : (s.length > 0 ? '0' : '');
 };
 
-export const formatBRL = (v?: number | null): string =>
-  v === undefined || v === null || isNaN(v)
-    ? '—'
-    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-// Versão curta para eixos e rótulos de gráfico, onde o valor completo não cabe.
-export const formatBRLCompacto = (v?: number | null): string => {
-  if (v === undefined || v === null || isNaN(v)) return '—';
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `R$ ${(v / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} M`;
-  if (abs >= 1_000) return `R$ ${(v / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
-  return `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
-};
-
-export const formatQtd = (v?: number | null): string =>
-  v === undefined || v === null || isNaN(v)
-    ? '—'
-    : v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-
-export const formatDateBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-};
-
-export const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
+// Os formatadores moram em lib/format.ts (instâncias de Intl reaproveitadas).
+// Reexportados aqui para não quebrar os imports existentes.
+export { formatBRL, formatBRLCompacto, formatQtd, formatInt, formatPct, formatDateBR, formatDateTimeBR } from './format';
 
 /**
  * Classifica cada material em A, B ou C pelo valor imobilizado acumulado:

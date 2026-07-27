@@ -1,9 +1,88 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
 /* Fonte padrão do app (Inter, especificada no DESIGN.md; carregada via
    <link> no index.html). Fallback para a stack de sistema. */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* ------------------------------------------------------------------ */
+  /* Degraus de cor fora da escala do Tailwind                           */
+  /* ------------------------------------------------------------------ */
+  /* A escala do Tailwind vai de 100 em 100 (50, 100, …, 900, 950). O app
+     usa 313 classes em degraus que não existem — `dark:bg-slate-850`,
+     `divide-slate-150`, `text-slate-450` — e algumas que parecem erro de
+     digitação (`slate-455`, `slate-705`, `bg-slate-55`). Sem declaração, a
+     classe não gera regra alguma e é ignorada em silêncio: é por isso que o
+     cabeçalho das tabelas ficava sem fundo no tema escuro, os divisores não
+     apareciam e vários textos herdavam a cor errada.
+
+     Declarar os degraus conserta as 313 de uma vez, preservando a intenção de
+     quem escreveu, em vez de reescrever classe por classe em 13 arquivos. Os
+     valores são interpolações entre os degraus vizinhos da escala oficial; os
+     terminados em 5 resolvem para o vizinho mais próximo. */
+
+  /* slate */
+  --color-slate-55:  #f9fbfc;
+  --color-slate-150: #e9eef5;
+  --color-slate-250: #d8e0ea;
+  --color-slate-305: #c9d3e0;
+  --color-slate-350: #b0bccc;
+  --color-slate-355: #aebbcb;
+  --color-slate-450: #7c8ba1;
+  --color-slate-455: #7a899f;
+  --color-slate-550: #55637b;
+  --color-slate-555: #545f77;
+  --color-slate-650: #3d4a5f;
+  --color-slate-655: #3c4959;
+  --color-slate-705: #313f52;
+  --color-slate-750: #293548;
+  --color-slate-805: #1d2839;
+  --color-slate-850: #172032;
+  --color-slate-855: #161f31;
+  --color-slate-955: #060b16;
+
+  /* gray */
+  --color-gray-250: #dbdee3;
+
+  /* emerald */
+  --color-emerald-450: #22cd8d;
+  --color-emerald-455: #21cb8b;
+  --color-emerald-650: #048760;
+  --color-emerald-655: #048460;
+  --color-emerald-750: #056b4f;
+  --color-emerald-850: #065741;
+  --color-emerald-955: #01201a;
+  --color-emerald-250: #8bf3c4;
+
+  /* blue */
+  --color-blue-250: #a8d0fb;
+  --color-blue-450: #4b90ee;
+  --color-blue-650: #2166e2;
+
+  /* amber */
+  --color-amber-250: #fdd76b;
+  --color-amber-450: #f8ae17;
+  --color-amber-650: #c68e08;
+  --color-amber-955: #3a1503;
+
+  /* rose */
+  --color-rose-150: #ffeced;
+  --color-rose-250: #fdb9c1;
+  --color-rose-455: #f75872;
+  --color-rose-550: #eb2e53;
+  --color-rose-955: #3f0414;
+
+  /* red */
+  --color-red-650: #ca1d1d;
+  --color-red-655: #c81d1d;
+
+  /* sky */
+  --color-sky-450: #22b1f0;
+  --color-sky-850: #0a5a86;
+
+  /* indigo */
+  --color-indigo-150: #d4dcfe;
 }
 
 html {
