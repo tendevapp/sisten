@@ -14,6 +14,7 @@ import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
 import { Profile, Sector, Material } from '../types';
 import { useToast } from '../components/ui/Toast';
+import PageAccessModal from '../components/admin/PageAccessModal';
 
 interface AdminPanelProps {
   user: Profile;
@@ -28,6 +29,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // Users Management State
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
@@ -514,12 +516,20 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       </td>
                       <td className="py-3 text-center">
                         {selectedProfileId !== p.id && (
-                          <button
-                            onClick={() => { setSelectedProfileId(p.id); setEditingRole(p.roles[0]); }}
-                            className="text-emerald-700 hover:underline font-bold"
-                          >
-                            Editar Permissão
-                          </button>
+                          <div className="flex items-center justify-center gap-3">
+                            <button
+                              onClick={() => { setSelectedProfileId(p.id); setEditingRole(p.roles[0]); }}
+                              className="text-emerald-700 hover:underline font-bold"
+                            >
+                              Editar Permissão
+                            </button>
+                            <button
+                              onClick={() => setPageAccessProfileId(p.id)}
+                              className="text-slate-600 hover:underline font-bold"
+                            >
+                              Módulos de acesso
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -1889,6 +1899,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
+      {pageAccessProfileId && (() => {
+        const target = profiles.find(p => p.id === pageAccessProfileId);
+        if (!target) return null;
+        return (
+          <PageAccessModal
+            user={target}
+            onClose={() => setPageAccessProfileId(null)}
+            onChanged={loadData}
+          />
+        );
+      })()}
     </div>
   );
 }

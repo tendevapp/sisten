@@ -518,6 +518,7 @@ class LocalDatabase {
           cargo: 'Administrador do Sistema',
           sector_id: '16', // Diretoria
           roles: ['admin', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -528,6 +529,7 @@ class LocalDatabase {
           cargo: 'Coordenador Geral',
           sector_id: '5', // Suprimentos
           roles: ['coordenador_suprimentos', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -538,6 +540,7 @@ class LocalDatabase {
           cargo: 'Diretor de Operações',
           sector_id: '16', // Diretoria
           roles: ['gestor', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -548,6 +551,7 @@ class LocalDatabase {
           cargo: 'Gerente de Produção',
           sector_id: '14', // Produção
           roles: ['gestor', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -558,6 +562,7 @@ class LocalDatabase {
           cargo: 'Comprador Pleno',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -568,6 +573,7 @@ class LocalDatabase {
           cargo: 'Comprador Sênior',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -578,6 +584,7 @@ class LocalDatabase {
           cargo: 'Comprador Júnior',
           sector_id: '5', // Suprimentos
           roles: ['comprador', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -588,6 +595,7 @@ class LocalDatabase {
           cargo: 'Analista de Infraestrutura',
           sector_id: '9', // TI
           roles: ['atendente', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -598,6 +606,7 @@ class LocalDatabase {
           cargo: 'Auxiliar de Manutenção',
           sector_id: '3', // Facilities
           roles: ['atendente', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -608,6 +617,7 @@ class LocalDatabase {
           cargo: 'Assistente Administrativo',
           sector_id: '16', // Diretoria
           roles: ['solicitante', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -618,6 +628,7 @@ class LocalDatabase {
           cargo: 'Planejador de Manutenção',
           sector_id: '15', // Manutenção
           roles: ['solicitante', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -628,6 +639,7 @@ class LocalDatabase {
           cargo: 'Inspetor de Qualidade',
           sector_id: '11', // Qualidade
           roles: ['solicitante', 'visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: '2026-01-01T08:00:00-03:00'
         },
@@ -638,6 +650,7 @@ class LocalDatabase {
           cargo: 'Estagiário Almoxarifado',
           sector_id: '2', // Almoxarifado
           roles: ['visualizador'],
+          page_access: {},
           status: 'pendente',
           created_at: '2026-07-04T12:00:00-03:00'
         }
@@ -1066,6 +1079,7 @@ class LocalDatabase {
           cargo: data.user.user_metadata?.cargo || '',
           sector_id: data.user.user_metadata?.sector_id || '1',
           roles: ['visualizador'],
+          page_access: {},
           status: 'ativo',
           created_at: new Date().toISOString()
         };
@@ -1082,7 +1096,8 @@ class LocalDatabase {
       } else {
         mappedProfile = {
           ...profile,
-          roles: profile.roles || []
+          roles: profile.roles || [],
+          page_access: profile.page_access || {}
         };
       }
 
@@ -1250,6 +1265,72 @@ class LocalDatabase {
         this.setStorageItem(this.currentUserKey, users[idx]);
       }
     }
+  }
+
+  public async updatePageAccess(userId: string, pageId: string, allowed: boolean | null): Promise<void> {
+    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return;
+
+    const current = { ...(users[idx].page_access || {}) };
+    if (allowed === null) {
+      delete current[pageId];
+    } else {
+      current[pageId] = allowed;
+    }
+    users[idx].page_access = current;
+    this.setStorageItem(this.profilesKey, users);
+
+    const actingUser = this.getCurrentUser();
+    this.logActivity(
+      actingUser?.id || 'admin',
+      'Administração',
+      'Editar Módulos de Acesso',
+      `Acesso de ${users[idx].name} à página "${pageId}" alterado para ${allowed === null ? 'padrão do perfil' : (allowed ? 'liberado' : 'bloqueado')}.`
+    );
+
+    if (actingUser && actingUser.id === userId) {
+      this.setStorageItem(this.currentUserKey, users[idx]);
+    }
+
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const { error } = await supabase
+      .from('profiles')
+      .update({ page_access: current })
+      .eq('id', userId);
+    if (error) throw error;
+  }
+
+  // Restaura o override de acesso do usuário inteiro de uma vez (page_access = {}),
+  // com um único UPDATE no Supabase. Evita a race condition de disparar N updates
+  // paralelos (um por página) na mesma coluna JSON, cuja ordem de conclusão não é
+  // garantida e podia deixar o remoto com um snapshot intermediário em vez de {}.
+  public async resetAllPageAccess(userId: string): Promise<void> {
+    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return;
+
+    users[idx].page_access = {};
+    this.setStorageItem(this.profilesKey, users);
+
+    const actingUser = this.getCurrentUser();
+    this.logActivity(
+      actingUser?.id || 'admin',
+      'Administração',
+      'Editar Módulos de Acesso',
+      `Acesso de ${users[idx].name} restaurado ao padrão do perfil em todas as páginas.`
+    );
+
+    if (actingUser && actingUser.id === userId) {
+      this.setStorageItem(this.currentUserKey, users[idx]);
+    }
+
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const { error } = await supabase
+      .from('profiles')
+      .update({ page_access: {} })
+      .eq('id', userId);
+    if (error) throw error;
   }
 
   public hasPermission(user: Profile, module: string, action: string): boolean {

@@ -30,6 +30,7 @@ interface Props {
   hoje: Date;
   onClose: () => void;
   onThreadRead?: () => void; // avisa o pai para reavaliar indicadores de não-lido
+  canSeeValores: boolean;
 }
 
 function Field({ label, children, icon: Icon }: { label: string; children: React.ReactNode; icon?: any }) {
@@ -43,7 +44,7 @@ function Field({ label, children, icon: Icon }: { label: string; children: React
   );
 }
 
-export default function RastreioDetailModal({ row, user, hoje, onClose, onThreadRead }: Props) {
+export default function RastreioDetailModal({ row, user, hoje, onClose, onThreadRead, canSeeValores }: Props) {
   const [messages, setMessages] = useState<RastreioMensagem[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(true);
   const [msgError, setMsgError] = useState<string | null>(null);
@@ -204,10 +205,10 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <Field label="Fornecedor" icon={Truck}>{row.fornecedor}</Field>
             <Field label="Setor" icon={Building2}>{row.setor}</Field>
             <Field label="Quantidade" icon={Package}>{row.qtd !== undefined ? `${row.qtd.toLocaleString('pt-BR')}${row.unidade !== '—' ? ` ${row.unidade}` : ''}` : '—'}</Field>
-            {row.precoUnitario !== undefined && (
+            {canSeeValores && row.precoUnitario !== undefined && (
               <Field label="Preço unit." icon={CircleDollarSign}>{formatBRL(row.precoUnitario)}</Field>
             )}
-            {row.valorTotal !== undefined && (
+            {canSeeValores && row.valorTotal !== undefined && (
               <Field label="Valor total" icon={CircleDollarSign}>
                 <span className="text-emerald-600 dark:text-emerald-400">{formatBRL(row.valorTotal)}</span>
               </Field>

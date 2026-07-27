@@ -39,6 +39,14 @@ export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'status', label: 'Status', sortable: true, width: 'w-[12%]' },
 ];
 
+// IDs das colunas que expõem valores de compra — visíveis apenas para quem
+// tem a permissão `rastreio_valores` (comprador, coordenador, gestor, admin).
+const VALUE_COLUMN_IDS = new Set(['precoUnitario', 'valorTotal']);
+
+export function getRastreioColumns(canSeeValores: boolean): ColumnOption[] {
+  return canSeeValores ? RASTREIO_COLUMNS : RASTREIO_COLUMNS.filter(c => !VALUE_COLUMN_IDS.has(c.id));
+}
+
 const ITEM_STATUS_STYLE: Record<string, string> = {
   'Entregue': 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30',
   'Em rota de entrega': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30',
@@ -62,10 +70,11 @@ interface RastreioTableProps {
   onSort: (col: string) => void;
   onOpenRow: (row: RastreioRow) => void;
   unreadRis: Set<string>;
+  canSeeValores: boolean;
 }
 
-export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort, onOpenRow, unreadRis }: RastreioTableProps) {
-  const cols = RASTREIO_COLUMNS.filter(c => visibleColumns[c.id]);
+export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, sortDir, onSort, onOpenRow, unreadRis, canSeeValores }: RastreioTableProps) {
+  const cols = getRastreioColumns(canSeeValores).filter(c => visibleColumns[c.id]);
   return (
     <TableShell>
       {/* min-width força a rolagem horizontal em vez de espremer 12 colunas;
