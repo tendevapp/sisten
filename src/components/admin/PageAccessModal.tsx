@@ -51,10 +51,9 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
   };
 
   const handleResetAll = async () => {
-    const ids = Object.keys(pageAccess);
     setPageAccess({});
     try {
-      await Promise.all(ids.map(id => localDb.updatePageAccess(user.id, id, null)));
+      await localDb.resetAllPageAccess(user.id);
       onChanged();
       toast.success('Acesso restaurado ao padrão do perfil.');
     } catch (e) {
@@ -83,7 +82,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                 <div className="space-y-1">
                   {g.pages.map(p => {
                     const hasOverride = pageAccess[p.id] !== undefined;
-                    const checked = p.alwaysAdmin ? false : canAccessPage({ ...user, page_access: pageAccess }, p.id);
+                    const checked = p.alwaysAdmin ? canAccessPage(user, p.id) : canAccessPage({ ...user, page_access: pageAccess }, p.id);
                     return (
                       <div key={p.id} className="flex items-center justify-between gap-2 py-1">
                         <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
@@ -99,7 +98,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                             <span className="text-[10px] text-slate-400 shrink-0">(padrão)</span>
                           )}
                           {p.alwaysAdmin && (
-                            <span className="text-[10px] text-slate-400 shrink-0">(restrito ao Admin)</span>
+                            <span className="text-[10px] text-slate-400 shrink-0">(não editável)</span>
                           )}
                         </label>
                         {hasOverride && !p.alwaysAdmin && (

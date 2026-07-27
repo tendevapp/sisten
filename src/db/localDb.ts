@@ -1293,11 +1293,44 @@ class LocalDatabase {
       this.setStorageItem(this.currentUserKey, users[idx]);
     }
 
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
     const { error } = await supabase
       .from('profiles')
       .update({ page_access: current })
       .eq('id', userId);
-    if (error) console.warn('Falha ao sincronizar page_access com o Supabase:', error);
+    if (error) throw error;
+  }
+
+  // Restaura o override de acesso do usuário inteiro de uma vez (page_access = {}),
+  // com um único UPDATE no Supabase. Evita a race condition de disparar N updates
+  // paralelos (um por página) na mesma coluna JSON, cuja ordem de conclusão não é
+  // garantida e podia deixar o remoto com um snapshot intermediário em vez de {}.
+  public async resetAllPageAccess(userId: string): Promise<void> {
+    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return;
+
+    users[idx].page_access = {};
+    this.setStorageItem(this.profilesKey, users);
+
+    const actingUser = this.getCurrentUser();
+    this.logActivity(
+      actingUser?.id || 'admin',
+      'Administração',
+      'Editar Módulos de Acesso',
+      `Acesso de ${users[idx].name} restaurado ao padrão do perfil em todas as páginas.`
+    );
+
+    if (actingUser && actingUser.id === userId) {
+      this.setStorageItem(this.currentUserKey, users[idx]);
+    }
+
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const { error } = await supabase
+      .from('profiles')
+      .update({ page_access: {} })
+      .eq('id', userId);
+    if (error) throw error;
   }
 
   public hasPermission(user: Profile, module: string, action: string): boolean {

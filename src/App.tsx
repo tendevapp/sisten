@@ -345,21 +345,38 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
       
       case '/materiais/busca':
-        return <Materials user={user} />;
+        if (canAccessPage(user, 'materiais_busca')) {
+          return <Materials user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      // Sobre: acesso universal (todos os perfis), somente leitura.
+      // Sobre: acesso universal (todos os perfis) por padrão, mas ainda pode
+      // ser restringido explicitamente via page_access.
       case '/sobre':
-        return <Sobre user={user} onNavigate={handleNavigate} />;
+        if (canAccessPage(user, 'sobre')) {
+          return <Sobre user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      // Rastreio Compras: acesso universal (todos os perfis), somente leitura.
+      // Rastreio Compras: acesso universal (todos os perfis) por padrão, mas
+      // ainda pode ser restringido explicitamente via page_access.
       case '/rastreio':
-        return <RastreioCompras user={user} onNavigate={handleNavigate} />;
-      
+        if (canAccessPage(user, 'rastreio')) {
+          return <RastreioCompras user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/solicitacoes/nova':
-        return <NewRequest user={user} onNavigate={handleNavigate} />;
-      
+        if (canAccessPage(user, 'sol_nova')) {
+          return <NewRequest user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/solicitacoes/minhas':
-        return <MyRequests user={user} />;
+        if (canAccessPage(user, 'sol_minhas')) {
+          return <MyRequests user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
       
       case '/solicitacoes/aprovacoes':
         if (canAccessPage(user, 'sol_aprovacoes')) {
@@ -436,7 +453,10 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/relatorios':
-        return <Reports user={user} />;
+        if (canAccessPage(user, 'relatorios')) {
+          return <Reports user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/almoxarifado/estoque':
         if (canAccessPage(user, 'almox_estoque')) {
