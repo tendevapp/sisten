@@ -12,11 +12,12 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
+import { canAccessPage } from '../lib/pages';
 import {
   RastreioRow, DeliveryScope, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort,
 } from '../lib/rastreio';
-import RastreioTable, { RASTREIO_COLUMNS, SortDir } from '../components/rastreio/RastreioTable';
+import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
 import { useToast } from '../components/ui/Toast';
@@ -75,6 +76,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // "Hoje" de referência para o status de prazo (data real do usuário).
   const hoje = useMemo(() => new Date(), []);
+
+  const canSeeValores = useMemo(() => canAccessPage(user, 'rastreio_valores'), [user]);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -194,8 +197,10 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       'Setor': r.setor,
       'Quantidade': r.qtd ?? '—',
       'Unidade': r.unidade,
-      'Preço Unit. (R$)': r.precoUnitario ?? '—',
-      'Valor Total (R$)': r.valorTotal ?? '—',
+      ...(canSeeValores ? {
+        'Preço Unit. (R$)': r.precoUnitario ?? '—',
+        'Valor Total (R$)': r.valorTotal ?? '—',
+      } : {}),
       'Data Criação': formatDateBR(r.dataCriacao),
       'Prev. Entrega': formatDateBR(r.dataPrevista),
       'Entrega (MIGO)': formatDateBR(r.dataEntrega),
@@ -447,14 +452,14 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                       <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
                         <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Colunas Ativas</span>
                         <button
-                          onClick={() => setVisibleColumns(RASTREIO_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {}))}
+                          onClick={() => setVisibleColumns(getRastreioColumns(canSeeValores).reduce((acc, col) => ({ ...acc, [col.id]: true }), {}))}
                           className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
                         >
                           Mostrar Todas
                         </button>
                       </div>
                       <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
-                        {RASTREIO_COLUMNS.map(col => (
+                        {getRastreioColumns(canSeeValores).map(col => (
                           <label key={col.id} className="flex items-center space-x-2 px-1.5 py-1 rounded hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-xs text-slate-600 dark:text-slate-400 transition-colors">
                             <input
                               type="checkbox"
@@ -487,6 +492,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                     onSort={toggleSort}
                     onOpenRow={setSelectedRow}
                     unreadRis={unreadRis}
+                    canSeeValores={canSeeValores}
                   />
                   {visibleCount < sortedRows.length && (
                     <div className="flex justify-center pt-2">
@@ -515,6 +521,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
           hoje={hoje}
           onClose={() => setSelectedRow(null)}
           onThreadRead={refreshUnread}
+          canSeeValores={canSeeValores}
         />
       )}
     </div>
