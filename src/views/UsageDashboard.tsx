@@ -18,7 +18,8 @@ import { Profile } from '../types';
 import { labelForPath } from '../lib/usageTracker';
 
 type Granularity = 'day' | 'week' | 'month';
-type Preset = '7' | '30' | '90' | 'custom';
+type Preset = 'today' | '7' | '30' | '90' | 'custom';
+
 
 interface Kpis {
   active_today: number;
@@ -79,6 +80,10 @@ export default function UsageDashboard() {
   const { fromISO, toISO } = useMemo(() => {
     const to = new Date();
     let from = new Date();
+    if (preset === 'today') {
+      from.setHours(0, 0, 0, 0);
+      return { fromISO: from.toISOString(), toISO: to.toISOString() };
+    }
     if (preset === 'custom') {
       const f = customFrom ? new Date(customFrom + 'T00:00:00') : new Date(Date.now() - 30 * 864e5);
       const t = customTo ? new Date(customTo + 'T23:59:59') : new Date();
@@ -88,6 +93,7 @@ export default function UsageDashboard() {
     from.setHours(0, 0, 0, 0);
     return { fromISO: from.toISOString(), toISO: to.toISOString() };
   }, [preset, customFrom, customTo]);
+
 
   const filteredProfiles = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
@@ -237,15 +243,16 @@ export default function UsageDashboard() {
         <div>
           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Período</label>
           <div className="flex items-center gap-1">
-            {(['7', '30', '90'] as Preset[]).map(p => (
+            {(['today', '7', '30', '90'] as Preset[]).map(p => (
               <button
                 key={p}
                 onClick={() => setPreset(p)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${preset === p ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors cursor-pointer ${preset === p ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
               >
-                {p} dias
+                {p === 'today' ? 'Hoje' : `${p} dias`}
               </button>
             ))}
+
             <button
               onClick={() => setPreset('custom')}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${preset === 'custom' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}

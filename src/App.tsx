@@ -31,6 +31,7 @@ const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
+const Sobre = lazy(() => import('./views/Sobre'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -50,6 +51,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
   '/suprimentos/historico',
+  '/suprimentos/historico/dashboards',
   '/suprimentos/fornecedores',
   '/suprimentos/cadastros-sap',
   '/helpdesk',
@@ -67,6 +69,9 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/rastreio',
   '/almoxarifado/estoque',
   '/almoxarifado/dashboards',
+  // A página Sobre é só leitura, mas remontá-la a cada sincronização em segundo
+  // plano reiniciaria as animações de entrada no meio da leitura.
+  '/sobre',
 ]);
 
 function ViewLoadingFallback() {
@@ -341,6 +346,10 @@ export default function App() {
       case '/materiais/busca':
         return <Materials user={user} />;
 
+      // Sobre: acesso universal (todos os perfis), somente leitura.
+      case '/sobre':
+        return <Sobre user={user} onNavigate={handleNavigate} />;
+
       // Rastreio Compras: acesso universal (todos os perfis), somente leitura.
       case '/rastreio':
         return <RastreioCompras user={user} onNavigate={handleNavigate} />;
@@ -375,6 +384,14 @@ export default function App() {
       case '/suprimentos/demandas':
         if (localDb.hasPermission(user, 'sap', 'dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} abaInicial="demandas" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Rota histórica: a Análise de Compras virou uma aba da página de
+      // Dashboards. Mantida viva para não quebrar link salvo.
+      case '/suprimentos/historico/dashboards':
+        if (localDb.hasPermission(user, 'sap', 'dashboards')) {
+          return <SapDashboards onNavigate={handleNavigate} abaInicial="compras" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -457,7 +474,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
+    <div className="flex h-full w-full overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
       {/* Collapsible / off-canvas Sidebar */}
       <Sidebar
         user={activeUser}

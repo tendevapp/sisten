@@ -6,6 +6,11 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
+  /* Face de display, usada só em títulos da página Sobre. Archivo é variável no
+     eixo de largura (wdth): as chamadas passam `font-stretch` para abrir a
+     letra e dar o ar de placa de equipamento. Carregada no index.html. */
+  --font-display: "Archivo", "Inter", ui-sans-serif, system-ui, sans-serif;
+
   /* ------------------------------------------------------------------ */
   /* Degraus de cor fora da escala do Tailwind                           */
   /* ------------------------------------------------------------------ */
@@ -85,7 +90,12 @@
   --color-indigo-150: #d4dcfe;
 }
 
-html {
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   font-family: var(--font-sans);
 }
 
@@ -241,6 +251,106 @@ html {
 }
 .animate-slide-up {
   animation: sisten-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ------------------------------------------------------------------ */
+/* Página Sobre — revelação em cascata, rotor e correntes de ar         */
+/* ------------------------------------------------------------------ */
+
+/* Revelação: o elemento nasce deslocado e o IntersectionObserver da view
+   adiciona `is-visible` quando ele entra em quadro. O atraso de cada item vem
+   por `transition-delay` inline, para escalonar sem uma classe por posição. */
+.sobre-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sobre-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+/* Escalonamento do herói, que aparece antes de qualquer rolagem. */
+.sobre-hero .sobre-reveal { transition-delay: 0.05s; }
+.sobre-hero .sobre-d1 { transition-delay: 0.18s; }
+.sobre-hero .sobre-d2 { transition-delay: 0.32s; }
+.sobre-hero .sobre-d3 { transition-delay: 0.46s; }
+
+/* Trilho da sequência: risca-se da esquerda para a direita (ou de cima para
+   baixo no mobile) quando a seção entra em quadro. */
+.sobre-track {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.15s;
+}
+.sobre-track.is-visible { transform: scaleX(1); }
+.sobre-track-v {
+  transform: scaleY(0);
+  transform-origin: center top;
+}
+.sobre-track-v.is-visible { transform: scaleY(1); }
+
+/* Sublinhado do título do herói: cresce junto com a revelação. Feito com
+   background em vez de pseudo-elemento posicionado para que a frase possa
+   quebrar em telas estreitas — cada linha ganha seu próprio traço, e nada
+   força a largura do herói além da viewport. */
+.sobre-grifo {
+  background-image: linear-gradient(90deg, #f5821f 0%, #ffcc00 100%);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0% 3px;
+  padding-bottom: 0.1em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.55s;
+}
+.is-visible .sobre-grifo { background-size: 100% 3px; }
+
+/* Barra de acento dos cartões de módulo. */
+.sobre-acento {
+  transform: scaleX(0);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sobre-card:hover .sobre-acento,
+.sobre-card:focus-visible .sobre-acento { transform: scaleX(1); }
+
+@keyframes sisten-rotor {
+  to { transform: rotate(360deg); }
+}
+.sobre-rotor {
+  transform-origin: 100px 100px;
+  animation: sisten-rotor 16s linear infinite;
+}
+
+@keyframes sisten-corrente {
+  0%   { transform: translateX(-110%); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(320%); opacity: 0; }
+}
+.sobre-stream {
+  left: 0;
+  animation-name: sisten-corrente;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Movimento ambiente é decoração: some por completo com movimento reduzido,
+   em vez de virar um giro instantâneo pela regra global de duração mínima. */
+@media (prefers-reduced-motion: reduce) {
+  .sobre-rotor,
+  .sobre-stream {
+    animation: none !important;
+  }
+  .sobre-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .sobre-track,
+  .sobre-track-v {
+    transform: none !important;
+  }
+  .sobre-grifo { background-size: 100% 3px !important; }
 }
 
 /* Respeita a preferência de menos movimento do sistema. */

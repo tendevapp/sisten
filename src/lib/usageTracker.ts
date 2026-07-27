@@ -30,6 +30,7 @@ const PATH_LABELS: Record<string, string> = {
   '/suprimentos/demandas': 'Gestão de Suprimentos (link antigo)',
   '/suprimentos/fornecedores-sem-po': 'Central Compras',
   '/suprimentos/historico': 'Histórico',
+  '/suprimentos/historico/dashboards': 'Análise de Compras',
   '/suprimentos/fornecedores': 'Fornecedores',
   '/suprimentos/cadastros-sap': 'Cadastros SAP',
   '/suprimentos/importar': 'Importar SAP',

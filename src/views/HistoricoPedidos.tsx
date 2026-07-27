@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
   RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
-  Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock
+  Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock, BarChart3
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -151,7 +151,7 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
 
 // SortableTh, a casca da tabela e os estados vazios vêm de components/ui/DataTable.
 
-export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
+export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -419,6 +419,15 @@ export default function HistoricoPedidos({ user }: HistoricoPedidosProps) {
           )}
         </div>
         <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
+          {/* Esta tela é de consulta linha a linha; a análise agregada (quem
+              concentra o gasto, de onde vem, risco de fonte única) vive na
+              página irmã. */}
+          <button
+            onClick={() => onNavigate('/suprimentos/dashboards?tab=compras')}
+            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all h-9 cursor-pointer"
+          >
+            <BarChart3 className="h-3.5 w-3.5" /> Análise de Compras
+          </button>
           <button
             onClick={() => load(true)}
             disabled={loading}

@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
@@ -29,8 +29,9 @@ import TabVisaoGeral from '../components/suprimentos/TabVisaoGeral';
 import TabDemandas from '../components/suprimentos/TabDemandas';
 import TabCarteira from '../components/suprimentos/TabCarteira';
 import TabFornecedores from '../components/suprimentos/TabFornecedores';
+import TabAnaliseCompras from '../components/suprimentos/TabAnaliseCompras';
 
-export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores';
+export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras';
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
@@ -43,7 +44,16 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
   { id: 'demandas', rotulo: 'Demandas', icone: TrendingUp, pergunta: 'O fluxo da requisição até o pedido está fluindo?' },
   { id: 'carteira', rotulo: 'Carteira & Compradores', icone: Users, pergunta: 'Quem está sobrecarregado e quem está entregando?' },
   { id: 'fornecedores', rotulo: 'Fornecedores & Spend', icone: Building2, pergunta: 'Para onde vai o dinheiro e quem cumpre prazo?' },
+  { id: 'compras', rotulo: 'Análise de Compras', icone: BarChart3, pergunta: 'No que já foi comprado: onde está concentrado o gasto e de onde ele vem?' },
 ];
+
+/**
+ * Abas que trabalham sobre a carteira em andamento e por isso respondem ao
+ * filtro global do shell. "Análise de Compras" lê outra base — o histórico de
+ * pedidos — e carrega filtros próprios; aplicar-lhe criticidade de requisição
+ * ou comprador atribuído não faria sentido.
+ */
+const ABAS_COM_FILTRO_GLOBAL = new Set<AbaSuprimentos>(['geral', 'demandas', 'carteira', 'fornecedores']);
 
 /** Janela padrão: últimos 90 dias — larga o bastante para o ciclo RM→PO fechar. */
 const DIAS_PADRAO = 90;
@@ -255,16 +265,18 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
         })}
       </div>
 
-      {/* Filtro global — o mesmo recorte vale para as quatro abas */}
-      <FiltrosSuprimentos
-        filtros={filtros}
-        onChange={atualizarFiltros}
-        onReset={resetarFiltros}
-        areas={areas}
-        compradores={compradores}
-        totalFiltrado={filtrados.length}
-        mostrarGranularidade={aba === 'demandas' || aba === 'carteira'}
-      />
+      {/* Filtro global — vale para as abas de carteira em andamento */}
+      {ABAS_COM_FILTRO_GLOBAL.has(aba) && (
+        <FiltrosSuprimentos
+          filtros={filtros}
+          onChange={atualizarFiltros}
+          onReset={resetarFiltros}
+          areas={areas}
+          compradores={compradores}
+          totalFiltrado={filtrados.length}
+          mostrarGranularidade={aba === 'demandas' || aba === 'carteira'}
+        />
+      )}
 
       {aba === 'geral' && (
         <TabVisaoGeral
@@ -289,6 +301,8 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
       )}
 
       {aba === 'fornecedores' && <TabFornecedores records={filtrados} />}
+
+      {aba === 'compras' && <TabAnaliseCompras onNavigate={onNavigate} />}
     </div>
   );
 }

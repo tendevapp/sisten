@@ -2928,7 +2928,8 @@ class LocalDatabase {
     { header: 'Rua', field: 'rua' },
     { header: 'País', field: 'pais' },
     { header: 'Código postal', field: 'codigo_postal' },
-    { header: 'Local', field: 'localidade' }
+    { header: 'Local', field: 'localidade' },
+    { header: 'Rg', field: 'estado_uf' }
   ];
 
 
@@ -3645,6 +3646,36 @@ class LocalDatabase {
         onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
       }
 
+      // Atualiza cidadeforn.estado_uf a partir da coluna Rg da ZL0132.
+      // A ZL0132 e a fonte primaria do estado do fornecedor - mais confiavel que
+      // qualquer outra planilha porque vem do cadastro do fornecedor no SAP.
+      // Deduplica por fornecedor_codigo e grava so UF validas (2 letras),
+      // ignorando codigos numericos de regioes estrangeiras (ex: 120 = Qingdao).
+      const ufPorForn = new Map();
+      for (const row of dbRows) {
+        const cod = row.fornecedor_codigo;
+        const uf = row.regiao_uf;
+        if (cod && uf && /^[A-Za-z]{2}$/.test(uf) && !ufPorForn.has(cod)) {
+          ufPorForn.set(cod, uf.toUpperCase());
+        }
+      }
+      if (ufPorForn.size > 0) {
+        const cidadeUfRows = Array.from(ufPorForn.entries()).map(([forn_codigo, estado_uf]) => ({
+          forn_codigo,
+          estado_uf,
+          updated_at: new Date().toISOString()
+        }));
+        for (let i = 0; i < cidadeUfRows.length; i += 100) {
+          // onConflict so atualiza estado_uf no registro existente, nao cria
+          // novos registros - um fornecedor sem linha na cidadeforn tera o
+          // estado lido via regiao_uf da propria view pelo dashboard.
+          await supabase
+            .from('cidadeforn')
+            .upsert(cidadeUfRows.slice(i, i + 100), { onConflict: 'forn_codigo' })
+            .catch(() => { /* nao bloqueia importacao se cidadeforn nao tiver o fornecedor */ });
+        }
+      }
+
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
       const logObj = {
         id: logId,
@@ -4260,6 +4291,7 @@ class LocalDatabase {
     const paisColIdx = mappedFields.findIndex(f => f === 'pais');
     const codPostalColIdx = mappedFields.findIndex(f => f === 'codigo_postal');
     const localidadeColIdx = mappedFields.findIndex(f => f === 'localidade');
+    const estadoUfColIdx = mappedFields.findIndex(f => f === 'estado_uf');
 
     dataRows.forEach((row, index) => {
       const fileRowIndex = index + 2;
@@ -4274,6 +4306,11 @@ class LocalDatabase {
         return;
       }
 
+      const rawUf = estadoUfColIdx !== -1 ? String(row[estadoUfColIdx] || '').trim() : null;
+      // So grava estado_uf se for UF brasileira valida (2 letras) para nao
+      // sobrescrever com codigos numericos de fornecedores estrangeiros
+      const estadoUf = rawUf && /^[A-Za-z]{2}$/.test(rawUf) ? rawUf.toUpperCase() : null;
+
       dbRows.push({
         forn_codigo: fornCodigo,
         forn_nome: fornNomeColIdx !== -1 ? String(row[fornNomeColIdx] || '').trim() : null,
@@ -4281,6 +4318,7 @@ class LocalDatabase {
         pais: paisColIdx !== -1 ? String(row[paisColIdx] || '').trim() : null,
         codigo_postal: codPostalColIdx !== -1 ? String(row[codPostalColIdx] || '').trim() : null,
         localidade: localidadeColIdx !== -1 ? String(row[localidadeColIdx] || '').trim() : null,
+        estado_uf: estadoUf,
         updated_at: new Date().toISOString()
       });
     });

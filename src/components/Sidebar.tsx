@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck,
   Database, LayoutDashboard, Upload, Users, Shield,
-  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, Route, Activity, Boxes
+  Map, Settings, HelpCircle, ChevronRight, Menu, X, KeyRound, Radio, Sun, Moon, Truck, PackageSearch, Building2, ArrowUpRight, History, Route, Activity, Boxes, Info
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
@@ -39,6 +39,8 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         // Rastreio Compras é acessível a todos os perfis (sem gate de permissão).
         { label: 'Rastreio Compras', path: '/rastreio', icon: Route, perm: { module: 'solicitacoes', action: 'visualizar_proprias' }, universal: true },
         { label: 'Relatórios', path: '/relatorios', icon: BarChart3, perm: { module: 'materiais', action: 'visualizar' } },
+        // Sobre é acessível a todos os perfis (sem gate de permissão).
+        { label: 'Sobre o SISTEN', path: '/sobre', icon: Info, perm: { module: 'solicitacoes', action: 'visualizar_proprias' }, universal: true },
       ],
     },
     {
@@ -56,6 +58,8 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
         { label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, perm: { module: 'sap', action: 'visualizar_painel' } },
         { label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, perm: { module: 'sap', action: 'fornecedores' } },
         { label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, perm: { module: 'sap', action: 'fornecedores' } },
+        // A Análise de Compras não tem item próprio: é uma aba de Dashboards,
+        // para que as leituras de suprimentos vivam todas na mesma página.
         { label: 'Histórico', path: '/suprimentos/historico', icon: History, perm: { module: 'sap', action: 'fornecedores' } },
         // Demandas deixou de ser um item próprio: virou uma aba dentro de
         // Dashboards, para que o mesmo filtro valha para todas as leituras.
@@ -96,6 +100,21 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     onNavigate(path);
     onCloseMobile();
   };
+
+  /**
+   * Rota do menu que corresponde à página atual.
+   *
+   * Marcar como ativo todo item cujo caminho é prefixo do atual acendia dois
+   * itens ao mesmo tempo quando um deles é sub-rota do outro — "Importar SAP"
+   * junto com "Log Importação SAP", e agora "Histórico" junto com "Análise de
+   * Compras". Aqui vence o prefixo mais longo, que é sempre o item mais
+   * específico, e o casamento exige limite de segmento (`/`) para que
+   * `/suprimentos/historico` não case com `/suprimentos/historicoX`.
+   */
+  const activePath = navItems
+    .flatMap(g => g.items.map(i => i.path))
+    .filter(p => currentPath === p || (p !== '/' && currentPath.startsWith(`${p}/`)))
+    .sort((a, b) => b.length - a.length)[0];
 
   return (
     <>
@@ -165,7 +184,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                 {visibleItems.map((item, itemIdx) => {
                   const Icon = item.icon;
                   // If path is helpdesk or specific sub-path, check exact or partial matches
-                  const isActive = currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path));
+                  const isActive = item.path === activePath;
                   
                   return (
                     <li key={itemIdx} className="group/item relative">

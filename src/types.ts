@@ -353,11 +353,26 @@ export interface HistoricoPedidoView {
   cnpj?: string;
   fornecedor?: string;
   regiao_uf?: string;
+  /** Grupo de mercadoria do SAP (prefixos B/E/M/S, ex.: `B0101`). */
+  grp_mercads?: string;
+  /** Descrição amigável do grupo de mercadoria (da tabela cadastro_grupo_mercadoria, ex.: `EPI`, `TORRES/COLUNAS`). */
+  grp_mercads_desc?: string;
+  /**
+   * Natureza do item, derivada do padrão do código de material: os de projeto
+   * usam a faixa de 18 dígitos iniciada em 100000000; os demais são consumo.
+   */
+  tipo_item?: 'Projeto' | 'Consumo';
   doc_compra?: string;
   reqc?: string;
   data_doc?: string;
   qtd_pedido?: number;
+  /**
+   * Valor líquido do item **em BRL**. A view soma `pedidosforn.valor_em_brl`,
+   * não `valor_liquido` — este último está na moeda original do pedido e
+   * somá-lo misturava real, dólar e euro na mesma conta.
+   */
   valor_liquido?: number;
+  /** Preço unitário em BRL (valor_liquido / qtd_pedido). */
   preco_liquido_unit?: number;
   por?: string; // base de preço do SAP; unitário = preco_liquido_unit / por (vazio = 1)
   // Enriquecidos a partir do JOIN com contatos e cidadeforn.
@@ -368,6 +383,13 @@ export interface HistoricoPedidoView {
   pais?: string;
   cidade?: string;
   localidade?: string;
+  /**
+   * UF do fornecedor — vem de cidadeforn.estado_uf (preenchido na importação
+   * ZL0132 via coluna Rg) com COALESCE para pedidosforn.regiao_uf.
+   * Para fornecedores estrangeiros, regiao_uf pode ser código numérico da
+   * região do país de origem, não uma UF brasileira.
+   */
+  estado_uf?: string;
   rua?: string;
   codigo_postal?: string;
   data_migo?: string | null;
@@ -454,6 +476,8 @@ export interface CidadeForn {
   pais?: string;
   codigo_postal?: string;
   localidade?: string;
+  /** UF do fornecedor (ex: 'SP', 'BA'). Populado via importacao ZL0132 (coluna Rg). */
+  estado_uf?: string;
   created_at?: string;
   updated_at?: string;
 }
