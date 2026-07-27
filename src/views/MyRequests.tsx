@@ -458,6 +458,9 @@ export default function MyRequests({ user }: MyRequestsProps) {
                         <div>
                           <p className="font-semibold text-slate-800">{idx + 1}. {it.description}</p>
                           <div className="flex items-center space-x-3 mt-1 text-slate-400">
+                            {it.is_generic && (
+                              <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded">Item Genérico</span>
+                            )}
                             {it.sap_code ? (
                               <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1 rounded">SAP: {it.sap_code}</span>
                             ) : (
@@ -467,6 +470,11 @@ export default function MyRequests({ user }: MyRequestsProps) {
                               <span>Marca: <strong>{it.brand}</strong> {it.is_similar_allowed ? '(ou similar)' : ''}</span>
                             )}
                           </div>
+                          {it.observation && (
+                            <p className="text-[11px] text-slate-500 mt-1 italic">
+                              Obs: {it.observation}
+                            </p>
+                          )}
                         </div>
                         <div className="flex sm:flex-col items-baseline sm:items-end justify-between sm:justify-start gap-1">
                           <span className="font-bold text-slate-700">{it.quantity} {it.unit}</span>

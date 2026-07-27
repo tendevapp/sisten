@@ -97,6 +97,8 @@ export interface RequestItem {
   description: string;
   sap_code?: string; // Optional, can trigger autocomplete
   has_no_sap_code: boolean;
+  is_generic?: boolean;
+  observation?: string;
   quantity: number;
   unit: string;
   brand?: string;

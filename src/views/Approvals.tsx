@@ -232,10 +232,20 @@ export default function Approvals({ user }: ApprovalsProps) {
                   {items.map((it, idx) => (
                     <div key={it.id} className="p-4 flex justify-between items-center text-xs">
                       <div>
-                        <p className="font-semibold text-slate-800">{idx + 1}. {it.description}</p>
+                        <p className="font-semibold text-slate-800">
+                          {idx + 1}. {it.description}
+                          {it.is_generic && (
+                            <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded">Item Genérico</span>
+                          )}
+                        </p>
                         <p className="font-mono text-[10px] text-slate-400 mt-0.5">
                           {it.sap_code ? `SAP: ${it.sap_code}` : 'Sem código SAP associado'} • Marca: {it.brand || 'Não informada'}
                         </p>
+                        {it.observation && (
+                          <p className="text-[11px] text-slate-500 mt-1 italic">
+                            Obs: {it.observation}
+                          </p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-slate-700">{it.quantity} {it.unit}</p>

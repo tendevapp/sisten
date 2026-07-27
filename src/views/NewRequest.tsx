@@ -27,6 +27,8 @@ interface PurchaseItemState {
   unit: string;
   brand: string;
   is_similar_allowed: boolean;
+  is_generic?: boolean;
+  observation?: string;
   suggested_supplier: string;
   estimated_value: number;
 }
@@ -91,7 +93,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([
-    { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, suggested_supplier: '', estimated_value: 0 }
+    { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, is_generic: false, observation: '', suggested_supplier: '', estimated_value: 0 }
   ]);
 
   // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
@@ -179,11 +181,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [compradoresList, setCompradoresList] = useState<{ grupo_compras: string; nome_comprador: string }[]>([]);
   useEffect(() => {
     supabase.from('compradores').select('*').order('nome_comprador').then(({ data, error }) => {
-      if (error) {
-        console.error('Erro ao buscar compradores:', error);
+      if (error || !data || data.length === 0) {
+        setCompradoresList(localDb.getCompradores());
         return;
       }
-      setCompradoresList(data || []);
+      setCompradoresList(data);
     });
   }, []);
 
@@ -258,7 +260,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   };
 
   const handleAddItem = () => {
-    setItems([...items, { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, suggested_supplier: '', estimated_value: 0 }]);
+    setItems([...items, { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, is_generic: false, observation: '', suggested_supplier: '', estimated_value: 0 }]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -338,13 +340,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         payload = {
           ...payload,
           solicitante_sector_id: sectorId,
-          comprador_id: compradorId || buyerOptions.find(b => b.profileId)?.profileId,
+          comprador_id: compradorId || buyerOptions[0]?.profileId || buyerOptions[0]?.code,
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
           items: items.map(it => ({
             description: it.description,
             sap_code: it.sap_code,
             has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
+            is_generic: it.is_generic || false,
+            observation: it.observation || '',
             quantity: it.quantity,
             unit: it.unit,
             brand: it.brand,
@@ -501,8 +505,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   >
                     <option value="">Selecione um comprador...</option>
                     {buyerOptions.map(b => (
-                      <option key={b.code} value={b.profileId || b.code} disabled={!b.profileId}>
-                        {b.label} ({b.code}){!b.profileId ? ' — sem login vinculado' : ''}
+                      <option key={b.code} value={b.profileId || b.code}>
+                        {b.label} ({b.code})
                       </option>
                     ))}
                   </select>
@@ -553,9 +557,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
-                        Item {index + 1}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
+                          Item {index + 1}
+                        </span>
+                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
+                          <input
+                            type="checkbox"
+                            checked={it.is_generic || false}
+                            onChange={(e) => handleItemChange(index, 'is_generic', e.target.checked)}
+                            className="rounded cursor-pointer"
+                            style={{ accentColor: 'var(--brand)' }}
+                          />
+                          Item Genérico
+                        </label>
+                      </div>
                       {items.length > 1 && (
                         <button
                           type="button"
@@ -781,6 +797,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           style={fieldStyle}
                         />
                       </div>
+                    </div>
+
+                    {/* Observação / Informações Técnicas */}
+                    <div>
+                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Observação / Informações Técnicas</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Informações técnicas adicionais, observações ou especificações..."
+                        value={it.observation || ''}
+                        onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
+                        className="w-full rounded border py-1.5 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                        style={fieldStyle}
+                      />
                     </div>
                   </div>
                 ))}
