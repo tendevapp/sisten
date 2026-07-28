@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Paperclip, X, FileText, ImageIcon, AlertTriangle } from 'lucide-react';
+import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2 } from 'lucide-react';
 import {
   prepareAttachment,
   AnexoInvalidoError,
@@ -181,11 +181,17 @@ interface AttachmentGalleryProps {
   /** Muda para forçar recarga depois de um upload novo. */
   refreshKey?: number;
   emptyLabel?: string;
+  /**
+   * Habilita a exclusão. Sem esta prop a galeria é somente leitura — é o que
+   * mantém as telas de acompanhamento (Cadastros SAP, Solicitações) intocadas.
+   */
+  onDelete?: (anexoId: string) => Promise<string | null>;
 }
 
-export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel }: AttachmentGalleryProps) {
+export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, onDelete }: AttachmentGalleryProps) {
   const [anexos, setAnexos] = useState<RequestAttachment[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [excluindo, setExcluindo] = useState<string | null>(null);
 
   useEffect(() => {
     const lista = localDb.getAttachments(requestId, itemId);
@@ -240,7 +246,7 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel }:
         );
 
         return (
-          <li key={a.id}>
+          <li key={a.id} className="relative">
             <a
               href={url || undefined}
               target="_blank"
@@ -250,6 +256,30 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel }:
             >
               {conteudo}
             </a>
+
+            {onDelete && (
+              <button
+                type="button"
+                disabled={excluindo === a.id}
+                aria-label={`Excluir ${a.name}`}
+                title="Excluir anexo"
+                onClick={async () => {
+                  // Definitiva e imediata — não espera o salvamento da edição.
+                  if (!window.confirm(`Excluir "${a.name}"? Esta ação não pode ser desfeita.`)) return;
+                  setExcluindo(a.id);
+                  const erro = await onDelete(a.id);
+                  setExcluindo(null);
+                  if (erro) { window.alert(erro); return; }
+                  setAnexos(atuais => atuais.filter(x => x.id !== a.id));
+                }}
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border text-white shadow-sm transition-opacity disabled:opacity-50"
+                style={{ background: '#dc2626', borderColor: '#fff' }}
+              >
+                {excluindo === a.id
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <X className="h-3 w-3" />}
+              </button>
+            )}
           </li>
         );
       })}

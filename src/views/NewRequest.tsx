@@ -974,7 +974,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           somente-leitura; os novos entram pelo seletor abaixo. */}
                       {editandoId && (
                         <div className="mb-2">
-                          <AttachmentGallery requestId={editandoId} itemId={it.id} />
+                          <AttachmentGallery
+                            requestId={editandoId}
+                            itemId={it.id}
+                            onDelete={(anexoId) => localDb.deleteAttachment(anexoId)}
+                          />
                         </div>
                       )}
                       <AttachmentPicker
@@ -1112,6 +1116,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     ? 'Fotos do item, etiqueta ou ficha técnica'
                     : 'Cartão CNPJ, catálogo ou documento do fornecedor'}
                 </label>
+                {editandoId && (
+                  <div className="mb-2">
+                    <AttachmentGallery
+                      requestId={editandoId}
+                      onDelete={(anexoId) => localDb.deleteAttachment(anexoId)}
+                    />
+                  </div>
+                )}
                 <AttachmentPicker
                   value={sapAttachments}
                   onChange={setSapAttachments}

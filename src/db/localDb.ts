@@ -5295,6 +5295,56 @@ class LocalDatabase {
   }
 
   /**
+   * Exclui um anexo — arquivo no Storage e registro.
+   *
+   * Definitiva: não há soft delete nem lixeira. Só o autor da solicitação pode
+   * excluir; a policy do bucket é permissiva para autenticado, como as demais
+   * do projeto, então este é o gate que vale.
+   *
+   * Se o objeto já não estiver no Storage, o registro é apagado assim mesmo: o
+   * que não pode sobreviver é a linha sem o arquivo, que viraria miniatura
+   * quebrada para sempre.
+   *
+   * @returns Erro em texto quando recusada; null em caso de sucesso.
+   */
+  public async deleteAttachment(anexoId: string): Promise<string | null> {
+    const user = this.getCurrentUser();
+    if (!user) return 'Não autenticado.';
+    if (!supabase) return 'Sem conexão com o servidor.';
+
+    const lista = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+    const anexo = lista.find(a => a.id === anexoId);
+    if (!anexo) return 'Anexo não encontrado.';
+
+    const solicitacao = this.getRequests().find(r => r.id === anexo.request_id);
+    if (!solicitacao) return 'Solicitação não encontrada.';
+    if (solicitacao.solicitante_id !== user.id) {
+      return 'Apenas quem abriu a solicitação pode excluir seus anexos.';
+    }
+
+    const caminho = anexo.storage_path || anexo.url;
+
+    try {
+      // Falha aqui não interrompe: o registro precisa sair de qualquer forma,
+      // senão a tela continuaria mostrando um anexo que o usuário mandou apagar.
+      const { error: storageErr } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([caminho]);
+      if (storageErr) console.error(`Falha ao remover o arquivo "${caminho}" do Storage.`, storageErr);
+
+      const { error: dbErr } = await supabase.from('request_attachments').delete().eq('id', anexoId);
+      if (dbErr) throw dbErr;
+    } catch (err) {
+      console.error('Falha ao excluir o anexo.', err);
+      return 'Não foi possível excluir o anexo. Tente novamente.';
+    }
+
+    this.signedUrlCache.delete(caminho);
+    this.setStorageItem(this.attachmentsKey, lista.filter(a => a.id !== anexoId));
+    this.logActivity(user.id, 'Solicitações', 'Excluir Anexo', `Excluiu o anexo "${anexo.name}" da solicitação #${solicitacao.number}.`);
+    this.notifyListeners();
+    return null;
+  }
+
+  /**
    * URL assinada para exibir um anexo do bucket privado.
    *
    * Cacheada em memória por caminho: a galeria re-renderiza a cada tecla digitada

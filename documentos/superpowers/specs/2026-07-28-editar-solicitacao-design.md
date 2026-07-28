@@ -85,7 +85,19 @@ Ao detectar `?editar=<id>`, carrega a solicitação e seus itens, trava o seleto
 
 **Não toca no rascunho automático.** O autosave existe para uma solicitação sendo criada; deixá-lo ativo na edição faria uma solicitação real sobrescrever o rascunho que o usuário estava montando. Em modo edição, `saveDraft` e `clearDraft` não são chamados e o rascunho salvo não é carregado.
 
-Os anexos já enviados aparecem como somente-leitura, pela galeria existente; anexos novos podem ser acrescentados e sobem ao salvar. Remover anexo continua fora de escopo.
+Os anexos já enviados aparecem pela galeria existente, com opção de exclusão; anexos novos podem ser acrescentados e sobem ao salvar.
+
+### Exclusão de anexo
+
+Acrescentada depois do desenho inicial, que a deixava de fora.
+
+`AttachmentGallery` ganha a prop opcional `onDelete`. Sem ela, a galeria segue somente-leitura — é o que mantém as telas de acompanhamento (Cadastros SAP, Solicitações, painel do solicitante) intocadas. Com ela, cada miniatura mostra um "×" que pede confirmação.
+
+`localDb.deleteAttachment` confere que quem chama é o autor da solicitação, remove o objeto do bucket e apaga a linha. Se o objeto já não estiver no Storage, o registro é apagado assim mesmo: a linha sem arquivo viraria miniatura quebrada permanente.
+
+Foi criada a policy de `DELETE` em `storage.objects` para o bucket, ausente até então. Como as demais do projeto, ela é permissiva para `authenticated` — o gate de "só o dono" é da aplicação. Com exclusão o custo de um abuso é maior que com leitura, o que reforça a dívida de RLS já anotada nos designs anteriores.
+
+**A exclusão é imediata, não pendente até salvar.** Excluir e depois cancelar a edição não traz o anexo de volta. Acumular exclusões para aplicá-las no salvamento exigiria estado de "marcados para excluir" e desfazimento no cancelamento — desproporcional para o ganho.
 
 ## Tratamento de erro
 
