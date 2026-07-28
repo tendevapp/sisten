@@ -6,18 +6,21 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, Paperclip, Send, MessageSquare, History, 
-  Calendar, Check, AlertCircle, Copy, CheckCircle2, ChevronRight, Download, Upload, Loader2, Info, Star
+  Calendar, Check, AlertCircle, Copy, CheckCircle2, ChevronRight, Download, Upload, Loader2, Info, Star,
+  Pencil
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestItem, RequestComment, RequestStatusHistory } from '../types';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
+import { podeEditar, avisoEdicao } from '../lib/solicitacoes';
 
 interface MyRequestsProps {
   user: Profile;
+  onNavigate: (path: string) => void;
 }
 
-export default function MyRequests({ user }: MyRequestsProps) {
+export default function MyRequests({ user, onNavigate }: MyRequestsProps) {
   const [requests, setRequests] = useState<Request[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Carrega do cache
@@ -330,6 +333,16 @@ export default function MyRequests({ user }: MyRequestsProps) {
                 </div>
 
                 <div className="flex items-center space-x-2 self-start sm:self-center">
+                  {podeEditar(selectedRequest, user) && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(`/solicitacoes/nova?editar=${selectedRequest.id}`)}
+                      title={avisoEdicao(selectedRequest.type)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Editar
+                    </button>
+                  )}
                   <span className="text-xs font-bold text-slate-400">CRITICIDADE:</span>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${selectedRequest.criticality >= 4 ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800'}`}>
                     Grau {selectedRequest.criticality}

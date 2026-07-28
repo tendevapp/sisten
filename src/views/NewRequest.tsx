@@ -14,8 +14,10 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, Material } from '../types';
 import { formatBRL } from '../lib/format';
-import { AttachmentPicker } from '../components/ui/Attachments';
+import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
+import { novoItemId } from '../lib/ids';
+import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
 
 interface NewRequestProps {
   user: Profile;
@@ -23,6 +25,12 @@ interface NewRequestProps {
 }
 
 interface PurchaseItemState {
+  /**
+   * Id estável, gerado quando a linha nasce. Os anexos apontam para ele, então
+   * ele não pode derivar da posição: índice escorrega assim que um item é
+   * removido ou reordenado numa edição.
+   */
+  id: string;
   description: string;
   sap_code: string;
   quantity: number;
@@ -55,6 +63,13 @@ const fieldStyle: React.CSSProperties = {
 };
 const labelClass = 'text-xs font-bold block mb-1';
 const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
+
+const itemVazio = (): PurchaseItemState => ({
+  id: novoItemId(),
+  description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '',
+  is_similar_allowed: true, is_generic: false, observation: '',
+  suggested_supplier: '', estimated_value: 0,
+});
 
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
@@ -101,9 +116,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [justificativa, setJustificativa] = useState('');
 
   // Repeated items for Purchase
-  const [items, setItems] = useState<PurchaseItemState[]>([
-    { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, is_generic: false, observation: '', suggested_supplier: '', estimated_value: 0 }
-  ]);
+  const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
 
   // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
   // 180k+ linhas, não cabe em memória/localStorage), com debounce por item ativo.
@@ -207,8 +220,68 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return { code: c.grupo_compras, label: c.nome_comprador, profileId: bg?.user_id };
   });
 
+  // Modo edição: `?editar=<id>` carrega uma solicitação já existente neste
+  // mesmo formulário. Enquanto ele estiver ativo, o rascunho automático fica
+  // fora do caminho — ver `saveDraft`.
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [carregandoEdicao, setCarregandoEdicao] = useState(true);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.split('?')[1]);
+    const alvo = params.get('editar');
+    if (!alvo) {
+      setCarregandoEdicao(false);
+      return;
+    }
+
+    const req = localDb.getRequests().find(r => r.id === alvo);
+    if (!req || !podeEditar(req, user)) {
+      onNavigate('/solicitacoes/minhas');
+      return;
+    }
+
+    setEditandoId(req.id);
+    setActiveTab(req.type);
+    setCriticality(req.criticality);
+    setSectorId(req.solicitante_sector_id || '');
+    setJustificativa(req.justificativa || '');
+    if (req.comprador_id) setCompradorId(req.comprador_id);
+    if (req.tipo_compra) setTipoCompra(req.tipo_compra);
+    if (req.data_necessidade) setDataNecessidade(req.data_necessidade);
+    if (req.registration_type) setRegistrationType(req.registration_type);
+    if (req.target_sector_id) setHelpdeskSectorId(req.target_sector_id);
+    if (req.category_id) setHelpdeskCategory(req.category_id);
+    if (req.local) setHelpdeskLocal(req.local);
+    if (req.solicitante_sector_id) setChamadoSectorId(req.solicitante_sector_id);
+
+    const itensExistentes = localDb.getRequestItems(req.id);
+    if (itensExistentes.length > 0) {
+      // O id vem do banco e é preservado: é o que mantém os anexos colados ao
+      // item certo depois de salvar.
+      setItems(itensExistentes.map(it => ({
+        id: it.id,
+        description: it.description,
+        sap_code: it.sap_code || '',
+        quantity: it.quantity,
+        unit: it.unit,
+        brand: it.brand || '',
+        is_similar_allowed: it.is_similar_allowed ?? true,
+        is_generic: it.is_generic || false,
+        observation: it.observation || '',
+        suggested_supplier: it.suggested_supplier || '',
+        estimated_value: it.estimated_value || 0,
+      })));
+    }
+
+    setCarregandoEdicao(false);
+  }, [user, onNavigate]);
+
   // Load draft if exists
   useEffect(() => {
+    // Em modo edição o rascunho não entra: sobrescreveria os dados da
+    // solicitação real que acabou de ser carregada.
+    if (carregandoEdicao || editandoId) return;
+
     const draftKey = `sisten_draft_${user.id}`;
     const saved = localStorage.getItem(draftKey);
     if (saved) {
@@ -221,7 +294,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.criticality) setCriticality(parsed.criticality);
         if (parsed.dataNecessidade) setDataNecessidade(parsed.dataNecessidade);
         if (parsed.justificativa) setJustificativa(parsed.justificativa);
-        if (parsed.items) setItems(parsed.items);
+        // Rascunho salvo antes do id estável de item não traz `id`; sem este
+        // preenchimento o item iria para o banco sem identidade e o anexo
+        // perderia a que se prender.
+        if (parsed.items) {
+          setItems(parsed.items.map((it: PurchaseItemState) => ({ ...it, id: it.id || novoItemId() })));
+        }
         if (parsed.registrationType) setRegistrationType(parsed.registrationType);
         if (parsed.sapRegName) setSapRegName(parsed.sapRegName);
         if (parsed.sapRegSpecs) setSapRegSpecs(parsed.sapRegSpecs);
@@ -241,7 +319,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (supportSectors.length > 0) {
       setHelpdeskSectorId(supportSectors[0].id);
     }
-  }, [user]);
+  }, [user, carregandoEdicao, editandoId]);
 
   // Draft autosave interval (every 30 seconds as requested)
   useEffect(() => {
@@ -257,6 +335,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   ]);
 
   const saveDraft = () => {
+    // O rascunho pertence a uma solicitação sendo criada. Salvá-lo durante a
+    // edição de uma solicitação real sobrescreveria o rascunho que o usuário
+    // talvez estivesse montando em paralelo.
+    if (editandoId) return;
+
     setAutosaveStatus('saving');
     const draftData = {
       activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
@@ -275,7 +358,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   };
 
   const handleAddItem = () => {
-    setItems([...items, { description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '', is_similar_allowed: true, is_generic: false, observation: '', suggested_supplier: '', estimated_value: 0 }]);
+    setItems([...items, itemVazio()]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -359,6 +442,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
           items: items.map(it => ({
+            // O id acompanha o item: na criação ele já nasceu no formulário,
+            // na edição veio do banco. É o que amarra os anexos.
+            id: it.id,
             description: it.description,
             sap_code: it.sap_code,
             has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
@@ -393,34 +479,50 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         };
       }
 
-      const req = await localDb.submitRequest(payload, false);
-
-      // Só agora os anexos têm a que se prender: o id da solicitação nasce
-      // dentro do submitRequest, e o id do item é derivado dele pelo índice
-      // (`ri_<request_id>_<índice>`, ver localDb.submitRequest).
-      const entries = activeTab === 'compra'
-        ? items.flatMap((item, index) =>
-            (item.attachments || []).map(prepared => ({
-              prepared,
-              requestItemId: `ri_${req.id}_${index}`,
-            }))
+      // Os anexos se prendem ao id do item, que já existe neste ponto: nasceu
+      // no formulário na criação, ou veio do banco na edição.
+      const anexosDeItens = () => activeTab === 'compra'
+        ? items.flatMap(item =>
+            (item.attachments || []).map(prepared => ({ prepared, requestItemId: item.id }))
           )
         : sapAttachments.map(prepared => ({ prepared }));
 
-      const { failed } = await localDb.uploadAttachments(req.id, entries);
-      clearDraft();
+      let reqId: string;
+      let reqNumero: string;
+
+      if (editandoId) {
+        const erro = await localDb.saveRequestEdit(
+          editandoId,
+          payload,
+          activeTab === 'compra' ? payload.items : undefined,
+          statusAposEdicao(activeTab)
+        );
+        if (erro) {
+          alert(erro);
+          return;
+        }
+        reqId = editandoId;
+        reqNumero = localDb.getRequests().find(r => r.id === editandoId)?.number || '';
+      } else {
+        const req = await localDb.submitRequest(payload, false);
+        reqId = req.id;
+        reqNumero = req.number;
+        clearDraft();
+      }
+
+      const { failed } = await localDb.uploadAttachments(reqId, anexosDeItens());
 
       if (failed.length > 0) {
-        // A solicitação já existe; perder um anexo não pode desfazê-la — o
+        // A solicitação já foi gravada; perder um anexo não pode desfazê-la — o
         // usuário reenviar o arquivo em Minhas Solicitações é o caminho.
         alert(
-          `A solicitação #${req.number} foi criada, mas ${failed.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
+          `A solicitação #${reqNumero} foi ${editandoId ? 'atualizada' : 'criada'}, mas ${failed.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
           `${failed.join(', ')}. Você pode reenviá-${failed.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
         );
       }
 
       // Navigate to tracking
-      onNavigate(`/solicitacoes/minhas?id=${req.id}`);
+      onNavigate(`/solicitacoes/minhas?id=${reqId}`);
     } catch (err) {
       console.error('Falha ao enviar a solicitação.', err);
       alert('Não foi possível enviar a solicitação. Tente novamente.');
@@ -440,26 +542,33 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   return (
     <div className="space-y-6 text-left max-w-7xl mx-auto pb-12">
       <div className="reveal">
-        <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>Nova Solicitação</h2>
+        <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+          {editandoId ? 'Editar Solicitação' : 'Nova Solicitação'}
+        </h2>
         <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-          Escolha o tipo e preencha o formulário abaixo.
+          {editandoId ? avisoEdicao(activeTab) : 'Escolha o tipo e preencha o formulário abaixo.'}
         </p>
       </div>
 
       {/* Seletor de canal — três opções reais, então cabe lado a lado mesmo em
           telas largas; cresce um pouco de porte para preencher a largura sem
-          ficar vazio. */}
+          ficar vazio.
+
+          Em modo edição o tipo fica travado: trocar o tipo de uma solicitação
+          existente descartaria os campos e itens que só existem no tipo atual. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 stagger">
         {CHANNELS.map(ch => {
           const active = activeTab === ch.id;
           const Icon = ch.icon;
+          if (editandoId && !active) return null;
           return (
             <button
               key={ch.id}
               type="button"
+              disabled={!!editandoId}
               onClick={() => { setActiveTab(ch.id); setCriticality(3); }}
               aria-pressed={active}
-              className="flex flex-col items-center justify-center p-5 rounded-xl border text-center transition-[transform,box-shadow] duration-200 cursor-pointer hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="flex flex-col items-center justify-center p-5 rounded-xl border text-center transition-[transform,box-shadow] duration-200 cursor-pointer hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:hover:translate-y-0"
               style={{
                 borderColor: active ? 'var(--brand)' : 'var(--hairline)',
                 background: active ? 'var(--brand-wash)' : 'var(--surface-card)',
@@ -861,6 +970,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
                         Fotos / documentos do item
                       </label>
+                      {/* Em edição, os anexos já enviados aparecem como
+                          somente-leitura; os novos entram pelo seletor abaixo. */}
+                      {editandoId && (
+                        <div className="mb-2">
+                          <AttachmentGallery requestId={editandoId} itemId={it.id} />
+                        </div>
+                      )}
                       <AttachmentPicker
                         value={it.attachments || []}
                         onChange={(anexos) => handleItemChange(index, 'attachments', anexos)}
@@ -1203,18 +1319,29 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               {uploadProgress ? (
                 <>
                   <Loader2 className="animate-spin h-4.5 w-4.5" />
-                  <span>Enviando solicitação...</span>
+                  <span>{editandoId ? 'Salvando alterações...' : 'Enviando solicitação...'}</span>
                 </>
               ) : (
                 <>
                   <Send className="h-3.5 w-3.5" />
-                  <span>Enviar solicitação</span>
+                  <span>{editandoId ? 'Salvar alterações' : 'Enviar solicitação'}</span>
                 </>
               )}
             </button>
+
+            {editandoId && (
+              <p className="text-[11px] text-center" style={{ color: 'var(--ink-muted)' }}>
+                {avisoEdicao(activeTab)}
+              </p>
+            )}
+
             <button
               type="button"
-              onClick={() => { clearDraft(); onNavigate('/'); }}
+              onClick={() => {
+                if (editandoId) { onNavigate(`/solicitacoes/minhas?id=${editandoId}`); return; }
+                clearDraft();
+                onNavigate('/');
+              }}
               className="w-full rounded-lg border py-2 text-xs font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)]"
               style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
             >

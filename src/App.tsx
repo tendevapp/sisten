@@ -385,7 +385,7 @@ export default function App() {
 
       case '/solicitacoes/minhas':
         if (canAccessPage(user, 'sol_minhas')) {
-          return <MyRequests user={user} />;
+          return <MyRequests user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
       

@@ -18,6 +18,7 @@ import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
 import { supabase } from './supabaseClient';
 import { PreparedAttachment } from '../lib/imageCompression';
+import { gerarUUID, novoItemId } from '../lib/ids';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
@@ -26,20 +27,6 @@ const ATTACHMENTS_BUCKET = 'request-attachments';
 /** Validade da URL assinada de um anexo: 1 hora. */
 const SIGNED_URL_TTL_SEGUNDOS = 3600;
 
-/**
- * `crypto.randomUUID` só existe em contexto seguro — e o dev server sobe em
- * `http://0.0.0.0:3000`, então quem abre pelo IP da rede não tem a API.
- */
-function gerarUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
 
 class LocalDatabase {
   // Espelho em memória de tudo que está no IndexedDB. Toda leitura (getStorageItem)
@@ -2247,10 +2234,14 @@ class LocalDatabase {
     if (draft.items) {
       // Filter out items of this request
       const filteredItems = allItems.filter(item => item.request_id !== request.id);
-      
-      const newItems = draft.items.map((item, index) => ({
+
+      // O id do item precisa ser estável: os anexos apontam para ele
+      // (`request_attachments.request_item_id`), e derivá-lo do índice fazia o
+      // vínculo escorregar sempre que um item era removido ou reordenado numa
+      // edição. Item que já tem id conserva o seu; item novo ganha um próprio.
+      const newItems = draft.items.map(item => ({
         ...item,
-        id: `ri_${request.id}_${index}`,
+        id: (item as Partial<RequestItem>).id || novoItemId(),
         request_id: request.id
       })) as RequestItem[];
 
@@ -2335,6 +2326,158 @@ class LocalDatabase {
    * significa que outro usuário vê a solicitação e os anexos, mas não vê as
    * mudanças de status feitas por terceiros.
    */
+  /**
+   * Salva a edição de uma solicitação feita pelo próprio autor.
+   *
+   * Método próprio em vez de mais um modo no `submitRequest`: a edição tem
+   * efeitos que a criação não tem — devolver a solicitação para aprovação,
+   * perder o atendente, reconciliar itens e avisar quem já estava trabalhando
+   * nela. Misturar os dois tornaria ambos difíceis de ler.
+   *
+   * @param novoStatus Para onde a solicitação volta (ver `statusAposEdicao`).
+   * @returns Erro em texto quando a edição é recusada; null em caso de sucesso.
+   */
+  public async saveRequestEdit(
+    reqId: string,
+    campos: Partial<Request>,
+    itens: (Omit<RequestItem, 'request_id'> & { id?: string })[] | undefined,
+    novoStatus: RequestStatus
+  ): Promise<string | null> {
+    const user = this.getCurrentUser();
+    if (!user) return 'Não autenticado.';
+
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return 'Solicitação não encontrada.';
+
+    const anterior = requests[idx];
+    if (anterior.solicitante_id !== user.id) return 'Apenas quem abriu a solicitação pode editá-la.';
+
+    const statusAnterior = anterior.status;
+
+    const atualizada: Request = {
+      ...anterior,
+      ...campos,
+      status: novoStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Voltando para a fila, quem atendia não está mais designado — senão a
+    // solicitação reapareceria como "em atendimento" por alguém que já
+    // encerrou a participação dela.
+    if (novoStatus === 'aberto') {
+      atualizada.atendente_id = undefined;
+      atualizada.atendente_name = undefined;
+    }
+
+    requests[idx] = atualizada;
+    this.setStorageItem(this.requestsKey, requests);
+
+    if (itens) await this.reconciliarItens(atualizada, itens);
+
+    await this.publishRequestRow(atualizada);
+    await this.logStatusChange(
+      reqId, statusAnterior, novoStatus, user.id, user.name,
+      'Solicitação editada pelo solicitante.'
+    );
+    this.logActivity(user.id, 'Solicitações', 'Editar Solicitação', `Editou a solicitação #${atualizada.number}.`);
+
+    // Editar depois de aprovada desfaz a aprovação, e o comprador pode já ter
+    // trabalhado nela. Sem este aviso, esse trabalho evaporaria em silêncio.
+    if (statusAnterior === 'aprovada') {
+      const destinatarios = this.getProfiles().filter(u =>
+        (u.sector_id === atualizada.solicitante_sector_id && u.roles.includes('gestor')) ||
+        u.id === atualizada.comprador_id
+      );
+      destinatarios.forEach(d => this.createNotification(
+        d.id,
+        `Solicitação aprovada foi editada: #${atualizada.number}`,
+        `${atualizada.solicitante_name} editou a solicitação e ela voltou para aprovação. Confira o que mudou antes de seguir.`,
+        'alert',
+        atualizada.id,
+        atualizada.number
+      ));
+    } else if (novoStatus === 'pendente') {
+      const gestores = this.getProfiles().filter(u =>
+        u.sector_id === atualizada.solicitante_sector_id && u.roles.includes('gestor')
+      );
+      gestores.forEach(g => this.createNotification(
+        g.id,
+        `Solicitação editada aguarda aprovação: #${atualizada.number}`,
+        `${atualizada.solicitante_name} editou a solicitação #${atualizada.number}, que voltou para sua análise.`,
+        atualizada.criticality >= 4 ? 'critical' : 'info',
+        atualizada.id,
+        atualizada.number
+      ));
+    }
+
+    this.notifyListeners();
+    return null;
+  }
+
+  /**
+   * Reconcilia os itens de uma solicitação editada, por id.
+   *
+   * Os anexos de um item removido não são apagados: passam para o nível da
+   * solicitação (`request_item_id = null`). Nada se perde, nada fica apontando
+   * para item inexistente, e não é preciso policy de DELETE no Storage.
+   */
+  private async reconciliarItens(
+    request: Request,
+    itens: (Omit<RequestItem, 'request_id'> & { id?: string })[]
+  ): Promise<void> {
+    const todos = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+    const anteriores = todos.filter(i => i.request_id === request.id);
+
+    const finais = itens.map(i => ({
+      ...i,
+      id: i.id || novoItemId(),
+      request_id: request.id,
+    })) as RequestItem[];
+
+    const idsFinais = new Set(finais.map(i => i.id));
+    const removidos = anteriores.filter(i => !idsFinais.has(i.id));
+
+    this.setStorageItem(this.requestItemsKey, [
+      ...todos.filter(i => i.request_id !== request.id),
+      ...finais,
+    ]);
+
+    // Anexos dos itens removidos sobem para o nível da solicitação.
+    if (removidos.length > 0) {
+      const idsRemovidos = new Set(removidos.map(i => i.id));
+      const anexos = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+      const reapontados = anexos.map(a =>
+        a.request_item_id && idsRemovidos.has(a.request_item_id)
+          ? { ...a, request_item_id: undefined }
+          : a
+      );
+      this.setStorageItem(this.attachmentsKey, reapontados);
+
+      if (supabase) {
+        try {
+          await supabase.from('request_attachments')
+            .update({ request_item_id: null })
+            .in('request_item_id', [...idsRemovidos]);
+          // `publishRequest` só faz upsert; sem este delete o item removido
+          // continuaria vivo no servidor e voltaria no próximo sync.
+          await supabase.from('request_items').delete().in('id', [...idsRemovidos]);
+        } catch (err) {
+          console.error('Falha ao remover itens da solicitação no Supabase.', err);
+        }
+      }
+    }
+
+    if (supabase && finais.length > 0) {
+      try {
+        const { error } = await supabase.from('request_items').upsert(finais, { onConflict: 'id' });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Falha ao publicar os itens da solicitação no Supabase.', err);
+      }
+    }
+  }
+
   /**
    * Publica só a linha da solicitação, sem os itens — é o que as mutações de
    * status e atendente precisam, e evita reescrever os itens a cada transição.
@@ -3838,16 +3981,7 @@ class LocalDatabase {
     const finalPedidosArray = Array.from(mergedPedidosMap.values());
     this.setStorageItem(this.pedidosKey, finalPedidosArray);
 
-    const generateUUID = () => {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-      }
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    };
+    const generateUUID = gerarUUID;
 
     try {
       const dbRows = finalPedidosArray.map(p => {
@@ -4047,16 +4181,7 @@ class LocalDatabase {
       throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
     }
 
-    const generateUUID = () => {
-      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-        return crypto.randomUUID();
-      }
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      });
-    };
+    const generateUUID = gerarUUID;
 
     onProgress?.(2, 'Lendo cabeçalhos e reconciliando schema...');
     const headers = rawRows[0].map(h => String(h || '').trim());

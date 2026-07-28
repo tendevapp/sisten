@@ -94,6 +94,44 @@ const ROTULO_CRITICIDADE: Record<number, string> = {
 
 export const rotuloCriticidade = (n: number): string => ROTULO_CRITICIDADE[n] || String(n);
 
+/* Edição ------------------------------------------------------------------ */
+
+/** Status de compra em que a edição ainda faz sentido. */
+const EDITAVEIS_COMPRA: RequestStatus[] = ['pendente', 'em_revisao', 'rejeitada', 'aprovada'];
+
+/** Status em que a solicitação já se encerrou e não se edita mais. */
+const ENCERRADOS: RequestStatus[] = ['resolvido', 'fechado', 'cancelada'];
+
+/**
+ * Só quem abriu a solicitação pode editá-la.
+ *
+ * Compra é editável enquanto o gestor não fechou o assunto — inclusive depois
+ * de aprovada, caso em que a aprovação é desfeita e quem já trabalhava nela é
+ * avisado (ver `saveRequestEdit`). Cadastro SAP e chamado, que não passam por
+ * aprovação, são editáveis enquanto não estiverem encerrados.
+ */
+export function podeEditar(r: Request, user: Profile): boolean {
+  if (r.solicitante_id !== user.id) return false;
+  if (r.status === 'rascunho') return false;
+
+  return r.type === 'compra'
+    ? EDITAVEIS_COMPRA.includes(r.status)
+    : !ENCERRADOS.includes(r.status);
+}
+
+/**
+ * Para onde a solicitação volta depois de editada. Compra precisa de aprovação
+ * de novo; os demais tipos voltam para o início da fila de atendimento.
+ */
+export const statusAposEdicao = (tipo: RequestType): RequestStatus =>
+  tipo === 'compra' ? 'pendente' : 'aberto';
+
+/** Aviso exibido no formulário em modo edição. */
+export const avisoEdicao = (tipo: RequestType): string =>
+  tipo === 'compra'
+    ? 'Ao salvar, a solicitação volta para aprovação do gestor.'
+    : 'Ao salvar, a solicitação volta para a fila de atendimento.';
+
 /* Exportação -------------------------------------------------------------- */
 
 /**
