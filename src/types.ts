@@ -8,6 +8,9 @@ export type Role =
   | 'admin'
   | 'visualizador'
   | 'solicitante'
+  // Opera a fila coletiva: vê e responde todas as solicitações abertas, não só
+  // as próprias — é o que o separa de `solicitante`.
+  | 'requisitante'
   | 'gestor'
   | 'comprador'
   | 'coordenador_suprimentos'

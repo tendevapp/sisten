@@ -110,11 +110,11 @@ export default function MyRequests({ user }: MyRequestsProps) {
   const comments = selectedRequest ? localDb.getRequestComments(selectedRequest.id) : [];
   const history = selectedRequest ? localDb.getRequestHistory(selectedRequest.id) : [];
 
-  const handlePostComment = (e: React.FormEvent) => {
+  const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRequest || !newComment.trim()) return;
 
-    localDb.addComment(selectedRequest.id, user.id, newComment.trim(), commentType);
+    await localDb.addComment(selectedRequest.id, user.id, newComment.trim(), commentType);
     setNewComment('');
     
     // Refresh list/data

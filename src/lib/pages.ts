@@ -13,6 +13,7 @@ import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
+  ClipboardList,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -39,6 +40,10 @@ export const PAGES: PageDef[] = [
 
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
   { id: 'sol_minhas', group: 'SOLICITAÇÕES', label: 'Minhas Solicitações', path: '/solicitacoes/minhas', icon: List, defaultRoles: '*' },
+  // Fila coletiva: quem opera a fila vê todas as solicitações em aberto,
+  // acompanha e responde. Complementa 'minhas' (as próprias) e 'aprovações'
+  // (a decisão do gestor).
+  { id: 'sol_todas', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes/todas', icon: ClipboardList, defaultRoles: ['requisitante', 'gestor', 'comprador', 'coordenador_suprimentos', 'admin'] },
   // Correção de incoerência: o App.tsx aceitava coordenador_suprimentos por
   // engano (Sidebar nunca prometeu isso no menu). Padrão alinhado ao menu.
   { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin'] },

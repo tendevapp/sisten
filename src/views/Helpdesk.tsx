@@ -71,20 +71,20 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
   const selectedTicket = tickets.find(r => r.id === selectedId);
   const comments = selectedTicket ? localDb.getRequestComments(selectedTicket.id) : [];
 
-  const handleTakeOver = () => {
+  const handleTakeOver = async () => {
     if (!selectedTicket) return;
-    localDb.updateRequestStatus(selectedTicket.id, 'em_atendimento', user.id, 'Técnico assumiu o atendimento do chamado.');
+    await localDb.updateRequestStatus(selectedTicket.id, 'em_atendimento', user.id, 'Técnico assumiu o atendimento do chamado.');
     loadTickets();
   };
 
-  const handleResolve = () => {
+  const handleResolve = async () => {
     if (!selectedTicket) return;
-    localDb.updateRequestStatus(selectedTicket.id, 'resolvido', user.id, 'Chamado resolvido com sucesso pelo suporte.');
-    localDb.addComment(selectedTicket.id, user.id, 'Atendimento finalizado com sucesso pelo técnico. Por favor, avalie a satisfação nas Minhas Solicitações!', 'public');
+    await localDb.updateRequestStatus(selectedTicket.id, 'resolvido', user.id, 'Chamado resolvido com sucesso pelo suporte.');
+    await localDb.addComment(selectedTicket.id, user.id, 'Atendimento finalizado com sucesso pelo técnico. Por favor, avalie a satisfação nas Minhas Solicitações!', 'public');
     loadTickets();
   };
 
-  const handlePauseSLA = () => {
+  const handlePauseSLA = async () => {
     if (!selectedTicket) return;
     // Toggles between waiting for user (paused) or in progress
     const nextStatus = selectedTicket.status === 'em_atendimento' ? 'aguardando_solicitante' : 'em_atendimento';
@@ -92,7 +92,7 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
       ? 'Atendimento pausado: Aguardando retorno com informações do solicitante.' 
       : 'Atendimento retomado pelo suporte técnico.';
 
-    localDb.updateRequestStatus(selectedTicket.id, nextStatus, user.id, msg);
+    await localDb.updateRequestStatus(selectedTicket.id, nextStatus, user.id, msg);
     loadTickets();
   };
 
@@ -106,11 +106,11 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
     loadTickets();
   };
 
-  const handlePostNote = (e: React.FormEvent) => {
+  const handlePostNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicket || !noteText.trim()) return;
 
-    localDb.addComment(selectedTicket.id, user.id, noteText.trim(), noteType);
+    await localDb.addComment(selectedTicket.id, user.id, noteText.trim(), noteType);
     setNoteText('');
     loadTickets();
   };

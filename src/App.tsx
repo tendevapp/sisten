@@ -17,6 +17,7 @@ const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
 const MyRequests = lazy(() => import('./views/MyRequests'));
+const Solicitacoes = lazy(() => import('./views/Solicitacoes'));
 const Approvals = lazy(() => import('./views/Approvals'));
 const SapPanel = lazy(() => import('./views/SapPanel'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
@@ -42,6 +43,9 @@ const Sobre = lazy(() => import('./views/Sobre'));
 const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/nova',
   '/solicitacoes/minhas',
+  // Mantém filtros, seleção e a resposta sendo digitada — remontar a cada
+  // sincronização jogaria fora o recorte e o texto do usuário.
+  '/solicitacoes/todas',
   '/solicitacoes/aprovacoes',
   '/materiais/busca',
   '/suprimentos/painel',
@@ -385,6 +389,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
       
+      case '/solicitacoes/todas':
+        if (canAccessPage(user, 'sol_todas')) {
+          return <Solicitacoes user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/solicitacoes/aprovacoes':
         if (canAccessPage(user, 'sol_aprovacoes')) {
           return <Approvals user={user} />;

@@ -302,6 +302,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       admin: 'Administrador',
       visualizador: 'Visualizador',
       solicitante: 'Solicitante',
+      requisitante: 'Requisitante',
       gestor: 'Gestor',
       comprador: 'Comprador',
       coordenador_suprimentos: 'Coordenador',
@@ -314,7 +315,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // Matrix configurations
   const permMatrix = [
     { module: 'Solicitações', desc: 'Criar novas solicitações', roles: ['admin', 'solicitante', 'gestor'] },
-    { module: 'Solicitações', desc: 'Visualizar próprias solicitações', roles: ['admin', 'solicitante', 'gestor', 'comprador', 'atendente', 'coordenador_suprimentos', 'visualizador'] },
+    { module: 'Solicitações', desc: 'Visualizar próprias solicitações', roles: ['admin', 'solicitante', 'requisitante', 'gestor', 'comprador', 'atendente', 'coordenador_suprimentos', 'visualizador'] },
+    { module: 'Solicitações', desc: 'Ver e responder todas as solicitações', roles: ['admin', 'requisitante', 'gestor', 'comprador', 'coordenador_suprimentos'] },
     { module: 'Compras', desc: 'Aprovar compras (setor)', roles: ['admin', 'gestor', 'coordenador_suprimentos'] },
     { module: 'Suprimentos', desc: 'Acessar painel e dashboards SAP', roles: ['admin', 'comprador', 'coordenador_suprimentos'] },
     { module: 'Helpdesk', desc: 'Atender chamados do setor', roles: ['admin', 'atendente'] },
@@ -518,6 +520,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               <option value="pendente">Acesso Pendente</option>
                               <option value="admin">Admin</option>
                               <option value="solicitante">Solicitante</option>
+                              <option value="requisitante">Requisitante</option>
                               <option value="gestor">Gestor</option>
                               <option value="comprador">Comprador</option>
                               <option value="atendente">Atendente</option>
@@ -631,6 +634,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <th className="py-3 px-3 text-center">Comprador</th>
                   <th className="py-3 px-3 text-center">Atendente</th>
                   <th className="py-3 px-3 text-center">Solicitante</th>
+                  <th className="py-3 px-3 text-center">Requisitante</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
@@ -644,6 +648,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <td className="py-3 px-3 text-center">{item.roles.includes('comprador') ? '✓' : '-'}</td>
                     <td className="py-3 px-3 text-center">{item.roles.includes('atendente') ? '✓' : '-'}</td>
                     <td className="py-3 px-3 text-center">{item.roles.includes('solicitante') ? '✓' : '-'}</td>
+                    <td className="py-3 px-3 text-center">{item.roles.includes('requisitante') ? '✓' : '-'}</td>
                   </tr>
                 ))}
               </tbody>

@@ -256,8 +256,11 @@ class LocalDatabase {
           ['requests', () => this.syncMergedTable('requests', this.requestsKey)],
           ['request_items', () => this.syncMergedTable('request_items', this.requestItemsKey)],
           ['request_attachments', () => this.syncMergedTable('request_attachments', this.attachmentsKey)],
-          ['request_comments', () => this.syncComments()],
-          ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey, false, undefined, 'id')],
+          // Também por merge, pelo mesmo motivo das demais tabelas de
+          // solicitação: substituir o array local apagaria comentários e
+          // transições que ainda não conseguiram subir.
+          ['request_comments', () => this.syncMergedTable('request_comments', this.commentsKey)],
+          ['request_status_history', () => this.syncMergedTable('request_status_history', this.historyKey)],
           ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey, false, undefined, 'id')],
           // import_logs tem uma coluna pesada (ignored_rows, jsonb) que sozinha já
           // passou de 12 MB no banco; baixá-la inteira em todo sync (a cada troca de
@@ -371,23 +374,6 @@ class LocalDatabase {
     const somenteLocais = locais.filter(l => l && !idsRemotos.has(l.id));
 
     this.setStorageItem(storageKey, [...rows, ...somenteLocais]);
-  }
-
-  private async syncComments(): Promise<void> {
-    const dbComments = await this.fetchAllFromTable<any>('request_comments', '*', 1000, undefined, 'id');
-    if (dbComments && dbComments.length > 0) {
-      const mappedComments = dbComments.map(c => ({
-        id: c.id,
-        request_id: c.request_id,
-        user_id: c.user_id,
-        user_name: c.user_name,
-        user_roles: c.user_roles || [],
-        content: c.content,
-        is_internal: c.is_internal,
-        created_at: c.created_at
-      }));
-      this.setStorageItem(this.commentsKey, mappedComments);
-    }
   }
 
   private async syncObsHistory(): Promise<void> {
@@ -1443,9 +1429,18 @@ class LocalDatabase {
         'solicitacoes.visualizar_proprias'
       ],
       solicitante: [
-        'materiais.visualizar', 
-        'solicitacoes.criar', 
+        'materiais.visualizar',
+        'solicitacoes.criar',
         'solicitacoes.visualizar_proprias'
+      ],
+      // O que separa o requisitante do solicitante: opera a fila coletiva —
+      // vê e responde todas as solicitações abertas, não só as próprias.
+      requisitante: [
+        'materiais.visualizar',
+        'solicitacoes.criar',
+        'solicitacoes.visualizar_proprias',
+        'solicitacoes.visualizar_todas',
+        'solicitacoes.responder'
       ],
       gestor: [
         'materiais.visualizar', 
@@ -2134,13 +2129,13 @@ class LocalDatabase {
     return this.getStorageItem<RequestComment[]>(this.commentsKey, []).filter(c => c.request_id === reqId);
   }
 
-  public addRequestComment(reqId: string, content: string, isInternal: boolean): void {
+  public async addRequestComment(reqId: string, content: string, isInternal: boolean): Promise<void> {
     const user = this.getCurrentUser();
     if (!user) return;
 
     const comments = this.getStorageItem<RequestComment[]>(this.commentsKey, []);
     const newComment: RequestComment = {
-      id: 'c_' + Math.random().toString(36).substr(2, 9),
+      id: 'c_' + gerarUUID(),
       request_id: reqId,
       user_id: user.id,
       user_name: user.name,
@@ -2152,13 +2147,15 @@ class LocalDatabase {
     comments.push(newComment);
     this.setStorageItem(this.commentsKey, comments);
 
+    await this.publishChildRow('request_comments', newComment);
+
     // If it's helpdesk and in "aguardando_solicitante", receiving a comment from the solicitante re-activates it
     const requests = this.getRequests();
     const reqIdx = requests.findIndex(r => r.id === reqId);
     if (reqIdx !== -1 && requests[reqIdx].type === 'chamado' && requests[reqIdx].status === 'aguardando_solicitante') {
       const solicitante = requests[reqIdx].solicitante_id;
       if (user.id === solicitante) {
-        this.transitionRequestStatus(reqId, 'em_atendimento', 'Solicitante respondeu ao chamado, SLA retomado.');
+        await this.transitionRequestStatus(reqId, 'em_atendimento', 'Solicitante respondeu ao chamado, SLA retomado.');
       }
     }
   }
@@ -2338,29 +2335,45 @@ class LocalDatabase {
    * significa que outro usuário vê a solicitação e os anexos, mas não vê as
    * mudanças de status feitas por terceiros.
    */
-  private async publishRequest(request: Request): Promise<boolean> {
+  /**
+   * Publica só a linha da solicitação, sem os itens — é o que as mutações de
+   * status e atendente precisam, e evita reescrever os itens a cada transição.
+   *
+   * Sanear os campos aqui é obrigatório: as colunas de data no Postgres não
+   * aceitam a string vazia que o formulário entrega quando o campo não se
+   * aplica, e `solicitante_id`/`comprador_id`/`atendente_id` têm FK para
+   * `profiles` — o seletor de comprador cai no código do grupo de compras
+   * (ex.: "314") quando o grupo não tem usuário vinculado, e código de grupo
+   * não é id de perfil.
+   */
+  private async publishRequestRow(request: Request): Promise<boolean> {
     if (!supabase) return false;
 
     try {
-      // `data_necessidade`, `first_response_at`, `resolved_at` e `last_paused_at`
-      // são colunas de data no Postgres, mas o formulário entrega string vazia
-      // quando o campo não se aplica — e '' não é data válida. Vira null.
       const row: Record<string, unknown> = { ...request };
       for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at']) {
         if (row[campo] === '') row[campo] = null;
       }
 
-      // `solicitante_id`, `comprador_id` e `atendente_id` têm FK para profiles.
-      // O seletor de comprador cai no código do grupo de compras (ex.: "314")
-      // quando o grupo não tem usuário vinculado — e código de grupo não é id de
-      // perfil, o que derrubaria o insert inteiro por violação de chave.
       const idsDePerfil = new Set(this.getProfiles().map(p => p.id));
       for (const campo of ['solicitante_id', 'comprador_id', 'atendente_id']) {
         if (row[campo] && !idsDePerfil.has(row[campo] as string)) row[campo] = null;
       }
 
-      const { error: reqErr } = await supabase.from('requests').upsert(row, { onConflict: 'id' });
-      if (reqErr) throw reqErr;
+      const { error } = await supabase.from('requests').upsert(row, { onConflict: 'id' });
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error(`Falha ao publicar a solicitação #${request.number} no Supabase.`, err);
+      return false;
+    }
+  }
+
+  private async publishRequest(request: Request): Promise<boolean> {
+    if (!supabase) return false;
+
+    try {
+      if (!(await this.publishRequestRow(request))) return false;
 
       const itens = this.getStorageItem<RequestItem[]>(this.requestItemsKey, [])
         .filter(i => i.request_id === request.id);
@@ -2379,7 +2392,12 @@ class LocalDatabase {
     }
   }
 
-  public transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): void {
+  /**
+   * Assíncrona porque publica a transição no Supabase: sem isso, o gestor
+   * aprova e ninguém mais fica sabendo — cada usuário veria um status diferente
+   * da mesma solicitação. Ver o design da página Solicitações.
+   */
+  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): Promise<void> {
     const user = this.getCurrentUser();
     if (!user) return;
 
@@ -2402,7 +2420,8 @@ class LocalDatabase {
 
       this.setStorageItem(this.requestsKey, requests);
 
-      this.logStatusChange(reqId, fromStatus, toStatus, user.id, user.name, comment);
+      await this.publishRequestRow(request);
+      await this.logStatusChange(reqId, fromStatus, toStatus, user.id, user.name, comment);
       this.logActivity(user.id, 'Solicitações', 'Alteração de Status', `Transicionou #${request.number} de ${fromStatus} para ${toStatus}.`);
 
       // Notify owner
@@ -2417,13 +2436,13 @@ class LocalDatabase {
     }
   }
 
-  private logStatusChange(
-    reqId: string, from_status: RequestStatus, to_status: RequestStatus, 
+  private async logStatusChange(
+    reqId: string, from_status: RequestStatus, to_status: RequestStatus,
     userId: string, userName: string, comment?: string
-  ): void {
+  ): Promise<void> {
     const history = this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []);
-    history.push({
-      id: 'h_' + Math.random().toString(36).substr(2, 9),
+    const registro: RequestStatusHistory = {
+      id: 'h_' + gerarUUID(),
       request_id: reqId,
       from_status,
       to_status,
@@ -2431,11 +2450,35 @@ class LocalDatabase {
       user_name: userName,
       comment,
       created_at: new Date().toISOString()
-    });
+    };
+    history.push(registro);
     this.setStorageItem(this.historyKey, history);
+
+    await this.publishChildRow('request_status_history', registro);
   }
 
-  public assignAtendente(reqId: string, atendenteId: string, name: string): void {
+  /**
+   * Publica uma linha filha de solicitação (histórico ou comentário).
+   *
+   * Nenhuma das duas tabelas tem FK, então a linha sobe mesmo que a
+   * solicitação-pai ainda não tenha subido. Falha de rede é registrada e não
+   * desfaz a escrita local: o sync por merge preserva a linha no cache.
+   */
+  private async publishChildRow(
+    tabela: 'request_status_history' | 'request_comments',
+    row: RequestStatusHistory | RequestComment
+  ): Promise<void> {
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from(tabela).insert(row);
+      if (error) throw error;
+    } catch (err) {
+      console.error(`Falha ao publicar em "${tabela}" no Supabase.`, err);
+    }
+  }
+
+  public async assignAtendente(reqId: string, atendenteId: string, name: string): Promise<void> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
     if (idx !== -1) {
@@ -2448,7 +2491,8 @@ class LocalDatabase {
       requests[idx].updated_at = new Date().toISOString();
       this.setStorageItem(this.requestsKey, requests);
 
-      this.logStatusChange(reqId, 'aberto', 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
+      await this.publishRequestRow(requests[idx]);
+      await this.logStatusChange(reqId, 'aberto', 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
     }
   }
 
@@ -4989,15 +5033,15 @@ class LocalDatabase {
     this.setStorageItem(this.materialsKey, current);
   }
 
-  public updateRequestStatus(reqId: string, status: RequestStatus, actorId?: string, comment?: string): boolean {
+  public async updateRequestStatus(reqId: string, status: RequestStatus, actorId?: string, comment?: string): Promise<boolean> {
     if (status === 'em_atendimento' && actorId) {
       const user = this.getProfiles().find(u => u.id === actorId);
       if (user) {
-        this.assignAtendente(reqId, actorId, user.name);
+        await this.assignAtendente(reqId, actorId, user.name);
         return true;
       }
     }
-    this.transitionRequestStatus(reqId, status, comment);
+    await this.transitionRequestStatus(reqId, status, comment);
     return true;
   }
 
@@ -5018,12 +5062,12 @@ class LocalDatabase {
     }
   }
 
-  public addComment(reqId: string, userId: string, text: string, type: string): void {
+  public async addComment(reqId: string, userId: string, text: string, type: string): Promise<void> {
     const user = this.getProfiles().find(u => u.id === userId);
     if (!user) return;
     const comments = this.getStorageItem<RequestComment[]>(this.commentsKey, []);
-    comments.push({
-      id: 'c_' + Math.random().toString(36).substr(2, 9),
+    const novo: RequestComment = {
+      id: 'c_' + gerarUUID(),
       request_id: reqId,
       user_id: userId,
       user_name: user.name,
@@ -5031,8 +5075,11 @@ class LocalDatabase {
       content: text,
       is_internal: type === 'internal',
       created_at: new Date().toISOString()
-    });
+    };
+    comments.push(novo);
     this.setStorageItem(this.commentsKey, comments);
+
+    await this.publishChildRow('request_comments', novo);
   }
 
   /* Anexos ---------------------------------------------------------------- */

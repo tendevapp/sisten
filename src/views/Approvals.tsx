@@ -70,7 +70,7 @@ export default function Approvals({ user }: ApprovalsProps) {
   const selectedRequest = requests.find(r => r.id === selectedId);
   const items = selectedRequest ? localDb.getRequestItems(selectedRequest.id) : [];
 
-  const handleAction = (action: 'aprovar' | 'rejeitar' | 'revisar') => {
+  const handleAction = async (action: 'aprovar' | 'rejeitar' | 'revisar') => {
     if (!selectedRequest) return;
     setError('');
 
@@ -83,7 +83,7 @@ export default function Approvals({ user }: ApprovalsProps) {
     if (action === 'rejeitar') nextStatus = 'rejeitada';
     if (action === 'revisar') nextStatus = 'em_revisao';
 
-    const ok = localDb.updateRequestStatus(selectedRequest.id, nextStatus, user.id, justification.trim());
+    const ok = await localDb.updateRequestStatus(selectedRequest.id, nextStatus, user.id, justification.trim());
     if (ok) {
       setJustification('');
       setFeedbackMsg(`Solicitação #${selectedRequest.number} atualizada com sucesso!`);

@@ -112,10 +112,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     setActionError('');
   };
 
-  const handleAssumir = () => {
+  const handleAssumir = async () => {
     if (!selectedReq) return;
     try {
-      localDb.assignAtendente(selectedReq.id, user.id, user.name);
+      await localDb.assignAtendente(selectedReq.id, user.id, user.name);
       
       // Update local state
       setActionSuccess('Você assumiu este atendimento!');
@@ -130,7 +130,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
   };
 
-  const handleAguardarSolicitante = (e: React.FormEvent) => {
+  const handleAguardarSolicitante = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReq || !question.trim()) {
       setActionError('Por favor, informe a pergunta para o solicitante.');
@@ -138,14 +138,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
 
     try {
-      localDb.transitionRequestStatus(
-        selectedReq.id, 
-        'aguardando_solicitante', 
+      await localDb.transitionRequestStatus(
+        selectedReq.id,
+        'aguardando_solicitante',
         `Dúvida/Pendência de Suprimentos: ${question}`
       );
-      
+
       // Post comment
-      localDb.addRequestComment(selectedReq.id, question, false);
+      await localDb.addRequestComment(selectedReq.id, question, false);
       
       setActionSuccess('Solicitação colocada em aguardo.');
       setQuestion('');
@@ -158,7 +158,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
   };
 
-  const handleResolver = (e: React.FormEvent) => {
+  const handleResolver = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReq || !resolution.trim()) {
       setActionError('A nota de resolução é obrigatória.');
@@ -171,10 +171,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         finalComment += ` | Código SAP Gerado: ${sapResultCode}`;
       }
 
-      localDb.transitionRequestStatus(selectedReq.id, 'resolvido', finalComment);
-      
+      await localDb.transitionRequestStatus(selectedReq.id, 'resolvido', finalComment);
+
       // Add official comment
-      localDb.addRequestComment(selectedReq.id, finalComment, false);
+      await localDb.addRequestComment(selectedReq.id, finalComment, false);
       
       setActionSuccess('Solicitação marcada como resolvida!');
       setResolution('');
