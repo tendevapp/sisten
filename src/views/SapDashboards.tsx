@@ -94,7 +94,9 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
   const refresh = useCallback(async () => {
     setSyncing(true);
     try {
-      await localDb.syncFromSupabase(true);
+      // Escopo restrito ao que os dashboards de suprimentos usam — não há
+      // motivo para rebaixar cidadeforn (26 MB) ou contatos junto.
+      await localDb.syncFromSupabase(true, ['requisicoes', 'pedidos', 'pedidosforn']);
     } catch (err) {
       console.error('Falha ao sincronizar suprimentos:', err);
     } finally {

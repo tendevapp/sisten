@@ -27,7 +27,9 @@ insert into public.dataset_versions (dataset) values
   ('pedidos'),
   ('historico_pedidos'),
   ('pedidosforn'),
-  ('contatos')
+  ('contatos'),
+  ('cidadeforn'),
+  ('historico_sem_po')
 on conflict (dataset) do nothing;
 
 -- Incrementa a versão de um dataset. Chamado ao fim de cada importação.
@@ -58,3 +60,29 @@ end;
 $$;
 
 grant execute on function public.bump_dataset_version(text, bigint, text) to anon, authenticated;
+
+-- =====================================================================
+-- v2 — import_logs: contagens geradas + retenção (ver plano.md, FASE 1 / P0)
+--
+-- `ignored_rows` (jsonb) sozinha chegou a 12 MB no total da tabela e era
+-- baixada inteira em TODO sync (sem gate, a cada troca de rota/foco/polling).
+-- As colunas geradas abaixo permitem manter os badges de contagem na
+-- listagem sem precisar do conteúdo completo — que agora só é buscado sob
+-- demanda (fetchImportLogDetail), ao expandir um log específico no AdminPanel.
+-- =====================================================================
+
+alter table public.import_logs
+  add column if not exists ignored_rows_count integer
+    generated always as (coalesce(jsonb_array_length(ignored_rows), 0)) stored,
+  add column if not exists missing_ris_count integer
+    generated always as (coalesce(jsonb_array_length(missing_ris), 0)) stored;
+
+-- Retenção: zera o jsonb pesado de cargas com mais de 90 dias (as contagens
+-- continuam corretas). Rodar periodicamente (ex.: cron mensal) para a coluna
+-- não voltar a crescer sem limite.
+update public.import_logs
+set ignored_rows = '[]'::jsonb,
+    missing_ris = '[]'::jsonb
+where created_at < now() - interval '90 days'
+  and (ignored_rows is not null and ignored_rows <> '[]'::jsonb
+       or missing_ris is not null and missing_ris <> '[]'::jsonb);

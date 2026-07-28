@@ -247,18 +247,24 @@ export default function App() {
   }, []);
 
   // Sincronização automática em segundo plano:
-  // 1. Verifica atualizações periodicamente (a cada 2 minutos) comparando carimbos de versão leves.
+  // 1. Verifica atualizações periodicamente (a cada 5 minutos) comparando carimbos de versão leves.
   // 2. Verifica atualizações imediatamente sempre que o usuário retornar o foco/visibilidade para a aba.
+  // Um TTL de 60s dentro de syncFromSupabase (ver localDb.ts) absorve qualquer
+  // sobreposição entre estes dois gatilhos e a troca de rota — ver plano de
+  // egress, P1.
 
   useEffect(() => {
     if (!user || !supabase) return;
 
-    // Polling leve a cada 2 minutos
+    // Polling leve a cada 5 minutos. Pula quando a aba está em segundo plano —
+    // o handler de focus/visibilitychange abaixo já cobre a volta ao primeiro
+    // plano, então não há motivo para gastar egress com a aba escondida.
     const intervalId = setInterval(() => {
+      if (document.hidden) return;
       localDb.syncFromSupabase().catch(err => {
         console.warn("Falha na sincronização periódica automática:", err);
       });
-    }, 2 * 60 * 1000);
+    }, 5 * 60 * 1000);
 
     // Verificação instantânea ao reativar a aba (focus / visibilitychange)
     const handleFocusOrVisible = () => {
@@ -281,11 +287,12 @@ export default function App() {
 
   // Telemetria de navegação: registra uma visualização de página sempre que a
   // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
+  // Não dispara mais um sync aqui: com o polling de 5 min + sync ao focar a
+  // aba, um sync por troca de rota era redundante e, em sessões com muita
+  // navegação, virava o maior gatilho de egress do app (ver plano, P1).
   useEffect(() => {
     if (user) {
       trackPageView(user, currentPath);
-      // Força verificação de versão leve a cada troca de rota
-      localDb.syncFromSupabase().catch(() => {});
     }
     // Depende de user?.id (não do objeto user) para não re-registrar a mesma
     // página quando o objeto de usuário é recriado (edição de perfil, sync).

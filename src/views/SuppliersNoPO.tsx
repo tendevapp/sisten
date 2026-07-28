@@ -566,7 +566,9 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       // de versão: o usuário clica justamente quando desconfia do que está na
       // tela, e um sync gated não traria nada enquanto a versão não mudasse.
       if (force) {
-        await localDb.syncFromSupabase(true);
+        // Só requisições/pedidos — não há motivo para um clique aqui rebaixar
+        // cidadeforn (26 MB) ou contatos junto (ver plano de egress, P2).
+        await localDb.syncFromSupabase(true, ['requisicoes', 'pedidos']);
       }
       // Atualiza status/previsão de entrega/observação com o que está no
       // Supabase antes de montar a tela, para refletir edições feitas por

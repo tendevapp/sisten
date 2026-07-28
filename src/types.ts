@@ -331,6 +331,10 @@ export interface SAPImportLog {
   quantity_changes?: any[];
   missing_ris?: string[];
   ignored_rows?: { row: number; identifier: string; reason: string }[];
+  // Contagens (colunas geradas no banco) usadas quando o sync geral traz o log
+  // sem `ignored_rows`/`missing_ris` — ver localDb.syncImportLogs.
+  ignored_rows_count?: number;
+  missing_ris_count?: number;
   created_at: string;
 }
 

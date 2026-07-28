@@ -63,6 +63,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapCsvText, setSapCsvText] = useState('');
   const [lastUploadLog, setLastUploadLog] = useState<any | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  // O sync geral não traz mais `ignored_rows`/`missing_ris` (jsonb pesado — ver
+  // plano de egress). Ao expandir um log, busca o detalhe sob demanda e guarda
+  // aqui, mesclado com o log "magro" vindo do cache para a renderização.
+  const [logDetails, setLogDetails] = useState<Record<string, { ignored_rows: any[]; missing_ris: string[] }>>({});
+  const [loadingLogDetailId, setLoadingLogDetailId] = useState<string | null>(null);
 
   // Buyer Groups Config States
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
@@ -103,6 +108,30 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setProfiles(localDb.getProfiles());
     setSectors(localDb.getSectors());
     setSapLogs(localDb.getImportLogs());
+  };
+
+  // Expande/recolhe um log de importação, buscando as linhas ignoradas/RIs
+  // ausentes sob demanda na primeira vez (o sync geral só traz as contagens).
+  const handleToggleLog = (id: string) => {
+    if (expandedLogId === id) {
+      setExpandedLogId(null);
+      return;
+    }
+    setExpandedLogId(id);
+    if (!logDetails[id]) {
+      setLoadingLogDetailId(id);
+      localDb.fetchImportLogDetail(id)
+        .then(detail => {
+          if (detail) {
+            setLogDetails(prev => ({
+              ...prev,
+              [id]: { ignored_rows: detail.ignored_rows || [], missing_ris: detail.missing_ris || [] }
+            }));
+          }
+        })
+        .catch(err => console.error('Falha ao buscar detalhe do log de importação:', err))
+        .finally(() => setLoadingLogDetailId(curr => (curr === id ? null : curr)));
+    }
   };
 
   const handleApproveUser = (id: string, approve: boolean) => {
@@ -1370,13 +1399,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   ) : (
                     sortedSapLogs.map((log) => {
                       const isExpanded = expandedLogId === log.id;
+                      const detail = logDetails[log.id];
+                      const isLoadingDetail = isExpanded && loadingLogDetailId === log.id;
+                      // Log "cheio" para a seção expandida: mescla o detalhe buscado sob
+                      // demanda (ignored_rows/missing_ris) por cima do log magro do sync.
+                      const fullLog = detail ? { ...log, ...detail } : log;
                       const totalImported = (log.records_inserted || 0) + (log.records_updated || 0);
-                      const totalIgnored = (log.ignored_rows?.length || 0);
+                      // Contagens vêm do sync (colunas geradas no banco); cai para o
+                      // tamanho do array só se um dia vier um log já com dados completos.
+                      const totalIgnored = log.ignored_rows_count ?? (log.ignored_rows?.length || 0);
+                      const totalMissingRis = log.missing_ris_count ?? (log.missing_ris?.length || 0);
                       const hasIssues = totalIgnored > 0 || (log.columns_missing?.length || 0) > 0;
                       return (
                         <React.Fragment key={log.id}>
                           <tr
-                            onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                            onClick={() => handleToggleLog(log.id)}
                             className={`hover:bg-slate-50/80 cursor-pointer select-none border-b border-slate-100 transition-colors ${isExpanded ? 'bg-indigo-50/30' : ''}`}
                           >
                             <td className="py-3 px-3 text-slate-400">
@@ -1489,9 +1526,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                     </div>
                                   )}
 
+                                  {/* Detalhe (linhas ignoradas / RIs ausentes) buscado sob demanda */}
+                                  {isLoadingDetail && (
+                                    <div className="flex items-center gap-2 text-slate-400 bg-white border border-slate-200 rounded-lg p-3 text-[10px] font-semibold">
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Carregando detalhes da carga...
+                                    </div>
+                                  )}
+
                                   {/* Itens ignorados */}
-                                  {log.ignored_rows && log.ignored_rows.length > 0 && (() => {
-                                    const byReason = log.ignored_rows.reduce((acc: Record<string, any[]>, row: any) => {
+                                  {fullLog.ignored_rows && fullLog.ignored_rows.length > 0 && (() => {
+                                    const byReason = fullLog.ignored_rows.reduce((acc: Record<string, any[]>, row: any) => {
                                       const key = row.reason || 'Outros';
                                       if (!acc[key]) acc[key] = [];
                                       acc[key].push(row);
@@ -1501,11 +1545,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                       <div className="bg-white border border-amber-200 rounded-lg shadow-sm overflow-hidden">
                                         <div className="bg-amber-50 px-3 py-2 flex items-center justify-between border-b border-amber-200">
                                           <p className="font-bold text-amber-800 text-[10px] uppercase tracking-wider flex items-center gap-1.5">
-                                            <FileX className="h-3.5 w-3.5" /> Linhas Não Importadas ({log.ignored_rows.length})
+                                            <FileX className="h-3.5 w-3.5" /> Linhas Não Importadas ({fullLog.ignored_rows.length})
                                           </p>
                                           <button
                                             onClick={() => {
-                                              const lines = log.ignored_rows.map((r: any) => `Linha ${r.row}\tRI: ${r.identifier}\t${r.reason}`);
+                                              const lines = fullLog.ignored_rows.map((r: any) => `Linha ${r.row}\tRI: ${r.identifier}\t${r.reason}`);
                                               const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
                                               const url = URL.createObjectURL(blob);
                                               const a = document.createElement('a');
@@ -1566,15 +1610,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   )}
 
                                   {/* RIs ausentes nessa carga */}
-                                  {log.missing_ris && log.missing_ris.length > 0 && (
+                                  {fullLog.missing_ris && fullLog.missing_ris.length > 0 && (
                                     <div className="bg-white border border-red-200 rounded-lg shadow-sm overflow-hidden">
                                       <div className="bg-red-50 px-3 py-2 flex items-center justify-between border-b border-red-200">
                                         <p className="font-bold text-red-700 text-[10px] uppercase tracking-wider flex items-center gap-1.5">
-                                          <XCircle className="h-3.5 w-3.5" /> RIs Ausentes nesta Carga ({log.missing_ris.length})
+                                          <XCircle className="h-3.5 w-3.5" /> RIs Ausentes nesta Carga ({fullLog.missing_ris.length})
                                         </p>
                                         <button
                                           onClick={() => {
-                                            const blob = new Blob([log.missing_ris.join('\n')], { type: 'text/plain' });
+                                            const blob = new Blob([fullLog.missing_ris.join('\n')], { type: 'text/plain' });
                                             const url = URL.createObjectURL(blob);
                                             const a = document.createElement('a');
                                             a.href = url;
@@ -1588,7 +1632,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                       </div>
                                       <div className="p-3">
                                         <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                                          {log.missing_ris.map((ri: string, i: number) => (
+                                          {fullLog.missing_ris.map((ri: string, i: number) => (
                                             <span key={i} className="inline-block bg-red-50 text-red-600 border border-red-200 rounded px-1.5 py-0.5 font-mono text-[9px]">{ri}</span>
                                           ))}
                                         </div>
@@ -1627,7 +1671,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   )}
 
                                   {/* Nenhum problema */}
-                                  {!hasIssues && !log.quantity_changes?.length && !log.missing_ris?.length && (
+                                  {!hasIssues && !log.quantity_changes?.length && !totalMissingRis && (
                                     <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
                                       <CheckCircle2 className="h-4 w-4 shrink-0" />
                                       <span className="text-xs font-semibold">Carga importada com sucesso. Nenhum problema ou divergência detectado.</span>

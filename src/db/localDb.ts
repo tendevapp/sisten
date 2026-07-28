@@ -29,6 +29,12 @@ class LocalDatabase {
   private readonly migratedFlagKey = '__sisten_idb_migrated__';
   private syncPromise: Promise<void> | null = null;
 
+  // TTL mínimo entre syncs não-forçados: sem isso, boot + polling de 5 min +
+  // focus/visibilitychange + troca de rota podiam disparar vários syncs
+  // completos por minuto (cada um com ~14 requests). Ver plano de egress, P1.
+  private lastSyncAt = 0;
+  private readonly syncTTLMs = 60_000;
+
   // Resolvida assim que o cache em memória estiver populado (a partir do IndexedDB,
   // com migração de dados legados do localStorage se necessário). App.tsx aguarda
   // apenas isto — não a sincronização com o Supabase — antes de renderizar.
@@ -148,8 +154,14 @@ class LocalDatabase {
    * telas: sem isso o clique não trazia nada quando a versão não havia mudado —
    * e o usuário não tinha como escapar de um cache local corrompido ou de um
    * dado corrigido no banco sem passar por uma reimportação.
+   * @param datasets Quando informado junto de `force`, restringe o bypass do
+   * gate de versão a esses datasets (os demais continuam respeitando o
+   * carimbo normalmente). Usado pelos botões "Atualizar" de telas que só
+   * precisam de uma base específica — sem isso, um clique forçava o
+   * re-download de TODAS as bases pesadas (ex.: `cidadeforn`, 26 MB) mesmo
+   * quando só uma mudou.
    */
-  public async syncFromSupabase(force = false): Promise<void> {
+  public async syncFromSupabase(force = false, datasets?: string[]): Promise<void> {
     if (!supabase) {
       console.warn('Sincronização com o Supabase ignorada: cliente não inicializado.');
       return;
@@ -161,6 +173,12 @@ class LocalDatabase {
       return;
     }
 
+    // TTL mínimo entre syncs não-forçados: absorve o polling + focus/visibility
+    // + troca de rota disparando em sequência rápida (ver plano de egress, P1).
+    if (!force && Date.now() - this.lastSyncAt < this.syncTTLMs) {
+      return;
+    }
+
     if (this.syncPromise) {
       // Num sync forçado, espera o que está em andamento (pode ser um sync
       // gated, que não baixaria nada) e só então roda o download completo.
@@ -169,6 +187,7 @@ class LocalDatabase {
     }
 
     this.syncPromise = (async () => {
+      this.lastSyncAt = Date.now();
       try {
         console.log('Iniciando sincronização com o Supabase...');
 
@@ -178,10 +197,12 @@ class LocalDatabase {
         const markers = await this.fetchRemoteMarkers();
 
         // Envelopa uma tarefa de sync pesada num gate de versão: se o cache local
-        // já estiver na versão corrente, não baixa nada.
+        // já estiver na versão corrente, não baixa nada. Com `datasets` informado,
+        // o force só se aplica aos datasets listados.
         const gated = (dataset: string, task: () => Promise<void>): (() => Promise<void>) => async () => {
           const storageKey = this.storageKeyFor(dataset);
-          if (!force && !this.needsSync(dataset, storageKey, markers)) {
+          const forceThis = force && (!datasets || datasets.includes(dataset));
+          if (!forceThis && !this.needsSync(dataset, storageKey, markers)) {
             console.log(`sync: '${dataset}' já na versão corrente; usando cache local (0 egress).`);
             return;
           }
@@ -193,27 +214,36 @@ class LocalDatabase {
           ['sectors', () => this.syncSectors()],
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
-          ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true)],
-          ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true)],
+          ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
+          ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
           // era o maior consumidor de egress do projeto.
-          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01')))],
-          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01')))],
-          ['requests', () => this.syncSimpleTable('requests', this.requestsKey)],
-          ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey)],
+          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri'))],
+          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
+          ['requests', () => this.syncSimpleTable('requests', this.requestsKey, false, undefined, 'id')],
+          ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey, false, undefined, 'id')],
           ['request_comments', () => this.syncComments()],
-          ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey)],
-          ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey)],
-          ['import_logs', () => this.syncSimpleTable('import_logs', this.importLogsKey)],
+          ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey, false, undefined, 'id')],
+          ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey, false, undefined, 'id')],
+          // import_logs tem uma coluna pesada (ignored_rows, jsonb) que sozinha já
+          // passou de 12 MB no banco; baixá-la inteira em todo sync (a cada troca de
+          // rota / foco / polling) é o maior consumidor de egress medido no projeto.
+          // syncImportLogs baixa só colunas leves + contagens, e apenas os N logs
+          // mais recentes — o detalhe completo é buscado sob demanda (ver
+          // fetchImportLogDetail), quando o usuário expande um log no AdminPanel.
+          ['import_logs', () => this.syncImportLogs()],
           ['obs_historico', () => this.syncObsHistory()],
-          ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey)],
+          ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey, false, undefined, 'id')],
           ['sequences', () => this.syncSequences()],
-          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01')))],
+          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
+          // vw_historico_pedidos não tem coluna única (é uma view agregada); não dá
+          // para forçar um ORDER BY seguro aqui sem arriscar um nome de coluna
+          // inválido. Ver P5 no plano de egress.
           ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01')))],
-          ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true))],
-          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true))],
+          ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true, undefined, 'id'))],
+          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true, undefined, 'id'))],
         ];
 
 
@@ -266,7 +296,7 @@ class LocalDatabase {
     // O gate de versão (syncFromSupabase) já decide quando este download pesado
     // do catálogo (~180k linhas) deve ocorrer: apenas na primeira vez ou quando
     // a versão do dataset 'materials' muda após uma importação.
-    const materials = await this.fetchAllFromTable<any>('materials');
+    const materials = await this.fetchAllFromTable<any>('materials', '*', 1000, undefined, 'id');
     if (materials && materials.length > 0) {
       this.setStorageItem(this.materialsKey, materials);
     } else {
@@ -279,19 +309,20 @@ class LocalDatabase {
   }
 
   private async syncSimpleTable(
-    table: string, 
-    storageKey: string, 
-    alwaysSet: boolean = false, 
-    filterFn?: (query: any) => any
+    table: string,
+    storageKey: string,
+    alwaysSet: boolean = false,
+    filterFn?: (query: any) => any,
+    orderCol?: string
   ): Promise<void> {
-    const rows = await this.fetchAllFromTable<any>(table, '*', 1000, filterFn);
+    const rows = await this.fetchAllFromTable<any>(table, '*', 1000, filterFn, orderCol);
     if (alwaysSet || (rows && rows.length > 0)) {
       this.setStorageItem(storageKey, rows || []);
     }
   }
 
   private async syncComments(): Promise<void> {
-    const dbComments = await this.fetchAllFromTable<any>('request_comments');
+    const dbComments = await this.fetchAllFromTable<any>('request_comments', '*', 1000, undefined, 'id');
     if (dbComments && dbComments.length > 0) {
       const mappedComments = dbComments.map(c => ({
         id: c.id,
@@ -308,7 +339,7 @@ class LocalDatabase {
   }
 
   private async syncObsHistory(): Promise<void> {
-    const dbObsHistory = await this.fetchAllFromTable<any>('obs_historico');
+    const dbObsHistory = await this.fetchAllFromTable<any>('obs_historico', '*', 1000, undefined, 'id');
     if (dbObsHistory && dbObsHistory.length > 0) {
       const mappedObsHist = dbObsHistory.map(oh => {
         let comment = '';
@@ -334,7 +365,7 @@ class LocalDatabase {
   }
 
   private async syncSequences(): Promise<void> {
-    const dbSequences = await this.fetchAllFromTable<any>('sequences');
+    const dbSequences = await this.fetchAllFromTable<any>('sequences', '*', 1000, undefined, 'key');
     if (dbSequences && dbSequences.length > 0) {
       const seqs: Record<string, number> = {};
       dbSequences.forEach(s => { seqs[s.key] = s.value; });
@@ -393,15 +424,28 @@ class LocalDatabase {
     );
   }
 
+  // Cache curto dos carimbos remotos: syncFromSupabase, fetchHistoricoPedidos,
+  // fetchHistoricoFornecedoresSemPO e bumpDatasetVersion chamavam
+  // fetchRemoteMarkers cada um por conta própria — várias requests idênticas
+  // em sequência rápida (ex.: abrir uma tela logo após o boot). 30s é curto o
+  // bastante para nunca mascarar uma importação real (que já dá um bump
+  // explícito e busca markers frescos via forceRefresh).
+  private markersCache: { data: Map<string, { version: number; updatedAt: string | null }> | null; ts: number } | null = null;
+  private readonly markersCacheTTLMs = 30_000;
+
   // Busca todos os carimbos remotos de uma vez (1 request, poucas linhas).
   // Retorna null quando a tabela ainda não existe (modo degradado seguro).
-  private async fetchRemoteMarkers(): Promise<Map<string, { version: number; updatedAt: string | null }> | null> {
+  private async fetchRemoteMarkers(forceRefresh = false): Promise<Map<string, { version: number; updatedAt: string | null }> | null> {
     if (!supabase) return null;
+    if (!forceRefresh && this.markersCache && Date.now() - this.markersCache.ts < this.markersCacheTTLMs) {
+      return this.markersCache.data;
+    }
     try {
       const { data, error } = await supabase.from('dataset_versions').select('dataset, version, updated_at');
       if (error) throw error;
       const map = new Map<string, { version: number; updatedAt: string | null }>();
       (data || []).forEach((r: any) => map.set(r.dataset, { version: Number(r.version), updatedAt: r.updated_at ?? null }));
+      this.markersCache = { data: map, ts: Date.now() };
       return map;
     } catch (err) {
       console.warn('Tabela dataset_versions indisponível; sincronizando em modo degradado.', err);
@@ -466,7 +510,10 @@ class LocalDatabase {
         p_rows: rowCount ?? null,
         p_user: user?.name ?? null,
       });
-      const markers = await this.fetchRemoteMarkers();
+      // forceRefresh: acabamos de incrementar a versão no servidor; um cache
+      // de até 30s aqui faria o próprio importador ler o carimbo antigo e
+      // achar (erradamente) que ainda precisa sincronizar de novo.
+      const markers = await this.fetchRemoteMarkers(true);
       this.commitDatasetMeta(dataset, markers);
     } catch (err) {
       console.warn(`Falha ao incrementar a versão do dataset '${dataset}'.`, err);
@@ -1552,11 +1599,17 @@ class LocalDatabase {
   // PostgREST limita cada select a um máximo de linhas (geralmente 1000) mesmo sem
   // filtro. Para tabelas grandes (catálogo de materiais com 180k+ linhas) é preciso
   // paginar com .range() até esgotar os resultados.
+  // `orderCol`: chave (idealmente única) usada para ordenar antes de paginar.
+  // Sem ORDER BY o Postgres não garante ordem estável entre requests .range()
+  // separados — em tabelas com mais de uma página (>1000 linhas) isso pode
+  // pular ou repetir linhas entre uma página e outra. Passe a PK (ou coluna
+  // única equivalente) sempre que a tabela tiver mais de ~1000 linhas.
   private async fetchAllFromTable<T>(
-    table: string, 
-    selectCols: string = '*', 
+    table: string,
+    selectCols: string = '*',
     pageSize = 1000,
-    filterFn?: (query: any) => any
+    filterFn?: (query: any) => any,
+    orderCol?: string
   ): Promise<T[]> {
     const allRows: T[] = [];
     let from = 0;
@@ -1564,6 +1617,9 @@ class LocalDatabase {
       let query = supabase.from(table).select(selectCols);
       if (filterFn) {
         query = filterFn(query);
+      }
+      if (orderCol) {
+        query = query.order(orderCol, { ascending: true });
       }
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
@@ -1586,7 +1642,7 @@ class LocalDatabase {
 
     const remoteCodeSet = new Set<string>();
     try {
-      const remoteCodes = await this.fetchAllFromTable<{ material_code: string }>('materials', 'material_code');
+      const remoteCodes = await this.fetchAllFromTable<{ material_code: string }>('materials', 'material_code', 1000, undefined, 'id');
       remoteCodes.forEach(r => { if (r.material_code) remoteCodeSet.add(r.material_code); });
     } catch (err) {
       console.warn('Não foi possível buscar a lista de códigos do catálogo no Supabase; usando apenas o cache local.', err);
@@ -2421,7 +2477,7 @@ class LocalDatabase {
       return this.getEstoque();
     }
     try {
-      const rows = await this.fetchAllFromTable<EstoqueItem>('estoque', '*', 1000);
+      const rows = await this.fetchAllFromTable<EstoqueItem>('estoque', '*', 1000, undefined, 'id');
       this.setStorageItem(this.estoqueKey, rows);
       return rows;
     } catch (err) {
@@ -2850,7 +2906,8 @@ class LocalDatabase {
         'requisicoes',
         'ri,item_status,item_status_updated_at,item_status_updated_by,obs_comprador,data_entrega_prevista,obs_updated_at,obs_updated_by',
         1000,
-        q => q.gte('data_da_solicitacao', '2026-01-01')
+        q => q.gte('data_da_solicitacao', '2026-01-01'),
+        'ri'
       );
 
       const updatesByRi = new Map(rows.map(r => [r.ri, r]));
@@ -3198,7 +3255,7 @@ class LocalDatabase {
     // atualizada.
     let current = this.getRequisicoes();
     try {
-      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
+      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
       if (remoteReqs.length > 0) current = remoteReqs.map(r => this.normalizeRequisicaoRow(r));
     } catch (err) {
       console.warn('Não foi possível buscar as requisições atuais do Supabase antes da importação; usando cache local.', err);
@@ -3421,7 +3478,7 @@ class LocalDatabase {
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -3482,7 +3539,7 @@ class LocalDatabase {
     // "novos", duplicando linhas em vez de atualizá-las.
     let current = this.getPedidos();
     try {
-      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
+      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'id');
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
       console.warn('Não foi possível buscar os pedidos atuais (pedidosforn) do Supabase antes da importação; usando cache local.', err);
@@ -3785,8 +3842,8 @@ class LocalDatabase {
       await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
-      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -4192,8 +4249,8 @@ class LocalDatabase {
       // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
       // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
       onProgress?.(96, 'Atualizando requisições e pedidos com os novos POs...');
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'));
-      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'));
+      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -4644,6 +4701,36 @@ class LocalDatabase {
 
   public getImportLogs(): SAPImportLog[] {
     return this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+  }
+
+  // Busca leve dos logs de importação: sem `ignored_rows`/`missing_ris` (jsonb
+  // que concentra quase todo o peso da tabela — ver plano de egress, P0) e
+  // limitada aos 50 mais recentes. `ignored_rows_count`/`missing_ris_count`
+  // (colunas geradas no banco) permitem manter os badges "N ignorados" na
+  // listagem sem baixar o conteúdo completo.
+  private async syncImportLogs(): Promise<void> {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from('import_logs')
+      .select('id,type,filename,user_name,created_at,records_read,records_inserted,records_updated,records_unchanged,records_eliminated,columns_new,columns_missing,quantity_changes,ignored_rows_count,missing_ris_count')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    this.setStorageItem(this.importLogsKey, data || []);
+  }
+
+  // Busca sob demanda o conteúdo pesado (`ignored_rows`, `missing_ris`) de UM
+  // log de importação — chamada quando o usuário expande a linha no AdminPanel,
+  // em vez de baixar isso para todos os logs em todo sync.
+  public async fetchImportLogDetail(id: string): Promise<{ ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[] } | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('import_logs')
+      .select('ignored_rows, missing_ris')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data as { ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[] } | null;
   }
 
   // --- SYSTEM UTILITY ADDITIONS ---
