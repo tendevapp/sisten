@@ -17,7 +17,29 @@ import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
 import { supabase } from './supabaseClient';
+import { PreparedAttachment } from '../lib/imageCompression';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
+
+/** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
+const ATTACHMENTS_BUCKET = 'request-attachments';
+
+/** Validade da URL assinada de um anexo: 1 hora. */
+const SIGNED_URL_TTL_SEGUNDOS = 3600;
+
+/**
+ * `crypto.randomUUID` só existe em contexto seguro — e o dev server sobe em
+ * `http://0.0.0.0:3000`, então quem abre pelo IP da rede não tem a API.
+ */
+function gerarUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 class LocalDatabase {
   // Espelho em memória de tudo que está no IndexedDB. Toda leitura (getStorageItem)
@@ -26,6 +48,9 @@ class LocalDatabase {
   private cache = new Map<string, any>();
   private pageCache = new Map<string, any>();
   private listeners = new Set<() => void>();
+  // URLs assinadas de anexo, por caminho no bucket. Só em memória: uma URL
+  // assinada expira, então persisti-la no IndexedDB só geraria link quebrado.
+  private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly migratedFlagKey = '__sisten_idb_migrated__';
   private syncPromise: Promise<void> | null = null;
 
@@ -45,6 +70,7 @@ class LocalDatabase {
   private materialsKey = 'sisten_materials';
   private requestsKey = 'sisten_requests';
   private requestItemsKey = 'sisten_request_items';
+  private attachmentsKey = 'sisten_attachments';
   private commentsKey = 'sisten_comments';
   private historyKey = 'sisten_history';
   private notificationsKey = 'sisten_notifications';
@@ -222,8 +248,14 @@ class LocalDatabase {
           // era o maior consumidor de egress do projeto.
           ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri'))],
           ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
-          ['requests', () => this.syncSimpleTable('requests', this.requestsKey, false, undefined, 'id')],
-          ['request_items', () => this.syncSimpleTable('request_items', this.requestItemsKey, false, undefined, 'id')],
+          // Estas três fazem merge em vez de substituir: o motor de solicitações
+          // ainda é local-first (só a criação sobe; status, atendente e
+          // comentários seguem locais). Com `syncSimpleTable`, a primeira linha
+          // inserida no servidor faria o download apagar tudo que existe só no
+          // cache do usuário — inclusive as mutações que ainda não migraram.
+          ['requests', () => this.syncMergedTable('requests', this.requestsKey)],
+          ['request_items', () => this.syncMergedTable('request_items', this.requestItemsKey)],
+          ['request_attachments', () => this.syncMergedTable('request_attachments', this.attachmentsKey)],
           ['request_comments', () => this.syncComments()],
           ['request_status_history', () => this.syncSimpleTable('request_status_history', this.historyKey, false, undefined, 'id')],
           ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey, false, undefined, 'id')],
@@ -319,6 +351,26 @@ class LocalDatabase {
     if (alwaysSet || (rows && rows.length > 0)) {
       this.setStorageItem(storageKey, rows || []);
     }
+  }
+
+  /**
+   * Igual a `syncSimpleTable`, mas preserva as linhas que só existem no cache
+   * local — o remoto vence quando os dois lados têm o mesmo `id`.
+   *
+   * Necessário para as tabelas de solicitação enquanto o motor for local-first:
+   * `syncSimpleTable` reescreve o array inteiro assim que o servidor devolve
+   * qualquer linha, o que apagaria as solicitações e mutações que ainda não
+   * sobem (ver o design doc de anexos, seção "O risco que isso esconde").
+   */
+  private async syncMergedTable(table: string, storageKey: string): Promise<void> {
+    const rows = await this.fetchAllFromTable<any>(table, '*', 1000, undefined, 'id');
+    if (!rows) return;
+
+    const idsRemotos = new Set(rows.map(r => r.id));
+    const locais = this.getStorageItem<any[]>(storageKey, []);
+    const somenteLocais = locais.filter(l => l && !idsRemotos.has(l.id));
+
+    this.setStorageItem(storageKey, [...rows, ...somenteLocais]);
   }
 
   private async syncComments(): Promise<void> {
@@ -2111,10 +2163,20 @@ class LocalDatabase {
     }
   }
 
-  public submitRequest(
-    draft: Partial<Request> & { items?: Omit<RequestItem, 'id' | 'request_id'>[] }, 
+  /**
+   * Assíncrona porque, além de gravar no cache local, publica a solicitação no
+   * Supabase — sem isso o anexo subiria para um servidor onde a solicitação-pai
+   * não existe, e ninguém além do autor veria a imagem. Rascunho não sobe: é
+   * privado de quem está preenchendo.
+   *
+   * Falha de rede não derruba a criação: a solicitação continua válida no cache
+   * local e o sync por merge (`syncMergedTable`) garante que ela não seja
+   * apagada por não existir no servidor.
+   */
+  public async submitRequest(
+    draft: Partial<Request> & { items?: Omit<RequestItem, 'id' | 'request_id'>[] },
     isDraft: boolean
-  ): Request {
+  ): Promise<Request> {
     const user = this.getCurrentUser();
     if (!user) throw new Error('Não autenticado');
 
@@ -2261,9 +2323,60 @@ class LocalDatabase {
           );
         });
       }
+
+      await this.publishRequest(request);
     }
 
     return request;
+  }
+
+  /**
+   * Publica a solicitação e seus itens no Supabase.
+   *
+   * As demais mutações do motor (status, atendente, comentários, avaliação)
+   * seguem locais por enquanto — migrá-las é trabalho próprio. Na prática isso
+   * significa que outro usuário vê a solicitação e os anexos, mas não vê as
+   * mudanças de status feitas por terceiros.
+   */
+  private async publishRequest(request: Request): Promise<boolean> {
+    if (!supabase) return false;
+
+    try {
+      // `data_necessidade`, `first_response_at`, `resolved_at` e `last_paused_at`
+      // são colunas de data no Postgres, mas o formulário entrega string vazia
+      // quando o campo não se aplica — e '' não é data válida. Vira null.
+      const row: Record<string, unknown> = { ...request };
+      for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at']) {
+        if (row[campo] === '') row[campo] = null;
+      }
+
+      // `solicitante_id`, `comprador_id` e `atendente_id` têm FK para profiles.
+      // O seletor de comprador cai no código do grupo de compras (ex.: "314")
+      // quando o grupo não tem usuário vinculado — e código de grupo não é id de
+      // perfil, o que derrubaria o insert inteiro por violação de chave.
+      const idsDePerfil = new Set(this.getProfiles().map(p => p.id));
+      for (const campo of ['solicitante_id', 'comprador_id', 'atendente_id']) {
+        if (row[campo] && !idsDePerfil.has(row[campo] as string)) row[campo] = null;
+      }
+
+      const { error: reqErr } = await supabase.from('requests').upsert(row, { onConflict: 'id' });
+      if (reqErr) throw reqErr;
+
+      const itens = this.getStorageItem<RequestItem[]>(this.requestItemsKey, [])
+        .filter(i => i.request_id === request.id);
+
+      if (itens.length > 0) {
+        const { error: itensErr } = await supabase
+          .from('request_items')
+          .upsert(itens, { onConflict: 'id' });
+        if (itensErr) throw itensErr;
+      }
+
+      return true;
+    } catch (err) {
+      console.error(`Falha ao publicar a solicitação #${request.number} no Supabase.`, err);
+      return false;
+    }
   }
 
   public transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): void {
@@ -4922,22 +5035,121 @@ class LocalDatabase {
     this.setStorageItem(this.commentsKey, comments);
   }
 
-  public getAttachments(reqId: string): RequestAttachment[] {
-    const list = this.getStorageItem<RequestAttachment[]>('sisten_attachments', []);
-    return list.filter(a => a.request_id === reqId);
+  /* Anexos ---------------------------------------------------------------- */
+
+  /**
+   * @param itemId Quando informado, devolve só os anexos daquele item de compra.
+   *   Omitido, devolve todos os da solicitação (é o caso do Cadastro SAP, que
+   *   não tem itens, e da galeria geral em Minhas Solicitações).
+   */
+  public getAttachments(reqId: string, itemId?: string): RequestAttachment[] {
+    const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+    const daSolicitacao = list.filter(a => a.request_id === reqId);
+    return itemId ? daSolicitacao.filter(a => a.request_item_id === itemId) : daSolicitacao;
   }
 
-  public addAttachment(reqId: string, name: string, size: number = 0, url: string = ''): void {
-    const list = this.getStorageItem<RequestAttachment[]>('sisten_attachments', []);
-    list.push({
-      id: 'att_' + Math.random().toString(36).substr(2, 9),
-      request_id: reqId,
-      name,
-      size,
-      url,
-      created_at: new Date().toISOString()
+  /**
+   * Sobe os anexos já comprimidos para o Storage e grava a metadata.
+   *
+   * Uma falha isolada não aborta as demais: neste ponto a solicitação já foi
+   * criada, e perder um anexo não pode desfazê-la. Os nomes que falharam voltam
+   * para a UI avisar o usuário.
+   */
+  public async uploadAttachments(
+    reqId: string,
+    entries: { prepared: PreparedAttachment; requestItemId?: string }[]
+  ): Promise<{ uploaded: number; failed: string[] }> {
+    const failed: string[] = [];
+    let uploaded = 0;
+
+    if (entries.length === 0) return { uploaded, failed };
+    if (!supabase) {
+      return { uploaded, failed: entries.map(e => e.prepared.name) };
+    }
+
+    // `request_attachments.request_id` tem FK para `requests`: sem a
+    // solicitação publicada, o insert da metadata falha depois que os bytes já
+    // foram para o Storage, deixando arquivo órfão. Publicar antes cobre também
+    // o anexo tardio em solicitação antiga, criada quando nada subia.
+    const parente = this.getRequests().find(r => r.id === reqId);
+    if (!parente || !(await this.publishRequest(parente))) {
+      console.error(`Anexos não enviados: a solicitação ${reqId} não pôde ser publicada no Supabase.`);
+      return { uploaded, failed: entries.map(e => e.prepared.name) };
+    }
+
+    const user = this.getCurrentUser();
+    const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+
+    for (const { prepared, requestItemId } of entries) {
+      try {
+        // Prefixo por solicitação para que uma futura policy de Storage por dono
+        // possa ser escrita sem precisar mover arquivo.
+        const ext = prepared.name.split('.').pop() || 'bin';
+        const path = `${reqId}/${requestItemId || '_geral'}/${gerarUUID()}.${ext}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(ATTACHMENTS_BUCKET)
+          .upload(path, prepared.blob, { contentType: prepared.mimeType, upsert: false });
+        if (upErr) throw upErr;
+
+        const row: RequestAttachment = {
+          id: 'att_' + gerarUUID(),
+          request_id: reqId,
+          request_item_id: requestItemId,
+          name: prepared.name,
+          url: path,
+          storage_path: path,
+          mime_type: prepared.mimeType,
+          size: prepared.sizeCompressed,
+          size_original: prepared.sizeOriginal,
+          uploaded_by: user?.id,
+          created_at: new Date().toISOString()
+        };
+
+        const { error: dbErr } = await supabase.from('request_attachments').insert(row);
+        if (dbErr) throw dbErr;
+
+        list.push(row);
+        uploaded++;
+      } catch (err) {
+        console.error(`Falha ao enviar o anexo "${prepared.name}".`, err);
+        failed.push(prepared.name);
+      }
+    }
+
+    this.setStorageItem(this.attachmentsKey, list);
+    this.notifyListeners();
+    return { uploaded, failed };
+  }
+
+  /**
+   * URL assinada para exibir um anexo do bucket privado.
+   *
+   * Cacheada em memória por caminho: a galeria re-renderiza a cada tecla digitada
+   * na tela, e assinar de novo a cada render seria uma request por miniatura. O
+   * TTL do cache é metade do da assinatura, para nunca entregar uma URL que
+   * expire enquanto está na tela.
+   */
+  public async getAttachmentUrl(path: string): Promise<string | null> {
+    if (!supabase || !path) return null;
+
+    const cached = this.signedUrlCache.get(path);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+    const { data, error } = await supabase.storage
+      .from(ATTACHMENTS_BUCKET)
+      .createSignedUrl(path, SIGNED_URL_TTL_SEGUNDOS);
+
+    if (error || !data?.signedUrl) {
+      console.error('Falha ao gerar URL do anexo.', error);
+      return null;
+    }
+
+    this.signedUrlCache.set(path, {
+      url: data.signedUrl,
+      expiresAt: Date.now() + (SIGNED_URL_TTL_SEGUNDOS / 2) * 1000
     });
-    this.setStorageItem('sisten_attachments', list);
+    return data.signedUrl;
   }
 
   // Profile Management methods

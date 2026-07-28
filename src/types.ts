@@ -114,9 +114,16 @@ export interface RequestItem {
 export interface RequestAttachment {
   id: string;
   request_id: string;
+  // Preenchido nos anexos de item de compra; nulo no Cadastro SAP, que não tem
+  // itens. Ver documentos/superpowers/specs/2026-07-28-anexos-imagens-design.md
+  request_item_id?: string;
   name: string;
-  url: string; // local simulation URL or base64
-  size: number;
+  url: string; // caminho no bucket (mesmo valor de storage_path)
+  storage_path?: string;
+  mime_type?: string;
+  size: number; // tamanho após a compressão — é o que trafega
+  size_original?: number; // tamanho do arquivo escolhido, para exibir a economia
+  uploaded_by?: string;
   created_at: string;
 }
 

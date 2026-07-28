@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, Sector } from '../types';
+import { AttachmentGallery } from '../components/ui/Attachments';
 
 interface CadastrosSapProps {
   user: Profile;
@@ -481,6 +482,17 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       {getStatusLabel(selectedReq.status)}
                     </span>
                   </div>
+                </div>
+
+                {/* Anexos do solicitante — foto do item, etiqueta, ficha
+                    técnica, cartão CNPJ. É o que o atendente precisa ter à mão
+                    para fazer o cadastro sem abrir uma rodada de perguntas. */}
+                <div className="border-t border-slate-100 pt-3">
+                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-1.5">Anexos</h4>
+                  <AttachmentGallery
+                    requestId={selectedReq.id}
+                    emptyLabel="Nenhum anexo enviado pelo solicitante."
+                  />
                 </div>
 
                 <div className="border-t border-slate-100 pt-3">

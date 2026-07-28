@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestItem, RequestComment, RequestStatusHistory } from '../types';
+import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
+import { PreparedAttachment } from '../lib/imageCompression';
 
 interface MyRequestsProps {
   user: Profile;
@@ -44,6 +46,10 @@ export default function MyRequests({ user }: MyRequestsProps) {
 
   // File upload state for details
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PreparedAttachment[]>([]);
+  // Incrementado após cada envio para a galeria reler o cache local — os anexos
+  // não vivem no estado desta tela, e sim no localDb.
+  const [attachmentsVersion, setAttachmentsVersion] = useState(0);
 
   // Satisfaction Star Rating state
   const [selectRating, setSelectRating] = useState<number>(0);
@@ -115,18 +121,25 @@ export default function MyRequests({ user }: MyRequestsProps) {
     setRequests(getFilteredUserRequests(localDb.getRequests()));
   };
 
-  const handleSimulateAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!selectedRequest || !e.target.files?.length) return;
+  // Anexar depois da criação: é o que fecha o ciclo do "Solicitar
+  // Esclarecimento" do atendente, que pede um documento complementar e até
+  // agora não tinha por onde receber o arquivo.
+  const handleUploadAttachments = async (anexos: PreparedAttachment[]) => {
+    if (!selectedRequest || anexos.length === 0) return;
     setUploadingFile(true);
 
-    setTimeout(() => {
-      const fileName = e.target.files![0].name;
-      localDb.addAttachment(selectedRequest.id, fileName);
-      setUploadingFile(false);
-      
-      // Refresh list
-      setRequests(getFilteredUserRequests(localDb.getRequests()));
-    }, 1000);
+    const { failed } = await localDb.uploadAttachments(
+      selectedRequest.id,
+      anexos.map(prepared => ({ prepared }))
+    );
+
+    setUploadingFile(false);
+    setPendingAttachments([]);
+    setAttachmentsVersion(v => v + 1);
+
+    if (failed.length > 0) {
+      alert(`Não foi possível enviar: ${failed.join(', ')}. Tente novamente.`);
+    }
   };
 
   // Filter requests
@@ -475,6 +488,13 @@ export default function MyRequests({ user }: MyRequestsProps) {
                               Obs: {it.observation}
                             </p>
                           )}
+                          <div className="mt-2">
+                            <AttachmentGallery
+                              requestId={selectedRequest.id}
+                              itemId={it.id}
+                              refreshKey={attachmentsVersion}
+                            />
+                          </div>
                         </div>
                         <div className="flex sm:flex-col items-baseline sm:items-end justify-between sm:justify-start gap-1">
                           <span className="font-bold text-slate-700">{it.quantity} {it.unit}</span>
@@ -489,6 +509,43 @@ export default function MyRequests({ user }: MyRequestsProps) {
               )}
 
 
+
+              {/* Anexos da solicitação — os enviados na criação do Cadastro SAP
+                  e qualquer arquivo mandado depois. Anexos de item de compra
+                  aparecem na linha do item, logo acima. */}
+              <div className="rounded-xl bg-white p-5 border border-slate-100 space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Anexos
+                </h4>
+
+                <AttachmentGallery
+                  requestId={selectedRequest.id}
+                  refreshKey={attachmentsVersion}
+                  emptyLabel="Nenhum anexo nesta solicitação."
+                />
+
+                {selectedRequest.status !== 'resolvido' && selectedRequest.status !== 'fechado' && (
+                  <div className="pt-2 border-t border-slate-50 space-y-2">
+                    <AttachmentPicker
+                      value={pendingAttachments}
+                      onChange={setPendingAttachments}
+                      disabled={uploadingFile}
+                    />
+                    {pendingAttachments.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={uploadingFile}
+                        onClick={() => handleUploadAttachments(pendingAttachments)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-bold text-[11px] py-1.5 px-3 cursor-pointer transition-colors"
+                      >
+                        {uploadingFile
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando…</>
+                          : <><Upload className="h-3.5 w-3.5" /> Enviar {pendingAttachments.length === 1 ? 'anexo' : `${pendingAttachments.length} anexos`}</>}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Chronological History Log */}
               <div className="rounded-xl bg-white p-5 border border-slate-100 space-y-4">

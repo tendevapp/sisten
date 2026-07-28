@@ -14,6 +14,8 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, Material } from '../types';
 import { formatBRL } from '../lib/format';
+import { AttachmentPicker } from '../components/ui/Attachments';
+import { PreparedAttachment } from '../lib/imageCompression';
 
 interface NewRequestProps {
   user: Profile;
@@ -31,6 +33,13 @@ interface PurchaseItemState {
   observation?: string;
   suggested_supplier: string;
   estimated_value: number;
+  /**
+   * Anexos já comprimidos, aguardando o submit para subir. Ficam presos ao item
+   * (e não num mapa por índice à parte) para acompanharem naturalmente a
+   * inclusão e a remoção de linhas. Não entram no rascunho: `Blob` não
+   * sobrevive a `JSON.stringify` — ver `saveDraft`.
+   */
+  attachments?: PreparedAttachment[];
 }
 
 /* --------------------------------------------------------------------- */
@@ -162,6 +171,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sapRegSpecs, setSapRegSpecs] = useState('');
   const [sapRegBrand, setSapRegBrand] = useState('');
   const [sapRegVendorInfo, setSapRegVendorInfo] = useState(''); // CNPJ / Site or vendor suggestion
+  // Cadastro SAP não tem itens, então os anexos se prendem à solicitação. Fora
+  // do rascunho pelo mesmo motivo dos anexos de item (Blob não serializa).
+  const [sapAttachments, setSapAttachments] = useState<PreparedAttachment[]>([]);
 
   // Specific for Helpdesk Chamados
   const [chamadoSectorId, setChamadoSectorId] = useState(''); // Setor solicitante — sem pré-seleção
@@ -248,7 +260,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setAutosaveStatus('saving');
     const draftData = {
       activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
-      items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+      // Anexos ficam de fora: `Blob` vira `{}` no JSON e `previewUrl` vira um
+      // object URL morto, o que reencheria o rascunho de chips quebrados.
+      items: items.map(({ attachments, ...resto }) => resto),
+      registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
@@ -324,11 +339,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploadProgress(true);
 
-    setTimeout(() => {
+    try {
       // Structure base request payload
       let payload: any = {
         type: activeTab,
@@ -378,13 +393,40 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         };
       }
 
-      const req = localDb.submitRequest(payload, false);
-      setUploadProgress(false);
+      const req = await localDb.submitRequest(payload, false);
+
+      // Só agora os anexos têm a que se prender: o id da solicitação nasce
+      // dentro do submitRequest, e o id do item é derivado dele pelo índice
+      // (`ri_<request_id>_<índice>`, ver localDb.submitRequest).
+      const entries = activeTab === 'compra'
+        ? items.flatMap((item, index) =>
+            (item.attachments || []).map(prepared => ({
+              prepared,
+              requestItemId: `ri_${req.id}_${index}`,
+            }))
+          )
+        : sapAttachments.map(prepared => ({ prepared }));
+
+      const { failed } = await localDb.uploadAttachments(req.id, entries);
       clearDraft();
+
+      if (failed.length > 0) {
+        // A solicitação já existe; perder um anexo não pode desfazê-la — o
+        // usuário reenviar o arquivo em Minhas Solicitações é o caminho.
+        alert(
+          `A solicitação #${req.number} foi criada, mas ${failed.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
+          `${failed.join(', ')}. Você pode reenviá-${failed.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
+        );
+      }
 
       // Navigate to tracking
       onNavigate(`/solicitacoes/minhas?id=${req.id}`);
-    }, 1200);
+    } catch (err) {
+      console.error('Falha ao enviar a solicitação.', err);
+      alert('Não foi possível enviar a solicitação. Tente novamente.');
+    } finally {
+      setUploadProgress(false);
+    }
   };
 
   const activeCategoryList = getHelpdeskCategories(helpdeskSectorId);
@@ -811,6 +853,20 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         style={fieldStyle}
                       />
                     </div>
+
+                    {/* Anexos do item — foto da peça, etiqueta com código,
+                        ficha técnica. O comprador vê a imagem ao lado do item
+                        certo, não solta na solicitação. */}
+                    <div>
+                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                        Fotos / documentos do item
+                      </label>
+                      <AttachmentPicker
+                        value={it.attachments || []}
+                        onChange={(anexos) => handleItemChange(index, 'attachments', anexos)}
+                        label="Anexar foto ou PDF"
+                      />
+                    </div>
                   </div>
                 ))}
                 </div>
@@ -928,6 +984,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   onChange={(e) => setJustificativa(e.target.value)}
                   className="w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                   style={fieldStyle}
+                />
+              </div>
+
+              {/* Anexos da solicitação: é o que evita o vaivém de
+                  "Solicitar Esclarecimento" pedindo a ficha técnica que o
+                  solicitante já tinha em mãos. */}
+              <div>
+                <label className={labelClass} style={labelStyle}>
+                  {registrationType === 'Item'
+                    ? 'Fotos do item, etiqueta ou ficha técnica'
+                    : 'Cartão CNPJ, catálogo ou documento do fornecedor'}
+                </label>
+                <AttachmentPicker
+                  value={sapAttachments}
+                  onChange={setSapAttachments}
+                  label="Anexar imagem ou PDF"
                 />
               </div>
             </div>

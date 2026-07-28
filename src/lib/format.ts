@@ -91,3 +91,17 @@ export function yearOf(d?: string | number | Date | null): string {
   const parsed = toDate(d);
   return parsed ? String(parsed.getFullYear()) : '';
 }
+
+/* Tamanho de arquivo ------------------------------------------------------ */
+
+/**
+ * Tamanho de anexo em unidade legível ("180 KB", "2,3 MB"). Base 1024, que é o
+ * que o usuário vê nas propriedades do arquivo no Windows.
+ */
+export function formatFileSize(bytes?: number | null): string {
+  if (!isNum(bytes) || bytes < 0) return EMPTY;
+  if (bytes < 1024) return `${inteiro.format(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${inteiro.format(kb)} KB`;
+  return `${decimal1.format(kb / 1024)} MB`;
+}

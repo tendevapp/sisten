@@ -66,7 +66,14 @@ create index request_attachments_request_item_id_idx on public.request_attachmen
 - `storage_path` é a fonte de verdade para gerar a signed URL. A coluna `url` (`not null`) já existente passa a guardar o mesmo caminho, para não quebrar o schema atual.
 - `size` guarda o tamanho **comprimido** (é o que trafega); `size_original` guarda o de origem, para exibir "2,3 MB → 180 KB".
 
-Sem FK para `requests`/`request_items`: as linhas de solicitação são criadas com id gerado no cliente e o motor ainda é local-first — uma FK enforçada quebraria a inserção sempre que a solicitação-pai ainda não tivesse subido.
+`request_attachments.request_id` **já tinha** FK para `requests(id)` com `ON DELETE CASCADE`, descoberta durante a verificação. Isso torna obrigatório publicar a solicitação-pai antes de subir qualquer byte — ver `uploadAttachments` abaixo. `request_item_id` fica sem FK: o id do item é derivado do índice no cliente e não há ganho em enforçá-lo.
+
+### Ajustes descobertos na verificação
+
+Dois problemas só apareceram ao exercitar o schema real, e ambos quebrariam a criação de solicitação de compra:
+
+1. **`request_items` não tinha `is_generic` nem `observation`.** Os campos existem no tipo `RequestItem` desde o commit 58655fb, mas nunca foram criados no banco — o upsert falharia com coluna inexistente. Adicionados por migration.
+2. **`requests.comprador_id` tem FK para `profiles(id)`,** e o seletor de comprador em `NewRequest.tsx:358` cai no *código do grupo de compras* (ex.: `"314"`) quando o grupo não tem usuário vinculado. Código de grupo não é id de perfil, então o insert inteiro seria rejeitado. `publishRequest` passa a anular `solicitante_id`, `comprador_id` e `atendente_id` que não correspondam a um perfil conhecido, em vez de derrubar a publicação.
 
 ### Bucket
 
@@ -125,7 +132,9 @@ public async uploadAttachments(
 ): Promise<{ uploaded: number; failed: string[] }>
 ```
 
-Para cada entrada: `supabase.storage.from('request-attachments').upload(path, blob)`, depois insere a linha em `request_attachments` e no cache local. Uma falha isolada **não** aborta as demais — o método devolve os nomes que falharam, e a UI reporta. A solicitação já foi criada nesse ponto; perder um anexo não pode desfazer a solicitação.
+Antes de tocar no Storage, garante que a solicitação-pai está publicada (chama `publishRequest`). Sem isso, a FK `request_attachments_request_id_fkey` faria o insert da metadata falhar **depois** que os bytes já subiram, deixando arquivo órfão no bucket. Esse mesmo passo é o que permite anexar em solicitação antiga pela tela de acompanhamento, criada quando nada subia ao servidor.
+
+Depois: `supabase.storage.from('request-attachments').upload(path, blob)`, insere a linha em `request_attachments` e no cache local. Uma falha isolada **não** aborta as demais — o método devolve os nomes que falharam, e a UI reporta. A solicitação já foi criada nesse ponto; perder um anexo não pode desfazê-la.
 
 ### `getAttachmentUrl`
 
