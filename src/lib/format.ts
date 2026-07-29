@@ -34,8 +34,12 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 /** Reconhece string de data pura (sem hora), formato das colunas DATE do Postgres. */
 const DATA_SEM_HORA = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Aceita Date, ISO string ou timestamp. Retorna null quando não dá para ler. */
-function toDate(d?: string | number | Date | null): Date | null {
+/**
+ * Aceita Date, ISO string ou timestamp. Retorna null quando não dá para ler.
+ * Exportada para reuso por quem precisa só do parse (ex.: `lib/rastreio.ts`),
+ * sem duplicar a regra de fuso horário abaixo.
+ */
+export function toDate(d?: string | number | Date | null): Date | null {
   if (d === undefined || d === null || d === '') return null;
   // Uma string "sem hora" (ex.: coluna DATE do Postgres) não pode ir direto
   // para `new Date(string)`: o construtor a lê como meia-noite UTC, e em

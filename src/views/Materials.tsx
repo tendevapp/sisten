@@ -8,6 +8,7 @@ import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
+import { formatDateTimeBR } from '../lib/format';
 
 interface MaterialsProps {
   user: Profile;
@@ -45,14 +46,6 @@ const sortByDescriptionRelevance = (items: Material[], chips: string[]): Materia
 // Colunas realmente usadas na tela/exportação — evita trafegar colunas extras
 // da tabela materials (reduz egress vs. select('*')).
 const MATERIAL_COLS = 'id,material_code,description,technical_text,category,company,unit';
-
-const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
 
 export default function Materials({ user }: MaterialsProps) {
   // Carrega do cache se houver, senão usa os defaults
