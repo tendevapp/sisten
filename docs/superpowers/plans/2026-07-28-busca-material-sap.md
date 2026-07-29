@@ -726,7 +726,7 @@ explain analyze select * from buscar_materiais('parafuso sextavado m12', 'MANU',
 explain analyze select * from buscar_materiais('valvula esfera inox', null, 20);
 ```
 
-Esperado: `Execution Time` **abaixo de 150 ms** nos três.
+Esperado: `Execution Time` **abaixo de 150 ms** nos três (meta original — revisada para ~217ms de p95, ver Global Constraints acima).
 
 - [ ] **Step 5b: Confirmar que o índice GIN é realmente usado**
 
@@ -762,7 +762,7 @@ Rode o advisor de segurança (MCP `get_advisors`, tipo `security`). Esperado: ne
 git commit --allow-empty -m "feat(db): rpc buscar_materiais com tokens, prefixo de codigo e sinais
 
 Tempos medidos: luva 1/2 npt <X> ms, parafuso sextavado m12 <Y> ms,
-valvula esfera inox <Z> ms. Meta p95 < 150 ms."
+valvula esfera inox <Z> ms. Meta p95 < 150 ms (revisado para ~217ms — ver Global Constraints)."
 ```
 
 Substitua `<X>`, `<Y>` e `<Z>` pelos tempos do passo 5.
@@ -1247,7 +1247,7 @@ git commit -m "feat: atualiza os sinais de material ao fim de cada importacao"
 
 - [ ] `npm test` — 14 testes passando.
 - [ ] `npm run lint` — limpo.
-- [ ] `explain analyze` da RPC nos três termos do diagnóstico, todos abaixo de 150 ms, com os números anotados nos commits.
+- [ ] `explain analyze` da RPC nos três termos do diagnóstico, todos abaixo de 150 ms (meta original — revisada para ~217ms, ver Global Constraints), com os números anotados nos commits.
 - [ ] `buscar_materiais('luva npt galvanizado')` distingue `1031825` de `1031826` — o caso que a busca antiga não resolvia.
 - [ ] Advisor de segurança do Supabase sem aviso novo.
 - [ ] No navegador: busca responde abaixo de 300 ms, chips de sinal aparecem, código com 4 dígitos já filtra.

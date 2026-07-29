@@ -298,7 +298,7 @@ informação.
 | código exato, 8 dígitos | prefixo a partir de 4 dígitos |
 | zero resultado é beco sem saída | queda para similaridade trigram |
 | ordem por `material_code` | relevância + estoque + histórico de uso |
-| 1398 ms | meta **p95 < 150 ms** |
+| 1398 ms | meta **p95 < 150 ms** (revisada para ~217ms — ver "Meta revisada" abaixo) |
 
 A meta é verificada com `explain analyze` contra os mesmos termos usados no
 diagnóstico, e o resultado registrado no plano.
@@ -438,7 +438,8 @@ Lógica pura, testável sem renderizar componente:
 - validação de item sem código SAP, incluindo a exceção de serviço.
 
 A RPC `buscar_materiais` ganha verificação de plano com `explain analyze`
-contra a meta de p95 < 150 ms, com os mesmos termos do diagnóstico.
+contra a meta de p95 < 150 ms (revisada para ~217ms — ver "Meta revisada" na
+seção de desempenho acima), com os mesmos termos do diagnóstico.
 
 ## Lacuna de dado encontrada na implementação
 
