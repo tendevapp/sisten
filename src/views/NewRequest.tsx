@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
-import { Profile, RequestItem, RequestType, RequestStatus, Material } from '../types';
+import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
 import { formatBRL } from '../lib/format';
+import { buscarMateriais, resumoSinais, type MaterialResultado } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
@@ -115,13 +116,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [dataNecessidade, setDataNecessidade] = useState('');
   const [justificativa, setJustificativa] = useState('');
 
+  const sectors = localDb.getSectors();
+
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
 
   // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
   // 180k+ linhas, não cabe em memória/localStorage), com debounce por item ativo.
   const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
-  const [activeSearchResults, setActiveSearchResults] = useState<Material[]>([]);
+  const [activeSearchResults, setActiveSearchResults] = useState<MaterialResultado[]>([]);
+  const [erroBusca, setErroBusca] = useState(false);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
   const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,19 +159,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     searchDebounceRef.current = setTimeout(async () => {
       const thisRequestId = ++searchRequestIdRef.current;
       setIsSearchingCatalog(true);
+      setErroBusca(false);
       try {
-        let query = supabase.from('materials').select('*').eq('is_active', true);
-        if (activeSapCodeTerm) query = query.ilike('material_code', `%${activeSapCodeTerm}%`);
-        if (activeDescriptionTerm) query = query.ilike('description', `%${activeDescriptionTerm}%`);
-        const limit = activeSapCodeTerm || activeDescriptionTerm ? 8 : 5;
-        const { data, error } = await query.order('material_code', { ascending: true }).limit(limit);
-        if (error) throw error;
-        if (searchRequestIdRef.current === thisRequestId) {
-          setActiveSearchResults(data || []);
-        }
+        // Código tem precedência: quem digitou o código sabe o que quer.
+        const termo = activeSapCodeTerm || activeDescriptionTerm;
+        const setor = sectors.find(s => s.id === sectorId);
+        const achados = await buscarMateriais(termo, {
+          areaUsuario: setor?.sap_area_code ?? null,
+          limite: 20,
+        });
+        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults(achados);
       } catch (err) {
         console.error('Erro ao buscar materiais no catálogo SAP:', err);
-        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults([]);
+        if (searchRequestIdRef.current === thisRequestId) {
+          setActiveSearchResults([]);
+          // Sem isto, falha de rede e "não achei nada" ficam
+          // indistinguíveis — os dois mostravam a mesma lista vazia.
+          setErroBusca(true);
+        }
       } finally {
         if (searchRequestIdRef.current === thisRequestId) setIsSearchingCatalog(false);
       }
@@ -176,7 +185,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm]);
+  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, sectorId, sectors]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -197,8 +206,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // States
   const [uploadProgress, setUploadProgress] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
-
-  const sectors = localDb.getSectors();
 
   // Lista de compradores responsáveis vem da tabela compradores (grupo_compras/nome_comprador),
   // resolvendo o usuário do sistema vinculado via buyer_groups para manter o comprador_id
@@ -375,17 +382,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     };
     setItems(updated);
 
-    // Auto-fill descrição/unidade se um código SAP válido de 8 dígitos for digitado
-    if (key === 'sap_code' && String(val).trim().length === 8) {
+    // Auto-fill descrição/unidade a partir de 4 dígitos — a RPC já aceita prefixo.
+    if (key === 'sap_code' && String(val).trim().length >= 4) {
       const code = String(val).trim();
-      supabase.from('materials').select('*').eq('material_code', code).eq('is_active', true).maybeSingle()
-        .then(({ data, error }) => {
-          if (error || !data) return;
+      buscarMateriais(code, { limite: 1 })
+        .then(([achado]) => {
+          if (!achado || achado.materialCode !== code) return;
           setItems(prev => prev.map((item, i) => {
-            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já alterou o campo
-            return { ...item, description: data.description, unit: data.unit || 'UN' };
+            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já mudou o campo
+            return { ...item, description: achado.description, unit: achado.unit || 'UN' };
           }));
-        });
+        })
+        .catch(err => console.error('Falha ao autopreencher pelo código SAP:', err));
     }
   };
 
@@ -804,7 +812,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </button>
                               </span>
                             </div>
-                            {isSearchingCatalog ? (
+                            {erroBusca ? (
+                              <div className="p-3 text-xs text-center" style={{ color: 'var(--status-serious)' }}>
+                                Não foi possível buscar no catálogo.
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveSearchIndex(index)}
+                                  className="block mx-auto mt-1 font-bold underline cursor-pointer"
+                                  style={{ color: 'var(--brand)' }}
+                                >
+                                  Tentar de novo
+                                </button>
+                              </div>
+                            ) : isSearchingCatalog ? (
                               <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>Buscando no catálogo SAP...</div>
                             ) : activeSearchResults.length === 0 ? (
                               <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>
@@ -816,14 +836,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             ) : (
                               activeSearchResults.map((mat) => (
                                 <button
-                                  key={mat.id}
+                                  key={mat.materialCode}
                                   type="button"
                                   onClick={() => {
                                     const updated = [...items];
                                     updated[index] = {
                                       ...updated[index],
                                       description: mat.description,
-                                      sap_code: mat.material_code,
+                                      sap_code: mat.materialCode,
                                       unit: mat.unit || 'UN'
                                     };
                                     setItems(updated);
@@ -836,15 +856,37 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     className="font-mono px-1.5 py-0.5 rounded font-bold text-[9px] shrink-0 mt-0.5"
                                     style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
                                   >
-                                    {mat.material_code}
+                                    {mat.materialCode}
                                   </span>
                                   <div className="flex-1 min-w-0">
                                     <div className="font-medium truncate" style={{ color: 'var(--ink-primary)' }} title={mat.description}>
                                       {mat.description}
                                     </div>
-                                    {mat.technical_text && (
+                                    {mat.technicalText && (
                                       <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-                                        {mat.technical_text}
+                                        {mat.technicalText}
+                                      </div>
+                                    )}
+                                    {resumoSinais(mat).length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {resumoSinais(mat).map(chip => (
+                                          <span
+                                            key={chip.texto}
+                                            className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                                            style={{
+                                              background: chip.tom === 'estoque'
+                                                ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+                                                : chip.tom === 'demanda'
+                                                ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
+                                                : chip.tom === 'pedido'
+                                                ? 'var(--brand-wash)'
+                                                : 'var(--surface-sunken)',
+                                              color: chip.tom === 'pedido' ? 'var(--brand-strong)' : 'var(--ink-secondary)',
+                                            }}
+                                          >
+                                            {chip.texto}
+                                          </span>
+                                        ))}
                                       </div>
                                     )}
                                   </div>
