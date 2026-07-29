@@ -10,3 +10,6 @@ coverage/
 # Graphify and local agents skills
 .agents/skills/graphify/
 graphify-out/
+
+# Mockups do companion de brainstorming
+.superpowers/
