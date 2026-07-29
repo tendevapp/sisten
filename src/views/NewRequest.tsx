@@ -124,6 +124,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // aberto.
   const sectors = useMemo(() => localDb.getSectors(), []);
 
+  // Área SAP do setor selecionado, para o sinal "sua área já pediu" na busca
+  // de material. Depende de `sectorId` (não da lista `sectors` inteira, que
+  // fica congelada no mount acima) para não perder um sync de setores que
+  // termine depois da montagem do componente.
+  const areaUsuario = useMemo(
+    () => localDb.getSectors().find(s => s.id === sectorId)?.sap_area_code ?? null,
+    [sectorId],
+  );
+
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
 
@@ -133,6 +142,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [activeSearchResults, setActiveSearchResults] = useState<MaterialResultado[]>([]);
   const [erroBusca, setErroBusca] = useState(false);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  // Incrementado pelo botão "Tentar de novo" para forçar o efeito de busca a
+  // reexecutar mesmo quando índice e termo não mudaram.
+  const [tentativaBusca, setTentativaBusca] = useState(0);
   const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -159,6 +171,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     if (activeSearchIndex === null) {
       setActiveSearchResults([]);
+      setErroBusca(false);
       return;
     }
 
@@ -169,9 +182,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       try {
         // Código tem precedência: quem digitou o código sabe o que quer.
         const termo = activeSapCodeTerm || activeDescriptionTerm;
-        const setor = sectors.find(s => s.id === sectorId);
         const achados = await buscarMateriais(termo, {
-          areaUsuario: setor?.sap_area_code ?? null,
+          areaUsuario: areaUsuario,
           limite: 20,
         });
         if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults(achados);
@@ -191,7 +203,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, sectorId, sectors]);
+  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, areaUsuario, tentativaBusca]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -388,8 +400,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     };
     setItems(updated);
 
-    // Auto-fill descrição/unidade a partir de 4 dígitos — a RPC já aceita prefixo.
-    if (key === 'sap_code' && String(val).trim().length >= 4) {
+    // Auto-fill descrição/unidade só com o código completo (7 dígitos): todo
+    // material_code do catálogo tem exatamente 7 dígitos, então disparar a
+    // cada tecla a partir de 4 só gera 3 requisições descartadas por código.
+    if (key === 'sap_code' && String(val).trim().length === 7) {
       const code = String(val).trim();
       buscarMateriais(code, { limite: 1 })
         .then(([achado]) => {
@@ -823,7 +837,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 Não foi possível buscar no catálogo.
                                 <button
                                   type="button"
-                                  onClick={() => setActiveSearchIndex(index)}
+                                  onClick={() => setTentativaBusca(n => n + 1)}
                                   className="block mx-auto mt-1 font-bold underline cursor-pointer"
                                   style={{ color: 'var(--brand)' }}
                                 >
@@ -840,7 +854,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </div>
                               </div>
                             ) : (
-                              activeSearchResults.map((mat) => (
+                              activeSearchResults.map((mat) => {
+                                const chips = resumoSinais(mat);
+                                return (
                                 <button
                                   key={mat.materialCode}
                                   type="button"
@@ -873,21 +889,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                         {mat.technicalText}
                                       </div>
                                     )}
-                                    {resumoSinais(mat).length > 0 && (
+                                    {chips.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mt-1">
-                                        {resumoSinais(mat).map(chip => (
+                                        {chips.map(chip => (
                                           <span
                                             key={chip.texto}
                                             className="text-[9px] font-bold px-1.5 py-0.5 rounded"
                                             style={{
+                                              // "estoque" e "demanda" usam tons de status (verde/âmbar,
+                                              // sinal de decisão). "pedido" e "uso" são informativos, não
+                                              // decisão — por isso ficam neutros e sem colorir o texto,
+                                              // para não competir visualmente com "estoque" (que é o sinal
+                                              // mais relevante: "tem agora" pesa mais que "já foi pedido").
                                               background: chip.tom === 'estoque'
                                                 ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
                                                 : chip.tom === 'demanda'
                                                 ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
-                                                : chip.tom === 'pedido'
-                                                ? 'var(--brand-wash)'
                                                 : 'var(--surface-sunken)',
-                                              color: chip.tom === 'pedido' ? 'var(--brand-strong)' : 'var(--ink-secondary)',
+                                              color: 'var(--ink-secondary)',
                                             }}
                                           >
                                             {chip.texto}
@@ -903,7 +922,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     {mat.unit}
                                   </span>
                                 </button>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                         )}
