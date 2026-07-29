@@ -303,6 +303,16 @@ informação.
 A meta é verificada com `explain analyze` contra os mesmos termos usados no
 diagnóstico, e o resultado registrado no plano.
 
+**Ressalva medida na implementação:** `order by material_code limit N` muda o
+plano de consulta — o planejador pode preferir caminhar o btree de
+`material_code` já ordenado, ignorando qualquer índice de texto dos dois
+lados da comparação. Medido: a mesma busca por "luva" levou 3634 ms (forma
+antiga) e 21 ms (forma nova) **quando ambas usam essa cláusula** — nenhuma
+tocou o índice GIN. Sem a cláusula, a forma nova caiu para 6 ms com
+`Bitmap Index Scan on materials_busca_trgm` confirmado. A RPC não ordena por
+`material_code`, então não deveria cair nessa armadilha, mas isso é
+verificado, não presumido — ver a Tarefa 5 do plano de implementação.
+
 ### Sinais mostrados no resultado
 
 - `45 UN em CD01` — tem saldo no almoxarifado;
