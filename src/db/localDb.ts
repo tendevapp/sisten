@@ -573,6 +573,21 @@ class LocalDatabase {
     }
   }
 
+  /**
+   * Atualiza os sinais que a busca de material mostra — saldo, RM aberta,
+   * pedido a caminho. Eles vivem numa materialized view; sem este refresh ela
+   * congela na data de criação, e saldo velho é pior que saldo nenhum, porque
+   * parece conferido.
+   *
+   * Falha aqui não desfaz a importação: os dados já entraram, e a próxima
+   * carga corrige o sinal.
+   */
+  private async refreshMaterialSinais(): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase.rpc('refresh_material_sinais');
+    if (error) console.warn('Falha ao atualizar os sinais de material:', error);
+  }
+
   // Check and run seeds
   private initialize() {
     // 1. Sectors
@@ -3897,6 +3912,7 @@ class LocalDatabase {
         ignored_rows: ignoredRows,
         created_at: new Date().toISOString()
       };
+      await this.refreshMaterialSinais();
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
@@ -4288,6 +4304,7 @@ class LocalDatabase {
         ignored_rows: ignoredRows,
         created_at: new Date().toISOString()
       };
+      await this.refreshMaterialSinais();
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
@@ -5129,6 +5146,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
 
+      await this.refreshMaterialSinais();
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(95);
 

@@ -8,6 +8,13 @@
 
 import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { EnrichedSAPRecord, RastreioPrioridade } from '../types';
+import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './format';
+
+// Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
+// RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
+// única — aqui só ficam a lógica de negócio própria de rastreio (linhas,
+// filtros, status de entrega).
+export { formatDateBR, formatDateTimeBR, formatBRL, yearOf };
 
 // Escala de criticidade/prioridade (1-5), mesma usada em Nova Solicitação
 // (canal de compra), reaproveitada aqui para o pedido de priorização feito
@@ -93,36 +100,12 @@ const txt = (v: any): string => {
 
 export const hasValue = (v?: string): boolean => !!v && v !== EMPTY;
 
-// Converte uma string de data em Date, ou null se inválida/ausente.
+// Converte uma string de data em Date, ou null se inválida/ausente. Usa o
+// parser compartilhado de `lib/format.ts` (evita o bug de fuso horário que
+// `new Date('AAAA-MM-DD')` sozinho teria — ver comentário lá).
 export const parseDate = (d?: string): Date | null => {
   if (!hasValue(d)) return null;
-  const t = new Date(d as string);
-  return isNaN(t.getTime()) ? null : t;
-};
-
-// Formata data no padrão brasileiro (dd/mm/aaaa), com fallback para '—'.
-export const formatDateBR = (d?: string): string => {
-  const parsed = parseDate(d);
-  return parsed ? parsed.toLocaleDateString('pt-BR') : EMPTY;
-};
-
-export const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return EMPTY;
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-// Formata valor monetário em BRL, com fallback para '—' quando ausente.
-export const formatBRL = (v?: number | null): string =>
-  v === undefined || v === null || isNaN(v)
-    ? EMPTY
-    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-export const yearOf = (d?: string): string => {
-  const parsed = parseDate(d);
-  return parsed ? String(parsed.getFullYear()) : '';
+  return toDate(d);
 };
 
 // Mapeia os registros enriquecidos do SAP para linhas da tela de rastreio.

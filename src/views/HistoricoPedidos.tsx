@@ -13,7 +13,7 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, ContatoFornecedor, CidadeForn, HistoricoPedidoView } from '../types';
 
-import { formatInt } from '../lib/format';
+import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
 import {
   TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
@@ -88,21 +88,6 @@ const formatPreco = (v?: number | null): string =>
   v === undefined || v === null || isNaN(v)
     ? '—'
     : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-const formatDateBR = (d?: string): string => {
-  if (!d || d === '—') return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
-};
-
-// Data + hora para o rótulo "Dados atualizados em".
-const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
 
 const dateVal = (d?: string): number => {
   if (!d || d === '—') return 0;

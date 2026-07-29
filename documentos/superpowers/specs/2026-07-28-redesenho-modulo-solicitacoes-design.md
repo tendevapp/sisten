@@ -205,6 +205,10 @@ with saldo as (
          array_agg(distinct deposito)             as depositos
   from estoque
   where quantidade > 0
+    -- Depósitos 0006, 0090 e 0105 excluídos do saldo mostrado na busca —
+    -- por pedido do parceiro humano, sem critério de negócio documentado
+    -- além da exclusão em si.
+    and deposito not in ('0006', '0090', '0105')
   group by material
 ),
 demanda as (
@@ -283,10 +287,12 @@ migração para os setores de correspondência direta (`ALMO` → Almoxarifado,
 plano deve perguntar, não adivinhar.
 
 Cobertura é parcial e o desenho assume isso: **516 das 1.684 RMs (31%) têm
-`area_solicitante` nulo**. Consequência: a frequência total de RMs aparece
-sempre; o recorte "sua área pediu Nx" só aparece quando o setor tem código
-mapeado e há dado. Nunca se mostra "0x" — a ausência de informação não é
-informação.
+`area_solicitante` nulo**. Consequência: o recorte "sua área já pediu" só
+aparece quando o setor tem código mapeado e a área realmente pediu o item —
+nunca "0x", a ausência de informação não é informação. A contagem total de
+RMs (`rms_12m`) continua existindo no dado e influenciando a ordenação, mas
+não vira chip por decisão do parceiro humano (ver "Sinais mostrados no
+resultado").
 
 ### Comportamento, antes e depois
 
@@ -298,18 +304,44 @@ informação.
 | código exato, 8 dígitos | prefixo a partir de 4 dígitos |
 | zero resultado é beco sem saída | queda para similaridade trigram |
 | ordem por `material_code` | relevância + estoque + histórico de uso |
-| 1398 ms | meta **p95 < 150 ms** |
+| 1398 ms | meta **p95 < 150 ms** (revisada para ~217ms — ver "Meta revisada" abaixo) |
 
 A meta é verificada com `explain analyze` contra os mesmos termos usados no
 diagnóstico, e o resultado registrado no plano.
 
+**Ressalva medida na implementação:** `order by material_code limit N` muda o
+plano de consulta — o planejador pode preferir caminhar o btree de
+`material_code` já ordenado, ignorando qualquer índice de texto dos dois
+lados da comparação. Medido: a mesma busca por "luva" levou 3634 ms (forma
+antiga) e 21 ms (forma nova) **quando ambas usam essa cláusula** — nenhuma
+tocou o índice GIN. Sem a cláusula, a forma nova caiu para 6 ms com
+`Bitmap Index Scan on materials_busca_trgm` confirmado. A RPC não ordena por
+`material_code`, então não deveria cair nessa armadilha, mas isso é
+verificado, não presumido — ver a Tarefa 5 do plano de implementação.
+
+**Meta revisada após medição real:** amostras espaçadas ao longo de um dia
+(fora do efeito de cache quente logo após a migração) mediram p95 ≈ 217 ms,
+acima dos 150 ms planejados. A causa confirmada é pressão de cache do banco
+compartilhado — o plano de consulta usa o índice GIN corretamente em todos os
+casos, não é uma consulta mal-formada. Decisão: aceitar 217 ms como a meta de
+fato. Ainda é uma melhora de ~6x sobre os 1398 ms da busca antiga, e
+imperceptível num dropdown com debounce de 300 ms. Sem trabalho adicional de
+otimização neste plano.
+
 ### Sinais mostrados no resultado
 
-- `45 UN em CD01` — tem saldo no almoxarifado;
-- `RM 0012345 aberta, sem pedido` — já foi pedido, ainda não virou PO;
-- `Pedido 4500123 · chega 12/08` — já comprado, a caminho;
-- `12 RMs em 12 meses · última em 03/2026` — frequência de uso;
-- `sua área pediu 8x` — só quando o setor tem `sap_area_code` mapeado e há dado.
+- `45 UN em estoque` — tem saldo no almoxarifado (só a quantidade; o
+  depósito não é mostrado, e os depósitos 0006/0090/0105 não entram no
+  cálculo — por pedido do parceiro humano);
+- `RM aberta: 200 UN` — já foi pedido, ainda não virou PO (mostra a
+  quantidade da RM, não o número do documento);
+- `500 UN a caminho · chega 12/08` — já comprado, a caminho (mostra a
+  quantidade restante do pedido — pedida menos já fornecida —, não o
+  número do documento);
+- `sua área já pediu` — só quando o setor tem `sap_area_code` mapeado e a
+  área do usuário realmente pediu o item; a contagem total de RMs (`rms_12m`)
+  não vira chip, mas segue influenciando a ordenação (por decisão do
+  parceiro humano).
 
 **Nenhum bloqueia.** Escolher um item que tem saldo ou demanda em aberto marca o
 item com um aviso discreto, visível para o gestor na aprovação e para o
@@ -419,7 +451,48 @@ Lógica pura, testável sem renderizar componente:
 - validação de item sem código SAP, incluindo a exceção de serviço.
 
 A RPC `buscar_materiais` ganha verificação de plano com `explain analyze`
-contra a meta de p95 < 150 ms, com os mesmos termos do diagnóstico.
+contra a meta de p95 < 150 ms (revisada para ~217ms — ver "Meta revisada" na
+seção de desempenho acima), com os mesmos termos do diagnóstico.
+
+## Lacuna de dado encontrada na implementação
+
+`mv_material_sinais` (Tarefa 3 do plano de busca) mediu `com_estoque = 1276`
+contra os 2.052 materiais distintos com saldo positivo em `estoque` — uma
+cobertura de 62% (número anterior à exclusão dos depósitos 0006/0090/0105,
+ver abaixo; a exclusão reduz `com_estoque` para 1263, sem mudar a causa
+raiz da lacuna). Causa confirmada: `estoque.material` mistura três formatos
+de código (1.885 com 7 dígitos, igual a `materials.material_code`; 137 com
+18 dígitos; 30 com 5 dígitos), e dos 1.885 de 7 dígitos, **609 não existem em
+`materials`** — provavelmente itens descontinuados do catálogo, não
+confirmado.
+
+Decisão: **seguir sem corrigir agora**. O sinal de estoque é aditivo por
+design — ausência de chip nunca foi tratada como erro, e os 776 materiais
+afetados (38%) simplesmente não mostram o sinal, sem quebrar nada da RPC ou
+do restante do redesenho. Corrigir a cobertura (normalizar os formatos de
+código, e investigar se os 609 ausentes são descontinuados ou lacuna real de
+importação) fica como trabalho de qualidade de dado, fora deste plano.
+
+### Limitação conhecida no ranking de `buscar_materiais`
+
+O exemplo canônico deste documento — "luva npt galvanizado" distingue
+`1031825` de `1031826`" — é verdadeiro para o **filtro** (`1031826` nunca
+aparece), mas não garante que `1031825` apareça nas primeiras posições.
+Medido: para esse termo há 265 candidatos que casam os três tokens, e
+`1031825` fica na posição ~28. A ordenação prioriza estoque, uso pela área e
+frequência de RM antes da similaridade textual fina — por design, um item
+bem-abastecido e frequentemente pedido deve mesmo superar um item raramente
+usado, ainda que o segundo combine "melhor" com o termo digitado.
+
+Corrigir isso de verdade exigiria reforçar o atributo que diferencia
+(`GALVANIZADO`, no exemplo) no **filtro**, não só na ordenação — tentativas de
+ajustar a fórmula de ranking (~15 variantes testadas) não resolvem, porque os
+265 candidatos ficam quase indistinguíveis por similaridade uma vez que o
+filtro já consumiu o único sinal que os separa. Decisão: **aceitar como
+limitação conhecida**. Em catálogos com muitas variantes quase-idênticas
+(diâmetros, comprimentos), encontrar o item exato pode exigir rolar a lista
+ou refinar o termo de busca (ex.: incluir a dimensão). Redesenhar o filtro
+para priorizar o atributo diferenciador fica fora deste plano.
 
 ## Fora de escopo
 
@@ -430,7 +503,13 @@ contra a meta de p95 < 150 ms, com os mesmos termos do diagnóstico.
   para o catálogo inteiro. O redesenho contorna a falta de taxonomia filtrando
   pelos sinais de uso; corrigir o dado é trabalho à parte, e é o que
   desbloquearia filtro por família de material.
+- Normalizar os formatos de código em `estoque.material` e investigar os 609
+  materiais sem correspondência em `materials` — ver "Lacuna de dado
+  encontrada na implementação", acima.
 - Confirmar o significado de `ADMI`, `SEGE` e `SEGT` em `area_solicitante`.
   Ficam sem mapeamento até alguém de Suprimentos dizer.
+- Redesenhar o filtro de `buscar_materiais` para priorizar o atributo que
+  diferencia variantes quase-idênticas — ver "Limitação conhecida no
+  ranking", acima.
 - Liberar item sem código SAP por criticidade 5. Gancho previsto, não
   implementado.

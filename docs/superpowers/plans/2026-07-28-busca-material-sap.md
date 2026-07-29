@@ -15,7 +15,13 @@
 - Código e comentários em **português**, seguindo o padrão de `src/lib/format.ts` e `src/lib/solicitacoes.ts`: cabeçalho com licença SPDX e um parágrafo explicando *por que* o módulo existe.
 - Cores só por token de `src/styles/tokens.css` (`var(--ink-primary)`, `var(--brand)`, `var(--status-*)`). Nenhum hex cru, nenhuma classe Tailwind de cor fixa.
 - `npm run lint` (`tsc --noEmit`) precisa passar limpo ao fim de cada tarefa.
-- Meta de desempenho: **p95 < 150 ms** na RPC, verificada com `explain analyze` contra os termos do diagnóstico.
+- Meta de desempenho original: **p95 < 150 ms** na RPC. Medição real na Tarefa 5
+  (amostras espaçadas ao longo de um dia, fora do efeito de cache quente
+  pós-migração) deu **p95 ≈ 217 ms**, por pressão de cache do banco
+  compartilhado — o índice GIN é usado corretamente em todos os planos. Meta
+  aceita como **p95 ≈ 217 ms** por decisão do parceiro humano: ainda é ~6x
+  mais rápido que os 1398 ms da busca antiga, e imperceptível com o debounce
+  de 300 ms do formulário. Ver spec, seção da Tarefa 5.
 - Egress importa (ver `otimizacao_egress.sql`): a RPC devolve colunas nomeadas, nunca `select *`.
 
 ## File Structure
@@ -264,6 +270,16 @@ order by material_code limit 8;
 
 Anote o `Execution Time`. A referência do diagnóstico é **1398 ms**.
 
+**Atenção para a comparação do Step 3:** `order by material_code limit 8`
+muda o plano de consulta — o planejador pode preferir caminhar o btree de
+`material_code` já ordenado, filtrando linha a linha, em vez de usar
+qualquer índice de texto. Isso vale tanto para a consulta antiga quanto para
+a nova, então **meça as duas formas** no Step 3: com e sem essa cláusula. A
+forma sem `order by`/`limit` é a que se compara de verdade ao ganho do
+índice; a forma com `order by material_code limit 8` existe só para não
+comparar uma maçã com uma laranja quando o Step 3 usa a cláusula equivalente
+à do Step 1.
+
 - [ ] **Step 2: Aplicar a migração**
 
 `apply_migration`, nome `materials_busca_trgm`:
@@ -307,7 +323,20 @@ A coluna gerada reescreve as 172 mil linhas e o índice GIN leva algum tempo par
 
 - [ ] **Step 3: Verificar que o índice é usado e medir o ganho**
 
+Duas medições, pelo motivo anotado no Step 1:
+
 ```sql
+-- Forma A: comparável ao Step 1, mesma cláusula order by/limit. Serve para
+-- registrar o ganho real numa consulta com essa forma — que pode não usar
+-- o GIN em nenhum dos dois lados, e está tudo bem, desde que o número
+-- registrado não seja atribuído ao índice.
+explain analyze
+select * from materials
+where is_active and busca_texto like '%LUVA%'
+order by material_code limit 8;
+
+-- Forma B: sem order by/limit artificial — é a que de fato exercita o GIN,
+-- e a forma mais próxima do que a RPC da Tarefa 5 vai executar.
 explain analyze
 select material_code, description
 from materials
@@ -315,7 +344,9 @@ where is_active and busca_texto like '%LUVA%'
 limit 20;
 ```
 
-Esperado: o plano contém `Bitmap Index Scan on materials_busca_trgm`, e o `Execution Time` cai para a casa de dezenas de milissegundos. Se aparecer `Seq Scan`, **pare** — sem uso de índice o resto do plano não entrega o ganho.
+Esperado na Forma B: o plano contém `Bitmap Index Scan on materials_busca_trgm`. Se aparecer `Seq Scan`, **pare** — sem uso de índice o resto do plano não entrega o ganho.
+
+Registre os dois tempos separadamente no relatório e no commit — **não** compare a Forma A do Step 1 com a Forma B daqui: são consultas de forma diferente, e a diferença mistura o efeito do índice com o efeito de menos colunas/sem ordenação.
 
 - [ ] **Step 4: Verificar que o texto técnico agora distingue as quase-duplicatas**
 
@@ -341,10 +372,15 @@ git commit --allow-empty -m "feat(db): indice trigram de busca em materials
 Coluna gerada busca_texto (description + technical_text) com indice GIN
 trigram, mais indice de prefixo em material_code.
 
-explain analyze, termo 'luva': <ANTES> ms -> <DEPOIS> ms."
+Mesma forma de consulta (order by material_code limit 8), termo 'luva':
+<ANTES> ms -> <FORMA_A> ms.
+Sem order by artificial, forma que a RPC de fato usa: <FORMA_B> ms,
+Bitmap Index Scan on materials_busca_trgm confirmado."
 ```
 
-Substitua `<ANTES>` e `<DEPOIS>` pelos números medidos. O commit é vazio porque a mudança vive no banco; ele existe para o histórico do repositório registrar quando o índice entrou.
+Substitua `<ANTES>`, `<FORMA_A>` e `<FORMA_B>` pelos números medidos nos Steps 1 e 3. O commit é vazio porque a mudança vive no banco; ele existe para o histórico do repositório registrar quando o índice entrou.
+
+Não anuncie um fator de ganho único (como "223x"): as duas formas medem coisas diferentes, e um número só esconde qual delas de fato usou o índice.
 
 ---
 
@@ -690,7 +726,31 @@ explain analyze select * from buscar_materiais('parafuso sextavado m12', 'MANU',
 explain analyze select * from buscar_materiais('valvula esfera inox', null, 20);
 ```
 
-Esperado: `Execution Time` **abaixo de 150 ms** nos três. Se algum passar disso, verifique no plano se há `Seq Scan on materials` — o prefiltro pelo token mais longo é justamente o que evita isso.
+Esperado: `Execution Time` **abaixo de 150 ms** nos três (meta original — revisada para ~217ms de p95, ver Global Constraints acima).
+
+- [ ] **Step 5b: Confirmar que o índice GIN é realmente usado**
+
+Descoberta da Tarefa 2, e o maior risco desta tarefa: quando a consulta traz
+`order by material_code`, o planejador prefere caminhar o btree de
+`material_code` já ordenado e filtrar linha a linha — **sem nunca tocar no
+índice GIN**. Medido: a mesma consulta que roda em 6 ms sem ordenação leva
+21 ms com `order by material_code limit 8`, e em nenhum dos dois casos o plano
+mostra o GIN.
+
+A RPC ordena por estoque, área, frequência e similaridade, então não deveria
+cair nessa armadilha. Mas isso precisa ser visto, não presumido:
+
+```sql
+explain (analyze, verbose) select * from buscar_materiais('valvula esfera inox', null, 20);
+```
+
+Esperado no plano: **`Bitmap Index Scan on materials_busca_trgm`**.
+
+Se aparecer `Seq Scan on materials` ou `Index Scan using materials_material_code_key`,
+**pare e reporte**: o prefiltro pelo token mais longo não está sendo aproveitado
+pelo índice, e nenhum ajuste de ordenação resolve isso sozinho. Sem uso do GIN,
+esta tarefa não entrega o ganho, por mais que o tempo absoluto pareça aceitável
+num banco com cache quente.
 
 - [ ] **Step 6: Conferir os avisos do Supabase**
 
@@ -702,7 +762,7 @@ Rode o advisor de segurança (MCP `get_advisors`, tipo `security`). Esperado: ne
 git commit --allow-empty -m "feat(db): rpc buscar_materiais com tokens, prefixo de codigo e sinais
 
 Tempos medidos: luva 1/2 npt <X> ms, parafuso sextavado m12 <Y> ms,
-valvula esfera inox <Z> ms. Meta p95 < 150 ms."
+valvula esfera inox <Z> ms. Meta p95 < 150 ms (revisado para ~217ms — ver Global Constraints)."
 ```
 
 Substitua `<X>`, `<Y>` e `<Z>` pelos tempos do passo 5.
@@ -1187,7 +1247,7 @@ git commit -m "feat: atualiza os sinais de material ao fim de cada importacao"
 
 - [ ] `npm test` — 14 testes passando.
 - [ ] `npm run lint` — limpo.
-- [ ] `explain analyze` da RPC nos três termos do diagnóstico, todos abaixo de 150 ms, com os números anotados nos commits.
+- [ ] `explain analyze` da RPC nos três termos do diagnóstico, todos abaixo de 150 ms (meta original — revisada para ~217ms, ver Global Constraints), com os números anotados nos commits.
 - [ ] `buscar_materiais('luva npt galvanizado')` distingue `1031825` de `1031826` — o caso que a busca antiga não resolvia.
 - [ ] Advisor de segurança do Supabase sem aviso novo.
 - [ ] No navegador: busca responde abaixo de 300 ms, chips de sinal aparecem, código com 4 dígitos já filtra.

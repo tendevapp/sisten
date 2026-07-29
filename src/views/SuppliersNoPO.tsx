@@ -21,6 +21,7 @@ import {
 } from '../types';
 
 import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
+import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
@@ -194,17 +195,6 @@ const precoUnitarioPorBase = (preco?: number | null, por?: string | null): numbe
   const divisor = isNaN(porNum) || porNum === 0 ? 1 : porNum;
   return preco / divisor;
 };
-
-// Data + hora para o rótulo "Dados atualizados em".
-const formatDateTimeBR = (d?: string | null): string => {
-  if (!d) return '—';
-  const parsed = new Date(d);
-  return isNaN(parsed.getTime())
-    ? String(d)
-    : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-
 
 // Componente local de cópia rápida reutilizável
 const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) => {
@@ -1200,12 +1190,6 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       bg: 'bg-emerald-50/50 dark:bg-emerald-950/10',
       text: 'text-emerald-600 dark:text-emerald-450'
     },
-  };
-
-  const formatDateBR = (d?: string): string => {
-    if (!d) return '—';
-    const parsed = new Date(d);
-    return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
   };
 
   // Badge compacto de MIGO por fornecedor histórico (vem de vw_historico_fornecedores_sem_po.data_migo)

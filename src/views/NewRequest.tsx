@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
-import { Profile, RequestItem, RequestType, RequestStatus, Material } from '../types';
+import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
 import { formatBRL } from '../lib/format';
+import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
@@ -33,7 +34,16 @@ interface PurchaseItemState {
   id: string;
   description: string;
   sap_code: string;
-  quantity: number;
+  /**
+   * Texto técnico do catálogo SAP — vem junto quando o item é selecionado no
+   * dropdown de busca ou autopreenchido pelo código. Não é enviado no
+   * payload: é um dado do catálogo, não do item da solicitação; existe só
+   * para o solicitante conferir a ficha técnica sem reabrir o dropdown.
+   */
+  technical_text?: string;
+  /** Chips de estoque/RM/pedido — vêm junto com `technical_text`, mesmo motivo. */
+  sinais?: SinalChip[];
+  quantity: number | '';
   unit: string;
   brand: string;
   is_similar_allowed: boolean;
@@ -66,10 +76,43 @@ const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
 
 const itemVazio = (): PurchaseItemState => ({
   id: novoItemId(),
-  description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '',
+  description: '', sap_code: '', technical_text: '', quantity: '', unit: '', brand: '',
   is_similar_allowed: true, is_generic: false, observation: '',
   suggested_supplier: '', estimated_value: 0,
 });
+
+/** UN até PAC, em ordem alfabética visual — "M²"/"M³" lidos como "M2"/"M3". */
+const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M³', 'PAC', 'UN'] as const;
+
+/** Chips de estoque/RM/pedido — usado tanto no dropdown quanto no item já selecionado. */
+function SinalChips({ chips, className = '' }: { chips: SinalChip[]; className?: string }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1 ${className}`}>
+      {chips.map(chip => (
+        <span
+          key={chip.texto}
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+          style={{
+            // "estoque" e "demanda" usam tons de status (verde/âmbar, sinal
+            // de decisão). "pedido" e "uso" são informativos, não decisão —
+            // por isso ficam neutros e sem colorir o texto, para não competir
+            // visualmente com "estoque" (que é o sinal mais relevante: "tem
+            // agora" pesa mais que "já foi pedido").
+            background: chip.tom === 'estoque'
+              ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+              : chip.tom === 'demanda'
+              ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
+              : 'var(--surface-sunken)',
+            color: 'var(--ink-secondary)',
+          }}
+        >
+          {chip.texto}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
@@ -111,9 +154,28 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
-  const [criticality, setCriticality] = useState(3);
+  // Sem valor padrão: criticidade é decisão do solicitante, não um "grau 3"
+  // silencioso que ele nem percebeu que escolheu.
+  const [criticality, setCriticality] = useState<number | null>(null);
   const [dataNecessidade, setDataNecessidade] = useState('');
   const [justificativa, setJustificativa] = useState('');
+
+  // Memoizado: localDb.getSectors() lê e faz JSON.parse do localStorage a
+  // cada chamada, devolvendo um array novo sempre. Sem isto, `sectors` vira
+  // dependência "sempre diferente" do efeito de busca (abaixo) e o reexecuta
+  // a cada render — inclusive os que o próprio efeito provoca ao terminar,
+  // criando um loop de requisições repetidas à RPC enquanto o dropdown fica
+  // aberto.
+  const sectors = useMemo(() => localDb.getSectors(), []);
+
+  // Área SAP do setor selecionado, para o sinal "sua área já pediu" na busca
+  // de material. Depende de `sectorId` (não da lista `sectors` inteira, que
+  // fica congelada no mount acima) para não perder um sync de setores que
+  // termine depois da montagem do componente.
+  const areaUsuario = useMemo(
+    () => localDb.getSectors().find(s => s.id === sectorId)?.sap_area_code ?? null,
+    [sectorId],
+  );
 
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
@@ -121,8 +183,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
   // 180k+ linhas, não cabe em memória/localStorage), com debounce por item ativo.
   const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
-  const [activeSearchResults, setActiveSearchResults] = useState<Material[]>([]);
+  const [activeSearchResults, setActiveSearchResults] = useState<MaterialResultado[]>([]);
+  const [erroBusca, setErroBusca] = useState(false);
   const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
+  // Incrementado pelo botão "Tentar de novo" para forçar o efeito de busca a
+  // reexecutar mesmo quando índice e termo não mudaram.
+  const [tentativaBusca, setTentativaBusca] = useState(0);
   const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -149,25 +215,30 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     if (activeSearchIndex === null) {
       setActiveSearchResults([]);
+      setErroBusca(false);
       return;
     }
 
     searchDebounceRef.current = setTimeout(async () => {
       const thisRequestId = ++searchRequestIdRef.current;
       setIsSearchingCatalog(true);
+      setErroBusca(false);
       try {
-        let query = supabase.from('materials').select('*').eq('is_active', true);
-        if (activeSapCodeTerm) query = query.ilike('material_code', `%${activeSapCodeTerm}%`);
-        if (activeDescriptionTerm) query = query.ilike('description', `%${activeDescriptionTerm}%`);
-        const limit = activeSapCodeTerm || activeDescriptionTerm ? 8 : 5;
-        const { data, error } = await query.order('material_code', { ascending: true }).limit(limit);
-        if (error) throw error;
-        if (searchRequestIdRef.current === thisRequestId) {
-          setActiveSearchResults(data || []);
-        }
+        // Código tem precedência: quem digitou o código sabe o que quer.
+        const termo = activeSapCodeTerm || activeDescriptionTerm;
+        const achados = await buscarMateriais(termo, {
+          areaUsuario: areaUsuario,
+          limite: 20,
+        });
+        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults(achados);
       } catch (err) {
         console.error('Erro ao buscar materiais no catálogo SAP:', err);
-        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults([]);
+        if (searchRequestIdRef.current === thisRequestId) {
+          setActiveSearchResults([]);
+          // Sem isto, falha de rede e "não achei nada" ficam
+          // indistinguíveis — os dois mostravam a mesma lista vazia.
+          setErroBusca(true);
+        }
       } finally {
         if (searchRequestIdRef.current === thisRequestId) setIsSearchingCatalog(false);
       }
@@ -176,7 +247,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm]);
+  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, areaUsuario, tentativaBusca]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -197,8 +268,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // States
   const [uploadProgress, setUploadProgress] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
-
-  const sectors = localDb.getSectors();
 
   // Lista de compradores responsáveis vem da tabela compradores (grupo_compras/nome_comprador),
   // resolvendo o usuário do sistema vinculado via buyer_groups para manter o comprador_id
@@ -375,17 +444,27 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     };
     setItems(updated);
 
-    // Auto-fill descrição/unidade se um código SAP válido de 8 dígitos for digitado
-    if (key === 'sap_code' && String(val).trim().length === 8) {
+    // Auto-fill descrição/unidade só com o código completo (7 dígitos): todo
+    // material_code do catálogo tem exatamente 7 dígitos, então disparar a
+    // cada tecla a partir de 4 só gera 3 requisições descartadas por código.
+    if (key === 'sap_code' && String(val).trim().length === 7) {
       const code = String(val).trim();
-      supabase.from('materials').select('*').eq('material_code', code).eq('is_active', true).maybeSingle()
-        .then(({ data, error }) => {
-          if (error || !data) return;
+      buscarMateriais(code, { limite: 1 })
+        .then(([achado]) => {
+          if (!achado || achado.materialCode !== code) return;
           setItems(prev => prev.map((item, i) => {
-            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já alterou o campo
-            return { ...item, description: data.description, unit: data.unit || 'UN' };
+            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já mudou o campo
+            // Unidade não é autopreenchida — fica em "Selecione..." até o
+            // usuário confirmar, mesmo quando o catálogo já sabe a unidade.
+            return {
+              ...item,
+              description: achado.description,
+              technical_text: achado.technicalText || '',
+              sinais: resumoSinais(achado),
+            };
           }));
-        });
+        })
+        .catch(err => console.error('Falha ao autopreencher pelo código SAP:', err));
     }
   };
 
@@ -424,6 +503,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Criticidade é obrigatória em todos os canais — não é um <select>
+    // nativo, então o `required` do HTML não cobre; valida antes de montar
+    // o payload, com o mesmo padrão de aviso já usado nesta tela.
+    if (criticality === null) {
+      alert('Selecione a criticidade antes de enviar.');
+      return;
+    }
+
     setUploadProgress(true);
 
     try {
@@ -566,7 +654,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               key={ch.id}
               type="button"
               disabled={!!editandoId}
-              onClick={() => { setActiveTab(ch.id); setCriticality(3); }}
+              onClick={() => { setActiveTab(ch.id); setCriticality(null); }}
               aria-pressed={active}
               className="flex flex-col items-center justify-center p-5 rounded-xl border text-center transition-[transform,box-shadow] duration-200 cursor-pointer hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:hover:translate-y-0"
               style={{
@@ -708,10 +796,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
                   >
                     <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
+                        Item {index + 1}
+                      </span>
                       <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
-                          Item {index + 1}
-                        </span>
                         <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
@@ -722,19 +810,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           />
                           Item Genérico
                         </label>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(index)}
+                            className="cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 rounded"
+                            style={{ color: 'var(--status-critical)', outlineColor: 'var(--status-critical)' }}
+                            title="Remover Item"
+                            aria-label={`Remover item ${index + 1}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(index)}
-                          className="cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 rounded"
-                          style={{ color: 'var(--status-critical)', outlineColor: 'var(--status-critical)' }}
-                          title="Remover Item"
-                          aria-label={`Remover item ${index + 1}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -804,7 +892,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </button>
                               </span>
                             </div>
-                            {isSearchingCatalog ? (
+                            {erroBusca ? (
+                              <div className="p-3 text-xs text-center" style={{ color: 'var(--status-serious)' }}>
+                                Não foi possível buscar no catálogo.
+                                <button
+                                  type="button"
+                                  onClick={() => setTentativaBusca(n => n + 1)}
+                                  className="block mx-auto mt-1 font-bold underline cursor-pointer"
+                                  style={{ color: 'var(--brand)' }}
+                                >
+                                  Tentar de novo
+                                </button>
+                              </div>
+                            ) : isSearchingCatalog ? (
                               <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>Buscando no catálogo SAP...</div>
                             ) : activeSearchResults.length === 0 ? (
                               <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>
@@ -814,17 +914,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </div>
                               </div>
                             ) : (
-                              activeSearchResults.map((mat) => (
+                              activeSearchResults.map((mat) => {
+                                const chips = resumoSinais(mat);
+                                return (
                                 <button
-                                  key={mat.id}
+                                  key={mat.materialCode}
                                   type="button"
                                   onClick={() => {
+                                    // Unidade não é autopreenchida — fica em
+                                    // "Selecione..." até o usuário confirmar.
                                     const updated = [...items];
                                     updated[index] = {
                                       ...updated[index],
                                       description: mat.description,
-                                      sap_code: mat.material_code,
-                                      unit: mat.unit || 'UN'
+                                      sap_code: mat.materialCode,
+                                      technical_text: mat.technicalText || '',
+                                      sinais: chips,
                                     };
                                     setItems(updated);
                                     setActiveSearchIndex(null);
@@ -836,17 +941,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     className="font-mono px-1.5 py-0.5 rounded font-bold text-[9px] shrink-0 mt-0.5"
                                     style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
                                   >
-                                    {mat.material_code}
+                                    {mat.materialCode}
                                   </span>
                                   <div className="flex-1 min-w-0">
                                     <div className="font-medium truncate" style={{ color: 'var(--ink-primary)' }} title={mat.description}>
                                       {mat.description}
                                     </div>
-                                    {mat.technical_text && (
+                                    {mat.technicalText && (
                                       <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-                                        {mat.technical_text}
+                                        {mat.technicalText}
                                       </div>
                                     )}
+                                    <SinalChips chips={chips} className="mt-1" />
                                   </div>
                                   <span
                                     className="text-[10px] font-mono px-1 rounded uppercase shrink-0 self-center"
@@ -855,7 +961,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     {mat.unit}
                                   </span>
                                 </button>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                         )}
@@ -872,30 +979,56 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           inputMode="numeric"
                           required
                           min={1}
+                          placeholder="0"
                           value={it.quantity}
-                          onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
                           className="w-full rounded border py-1 px-2 text-xs tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
-                      {/* Un */}
+                      {/* Un — sem padrão: UN silencioso escondia a unidade
+                          errada passar despercebida. */}
                       <div className="sm:col-span-2 sm:max-w-[140px]">
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un.</label>
+                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
                         <select
+                          required
                           value={it.unit}
                           onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                           className="w-full rounded border py-1 px-1.5 text-xs cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         >
-                          <option value="UN">UN</option>
-                          <option value="KG">KG</option>
-                          <option value="M">M</option>
-                          <option value="L">L</option>
-                          <option value="M²">M²</option>
+                          <option value="">Selecione...</option>
+                          {UNIDADES.map(un => (
+                            <option key={un} value={un}>{un}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
+
+                    {/* Chips de estoque/RM/pedido + texto técnico do catálogo
+                        SAP — só aparecem depois que o item é selecionado no
+                        dropdown ou autopreenchido pelo código; são ficha do
+                        catálogo, não dado do item. Chips vêm em cima do texto
+                        técnico: são o resumo, o texto é o detalhe. */}
+                    {((it.sinais && it.sinais.length > 0) || it.technical_text) && (
+                      <div className="space-y-1.5">
+                        <SinalChips chips={it.sinais || []} />
+                        {it.technical_text && (
+                          <div>
+                            <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                              Texto Técnico (Catálogo SAP)
+                            </label>
+                            <p
+                              className="w-full rounded border py-1.5 px-2 text-[11px] leading-relaxed"
+                              style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
+                            >
+                              {it.technical_text}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {/* Marca */}
@@ -950,11 +1083,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </div>
                     </div>
 
-                    {/* Observação / Informações Técnicas */}
+                    {/* Observação / Informações Técnicas — obrigatória para
+                        item genérico: sem código SAP nem ficha de catálogo,
+                        é o único lugar onde o comprador sabe o que comprar. */}
                     <div>
-                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Observação / Informações Técnicas</label>
+                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                        Observação / Informações Técnicas{it.is_generic ? ' *' : ''}
+                      </label>
                       <textarea
                         rows={2}
+                        required={it.is_generic || false}
                         placeholder="Informações técnicas adicionais, observações ou especificações..."
                         value={it.observation || ''}
                         onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
@@ -1298,7 +1436,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               })}
             </div>
 
-            {criticality >= 4 && (
+            {criticality !== null && criticality >= 4 && (
               <div
                 className="rounded-lg border p-3 flex items-start gap-2.5 text-[11px] reveal"
                 style={{
