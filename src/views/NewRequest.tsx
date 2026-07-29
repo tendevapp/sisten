@@ -34,7 +34,14 @@ interface PurchaseItemState {
   id: string;
   description: string;
   sap_code: string;
-  quantity: number;
+  /**
+   * Texto técnico do catálogo SAP — vem junto quando o item é selecionado no
+   * dropdown de busca ou autopreenchido pelo código. Não é enviado no
+   * payload: é um dado do catálogo, não do item da solicitação; existe só
+   * para o solicitante conferir a ficha técnica sem reabrir o dropdown.
+   */
+  technical_text?: string;
+  quantity: number | '';
   unit: string;
   brand: string;
   is_similar_allowed: boolean;
@@ -67,10 +74,13 @@ const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
 
 const itemVazio = (): PurchaseItemState => ({
   id: novoItemId(),
-  description: '', sap_code: '', quantity: 1, unit: 'UN', brand: '',
+  description: '', sap_code: '', technical_text: '', quantity: '', unit: '', brand: '',
   is_similar_allowed: true, is_generic: false, observation: '',
   suggested_supplier: '', estimated_value: 0,
 });
+
+/** UN até PAC, em ordem alfabética visual — "M²" lido como "M2". */
+const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M3', 'PAC', 'UN'] as const;
 
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
@@ -112,7 +122,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
-  const [criticality, setCriticality] = useState(3);
+  // Sem valor padrão: criticidade é decisão do solicitante, não um "grau 3"
+  // silencioso que ele nem percebeu que escolheu.
+  const [criticality, setCriticality] = useState<number | null>(null);
   const [dataNecessidade, setDataNecessidade] = useState('');
   const [justificativa, setJustificativa] = useState('');
 
@@ -410,7 +422,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           if (!achado || achado.materialCode !== code) return;
           setItems(prev => prev.map((item, i) => {
             if (i !== index || item.sap_code.trim() !== code) return item; // usuário já mudou o campo
-            return { ...item, description: achado.description, unit: achado.unit || 'UN' };
+            return {
+              ...item,
+              description: achado.description,
+              technical_text: achado.technicalText || '',
+              unit: achado.unit || item.unit,
+            };
           }));
         })
         .catch(err => console.error('Falha ao autopreencher pelo código SAP:', err));
@@ -452,6 +469,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Criticidade é obrigatória em todos os canais — não é um <select>
+    // nativo, então o `required` do HTML não cobre; valida antes de montar
+    // o payload, com o mesmo padrão de aviso já usado nesta tela.
+    if (criticality === null) {
+      alert('Selecione a criticidade antes de enviar.');
+      return;
+    }
+
     setUploadProgress(true);
 
     try {
@@ -594,7 +620,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               key={ch.id}
               type="button"
               disabled={!!editandoId}
-              onClick={() => { setActiveTab(ch.id); setCriticality(3); }}
+              onClick={() => { setActiveTab(ch.id); setCriticality(null); }}
               aria-pressed={active}
               className="flex flex-col items-center justify-center p-5 rounded-xl border text-center transition-[transform,box-shadow] duration-200 cursor-pointer hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:hover:translate-y-0"
               style={{
@@ -736,10 +762,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
                   >
                     <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
+                        Item {index + 1}
+                      </span>
                       <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
-                          Item {index + 1}
-                        </span>
                         <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
@@ -750,19 +776,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           />
                           Item Genérico
                         </label>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(index)}
+                            className="cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 rounded"
+                            style={{ color: 'var(--status-critical)', outlineColor: 'var(--status-critical)' }}
+                            title="Remover Item"
+                            aria-label={`Remover item ${index + 1}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(index)}
-                          className="cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 rounded"
-                          style={{ color: 'var(--status-critical)', outlineColor: 'var(--status-critical)' }}
-                          title="Remover Item"
-                          aria-label={`Remover item ${index + 1}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -866,7 +892,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                       ...updated[index],
                                       description: mat.description,
                                       sap_code: mat.materialCode,
-                                      unit: mat.unit || 'UN'
+                                      technical_text: mat.technicalText || '',
+                                      unit: mat.unit || updated[index].unit
                                     };
                                     setItems(updated);
                                     setActiveSearchIndex(null);
@@ -940,30 +967,49 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           inputMode="numeric"
                           required
                           min={1}
+                          placeholder="0"
                           value={it.quantity}
-                          onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                          onChange={(e) => handleItemChange(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
                           className="w-full rounded border py-1 px-2 text-xs tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
-                      {/* Un */}
+                      {/* Un — sem padrão: UN silencioso escondia a unidade
+                          errada passar despercebida. */}
                       <div className="sm:col-span-2 sm:max-w-[140px]">
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un.</label>
+                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
                         <select
+                          required
                           value={it.unit}
                           onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
                           className="w-full rounded border py-1 px-1.5 text-xs cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         >
-                          <option value="UN">UN</option>
-                          <option value="KG">KG</option>
-                          <option value="M">M</option>
-                          <option value="L">L</option>
-                          <option value="M²">M²</option>
+                          <option value="">Selecione...</option>
+                          {UNIDADES.map(un => (
+                            <option key={un} value={un}>{un}</option>
+                          ))}
                         </select>
                       </div>
                     </div>
+
+                    {/* Texto técnico do catálogo SAP — só aparece depois que
+                        o item é selecionado no dropdown ou autopreenchido
+                        pelo código; é ficha do catálogo, não do item. */}
+                    {it.technical_text && (
+                      <div>
+                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                          Texto Técnico (Catálogo SAP)
+                        </label>
+                        <p
+                          className="w-full rounded border py-1.5 px-2 text-[11px] leading-relaxed"
+                          style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
+                        >
+                          {it.technical_text}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {/* Marca */}
@@ -1366,7 +1412,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               })}
             </div>
 
-            {criticality >= 4 && (
+            {criticality !== null && criticality >= 4 && (
               <div
                 className="rounded-lg border p-3 flex items-start gap-2.5 text-[11px] reveal"
                 style={{
