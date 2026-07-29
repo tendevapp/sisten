@@ -2763,9 +2763,9 @@ class LocalDatabase {
     const fornecedor_name = p.fornecedor_name || p.fornecedor || '';
     const preco_liquido = p.preco_liquido !== undefined && p.preco_liquido !== null
       ? Number(p.preco_liquido)
-      : (p.valor_liquido !== undefined && p.valor_liquido !== null
-         ? Number(p.valor_liquido)
-         : Number(p.preco_liquido_unit || 0));
+      : (p.preco_liquido_unit !== undefined && p.preco_liquido_unit !== null
+         ? Number(p.preco_liquido_unit)
+         : Number(p.valor_liquido || 0));
     const data_pedido = p.data_pedido || p.data_doc || '';
 
     return {
