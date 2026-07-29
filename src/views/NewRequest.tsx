@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
@@ -116,7 +116,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [dataNecessidade, setDataNecessidade] = useState('');
   const [justificativa, setJustificativa] = useState('');
 
-  const sectors = localDb.getSectors();
+  // Memoizado: localDb.getSectors() lê e faz JSON.parse do localStorage a
+  // cada chamada, devolvendo um array novo sempre. Sem isto, `sectors` vira
+  // dependência "sempre diferente" do efeito de busca (abaixo) e o reexecuta
+  // a cada render — inclusive os que o próprio efeito provoca ao terminar,
+  // criando um loop de requisições repetidas à RPC enquanto o dropdown fica
+  // aberto.
+  const sectors = useMemo(() => localDb.getSectors(), []);
 
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
