@@ -303,6 +303,7 @@ export interface SAPPedido {
   valor_brl?: number;
   preco_liquido?: number;
   por?: string; // "Por" (Preiseinheit) do SAP: base de preço. Unitário = preco_liquido / por (vazio = 1).
+  eflag_e?: string;
   campos_extras: Record<string, any>;
 }
 

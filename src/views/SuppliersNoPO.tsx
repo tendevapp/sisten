@@ -276,7 +276,7 @@ const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) =>
               triggerSearch(value);
             }
           }}
-          placeholder="Pesquisar por material, descrição, RM ou fornecedor... (Pressione Enter)"
+          placeholder="Pesquisar por material, descrição, RM, PO ou fornecedor... (Pressione Enter)"
           className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
         />
       </div>
@@ -952,7 +952,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             (r.texto_breve || '').toLowerCase().includes(q) ||
             (r.requisitante_name || '').toLowerCase().includes(q) ||
             (r.fornecedor_name || '').toLowerCase().includes(q) ||
-            (r.fornecedor_code || '').toLowerCase().includes(q);
+            (r.fornecedor_code || '').toLowerCase().includes(q) ||
+            (r.documento_compra || '').toLowerCase().includes(q);
           const inFornecedor = it.fornecedores.some(f =>
             f.fornecedor.toLowerCase().includes(q) ||
             (f.nome_fantasia || '').toLowerCase().includes(q) ||
@@ -1036,6 +1037,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               (r.requisitante_name || '').toLowerCase().includes(q) ||
               (r.fornecedor_name || '').toLowerCase().includes(q) ||
               (r.fornecedor_code || '').toLowerCase().includes(q) ||
+              (r.documento_compra || '').toLowerCase().includes(q) ||
               g.rm.toLowerCase().includes(q);
             if (!itemMatches) {
               showAllSuppliers = false;

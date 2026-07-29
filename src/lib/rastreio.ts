@@ -60,7 +60,8 @@ export interface RastreioRow {
   unidade: string;     // unidade_medida
   precoUnitario?: number; // preço líquido unitário do pedido (só itens com PO)
   valorTotal?: number;    // valor líquido da linha do pedido em BRL (só itens com PO)
-  dataCriacao: string;   // data_pedido / data_solicitacao
+  dataCriacao: string;   // data_solicitacao
+  dataPo: string;        // data_pedido
   dataPrevista: string;  // data_entrega_prevista / data_entrega_sap
   dataEntrega: string;   // data_migo
   status: string;        // status exibido (Entregue quando há MIGO; senão item_status)
@@ -132,7 +133,7 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
       ri: txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri,
       rm: txt(r.requisicao_de_compra),
       item: txt(r.item_reqc),
-      po: txt(r.documento_compra) !== EMPTY ? txt(r.documento_compra) : txt(r.pedido),
+      po: txt(r.documento_compra),
       material: txt(r.material_code),
       descricao: txt(r.texto_breve),
       fornecedor: txt(r.fornecedor_name),
@@ -141,7 +142,8 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
       unidade: txt(r.unidade_medida),
       precoUnitario: typeof r.preco_unitario === 'number' ? r.preco_unitario : undefined,
       valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
-      dataCriacao: hasValue(txt(r.data_pedido)) ? txt(r.data_pedido) : txt(raw.data_solicitacao),
+      dataCriacao: txt(r.data_solicitacao) !== EMPTY ? txt(r.data_solicitacao) : txt(raw.data_solicitacao),
+      dataPo: txt(r.data_pedido),
       // Data prevista = a promessa de entrega inserida pelo comprador na tela
       // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como
       // fallback: é a data de remessa do próprio SAP, não a promessa do

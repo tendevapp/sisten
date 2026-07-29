@@ -214,7 +214,8 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               </Field>
             )}
             <Field label="Status" icon={MapPin}>{row.status}</Field>
-            <Field label="Data criação" icon={Calendar}>{formatDateBR(row.dataCriacao)}</Field>
+            <Field label="Data RM" icon={Calendar}>{formatDateBR(row.dataCriacao)}</Field>
+            <Field label="Data PO" icon={Calendar}>{formatDateBR(row.dataPo)}</Field>
             <Field label="Prev. entrega" icon={Calendar}>{formatDateBR(row.dataPrevista)}</Field>
             <Field label="Entrega (MIGO)" icon={CheckCircle2}>{formatDateBR(row.dataEntrega)}</Field>
             {row.grupoComprador && <Field label="Grupo comprador" icon={UserIcon}>{row.grupoComprador}</Field>}

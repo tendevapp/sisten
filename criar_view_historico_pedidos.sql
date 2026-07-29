@@ -116,7 +116,11 @@ security definer
 set search_path = public
 as $$
 begin
-  refresh materialized view concurrently public.mv_historico_pedidos;
+  begin
+    refresh materialized view concurrently public.mv_historico_pedidos;
+  exception when others then
+    refresh materialized view public.mv_historico_pedidos;
+  end;
 end;
 $$;
 

@@ -33,7 +33,8 @@ export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]' },
   { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[9%]' },
   { id: 'valorTotal', label: 'Valor total', align: 'right', sortable: true, width: 'w-[10%]' },
-  { id: 'dataCriacao', label: 'Criação', sortable: true, width: 'w-[8%]' },
+  { id: 'dataCriacao', label: 'Data RM', sortable: true, width: 'w-[8%]' },
+  { id: 'dataPo', label: 'Data PO', sortable: true, width: 'w-[8%]' },
   { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]' },
   { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]' },
   { id: 'status', label: 'Status', sortable: true, width: 'w-[12%]' },
@@ -135,6 +136,9 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                 )}
                 {visibleColumns.dataCriacao && (
                   <Td numeric truncate className="py-1.5 px-2">{formatDateBR(r.dataCriacao)}</Td>
+                )}
+                {visibleColumns.dataPo && (
+                  <Td numeric truncate className="py-1.5 px-2">{formatDateBR(r.dataPo)}</Td>
                 )}
                 {visibleColumns.dataPrevista && (
                   <Td truncate className="py-1.5 px-2">

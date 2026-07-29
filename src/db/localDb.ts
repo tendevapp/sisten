@@ -557,13 +557,18 @@ class LocalDatabase {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const { error } = await supabase.rpc('refresh_historico_pedidos');
-        if (error) throw error;
-        return;
-      } catch (err) {
-        if (attempt === 2) {
-          throw new Error(`Falha ao recalcular as materialized views de pedidos (refresh_historico_pedidos) após ${attempt} tentativas: ${err}`);
+        if (error) {
+          const errMsg = error.message || error.details || error.hint || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+          throw new Error(errMsg);
         }
-        console.warn(`Falha ao recalcular a materialized view do histórico (refresh_historico_pedidos). Tentando novamente...`, err);
+        return;
+      } catch (err: any) {
+        const msg = err?.message || err?.details || err?.hint || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+        if (attempt === 2) {
+          console.warn(`Aviso: Não foi possível recalcular a materialized view do histórico (refresh_historico_pedidos): ${msg}`);
+          return;
+        }
+        console.warn(`Tentativa ${attempt} de recalcular materialized view do histórico falhou (${msg}). Tentando novamente...`);
       }
     }
   }
@@ -1231,6 +1236,7 @@ class LocalDatabase {
       await supabase.auth.signOut();
 
       this.logActivity('sistema', 'Autenticação', 'Solicitação de Cadastro', `Novo usuário ${name} (${email}) aguardando aprovação.`);
+      this.notifyAndreNewUser(name, email);
       return 'sucesso';
     } catch (err: any) {
       console.error('Falha ao registrar usuário no Supabase:', err);
@@ -1803,6 +1809,27 @@ class LocalDatabase {
   }
 
   // Notifications
+  public notifyAndreNewUser(userName: string, userEmail: string): void {
+    const profiles = this.getProfiles();
+    // Procura por perfis correspondentes a André (por nome ou email)
+    const andreUsers = profiles.filter(
+      u => u.name.toLowerCase().includes('andre') || u.email.toLowerCase().includes('andre')
+    );
+    
+    // Se não encontrar perfil específico com 'andre', notifica usuários admin como fallback
+    const targets = andreUsers.length > 0 ? andreUsers : profiles.filter(u => u.roles.includes('admin'));
+    const uniqueIds = Array.from(new Set(targets.map(u => u.id)));
+
+    uniqueIds.forEach(userId => {
+      this.createNotification(
+        userId,
+        'Novo Cadastro no Sistema',
+        `O usuário ${userName} (${userEmail}) realizou um novo cadastro no sistema e aguarda aprovação.`,
+        'info'
+      );
+    });
+  }
+
   public createNotification(userId: string, title: string, description: string, type: Notification['type'], reqId?: string, reqNo?: string): void {
     const notifications = this.getStorageItem<Notification[]>(this.notificationsKey, []);
     const newNotif: Notification = {
@@ -1818,6 +1845,22 @@ class LocalDatabase {
     };
     notifications.unshift(newNotif);
     this.setStorageItem(this.notificationsKey, notifications.slice(0, 100)); // Cap to 100
+
+    if (supabase) {
+      supabase.from('notifications').insert([{
+        id: newNotif.id,
+        user_id: newNotif.user_id,
+        title: newNotif.title,
+        description: newNotif.description,
+        type: newNotif.type,
+        is_read: newNotif.is_read,
+        request_id: newNotif.request_id || null,
+        request_number: newNotif.request_number || null,
+        created_at: newNotif.created_at
+      }]).then(({ error }) => {
+        if (error) console.warn('Falha ao persistir notificação no Supabase:', error);
+      }).catch(err => console.warn('Erro ao inserir notificação no Supabase:', err));
+    }
   }
 
   public getNotifications(userId: string): Notification[] {
@@ -2695,6 +2738,7 @@ class LocalDatabase {
       data_entrega_sap: p.data_entrega_sap || p.dt_remessa || '',
       valor_brl: p.valor_brl !== undefined ? Number(p.valor_brl) : (p.valor_em_brl !== undefined ? Number(p.valor_em_brl) : Number(p.valor_liquido || 0)),
       preco_liquido: p.preco_liquido !== undefined ? Number(p.preco_liquido) : (p.preco_liquido_unit !== undefined ? Number(p.preco_liquido_unit) : Number(p.valor_liquido || 0)),
+      eflag_e: p.eflag_e || p.campos_extras?.eflag_e || '',
     };
   }
 
@@ -2720,6 +2764,7 @@ class LocalDatabase {
       data_entrega_sap: p.data_entrega_sap || p.dt_remessa || '',
       valor_brl: p.valor_brl !== undefined ? Number(p.valor_brl) : (p.valor_em_brl !== undefined ? Number(p.valor_em_brl) : preco_liquido),
       preco_liquido: preco_liquido,
+      eflag_e: p.eflag_e || p.campos_extras?.eflag_e || '',
       
       // Campos antigos para retrocompatibilidade
       cod_forn: fornecedor_codigo,
@@ -2730,12 +2775,37 @@ class LocalDatabase {
 
   public getPedidos(): SAPPedido[] {
     const raw = this.getStorageItem<any[]>(this.pedidosKey, []);
-    return raw.map(p => this.normalizePedidoRow(p));
+    const rawPedsForn = this.getStorageItem<any[]>(this.pedidosFornKey, []);
+    const eliminatedSet = new Set<string>();
+
+    rawPedsForn.forEach(pf => {
+      const eflag = String(pf.eflag_e || pf.campos_extras?.eflag_e || pf['E'] || pf['E.'] || '').trim().toUpperCase();
+      if (eflag === 'L') {
+        if (pf.ri) eliminatedSet.add(String(pf.ri).trim());
+        if (pf.doc_compra) eliminatedSet.add(String(pf.doc_compra).trim());
+        if (pf.documento_compra) eliminatedSet.add(String(pf.documento_compra).trim());
+      }
+    });
+
+    return raw
+      .map(p => this.normalizePedidoRow(p))
+      .filter(p => {
+        const eflag = String(p.eflag_e || p.campos_extras?.eflag_e || '').trim().toUpperCase();
+        if (eflag === 'L') return false;
+        if (p.ri && eliminatedSet.has(String(p.ri).trim())) return false;
+        if (p.documento_compra && eliminatedSet.has(String(p.documento_compra).trim())) return false;
+        return true;
+      });
   }
 
   public getPedidosForn(): PedidoForn[] {
     const raw = this.getStorageItem<any[]>(this.pedidosFornKey, []);
-    return raw.map(p => this.normalizePedidoFornRow(p));
+    return raw
+      .map(p => this.normalizePedidoFornRow(p))
+      .filter(p => {
+        const eflag = String(p.eflag_e || (p as any).campos_extras?.eflag_e || '').trim().toUpperCase();
+        return eflag !== 'L';
+      });
   }
 
   // Linhas já agregadas pela view vw_historico_pedidos (fornecedor + pedido, CRF = 'x').
@@ -2883,52 +2953,109 @@ class LocalDatabase {
   }
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
-    // Itens com status_processamento 'B' ("Sem PO") já foram escondidos daqui por
-    // serem lidos como "bloqueada aguardando liberação". Na prática o ME5A traz o
-    // campo `pedido` preenchido em todos eles — é o ZL0132 que ainda não chegou —
-    // e o comprador precisa enxergá-los, então só a eliminação exclui o registro.
     const reqs = this.getRequisicoes().filter(r => !r.codigo_de_eliminacao);
+    // pedidos (ZL0131) mantido apenas como fallback offline para dados de entrega
     const peds = this.getPedidos();
     const pedsMap = new Map(peds.map(p => [p.ri, p]));
+
+    // pedidosForn (ZL0132) é a fonte autoritativa do número do PO.
+    // O servidor (view_enriched_requisicoes → mv_pedido_atual_por_ri) já faz o
+    // JOIN correto com pedidosforn. O cliente DEVE confiar em raw.documento_compra
+    // e NÃO sobrescrever com a tabela pedidos (ZL0131).
+    // Aqui apenas: (a) construir set de eliminados para verificação local de eflag_e='L'
+    //              (b) manter mapa de pedidosForn ativo por RI para fallback offline e dados financeiros.
+    const rawPedsForn = this.getStorageItem<any[]>(this.pedidosFornKey, []);
+    const eliminatedDocCompras = new Set<string>();
+    const eliminatedCompositeKeys = new Set<string>();
+    const pedsFornByRi = new Map<string, any>(); // PO ativo mais recente por RI
+
+    rawPedsForn.forEach(pf => {
+      const eflag = String(pf.eflag_e || pf.campos_extras?.eflag_e || pf['E'] || pf['E.'] || '').trim().toUpperCase();
+      if (eflag === 'L') {
+        const doc = String(pf.doc_compra || pf.documento_compra || '').trim();
+        if (doc) eliminatedDocCompras.add(doc);
+        if (pf.ri && doc) eliminatedCompositeKeys.add(String(pf.ri).trim() + '_' + doc);
+      } else {
+        // Manter o registro mais recente por RI (data_doc DESC)
+        const ri = String(pf.ri || '').trim();
+        if (ri) {
+          const existing = pedsFornByRi.get(ri);
+          const pfDate = String(pf.data_doc || '');
+          const exDate = existing ? String(existing.data_doc || '') : '';
+          if (!existing || pfDate > exDate) pedsFornByRi.set(ri, pf);
+        }
+      }
+    });
 
     const currentDate = new Date('2026-07-05T06:31:00-07:00'); // current mock time from metadata
 
     return reqs.map(r => {
-      // view_enriched_requisicoes já calcula tudo isso no servidor (join completo
-      // e sem corte de data contra pedidos/pedidosforn). Usar esses valores direto
-      // evita recalcular localmente contra o cache de "pedidos", que pode ter mais
-      // de um PO por RI (o Map abaixo indexado só por ri perde essa informação) e
-      // é sincronizado com corte de data — causando "Sem PO"/"Sem MIGO" errados.
-      // Só recalcula localmente quando os campos não vêm prontos (modo semente/offline).
+      // raw.documento_compra vem da view_enriched_requisicoes (JOIN com pedidosforn via mv_pedido_atual_por_ri).
+      // É a fonte correta. Fallback para modo offline/semente: cache local da pedidosforn.
       const raw = r as any;
+      const rawDocCompra = String(raw.documento_compra || '').trim();
+      const localPf = pedsFornByRi.get(String(r.ri || '').trim());
+      const localDocCompra = String(localPf?.doc_compra || localPf?.documento_compra || '').trim();
+
+      // PO efetivo: servidor tem precedência; fallback para pedidosForn local (offline)
+      const docCompra = rawDocCompra || localDocCompra;
+
+      // Verificação de eliminação: eflag_e = 'L' na pedidosForn é a única fonte de verdade
+      const isDocEliminated = docCompra
+        ? (eliminatedDocCompras.has(docCompra) || (r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra)))
+        : false;
+
+      const hasPO = !!docCompra
+        && docCompra !== '—' && docCompra !== '0'
+        && docCompra !== 'undefined' && docCompra !== 'null'
+        && !isDocEliminated;
+
+      // Dados financeiros da pedidosForn local (não vêm na view_enriched_requisicoes)
+      const activePf = hasPO ? localPf : undefined;
+      const preco_unitario = activePf ? this.precoUnitarioDoPedido(this.normalizePedidoFornRow(activePf)) : undefined;
+      const valor_total = activePf
+        ? (activePf.valor_em_brl !== undefined && activePf.valor_em_brl !== null
+            ? Number(activePf.valor_em_brl)
+            : activePf.valor_liquido !== undefined && activePf.valor_liquido !== null
+              ? Number(activePf.valor_liquido)
+              : undefined)
+        : undefined;
+
       if (raw.status_requisicao === 'Sem PO' || raw.status_requisicao === 'Processado') {
-        // Preço não vem em view_enriched_requisicoes; casa-se o pedido por `ri`
-        // (view_enriched_pedidos) só para itens já processados (com PO).
-        const ped = raw.status_requisicao === 'Processado' ? pedsMap.get(r.ri) : undefined;
+        // Modo online: servidor já computou status e métricas usando pedidosforn.
+        // Confiar em raw.*; apenas recalcular status_requisicao considerando eliminação local.
+        const status_requisicao = hasPO ? 'Processado' : 'Sem PO';
+
         return {
           ...r,
-          item_pedido: raw.item_pedido,
-          fornecedor_code: raw.fornecedor_code,
-          fornecedor_name: raw.fornecedor_name,
-          data_pedido: raw.data_pedido,
-          data_entrega_sap: raw.data_entrega_sap,
-          documento_compra: raw.documento_compra,
-          criado_por_pedido: raw.criado_por_pedido,
-          data_migo: raw.data_migo,
-          preco_unitario: this.precoUnitarioDoPedido(ped),
-          valor_total: ped ? ped.valor_brl : undefined,
+          // Campos do PO: raw vem do servidor (já de pedidosforn via mv_pedido_atual_por_ri)
+          item_pedido: hasPO ? (raw.item_pedido || activePf?.item || undefined) : undefined,
+          fornecedor_code: hasPO ? (raw.fornecedor_code || activePf?.fornecedor_codigo || undefined) : undefined,
+          fornecedor_name: hasPO ? (raw.fornecedor_name || activePf?.fornecedor_nome || undefined) : undefined,
+          data_pedido: hasPO ? (raw.data_pedido || activePf?.data_doc || undefined) : undefined,
+          data_entrega_sap: hasPO ? (raw.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
+          documento_compra: hasPO ? docCompra : null,
+          criado_por_pedido: hasPO ? (raw.criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
+          data_migo: hasPO ? (raw.data_migo || activePf?.data_migo || undefined) : undefined,
+          preco_unitario,
+          valor_total,
           natureza: raw.natureza,
-          status_requisicao: raw.status_requisicao,
+          status_requisicao,
           lead_time_compras_meta: raw.lead_time_compras_meta,
           dias_em_aberto: raw.dias_em_aberto,
           atraso_comprador: raw.atraso_comprador,
           faixa_atraso: raw.faixa_atraso,
           alerta: raw.alerta,
-          status_atualizado: raw.status_atualizado
+          status_atualizado: hasPO
+            ? raw.status_atualizado
+            : (raw.status_atualizado === 'Concluído' ? 'No Prazo' : raw.status_atualizado)
         } as EnrichedSAPRecord;
       }
 
-      const p = (pedsMap.get(r.ri) || {}) as Partial<SAPPedido>;
+      // Modo offline/semente: raw.status_requisicao não veio do servidor.
+      // Recalcular localmente; pedidos (ZL0131) usado como fallback para dados de entrega.
+      const ped = pedsMap.get(r.ri);
+      const p = (hasPO ? (ped || {}) : {}) as Partial<SAPPedido>;
 
       // Derived nature mapping
       let natureza = 'Outros';
@@ -2947,9 +3074,7 @@ class LocalDatabase {
       else if (td === 'ZR16') natureza = 'Serviço - Urgente';
       else if (td === 'ZR17') natureza = 'Serviço - MP';
 
-      // Status
-      const pedidoVal = (p.documento_compra || '').trim();
-      const hasPO = !!pedidoVal && pedidoVal !== '—' && pedidoVal !== '0' && pedidoVal !== 'undefined' && pedidoVal !== 'null';
+      // Status: DEVE VIR DA PEDIDOSFORN
       const status_requisicao = hasPO ? 'Processado' : 'Sem PO';
 
       // Lead time meta (in days)
@@ -2964,30 +3089,26 @@ class LocalDatabase {
       }
 
       // Check delivery details
-      const data_migo = p.campos_extras?.data_migo || p.campos_extras?.['data_migo'] || (p as any).data_migo;
+      const data_migo = hasPO
+        ? (p.campos_extras?.data_migo || p.campos_extras?.['data_migo'] || (p as any).data_migo || activePf?.data_migo)
+        : undefined;
       const status_entrega = data_migo ? 'Entregue' : 'Não Entregue';
       const isDelivered = status_entrega === 'Entregue';
 
-      // data_referencia_prazo: uma vez emitida a PO, a responsabilidade não é mais do
-      // comprador, então a contagem de dias/atraso congela na data da PO (ou na data de
-      // entrega, se já entregue) em vez de continuar avançando com o dia atual.
       const data_referencia_prazo = hasPO && isDelivered && data_migo
         ? new Date(data_migo)
-        : hasPO && p.data_pedido
-        ? new Date(p.data_pedido)
+        : hasPO && (p.data_pedido || activePf?.data_doc)
+        ? new Date(p.data_pedido || activePf?.data_doc)
         : currentDate;
 
-      // Calculate days in open (congela na data_referencia_prazo quando já há PO)
       const solDate = new Date(r.data_solicitacao);
       const diffTimeSol = data_referencia_prazo.getTime() - solDate.getTime();
       const dias_em_aberto = Math.max(0, Math.floor(diffTimeSol / (1000 * 60 * 60 * 24)));
 
-      // Buyer delay calculation: (data_referencia_prazo - data_solicitacao) - lead_time_compras_meta
       const diffTimeRef = data_referencia_prazo.getTime() - solDate.getTime();
       const diffDaysRef = Math.max(0, Math.floor(diffTimeRef / (1000 * 60 * 60 * 24)));
       const atraso_comprador = Math.max(0, diffDaysRef - lead_time_compras_meta);
 
-      // Delay range (faixa_atraso)
       let faixa_atraso = 'Sem Atraso';
       if (atraso_comprador > 30) {
         faixa_atraso = 'Acima 30 dias';
@@ -2999,7 +3120,6 @@ class LocalDatabase {
         faixa_atraso = '1-7 dias';
       }
 
-      // Alertas mapping
       let alerta = '✅ OK';
       if (atraso_comprador > 15 && (natureza === 'Urgente' || natureza === 'Serviço - Urgente')) {
         alerta = '⚠️ ESCALAR IMEDIATAMENTE';
@@ -3011,7 +3131,6 @@ class LocalDatabase {
         alerta = '📋 MONITORAR';
       }
 
-      // status_atualizado calculation
       let status_atualizado = 'No Prazo';
       if (status_requisicao === 'Processado' && isDelivered) {
         status_atualizado = 'Concluído';
@@ -3027,16 +3146,16 @@ class LocalDatabase {
 
       return {
         ...r,
-        item_pedido: p.item_pedido,
-        fornecedor_code: p.fornecedor_code,
-        fornecedor_name: p.fornecedor_name,
-        data_pedido: p.data_pedido,
-        data_entrega_sap: p.data_entrega_sap,
-        documento_compra: p.documento_compra || r.pedido || null,
-        criado_por_pedido: (p as any).criado_por_pedido,
+        item_pedido: hasPO ? (p.item_pedido || activePf?.item || undefined) : undefined,
+        fornecedor_code: hasPO ? (p.fornecedor_code || activePf?.fornecedor_codigo || undefined) : undefined,
+        fornecedor_name: hasPO ? (p.fornecedor_name || activePf?.fornecedor_nome || undefined) : undefined,
+        data_pedido: hasPO ? (p.data_pedido || activePf?.data_doc || undefined) : undefined,
+        data_entrega_sap: hasPO ? (p.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
+        documento_compra: hasPO ? docCompra : null,
+        criado_por_pedido: hasPO ? ((p as any).criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
         data_migo,
-        preco_unitario: hasPO ? this.precoUnitarioDoPedido(p) : undefined,
-        valor_total: hasPO ? p.valor_brl : undefined,
+        preco_unitario,
+        valor_total: hasPO ? (p.valor_brl || valor_total) : undefined,
         natureza,
         status_requisicao,
         lead_time_compras_meta,
@@ -3045,9 +3164,10 @@ class LocalDatabase {
         faixa_atraso,
         alerta,
         status_atualizado
-      };
+      } as EnrichedSAPRecord;
     });
   }
+
 
   public isValidStatusTransition(from: ItemStatus | undefined | null | '', to: ItemStatus): boolean {
     if (!from) return true; // Inicialmente vazio aceita qualquer primeiro status
@@ -3393,6 +3513,8 @@ class LocalDatabase {
   private ZL0132_COLUMNS = [
     { header: 'Nº acomp.', field: 'n_acomp' },
     { header: 'Eflag_e', field: 'eflag_e' },
+    { header: 'E', field: 'eflag_e' },
+    { header: 'E.', field: 'eflag_e' },
     { header: 'ReqC', field: 'reqc' },
     { header: 'Data RC', field: 'data_rc' },
     { header: 'TpDc', field: 'tpdc' },
@@ -3834,18 +3956,25 @@ class LocalDatabase {
     }
 
     // Busca os pedidos atuais diretamente do Supabase (fonte de verdade),
-    // pelo mesmo motivo do importME5ARaw: o cache local pode estar
-    // incompleto/desatualizado e faria pedidos já existentes parecerem
-    // "novos", duplicando linhas em vez de atualizá-las.
+    // sem filtro de data para garantir que registros mais antigos ou sem data_rc
+    // também sejam atualizados no banco quando excluídos/modificados no SAP.
     let current = this.getPedidos();
     try {
-      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'id');
+      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, undefined, 'id');
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
       console.warn('Não foi possível buscar os pedidos atuais (pedidosforn) do Supabase antes da importação; usando cache local.', err);
     }
     onProgress?.(10);
-    const currentMap = new Map(current.map(p => [p.ri + '_' + (p.documento_compra || ''), p]));
+    const currentMap = new Map<string, any>();
+    current.forEach(p => {
+      if (p.ri) {
+        currentMap.set(p.ri, p);
+        if (p.documento_compra) {
+          currentMap.set(p.ri + '_' + p.documento_compra, p);
+        }
+      }
+    });
     const user = this.getCurrentUser();
 
     let inserted = 0;
@@ -3873,17 +4002,32 @@ class LocalDatabase {
 
       const ri = reqNo + itemNo;
 
-      // ignora pedidos excluidos (Eflag_e = 'L')
-      if (eflagColIdx !== -1) {
-        const eflagVal = String(row[eflagColIdx] || '').trim().toUpperCase();
-        if (eflagVal === 'L') {
-          ignoredRows.push({
-            row: fileRowIndex,
-            identifier: ri,
-            reason: 'Pedido excluído no SAP (Eflag_e = L)'
-          });
-          return;
-        }
+      // detecta pedidos excluidos (Eflag_e = 'L')
+      let isExcludedPO = false;
+      let eflagVal = '';
+      if (eflagColIdx !== -1 && row[eflagColIdx] !== undefined && row[eflagColIdx] !== null) {
+        eflagVal = String(row[eflagColIdx]).trim().toUpperCase();
+      }
+
+      if (eflagVal !== 'L') {
+        row.slice(0, 10).forEach((cVal, cIdx) => {
+          const s = String(cVal || '').trim().toUpperCase();
+          if (s === 'L') {
+            const h = String(headers[cIdx] || '').trim().toUpperCase();
+            if (h === 'E' || h === 'E.' || h === 'EFLAG_E' || h === 'EFLAG' || h.includes('ELIMIN')) {
+              eflagVal = 'L';
+            }
+          }
+        });
+      }
+
+      if (eflagVal === 'L') {
+        isExcludedPO = true;
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: ri,
+          reason: 'Pedido excluído no SAP (Eflag_e = L)'
+        });
       }
 
       const record: any = {};
@@ -3914,9 +4058,17 @@ class LocalDatabase {
         }
       });
 
+      if (isExcludedPO || eflagVal === 'L') {
+        record.eflag_e = 'L';
+        campos_extras.eflag_e = 'L';
+      } else if (eflagVal) {
+        record.eflag_e = eflagVal;
+        campos_extras.eflag_e = eflagVal;
+      }
+
       const docCompraVal = record.doc_compra || '';
       const compositeKey = ri + '_' + docCompraVal;
-      const existing = currentMap.get(compositeKey);
+      const existing = currentMap.get(compositeKey) || currentMap.get(ri);
 
       if (newPedidosMap.has(compositeKey)) {
         const existingInBatch = newPedidosMap.get(compositeKey)!;
@@ -3938,6 +4090,7 @@ class LocalDatabase {
             fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
             data_pedido: record.data_doc || '',
             data_entrega_sap: record.dt_remessa || '',
+            eflag_e: record.eflag_e || (isExcludedPO ? 'L' : undefined),
             campos_extras: { ...campos_extras, ...record }
           });
         }
@@ -3950,6 +4103,7 @@ class LocalDatabase {
           fornecedor_name: record.fornecedor_nome || 'Fornecedor SAP',
           data_pedido: record.data_doc || '',
           data_entrega_sap: record.dt_remessa || '',
+          eflag_e: record.eflag_e || (isExcludedPO ? 'L' : undefined),
           campos_extras: { ...campos_extras, ...record }
         };
 
@@ -3984,20 +4138,31 @@ class LocalDatabase {
     const generateUUID = gerarUUID;
 
     try {
-      const dbRows = finalPedidosArray.map(p => {
+      const usedIdsInBatch = new Set<string>();
+      const dbRows = newPedidosArray.map(p => {
         const extr = p.campos_extras || {};
-        const compositeKey = p.ri + '_' + p.documento_compra;
-        const existing = currentMap.get(compositeKey);
+        const docCompraVal = p.documento_compra || extr.doc_compra || '';
+        const compositeKey = p.ri + '_' + docCompraVal;
+        let existing = currentMap.get(compositeKey);
+        if (!existing || (existing.id && usedIdsInBatch.has(existing.id))) {
+          existing = currentMap.get(p.ri);
+        }
+
+        let assignedId = (existing && existing.id && !usedIdsInBatch.has(existing.id))
+          ? existing.id
+          : generateUUID();
+        usedIdsInBatch.add(assignedId);
 
         const mergedExtras = existing && existing.campos_extras 
           ? { ...existing.campos_extras, ...extr }
           : extr;
 
+        const eflagFinal = p.eflag_e || extr.eflag_e || (extr['E'] ? String(extr['E']).trim().toUpperCase() : null) || (extr['E.'] ? String(extr['E.']).trim().toUpperCase() : null) || null;
+
         return {
-          id: (existing as any)?.id || generateUUID(),
           ri: p.ri,
           n_acomp: extr.n_acomp || null,
-          eflag_e: extr.eflag_e || null,
+          eflag_e: eflagFinal,
           reqc: extr.reqc || null,
           data_rc: extr.data_rc || null,
           tpdc: extr.tpdc || null,
@@ -4233,7 +4398,7 @@ class LocalDatabase {
 
       const ri = reqNo + itemNo;
 
-      // Ignora registros com flag de exclusão (Eflag_e = L)
+      // Detecta registros com flag de exclusão (Eflag_e = L)
       if (eflagColIdx !== -1) {
         const eflagVal = String(row[eflagColIdx] || '').trim().toUpperCase();
         if (eflagVal === 'L') {
@@ -4242,7 +4407,6 @@ class LocalDatabase {
             identifier: ri,
             reason: 'Pedido excluído no SAP (Eflag_e = L)'
           });
-          return;
         }
       }
 
@@ -4292,7 +4456,14 @@ class LocalDatabase {
         }
         
         if (allExistingRows.length > 0) {
-          existingMap = new Map(allExistingRows.map(r => [r.ri + '_' + (r.doc_compra || ''), r]));
+          allExistingRows.forEach(r => {
+            if (r.ri) {
+              existingMap.set(r.ri, r);
+              if (r.doc_compra) {
+                existingMap.set(r.ri + '_' + r.doc_compra, r);
+              }
+            }
+          });
         }
       } catch (err) {
         console.warn('Erro ao buscar pedidosforn existentes no Supabase, usando verificação em memória local.', err);
@@ -4332,9 +4503,33 @@ class LocalDatabase {
         }
       });
 
+      let eflagVal = eflagColIdx !== -1 && row[eflagColIdx] !== undefined && row[eflagColIdx] !== null
+        ? String(row[eflagColIdx]).trim().toUpperCase()
+        : '';
+
+      if (eflagVal !== 'L') {
+        row.slice(0, 10).forEach((cVal, cIdx) => {
+          const s = String(cVal || '').trim().toUpperCase();
+          if (s === 'L') {
+            const h = String(headers[cIdx] || '').trim().toUpperCase();
+            if (h === 'E' || h === 'E.' || h === 'EFLAG_E' || h === 'EFLAG' || h.includes('ELIMIN')) {
+              eflagVal = 'L';
+            }
+          }
+        });
+      }
+
+      if (eflagVal === 'L') {
+        record.eflag_e = 'L';
+        campos_extras.eflag_e = 'L';
+      } else if (eflagVal) {
+        record.eflag_e = eflagVal;
+        campos_extras.eflag_e = eflagVal;
+      }
+
       const docCompraVal = record.doc_compra || docCompra || '';
       const compositeKey = ri + '_' + docCompraVal;
-      const existing = existingMap.get(compositeKey);
+      const existing = existingMap.get(compositeKey) || existingMap.get(ri);
 
       if (newPedidosMap.has(compositeKey)) {
         const existingInBatch = newPedidosMap.get(compositeKey)!;
@@ -4357,6 +4552,7 @@ class LocalDatabase {
             fornecedor_name: record.fornecedor_nome || null,
             regiao_uf: record.regiao_uf || null,
             data_pedido: record.data_doc || null,
+            eflag_e: record.eflag_e || null,
             campos_extras: { ...campos_extras, ...record },
             record
           });
@@ -4371,6 +4567,7 @@ class LocalDatabase {
           fornecedor_name: record.fornecedor_nome || null,
           regiao_uf: record.regiao_uf || null,
           data_pedido: record.data_doc || null,
+          eflag_e: record.eflag_e || null,
           campos_extras: { ...campos_extras, ...record },
           record
         };
@@ -4397,22 +4594,32 @@ class LocalDatabase {
 
     // 4. Montar os dados de banco finais
     onProgress?.(38, 'Montando objetos de banco finais...');
+    const usedIdsInBatch = new Set<string>();
     const dbRowsToUpsert = Array.from(newPedidosMap.values()).map(p => {
       const extr = p.campos_extras || {};
       const docCompraVal = p.record?.doc_compra || extr.doc_compra || '';
       const compositeKey = p.ri + '_' + docCompraVal;
-      const existing = existingMap.get(compositeKey);
+      let existing = existingMap.get(compositeKey);
+      if (!existing || (existing.id && usedIdsInBatch.has(existing.id))) {
+        existing = existingMap.get(p.ri);
+      }
+
+      let assignedId = (existing && existing.id && !usedIdsInBatch.has(existing.id))
+        ? existing.id
+        : generateUUID();
+      usedIdsInBatch.add(assignedId);
       
       // Mescla com campos_extras antigos se o registro já existia para preservar dados históricos
       const mergedExtras = existing && existing.campos_extras 
         ? { ...existing.campos_extras, ...extr }
         : extr;
 
+      const eflagFinal = p.eflag_e || extr.eflag_e || (extr['E'] ? String(extr['E']).trim().toUpperCase() : null) || (extr['E.'] ? String(extr['E.']).trim().toUpperCase() : null) || null;
+
       return {
-        id: existing?.id || generateUUID(),
         ri: p.ri,
         n_acomp: extr.n_acomp || null,
-        eflag_e: extr.eflag_e || null,
+        eflag_e: eflagFinal,
         reqc: extr.reqc || null,
         data_rc: extr.data_rc || null,
         tpdc: extr.tpdc || null,

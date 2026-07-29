@@ -105,22 +105,39 @@ export default function Reports({ user }: ReportsProps) {
   };
 
   // O cat\u00E1logo completo s\u00F3 \u00E9 buscado no Supabase no momento do export (a\u00E7\u00E3o
-  // pontual do usu\u00E1rio), n\u00E3o a cada carregamento da tela.
+  // pontual do usuário), não a cada carregamento da tela.
   const exportMaterialsCSV = async () => {
     if (!supabase) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('materials')
-      .select('material_code, description, category, company, unit')
-      .eq('is_active', true)
-      .order('material_code');
+    // Materiais tem 172k+ linhas. PostgREST limita a 1000 linhas por request sem
+    // paginação — buscar sem limit causa erro 500. Paginar em lotes de 1000.
+    const PAGE = 1000;
+    const allRows: any[] = [];
+    let from = 0;
+    let hasMore = true;
+    let fetchError: any = null;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('materials')
+        .select('material_code, description, category, company, unit')
+        .eq('is_active', true)
+        .order('material_code')
+        .range(from, from + PAGE - 1);
+
+      if (error) { fetchError = error; break; }
+      if (!data || data.length === 0) { hasMore = false; break; }
+      allRows.push(...data);
+      if (data.length < PAGE) { hasMore = false; } else { from += PAGE; }
+    }
+
     setLoading(false);
-    if (error || !data) {
-      console.warn('Falha ao exportar cat\u00E1logo de materiais:', error);
+    if (fetchError || allRows.length === 0) {
+      console.warn('Falha ao exportar catálogo de materiais:', fetchError);
       return;
     }
     const headers = ['Codigo_SAP', 'Descricao', 'Categoria', 'Empresa', 'Unidade', 'Ativo'];
-    const rows = data.map((m: any) => [
+    const rows = allRows.map((m: any) => [
       m.material_code,
       `"${String(m.description).replace(/"/g, '""')}"`,
       m.category,
@@ -130,6 +147,7 @@ export default function Reports({ user }: ReportsProps) {
     ]);
     downloadCsv(headers, rows, 'SISTEN_Relatorio_Catalogo_Materiais.csv');
   };
+
 
   const exportRequestsCSV = () => {
     const headers = ['Numero', 'Tipo_Solicitacao', 'Solicitante', 'Setor_ID', 'Criticidade', 'Status', 'Data_Criacao'];

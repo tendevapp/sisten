@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Map, Shield, Upload, Check, X, AlertTriangle, 
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
-  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck
+  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -137,6 +137,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const handleApproveUser = (id: string, approve: boolean) => {
     const ok = localDb.updateUserStatus(id, approve ? 'ativo' : 'rejeitado');
     if (ok) {
+      loadData();
+    }
+  };
+
+  const handleToggleUserStatus = (id: string, newStatus: 'ativo' | 'inativo') => {
+    const ok = localDb.updateUserStatus(id, newStatus);
+    if (ok) {
+      toast.success(`Status do usuário alterado para ${newStatus.toUpperCase()}.`);
       loadData();
     }
   };
@@ -294,8 +302,26 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
-  const pendingUsers = profiles.filter(p => p.status === 'pendente');
-  const activeUsers = profiles.filter(p => p.status === 'ativo' || p.status === 'pendente');
+  const isRecentlyCreated = (createdAt?: string) => {
+    if (!createdAt) return false;
+    const createdTime = new Date(createdAt).getTime();
+    if (isNaN(createdTime)) return false;
+    const now = new Date().getTime();
+    const diffDays = (now - createdTime) / (1000 * 60 * 60 * 24);
+    return diffDays >= 0 && diffDays <= 7;
+  };
+
+  const pendingUsers = useMemo(
+    () => profiles
+      .filter(p => p.status === 'pendente')
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' })),
+    [profiles]
+  );
+  const activeUsers = useMemo(
+    () => [...profiles]
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' })),
+    [profiles]
+  );
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
@@ -410,7 +436,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 {pendingUsers.map((p) => (
                   <div key={p.id} className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-3 text-xs">
                     <div>
-                      <p className="font-bold text-slate-800">{p.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-slate-800">{p.name}</p>
+                        <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-300 uppercase shrink-0 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                          Novo Cadastro
+                        </span>
+                      </div>
                       <p className="text-slate-500 mt-0.5">{p.email} • {p.cargo}</p>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -471,11 +503,23 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 <tbody className="divide-y divide-slate-100">
                   {activeUsers.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50">
-                      <td className="py-3 font-semibold text-slate-800 flex items-center gap-2">
-                        <span>{p.name}</span>
+                      <td className="py-3 font-semibold text-slate-800 flex items-center gap-2 flex-wrap">
+                        <span className={p.status === 'inativo' ? 'line-through text-slate-400' : ''}>{p.name}</span>
                         {p.status === 'pendente' && (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-amber-250 uppercase animate-pulse shrink-0">
-                            Pendente
+                          <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-300 uppercase shrink-0 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                            Novo Cadastro (Pendente)
+                          </span>
+                        )}
+                        {p.status === 'inativo' && (
+                          <span className="bg-slate-100 text-slate-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-slate-300 uppercase shrink-0">
+                            Inativo
+                          </span>
+                        )}
+                        {p.status === 'ativo' && isRecentlyCreated(p.created_at) && (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 uppercase shrink-0 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-emerald-600" />
+                            Novo Cadastro
                           </span>
                         )}
                       </td>
@@ -561,6 +605,24 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             >
                               Módulos de acesso
                             </button>
+                            {p.status === 'inativo' ? (
+                              <button
+                                onClick={() => handleToggleUserStatus(p.id, 'ativo')}
+                                className="text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-0.5 rounded border border-emerald-200 font-bold transition-colors cursor-pointer"
+                                title="Ativar usuário no sistema"
+                              >
+                                Ativar
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleUserStatus(p.id, 'inativo')}
+                                disabled={p.id === user.id}
+                                className="text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:hover:bg-rose-50 px-2.5 py-0.5 rounded border border-rose-200 font-bold transition-colors cursor-pointer"
+                                title={p.id === user.id ? 'Você não pode inativar seu próprio usuário' : 'Inativar usuário no sistema'}
+                              >
+                                Inativar
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>

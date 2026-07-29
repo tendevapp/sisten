@@ -134,6 +134,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         case 'precoUnitario': return r.precoUnitario ?? -Infinity;
         case 'valorTotal': return r.valorTotal ?? -Infinity;
         case 'dataCriacao': return parseDate(r.dataCriacao)?.getTime() ?? 0;
+        case 'dataPo': return parseDate(r.dataPo)?.getTime() ?? 0;
         case 'dataPrevista': return parseDate(r.dataPrevista)?.getTime() ?? 0;
         case 'dataEntrega': return parseDate(r.dataEntrega)?.getTime() ?? 0;
         case 'status': return r.status.toLowerCase();
@@ -158,10 +159,9 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     const qIndex = hash.indexOf('?');
     if (qIndex === -1) return;
     const ri = new URLSearchParams(hash.slice(qIndex + 1)).get('ri');
-    if (ri) {
-      const match = rows.find(r => r.ri === ri);
-      if (match) setSelectedRow(match);
-    }
+    if (!ri) return;
+    const found = rows.find(r => r.ri === ri);
+    if (found) setSelectedRow(found);
   }, [rows]);
 
   // Reavalia indicadores de não-lido periodicamente (o Header sincroniza notifs).
@@ -203,7 +203,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         'Preço Unit. (R$)': r.precoUnitario ?? '—',
         'Valor Total (R$)': r.valorTotal ?? '—',
       } : {}),
-      'Data Criação': formatDateBR(r.dataCriacao),
+      'Data RM': formatDateBR(r.dataCriacao),
+      'Data PO': formatDateBR(r.dataPo),
       'Prev. Entrega': formatDateBR(r.dataPrevista),
       'Entrega (MIGO)': formatDateBR(r.dataEntrega),
       'Status': r.status,
@@ -226,7 +227,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         <td>${esc(r.material)} — ${esc(r.descricao)}</td>
         <td>${esc(r.fornecedor)}</td><td>${esc(r.setor)}</td>
         <td class="r">${r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}</td>
-        <td>${formatDateBR(r.dataCriacao)}</td><td>${formatDateBR(r.dataPrevista)}</td><td>${formatDateBR(r.dataEntrega)}</td>
+        <td>${formatDateBR(r.dataCriacao)}</td><td>${formatDateBR(r.dataPo)}</td><td>${formatDateBR(r.dataPrevista)}</td><td>${formatDateBR(r.dataEntrega)}</td>
         <td>${esc(r.status)}</td>
       </tr>`).join('');
     const win = window.open('', '_blank');
@@ -247,7 +248,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       <div class="meta">${filteredRows.length} registro(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
       <table><thead><tr>
         <th>RM</th><th>PO</th><th>Item / Descrição</th><th>Fornecedor</th><th>Setor</th>
-        <th>Qtd</th><th>Criação</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
+        <th>Qtd</th><th>Data RM</th><th>Data PO</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
       </tr></thead><tbody>${bodyRows}</tbody></table>
       </body></html>`);
     win.document.close();
