@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizarTermo } from './materiais';
+import { normalizarTermo, resumoSinais, type MaterialResultado } from './materiais';
 
 describe('normalizarTermo', () => {
   it('quebra em tokens, em qualquer ordem, para casar descrição do SAP', () => {
@@ -38,5 +38,57 @@ describe('normalizarTermo', () => {
     // Abaixo disso o prefixo devolveria milhares de linhas sem utilidade.
     expect(normalizarTermo('103').tipo).toBe('curto');
     expect(normalizarTermo('1031').tipo).toBe('codigo');
+  });
+});
+
+const base: MaterialResultado = {
+  materialCode: '1031825',
+  description: 'LUVA FM FM197 1/2" NPT 300#',
+  technicalText: 'GALVANIZADO FOGO',
+  unit: 'UN',
+  qtdEstoque: null,
+  depositos: null,
+  rms12m: null,
+  ultimaRm: null,
+  rmsSemPedido: null,
+  rmAberta: null,
+  pedidoAberto: null,
+  chegaEm: null,
+  pedidoPelaArea: false,
+};
+
+describe('resumoSinais', () => {
+  it('não inventa sinal quando não há dado', () => {
+    expect(resumoSinais(base)).toEqual([]);
+  });
+
+  it('mostra saldo com o depósito', () => {
+    const chips = resumoSinais({ ...base, qtdEstoque: 45, depositos: ['CD01'] });
+    expect(chips).toEqual([{ texto: '45 UN em CD01', tom: 'estoque' }]);
+  });
+
+  it('mostra RM aberta sem pedido — alguém já pediu e não virou compra', () => {
+    const chips = resumoSinais({ ...base, rmsSemPedido: 1, rmAberta: '0012345' });
+    expect(chips).toContainEqual({ texto: 'RM 0012345 aberta, sem pedido', tom: 'demanda' });
+  });
+
+  it('mostra pedido a caminho com a data de remessa', () => {
+    const chips = resumoSinais({ ...base, pedidoAberto: '4500123', chegaEm: '2026-08-12' });
+    expect(chips).toContainEqual({ texto: 'Pedido 4500123 · chega 12/08/2026', tom: 'pedido' });
+  });
+
+  it('mostra frequência de uso', () => {
+    const chips = resumoSinais({ ...base, rms12m: 12 });
+    expect(chips).toContainEqual({ texto: '12 RMs em 12 meses', tom: 'uso' });
+  });
+
+  it('nunca mostra "0x" — ausência de dado não é informação', () => {
+    const chips = resumoSinais({ ...base, rms12m: 0, qtdEstoque: 0, pedidoPelaArea: false });
+    expect(chips).toEqual([]);
+  });
+
+  it('acrescenta o recorte da área só quando a área pediu de fato', () => {
+    const chips = resumoSinais({ ...base, rms12m: 12, pedidoPelaArea: true });
+    expect(chips).toContainEqual({ texto: 'sua área já pediu', tom: 'uso' });
   });
 });

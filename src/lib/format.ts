@@ -31,9 +31,21 @@ const mesAno = new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** Reconhece string de data pura (sem hora), formato das colunas DATE do Postgres. */
+const DATA_SEM_HORA = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Aceita Date, ISO string ou timestamp. Retorna null quando não dá para ler. */
 function toDate(d?: string | number | Date | null): Date | null {
   if (d === undefined || d === null || d === '') return null;
+  // Uma string "sem hora" (ex.: coluna DATE do Postgres) não pode ir direto
+  // para `new Date(string)`: o construtor a lê como meia-noite UTC, e em
+  // fusos negativos (Brasil) isso vira o dia anterior na formatação local.
+  // Monta a data no fuso local para o dia não recuar.
+  if (typeof d === 'string' && DATA_SEM_HORA.test(d)) {
+    const [ano, mes, dia] = d.split('-').map(Number);
+    const local = new Date(ano, mes - 1, dia);
+    return Number.isNaN(local.getTime()) ? null : local;
+  }
   const parsed = d instanceof Date ? d : new Date(d);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
