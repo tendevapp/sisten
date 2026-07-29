@@ -458,6 +458,27 @@ do restante do redesenho. Corrigir a cobertura (normalizar os formatos de
 código, e investigar se os 609 ausentes são descontinuados ou lacuna real de
 importação) fica como trabalho de qualidade de dado, fora deste plano.
 
+### Limitação conhecida no ranking de `buscar_materiais`
+
+O exemplo canônico deste documento — "luva npt galvanizado" distingue
+`1031825` de `1031826`" — é verdadeiro para o **filtro** (`1031826` nunca
+aparece), mas não garante que `1031825` apareça nas primeiras posições.
+Medido: para esse termo há 265 candidatos que casam os três tokens, e
+`1031825` fica na posição ~28. A ordenação prioriza estoque, uso pela área e
+frequência de RM antes da similaridade textual fina — por design, um item
+bem-abastecido e frequentemente pedido deve mesmo superar um item raramente
+usado, ainda que o segundo combine "melhor" com o termo digitado.
+
+Corrigir isso de verdade exigiria reforçar o atributo que diferencia
+(`GALVANIZADO`, no exemplo) no **filtro**, não só na ordenação — tentativas de
+ajustar a fórmula de ranking (~15 variantes testadas) não resolvem, porque os
+265 candidatos ficam quase indistinguíveis por similaridade uma vez que o
+filtro já consumiu o único sinal que os separa. Decisão: **aceitar como
+limitação conhecida**. Em catálogos com muitas variantes quase-idênticas
+(diâmetros, comprimentos), encontrar o item exato pode exigir rolar a lista
+ou refinar o termo de busca (ex.: incluir a dimensão). Redesenhar o filtro
+para priorizar o atributo diferenciador fica fora deste plano.
+
 ## Fora de escopo
 
 - Endurecer a RLS por setor. A policy `requests_read` continua permitindo ao
@@ -472,5 +493,8 @@ importação) fica como trabalho de qualidade de dado, fora deste plano.
   encontrada na implementação", acima.
 - Confirmar o significado de `ADMI`, `SEGE` e `SEGT` em `area_solicitante`.
   Ficam sem mapeamento até alguém de Suprimentos dizer.
+- Redesenhar o filtro de `buscar_materiais` para priorizar o atributo que
+  diferencia variantes quase-idênticas — ver "Limitação conhecida no
+  ranking", acima.
 - Liberar item sem código SAP por criticidade 5. Gancho previsto, não
   implementado.
