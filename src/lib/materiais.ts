@@ -94,8 +94,8 @@ export function resumoSinais(r: MaterialResultado): SinalChip[] {
   const chips: SinalChip[] = [];
 
   if (r.qtdEstoque && r.qtdEstoque > 0) {
-    const onde = r.depositos?.length ? ` em ${r.depositos.join(', ')}` : '';
-    chips.push({ texto: `${formatQtd(r.qtdEstoque)} ${r.unit}${onde}`, tom: 'estoque' });
+    // Só a quantidade — o depósito não importa para quem decide se compra.
+    chips.push({ texto: `${formatQtd(r.qtdEstoque)} ${r.unit} em estoque`, tom: 'estoque' });
   }
 
   if (r.rmsSemPedido && r.rmsSemPedido > 0 && r.rmAberta) {

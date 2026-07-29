@@ -205,6 +205,10 @@ with saldo as (
          array_agg(distinct deposito)             as depositos
   from estoque
   where quantidade > 0
+    -- Depósitos 0006, 0090 e 0105 excluídos do saldo mostrado na busca —
+    -- por pedido do parceiro humano, sem critério de negócio documentado
+    -- além da exclusão em si.
+    and deposito not in ('0006', '0090', '0105')
   group by material
 ),
 demanda as (
@@ -324,7 +328,9 @@ otimização neste plano.
 
 ### Sinais mostrados no resultado
 
-- `45 UN em CD01` — tem saldo no almoxarifado;
+- `45 UN em estoque` — tem saldo no almoxarifado (só a quantidade; o
+  depósito não é mostrado, e os depósitos 0006/0090/0105 não entram no
+  cálculo — por pedido do parceiro humano);
 - `RM 0012345 aberta, sem pedido` — já foi pedido, ainda não virou PO;
 - `Pedido 4500123 · chega 12/08` — já comprado, a caminho;
 - `12 RMs em 12 meses · última em 03/2026` — frequência de uso;
@@ -445,7 +451,9 @@ seção de desempenho acima), com os mesmos termos do diagnóstico.
 
 `mv_material_sinais` (Tarefa 3 do plano de busca) mediu `com_estoque = 1276`
 contra os 2.052 materiais distintos com saldo positivo em `estoque` — uma
-cobertura de 62%. Causa confirmada: `estoque.material` mistura três formatos
+cobertura de 62% (número anterior à exclusão dos depósitos 0006/0090/0105,
+ver abaixo; a exclusão reduz `com_estoque` para 1263, sem mudar a causa
+raiz da lacuna). Causa confirmada: `estoque.material` mistura três formatos
 de código (1.885 com 7 dígitos, igual a `materials.material_code`; 137 com
 18 dígitos; 30 com 5 dígitos), e dos 1.885 de 7 dígitos, **609 não existem em
 `materials`** — provavelmente itens descontinuados do catálogo, não

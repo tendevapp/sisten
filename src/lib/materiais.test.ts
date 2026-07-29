@@ -67,9 +67,10 @@ describe('resumoSinais', () => {
     expect(resumoSinais(base)).toEqual([]);
   });
 
-  it('mostra saldo com o depósito', () => {
+  it('mostra só a quantidade em estoque, sem o depósito', () => {
+    // Depósito não importa para quem decide se compra — só a quantidade.
     const chips = resumoSinais({ ...base, qtdEstoque: 45, depositos: ['CD01'] });
-    expect(chips).toEqual([{ texto: '45 UN em CD01', tom: 'estoque' }]);
+    expect(chips).toEqual([{ texto: '45 UN em estoque', tom: 'estoque' }]);
   });
 
   it('mostra RM aberta sem pedido — alguém já pediu e não virou compra', () => {
