@@ -287,10 +287,12 @@ migração para os setores de correspondência direta (`ALMO` → Almoxarifado,
 plano deve perguntar, não adivinhar.
 
 Cobertura é parcial e o desenho assume isso: **516 das 1.684 RMs (31%) têm
-`area_solicitante` nulo**. Consequência: a frequência total de RMs aparece
-sempre; o recorte "sua área pediu Nx" só aparece quando o setor tem código
-mapeado e há dado. Nunca se mostra "0x" — a ausência de informação não é
-informação.
+`area_solicitante` nulo**. Consequência: o recorte "sua área já pediu" só
+aparece quando o setor tem código mapeado e a área realmente pediu o item —
+nunca "0x", a ausência de informação não é informação. A contagem total de
+RMs (`rms_12m`) continua existindo no dado e influenciando a ordenação, mas
+não vira chip por decisão do parceiro humano (ver "Sinais mostrados no
+resultado").
 
 ### Comportamento, antes e depois
 
@@ -336,8 +338,10 @@ otimização neste plano.
 - `500 UN a caminho · chega 12/08` — já comprado, a caminho (mostra a
   quantidade restante do pedido — pedida menos já fornecida —, não o
   número do documento);
-- `12 RMs em 12 meses · última em 03/2026` — frequência de uso;
-- `sua área pediu 8x` — só quando o setor tem `sap_area_code` mapeado e há dado.
+- `sua área já pediu` — só quando o setor tem `sap_area_code` mapeado e a
+  área do usuário realmente pediu o item; a contagem total de RMs (`rms_12m`)
+  não vira chip, mas segue influenciando a ordenação (por decisão do
+  parceiro humano).
 
 **Nenhum bloqueia.** Escolher um item que tem saldo ou demanda em aberto marca o
 item com um aviso discreto, visível para o gestor na aprovação e para o

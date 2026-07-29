@@ -85,9 +85,9 @@ describe('resumoSinais', () => {
     expect(chips).toContainEqual({ texto: '500 UN a caminho · chega 12/08/2026', tom: 'pedido' });
   });
 
-  it('mostra frequência de uso', () => {
+  it('não mostra a contagem total de RMs — só o recorte por área importa', () => {
     const chips = resumoSinais({ ...base, rms12m: 12 });
-    expect(chips).toContainEqual({ texto: '12 RMs em 12 meses', tom: 'uso' });
+    expect(chips).toEqual([]);
   });
 
   it('nunca mostra "0x" — ausência de dado não é informação', () => {
@@ -95,8 +95,8 @@ describe('resumoSinais', () => {
     expect(chips).toEqual([]);
   });
 
-  it('acrescenta o recorte da área só quando a área pediu de fato', () => {
-    const chips = resumoSinais({ ...base, rms12m: 12, pedidoPelaArea: true });
-    expect(chips).toContainEqual({ texto: 'sua área já pediu', tom: 'uso' });
+  it('mostra o recorte da área independente da contagem total de RMs', () => {
+    const chips = resumoSinais({ ...base, pedidoPelaArea: true });
+    expect(chips).toEqual([{ texto: 'sua área já pediu', tom: 'uso' }]);
   });
 });

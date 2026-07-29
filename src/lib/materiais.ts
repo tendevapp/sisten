@@ -110,9 +110,11 @@ export function resumoSinais(r: MaterialResultado): SinalChip[] {
     chips.push({ texto: `${formatQtd(r.qtdPedidoAberto)} ${r.unit} a caminho${quando}`, tom: 'pedido' });
   }
 
-  if (r.rms12m && r.rms12m > 0) {
-    chips.push({ texto: `${r.rms12m} RMs em 12 meses`, tom: 'uso' });
-    if (r.pedidoPelaArea) chips.push({ texto: 'sua área já pediu', tom: 'uso' });
+  // A contagem total de RMs não vira chip — só o recorte por área, que é
+  // o que de fato ajuda a decidir. `rms12m` continua existindo em
+  // `MaterialResultado` porque a RPC o usa para ordenar o resultado.
+  if (r.pedidoPelaArea) {
+    chips.push({ texto: 'sua área já pediu', tom: 'uso' });
   }
 
   return chips;
