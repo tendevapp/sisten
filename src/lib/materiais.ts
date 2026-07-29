@@ -29,13 +29,17 @@ export interface TermoNormalizado {
   tokens: string[];
 }
 
-/** Abaixo disto a busca devolveria meio catálogo — não vale a consulta. */
-const MIN_TEXTO = 2;
+/**
+ * Abaixo disto a busca devolveria meio catálogo — não vale a consulta.
+ * 3 é também o piso do pg_trgm: abaixo de 3 caracteres o índice trigram não
+ * é usado (vira seq scan), então 2 caracteres custava ~1282ms por tecla.
+ */
+const MIN_TEXTO = 3;
 /** Prefixo de código curto demais devolve milhares de linhas sem utilidade. */
 const MIN_CODIGO = 4;
 
 export function normalizarTermo(bruto: string): TermoNormalizado {
-  const normalizado = (bruto ?? '')
+  const normalizado = bruto
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
     .toUpperCase()

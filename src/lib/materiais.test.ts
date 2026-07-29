@@ -34,6 +34,11 @@ describe('normalizarTermo', () => {
     expect(normalizarTermo('l').tokens).toEqual([]);
   });
 
+  it('exige 3 caracteres de texto — piso do índice trigram (pg_trgm não usa índice abaixo disso)', () => {
+    expect(normalizarTermo('lu').tipo).toBe('curto');
+    expect(normalizarTermo('luv').tipo).toBe('texto');
+  });
+
   it('exige 4 dígitos para tratar como código', () => {
     // Abaixo disso o prefixo devolveria milhares de linhas sem utilidade.
     expect(normalizarTermo('103').tipo).toBe('curto');
