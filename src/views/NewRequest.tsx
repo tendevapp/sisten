@@ -14,7 +14,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
 import { formatBRL } from '../lib/format';
-import { buscarMateriais, resumoSinais, type MaterialResultado } from '../lib/materiais';
+import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
@@ -41,6 +41,8 @@ interface PurchaseItemState {
    * para o solicitante conferir a ficha técnica sem reabrir o dropdown.
    */
   technical_text?: string;
+  /** Chips de estoque/RM/pedido — vêm junto com `technical_text`, mesmo motivo. */
+  sinais?: SinalChip[];
   quantity: number | '';
   unit: string;
   brand: string;
@@ -79,8 +81,38 @@ const itemVazio = (): PurchaseItemState => ({
   suggested_supplier: '', estimated_value: 0,
 });
 
-/** UN até PAC, em ordem alfabética visual — "M²" lido como "M2". */
-const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M3', 'PAC', 'UN'] as const;
+/** UN até PAC, em ordem alfabética visual — "M²"/"M³" lidos como "M2"/"M3". */
+const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M³', 'PAC', 'UN'] as const;
+
+/** Chips de estoque/RM/pedido — usado tanto no dropdown quanto no item já selecionado. */
+function SinalChips({ chips, className = '' }: { chips: SinalChip[]; className?: string }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1 ${className}`}>
+      {chips.map(chip => (
+        <span
+          key={chip.texto}
+          className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+          style={{
+            // "estoque" e "demanda" usam tons de status (verde/âmbar, sinal
+            // de decisão). "pedido" e "uso" são informativos, não decisão —
+            // por isso ficam neutros e sem colorir o texto, para não competir
+            // visualmente com "estoque" (que é o sinal mais relevante: "tem
+            // agora" pesa mais que "já foi pedido").
+            background: chip.tom === 'estoque'
+              ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+              : chip.tom === 'demanda'
+              ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
+              : 'var(--surface-sunken)',
+            color: 'var(--ink-secondary)',
+          }}
+        >
+          {chip.texto}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
@@ -422,11 +454,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           if (!achado || achado.materialCode !== code) return;
           setItems(prev => prev.map((item, i) => {
             if (i !== index || item.sap_code.trim() !== code) return item; // usuário já mudou o campo
+            // Unidade não é autopreenchida — fica em "Selecione..." até o
+            // usuário confirmar, mesmo quando o catálogo já sabe a unidade.
             return {
               ...item,
               description: achado.description,
               technical_text: achado.technicalText || '',
-              unit: achado.unit || item.unit,
+              sinais: resumoSinais(achado),
             };
           }));
         })
@@ -887,13 +921,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                   key={mat.materialCode}
                                   type="button"
                                   onClick={() => {
+                                    // Unidade não é autopreenchida — fica em
+                                    // "Selecione..." até o usuário confirmar.
                                     const updated = [...items];
                                     updated[index] = {
                                       ...updated[index],
                                       description: mat.description,
                                       sap_code: mat.materialCode,
                                       technical_text: mat.technicalText || '',
-                                      unit: mat.unit || updated[index].unit
+                                      sinais: chips,
                                     };
                                     setItems(updated);
                                     setActiveSearchIndex(null);
@@ -916,31 +952,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                         {mat.technicalText}
                                       </div>
                                     )}
-                                    {chips.length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-1">
-                                        {chips.map(chip => (
-                                          <span
-                                            key={chip.texto}
-                                            className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                            style={{
-                                              // "estoque" e "demanda" usam tons de status (verde/âmbar,
-                                              // sinal de decisão). "pedido" e "uso" são informativos, não
-                                              // decisão — por isso ficam neutros e sem colorir o texto,
-                                              // para não competir visualmente com "estoque" (que é o sinal
-                                              // mais relevante: "tem agora" pesa mais que "já foi pedido").
-                                              background: chip.tom === 'estoque'
-                                                ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
-                                                : chip.tom === 'demanda'
-                                                ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
-                                                : 'var(--surface-sunken)',
-                                              color: 'var(--ink-secondary)',
-                                            }}
-                                          >
-                                            {chip.texto}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <SinalChips chips={chips} className="mt-1" />
                                   </div>
                                   <span
                                     className="text-[10px] font-mono px-1 rounded uppercase shrink-0 self-center"
@@ -994,20 +1006,27 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </div>
                     </div>
 
-                    {/* Texto técnico do catálogo SAP — só aparece depois que
-                        o item é selecionado no dropdown ou autopreenchido
-                        pelo código; é ficha do catálogo, não do item. */}
-                    {it.technical_text && (
-                      <div>
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                          Texto Técnico (Catálogo SAP)
-                        </label>
-                        <p
-                          className="w-full rounded border py-1.5 px-2 text-[11px] leading-relaxed"
-                          style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
-                        >
-                          {it.technical_text}
-                        </p>
+                    {/* Chips de estoque/RM/pedido + texto técnico do catálogo
+                        SAP — só aparecem depois que o item é selecionado no
+                        dropdown ou autopreenchido pelo código; são ficha do
+                        catálogo, não dado do item. Chips vêm em cima do texto
+                        técnico: são o resumo, o texto é o detalhe. */}
+                    {((it.sinais && it.sinais.length > 0) || it.technical_text) && (
+                      <div className="space-y-1.5">
+                        <SinalChips chips={it.sinais || []} />
+                        {it.technical_text && (
+                          <div>
+                            <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                              Texto Técnico (Catálogo SAP)
+                            </label>
+                            <p
+                              className="w-full rounded border py-1.5 px-2 text-[11px] leading-relaxed"
+                              style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
+                            >
+                              {it.technical_text}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1064,11 +1083,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </div>
                     </div>
 
-                    {/* Observação / Informações Técnicas */}
+                    {/* Observação / Informações Técnicas — obrigatória para
+                        item genérico: sem código SAP nem ficha de catálogo,
+                        é o único lugar onde o comprador sabe o que comprar. */}
                     <div>
-                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Observação / Informações Técnicas</label>
+                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                        Observação / Informações Técnicas{it.is_generic ? ' *' : ''}
+                      </label>
                       <textarea
                         rows={2}
+                        required={it.is_generic || false}
                         placeholder="Informações técnicas adicionais, observações ou especificações..."
                         value={it.observation || ''}
                         onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
