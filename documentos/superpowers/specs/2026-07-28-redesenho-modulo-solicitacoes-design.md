@@ -313,6 +313,15 @@ tocou o índice GIN. Sem a cláusula, a forma nova caiu para 6 ms com
 `material_code`, então não deveria cair nessa armadilha, mas isso é
 verificado, não presumido — ver a Tarefa 5 do plano de implementação.
 
+**Meta revisada após medição real:** amostras espaçadas ao longo de um dia
+(fora do efeito de cache quente logo após a migração) mediram p95 ≈ 217 ms,
+acima dos 150 ms planejados. A causa confirmada é pressão de cache do banco
+compartilhado — o plano de consulta usa o índice GIN corretamente em todos os
+casos, não é uma consulta mal-formada. Decisão: aceitar 217 ms como a meta de
+fato. Ainda é uma melhora de ~6x sobre os 1398 ms da busca antiga, e
+imperceptível num dropdown com debounce de 300 ms. Sem trabalho adicional de
+otimização neste plano.
+
 ### Sinais mostrados no resultado
 
 - `45 UN em CD01` — tem saldo no almoxarifado;

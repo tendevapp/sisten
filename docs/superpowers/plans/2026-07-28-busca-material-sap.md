@@ -15,7 +15,13 @@
 - Código e comentários em **português**, seguindo o padrão de `src/lib/format.ts` e `src/lib/solicitacoes.ts`: cabeçalho com licença SPDX e um parágrafo explicando *por que* o módulo existe.
 - Cores só por token de `src/styles/tokens.css` (`var(--ink-primary)`, `var(--brand)`, `var(--status-*)`). Nenhum hex cru, nenhuma classe Tailwind de cor fixa.
 - `npm run lint` (`tsc --noEmit`) precisa passar limpo ao fim de cada tarefa.
-- Meta de desempenho: **p95 < 150 ms** na RPC, verificada com `explain analyze` contra os termos do diagnóstico.
+- Meta de desempenho original: **p95 < 150 ms** na RPC. Medição real na Tarefa 5
+  (amostras espaçadas ao longo de um dia, fora do efeito de cache quente
+  pós-migração) deu **p95 ≈ 217 ms**, por pressão de cache do banco
+  compartilhado — o índice GIN é usado corretamente em todos os planos. Meta
+  aceita como **p95 ≈ 217 ms** por decisão do parceiro humano: ainda é ~6x
+  mais rápido que os 1398 ms da busca antiga, e imperceptível com o debounce
+  de 300 ms do formulário. Ver spec, seção da Tarefa 5.
 - Egress importa (ver `otimizacao_egress.sql`): a RPC devolve colunas nomeadas, nunca `select *`.
 
 ## File Structure
