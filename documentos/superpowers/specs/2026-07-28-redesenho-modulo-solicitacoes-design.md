@@ -431,6 +431,23 @@ Lógica pura, testável sem renderizar componente:
 A RPC `buscar_materiais` ganha verificação de plano com `explain analyze`
 contra a meta de p95 < 150 ms, com os mesmos termos do diagnóstico.
 
+## Lacuna de dado encontrada na implementação
+
+`mv_material_sinais` (Tarefa 3 do plano de busca) mediu `com_estoque = 1276`
+contra os 2.052 materiais distintos com saldo positivo em `estoque` — uma
+cobertura de 62%. Causa confirmada: `estoque.material` mistura três formatos
+de código (1.885 com 7 dígitos, igual a `materials.material_code`; 137 com
+18 dígitos; 30 com 5 dígitos), e dos 1.885 de 7 dígitos, **609 não existem em
+`materials`** — provavelmente itens descontinuados do catálogo, não
+confirmado.
+
+Decisão: **seguir sem corrigir agora**. O sinal de estoque é aditivo por
+design — ausência de chip nunca foi tratada como erro, e os 776 materiais
+afetados (38%) simplesmente não mostram o sinal, sem quebrar nada da RPC ou
+do restante do redesenho. Corrigir a cobertura (normalizar os formatos de
+código, e investigar se os 609 ausentes são descontinuados ou lacuna real de
+importação) fica como trabalho de qualidade de dado, fora deste plano.
+
 ## Fora de escopo
 
 - Endurecer a RLS por setor. A policy `requests_read` continua permitindo ao
@@ -440,6 +457,9 @@ contra a meta de p95 < 150 ms, com os mesmos termos do diagnóstico.
   para o catálogo inteiro. O redesenho contorna a falta de taxonomia filtrando
   pelos sinais de uso; corrigir o dado é trabalho à parte, e é o que
   desbloquearia filtro por família de material.
+- Normalizar os formatos de código em `estoque.material` e investigar os 609
+  materiais sem correspondência em `materials` — ver "Lacuna de dado
+  encontrada na implementação", acima.
 - Confirmar o significado de `ADMI`, `SEGE` e `SEGT` em `area_solicitante`.
   Ficam sem mapeamento até alguém de Suprimentos dizer.
 - Liberar item sem código SAP por criticidade 5. Gancho previsto, não
