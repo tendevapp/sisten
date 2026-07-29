@@ -170,7 +170,7 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
     .slice(0, 5);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] -m-6 overflow-hidden bg-slate-50/20">
+    <div className="flex flex-col h-full overflow-hidden bg-slate-50/20">
       
       {/* Tab Navigation Header */}
       <div className="bg-white border-b border-slate-100 px-6 py-3 flex items-center justify-between shrink-0">

@@ -886,7 +886,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] -m-6 overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       
       {/* Header Panel Layout */}
       <div className="bg-white p-4 border-b border-slate-100 shrink-0 text-left space-y-3.5">

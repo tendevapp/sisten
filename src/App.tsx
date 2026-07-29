@@ -8,6 +8,7 @@ import { canAccessPage, pageIdForPath } from './lib/pages';
 // Components
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundary';
 
 // Views
 import Login from './views/Login';
@@ -79,6 +80,25 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/sobre',
 ]);
 
+// Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
+// altura visível e rolam internamente, em vez de rolar com a página. Antes
+// simulavam isso com uma altura fixa em vh menos um "chute" de pixels para
+// cabeçalho + preenchimento (`calc(100vh-100px)` + margem negativa para
+// cancelar o padding do <main>). Esse chute só batia se o cabeçalho
+// renderizasse com exatamente a altura assumida — qualquer diferença de
+// fonte, zoom do navegador ou escala do Windows entre computadores fazia o
+// conteúdo transbordar ou sobrar um vão, exigindo o usuário ajustar o zoom
+// manualmente. Aqui o <main> deixa de aplicar seu padding para essas rotas e
+// a própria tela ocupa 100% da altura computada pelo flexbox — sem números
+// mágicos, então sempre bate com o espaço realmente disponível.
+const FULL_BLEED_PATHS = new Set<string>([
+  '/solicitacoes/aprovacoes',
+  '/solicitacoes/minhas',
+  '/helpdesk',
+  '/helpdesk/relatorios',
+  '/suprimentos/painel',
+]);
+
 function ViewLoadingFallback() {
   return (
     <div className="flex h-full w-full items-center justify-center py-24">
@@ -139,6 +159,13 @@ export default function App() {
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
+
+  // Um mount bem-sucedido confirma que os chunks atuais carregam normalmente,
+  // então o guard de recarregamento único (ErrorBoundary) pode ser liberado
+  // para a próxima vez que um deploy invalidar chunks antigos.
+  useEffect(() => {
+    sessionStorage.removeItem(CHUNK_RELOAD_GUARD_KEY);
+  }, []);
 
   // Initialize DB and authenticate user.
   useEffect(() => {
@@ -537,22 +564,40 @@ export default function App() {
         />
 
         {/* Dynamic scrollable main pane view */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <Suspense fallback={<ViewLoadingFallback />}>
-            {/*
-              A chave inclui dataVersion para forçar remontagem quando a sincronização
-              em segundo plano traz dados novos — útil para telas de leitura que carregam
-              dados apenas no mount (Início, Relatórios, Dashboards).
+        <main
+          className={
+            FULL_BLEED_PATHS.has(currentPath)
+              ? 'flex-1 overflow-hidden'
+              : 'flex-1 overflow-y-auto p-3 sm:p-6 pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
+          }
+        >
+          {/*
+            ErrorBoundary chaveado pelo path: se o import() de uma tela lazy falhar
+            (chunk antigo removido após um novo deploy) ou a tela lançar um erro de
+            render, a árvore inteira ficava em branco até um F5, pois nada capturava
+            o erro. A chave por currentPath garante que navegar para outra tela
+            remonta o boundary e limpa o estado de erro.
+          */}
+          <ErrorBoundary key={currentPath}>
+            <Suspense fallback={<ViewLoadingFallback />}>
+              {/*
+                A chave inclui dataVersion para forçar remontagem quando a sincronização
+                em segundo plano traz dados novos — útil para telas de leitura que carregam
+                dados apenas no mount (Início, Relatórios, Dashboards).
 
-              PORÉM, remontar destrói todo o estado local da tela (formulários, filtros,
-              buscas, edições inline, rascunhos, textos sendo digitados). Em telas onde o
-              usuário está trabalhando, isso apagaria o que ele faz quando o sync chega.
-              Por isso essas telas usam uma chave estável (só o path), sem dataVersion.
-            */}
-            <div key={STATE_PRESERVING_PATHS.has(currentPath) ? currentPath : `${currentPath}:${dataVersion}`}>
-              {renderActiveView()}
-            </div>
-          </Suspense>
+                PORÉM, remontar destrói todo o estado local da tela (formulários, filtros,
+                buscas, edições inline, rascunhos, textos sendo digitados). Em telas onde o
+                usuário está trabalhando, isso apagaria o que ele faz quando o sync chega.
+                Por isso essas telas usam uma chave estável (só o path), sem dataVersion.
+              */}
+              <div
+                key={STATE_PRESERVING_PATHS.has(currentPath) ? currentPath : `${currentPath}:${dataVersion}`}
+                className={FULL_BLEED_PATHS.has(currentPath) ? 'h-full' : undefined}
+              >
+                {renderActiveView()}
+              </div>
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>

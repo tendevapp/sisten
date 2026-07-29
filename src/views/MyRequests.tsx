@@ -222,7 +222,7 @@ export default function MyRequests({ user, onNavigate }: MyRequestsProps) {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-100px)] -m-6 overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-full overflow-hidden">
       
       {/* Left panel: Searchable Table / List of Requests */}
       <div className="w-full lg:w-2/5 border-r border-slate-100 bg-white flex flex-col h-full text-left">

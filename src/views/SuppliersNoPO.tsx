@@ -509,11 +509,39 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     });
   };
 
+  // Aplica o status e/ou a promessa de entrega escolhidos na barra de seleção
+  // a todos os itens marcados de uma vez, deixando-os como edição pendente
+  // (mesmo caminho da edição individual) — o usuário revisa e confirma com
+  // "Salvar tudo".
+  const handleApplyBulkFields = () => {
+    if (selectedRis.size === 0 || (!bulkStatusValue && !bulkDateValue)) return;
+
+    if (bulkStatusValue) {
+      setStatusInputState(prev => {
+        const next = { ...prev };
+        selectedRis.forEach(ri => { next[ri] = bulkStatusValue; });
+        return next;
+      });
+    }
+    if (bulkDateValue) {
+      setDateInputState(prev => {
+        const next = { ...prev };
+        selectedRis.forEach(ri => { next[ri] = bulkDateValue; });
+        return next;
+      });
+    }
+  };
+
   // Estado para controle de edição inline de cada item
   const [obsInputState, setObsInputState] = useState<Record<string, string>>({});
   const [dateInputState, setDateInputState] = useState<Record<string, string>>({});
   const [statusInputState, setStatusInputState] = useState<Record<string, ItemStatus | ''>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
+  // Preenchimento em massa: valores escolhidos na barra de seleção para aplicar
+  // de uma vez a todos os itens marcados (ficam como edição pendente, iguais à
+  // edição individual — o usuário ainda confirma com "Salvar tudo").
+  const [bulkStatusValue, setBulkStatusValue] = useState<ItemStatus | ''>('');
+  const [bulkDateValue, setBulkDateValue] = useState('');
   // Salvamento em lote: salva de uma vez todos os itens com edições pendentes.
   const [bulkSaving, setBulkSaving] = useState(false);
   const [historyOpenRi, setHistoryOpenRi] = useState<string | null>(null);
@@ -1635,13 +1663,41 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             </div>
           )}
           {selectedRis.size > 0 && (
-            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-250 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20">
-              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-250 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20">
+              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 shrink-0">
                 {selectedRis.size} {selectedRis.size === 1 ? 'item selecionado' : 'itens selecionados'}
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Preenchimento em massa: aplica status e/ou promessa de entrega a
+                    todos os itens selecionados de uma vez (fica pendente de "Salvar tudo"). */}
+                <select
+                  value={bulkStatusValue}
+                  onChange={(e) => setBulkStatusValue(e.target.value as ItemStatus | '')}
+                  className="text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:outline-none"
+                  title="Status para aplicar aos selecionados"
+                >
+                  <option value="">Status...</option>
+                  {itemStatusOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={bulkDateValue}
+                  onChange={(e) => setBulkDateValue(e.target.value)}
+                  title="Promessa de entrega para aplicar aos selecionados"
+                  className="text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:outline-none"
+                />
                 <button
-                  onClick={clearSelection}
+                  onClick={handleApplyBulkFields}
+                  disabled={!bulkStatusValue && !bulkDateValue}
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Aplicar aos selecionados
+                </button>
+                <button
+                  onClick={() => { clearSelection(); setBulkStatusValue(''); setBulkDateValue(''); }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all cursor-pointer"
                 >
                   Limpar seleção
