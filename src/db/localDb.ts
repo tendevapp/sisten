@@ -2980,7 +2980,6 @@ class LocalDatabase {
     // Aqui apenas: (a) construir set de eliminados para verificação local de eflag_e='L'
     //              (b) manter mapa de pedidosForn ativo por RI para fallback offline e dados financeiros.
     const rawPedsForn = this.getStorageItem<any[]>(this.pedidosFornKey, []);
-    const eliminatedDocCompras = new Set<string>();
     const eliminatedCompositeKeys = new Set<string>();
     const pedsFornByRi = new Map<string, any>(); // PO ativo mais recente por RI
 
@@ -2988,7 +2987,6 @@ class LocalDatabase {
       const eflag = String(pf.eflag_e || pf.campos_extras?.eflag_e || pf['E'] || pf['E.'] || '').trim().toUpperCase();
       if (eflag === 'L') {
         const doc = String(pf.doc_compra || pf.documento_compra || '').trim();
-        if (doc) eliminatedDocCompras.add(doc);
         if (pf.ri && doc) eliminatedCompositeKeys.add(String(pf.ri).trim() + '_' + doc);
       } else {
         // Manter o registro mais recente por RI (data_doc DESC)
@@ -3015,9 +3013,11 @@ class LocalDatabase {
       // PO efetivo: servidor tem precedência; fallback para pedidosForn local (offline)
       const docCompra = rawDocCompra || localDocCompra;
 
-      // Verificação de eliminação: eflag_e = 'L' na pedidosForn é a única fonte de verdade
+      // Verificação de eliminação: eflag_e = 'L' na pedidosForn é a única fonte de verdade.
+      // Escopo por RI+doc — eflag_e é por linha do pedido, não pelo PO inteiro,
+      // e um mesmo número de PO pode ter itens ativos e itens cancelados.
       const isDocEliminated = docCompra
-        ? (eliminatedDocCompras.has(docCompra) || (r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra)))
+        ? !!(r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra))
         : false;
 
       const hasPO = !!docCompra
