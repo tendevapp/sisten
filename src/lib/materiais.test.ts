@@ -57,7 +57,9 @@ const base: MaterialResultado = {
   ultimaRm: null,
   rmsSemPedido: null,
   rmAberta: null,
+  qtdRmAberta: null,
   pedidoAberto: null,
+  qtdPedidoAberto: null,
   chegaEm: null,
   pedidoPelaArea: false,
 };
@@ -73,14 +75,14 @@ describe('resumoSinais', () => {
     expect(chips).toEqual([{ texto: '45 UN em estoque', tom: 'estoque' }]);
   });
 
-  it('mostra RM aberta sem pedido — alguém já pediu e não virou compra', () => {
-    const chips = resumoSinais({ ...base, rmsSemPedido: 1, rmAberta: '0012345' });
-    expect(chips).toContainEqual({ texto: 'RM 0012345 aberta, sem pedido', tom: 'demanda' });
+  it('mostra a quantidade da RM aberta, não o número — alguém já pediu e não virou compra', () => {
+    const chips = resumoSinais({ ...base, rmsSemPedido: 1, rmAberta: '0012345', qtdRmAberta: 200 });
+    expect(chips).toContainEqual({ texto: 'RM aberta: 200 UN', tom: 'demanda' });
   });
 
-  it('mostra pedido a caminho com a data de remessa', () => {
-    const chips = resumoSinais({ ...base, pedidoAberto: '4500123', chegaEm: '2026-08-12' });
-    expect(chips).toContainEqual({ texto: 'Pedido 4500123 · chega 12/08/2026', tom: 'pedido' });
+  it('mostra a quantidade do pedido a caminho, não o número, com a data de remessa', () => {
+    const chips = resumoSinais({ ...base, pedidoAberto: '4500123', qtdPedidoAberto: 500, chegaEm: '2026-08-12' });
+    expect(chips).toContainEqual({ texto: '500 UN a caminho · chega 12/08/2026', tom: 'pedido' });
   });
 
   it('mostra frequência de uso', () => {

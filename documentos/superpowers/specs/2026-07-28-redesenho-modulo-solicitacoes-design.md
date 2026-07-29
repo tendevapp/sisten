@@ -331,8 +331,11 @@ otimização neste plano.
 - `45 UN em estoque` — tem saldo no almoxarifado (só a quantidade; o
   depósito não é mostrado, e os depósitos 0006/0090/0105 não entram no
   cálculo — por pedido do parceiro humano);
-- `RM 0012345 aberta, sem pedido` — já foi pedido, ainda não virou PO;
-- `Pedido 4500123 · chega 12/08` — já comprado, a caminho;
+- `RM aberta: 200 UN` — já foi pedido, ainda não virou PO (mostra a
+  quantidade da RM, não o número do documento);
+- `500 UN a caminho · chega 12/08` — já comprado, a caminho (mostra a
+  quantidade restante do pedido — pedida menos já fornecida —, não o
+  número do documento);
 - `12 RMs em 12 meses · última em 03/2026` — frequência de uso;
 - `sua área pediu 8x` — só quando o setor tem `sap_area_code` mapeado e há dado.
 

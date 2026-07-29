@@ -73,7 +73,9 @@ export interface MaterialResultado {
   ultimaRm: string | null;
   rmsSemPedido: number | null;
   rmAberta: string | null;
+  qtdRmAberta: number | null;
   pedidoAberto: string | null;
+  qtdPedidoAberto: number | null;
   chegaEm: string | null;
   pedidoPelaArea: boolean;
 }
@@ -98,13 +100,14 @@ export function resumoSinais(r: MaterialResultado): SinalChip[] {
     chips.push({ texto: `${formatQtd(r.qtdEstoque)} ${r.unit} em estoque`, tom: 'estoque' });
   }
 
-  if (r.rmsSemPedido && r.rmsSemPedido > 0 && r.rmAberta) {
-    chips.push({ texto: `RM ${r.rmAberta} aberta, sem pedido`, tom: 'demanda' });
+  if (r.rmsSemPedido && r.rmsSemPedido > 0 && r.rmAberta && r.qtdRmAberta) {
+    // Quantidade da RM em aberto, não o número — é o que ajuda a decidir.
+    chips.push({ texto: `RM aberta: ${formatQtd(r.qtdRmAberta)} ${r.unit}`, tom: 'demanda' });
   }
 
-  if (r.pedidoAberto) {
+  if (r.pedidoAberto && r.qtdPedidoAberto) {
     const quando = r.chegaEm ? ` · chega ${formatDateBR(r.chegaEm)}` : '';
-    chips.push({ texto: `Pedido ${r.pedidoAberto}${quando}`, tom: 'pedido' });
+    chips.push({ texto: `${formatQtd(r.qtdPedidoAberto)} ${r.unit} a caminho${quando}`, tom: 'pedido' });
   }
 
   if (r.rms12m && r.rms12m > 0) {
@@ -144,7 +147,9 @@ export async function buscarMateriais(
     ultimaRm: (l.ultima_rm as string) ?? null,
     rmsSemPedido: (l.rms_sem_pedido as number) ?? null,
     rmAberta: (l.rm_aberta as string) ?? null,
+    qtdRmAberta: (l.qtd_rm_aberta as number) ?? null,
     pedidoAberto: (l.pedido_aberto as string) ?? null,
+    qtdPedidoAberto: (l.qtd_pedido_aberto as number) ?? null,
     chegaEm: (l.chega_em as string) ?? null,
     pedidoPelaArea: Boolean(l.pedido_pela_area),
   }));
