@@ -13,3 +13,6 @@ graphify-out/
 
 # Mockups do companion de brainstorming
 .superpowers/
+
+# Worktrees de execucao isolada
+.worktrees/
