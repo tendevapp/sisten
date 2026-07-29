@@ -24,6 +24,14 @@ export interface Sector {
   name: string;
   is_support: boolean;
   helpdesk_enabled: boolean;
+  /**
+   * Código de quatro letras da área no SAP (`ALMO`, `MANU`…), usado para
+   * cruzar com `vw_demandas.area_solicitante` e dizer "sua área já pediu
+   * este item". Nulo nos setores cuja correspondência não foi confirmada, e
+   * em 31% das RMs a própria área vem vazia — por isso o sinal só aparece
+   * quando há dado, e nunca como "0x".
+   */
+  sap_area_code?: string;
 }
 
 export interface Profile {
