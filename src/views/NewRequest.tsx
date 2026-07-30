@@ -318,6 +318,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (req.tipo_compra) setTipoCompra(req.tipo_compra);
     if (req.data_necessidade) setDataNecessidade(req.data_necessidade);
     if (req.registration_type) setRegistrationType(req.registration_type);
+    if (req.type === 'cadastro_sap' && req.justificativa) {
+      // Ao criar, Nome/Specs/Justificativa são compostos num único texto (ver
+      // handleSubmit) porque o Request não tem campos próprios pra eles. Ao
+      // editar, faz o parse reverso pra não deixar os campos em branco.
+      const itemMatch = req.justificativa.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
+      const fornecedorMatch = itemMatch ? null : req.justificativa.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
+      if (itemMatch) {
+        setSapRegName(itemMatch[1]);
+        setSapRegSpecs(itemMatch[2]);
+        setJustificativa(itemMatch[3]);
+      } else if (fornecedorMatch) {
+        setSapRegName(fornecedorMatch[1]);
+        setJustificativa(fornecedorMatch[2]);
+      }
+    }
     if (req.target_sector_id) setHelpdeskSectorId(req.target_sector_id);
     if (req.category_id) setHelpdeskCategory(req.category_id);
     if (req.local) setHelpdeskLocal(req.local);

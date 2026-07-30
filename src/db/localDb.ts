@@ -1501,7 +1501,10 @@ class LocalDatabase {
 
   // Sectors Management
   public getSectors(): Sector[] {
-    return this.getStorageItem<Sector[]>(this.sectorsKey, INITIAL_SECTORS);
+    // Cópia antes de ordenar: getStorageItem devolve a referência do cache em
+    // memória, e um .sort() in-place corromperia a ordem original guardada lá.
+    return [...this.getStorageItem<Sector[]>(this.sectorsKey, INITIAL_SECTORS)]
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
   public updateSector(sectorId: string, isSupport: boolean, helpdeskEnabled: boolean): void {
@@ -1843,6 +1846,18 @@ class LocalDatabase {
         'info'
       );
     });
+  }
+
+  // Destinatários de notificação de Cadastro SAP: role coordenador_suprimentos/
+  // comprador (regra atual) somado aos usuários marcados manualmente como
+  // aprovador de Cadastro SAP — aditivo, deduplicado por id.
+  private getCadastroSapNotificationRecipients(): Profile[] {
+    const all = this.getProfiles();
+    const byId = new Map<string, Profile>();
+    all
+      .filter(u => u.roles.includes('coordenador_suprimentos') || u.roles.includes('comprador') || u.aprovador_cadastro_sap)
+      .forEach(u => byId.set(u.id, u));
+    return Array.from(byId.values());
   }
 
   public createNotification(userId: string, title: string, description: string, type: Notification['type'], reqId?: string, reqNo?: string): void {
@@ -2311,12 +2326,18 @@ class LocalDatabase {
       this.logStatusChange(request.id, 'rascunho', status, user.id, user.name, 'Solicitação criada no sistema.');
       this.logActivity(user.id, 'Solicitações', 'Criar Solicitação', `Criou a solicitação #${request.number} (${request.type}).`);
 
+      // Publica a solicitação no Supabase ANTES de notificar: notifications.request_id
+      // tem FK para requests(id), e disparar a notificação antes da solicitação
+      // existir no banco faz o insert falhar (silenciosamente, só um console.warn),
+      // deixando quem deveria ser avisado sem notificação nenhuma.
+      await this.publishRequest(request);
+
       // Trigger approvals notification
       if (request.type === 'compra') {
-        // Find managers in applicant's sector
+        // Find users assigned as approvers of the applicant's sector
         const allUsers = this.getProfiles();
-        const sectorManagers = allUsers.filter(u => u.sector_id === request.solicitante_sector_id && u.roles.includes('gestor'));
-        
+        const sectorManagers = allUsers.filter(u => u.aprovador_setores?.includes(request.solicitante_sector_id));
+
         sectorManagers.forEach(mgr => {
           this.createNotification(
             mgr.id,
@@ -2343,9 +2364,8 @@ class LocalDatabase {
           });
         }
       } else if (request.type === 'cadastro_sap') {
-        // Send to Suprimentos
-        const coordCompradores = this.getProfiles().filter(u => u.roles.includes('coordenador_suprimentos') || u.roles.includes('comprador'));
-        coordCompradores.forEach(cc => {
+        // Send to Suprimentos (por role) + usuários marcados como aprovador de Cadastro SAP
+        this.getCadastroSapNotificationRecipients().forEach(cc => {
           this.createNotification(
             cc.id,
             'Novo Cadastro SAP Solicitado',
@@ -2369,8 +2389,6 @@ class LocalDatabase {
           );
         });
       }
-
-      await this.publishRequest(request);
     }
 
     return request;
@@ -2444,7 +2462,7 @@ class LocalDatabase {
     // trabalhado nela. Sem este aviso, esse trabalho evaporaria em silêncio.
     if (statusAnterior === 'aprovada') {
       const destinatarios = this.getProfiles().filter(u =>
-        (u.sector_id === atualizada.solicitante_sector_id && u.roles.includes('gestor')) ||
+        u.aprovador_setores?.includes(atualizada.solicitante_sector_id) ||
         u.id === atualizada.comprador_id
       );
       destinatarios.forEach(d => this.createNotification(
@@ -2457,13 +2475,22 @@ class LocalDatabase {
       ));
     } else if (novoStatus === 'pendente') {
       const gestores = this.getProfiles().filter(u =>
-        u.sector_id === atualizada.solicitante_sector_id && u.roles.includes('gestor')
+        u.aprovador_setores?.includes(atualizada.solicitante_sector_id)
       );
       gestores.forEach(g => this.createNotification(
         g.id,
         `Solicitação editada aguarda aprovação: #${atualizada.number}`,
         `${atualizada.solicitante_name} editou a solicitação #${atualizada.number}, que voltou para sua análise.`,
         atualizada.criticality >= 4 ? 'critical' : 'info',
+        atualizada.id,
+        atualizada.number
+      ));
+    } else if (atualizada.type === 'cadastro_sap' && novoStatus === 'aberto') {
+      this.getCadastroSapNotificationRecipients().forEach(r => this.createNotification(
+        r.id,
+        `Cadastro SAP editado aguarda atendimento: #${atualizada.number}`,
+        `${atualizada.solicitante_name} editou a solicitação de Cadastro SAP #${atualizada.number}, que voltou para a fila.`,
+        atualizada.criticality >= 4 ? 'alert' : 'info',
         atualizada.id,
         atualizada.number
       ));
@@ -5335,6 +5362,62 @@ class LocalDatabase {
         })
         .catch(err => {
           console.error('Falha de escrita do grupo de compras no Supabase:', err);
+        });
+    }
+
+    return true;
+  }
+
+  // Define a lista de setores solicitantes que este usuário pode aprovar
+  // (solicitações de compra), editável na coluna "Aprovador" de Gestão de
+  // Usuários. É a única regra usada em Approvals/notificações para decidir
+  // quem vê e é notificado de cada solicitação.
+  public updateUserAprovadorSetores(userId: string, sectorIds: string[]): boolean {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    users[idx].aprovador_setores = sectorIds;
+    this.setStorageItem(this.profilesKey, users);
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Setores de aprovação de ${users[idx].name} atualizados (${sectorIds.length} setor(es)).`);
+
+    if (supabase) {
+      supabase.from('profiles')
+        .update({ aprovador_setores: sectorIds })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) console.error('Erro ao sincronizar setores de aprovação no Supabase:', error);
+        })
+        .catch(err => {
+          console.error('Falha de escrita dos setores de aprovação no Supabase:', err);
+        });
+    }
+
+    return true;
+  }
+
+  // Marca/desmarca este usuário como aprovador de Cadastro SAP, editável no
+  // mesmo modal "Aprovador" de Gestão de Usuários. Aditivo: soma com a
+  // notificação automática por role (coordenador_suprimentos/comprador) em
+  // submitRequest/saveRequestEdit, não a substitui.
+  public updateUserAprovadorCadastroSap(userId: string, value: boolean): boolean {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    users[idx].aprovador_cadastro_sap = value;
+    this.setStorageItem(this.profilesKey, users);
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `${users[idx].name} ${value ? 'marcado' : 'desmarcado'} como aprovador de Cadastro SAP.`);
+
+    if (supabase) {
+      supabase.from('profiles')
+        .update({ aprovador_cadastro_sap: value })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (error) console.error('Erro ao sincronizar aprovador de Cadastro SAP no Supabase:', error);
+        })
+        .catch(err => {
+          console.error('Falha de escrita do aprovador de Cadastro SAP no Supabase:', err);
         });
     }
 

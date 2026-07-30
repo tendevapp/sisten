@@ -50,6 +50,17 @@ export interface Profile {
   // admin em "Módulos de acesso". Só chaves desviadas do padrão do perfil
   // aparecem aqui — chave ausente = segue o defaultRoles da página.
   page_access?: Record<string, boolean>;
+  // Setores solicitantes (Sector.id) que este usuário pode aprovar
+  // solicitações de compra, definido pelo admin na coluna "Aprovador" de
+  // Gestão de Usuários. É a única regra que decide quem vê/aprova cada
+  // solicitação em Approvals — admin e coordenador_suprimentos continuam
+  // aprovando tudo independente desta lista.
+  aprovador_setores?: string[];
+  // Marca se este usuário deve ser notificado de novas solicitações de
+  // Cadastro SAP, definido no mesmo modal de "Aprovador". Aditivo: soma com
+  // a notificação automática por role (coordenador_suprimentos/comprador),
+  // não a substitui.
+  aprovador_cadastro_sap?: boolean;
 }
 
 export interface ActivityLog {

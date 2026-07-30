@@ -4,24 +4,28 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  FileCheck, ShieldAlert, ArrowDownUp, CheckCircle, XCircle, 
-  RefreshCw, ClipboardList, Clock, AlertTriangle, MessageSquare, Info 
+import {
+  FileCheck, ShieldAlert, ArrowDownUp, CheckCircle, XCircle,
+  RefreshCw, ClipboardList, Clock, AlertTriangle, MessageSquare, Info, FileText
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request } from '../types';
+import { useToast } from '../components/ui/Toast';
+import { exportCompraPdf } from '../lib/pdfExport/exportCompraPdf';
 
 interface ApprovalsProps {
   user: Profile;
 }
 
 export default function Approvals({ user }: ApprovalsProps) {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
   const [requests, setRequests] = useState<Request[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [justification, setJustification] = useState('');
   const [error, setError] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     loadRequests();
@@ -33,10 +37,10 @@ export default function Approvals({ user }: ApprovalsProps) {
     let filtered: Request[] = [];
 
     if (activeTab === 'pending') {
-      filtered = all.filter(r => 
-        r.type === 'compra' && 
-        r.status === 'pendente' && 
-        (r.solicitante_sector_id === user.sector_id || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos'))
+      filtered = all.filter(r =>
+        r.type === 'compra' &&
+        r.status === 'pendente' &&
+        (user.aprovador_setores?.includes(r.solicitante_sector_id) || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos'))
       );
 
       // Sort: criticality DESC, need date ASC
@@ -49,10 +53,10 @@ export default function Approvals({ user }: ApprovalsProps) {
         return dateA - dateB; // soonest need date first
       });
     } else {
-      filtered = all.filter(r => 
-        r.type === 'compra' && 
-        r.status !== 'pendente' && 
-        (r.solicitante_sector_id === user.sector_id || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos'))
+      filtered = all.filter(r =>
+        r.type === 'compra' &&
+        r.status !== 'pendente' &&
+        (user.aprovador_setores?.includes(r.solicitante_sector_id) || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos'))
       );
       // Sort by newest first
       filtered.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -69,6 +73,25 @@ export default function Approvals({ user }: ApprovalsProps) {
 
   const selectedRequest = requests.find(r => r.id === selectedId);
   const items = selectedRequest ? localDb.getRequestItems(selectedRequest.id) : [];
+
+  const handleExportPdf = async () => {
+    if (!selectedRequest) return;
+    setExportingPdf(true);
+    try {
+      const sectorName = localDb.getSectors().find(s => s.id === selectedRequest.solicitante_sector_id)?.name || selectedRequest.solicitante_sector_id;
+      const { failedAttachments } = await exportCompraPdf(selectedRequest, sectorName, items);
+      if (failedAttachments.length > 0) {
+        toast.error(`PDF gerado, mas os anexos "${failedAttachments.join('", "')}" não puderam ser incluídos.`);
+      } else {
+        toast.success('PDF exportado com sucesso.');
+      }
+    } catch (e) {
+      console.error('Falha ao exportar PDF da solicitação de compra:', e);
+      toast.error('Não foi possível gerar o PDF. Tente novamente.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const handleAction = async (action: 'aprovar' | 'rejeitar' | 'revisar') => {
     if (!selectedRequest) return;
@@ -134,7 +157,7 @@ export default function Approvals({ user }: ApprovalsProps) {
               onClick={() => setActiveTab('pending')}
               className={`flex-1 rounded py-1.5 font-bold transition-all text-center cursor-pointer ${activeTab === 'pending' ? 'bg-white shadow-sm text-emerald-800' : 'text-slate-500 hover:text-slate-800'}`}
             >
-              Fila Pendente ({localDb.getRequests().filter(r => r.type === 'compra' && r.status === 'pendente' && (r.solicitante_sector_id === user.sector_id || user.roles.includes('admin'))).length})
+              Fila Pendente ({localDb.getRequests().filter(r => r.type === 'compra' && r.status === 'pendente' && (user.aprovador_setores?.includes(r.solicitante_sector_id) || user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos'))).length})
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -199,11 +222,21 @@ export default function Approvals({ user }: ApprovalsProps) {
                   <p className="text-xs text-slate-500 mt-0.5">Disparado por {selectedRequest.solicitante_id} • Setor Solicitante</p>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-slate-400">ESTIMATIVA:</span>
-                  <span className="text-sm font-bold text-slate-900">
-                    R$ {items.reduce((acc, i) => acc + (i.estimated_value * i.quantity), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-slate-400">ESTIMATIVA:</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      R$ {items.reduce((acc, i) => acc + (i.estimated_value * i.quantity), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleExportPdf}
+                    disabled={exportingPdf}
+                    className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
+                  </button>
                 </div>
               </div>
             </div>

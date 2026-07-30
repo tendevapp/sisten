@@ -10,15 +10,19 @@ import {
 import { localDb } from '../db/localDb';
 import { Profile, Request, Sector } from '../types';
 import { AttachmentGallery } from '../components/ui/Attachments';
+import { useToast } from '../components/ui/Toast';
+import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
 
 interface CadastrosSapProps {
   user: Profile;
 }
 
 export default function CadastrosSap({ user }: CadastrosSapProps) {
+  const toast = useToast();
   const [requests, setRequests] = useState<Request[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedReq, setSelectedReq] = useState<Request | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
   
   // Carrega do cache
   const pageCache = localDb.getPageCache('cadastros_sap', {
@@ -264,6 +268,25 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     return sectors.find(s => s.id === id)?.name || id;
   };
 
+  const handleExportPdf = async () => {
+    if (!selectedReq) return;
+    setExportingPdf(true);
+    try {
+      const attachments = localDb.getAttachments(selectedReq.id);
+      const { failedAttachments } = await exportCadastroSapPdf(selectedReq, getSectorName(selectedReq.solicitante_sector_id), attachments);
+      if (failedAttachments.length > 0) {
+        toast.error(`PDF gerado, mas os anexos "${failedAttachments.join('", "')}" não puderam ser incluídos.`);
+      } else {
+        toast.success('PDF exportado com sucesso.');
+      }
+    } catch (e) {
+      console.error('Falha ao exportar PDF do cadastro SAP:', e);
+      toast.error('Não foi possível gerar o PDF. Tente novamente.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6 text-left py-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -442,12 +465,22 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     Aberta em {new Date(selectedReq.created_at).toLocaleString('pt-BR')}
                   </p>
                 </div>
-                <button 
-                  onClick={() => setSelectedReq(null)}
-                  className="text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
-                >
-                  Fechar
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={handleExportPdf}
+                    disabled={exportingPdf}
+                    className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
+                  </button>
+                  <button
+                    onClick={() => setSelectedReq(null)}
+                    className="text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
 
               {/* Details */}

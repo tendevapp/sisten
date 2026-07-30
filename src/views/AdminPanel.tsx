@@ -15,6 +15,7 @@ import { getAutoCategory } from '../data/materials';
 import { Profile, Sector, Material } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
+import AprovadorSetoresModal from '../components/admin/AprovadorSetoresModal';
 
 interface AdminPanelProps {
   user: Profile;
@@ -30,6 +31,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
+  const [aprovadorSetoresProfileId, setAprovadorSetoresProfileId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
@@ -496,6 +498,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <th className="py-2.5">E-mail</th>
                     <th className="py-2.5">Cargo / Setor</th>
                     <th className="py-2.5">Grupo Compras</th>
+                    <th className="py-2.5">Aprovador</th>
                     <th className="py-2.5">Nível de Acesso (Role)</th>
                     <th className="py-2.5 text-center">Ações</th>
                   </tr>
@@ -552,6 +555,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                             </div>
                           );
                         })()}
+                      </td>
+                      <td className="py-3">
+                        <button
+                          onClick={() => setAprovadorSetoresProfileId(p.id)}
+                          className="text-slate-600 hover:underline font-semibold"
+                        >
+                          {(() => {
+                            const parts: string[] = [];
+                            if (p.aprovador_setores?.length) parts.push(`${p.aprovador_setores.length} setor(es)`);
+                            if (p.aprovador_cadastro_sap) parts.push('Cadastro SAP');
+                            return parts.length ? parts.join(' + ') : '—';
+                          })()}
+                        </button>
                       </td>
                       <td className="py-3">
                         {selectedProfileId === p.id ? (
@@ -2017,6 +2033,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           <PageAccessModal
             user={target}
             onClose={() => setPageAccessProfileId(null)}
+            onChanged={loadData}
+          />
+        );
+      })()}
+
+      {aprovadorSetoresProfileId && (() => {
+        const target = profiles.find(p => p.id === aprovadorSetoresProfileId);
+        if (!target) return null;
+        return (
+          <AprovadorSetoresModal
+            user={target}
+            sectors={sectors}
+            onClose={() => setAprovadorSetoresProfileId(null)}
             onChanged={loadData}
           />
         );
