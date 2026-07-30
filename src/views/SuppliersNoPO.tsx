@@ -2067,7 +2067,6 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   <Th label="Descrição" />
                   <Th label="Qtd / Un" />
                   {!tableShowSupplierFirst && <Th label={poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'} />}
-                  <Th label="Prioridade" />
                   <Th label="Status" />
                   <Th label="Promessa Entrega" />
                   <Th label="Observação" />
@@ -2185,34 +2184,34 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         </td>
 
                         {/* Description (Clickable) */}
-                        <td className="py-3 px-3 max-w-[280px] break-words font-medium text-slate-800 dark:text-slate-200">
+                        <td className="py-3 px-3 min-w-[280px] max-w-[480px] break-words font-medium text-slate-800 dark:text-slate-200">
                           <button
                             onClick={() => setSelectedRecordForModal(r)}
                             className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
                           >
                             {r.texto_breve}
                           </button>
-                          <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex-wrap">
+                          <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-700 dark:text-slate-300 font-semibold flex-wrap">
                             {r.status_requisicao !== 'Processado' && (
                               <>
                                 <span>Aberto {r.dias_em_aberto}d</span>
                                 <span>•</span>
                               </>
                             )}
+                            <span className="font-bold">G: {r.grupo_comprador}</span>
                             {/* Grupo de materiais: 8% dos itens não têm código
                                 de grupo no SAP, e nesses casos o rótulo some em
                                 vez de ocupar espaço com um travessão. */}
                             {grupoMercDe(r) && (
                               <>
-                                <span className="text-slate-500 dark:text-slate-400">{grupoMercDe(r)}</span>
                                 <span>•</span>
+                                <span className="text-slate-700 dark:text-slate-300">{grupoMercDe(r)}</span>
                               </>
                             )}
-                            <span>G: {r.grupo_comprador}</span>
                             {r.status_requisicao !== 'Processado' && r.alerta && (
                               <>
                                 <span>•</span>
-                                <span className="text-amber-600 dark:text-amber-500">{r.alerta}</span>
+                                <span className="text-amber-600 dark:text-amber-400 font-bold">{r.alerta}</span>
                               </>
                             )}
                           </div>
@@ -2225,7 +2224,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
                         {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) */}
                         {!tableShowSupplierFirst && (
-                          <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
+                          <td className="py-3 px-3 min-w-[240px] lg:min-w-[280px] max-w-[280px]">
                             {r.status_requisicao === 'Processado' ? (
                               renderPOInfoBlock(r, poFornecedor)
                             ) : !encontrado ? (
@@ -2290,23 +2289,6 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             )}
                           </td>
                         )}
-
-                        {/* Prioridade solicitada (Rastreio Compras) */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {(() => {
-                            const p = prioridadesMap.get(r.ri);
-                            if (!p) return <span className="text-slate-300 dark:text-slate-600">—</span>;
-                            const meta = priorityMeta(p.nivel);
-                            return (
-                              <span
-                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold ${meta.badge}`}
-                                title={`Solicitado por ${p.solicitante_nome} em ${new Date(p.created_at).toLocaleString('pt-BR')}`}
-                              >
-                                <Flag className="h-2.5 w-2.5" /> Grau {p.nivel}
-                              </span>
-                            );
-                          })()}
-                        </td>
 
                         {/* Status Select */}
                         <td className="py-2.5 px-3 min-w-[140px]">
