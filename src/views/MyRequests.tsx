@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, Paperclip, Send, MessageSquare, History, 
   Calendar, Check, AlertCircle, Copy, CheckCircle2, ChevronRight, Download, Upload, Loader2, Info, Star,
-  Pencil
+  Pencil, ExternalLink
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestItem, RequestComment, RequestStatusHistory } from '../types';
@@ -500,6 +500,17 @@ export default function MyRequests({ user, onNavigate }: MyRequestsProps) {
                             <p className="text-[11px] text-slate-500 mt-1 italic">
                               Obs: {it.observation}
                             </p>
+                          )}
+                          {it.reference_link && (
+                            <a
+                              href={it.reference_link.startsWith('http') ? it.reference_link : `https://${it.reference_link}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline mt-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Link de Referência
+                            </a>
                           )}
                           <div className="mt-2">
                             <AttachmentGallery

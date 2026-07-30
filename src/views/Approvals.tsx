@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   FileCheck, ShieldAlert, ArrowDownUp, CheckCircle, XCircle,
-  RefreshCw, ClipboardList, Clock, AlertTriangle, MessageSquare, Info, FileText
+  RefreshCw, ClipboardList, Clock, AlertTriangle, MessageSquare, Info, FileText, ExternalLink
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request } from '../types';
@@ -278,6 +278,17 @@ export default function Approvals({ user }: ApprovalsProps) {
                           <p className="text-[11px] text-slate-500 mt-1 italic">
                             Obs: {it.observation}
                           </p>
+                        )}
+                        {it.reference_link && (
+                          <a
+                            href={it.reference_link.startsWith('http') ? it.reference_link : `https://${it.reference_link}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline mt-1"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Link de Referência
+                          </a>
                         )}
                       </div>
                       <div className="text-right">

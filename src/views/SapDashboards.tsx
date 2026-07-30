@@ -181,6 +181,11 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
     return true;
   }, []);
 
+  const filtradosSemData = useMemo(
+    () => records.filter(r => aplicarRecortes(r)),
+    [records, aplicarRecortes]
+  );
+
   const filtrados = useMemo(
     () => records.filter(r => aplicarRecortes(r) && dentroDoPeriodo(r, filtros.dateFrom, filtros.dateTo)),
     [records, aplicarRecortes, dentroDoPeriodo, filtros.dateFrom, filtros.dateTo]
@@ -290,7 +295,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
       )}
 
       {aba === 'demandas' && (
-        <TabDemandas records={filtrados} granularidade={filtros.granularidade} />
+        <TabDemandas records={filtrados} allRecords={filtradosSemData} granularidade={filtros.granularidade} />
       )}
 
       {aba === 'carteira' && (

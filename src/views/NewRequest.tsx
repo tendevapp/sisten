@@ -8,7 +8,7 @@ import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X,
-  ListChecks, Gauge, Send,
+  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -49,6 +49,7 @@ interface PurchaseItemState {
   is_similar_allowed: boolean;
   is_generic?: boolean;
   observation?: string;
+  reference_link?: string;
   suggested_supplier: string;
   estimated_value: number;
   /**
@@ -77,7 +78,7 @@ const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
 const itemVazio = (): PurchaseItemState => ({
   id: novoItemId(),
   description: '', sap_code: '', technical_text: '', quantity: '', unit: '', brand: '',
-  is_similar_allowed: true, is_generic: false, observation: '',
+  is_similar_allowed: true, is_generic: false, observation: '', reference_link: '',
   suggested_supplier: '', estimated_value: 0,
 });
 
@@ -352,6 +353,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         is_similar_allowed: it.is_similar_allowed ?? true,
         is_generic: it.is_generic || false,
         observation: it.observation || '',
+        reference_link: it.reference_link || '',
         suggested_supplier: it.suggested_supplier || '',
         estimated_value: it.estimated_value || 0,
       })));
@@ -553,6 +555,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
             is_generic: it.is_generic || false,
             observation: it.observation || '',
+            reference_link: it.reference_link || '',
             quantity: it.quantity,
             unit: it.unit,
             brand: it.brand,
@@ -1045,7 +1048,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {/* Marca */}
                       <div>
                         <label className="text-[10px] font-bold flex items-center justify-between mb-1" style={{ color: 'var(--ink-muted)' }}>
@@ -1077,6 +1080,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           placeholder="Sugestão de distribuidor"
                           value={it.suggested_supplier}
                           onChange={(e) => handleItemChange(index, 'suggested_supplier', e.target.value)}
+                          className="w-full rounded border py-1 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          style={fieldStyle}
+                        />
+                      </div>
+
+                      {/* Link de Referência de Compra (opcional) */}
+                      <div>
+                        <label className="text-[10px] font-bold flex items-center gap-1 mb-1" style={{ color: 'var(--ink-muted)' }}>
+                          <LinkIcon className="h-3 w-3" /> Link de referência
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="https://site.com.br/produto"
+                          value={it.reference_link || ''}
+                          onChange={(e) => handleItemChange(index, 'reference_link', e.target.value)}
                           className="w-full rounded border py-1 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
@@ -1205,10 +1223,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass} style={labelStyle}>
-                    {registrationType === 'Item' ? 'Marca / Fabricante' : 'CNPJ / Site corporativo'}
+                    {registrationType === 'Item' ? 'Fabricante *' : 'CNPJ / Site corporativo *'}
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder={registrationType === 'Item' ? 'Ex: Belgo Bekaert' : 'Ex: 00.000.000/0001-00'}
                     value={sapRegBrand}
                     onChange={(e) => setSapRegBrand(e.target.value)}
