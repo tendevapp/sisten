@@ -38,6 +38,15 @@ interface UserSummary {
 }
 interface TimelineRow { event_type: string; path: string | null; page_label: string | null; created_at: string; }
 interface PageUserRow { user_id: string; user_name: string | null; email: string | null; visits: number; last_visit: string | null; }
+interface ActiveUserRow {
+  user_id: string;
+  user_name: string | null;
+  email: string | null;
+  sessions: number;
+  page_views: number;
+  first_event: string | null;
+  last_event: string | null;
+}
 
 const DOW_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -52,6 +61,26 @@ function fmtDwell(seconds: number | null): string {
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/**
+ * Distância até agora, em linguagem corrida.
+ *
+ * A data absoluta responde "quando"; esta responde "faz muito tempo?" — que é
+ * a pergunta de quem varre a lista atrás de quem parou de usar o app. As duas
+ * aparecem juntas na tabela justamente porque respondem coisas diferentes.
+ */
+function fmtDesde(iso: string | null): string {
+  if (!iso) return '';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return 'agora';
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'há 1 dia' : `há ${d} dias`;
 }
 
 export default function UsageDashboard() {
@@ -72,6 +101,13 @@ export default function UsageDashboard() {
   const [byHour, setByHour] = useState<HourRow[]>([]);
   const [userSummary, setUserSummary] = useState<UserSummary | null>(null);
   const [timeline, setTimeline] = useState<TimelineRow[]>([]);
+  // Lista de usuários ativos: fica no fim da página, fechada, e só é buscada
+  // quando alguém abre. É a consulta mais pesada da tela (varre todos os
+  // eventos do período sem agrupar por página) e a menos consultada — não
+  // faz sentido pagá-la em toda visita ao dashboard.
+  const [showActiveUsers, setShowActiveUsers] = useState(false);
+  const [activeUserList, setActiveUserList] = useState<ActiveUserRow[] | null>(null);
+  const [activeListLoading, setActiveListLoading] = useState(false);
 
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [pageUsers, setPageUsers] = useState<Map<string, PageUserRow[]>>(new Map());
@@ -155,6 +191,26 @@ export default function UsageDashboard() {
     setPageUsers(new Map());
     setPageUsersLoading(new Set());
   }, [fromISO, toISO, selectedUser]);
+
+  // Trocar o período invalida a lista, mas não a fecha: quem abriu o painel
+  // quer continuar vendo-o ao comparar períodos. O null dispara a recarga
+  // abaixo apenas enquanto estiver aberto.
+  useEffect(() => { setActiveUserList(null); }, [fromISO, toISO]);
+
+  useEffect(() => {
+    if (!supabase || !showActiveUsers || activeUserList !== null || activeListLoading) return;
+    setActiveListLoading(true);
+    supabase.rpc('usage_active_user_list', { p_from: fromISO, p_to: toISO })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        setActiveUserList((data as ActiveUserRow[]) || []);
+      })
+      .catch(err => {
+        console.error('Falha ao carregar usuários ativos:', err);
+        setActiveUserList([]);
+      })
+      .finally(() => setActiveListLoading(false));
+  }, [showActiveUsers, activeUserList, activeListLoading, fromISO, toISO]);
 
   const togglePageUsers = useCallback((path: string) => {
     setExpandedPaths(prev => {
@@ -526,6 +582,73 @@ export default function UsageDashboard() {
           </div>
         </div>
       )}
+
+      {/* Usuários ativos no período — quem, e quando foi a última vez.
+          Segue o filtro de período do topo: com "Hoje" marcado, é a lista de
+          quem usou o app hoje. Fechado por padrão; a consulta só sai ao abrir. */}
+      <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowActiveUsers(v => !v)}
+          aria-expanded={showActiveUsers}
+          className="w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
+        >
+          {showActiveUsers
+            ? <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
+            : <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />}
+          <Users className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos no período</span>
+          <span className="ml-auto text-[11px] text-slate-400">
+            {showActiveUsers && activeUserList?.length
+              ? `${activeUserList.length} usuário${activeUserList.length === 1 ? '' : 's'} · ordenado pelo último uso`
+              : 'Ver quem usou o app e quando'}
+          </span>
+        </button>
+
+        {showActiveUsers && (
+          <div className="px-5 pb-5 border-t border-slate-100 dark:border-slate-800 pt-4">
+            {activeListLoading || activeUserList === null ? (
+              <EmptyState loading />
+            ) : activeUserList.length === 0 ? (
+              <EmptyState loading={false} />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="py-2">Usuário</th>
+                      <th className="py-2 text-right">Sessões</th>
+                      <th className="py-2 text-right">Páginas</th>
+                      <th className="py-2 text-right">Primeiro acesso</th>
+                      <th className="py-2 text-right">Último uso</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {activeUserList.map(u => (
+                      <tr key={u.user_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                        <td className="py-2 pr-3">
+                          <div className="font-medium text-slate-700 dark:text-slate-300 truncate">
+                            {u.user_name || u.email || u.user_id}
+                          </div>
+                          {u.user_name && u.email && (
+                            <div className="text-[10px] text-slate-400 truncate">{u.email}</div>
+                          )}
+                        </td>
+                        <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.sessions}</td>
+                        <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.page_views}</td>
+                        <td className="py-2 text-right text-slate-500 whitespace-nowrap">{fmtDateTime(u.first_event)}</td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          <div className="font-medium text-slate-700 dark:text-slate-300">{fmtDateTime(u.last_event)}</div>
+                          <div className="text-[10px] text-slate-400">{fmtDesde(u.last_event)}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

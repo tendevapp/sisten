@@ -14,7 +14,7 @@
 import * as XLSX from 'xlsx';
 import { Profile, Request, RequestStatus, RequestType, Sector } from '../types';
 import { localDb } from '../db/localDb';
-import { formatDateBR } from './format';
+import { formatDateBR, formatDateTimeBR } from './format';
 
 /** Papéis que enxergam a fila coletiva. Espelha os defaultRoles da página. */
 export const PAPEIS_FILA: string[] = [
@@ -139,9 +139,26 @@ export const avisoEdicao = (tipo: RequestType): string =>
  * cabeçalho — é o formato que serve para dar entrada no SAP e para somar por
  * item. Cadastro SAP e chamado não têm itens e saem em linha única, com as
  * colunas de item vazias.
+ *
+ * Sai tudo que a solicitação e o item guardam. Campos que só existem em um
+ * tipo (categoria e local são de chamado; tipo de compra e comprador são de
+ * compra) ficam vazios nos demais, em vez de virarem abas separadas: uma
+ * planilha só se filtra e se dinamiza; três não.
  */
 export function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[]): void {
-  const nomeSetor = (id: string) => sectors.find(s => s.id === id)?.name || id;
+  const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '');
+
+  const perfis = localDb.getProfiles();
+  const nomePerfil = (id?: string) => (id ? perfis.find(p => p.id === id)?.name || id : '');
+
+  /**
+   * Booleano em coluna de planilha.
+   *
+   * "Sim" ou vazio, nunca "Não": numa planilha que se filtra e se conta, a
+   * célula vazia já diz "não" e deixa a coluna legível de relance — uma coluna
+   * cheia de "Não" esconde os poucos "Sim" que interessam.
+   */
+  const sim = (v?: boolean) => (v ? 'Sim' : '');
 
   // Tipo explícito: sem ele, a linha sem itens (com as colunas de item vazias)
   // e a linha com item divergem em `Quantidade`/`Valor estimado`, e o flatMap
@@ -157,22 +174,63 @@ export function exportarSolicitacoes(selecionadas: Request[], sectors: Sector[])
       'Solicitante': r.solicitante_name,
       'Setor': nomeSetor(r.solicitante_sector_id),
       'Aberta em': formatDateBR(r.created_at),
+      'Atualizada em': formatDateTimeBR(r.updated_at),
       'Data de necessidade': r.data_necessidade ? formatDateBR(r.data_necessidade) : '',
+      'Tipo de compra': r.tipo_compra || '',
+      'Comprador': nomePerfil(r.comprador_id),
+      'RM vinculada': r.linked_rm_number || '',
       'Atendente': r.atendente_name || '',
+      'Setor destino': nomeSetor(r.target_sector_id),
+      'Categoria': r.category_id || '',
+      'Local': r.local || '',
+      'Tipo de cadastro': r.registration_type || '',
       'Justificativa': r.justificativa || '',
+      // SLA: aqui a hora decide, então estes saem com data e hora enquanto as
+      // colunas de data pura (necessidade, abertura) ficam só com a data.
+      'Primeira resposta': r.first_response_at ? formatDateTimeBR(r.first_response_at) : '',
+      'Resolvida em': r.resolved_at ? formatDateTimeBR(r.resolved_at) : '',
+      'Tempo pausado (min)': r.paused_minutes ?? '',
+      'Avaliação': r.rating ?? '',
+      'Comentário da avaliação': r.rating_comment || '',
+    };
+
+    // Um anexo pode estar preso ao item (compra) ou à solicitação inteira
+    // (Cadastro SAP, que não tem itens). O Set guarda os de item; o resto
+    // responde pela linha única.
+    const anexos = localDb.getAttachments(r.id);
+    const anexosPorItem = new Set(anexos.map(a => a.request_item_id).filter(Boolean));
+    const temAnexoSolto = anexos.some(a => !a.request_item_id);
+
+    const colunasItemVazias = {
+      'Item': '', 'Código SAP': '', 'Sem código SAP': '', 'Item genérico': '',
+      'Quantidade': '', 'Unidade': '', 'Marca': '', 'Aceita similar': '',
+      'Fornecedor sugerido': '', 'Valor estimado': '', 'Observação': '',
+      'Link de referência': '',
     };
 
     const itens = localDb.getRequestItems(r.id);
-    if (itens.length === 0) return [{ ...cabecalho, 'Item': '', 'Código SAP': '', 'Quantidade': '', 'Unidade': '', 'Marca': '', 'Valor estimado': '' }];
+    if (itens.length === 0) {
+      return [{ ...cabecalho, ...colunasItemVazias, 'Anexo': sim(anexos.length > 0) }];
+    }
 
     return itens.map(it => ({
       ...cabecalho,
       'Item': it.description,
       'Código SAP': it.sap_code || '',
+      'Sem código SAP': sim(it.has_no_sap_code),
+      'Item genérico': sim(it.is_generic),
       'Quantidade': it.quantity,
       'Unidade': it.unit,
       'Marca': it.brand || '',
+      'Aceita similar': sim(it.is_similar_allowed),
+      'Fornecedor sugerido': it.suggested_supplier || '',
       'Valor estimado': it.estimated_value || 0,
+      'Observação': it.observation || '',
+      'Link de referência': it.reference_link || '',
+      // Anexo solto (sem item) conta para todas as linhas: ele pertence à
+      // solicitação, não a uma delas, e omiti-lo faria a planilha dizer que
+      // não há anexo nenhum.
+      'Anexo': sim(anexosPorItem.has(it.id) || temAnexoSolto),
     }));
   });
 

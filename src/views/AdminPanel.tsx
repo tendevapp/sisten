@@ -15,7 +15,7 @@ import { getAutoCategory } from '../data/materials';
 import { Profile, Sector, Material } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
-import AprovadorSetoresModal from '../components/admin/AprovadorSetoresModal';
+import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 
 interface AdminPanelProps {
   user: Profile;
@@ -31,7 +31,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
-  const [aprovadorSetoresProfileId, setAprovadorSetoresProfileId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
@@ -167,6 +166,31 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     if (ok) {
       loadData();
       setGrupoComprasInputs(prev => { const next = { ...prev }; delete next[id]; return next; });
+    }
+  };
+
+  // Salvam a cada clique, sem botão de confirmar: é um toggle, e o estado da
+  // linha já mostra o resultado. Em falha, o loadData() do catch redesenha a
+  // partir do que de fato está gravado, desfazendo a marcação otimista.
+  const handleChangeAprovadorSetores = (id: string, next: string[]) => {
+    try {
+      localDb.updateUserAprovadorSetores(id, next);
+      loadData();
+    } catch (e) {
+      console.error('Falha ao atualizar setores de aprovação:', e);
+      toast.error('Não foi possível salvar os setores. Tente novamente.');
+      loadData();
+    }
+  };
+
+  const handleChangeAprovadorCadastroSap = (id: string, next: boolean) => {
+    try {
+      localDb.updateUserAprovadorCadastroSap(id, next);
+      loadData();
+    } catch (e) {
+      console.error('Falha ao atualizar aprovador de Cadastro SAP:', e);
+      toast.error('Não foi possível salvar. Tente novamente.');
+      loadData();
     }
   };
 
@@ -556,18 +580,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           );
                         })()}
                       </td>
-                      <td className="py-3">
-                        <button
-                          onClick={() => setAprovadorSetoresProfileId(p.id)}
-                          className="text-slate-600 hover:underline font-semibold"
-                        >
-                          {(() => {
-                            const parts: string[] = [];
-                            if (p.aprovador_setores?.length) parts.push(`${p.aprovador_setores.length} setor(es)`);
-                            if (p.aprovador_cadastro_sap) parts.push('Cadastro SAP');
-                            return parts.length ? parts.join(' + ') : '—';
-                          })()}
-                        </button>
+                      <td className="py-3" onClick={(e) => e.stopPropagation()}>
+                        <AprovadorSetoresSelect
+                          sectors={sectors}
+                          selected={p.aprovador_setores || []}
+                          cadastroSap={!!p.aprovador_cadastro_sap}
+                          onChangeSetores={(next) => handleChangeAprovadorSetores(p.id, next)}
+                          onChangeCadastroSap={(next) => handleChangeAprovadorCadastroSap(p.id, next)}
+                        />
                       </td>
                       <td className="py-3">
                         {selectedProfileId === p.id ? (
@@ -2105,18 +2125,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         );
       })()}
 
-      {aprovadorSetoresProfileId && (() => {
-        const target = profiles.find(p => p.id === aprovadorSetoresProfileId);
-        if (!target) return null;
-        return (
-          <AprovadorSetoresModal
-            user={target}
-            sectors={sectors}
-            onClose={() => setAprovadorSetoresProfileId(null)}
-            onChanged={loadData}
-          />
-        );
-      })()}
     </div>
   );
 }

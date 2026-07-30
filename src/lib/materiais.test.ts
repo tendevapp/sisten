@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { normalizarTermo, resumoSinais, type MaterialResultado } from './materiais';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buscarMateriais,
+  limparCacheBusca,
+  normalizarTermo,
+  resumoSinais,
+  type MaterialResultado,
+} from './materiais';
+
+const rpc = vi.fn();
+vi.mock('../db/supabaseClient', () => ({ supabase: { rpc: (...a: unknown[]) => rpc(...a) } }));
 
 describe('normalizarTermo', () => {
   it('quebra em tokens, em qualquer ordem, para casar descrição do SAP', () => {
@@ -98,5 +107,64 @@ describe('resumoSinais', () => {
   it('mostra o recorte da área independente da contagem total de RMs', () => {
     const chips = resumoSinais({ ...base, pedidoPelaArea: true });
     expect(chips).toEqual([{ texto: 'sua área já pediu', tom: 'uso' }]);
+  });
+});
+
+describe('buscarMateriais', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+    rpc.mockResolvedValue({ data: [{ material_code: '1031825', description: 'LUVA', unit: 'UN' }], error: null });
+    limparCacheBusca();
+  });
+
+  it('não consulta o servidor quando o termo é curto demais', async () => {
+    expect(await buscarMateriais('lu')).toEqual([]);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('casa só na descrição por padrão — o texto técnico é opt-in', async () => {
+    await buscarMateriais('luva npt');
+    expect(rpc.mock.calls[0][1]).toMatchObject({ incluir_tecnico: false, deslocamento: 0 });
+  });
+
+  it('repassa deslocamento e escopo técnico quando o modal pede', async () => {
+    await buscarMateriais('luva npt', { limite: 25, deslocamento: 25, incluirTecnico: true });
+    expect(rpc.mock.calls[0][1]).toMatchObject({ limite: 25, deslocamento: 25, incluir_tecnico: true });
+  });
+
+  it('serve a repetição do cache, sem novo round-trip', async () => {
+    const a = await buscarMateriais('luva npt');
+    const b = await buscarMateriais('luva npt');
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(b).toEqual(a);
+  });
+
+  it('trata o termo como a mesma pergunta depois de normalizado', async () => {
+    // "LUVA  NPT" e "luva npt" viram a mesma consulta no banco; guardar as
+    // duas custaria um request para nada.
+    await buscarMateriais('luva npt');
+    await buscarMateriais('  LUVA   npt ');
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('não confunde páginas nem escopos diferentes do mesmo termo', async () => {
+    await buscarMateriais('luva npt');
+    await buscarMateriais('luva npt', { deslocamento: 25 });
+    await buscarMateriais('luva npt', { incluirTecnico: true });
+    expect(rpc).toHaveBeenCalledTimes(3);
+  });
+
+  it('descarta o cache quando o catálogo é reimportado', async () => {
+    await buscarMateriais('luva npt');
+    limparCacheBusca();
+    await buscarMateriais('luva npt');
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('não guarda resposta de erro — a próxima tentativa deve ir ao servidor', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: new Error('rede') });
+    await expect(buscarMateriais('luva npt')).rejects.toThrow();
+    await buscarMateriais('luva npt');
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

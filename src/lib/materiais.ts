@@ -120,25 +120,78 @@ export function resumoSinais(r: MaterialResultado): SinalChip[] {
   return chips;
 }
 
+export interface OpcoesBusca {
+  areaUsuario?: string | null;
+  limite?: number;
+  /** Primeira linha a devolver. Usado pelo "Carregar mais" do modal. */
+  deslocamento?: number;
+  /**
+   * Casa também no texto técnico. Fora isso a busca casa só na descrição —
+   * o técnico é ruído no caso comum, e só ajuda para separar quase-duplicatas
+   * de descrição idêntica (ver a migração `busca_materiais_apenas_descricao`).
+   */
+  incluirTecnico?: boolean;
+}
+
+/**
+ * Cache de sessão: mesma pergunta, mesma resposta, sem novo round-trip.
+ *
+ * O catálogo só muda na importação SAP, então dentro de uma sessão a resposta
+ * é estável — repetir "valvula" depois de voltar de outra linha do formulário
+ * não deveria custar egress. Limitado para que um formulário longo não
+ * acumule megabytes de resultado esquecido; ao estourar, sai a entrada mais
+ * antiga (o Map do JS preserva ordem de inserção).
+ */
+const TETO_CACHE = 60;
+const cache = new Map<string, MaterialResultado[]>();
+
+function chaveCache(termo: string, o: Required<OpcoesBusca>): string {
+  return JSON.stringify([
+    normalizarTermo(termo).normalizado,
+    o.areaUsuario,
+    o.limite,
+    o.deslocamento,
+    o.incluirTecnico,
+  ]);
+}
+
+/** Esvazia o cache de busca. Chamar após uma importação do catálogo SAP. */
+export function limparCacheBusca(): void {
+  cache.clear();
+}
+
 /**
  * Consulta a RPC. Devolve lista vazia sem ir ao servidor quando o termo é
  * curto demais para valer a consulta — ver `normalizarTermo`.
  */
 export async function buscarMateriais(
   termo: string,
-  opts: { areaUsuario?: string | null; limite?: number } = {},
+  opts: OpcoesBusca = {},
 ): Promise<MaterialResultado[]> {
   if (normalizarTermo(termo).tipo === 'curto') return [];
 
+  const o: Required<OpcoesBusca> = {
+    areaUsuario: opts.areaUsuario ?? null,
+    limite: opts.limite ?? 20,
+    deslocamento: opts.deslocamento ?? 0,
+    incluirTecnico: opts.incluirTecnico ?? false,
+  };
+
+  const chave = chaveCache(termo, o);
+  const emCache = cache.get(chave);
+  if (emCache) return emCache;
+
   const { data, error } = await supabase.rpc('buscar_materiais', {
     termo,
-    area_usuario: opts.areaUsuario ?? null,
-    limite: opts.limite ?? 20,
+    area_usuario: o.areaUsuario,
+    limite: o.limite,
+    deslocamento: o.deslocamento,
+    incluir_tecnico: o.incluirTecnico,
   });
 
   if (error) throw error;
 
-  return (data ?? []).map((l: Record<string, unknown>) => ({
+  const linhas: MaterialResultado[] = (data ?? []).map((l: Record<string, unknown>) => ({
     materialCode: l.material_code as string,
     description: l.description as string,
     technicalText: (l.technical_text as string) ?? null,
@@ -155,4 +208,12 @@ export async function buscarMateriais(
     chegaEm: (l.chega_em as string) ?? null,
     pedidoPelaArea: Boolean(l.pedido_pela_area),
   }));
+
+  if (cache.size >= TETO_CACHE) {
+    const maisAntiga = cache.keys().next().value;
+    if (maisAntiga !== undefined) cache.delete(maisAntiga);
+  }
+  cache.set(chave, linhas);
+
+  return linhas;
 }

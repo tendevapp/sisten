@@ -17,6 +17,7 @@ import { formatBRL } from '../lib/format';
 import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
+import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
@@ -161,6 +162,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // Incrementado pelo botão "Tentar de novo" para forçar o efeito de busca a
   // reexecutar mesmo quando índice e termo não mudaram.
   const [tentativaBusca, setTentativaBusca] = useState(0);
+  /** Item cujo modal de busca ampliada está aberto, ou null. */
+  const [buscaModalIndex, setBuscaModalIndex] = useState<number | null>(null);
   const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRequestIdRef = useRef(0);
@@ -191,13 +194,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return;
     }
 
+    // Código tem precedência: quem digitou o código sabe o que quer.
+    const termo = activeSapCodeTerm || activeDescriptionTerm;
+
+    // O piso da lib é 3 caracteres (limite do índice trigram). Aqui exigimos
+    // 4, porque este caminho dispara sozinho: com 3 letras a sugestão quase
+    // nunca é útil e o request sai a cada palavra começada. Quem quer buscar
+    // com pouco texto usa o botão — lá a intenção é explícita.
+    if (!activeSapCodeTerm && termo.length < 4) {
+      setActiveSearchResults([]);
+      setIsSearchingCatalog(false);
+      return;
+    }
+
     searchDebounceRef.current = setTimeout(async () => {
       const thisRequestId = ++searchRequestIdRef.current;
       setIsSearchingCatalog(true);
       setErroBusca(false);
       try {
-        // Código tem precedência: quem digitou o código sabe o que quer.
-        const termo = activeSapCodeTerm || activeDescriptionTerm;
         const achados = await buscarMateriais(termo, {
           areaUsuario: areaUsuario,
           limite: 20,
@@ -214,7 +228,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       } finally {
         if (searchRequestIdRef.current === thisRequestId) setIsSearchingCatalog(false);
       }
-    }, 300);
+      // 600ms em vez de 300: numa descrição de catálogo a pessoa digita várias
+      // palavras seguidas, e a pausa curta transformava cada uma delas num
+      // request cuja resposta ninguém chegava a ler.
+    }, 600);
 
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -836,21 +853,38 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           </div>
                           <div className="flex-1">
                             <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Descrição *</label>
-                            <div className="relative">
-                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
-                              <input
-                                type="text"
-                                required
-                                placeholder="Digite para buscar no catálogo SAP..."
-                                value={it.description}
-                                onChange={(e) => {
-                                  handleItemChange(index, 'description', e.target.value);
-                                  setActiveSearchIndex(index);
+                            <div className="flex gap-1.5">
+                              <div className="relative flex-1">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="Digite para buscar no catálogo SAP..."
+                                  value={it.description}
+                                  onChange={(e) => {
+                                    handleItemChange(index, 'description', e.target.value);
+                                    setActiveSearchIndex(index);
+                                  }}
+                                  onFocus={() => setActiveSearchIndex(index)}
+                                  className="w-full rounded border py-1 pl-7 pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                                  style={fieldStyle}
+                                />
+                              </div>
+                              {/* Escape para o caso difícil: termo genérico, muita
+                                  quase-duplicata, decisão que pede ler a lista
+                                  inteira em vez de espiar um dropdown de 60px. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveSearchIndex(null);
+                                  setBuscaModalIndex(index);
                                 }}
-                                onFocus={() => setActiveSearchIndex(index)}
-                                className="w-full rounded border py-1 pl-7 pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                                style={fieldStyle}
-                              />
+                                title="Abrir o catálogo SAP para buscar com calma"
+                                className="shrink-0 rounded border px-2.5 text-[11px] font-bold transition-colors hover:bg-[var(--surface-raised)]"
+                                style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}
+                              >
+                                Buscar
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -1505,6 +1539,26 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           </div>
         </div>
       </form>
+
+      {buscaModalIndex !== null && (
+        <MaterialSearchModal
+          termoInicial={items[buscaModalIndex]?.description || ''}
+          areaUsuario={areaUsuario}
+          onClose={() => setBuscaModalIndex(null)}
+          onSelect={(mat, chips) => {
+            // Mesmo preenchimento do dropdown, inclusive deixando a unidade
+            // para o usuário confirmar.
+            const idx = buscaModalIndex;
+            setItems(atual => atual.map((it, i) => i === idx ? {
+              ...it,
+              description: mat.description,
+              sap_code: mat.materialCode,
+              technical_text: mat.technicalText || '',
+              sinais: chips,
+            } : it));
+          }}
+        />
+      )}
     </div>
   );
 }

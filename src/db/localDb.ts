@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
+import { limparCacheBusca } from '../lib/materiais';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
@@ -593,6 +594,9 @@ class LocalDatabase {
     if (!supabase) return;
     const { error } = await supabase.rpc('refresh_material_sinais');
     if (error) console.warn('Falha ao atualizar os sinais de material:', error);
+    // O catálogo acabou de mudar; o que a busca guardou em memória virou
+    // resposta velha. Só o cache é descartado — nada é rebuscado agora.
+    limparCacheBusca();
   }
 
   // Check and run seeds
