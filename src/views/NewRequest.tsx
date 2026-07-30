@@ -16,6 +16,7 @@ import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
 import { formatBRL } from '../lib/format';
 import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
+import { SinalChips } from '../components/ui/SinalChips';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
@@ -84,36 +85,6 @@ const itemVazio = (): PurchaseItemState => ({
 
 /** UN até PAC, em ordem alfabética visual — "M²"/"M³" lidos como "M2"/"M3". */
 const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M³', 'PAC', 'UN'] as const;
-
-/** Chips de estoque/RM/pedido — usado tanto no dropdown quanto no item já selecionado. */
-function SinalChips({ chips, className = '' }: { chips: SinalChip[]; className?: string }) {
-  if (chips.length === 0) return null;
-  return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
-      {chips.map(chip => (
-        <span
-          key={chip.texto}
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-          style={{
-            // "estoque" e "demanda" usam tons de status (verde/âmbar, sinal
-            // de decisão). "pedido" e "uso" são informativos, não decisão —
-            // por isso ficam neutros e sem colorir o texto, para não competir
-            // visualmente com "estoque" (que é o sinal mais relevante: "tem
-            // agora" pesa mais que "já foi pedido").
-            background: chip.tom === 'estoque'
-              ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
-              : chip.tom === 'demanda'
-              ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)'
-              : 'var(--surface-sunken)',
-            color: 'var(--ink-secondary)',
-          }}
-        >
-          {chip.texto}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',

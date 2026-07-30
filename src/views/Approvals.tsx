@@ -12,6 +12,8 @@ import { localDb } from '../db/localDb';
 import { Profile, Request } from '../types';
 import { useToast } from '../components/ui/Toast';
 import { exportCompraPdf } from '../lib/pdfExport/exportCompraPdf';
+import { buscarMateriais, resumoSinais, type SinalChip } from '../lib/materiais';
+import { SinalChips } from '../components/ui/SinalChips';
 
 interface ApprovalsProps {
   user: Profile;
@@ -26,6 +28,8 @@ export default function Approvals({ user }: ApprovalsProps) {
   const [error, setError] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [sinaisPorItem, setSinaisPorItem] = useState<Record<string, SinalChip[]>>({});
+  const [carregandoSinais, setCarregandoSinais] = useState(false);
 
   useEffect(() => {
     loadRequests();
@@ -73,6 +77,51 @@ export default function Approvals({ user }: ApprovalsProps) {
 
   const selectedRequest = requests.find(r => r.id === selectedId);
   const items = selectedRequest ? localDb.getRequestItems(selectedRequest.id) : [];
+  // Chave estável para o efeito abaixo: `items` é um array novo a cada
+  // render (vem de localDb.getRequestItems), então usar `items` direto como
+  // dependência disparava o efeito em loop.
+  const itemsKey = items.map(i => `${i.id}:${i.sap_code || ''}`).join('|');
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setSinaisPorItem({});
+      return;
+    }
+
+    // Sinais do catálogo (estoque, RM aberta, pedido a caminho) são os
+    // mesmos usados em Nova Solicitação — aqui ajudam quem aprova a ver se
+    // já tem saldo ou compra em andamento antes de decidir.
+    const comCodigo = items.filter(i => i.sap_code && i.sap_code.trim().length >= 4);
+    if (comCodigo.length === 0) {
+      setSinaisPorItem({});
+      return;
+    }
+
+    const setor = selectedRequest
+      ? localDb.getSectors().find(s => s.id === selectedRequest.solicitante_sector_id)
+      : undefined;
+
+    let cancelado = false;
+    setCarregandoSinais(true);
+    Promise.all(comCodigo.map(async (i) => {
+      const codigo = i.sap_code!.trim();
+      try {
+        const [achado] = await buscarMateriais(codigo, { areaUsuario: setor?.sap_area_code ?? null, limite: 1 });
+        if (!achado || achado.materialCode !== codigo) return [i.id, []] as const;
+        return [i.id, resumoSinais(achado)] as const;
+      } catch (err) {
+        console.error('Falha ao buscar sinais do catálogo SAP para o item', i.id, err);
+        return [i.id, []] as const;
+      }
+    })).then(pares => {
+      if (cancelado) return;
+      setSinaisPorItem(Object.fromEntries(pares));
+    }).finally(() => {
+      if (!cancelado) setCarregandoSinais(false);
+    });
+
+    return () => { cancelado = true; };
+  }, [itemsKey, selectedRequest?.id]);
 
   const handleExportPdf = async () => {
     if (!selectedRequest) return;
@@ -263,7 +312,7 @@ export default function Approvals({ user }: ApprovalsProps) {
                 </div>
                 <div className="divide-y divide-slate-100">
                   {items.map((it, idx) => (
-                    <div key={it.id} className="p-4 flex justify-between items-center text-xs">
+                    <div key={it.id} className="p-4 flex justify-between items-start text-xs">
                       <div>
                         <p className="font-semibold text-slate-800">
                           {idx + 1}. {it.description}
@@ -274,6 +323,13 @@ export default function Approvals({ user }: ApprovalsProps) {
                         <p className="font-mono text-[10px] text-slate-400 mt-0.5">
                           {it.sap_code ? `SAP: ${it.sap_code}` : 'Sem código SAP associado'} • Marca: {it.brand || 'Não informada'}
                         </p>
+                        {it.sap_code && (
+                          sinaisPorItem[it.id]?.length ? (
+                            <SinalChips chips={sinaisPorItem[it.id]} className="mt-1" />
+                          ) : carregandoSinais ? (
+                            <p className="text-[10px] text-slate-400 mt-1">Consultando catálogo SAP...</p>
+                          ) : null
+                        )}
                         {it.observation && (
                           <p className="text-[11px] text-slate-500 mt-1 italic">
                             Obs: {it.observation}
