@@ -78,12 +78,17 @@ interface CadastroModalProps {
 function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   const [codVendor, setCodVendor] = useState('');
   const [fornecedor, setFornecedor] = useState('');
-  const [nomeContato, setNomeContato] = useState('');
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [emails, setEmails] = useState<string[]>(['']);
   const [telefones, setTelefones] = useState<string[]>(['']);
-  
+
+  // Representante (opcional)
+  const [representanteNome, setRepresentanteNome] = useState('');
+  const [representanteCargo, setRepresentanteCargo] = useState('');
+  const [representanteTelefone, setRepresentanteTelefone] = useState('');
+  const [representanteEmail, setRepresentanteEmail] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -134,10 +139,13 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
       const payload = {
         cod_vendor: codVendor.trim(),
         fornecedor: fornecedor.trim() || null,
-        nome_contato: nomeContato.trim() || null,
         nome_fantasia: nomeFantasia.trim() || null,
         telefone: telefonesFiltrados || null,
         email: emailsFiltrados || null,
+        representante_nome: representanteNome.trim() || null,
+        representante_cargo: representanteCargo.trim() || null,
+        representante_telefone: representanteTelefone.trim() || null,
+        representante_email: representanteEmail.trim() || null,
         classificacao: classificacao || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -228,18 +236,64 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label htmlFor="new_nome_contato" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Contato
-                </label>
-                <input
-                  id="new_nome_contato"
-                  type="text"
-                  value={nomeContato}
-                  onChange={e => setNomeContato(e.target.value)}
-                  placeholder="Ex: Nome do responsável"
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                />
+              <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Representante (Opcional)</h3>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="new_representante_nome" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Nome do Representante
+                  </label>
+                  <input
+                    id="new_representante_nome"
+                    type="text"
+                    value={representanteNome}
+                    onChange={e => setRepresentanteNome(e.target.value)}
+                    placeholder="Ex: João da Silva"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="new_representante_cargo" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Cargo/Função
+                  </label>
+                  <input
+                    id="new_representante_cargo"
+                    type="text"
+                    value={representanteCargo}
+                    onChange={e => setRepresentanteCargo(e.target.value)}
+                    placeholder="Ex: Gerente de Vendas"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="new_representante_telefone" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Telefone do Representante
+                  </label>
+                  <input
+                    id="new_representante_telefone"
+                    type="tel"
+                    value={representanteTelefone}
+                    onChange={e => setRepresentanteTelefone(e.target.value)}
+                    placeholder="Ex: (11) 98765-4321"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="new_representante_email" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    E-mail do Representante
+                  </label>
+                  <input
+                    id="new_representante_email"
+                    type="email"
+                    value={representanteEmail}
+                    onChange={e => setRepresentanteEmail(e.target.value)}
+                    placeholder="Ex: joao@empresa.com"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">

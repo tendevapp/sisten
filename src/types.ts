@@ -200,6 +200,10 @@ export interface Request {
   resolved_at?: string;
   paused_minutes?: number;
   last_paused_at?: string;
+  representante_nome?: string;
+  representante_cargo?: string;
+  representante_telefone?: string;
+  representante_email?: string;
 }
 
 export interface Notification {
@@ -480,10 +484,14 @@ export interface ContatoFornecedor {
   id: string;
   cod_vendor: string;
   fornecedor?: string;
-  nome_contato?: string;
+  nome_contato?: string; // Mantido por compatibilidade; usar representante_nome quando possível
   nome_fantasia?: string;
-  telefone?: string;
-  email?: string;
+  telefone?: string; // Telefone geral da empresa
+  email?: string; // E-mail geral da empresa
+  representante_nome?: string;
+  representante_cargo?: string;
+  representante_telefone?: string;
+  representante_email?: string;
   classificacao?: string;
   created_at: string;
   updated_at?: string;

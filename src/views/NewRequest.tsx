@@ -244,6 +244,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sapRegSpecs, setSapRegSpecs] = useState('');
   const [sapRegBrand, setSapRegBrand] = useState('');
   const [sapRegVendorInfo, setSapRegVendorInfo] = useState(''); // CNPJ / Site or vendor suggestion
+  const [sapRepresentanteNome, setSapRepresentanteNome] = useState('');
+  const [sapRepresentanteCargo, setSapRepresentanteCargo] = useState('');
+  const [sapRepresentanteTelefone, setSapRepresentanteTelefone] = useState('');
+  const [sapRepresentanteEmail, setSapRepresentanteEmail] = useState('');
   // Cadastro SAP não tem itens, então os anexos se prendem à solicitação. Fora
   // do rascunho pelo mesmo motivo dos anexos de item (Blob não serializa).
   const [sapAttachments, setSapAttachments] = useState<PreparedAttachment[]>([]);
@@ -379,6 +383,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.sapRegSpecs) setSapRegSpecs(parsed.sapRegSpecs);
         if (parsed.sapRegBrand) setSapRegBrand(parsed.sapRegBrand);
         if (parsed.sapRegVendorInfo) setSapRegVendorInfo(parsed.sapRegVendorInfo);
+        if (parsed.sapRepresentanteNome) setSapRepresentanteNome(parsed.sapRepresentanteNome);
+        if (parsed.sapRepresentanteCargo) setSapRepresentanteCargo(parsed.sapRepresentanteCargo);
+        if (parsed.sapRepresentanteTelefone) setSapRepresentanteTelefone(parsed.sapRepresentanteTelefone);
+        if (parsed.sapRepresentanteEmail) setSapRepresentanteEmail(parsed.sapRepresentanteEmail);
         if (parsed.chamadoSectorId) setChamadoSectorId(parsed.chamadoSectorId);
         if (parsed.helpdeskSectorId) setHelpdeskSectorId(parsed.helpdeskSectorId);
         if (parsed.helpdeskCategory) setHelpdeskCategory(parsed.helpdeskCategory);
@@ -405,6 +413,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   }, [
     activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
     items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+    sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
   ]);
 
@@ -421,6 +430,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // object URL morto, o que reencheria o rascunho de chips quebrados.
       items: items.map(({ attachments, ...resto }) => resto),
       registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+      sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
@@ -560,7 +570,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             ? `Nome: ${sapRegName}. Specs: ${sapRegSpecs}. Justificativa: ${justificativa}`
             : `Nome: ${sapRegName}. Justificativa: ${justificativa}`,
           brand: sapRegBrand,
-          suggested_supplier: sapRegVendorInfo
+          suggested_supplier: sapRegVendorInfo,
+          ...(registrationType === 'Fornecedor' && {
+            representante_nome: sapRepresentanteNome,
+            representante_cargo: sapRepresentanteCargo,
+            representante_telefone: sapRepresentanteTelefone,
+            representante_email: sapRepresentanteEmail,
+          })
         };
       } else if (activeTab === 'chamado') {
         payload = {
@@ -1255,6 +1271,58 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   />
                 </div>
               </div>
+
+              {registrationType === 'Fornecedor' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Nome do Representante</label>
+                    <input
+                      type="text"
+                      placeholder="Nome completo"
+                      value={sapRepresentanteNome}
+                      onChange={(e) => setSapRepresentanteNome(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Cargo</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Gerente de Vendas"
+                      value={sapRepresentanteCargo}
+                      onChange={(e) => setSapRepresentanteCargo(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Telefone</label>
+                    <input
+                      type="tel"
+                      placeholder="Ex: (11) 99999-9999"
+                      value={sapRepresentanteTelefone}
+                      onChange={(e) => setSapRepresentanteTelefone(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={labelClass} style={labelStyle}>E-mail</label>
+                    <input
+                      type="email"
+                      placeholder="Ex: email@empresa.com"
+                      value={sapRepresentanteEmail}
+                      onChange={(e) => setSapRepresentanteEmail(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+                </div>
+              )}
 
               {registrationType === 'Item' && (
                 <div>
