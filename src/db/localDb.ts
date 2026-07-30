@@ -3559,6 +3559,38 @@ class LocalDatabase {
     { header: 'Nome 1', field: 'empresa' }
   ];
 
+  private ME3M_COLUMNS = [
+    { header: 'Documento de compras', field: 'documento_compras' },
+    { header: 'Data do documento', field: 'data_documento' },
+    { header: 'Fornecedor/centro fornecedor', field: 'fornecedor' },
+    { header: 'Centro', field: 'centro' },
+    { header: 'Item', field: 'item' },
+    { header: 'Material', field: 'material' },
+    { header: 'Texto breve', field: 'texto_breve' },
+    { header: 'Qtd.solicit.anterior', field: 'qtd_solicit_anterior' },
+    { header: 'Unidade de preço', field: 'unidade_preco' },
+    { header: 'Preço líquido', field: 'preco_liquido' },
+    { header: 'Valor solicitado', field: 'valor_solicitado' },
+    { header: 'Valor efetivo', field: 'valor_efetivo' },
+    { header: 'Qtd.prev.pendente', field: 'qtd_prev_pendente' },
+    { header: 'Valor pendente', field: 'valor_pendente' },
+    { header: 'a ser fornecida (quantidade)', field: 'a_fornecer_qtd' },
+    { header: 'a ser fornecido (valor', field: 'a_fornecer_valor' },
+    { header: 'Ãinda a faturar (quantidade)', field: 'ainda_faturar_qtd' },
+    { header: 'Ainda a faturar (valor)', field: 'ainda_faturar_valor' },
+    { header: 'Fim da validade', field: 'fim_validade' },
+    { header: 'Início per.validade', field: 'inicio_validade' },
+    { header: 'Código de eliminação', field: 'codigo_eliminacao' },
+    { header: 'UM pedido', field: 'um_pedido' },
+    { header: 'Moeda', field: 'moeda' },
+    { header: 'Estado de liberação', field: 'estado_liberacao' },
+    { header: 'Código de liberação', field: 'codigo_liberacao' },
+    { header: 'Valor líquido pedido', field: 'valor_liquido_pedido' },
+    { header: 'Requisitante', field: 'requisitante' },
+    { header: 'Histórico pedido/docum.SolRem.', field: 'historico_pedido' },
+    { header: 'Criado por', field: 'criado_por' }
+  ];
+
   private ZL0132_COLUMNS = [
     { header: 'Nº acomp.', field: 'n_acomp' },
     { header: 'Eflag_e', field: 'eflag_e' },
@@ -5198,6 +5230,164 @@ class LocalDatabase {
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação de posição de estoque (ZL0024) no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // Contratos (ME3M): assim como a posição de estoque (ZL0024), é uma foto do
+  // momento — não faz sentido comparar/mesclar com o que já existe, então cada
+  // carga substitui o conteúdo inteiro da tabela (delete + insert).
+  public async importME3MRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ME3M_COLUMNS);
+
+    const documentoColIdx = mappedFields.findIndex(f => f === 'documento_compras');
+    if (documentoColIdx === -1) {
+      throw new Error('Formato rejeitado: Coluna obrigatória "Documento de compras" não encontrada.');
+    }
+
+    const colIdx = (field: string) => mappedFields.findIndex(f => f === field);
+    const dataDocumentoColIdx = colIdx('data_documento');
+    const fornecedorColIdx = colIdx('fornecedor');
+    const centroColIdx = colIdx('centro');
+    const itemColIdx = colIdx('item');
+    const materialColIdx = colIdx('material');
+    const textoBreveColIdx = colIdx('texto_breve');
+    const qtdSolicitAnteriorColIdx = colIdx('qtd_solicit_anterior');
+    const unidadePrecoColIdx = colIdx('unidade_preco');
+    const precoLiquidoColIdx = colIdx('preco_liquido');
+    const valorSolicitadoColIdx = colIdx('valor_solicitado');
+    const valorEfetivoColIdx = colIdx('valor_efetivo');
+    const qtdPrevPendenteColIdx = colIdx('qtd_prev_pendente');
+    const valorPendenteColIdx = colIdx('valor_pendente');
+    const aFornecerQtdColIdx = colIdx('a_fornecer_qtd');
+    const aFornecerValorColIdx = colIdx('a_fornecer_valor');
+    const aindaFaturarQtdColIdx = colIdx('ainda_faturar_qtd');
+    const aindaFaturarValorColIdx = colIdx('ainda_faturar_valor');
+    const fimValidadeColIdx = colIdx('fim_validade');
+    const inicioValidadeColIdx = colIdx('inicio_validade');
+    const codigoEliminacaoColIdx = colIdx('codigo_eliminacao');
+    const umPedidoColIdx = colIdx('um_pedido');
+    const moedaColIdx = colIdx('moeda');
+    const estadoLiberacaoColIdx = colIdx('estado_liberacao');
+    const codigoLiberacaoColIdx = colIdx('codigo_liberacao');
+    const valorLiquidoPedidoColIdx = colIdx('valor_liquido_pedido');
+    const requisitanteColIdx = colIdx('requisitante');
+    const historicoPedidoColIdx = colIdx('historico_pedido');
+    const criadoPorColIdx = colIdx('criado_por');
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const strAt = (row: any[], idx: number) => idx !== -1 ? String(row[idx] ?? '').trim() || null : null;
+    const numAt = (row: any[], idx: number) => idx !== -1 ? (Number(row[idx]) || 0) : null;
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const documentoCompras = strAt(row, documentoColIdx);
+
+      if (!documentoCompras) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Documento de compras vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        documento_compras: documentoCompras,
+        data_documento: strAt(row, dataDocumentoColIdx),
+        fornecedor: strAt(row, fornecedorColIdx),
+        centro: strAt(row, centroColIdx),
+        item: strAt(row, itemColIdx),
+        material: strAt(row, materialColIdx),
+        texto_breve: strAt(row, textoBreveColIdx),
+        qtd_solicit_anterior: numAt(row, qtdSolicitAnteriorColIdx),
+        unidade_preco: strAt(row, unidadePrecoColIdx),
+        preco_liquido: numAt(row, precoLiquidoColIdx),
+        valor_solicitado: numAt(row, valorSolicitadoColIdx),
+        valor_efetivo: numAt(row, valorEfetivoColIdx),
+        qtd_prev_pendente: numAt(row, qtdPrevPendenteColIdx),
+        valor_pendente: numAt(row, valorPendenteColIdx),
+        a_fornecer_qtd: numAt(row, aFornecerQtdColIdx),
+        a_fornecer_valor: numAt(row, aFornecerValorColIdx),
+        ainda_faturar_qtd: numAt(row, aindaFaturarQtdColIdx),
+        ainda_faturar_valor: numAt(row, aindaFaturarValorColIdx),
+        fim_validade: strAt(row, fimValidadeColIdx),
+        inicio_validade: strAt(row, inicioValidadeColIdx),
+        codigo_eliminacao: strAt(row, codigoEliminacaoColIdx),
+        um_pedido: strAt(row, umPedidoColIdx),
+        moeda: strAt(row, moedaColIdx),
+        estado_liberacao: strAt(row, estadoLiberacaoColIdx),
+        codigo_liberacao: strAt(row, codigoLiberacaoColIdx),
+        valor_liquido_pedido: numAt(row, valorLiquidoPedidoColIdx),
+        requisitante: strAt(row, requisitanteColIdx),
+        historico_pedido: strAt(row, historicoPedidoColIdx),
+        criado_por: strAt(row, criadoPorColIdx),
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const { count: previousCount } = await supabase
+        .from('me3m_contratos')
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from('me3m_contratos').delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from('me3m_contratos').insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ME3M',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contratos', `Importou Contratos ME3M (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de contratos (ME3M) no Supabase:', e);
       throw e;
     }
   }

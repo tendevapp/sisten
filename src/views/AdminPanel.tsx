@@ -986,7 +986,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             </div>
 
             {/* Custom file parser */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-5 pt-1">
 
               {/* ME5A Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
@@ -1314,6 +1314,71 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV CidadeForn</p>
                 </div>
               </div>
+
+              {/* ME3M Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ME3M (Contratos)
+                </h4>
+                <p className="text-[10px] text-slate-400">Substitui integralmente os contratos anteriores — a última carga é sempre a mais atual.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setSapProgress(0);
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+
+                            localDb.importME3MRaw(rawRows, file.name, setSapProgress).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogStatus('error');
+                          }
+                        };
+
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME3M</p>
+                </div>
+              </div>
             </div>
 
 
@@ -1516,6 +1581,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-indigo-100 text-indigo-800'
                                   : log.type === 'ZL0024'
                                   ? 'bg-amber-100 text-amber-800'
+                                  : log.type === 'ME3M'
+                                  ? 'bg-rose-100 text-rose-800'
                                   : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {log.type}

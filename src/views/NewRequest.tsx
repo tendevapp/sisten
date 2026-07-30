@@ -65,14 +65,14 @@ interface PurchaseItemState {
 /* Estilos de campo compartilhados nesta página                           */
 /* --------------------------------------------------------------------- */
 
-const fieldClass = 'w-full rounded-lg border py-2 px-3 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1';
+const fieldClass = 'w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1';
 const fieldStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
   background: 'var(--surface-card)',
   color: 'var(--ink-primary)',
   outlineColor: 'var(--brand)',
 };
-const labelClass = 'text-xs font-bold block mb-1';
+const labelClass = 'text-sm font-bold block mb-1';
 const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
 
 const itemVazio = (): PurchaseItemState => ({
@@ -93,7 +93,7 @@ function SinalChips({ chips, className = '' }: { chips: SinalChip[]; className?:
       {chips.map(chip => (
         <span
           key={chip.texto}
-          className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+          className="text-[10px] font-bold px-1.5 py-0.5 rounded"
           style={{
             // "estoque" e "demanda" usam tons de status (verde/âmbar, sinal
             // de decisão). "pedido" e "uso" são informativos, não decisão —
@@ -646,12 +646,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   ];
 
   return (
-    <div className="space-y-6 text-left max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 text-left w-full pb-12">
       <div className="reveal">
-        <h2 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+        <h2 className="text-3xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
           {editandoId ? 'Editar Solicitação' : 'Nova Solicitação'}
         </h2>
-        <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
+        <p className="mt-1 text-base" style={{ color: 'var(--ink-secondary)' }}>
           {editandoId ? avisoEdicao(activeTab) : 'Escolha o tipo e preencha o formulário abaixo.'}
         </p>
       </div>
@@ -684,8 +684,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               }}
             >
               <Icon className="h-7 w-7" />
-              <span className={`mt-2.5 text-sm ${active ? 'font-bold' : 'font-semibold'}`}>{ch.label}</span>
-              <span className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>{ch.hint}</span>
+              <span className={`mt-2.5 text-base ${active ? 'font-bold' : 'font-semibold'}`}>{ch.label}</span>
+              <span className="text-[12px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>{ch.hint}</span>
             </button>
           );
         })}
@@ -701,30 +701,30 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         crescendo. Abaixo de xl (tablet/celular) as colunas empilham na ordem
         de leitura natural: o que precisa → quando → criticidade → enviar.
       */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6 items-start">
         {/* Coluna principal */}
         <div className="space-y-6 min-w-0">
         <div className="rounded-xl border p-6 shadow-xs space-y-4 reveal" style={cardStyle}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--hairline)' }}>
-            <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
+            <h3 className="font-bold text-base flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
               <ListChecks className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
               O que você precisa?
             </h3>
             <div className="flex items-center gap-3">
               {autosaveStatus === 'saving' && (
-                <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--ink-muted)' }}>
+                <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--ink-muted)' }}>
                   <Loader2 className="animate-spin h-3 w-3" /> Salvando rascunho...
                 </span>
               )}
               {autosaveStatus === 'saved' && (
-                <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: 'var(--status-good)' }}>
+                <span className="text-[11px] font-bold flex items-center gap-1" style={{ color: 'var(--status-good)' }}>
                   <CheckCircle2 className="h-3 w-3" /> Rascunho salvo
                 </span>
               )}
               <button
                 type="button"
                 onClick={saveDraft}
-                className="text-[10px] inline-flex items-center gap-1 font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--ink-primary)]"
+                className="text-[11px] inline-flex items-center gap-1 font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--ink-primary)]"
                 style={{ color: 'var(--ink-muted)' }}
               >
                 <Save className="h-3 w-3" /> Salvar agora
@@ -778,7 +778,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         type="button"
                         onClick={() => setTipoCompra(type)}
                         aria-pressed={tipoCompra === type}
-                        className="rounded py-1 text-center text-[10px] font-bold uppercase cursor-pointer transition-colors duration-150"
+                        className="rounded py-1 text-center text-[11px] font-bold uppercase cursor-pointer transition-colors duration-150"
                         style={
                           tipoCompra === type
                             ? { background: 'var(--brand)', color: '#ffffff' }
@@ -795,11 +795,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               {/* Repeatable Items Area */}
               <div className="space-y-3 pt-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Itens solicitados *</span>
+                  <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Itens solicitados *</span>
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="flex items-center gap-1 text-xs font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--brand-strong)]"
+                    className="flex items-center gap-1 text-sm font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--brand-strong)]"
                     style={{ color: 'var(--brand)' }}
                   >
                     <Plus className="h-4 w-4" /> Item
@@ -814,11 +814,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
+                      <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
                         Item {index + 1}
                       </span>
                       <div className="flex items-center gap-3">
-                        <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
+                        <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
                             checked={it.is_generic || false}
@@ -847,8 +847,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       {/* Código SAP + Descrição — busca bidirecional no catálogo SAP */}
                       <div className="sm:col-span-8 relative" ref={(el) => { dropdownRefs.current[index] = el; }}>
                         <div className="flex gap-3">
-                          <div className="w-24 shrink-0">
-                            <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Código SAP</label>
+                          <div className="w-28 shrink-0">
+                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Código SAP</label>
                             <input
                               type="text"
                               placeholder="8 dígitos"
@@ -859,12 +859,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 setActiveSearchIndex(index);
                               }}
                               onFocus={() => setActiveSearchIndex(index)}
-                              className="w-full rounded border py-1 px-2 text-xs font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                              className="w-full rounded border py-1 px-2 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                               style={fieldStyle}
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Descrição *</label>
+                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Descrição *</label>
                             <div className="relative">
                               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
                               <input
@@ -877,7 +877,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                   setActiveSearchIndex(index);
                                 }}
                                 onFocus={() => setActiveSearchIndex(index)}
-                                className="w-full rounded border py-1 pl-7 pr-2 text-xs font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                                className="w-full rounded border py-1 pl-7 pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                                 style={fieldStyle}
                               />
                             </div>
@@ -891,7 +891,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             style={{ background: 'var(--chart-tooltip-bg)', borderColor: 'var(--chart-tooltip-border)', boxShadow: 'var(--chart-tooltip-shadow)' }}
                           >
                             <div
-                              className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider flex items-center justify-between sticky top-0 border-b"
+                              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between sticky top-0 border-b"
                               style={{ background: 'var(--surface-raised)', color: 'var(--ink-muted)', borderColor: 'var(--hairline)' }}
                             >
                               <span>Resultados do Catálogo SAP</span>
@@ -911,7 +911,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                               </span>
                             </div>
                             {erroBusca ? (
-                              <div className="p-3 text-xs text-center" style={{ color: 'var(--status-serious)' }}>
+                              <div className="p-3 text-sm text-center" style={{ color: 'var(--status-serious)' }}>
                                 Não foi possível buscar no catálogo.
                                 <button
                                   type="button"
@@ -923,11 +923,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                 </button>
                               </div>
                             ) : isSearchingCatalog ? (
-                              <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>Buscando no catálogo SAP...</div>
+                              <div className="p-3 text-sm text-center" style={{ color: 'var(--ink-muted)' }}>Buscando no catálogo SAP...</div>
                             ) : activeSearchResults.length === 0 ? (
-                              <div className="p-3 text-xs text-center" style={{ color: 'var(--ink-muted)' }}>
+                              <div className="p-3 text-sm text-center" style={{ color: 'var(--ink-muted)' }}>
                                 Nenhum item correspondente no catálogo.
-                                <div className="text-[10px] mt-0.5">
+                                <div className="text-[11px] mt-0.5">
                                   Você pode digitar livremente para cadastrar um item novo.
                                 </div>
                               </div>
@@ -953,10 +953,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                     setActiveSearchIndex(null);
                                     setActiveSearchResults([]);
                                   }}
-                                  className="w-full text-left px-3 py-2 transition-colors duration-150 flex items-start gap-2 text-xs hover:bg-[var(--surface-raised)]"
+                                  className="w-full text-left px-3 py-2 transition-colors duration-150 flex items-start gap-2 text-sm hover:bg-[var(--surface-raised)]"
                                 >
                                   <span
-                                    className="font-mono px-1.5 py-0.5 rounded font-bold text-[9px] shrink-0 mt-0.5"
+                                    className="font-mono px-1.5 py-0.5 rounded font-bold text-[10px] shrink-0 mt-0.5"
                                     style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
                                   >
                                     {mat.materialCode}
@@ -966,14 +966,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                                       {mat.description}
                                     </div>
                                     {mat.technicalText && (
-                                      <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                                      <div className="text-[11px] truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>
                                         {mat.technicalText}
                                       </div>
                                     )}
                                     <SinalChips chips={chips} className="mt-1" />
                                   </div>
                                   <span
-                                    className="text-[10px] font-mono px-1 rounded uppercase shrink-0 self-center"
+                                    className="text-[11px] font-mono px-1 rounded uppercase shrink-0 self-center"
                                     style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
                                   >
                                     {mat.unit}
@@ -990,8 +990,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           larga (sem o painel lateral, abaixo de xl) o track de
                           grid de 2/12 ficaria bem mais largo que um campo
                           numérico precisa. */}
-                      <div className="sm:col-span-2 sm:max-w-[140px]">
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Qtd *</label>
+                      <div className="sm:col-span-2 sm:max-w-[160px]">
+                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Qtd *</label>
                         <input
                           type="number"
                           inputMode="numeric"
@@ -1000,20 +1000,20 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           placeholder="0"
                           value={it.quantity}
                           onChange={(e) => handleItemChange(index, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                          className="w-full rounded border py-1 px-2 text-xs tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-2 text-sm tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
                       {/* Un — sem padrão: UN silencioso escondia a unidade
                           errada passar despercebida. */}
-                      <div className="sm:col-span-2 sm:max-w-[140px]">
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
+                      <div className="sm:col-span-2 sm:max-w-[160px]">
+                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
                         <select
                           required
                           value={it.unit}
                           onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
-                          className="w-full rounded border py-1 px-1.5 text-xs cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-1.5 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         >
                           <option value="">Selecione...</option>
@@ -1034,11 +1034,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         <SinalChips chips={it.sinais || []} />
                         {it.technical_text && (
                           <div>
-                            <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
                               Texto Técnico (Catálogo SAP)
                             </label>
                             <p
-                              className="w-full rounded border py-1.5 px-2 text-[11px] leading-relaxed"
+                              className="w-full rounded border py-1.5 px-2 text-[12px] leading-relaxed"
                               style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
                             >
                               {it.technical_text}
@@ -1051,9 +1051,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {/* Marca */}
                       <div>
-                        <label className="text-[10px] font-bold flex items-center justify-between mb-1" style={{ color: 'var(--ink-muted)' }}>
+                        <label className="text-[11px] font-bold flex items-center justify-between mb-1" style={{ color: 'var(--ink-muted)' }}>
                           <span>Marca / Fabricante</span>
-                          <label className="inline-flex items-center gap-1 text-[10px] font-normal cursor-pointer" style={{ color: 'var(--ink-muted)' }}>
+                          <label className="inline-flex items-center gap-1 text-[11px] font-normal cursor-pointer" style={{ color: 'var(--ink-muted)' }}>
                             <input
                               type="checkbox"
                               checked={it.is_similar_allowed}
@@ -1067,27 +1067,27 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           placeholder="Marca sugerida"
                           value={it.brand}
                           onChange={(e) => handleItemChange(index, 'brand', e.target.value)}
-                          className="w-full rounded border py-1 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
                       {/* Fornecedor */}
                       <div>
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Fornecedor sugerido</label>
+                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Fornecedor sugerido</label>
                         <input
                           type="text"
                           placeholder="Sugestão de distribuidor"
                           value={it.suggested_supplier}
                           onChange={(e) => handleItemChange(index, 'suggested_supplier', e.target.value)}
-                          className="w-full rounded border py-1 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
                       {/* Link de Referência de Compra (opcional) */}
                       <div>
-                        <label className="text-[10px] font-bold flex items-center gap-1 mb-1" style={{ color: 'var(--ink-muted)' }}>
+                        <label className="text-[11px] font-bold flex items-center gap-1 mb-1" style={{ color: 'var(--ink-muted)' }}>
                           <LinkIcon className="h-3 w-3" /> Link de referência
                         </label>
                         <input
@@ -1095,14 +1095,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           placeholder="https://site.com.br/produto"
                           value={it.reference_link || ''}
                           onChange={(e) => handleItemChange(index, 'reference_link', e.target.value)}
-                          className="w-full rounded border py-1 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
 
                       {/* Estimativa de valor */}
                       <div>
-                        <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Estimativa (R$)</label>
+                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Estimativa (R$)</label>
                         <input
                           type="number"
                           inputMode="decimal"
@@ -1110,7 +1110,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           placeholder="R$ Estimado"
                           value={it.estimated_value}
                           onChange={(e) => handleItemChange(index, 'estimated_value', Number(e.target.value))}
-                          className="w-full rounded border py-1 px-2 text-xs tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                          className="w-full rounded border py-1 px-2 text-sm tabular transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                           style={fieldStyle}
                         />
                       </div>
@@ -1120,7 +1120,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         item genérico: sem código SAP nem ficha de catálogo,
                         é o único lugar onde o comprador sabe o que comprar. */}
                     <div>
-                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                      <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
                         Observação / Informações Técnicas{it.is_generic ? ' *' : ''}
                       </label>
                       <textarea
@@ -1129,7 +1129,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         placeholder="Informações técnicas adicionais, observações ou especificações..."
                         value={it.observation || ''}
                         onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
-                        className="w-full rounded border py-1.5 px-2 text-xs transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                        className="w-full rounded border py-1.5 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                         style={fieldStyle}
                       />
                     </div>
@@ -1138,7 +1138,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         ficha técnica. O comprador vê a imagem ao lado do item
                         certo, não solta na solicitação. */}
                     <div>
-                      <label className="text-[10px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                      <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
                         Fotos / documentos do item
                       </label>
                       {/* Em edição, os anexos já enviados aparecem como
@@ -1172,7 +1172,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   placeholder="Detalhamento técnico do que se busca e justificativa da aplicação na Torres Eólicas do Nordeste."
                   value={justificativa}
                   onChange={(e) => setJustificativa(e.target.value)}
-                  className="w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                  className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                   style={fieldStyle}
                 />
               </div>
@@ -1191,7 +1191,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         type="button"
                         onClick={() => setRegistrationType(type)}
                         aria-pressed={registrationType === type}
-                        className="rounded py-1.5 text-center text-xs font-bold uppercase cursor-pointer transition-colors duration-150"
+                        className="rounded py-1.5 text-center text-sm font-bold uppercase cursor-pointer transition-colors duration-150"
                         style={
                           registrationType === type
                             ? { background: 'var(--brand)', color: '#ffffff' }
@@ -1260,7 +1260,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     placeholder="Dimensões, padrão de materiais, certificado de calibração necessário ou outras informações mínimas para que o setor de Suprimentos valide o cadastro."
                     value={sapRegSpecs}
                     onChange={(e) => setSapRegSpecs(e.target.value)}
-                    className="w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                    className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                     style={fieldStyle}
                   />
                 </div>
@@ -1274,7 +1274,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   placeholder="Por que é necessário criar este novo item ou homologar este fornecedor?"
                   value={justificativa}
                   onChange={(e) => setJustificativa(e.target.value)}
-                  className="w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                  className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                   style={fieldStyle}
                 />
               </div>
@@ -1346,8 +1346,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       >
                         <Icon className="h-6 w-6 shrink-0" />
                         <div>
-                          <p className="text-xs font-bold" style={{ color: active ? 'var(--brand-strong)' : 'var(--ink-primary)' }}>{s.name}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>Suporte habilitado</p>
+                          <p className="text-sm font-bold" style={{ color: active ? 'var(--brand-strong)' : 'var(--ink-primary)' }}>{s.name}</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>Suporte habilitado</p>
                         </div>
                       </button>
                     );
@@ -1396,7 +1396,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   placeholder="Descreva as características do erro, mensagens de sistema apresentadas, impactos causados no setor, e passos já efetuados para tentar resolver."
                   value={justificativa}
                   onChange={(e) => setJustificativa(e.target.value)}
-                  className="w-full rounded-lg border py-2 px-3 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                  className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                   style={fieldStyle}
                 />
               </div>
@@ -1412,7 +1412,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         <div className="space-y-6 xl:sticky xl:top-6">
           {activeTab === 'compra' && (
             <div className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
-              <h3 className="font-bold text-sm flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
+              <h3 className="font-bold text-base flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
                 <Calendar className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
                 Pra quando?
               </h3>
@@ -1424,16 +1424,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   min="2026-07-05" // Standard min local date
                   value={dataNecessidade}
                   onChange={(e) => setDataNecessidade(e.target.value)}
-                  className="w-full rounded-lg border py-2 px-3 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                  className="w-full rounded-lg border py-2 px-3 text-base cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
                   style={fieldStyle}
                 />
-                <p className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>Considere o SLA de compra e o lead time logístico da empresa.</p>
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Considere o SLA de compra e o lead time logístico da empresa.</p>
               </div>
             </div>
           )}
 
           <div className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
-            <h3 className="font-bold text-sm flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
+            <h3 className="font-bold text-base flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
               <Gauge className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
               Qual a criticidade?
             </h3>
@@ -1458,11 +1458,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       outlineColor: token,
                     }}
                   >
-                    <div className="flex items-center gap-1.5 font-extrabold text-xs shrink-0" style={{ color: active ? token : 'var(--ink-primary)' }}>
+                    <div className="flex items-center gap-1.5 font-extrabold text-sm shrink-0" style={{ color: active ? token : 'var(--ink-primary)' }}>
                       <Icon className="h-3.5 w-3.5 shrink-0" />
                       <span>Grau {card.level}</span>
                     </div>
-                    <p className="mt-2 xl:mt-0 text-[10px] leading-relaxed font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                    <p className="mt-2 xl:mt-0 text-[11px] leading-relaxed font-medium" style={{ color: 'var(--ink-secondary)' }}>
                       {card.label}
                     </p>
                   </button>
@@ -1472,7 +1472,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
             {criticality !== null && criticality >= 4 && (
               <div
-                className="rounded-lg border p-3 flex items-start gap-2.5 text-[11px] reveal"
+                className="rounded-lg border p-3 flex items-start gap-2.5 text-[12px] reveal"
                 style={{
                   borderColor: 'var(--status-serious)',
                   background: 'color-mix(in srgb, var(--status-serious) 8%, transparent)',
@@ -1497,7 +1497,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             <button
               type="submit"
               disabled={uploadProgress}
-              className="w-full rounded-lg disabled:opacity-50 text-white font-bold text-xs py-2.5 px-6 transition-[background-color,transform] duration-150 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="w-full rounded-lg disabled:opacity-50 text-white font-bold text-sm py-2.5 px-6 transition-[background-color,transform] duration-150 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2"
               style={{ background: 'var(--brand)', outlineColor: 'var(--brand)' }}
             >
               {uploadProgress ? (
@@ -1514,7 +1514,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             </button>
 
             {editandoId && (
-              <p className="text-[11px] text-center" style={{ color: 'var(--ink-muted)' }}>
+              <p className="text-[12px] text-center" style={{ color: 'var(--ink-muted)' }}>
                 {avisoEdicao(activeTab)}
               </p>
             )}
@@ -1526,7 +1526,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 clearDraft();
                 onNavigate('/');
               }}
-              className="w-full rounded-lg border py-2 text-xs font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)]"
+              className="w-full rounded-lg border py-2 text-sm font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)]"
               style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
             >
               Cancelar
