@@ -7,7 +7,7 @@
 // Mantida isolada da UI para facilitar leitura, reuso e testes futuros.
 
 import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { EnrichedSAPRecord, RastreioPrioridade } from '../types';
+import { EnrichedSAPRecord, GrupoMercadoria, RastreioPrioridade } from '../types';
 import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './format';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
@@ -41,6 +41,24 @@ export const priorityMeta = (level: number): PriorityLevelMeta =>
 
 // Nível de prioridade atual por `ri`: o pedido mais recente (histórico
 // preservado — o comprador pode ver reforços/escaladas ao longo do tempo).
+/**
+ * Índice código do grupo de mercadoria → denominação 2, para exibir a descrição
+ * legível ao lado do item.
+ *
+ * Descarta a linha de cabeçalho que a tabela guarda como dado
+ * (`codigo = 'Grp.merc.'`) e os códigos sem denominação 2 — assim quem consome
+ * o mapa só precisa testar presença, sem repetir esse saneamento.
+ */
+export function grupoMercadoriaDesc(grupos: GrupoMercadoria[]): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const g of grupos) {
+    const desc = (g.denominacao2 || '').trim();
+    if (!g.codigo || !desc || g.codigo === 'Grp.merc.') continue;
+    mapa.set(g.codigo, desc);
+  }
+  return mapa;
+}
+
 export function latestPriorityByRi(prioridades: RastreioPrioridade[]): Map<string, RastreioPrioridade> {
   const map = new Map<string, RastreioPrioridade>();
   prioridades.forEach(p => {

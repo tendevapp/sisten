@@ -9,7 +9,7 @@ import {
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
-  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise
+  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -74,6 +74,7 @@ class LocalDatabase {
   private pedidosFornKey = 'sisten_pedidos_forn';
   private contatosKey = 'sisten_contatos';
   private cidadeFornKey = 'sisten_cidadeforn';
+  private gruposMercadoriaKey = 'sisten_grupos_mercadoria';
   private estoqueKey = 'sisten_estoque';
   private estoqueAnaliseKey = 'sisten_estoque_analise';
 
@@ -266,6 +267,12 @@ class LocalDatabase {
           ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01')))],
           ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true, undefined, 'id'))],
           ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true, undefined, 'id'))],
+          // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
+          // o grupo de mercadoria do SAP para a descrição exibida na Central
+          // Compras. Resolvido no cliente porque acrescentar a coluna em
+          // `view_enriched_requisicoes` significaria reescrever uma definição de
+          // 15 KB com 81 dependências.
+          ['cadastro_grupo_mercadoria', () => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo')],
         ];
 
 
@@ -4934,6 +4941,10 @@ class LocalDatabase {
 
   public getCidadeForn(): CidadeForn[] {
     return this.getStorageItem<CidadeForn[]>(this.cidadeFornKey, []);
+  }
+
+  public getGruposMercadoria(): GrupoMercadoria[] {
+    return this.getStorageItem<GrupoMercadoria[]>(this.gruposMercadoriaKey, []);
   }
 
   public async importCidadeForn(rawRows: any[][], filename: string): Promise<SAPImportLog> {

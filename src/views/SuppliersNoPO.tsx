@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin
+  MessageCircle, Flag, MapPin, Boxes
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -20,7 +20,7 @@ import {
   CotacaoHistoricoEntry
 } from '../types';
 
-import { latestPriorityByRi, priorityMeta } from '../lib/rastreio';
+import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc } from '../lib/rastreio';
 import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
@@ -387,12 +387,21 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [buyerFilter, setBuyerFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
+  const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
   const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
+
+  // Decodificação do grupo de mercadoria do SAP para a descrição exibida ao
+  // lado do item. Cadastro estático, então o índice é montado uma vez.
+  const grupoMercMap = useMemo(() => grupoMercadoriaDesc(localDb.getGruposMercadoria()), []);
+  const grupoMercDe = useCallback(
+    (r: EnrichedSAPRecord): string => grupoMercMap.get(r.grupo_de_mercadorias || '') || '',
+    [grupoMercMap]
+  );
 
   const handleSearch = useCallback((val: string) => {
     setSearchQuery(val);
@@ -403,7 +412,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
+  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -893,14 +902,15 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
   // ativos (menos o próprio), então escolher um comprador restringe as RMs exibidas,
   // escolher uma RM restringe os compradores, e assim por diante.
-  const { rmOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions } = useMemo(() => {
-    type Campo = 'rm' | 'buyer' | 'status' | 'alert' | 'prioridade';
+  const { rmOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions, grupoMercOptions } = useMemo(() => {
+    type Campo = 'rm' | 'buyer' | 'status' | 'alert' | 'prioridade' | 'grupoMerc';
     const passa = (rm: string, it: RMGroup['items'][number], exceto: Campo) => {
       const r = it.record;
       if (exceto !== 'rm' && rmFilter.size > 0 && !rmFilter.has(rm)) return false;
       if (exceto !== 'buyer' && buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
       if (exceto !== 'status' && statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
       if (exceto !== 'alert' && alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
+      if (exceto !== 'grupoMerc' && grupoMercFilter.size > 0 && !grupoMercFilter.has(grupoMercDe(r))) return false;
       if (exceto !== 'prioridade' && prioridadeFilter.size > 0) {
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
@@ -913,6 +923,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     const statuses = new Set<string>();
     const alerts = new Set<string>();
     const prioridades = new Set<string>();
+    const gruposMerc = new Set<string>();
 
     rmGroups.forEach(g => g.items.forEach(it => {
       const r = it.record;
@@ -920,6 +931,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (r.grupo_comprador && passa(g.rm, it, 'buyer')) buyers.add(r.grupo_comprador);
       if (r.status_atualizado && passa(g.rm, it, 'status')) statuses.add(r.status_atualizado);
       if (r.alerta && passa(g.rm, it, 'alert')) alerts.add(r.alerta);
+      // Montado a partir dos registros visíveis, não da tabela de cadastro:
+      // além de acompanhar os demais filtros, isso mantém fora da lista os
+      // ~1,4 mil grupos que não aparecem aqui e a linha de cabeçalho que a
+      // tabela guarda como dado.
+      const gm = grupoMercDe(r);
+      if (gm && passa(g.rm, it, 'grupoMerc')) gruposMerc.add(gm);
       if (passa(g.rm, it, 'prioridade')) {
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         prioridades.add(nivel === undefined ? 'Nenhuma' : String(nivel));
@@ -931,10 +948,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       buyerOptions: Array.from(buyers).sort(),
       statusOptions: Array.from(statuses).sort(),
       alertOptions: Array.from(alerts).sort(),
+      grupoMercOptions: Array.from(gruposMerc).sort((a, b) => a.localeCompare(b, 'pt-BR')),
       // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
       prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
     };
-  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
+  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe]);
 
   // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
   // selecionado depois), ele é descartado em vez de zerar a listagem.
@@ -942,6 +960,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   useSaneamento(buyerFilter, setBuyerFilter, buyerOptions);
   useSaneamento(statusFilter, setStatusFilter, statusOptions);
   useSaneamento(alertFilter, setAlertFilter, alertOptions);
+  useSaneamento(grupoMercFilter, setGrupoMercFilter, grupoMercOptions);
   useSaneamento(prioridadeFilter, setPrioridadeFilter, prioridadeOptions);
 
   // Itens "Sem PO" sempre antes dos que já possuem PO (Processado), preservando a ordem
@@ -960,6 +979,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         if (buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
         if (statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
         if (alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
+        if (grupoMercFilter.size > 0 && !grupoMercFilter.has(grupoMercDe(r))) return false;
         if (prioridadeFilter.size > 0) {
           const nivel = prioridadesMap.get(r.ri)?.nivel;
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
@@ -985,7 +1005,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, prioridadeFilter, prioridadesMap]);
+  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1132,6 +1152,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           'Qtd.': r.qtd_requisicao ?? '—',
           'Un.': r.unidade_medida || '—',
           'Grupo Comprador': r.grupo_comprador || '—',
+          'Grupo de Materiais': grupoMercDe(r) || '—',
           'Natureza': r.natureza || '—',
           'Status': r.status_atualizado || '—',
           'Alerta': r.alerta || '—',
@@ -1601,6 +1622,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               className="min-w-[140px]"
             />
             <MultiSelectFilter
+              label="Grupo de materiais"
+              icon={Boxes}
+              options={grupoMercOptions}
+              selected={grupoMercFilter}
+              onChange={setGrupoMercFilter}
+              className="min-w-[160px]"
+            />
+            <MultiSelectFilter
               label="Prioridade"
               icon={Flag}
               allLabel="Todas"
@@ -1785,6 +1814,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             <span className={r.dias_em_aberto > 15 ? 'text-amber-600 dark:text-amber-500' : ''}>
                               Aberto há {r.dias_em_aberto}d
                             </span>
+                          </>
+                        )}
+                        {grupoMercDe(r) && (
+                          <>
+                            <span>•</span>
+                            <span>Grupo: {grupoMercDe(r)}</span>
                           </>
                         )}
                       </div>
@@ -2161,6 +2196,15 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                             {r.status_requisicao !== 'Processado' && (
                               <>
                                 <span>Aberto {r.dias_em_aberto}d</span>
+                                <span>•</span>
+                              </>
+                            )}
+                            {/* Grupo de materiais: 8% dos itens não têm código
+                                de grupo no SAP, e nesses casos o rótulo some em
+                                vez de ocupar espaço com um travessão. */}
+                            {grupoMercDe(r) && (
+                              <>
+                                <span className="text-slate-500 dark:text-slate-400">{grupoMercDe(r)}</span>
                                 <span>•</span>
                               </>
                             )}

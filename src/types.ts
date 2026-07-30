@@ -125,6 +125,7 @@ export interface RequestItem {
   has_no_sap_code: boolean;
   is_generic?: boolean;
   observation?: string;
+  reference_link?: string;
   quantity: number;
   unit: string;
   brand?: string;
@@ -265,6 +266,12 @@ export interface SAPRequisicao {
   qtd_requisicao: number;
   unidade_medida: string;
   grupo_comprador: string; // 314, 358, 447, 575, 588, 602...
+  /**
+   * Grupo de mercadoria do SAP (prefixos B/E/M/S, ex.: `M08018002`). Vem da
+   * view e chega ao registro pelo spread de `normalizeRequisicaoRow`; a
+   * descrição legível sai de `cadastro_grupo_mercadoria`.
+   */
+  grupo_de_mercadorias?: string;
   data_solicitacao: string;
   data_remessa: string;
   requisitante_name: string;
@@ -506,6 +513,22 @@ export interface MaterialFornecedoresGroup {
   descricao?: string;
   encontrado: boolean;
   fornecedores: FornecedorMaterialRow[];
+}
+
+/**
+ * Cadastro de decodificação do grupo de mercadoria do SAP.
+ *
+ * Atenção: a tabela guarda a linha de cabeçalho da planilha de origem como se
+ * fosse dado (`codigo = 'Grp.merc.'`). Ela não casa com nenhum código real, mas
+ * qualquer lista montada a partir da tabela inteira precisa descartá-la.
+ */
+export interface GrupoMercadoria {
+  codigo: string;
+  denominacao?: string;
+  /** Denominação 2 — é a exibida na Central Compras. */
+  denominacao2?: string;
+  classificacao_nivel1?: string;
+  codigo_pai?: string;
 }
 
 export interface CidadeForn {
