@@ -9,7 +9,8 @@ import {
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
-  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria
+  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
+  ContratoDetalhes, ContratoAnexo
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -78,6 +79,9 @@ class LocalDatabase {
   private gruposMercadoriaKey = 'sisten_grupos_mercadoria';
   private estoqueKey = 'sisten_estoque';
   private estoqueAnaliseKey = 'sisten_estoque_analise';
+  private contratosKey = 'sisten_contratos';
+  private contratosDetalhesKey = 'sisten_contratos_detalhes';
+  private contratoAnexosKey = 'sisten_contrato_anexos';
 
   // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
   // dataset pesado (versão + data da última importação + data do último download).
@@ -2933,6 +2937,180 @@ class LocalDatabase {
     }
   }
 
+  // Contratos (ME3N). Mesma política de `fetchEstoque`: tabela "foto do
+  // momento", busca sob demanda, cache em memória por sessão. Tenta
+  // `me3n_contratos` com fallback para `me3m_contratos` (nome antigo), espelhando
+  // o fallback de leitura já usado em `importME3NRaw`.
+  public getContratos(): ContratoME3N[] {
+    return this.getStorageItem<ContratoME3N[]>(this.contratosKey, []);
+  }
+
+  public async fetchContratos(force = false): Promise<ContratoME3N[]> {
+    if (!supabase) return this.getContratos();
+    if (!force && this.cache.has(this.contratosKey)) {
+      return this.getContratos();
+    }
+    try {
+      let rows: ContratoME3N[];
+      try {
+        rows = await this.fetchAllFromTable<ContratoME3N>('me3n_contratos', '*', 1000, undefined, 'id');
+      } catch (err: any) {
+        const msg = String(err?.message || '').toLowerCase();
+        if (err?.code === '42P01' || msg.includes('does not exist') || msg.includes('not find')) {
+          rows = await this.fetchAllFromTable<ContratoME3N>('me3m_contratos', '*', 1000, undefined, 'id');
+        } else {
+          throw err;
+        }
+      }
+      this.setStorageItem(this.contratosKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar contratos (ME3N); usando cache local.', err);
+      return this.getContratos();
+    }
+  }
+
+  // Campos complementares de contrato (gestor, escopo, parcela, modalidade,
+  // vigência em texto livre, status) — mora em `contratos_detalhes`, separada
+  // de `me3n_contratos`, para sobreviver a reimportações ME3N. Mesma política
+  // de cache das demais tabelas pequenas.
+  public getContratosDetalhes(): ContratoDetalhes[] {
+    return this.getStorageItem<ContratoDetalhes[]>(this.contratosDetalhesKey, []);
+  }
+
+  public async fetchContratosDetalhes(force = false): Promise<ContratoDetalhes[]> {
+    if (!supabase) return this.getContratosDetalhes();
+    if (!force && this.cache.has(this.contratosDetalhesKey)) {
+      return this.getContratosDetalhes();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<ContratoDetalhes>('contratos_detalhes', '*', 1000);
+      this.setStorageItem(this.contratosDetalhesKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar os detalhes de contratos; usando cache local.', err);
+      return this.getContratosDetalhes();
+    }
+  }
+
+  /** Upsert de um contrato inteiro — a tela sempre envia o formulário completo. */
+  public async saveContratoDetalhes(patch: ContratoDetalhes): Promise<ContratoDetalhes> {
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const user = this.getCurrentUser();
+    const row: ContratoDetalhes = {
+      ...patch,
+      updated_by: user?.name || 'Sistema',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('contratos_detalhes').upsert(row, { onConflict: 'documento_compras' });
+    if (error) throw error;
+
+    const lista = this.getContratosDetalhes().filter(d => d.documento_compras !== row.documento_compras);
+    lista.push(row);
+    this.setStorageItem(this.contratosDetalhesKey, lista);
+    this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Editar Contrato', `Editou os dados complementares do contrato ${row.documento_compras}.`);
+    return row;
+  }
+
+  // Anexos de contrato. Mesmo bucket dos anexos de solicitação
+  // (`request-attachments`), caminho próprio (`contratos/<documento>/...`) —
+  // evita precisar de bucket e policy de Storage novos.
+  public getContratoAnexos(documentoCompras: string): ContratoAnexo[] {
+    return this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, [])
+      .filter(a => a.documento_compras === documentoCompras);
+  }
+
+  public async fetchContratoAnexos(force = false): Promise<ContratoAnexo[]> {
+    if (!supabase) return this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, []);
+    if (!force && this.cache.has(this.contratoAnexosKey)) {
+      return this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, []);
+    }
+    try {
+      const rows = await this.fetchAllFromTable<ContratoAnexo>('contrato_anexos', '*', 1000);
+      this.setStorageItem(this.contratoAnexosKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar os anexos de contratos; usando cache local.', err);
+      return this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, []);
+    }
+  }
+
+  public async uploadContratoAnexos(
+    documentoCompras: string,
+    prepared: PreparedAttachment[]
+  ): Promise<{ uploaded: number; failed: string[] }> {
+    const failed: string[] = [];
+    let uploaded = 0;
+    if (prepared.length === 0) return { uploaded, failed };
+    if (!supabase) return { uploaded, failed: prepared.map(p => p.name) };
+
+    const user = this.getCurrentUser();
+    const lista = this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, []);
+
+    for (const p of prepared) {
+      try {
+        const ext = p.name.split('.').pop() || 'bin';
+        const path = `contratos/${documentoCompras}/${gerarUUID()}.${ext}`;
+
+        const { error: upErr } = await supabase.storage
+          .from(ATTACHMENTS_BUCKET)
+          .upload(path, p.blob, { contentType: p.mimeType, upsert: false });
+        if (upErr) throw upErr;
+
+        const row: ContratoAnexo = {
+          id: gerarUUID(),
+          documento_compras: documentoCompras,
+          name: p.name,
+          storage_path: path,
+          mime_type: p.mimeType,
+          size: p.sizeCompressed,
+          uploaded_by: user?.id,
+          created_at: new Date().toISOString(),
+        };
+
+        const { error: dbErr } = await supabase.from('contrato_anexos').insert(row);
+        if (dbErr) throw dbErr;
+
+        lista.push(row);
+        uploaded++;
+      } catch (err) {
+        console.error(`Falha ao enviar o anexo "${p.name}".`, err);
+        failed.push(p.name);
+      }
+    }
+
+    this.setStorageItem(this.contratoAnexosKey, lista);
+    if (uploaded > 0) {
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Anexar Documento', `Anexou ${uploaded} documento(s) ao contrato ${documentoCompras}.`);
+    }
+    return { uploaded, failed };
+  }
+
+  public async deleteContratoAnexo(anexoId: string): Promise<string | null> {
+    if (!supabase) return 'Sem conexão com o servidor.';
+    const lista = this.getStorageItem<ContratoAnexo[]>(this.contratoAnexosKey, []);
+    const anexo = lista.find(a => a.id === anexoId);
+    if (!anexo) return 'Anexo não encontrado.';
+
+    try {
+      const { error: storageErr } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([anexo.storage_path]);
+      if (storageErr) console.error(`Falha ao remover o arquivo "${anexo.storage_path}" do Storage.`, storageErr);
+
+      const { error: dbErr } = await supabase.from('contrato_anexos').delete().eq('id', anexoId);
+      if (dbErr) throw dbErr;
+    } catch (err) {
+      console.error('Falha ao excluir o anexo do contrato.', err);
+      return 'Não foi possível excluir o anexo. Tente novamente.';
+    }
+
+    this.signedUrlCache.delete(anexo.storage_path);
+    this.setStorageItem(this.contratoAnexosKey, lista.filter(a => a.id !== anexoId));
+    const user = this.getCurrentUser();
+    this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Excluir Anexo', `Excluiu o anexo "${anexo.name}" do contrato ${anexo.documento_compras}.`);
+    return null;
+  }
+
   // Linhas da view enxuta vw_historico_fornecedores_sem_po (só materiais com
   // requisição "Sem PO" em aberto). Ver comentário de historicoSemPOKey.
   public getHistoricoFornecedoresSemPO(): HistoricoPedidoView[] {
@@ -3563,7 +3741,7 @@ class LocalDatabase {
     { header: 'Nome 1', field: 'empresa' }
   ];
 
-  private ME3M_COLUMNS = [
+  private ME3N_COLUMNS = [
     { header: 'Documento de compras', field: 'documento_compras' },
     { header: 'Data do documento', field: 'data_documento' },
     { header: 'Fornecedor/centro fornecedor', field: 'fornecedor' },
@@ -5238,10 +5416,13 @@ class LocalDatabase {
     }
   }
 
-  // Contratos (ME3M): assim como a posição de estoque (ZL0024), é uma foto do
-  // momento — não faz sentido comparar/mesclar com o que já existe, então cada
-  // carga substitui o conteúdo inteiro da tabela (delete + insert).
-  public async importME3MRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+  // Contratos (ME3N): upsert por (documento_compras, item) — atualiza o que
+  // mudou, insere o que é novo, e nunca apaga. Diferente de ZL0024/estoque
+  // (foto do momento, delete+insert): aqui a tela de Contratos guarda campos
+  // complementares em `contratos_detalhes`/`contrato_anexos` amarrados ao
+  // `documento_compras`, e um delete+insert quebraria essa referência a cada
+  // reimportação.
+  public async importME3NRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
     if (rawRows.length < 2) {
       throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
     }
@@ -5250,15 +5431,25 @@ class LocalDatabase {
     const headers = rawRows[0].map(h => String(h || '').trim());
     const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
 
-    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ME3M_COLUMNS);
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ME3N_COLUMNS);
 
     const documentoColIdx = mappedFields.findIndex(f => f === 'documento_compras');
     if (documentoColIdx === -1) {
       throw new Error('Formato rejeitado: Coluna obrigatória "Documento de compras" não encontrada.');
     }
 
-    const colIdx = (field: string) => mappedFields.findIndex(f => f === field);
-    const dataDocumentoColIdx = colIdx('data_documento');
+    const colIdx = (field: string, aliases: string[] = []) => {
+      let idx = mappedFields.findIndex(f => f === field);
+      if (idx !== -1) return idx;
+      for (const alias of aliases) {
+        const aliasKey = alias.toLowerCase().trim();
+        idx = headers.findIndex(h => h && h.toLowerCase().trim() === aliasKey);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const dataDocumentoColIdx = colIdx('data_documento', ['data do documento', 'data documento', 'data doc', 'data doc.', 'dt.documento']);
     const fornecedorColIdx = colIdx('fornecedor');
     const centroColIdx = colIdx('centro');
     const itemColIdx = colIdx('item');
@@ -5275,8 +5466,8 @@ class LocalDatabase {
     const aFornecerValorColIdx = colIdx('a_fornecer_valor');
     const aindaFaturarQtdColIdx = colIdx('ainda_faturar_qtd');
     const aindaFaturarValorColIdx = colIdx('ainda_faturar_valor');
-    const fimValidadeColIdx = colIdx('fim_validade');
-    const inicioValidadeColIdx = colIdx('inicio_validade');
+    const fimValidadeColIdx = colIdx('fim_validade', ['fim da validade', 'fim de validade', 'fim validade', 'fim per.validade', 'fim per. validade', 'fim do período de validade', 'dt.fim validade', 'data fim validade', 'data fim']);
+    const inicioValidadeColIdx = colIdx('inicio_validade', ['início per.validade', 'inicio per.validade', 'início validade', 'inicio validade', 'início per. validade', 'início do período de validade', 'dt.início validade', 'data início validade', 'data inicio validade', 'data inicio']);
     const codigoEliminacaoColIdx = colIdx('codigo_eliminacao');
     const umPedidoColIdx = colIdx('um_pedido');
     const moedaColIdx = colIdx('moeda');
@@ -5294,6 +5485,42 @@ class LocalDatabase {
     const strAt = (row: any[], idx: number) => idx !== -1 ? String(row[idx] ?? '').trim() || null : null;
     const numAt = (row: any[], idx: number) => idx !== -1 ? (Number(row[idx]) || 0) : null;
 
+    const dateAt = (row: any[], idx: number): string | null => {
+      if (idx === -1) return null;
+      const raw = row[idx];
+      if (raw === null || raw === undefined || raw === '') return null;
+
+      if (typeof raw === 'number') {
+        if (isNaN(raw) || raw <= 0) return null;
+        const dateObj = new Date((raw - 25569) * 86400 * 1000);
+        return isNaN(dateObj.getTime()) ? null : dateObj.toISOString().split('T')[0];
+      }
+
+      if (raw instanceof Date) {
+        return isNaN(raw.getTime()) ? null : raw.toISOString().split('T')[0];
+      }
+
+      const str = String(raw).trim();
+      if (!str) return null;
+
+      // Formato YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+        return str.substring(0, 10);
+      }
+
+      // Formato BR: DD/MM/YYYY, DD.MM.YYYY ou DD-MM-YYYY
+      const brMatch = str.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (brMatch) {
+        const day = brMatch[1].padStart(2, '0');
+        const month = brMatch[2].padStart(2, '0');
+        const year = brMatch[3];
+        return `${year}-${month}-${day}`;
+      }
+
+      const d = new Date(str);
+      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null;
+    };
+
     dataRows.forEach((row, index) => {
       const fileRowIndex = index + 2;
       const documentoCompras = strAt(row, documentoColIdx);
@@ -5309,7 +5536,7 @@ class LocalDatabase {
 
       dbRows.push({
         documento_compras: documentoCompras,
-        data_documento: strAt(row, dataDocumentoColIdx),
+        data_documento: dateAt(row, dataDocumentoColIdx),
         fornecedor: strAt(row, fornecedorColIdx),
         centro: strAt(row, centroColIdx),
         item: strAt(row, itemColIdx),
@@ -5326,8 +5553,8 @@ class LocalDatabase {
         a_fornecer_valor: numAt(row, aFornecerValorColIdx),
         ainda_faturar_qtd: numAt(row, aindaFaturarQtdColIdx),
         ainda_faturar_valor: numAt(row, aindaFaturarValorColIdx),
-        fim_validade: strAt(row, fimValidadeColIdx),
-        inicio_validade: strAt(row, inicioValidadeColIdx),
+        fim_validade: dateAt(row, fimValidadeColIdx),
+        inicio_validade: dateAt(row, inicioValidadeColIdx),
         codigo_eliminacao: strAt(row, codigoEliminacaoColIdx),
         um_pedido: strAt(row, umPedidoColIdx),
         moeda: strAt(row, moedaColIdx),
@@ -5343,19 +5570,56 @@ class LocalDatabase {
 
     onProgress?.(10);
 
-    try {
-      const { count: previousCount } = await supabase
-        .from('me3m_contratos')
-        .select('id', { count: 'exact', head: true });
+    const isTableMissingError = (err: any) => {
+      if (!err) return false;
+      const code = String(err.code || '');
+      const status = err.status || err.statusCode;
+      const msg = String(err.message || '').toLowerCase();
+      return status === 404 || code === 'PGRST204' || code === '42P01' || msg.includes('not find') || msg.includes('does not exist');
+    };
 
-      const { error: deleteError } = await supabase.from('me3m_contratos').delete().gte('id', 0);
-      if (deleteError) throw deleteError;
+    try {
+      // Tenta a nova tabela me3n_contratos com fallback transparente para me3m_contratos se necessário
+      let targetTable = 'me3n_contratos';
+
+      // Chaves já existentes (documento_compras + item), para diferenciar
+      // inserção de atualização e apontar o que saiu do arquivo — sem apagar
+      // nada: o upsert abaixo só toca as linhas que vieram nesta importação.
+      let existingRes = await supabase.from(targetTable).select('documento_compras, item');
+      if (isTableMissingError(existingRes.error)) {
+        targetTable = 'me3m_contratos';
+        existingRes = await supabase.from(targetTable).select('documento_compras, item');
+      }
+      const chave = (doc: string, item: string | null) => `${doc}||${item ?? ''}`;
+      const existingKeys = new Set<string>();
+      (existingRes.data || []).forEach((r: any) => existingKeys.add(chave(r.documento_compras, r.item)));
+
+      const newKeys = new Set<string>();
+      let recordsInserted = 0;
+      let recordsUpdated = 0;
+      dbRows.forEach(r => {
+        const k = chave(r.documento_compras, r.item);
+        newKeys.add(k);
+        if (existingKeys.has(k)) recordsUpdated++; else recordsInserted++;
+      });
+      let recordsEliminated = 0;
+      existingKeys.forEach(k => { if (!newKeys.has(k)) recordsEliminated++; });
+
       onProgress?.(20);
 
       const totalBatches = Math.ceil(dbRows.length / 500) || 1;
       for (let i = 0; i < dbRows.length; i += 500) {
-        const { error } = await supabase.from('me3m_contratos').insert(dbRows.slice(i, i + 500));
-        if (error) throw error;
+        const batch = dbRows.slice(i, i + 500);
+        const { error } = await supabase.from(targetTable).upsert(batch, { onConflict: 'documento_compras,item' });
+        if (error) {
+          if (isTableMissingError(error) && targetTable === 'me3n_contratos') {
+            targetTable = 'me3m_contratos';
+            const retryUpsert = await supabase.from(targetTable).upsert(batch, { onConflict: 'documento_compras,item' });
+            if (retryUpsert.error) throw retryUpsert.error;
+          } else {
+            throw error;
+          }
+        }
         const batchIndex = Math.floor(i / 500) + 1;
         onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
       }
@@ -5363,14 +5627,14 @@ class LocalDatabase {
       const logId = 'il_' + Math.random().toString(36).substr(2, 9);
       const logObj = {
         id: logId,
-        type: 'ME3M',
+        type: 'ME3N',
         user_name: user?.name || 'Sistema',
         filename,
         records_read: dataRows.length,
-        records_inserted: dbRows.length,
-        records_updated: 0,
+        records_inserted: recordsInserted,
+        records_updated: recordsUpdated,
         records_unchanged: 0,
-        records_eliminated: previousCount || 0,
+        records_eliminated: recordsEliminated,
         columns_missing: missingColumns,
         columns_new: newColumns,
         quantity_changes: [],
@@ -5386,14 +5650,19 @@ class LocalDatabase {
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
-      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contratos', `Importou Contratos ME3M (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contratos', `Importou Contratos ME3N (${filename}). Lidos: ${dataRows.length}, novos: ${recordsInserted}, atualizados: ${recordsUpdated}, ausentes neste arquivo: ${recordsEliminated}.`);
 
       onProgress?.(100);
       return logObj as any;
     } catch (e) {
-      console.error('Erro ao salvar importação de contratos (ME3M) no Supabase:', e);
+      console.error('Erro ao salvar importação de contratos (ME3N) no Supabase:', e);
       throw e;
     }
+  }
+
+  // Alias para retrocompatibilidade
+  public async importME3MRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    return this.importME3NRaw(rawRows, filename, onProgress);
   }
 
   // Métodos antigos legados

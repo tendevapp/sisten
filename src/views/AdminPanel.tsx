@@ -1335,10 +1335,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
               </div>
 
-              {/* ME3M Upload Card */}
+              {/* ME3N Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ME3M (Contratos)
+                  <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ME3N (Contratos)
                 </h4>
                 <p className="text-[10px] text-slate-400">Substitui integralmente os contratos anteriores — a última carga é sempre a mais atual.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
@@ -1372,7 +1372,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
-                            localDb.importME3MRaw(rawRows, file.name, setSapProgress).then(log => {
+                            localDb.importME3NRaw(rawRows, file.name, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
@@ -1396,7 +1396,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME3M</p>
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME3N</p>
                 </div>
               </div>
             </div>
@@ -1601,7 +1601,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-indigo-100 text-indigo-800'
                                   : log.type === 'ZL0024'
                                   ? 'bg-amber-100 text-amber-800'
-                                  : log.type === 'ME3M'
+                                  : log.type === 'ME3N' || log.type === 'ME3M'
                                   ? 'bg-rose-100 text-rose-800'
                                   : 'bg-purple-100 text-purple-800'
                               }`}>

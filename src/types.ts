@@ -359,7 +359,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3M';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M';
   user_name: string;
   filename: string;
   records_read: number;
@@ -537,6 +537,79 @@ export interface GrupoMercadoria {
   denominacao2?: string;
   classificacao_nivel1?: string;
   codigo_pai?: string;
+}
+
+// Uma linha da tabela `me3n_contratos` (importação ME3N) — um item de um
+// contrato de fornecimento. Vários itens compartilham o mesmo
+// `documento_compras`; vigência e fornecedor normalmente se repetem em todos.
+export interface ContratoME3N {
+  id: number;
+  documento_compras: string;
+  data_documento?: string | null;
+  fornecedor?: string | null;
+  centro?: string | null;
+  item?: string | null;
+  material?: string | null;
+  texto_breve?: string | null;
+  qtd_solicit_anterior?: number | null;
+  unidade_preco?: string | null;
+  preco_liquido?: number | null;
+  valor_solicitado?: number | null;
+  valor_efetivo?: number | null;
+  qtd_prev_pendente?: number | null;
+  valor_pendente?: number | null;
+  a_fornecer_qtd?: number | null;
+  a_fornecer_valor?: number | null;
+  ainda_faturar_qtd?: number | null;
+  ainda_faturar_valor?: number | null;
+  fim_validade?: string | null;
+  inicio_validade?: string | null;
+  codigo_eliminacao?: string | null;
+  um_pedido?: string | null;
+  moeda?: string | null;
+  estado_liberacao?: string | null;
+  codigo_liberacao?: string | null;
+  valor_liquido_pedido?: number | null;
+  requisitante?: string | null;
+  historico_pedido?: string | null;
+  criado_por?: string | null;
+  imported_at?: string;
+}
+
+/** Rótulo livre — o SAP não padroniza; "Anual"/"Mensal"/"Por Demanda" são só sugestão na UI. */
+export type ContratoModalidade = string;
+export type ContratoStatus = 'Ativo' | 'Inativo' | 'Em Processamento';
+
+/**
+ * Campos complementares de um contrato (ME3N), preenchidos manualmente por
+ * quem gerencia o contrato — não vêm do SAP. Uma linha por `documento_compras`,
+ * independente de quantos itens o contrato tenha. Sobrevive a reimportações do
+ * ME3N porque mora numa tabela separada de `me3n_contratos`.
+ */
+export interface ContratoDetalhes {
+  documento_compras: string;
+  gestor?: string | null;
+  escopo_servico?: string | null;
+  po_pedido_compra?: string | null;
+  codigo_fornecedor?: string | null;
+  valor_parcela?: number | null;
+  modalidade?: ContratoModalidade | null;
+  vigencia_label?: string | null;
+  status?: ContratoStatus | null;
+  updated_by?: string | null;
+  updated_at?: string;
+}
+
+/** Documento anexado a um contrato (ME3N). Reaproveita o bucket de anexos de solicitação. */
+export interface ContratoAnexo {
+  id: string;
+  documento_compras: string;
+  name: string;
+  storage_path: string;
+  mime_type?: string;
+  size: number;
+  uploaded_by?: string;
+  created_at: string;
 }
 
 export interface CidadeForn {
