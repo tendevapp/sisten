@@ -66,8 +66,14 @@ const NUMERIC_FIELDS = new Set([
   'montante_irf', 'montante_mi2', 'montante_mi3',
 ]);
 
+// dd.mm.yyyy, dd/mm/yyyy ou dd-mm-yyyy (convenção pt-BR usada por exports SAP)
+const BR_DATE_RE = /^(\d{2})[./-](\d{2})[./-](\d{4})$/;
+
 /** Serial do Excel (dias desde 1899-12-30) para ISO `YYYY-MM-DD`. Aceita
- *  também string já formatada, só cortando a parte de hora. */
+ *  também string já em ISO (cortando a parte de hora) ou no formato pt-BR
+ *  (dd.mm.yyyy / dd/mm/yyyy / dd-mm-yyyy). Qualquer outra string não
+ *  reconhecida retorna null em vez de ser repassada sem validação para uma
+ *  coluna `date` do Postgres. */
 export function excelSerialToISO(val: unknown): string | null {
   if (val === '' || val === null || val === undefined) return null;
   if (typeof val === 'number') {
@@ -75,19 +81,55 @@ export function excelSerialToISO(val: unknown): string | null {
     return dateObj.toISOString().split('T')[0];
   }
   const s = String(val).trim();
-  return s ? s.split('T')[0] : null;
+  if (!s) return null;
+
+  const brMatch = s.match(BR_DATE_RE);
+  if (brMatch) {
+    const [, dd, mm, yyyy] = brMatch;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const isoPart = s.split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoPart)) return isoPart;
+
+  return null;
 }
 
+// Milhar agrupado sem parte decimal, ex.: "1.234" ou "12.345.678"
+const THOUSANDS_ONLY_RE = /^\d{1,3}(\.\d{3})+$/;
+
 /** Número já numérico (célula Excel) ou string em formato brasileiro
- *  ("1.234,56"). Remove separador de milhar antes de trocar a vírgula. */
+ *  ("1.234,56"). Remove separador de milhar antes de trocar a vírgula.
+ *  Também trata o sinal de negativo do SAP, que pode vir antes ("-1.234,56")
+ *  ou depois ("1.234,56-") do número. */
 export function parseFbl1nNumber(val: unknown): number | null {
   if (val === '' || val === null || val === undefined) return null;
   if (typeof val === 'number') return val;
-  const s = String(val).trim();
+  let s = String(val).trim();
   if (!s) return null;
-  const normalized = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s;
+
+  let negative = false;
+  if (s.endsWith('-')) {
+    negative = true;
+    s = s.slice(0, -1).trim();
+  } else if (s.startsWith('-')) {
+    negative = true;
+    s = s.slice(1).trim();
+  }
+  if (!s) return null;
+
+  let normalized: string;
+  if (s.includes(',')) {
+    normalized = s.replace(/\./g, '').replace(',', '.');
+  } else if (THOUSANDS_ONLY_RE.test(s)) {
+    normalized = s.replace(/\./g, '');
+  } else {
+    normalized = s;
+  }
+
   const n = Number(normalized);
-  return Number.isNaN(n) ? null : n;
+  if (Number.isNaN(n)) return null;
+  return negative ? -n : n;
 }
 
 /** Aplica o mapeamento de colunas a uma linha crua da planilha. Colunas sem

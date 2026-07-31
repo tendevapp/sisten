@@ -65,11 +65,26 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('fbl1n_c_pagar')
-        .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao');
-      if (fetchError) throw fetchError;
-      setLancamentos((data || []) as Fbl1nLancamento[]);
+      // PostgREST limita cada select a um máximo de linhas (geralmente 1000)
+      // mesmo sem filtro. Em volumes reais de FBL1N (milhares a dezenas de
+      // milhares de linhas) é preciso paginar com .range() até esgotar os
+      // resultados — sem isso os KPIs ficam silenciosamente errados.
+      const pageSize = 1000;
+      const allRows: Fbl1nLancamento[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error: fetchError } = await supabase
+          .from('fbl1n_c_pagar')
+          .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (fetchError) throw fetchError;
+        if (!data || data.length === 0) break;
+        allRows.push(...(data as Fbl1nLancamento[]));
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      setLancamentos(allRows);
     } catch (e) {
       console.error('Erro ao carregar contas a pagar (FBL1N):', e);
       setError('Falha ao carregar os lançamentos. Tente atualizar novamente.');

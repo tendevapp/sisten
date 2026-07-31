@@ -15,6 +15,18 @@ describe('excelSerialToISO', () => {
     expect(excelSerialToISO(undefined)).toBeNull();
     expect(excelSerialToISO(null)).toBeNull();
   });
+
+  it('aceita data pt-BR com ponto', () => {
+    expect(excelSerialToISO('31.07.2026')).toBe('2026-07-31');
+  });
+
+  it('aceita data pt-BR com barra', () => {
+    expect(excelSerialToISO('31/07/2026')).toBe('2026-07-31');
+  });
+
+  it('retorna null para string não reconhecida como data', () => {
+    expect(excelSerialToISO('not a date')).toBeNull();
+  });
 });
 
 describe('parseFbl1nNumber', () => {
@@ -33,6 +45,18 @@ describe('parseFbl1nNumber', () => {
   it('retorna null para vazio', () => {
     expect(parseFbl1nNumber('')).toBeNull();
     expect(parseFbl1nNumber(undefined)).toBeNull();
+  });
+
+  it('converte valor negativo com sinal ao final (formato SAP)', () => {
+    expect(parseFbl1nNumber('1.234,56-')).toBe(-1234.56);
+  });
+
+  it('converte valor negativo com sinal no início', () => {
+    expect(parseFbl1nNumber('-1.234,56')).toBe(-1234.56);
+  });
+
+  it('converte milhar sem decimal', () => {
+    expect(parseFbl1nNumber('1.234')).toBe(1234);
   });
 });
 

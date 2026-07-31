@@ -57,3 +57,16 @@ create index if not exists idx_fbl1n_c_pagar_fornecedor on public.fbl1n_c_pagar(
 create index if not exists idx_fbl1n_c_pagar_empresa on public.fbl1n_c_pagar(empresa);
 create index if not exists idx_fbl1n_c_pagar_vencimento on public.fbl1n_c_pagar(vencimento_liquido);
 create index if not exists idx_fbl1n_c_pagar_doc_compensacao on public.fbl1n_c_pagar(doc_compensacao);
+
+alter table public.fbl1n_c_pagar enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'fbl1n_c_pagar' and policyname = 'fbl1n_c_pagar_all'
+  ) then
+    create policy fbl1n_c_pagar_all on public.fbl1n_c_pagar
+      for all to authenticated using (true) with check (true);
+  end if;
+end $$;
