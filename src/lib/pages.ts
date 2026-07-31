@@ -13,7 +13,7 @@ import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
-  ClipboardList, FileText,
+  ClipboardList, FileText, Receipt,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -56,6 +56,7 @@ export const PAGES: PageDef[] = [
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_contas_pagar', group: 'SUPRIMENTOS', label: 'Contas a Pagar', path: '/suprimentos/contas-pagar', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_importar', group: 'SUPRIMENTOS', label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
 

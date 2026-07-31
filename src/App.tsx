@@ -31,6 +31,7 @@ const Reports = lazy(() => import('./views/Reports'));
 const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
+const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
@@ -61,6 +62,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/historico/dashboards',
   '/suprimentos/fornecedores',
   '/suprimentos/contratos',
+  '/suprimentos/contas-pagar',
   '/suprimentos/cadastros-sap',
   '/helpdesk',
   '/helpdesk/relatorios',
@@ -480,6 +482,12 @@ export default function App() {
       case '/suprimentos/contratos':
         if (canAccessPage(user, 'sup_contratos')) {
           return <Contratos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/contas-pagar':
+        if (canAccessPage(user, 'sup_contas_pagar')) {
+          return <ContasPagar user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
