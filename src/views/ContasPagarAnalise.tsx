@@ -4,7 +4,7 @@
  *
  * Análise de Contas a Pagar (FBL1N): dashboard sobre a view
  * `vw_fbl1n_c_pagar_analise`, que já cruza os lançamentos com o cadastro de
- * tipos de documento SAP (categoria/módulo). Busca paginada direto do
+ * tipos de documento SAP (tipo de documento). Busca paginada direto do
  * Supabase, sem cache em `localDb` — mesmo racional de `ContasPagar.tsx`.
  */
 
@@ -31,14 +31,16 @@ interface Fbl1nAnaliseLinha {
   razao_social_fornecedor: string | null;
   montante_moeda_doc: number | null;
   doc_compensacao: string | null;
+  data_compensacao: string | null;
   vencimento_liquido: string | null;
   tipo_documento_categoria_modulo: string | null;
+  tipo_documento_descricao: string | null;
 }
 
 const PAGE_SIZE = 1000;
 
 function estaAberta(l: Fbl1nAnaliseLinha): boolean {
-  return !l.doc_compensacao;
+  return !l.data_compensacao;
 }
 
 /** FBL1N traz partidas de fornecedor com sinal de crédito (negativo). A
@@ -65,7 +67,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       while (true) {
         const { data, error: fetchError } = await supabase
           .from('vw_fbl1n_c_pagar_analise')
-          .select('empresa, razao_social_fornecedor, montante_moeda_doc, doc_compensacao, vencimento_liquido, tipo_documento_categoria_modulo')
+          .select('empresa, razao_social_fornecedor, montante_moeda_doc, doc_compensacao, data_compensacao, vencimento_liquido, tipo_documento_categoria_modulo, tipo_documento_descricao')
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
         if (fetchError) throw fetchError;
@@ -126,7 +128,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const categoriaChartData = useMemo(() => {
     const porCategoria = new Map<string, number>();
     abertas.forEach(l => {
-      const cat = l.tipo_documento_categoria_modulo || 'Sem categoria';
+      const cat = l.tipo_documento_descricao || 'Sem categoria';
       porCategoria.set(cat, (porCategoria.get(cat) || 0) + exposicao(l));
     });
     return Array.from(porCategoria.entries())
@@ -239,9 +241,9 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       </div>
 
       <ChartCard
-        title="Em Aberto por Categoria/Módulo"
+        title="Em Aberto por Tipo de Documento"
         icon={BarChart3}
-        description="Soma do valor em aberto por categoria/módulo do tipo de documento SAP."
+        description="Soma do valor em aberto por tipo de documento SAP (ex.: Fatura de Logística, Estorno de Fornecedor)."
         height={260}
         loading={loading}
         empty={!loading && categoriaChartData.length === 0}

@@ -35,6 +35,7 @@ interface Fbl1nLancamento {
   moeda_documento: string | null;
   montante_moeda_doc: number | null;
   doc_compensacao: string | null;
+  data_compensacao: string | null;
 }
 
 type SortDir = 'asc' | 'desc';
@@ -43,7 +44,7 @@ type StatusFilter = 'Todos' | 'Em aberto' | 'Compensado';
 const PAGE_SIZE = 50;
 
 function statusDe(l: Fbl1nLancamento): 'Em aberto' | 'Compensado' {
-  return l.doc_compensacao ? 'Compensado' : 'Em aberto';
+  return l.data_compensacao ? 'Compensado' : 'Em aberto';
 }
 
 export default function ContasPagar({ user: _user }: ContasPagarProps) {
@@ -75,7 +76,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
       while (true) {
         const { data, error: fetchError } = await supabase
           .from('fbl1n_c_pagar')
-          .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao')
+          .select('id, numero_documento, empresa, razao_social_fornecedor, fornecedor, data_lancamento, vencimento_liquido, moeda_documento, montante_moeda_doc, doc_compensacao, data_compensacao')
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (fetchError) throw fetchError;
