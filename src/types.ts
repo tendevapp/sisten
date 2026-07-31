@@ -370,7 +370,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'FBL1N';
   user_name: string;
   filename: string;
   records_read: number;
