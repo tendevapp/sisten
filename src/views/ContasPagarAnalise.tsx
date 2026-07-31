@@ -41,6 +41,12 @@ function estaAberta(l: Fbl1nAnaliseLinha): boolean {
   return !l.doc_compensacao;
 }
 
+/** FBL1N traz partidas de fornecedor com sinal de crédito (negativo). A
+ *  exposição em aberto é o valor invertido, para somar e ranquear positivo. */
+function exposicao(l: Fbl1nAnaliseLinha): number {
+  return -(l.montante_moeda_doc || 0);
+}
+
 export default function ContasPagarAnalise({ user: _user }: ContasPagarAnaliseProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,20 +104,21 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const em30dias = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
   const kpis = useMemo(() => {
-    const totalAberto = abertas.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
+    const totalAberto = abertas.reduce((sum, l) => sum + exposicao(l), 0);
     const vencidas = abertas.filter(l => l.vencimento_liquido && l.vencimento_liquido < hoje);
-    const totalVencido = vencidas.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
+    const totalVencido = vencidas.reduce((sum, l) => sum + exposicao(l), 0);
 
     const porFornecedor = new Map<string, number>();
     abertas.forEach(l => {
       const nome = l.razao_social_fornecedor || 'Sem fornecedor';
-      porFornecedor.set(nome, (porFornecedor.get(nome) || 0) + (l.montante_moeda_doc || 0));
+      porFornecedor.set(nome, (porFornecedor.get(nome) || 0) + exposicao(l));
     });
     let maiorFornecedor = '—';
-    let maiorFornecedorValor = 0;
+    let maiorFornecedorValor = -Infinity;
     porFornecedor.forEach((valor, nome) => {
       if (valor > maiorFornecedorValor) { maiorFornecedorValor = valor; maiorFornecedor = nome; }
     });
+    if (maiorFornecedorValor === -Infinity) maiorFornecedorValor = 0;
 
     return { totalAberto, totalVencido, maiorFornecedor, maiorFornecedorValor, qtdAbertas: abertas.length };
   }, [abertas, hoje]);
@@ -120,7 +127,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const porCategoria = new Map<string, number>();
     abertas.forEach(l => {
       const cat = l.tipo_documento_categoria_modulo || 'Sem categoria';
-      porCategoria.set(cat, (porCategoria.get(cat) || 0) + (l.montante_moeda_doc || 0));
+      porCategoria.set(cat, (porCategoria.get(cat) || 0) + exposicao(l));
     });
     return Array.from(porCategoria.entries())
       .map(([categoria, valor]) => ({ categoria, valor }))
@@ -133,7 +140,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const porFornecedor = new Map<string, number>();
     abertas.forEach(l => {
       const nome = l.razao_social_fornecedor || 'Sem fornecedor';
-      porFornecedor.set(nome, (porFornecedor.get(nome) || 0) + (l.montante_moeda_doc || 0));
+      porFornecedor.set(nome, (porFornecedor.get(nome) || 0) + exposicao(l));
     });
     return Array.from(porFornecedor.entries())
       .map(([fornecedor, valor]) => ({ fornecedor, valor }))
@@ -150,7 +157,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       'Sem vencimento informado': 0,
     };
     abertas.forEach(l => {
-      const v = l.montante_moeda_doc || 0;
+      const v = exposicao(l);
       if (!l.vencimento_liquido) {
         buckets['Sem vencimento informado'] += v;
       } else if (l.vencimento_liquido < hoje) {

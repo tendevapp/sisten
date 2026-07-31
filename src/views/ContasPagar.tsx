@@ -161,8 +161,11 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
   const kpis = useMemo(() => {
     const abertos = lancamentos.filter(l => statusDe(l) === 'Em aberto');
     const vencidos = abertos.filter(l => l.vencimento_liquido && l.vencimento_liquido < hoje);
-    const totalAberto = abertos.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
-    const totalVencido = vencidos.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
+    // FBL1N traz partidas de fornecedor com sinal de crédito (negativo);
+    // "em aberto"/"vencido" representam exposição, por isso o sinal é
+    // invertido para somar positivo (mesmo racional de ContasPagarAnalise.tsx).
+    const totalAberto = abertos.reduce((sum, l) => sum - (l.montante_moeda_doc || 0), 0);
+    const totalVencido = vencidos.reduce((sum, l) => sum - (l.montante_moeda_doc || 0), 0);
     const totalFiltrado = filtered.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
     return { totalAberto, totalVencido, totalFiltrado, qtdFiltrado: filtered.length };
   }, [lancamentos, filtered, hoje]);
