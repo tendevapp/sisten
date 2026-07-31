@@ -27,7 +27,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     return localDb.getSectors().filter(s => s.helpdesk_enabled);
   };
 
-  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'HELPDESK', 'ADMINISTRAÇÃO'];
+  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO'];
   const navItems = groupOrder.map(group => ({
     group,
     items: PAGES.filter(p => p.group === group),
