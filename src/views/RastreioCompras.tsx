@@ -7,20 +7,74 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { canAccessPage } from '../lib/pages';
 import {
-  RastreioRow, DeliveryScope, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
+  RastreioRow, DeliveryScope, TipoItemFilter, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort,
 } from '../lib/rastreio';
 import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
 import { useToast } from '../components/ui/Toast';
+import { useTour } from '../components/help/useTour';
+import TourSpotlight from '../components/help/TourSpotlight';
+import HelpButton from '../components/help/HelpButton';
+import type { TourStep } from '../components/help/types';
+
+const RASTREIO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Route,
+    title: 'Bem-vindo ao Rastreio de Compras',
+    description: 'Aqui você acompanha o ciclo de vida de cada compra, da requisição até a entrega. Vamos conhecer as principais áreas da tela.',
+  },
+  {
+    target: 'rastreio-search',
+    icon: Search,
+    title: 'Busque por RM, PO, item ou fornecedor',
+    description: 'Digite aqui para encontrar rapidamente uma requisição, um pedido, um material, um fornecedor ou um setor específico.',
+  },
+  {
+    target: 'rastreio-filtros',
+    icon: Filter,
+    title: 'Refine por tipo, status, setor e ano',
+    description: 'Combine esses filtros com a busca para restringir a lista aos registros que interessam no momento.',
+  },
+  {
+    target: 'rastreio-kpis',
+    icon: Package,
+    title: 'Indicadores do que está filtrado',
+    description: 'Os cartões somam os registros visíveis: total, no prazo, atrasados e entregues. Eles mudam conforme você filtra.',
+  },
+  {
+    target: 'rastreio-tabs',
+    icon: TableIcon,
+    title: 'Tabela ou Cronograma',
+    description: 'Alterne entre a lista detalhada em tabela e uma visão de cronograma das entregas programadas.',
+  },
+  {
+    target: 'rastreio-colunas',
+    icon: SlidersHorizontal,
+    title: 'Personalize as colunas',
+    description: 'Mostre ou esconda colunas da tabela para deixar a visualização do seu jeito. A escolha fica salva no seu navegador.',
+  },
+  {
+    target: 'rastreio-tabela',
+    icon: MessageCircle,
+    title: 'Abra um registro para ver detalhes',
+    description: 'Clique em qualquer linha para ver o histórico completo e conversar com o comprador responsável. O ponto verde indica mensagens não lidas.',
+  },
+  {
+    target: 'rastreio-exportar',
+    icon: FileSpreadsheet,
+    title: 'Exporte o que estiver filtrado',
+    description: 'Gere um PDF para impressão ou uma planilha Excel com os registros filtrados. Pronto — reabra este tour a qualquer momento pelo botão Ajuda.',
+  },
+];
 
 interface RastreioComprasProps {
   user: Profile;
@@ -34,6 +88,7 @@ const PAGE_SIZE = 50;
 
 export default function RastreioCompras({ user }: RastreioComprasProps) {
   const toast = useToast();
+  const tour = useTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
@@ -43,6 +98,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
+  const [tipoFilter, setTipoFilter] = useState<TipoItemFilter>('consumo');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [setorFilter, setSetorFilter] = useState('Todos');
   const [anoFilter, setAnoFilter] = useState('Todos');
@@ -108,14 +164,19 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   useEffect(() => { load(false); }, [load]);
 
+  // Abre o tour sozinho na primeira visita — só quando há dados na tela para mostrar.
+  useEffect(() => {
+    tour.autoOpenWhenReady(!loading && !error && rows.length > 0);
+  }, [loading, error, rows.length, tour.autoOpenWhenReady]);
+
   // Opções de filtro derivadas dos dados.
   const statusOpts = useMemo(() => statusOptions(rows), [rows]);
   const setorOpts = useMemo(() => setorOptions(rows), [rows]);
   const anoOpts = useMemo(() => anoOptions(rows), [rows]);
 
   const filteredRows = useMemo(
-    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope }),
-    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope]
+    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope, tipo: tipoFilter }),
+    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope, tipoFilter]
   );
 
   // Ordenação da tabela. Sem coluna ativa, usa o padrão (MIGO ↑, descrição ↑).
@@ -149,7 +210,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir]);
 
   // Deep-link: notificação de mensagem abre a conversa do item (#/rastreio?ri=...).
   useEffect(() => {
@@ -176,15 +237,14 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // KPIs sobre o conjunto filtrado.
   const kpis = useMemo(() => {
-    let entregues = 0, atrasados = 0, noPrazo = 0, semPo = 0;
+    let entregues = 0, atrasados = 0, noPrazo = 0;
     filteredRows.forEach(r => {
       const d = deriveDeliveryStatus(r, hoje);
       if (d === 'entregue') entregues++;
       else if (d === 'atrasado') atrasados++;
       else if (d === 'no_prazo') noPrazo++;
-      if (r.statusReq === 'Sem PO') semPo++;
     });
-    return { total: filteredRows.length, entregues, atrasados, noPrazo, semPo };
+    return { total: filteredRows.length, entregues, atrasados, noPrazo };
   }, [filteredRows, hoje]);
 
   const handleExportExcel = () => {
@@ -202,8 +262,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         'Preço Unit. (R$)': r.precoUnitario ?? '—',
         'Valor Total (R$)': r.valorTotal ?? '—',
       } : {}),
-      'Data RM': formatDateBR(r.dataCriacao),
-      'Data PO': formatDateBR(r.dataPo),
+      'RM Data': formatDateBR(r.dataCriacao),
+      'PO Data': formatDateBR(r.dataPo),
       'Prev. Entrega': formatDateBR(r.dataPrevista),
       'Entrega (MIGO)': formatDateBR(r.dataEntrega),
       'Status': r.status,
@@ -247,7 +307,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       <div class="meta">${filteredRows.length} registro(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
       <table><thead><tr>
         <th>RM</th><th>PO</th><th>Item / Descrição</th><th>Fornecedor</th><th>Setor</th>
-        <th>Qtd</th><th>Data RM</th><th>Data PO</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
+        <th>Qtd</th><th>RM Data</th><th>PO Data</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
       </tr></thead><tbody>${bodyRows}</tbody></table>
       </body></html>`);
     win.document.close();
@@ -260,7 +320,6 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     { label: 'No prazo', value: kpis.noPrazo, icon: Truck, color: 'bg-blue-500 dark:bg-blue-600', text: 'text-blue-600 dark:text-blue-400' },
     { label: 'Atrasados', value: kpis.atrasados, icon: AlertTriangle, color: 'bg-rose-500 dark:bg-rose-600', text: 'text-rose-600 dark:text-rose-400' },
     { label: 'Entregues', value: kpis.entregues, icon: CheckCircle2, color: 'bg-emerald-500 dark:bg-emerald-600', text: 'text-emerald-600 dark:text-emerald-400' },
-    { label: 'Sem PO', value: kpis.semPo, icon: AlertCircle, color: 'bg-amber-500 dark:bg-amber-600', text: 'text-amber-600 dark:text-amber-400' },
   ];
 
   return (
@@ -290,7 +349,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
           {filteredRows.length > 0 && tab === 'tabela' && (
-            <>
+            <span data-tour="rastreio-exportar" className="flex items-center gap-2">
               <button
                 onClick={handleExportPDF}
                 className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all h-9 cursor-pointer active:scale-95"
@@ -303,14 +362,14 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               >
                 <FileSpreadsheet className="h-4 w-4" /> Excel
               </button>
-            </>
+            </span>
           )}
         </div>
       </div>
 
       {/* KPIs */}
       {!loading && !error && rows.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div data-tour="rastreio-kpis" className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           {kpiCards.map(k => {
             const Icon = k.icon;
             return (
@@ -324,9 +383,9 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         </div>
       )}
 
-      {/* Tabs + escopo de entrega */}
+      {/* Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
+        <div data-tour="rastreio-tabs" className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
           <button
             onClick={() => setTab('tabela')}
             className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-bold transition-all ${tab === 'tabela' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
@@ -340,26 +399,12 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             <CalendarRange className="h-4 w-4" /> Cronograma
           </button>
         </div>
-
-        {/* Todos / Em aberto (sem MIGO) */}
-        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-950">
-          {([['todos', 'Todos'], ['aberto', 'Em aberto']] as [DeliveryScope, string][]).map(([val, label]) => (
-            <button
-              key={val}
-              onClick={() => setScope(val)}
-              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${scope === val ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-              title={val === 'aberto' ? 'Somente itens ainda não entregues (sem MIGO)' : 'Todos os registros'}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-col xl:flex-row gap-3">
-          <div className="relative flex-1">
+          <div data-tour="rastreio-search" className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
@@ -369,7 +414,19 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div data-tour="rastreio-filtros" className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[160px]">
+              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={tipoFilter}
+                onChange={(e) => setTipoFilter(e.target.value as TipoItemFilter)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="consumo">Consumíveis</option>
+                <option value="projeto">Itens de Projeto</option>
+                <option value="todos">Tipo: Todos</option>
+              </select>
+            </div>
             <div className="relative min-w-[160px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
@@ -442,6 +499,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 <div className="relative shrink-0">
                   {showColMenu && <div className="fixed inset-0 z-20" onClick={() => setShowColMenu(false)} />}
                   <button
+                    data-tour="rastreio-colunas"
                     onClick={() => setShowColMenu(!showColMenu)}
                     className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm transition-all z-30 relative cursor-pointer"
                   >
@@ -485,17 +543,19 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 </div>
               ) : (
                 <>
-                  <RastreioTable
-                    rows={visibleRows}
-                    hoje={hoje}
-                    visibleColumns={visibleColumns}
-                    sortColumn={sortColumn}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                    onOpenRow={setSelectedRow}
-                    unreadRis={unreadRis}
-                    canSeeValores={canSeeValores}
-                  />
+                  <div data-tour="rastreio-tabela">
+                    <RastreioTable
+                      rows={visibleRows}
+                      hoje={hoje}
+                      visibleColumns={visibleColumns}
+                      sortColumn={sortColumn}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                      onOpenRow={setSelectedRow}
+                      unreadRis={unreadRis}
+                      canSeeValores={canSeeValores}
+                    />
+                  </div>
                   {visibleCount < sortedRows.length && (
                     <div className="flex justify-center pt-2">
                       <button
@@ -524,6 +584,17 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
           onClose={() => setSelectedRow(null)}
           onThreadRead={refreshUnread}
           canSeeValores={canSeeValores}
+        />
+      )}
+
+      {!tour.isOpen && <HelpButton onClick={tour.open} pulse={!tour.seen} />}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={RASTREIO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

@@ -8,7 +8,7 @@ import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
-  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink,
+  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -22,6 +22,72 @@ import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
+import { useTour } from '../components/help/useTour';
+import TourSpotlight from '../components/help/TourSpotlight';
+import HelpButton from '../components/help/HelpButton';
+import type { TourStep } from '../components/help/types';
+
+const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShoppingBag,
+    title: 'Bem-vindo à Nova Solicitação',
+    description: 'Aqui você abre pedidos de compra, cadastro no SAP ou chamados de suporte. Vamos conhecer as partes principais da tela.',
+  },
+  {
+    target: 'novasol-canais',
+    icon: CheckCircle2,
+    title: 'Escolha o tipo de solicitação',
+    description: 'Compra pede itens de material. Cadastro SAP registra um item ou fornecedor novo no sistema. Chamado abre um suporte (TI, Facilities, Jurídico...). O formulário abaixo muda conforme a escolha.',
+  },
+  {
+    target: 'novasol-formulario',
+    icon: Search,
+    title: 'Preencha os dados do pedido',
+    description: 'Em Compra, digite o código SAP ou a descrição para buscar no catálogo — os campos são preenchidos automaticamente ao selecionar um resultado.',
+  },
+  {
+    target: 'novasol-descricao-busca',
+    icon: Search,
+    title: 'Digite ou busque no catálogo',
+    description: 'Digite a descrição para ver sugestões do catálogo SAP aparecerem logo abaixo, ou clique em "Buscar" para abrir a janela de pesquisa e procurar com calma.',
+  },
+  {
+    target: 'novasol-item-generico',
+    icon: CheckCircle2,
+    title: 'Item sem código no catálogo?',
+    description: 'Marque "Item Genérico" quando não encontrar o material no SAP. Ao marcar, o campo de Observação passa a ser obrigatório — descreva ali as especificações técnicas para o comprador entender o que comprar.',
+  },
+  {
+    target: 'novasol-add-item',
+    icon: Plus,
+    title: 'Peça mais de um item na mesma solicitação',
+    description: 'Cada clique adiciona uma nova linha de item, com seus próprios campos, observações e anexos.',
+  },
+  {
+    target: 'novasol-justificativa',
+    icon: FileText,
+    title: 'Justifique tecnicamente o pedido',
+    description: 'Descreva a necessidade com detalhes — é o que o comprador ou o setor responsável usa para entender e aprovar mais rápido.',
+  },
+  {
+    target: 'novasol-prazo',
+    icon: Calendar,
+    title: 'Informe o prazo necessário',
+    description: 'A data limite de necessidade ajuda o comprador a priorizar sua solicitação junto às demais.',
+  },
+  {
+    target: 'novasol-criticidade',
+    icon: Gauge,
+    title: 'Defina a criticidade',
+    description: 'Grau 4 ou 5 notifica os gestores automaticamente e prioriza a numeração. Escolha com honestidade — isso afeta o SLA de atendimento.',
+  },
+  {
+    target: 'novasol-enviar',
+    icon: Send,
+    title: 'Envie quando estiver pronto',
+    description: 'Um rascunho é salvo automaticamente a cada 30 segundos, então você pode sair e continuar depois. Pronto — reabra este tour a qualquer momento pelo botão Ajuda.',
+  },
+];
 
 interface NewRequestProps {
   user: Profile;
@@ -125,6 +191,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
+  const tour = useTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
@@ -362,6 +429,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     setCarregandoEdicao(false);
   }, [user, onNavigate]);
+
+  // Abre o tour sozinho na primeira visita — só para quem está criando uma
+  // solicitação nova, nunca durante uma edição (o fluxo e o foco são outros).
+  useEffect(() => {
+    tour.autoOpenWhenReady(!carregandoEdicao && !editandoId);
+  }, [carregandoEdicao, editandoId, tour.autoOpenWhenReady]);
 
   // Load draft if exists
   useEffect(() => {
@@ -689,7 +762,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
           Em modo edição o tipo fica travado: trocar o tipo de uma solicitação
           existente descartaria os campos e itens que só existem no tipo atual. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 stagger">
+      <div data-tour="novasol-canais" className="grid grid-cols-1 sm:grid-cols-3 gap-3 stagger">
         {CHANNELS.map(ch => {
           const active = activeTab === ch.id;
           const Icon = ch.icon;
@@ -731,7 +804,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6 items-start">
         {/* Coluna principal */}
         <div className="space-y-6 min-w-0">
-        <div className="rounded-xl border p-6 shadow-xs space-y-4 reveal" style={cardStyle}>
+        <div data-tour="novasol-formulario" className="rounded-xl border p-6 shadow-xs space-y-4 reveal" style={cardStyle}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3" style={{ borderColor: 'var(--hairline)' }}>
             <h3 className="font-bold text-base flex items-center gap-2" style={{ color: 'var(--ink-primary)' }}>
               <ListChecks className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
@@ -825,6 +898,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Itens solicitados *</span>
                   <button
                     type="button"
+                    data-tour="novasol-add-item"
                     onClick={handleAddItem}
                     className="flex items-center gap-1 text-sm font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--brand-strong)]"
                     style={{ color: 'var(--brand)' }}
@@ -845,7 +919,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         Item {index + 1}
                       </span>
                       <div className="flex items-center gap-3">
-                        <label className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
+                        <label data-tour="novasol-item-generico" className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
                             checked={it.is_generic || false}
@@ -890,7 +964,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                               style={fieldStyle}
                             />
                           </div>
-                          <div className="flex-1">
+                          <div data-tour="novasol-descricao-busca" className="flex-1">
                             <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Descrição *</label>
                             <div className="flex gap-1.5">
                               <div className="relative flex-1">
@@ -1208,7 +1282,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               </div>
 
               {/* Justificativa text */}
-              <div className="pt-2">
+              <div data-tour="novasol-justificativa" className="pt-2">
                 <label className={labelClass} style={labelStyle}>Justificativa e Especificações Técnicas *</label>
                 <textarea
                   required
@@ -1362,7 +1436,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               )}
 
-              <div>
+              <div data-tour="novasol-justificativa">
                 <label className={labelClass} style={labelStyle}>Justificativa de necessidade *</label>
                 <textarea
                   required
@@ -1532,7 +1606,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               )}
 
-              <div>
+              <div data-tour="novasol-justificativa">
                 <label className={labelClass} style={labelStyle}>Descrição detalhada *</label>
                 <textarea
                   required
@@ -1555,7 +1629,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             principal, e some do fluxo sticky abaixo de xl (empilha normal). */}
         <div className="space-y-6 xl:sticky xl:top-6">
           {activeTab === 'compra' && (
-            <div className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
+            <div data-tour="novasol-prazo" className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
               <h3 className="font-bold text-base flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
                 <Calendar className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
                 Pra quando?
@@ -1576,7 +1650,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             </div>
           )}
 
-          <div className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
+          <div data-tour="novasol-criticidade" className="rounded-xl border p-5 shadow-xs space-y-3 reveal" style={cardStyle}>
             <h3 className="font-bold text-base flex items-center gap-2 border-b pb-3" style={{ color: 'var(--ink-primary)', borderColor: 'var(--hairline)' }}>
               <Gauge className="h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
               Qual a criticidade?
@@ -1656,7 +1730,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           {/* Envio: botão primário cheio, sempre a vista dentro do painel
               fixo — antes ficava no fim da página, e uma lista longa de itens
               obrigava rolar tudo de volta pra enviar. */}
-          <div className="rounded-xl border p-5 shadow-xs space-y-2.5 reveal" style={cardStyle}>
+          <div data-tour="novasol-enviar" className="rounded-xl border p-5 shadow-xs space-y-2.5 reveal" style={cardStyle}>
             <button
               type="submit"
               disabled={uploadProgress}
@@ -1715,6 +1789,17 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               sinais: chips,
             } : it));
           }}
+        />
+      )}
+
+      {!tour.isOpen && <HelpButton onClick={tour.open} pulse={!tour.seen} />}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={NOVA_SOLICITACAO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

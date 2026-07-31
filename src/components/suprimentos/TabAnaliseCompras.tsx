@@ -64,7 +64,7 @@ interface Filtros {
 }
 
 const FILTROS_VAZIOS: Filtros = {
-  de: '', ate: '', origem: 'todas', regiao: 'todas', cidade: 'todas',
+  de: `${new Date().getFullYear()}-01-01`, ate: '', origem: 'todas', regiao: 'todas', cidade: 'todas',
   grupo: 'todos', fornecedor: 'todos', tipoItem: 'todos',
 };
 

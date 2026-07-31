@@ -4,11 +4,22 @@
  */
 
 import React, { useState } from 'react';
-import { Menu, X, Sun, Moon, ArrowUpRight } from 'lucide-react';
+import { Menu, X, Sun, Moon, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { PAGES, canAccessPage } from '../lib/pages';
 import SistenLogo from './SistenLogo';
+
+const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
+
+function loadCollapsedGroups(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
 interface SidebarProps {
   user: Profile;
@@ -22,6 +33,15 @@ interface SidebarProps {
 
 export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTheme, mobileOpen, onCloseMobile }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(loadCollapsedGroups);
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = { ...prev, [group]: !prev[group] };
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
 
   const getSectorsWithHelpdesk = () => {
     return localDb.getSectors().filter(s => s.helpdesk_enabled);
@@ -107,14 +127,35 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
 
           if (visibleItems.length === 0) return null;
 
+          // Grupo que contém a rota ativa nunca deve renderizar recolhido,
+          // senão o usuário perde de vista onde está ao navegar.
+          const hasActiveItem = visibleItems.some(item => item.path === activePath);
+          const isGroupCollapsed = !collapsed && !hasActiveItem && !!collapsedGroups[group.group];
+
           return (
-            <div key={groupIdx} className="mb-6">
+            <div key={groupIdx} className="mb-2">
               {!collapsed && (
-                <h3 className="px-6 mb-2 text-[10px] font-bold text-slate-500 tracking-widest text-left">
-                  {group.group}
-                </h3>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.group)}
+                  className="flex w-full items-center justify-between px-6 py-1.5 text-left group/heading"
+                  aria-expanded={!isGroupCollapsed}
+                >
+                  <h3 className="text-[10px] font-bold text-slate-500 tracking-widest group-hover/heading:text-slate-300 transition-colors">
+                    {group.group}
+                  </h3>
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 text-slate-600 group-hover/heading:text-slate-400 transition-transform duration-200 ${
+                      isGroupCollapsed ? '-rotate-90' : ''
+                    }`}
+                  />
+                </button>
               )}
-              <ul className="space-y-1">
+              <div
+                className="grid transition-[grid-template-rows] duration-200 ease-out"
+                style={{ gridTemplateRows: isGroupCollapsed ? '0fr' : '1fr' }}
+              >
+                <ul className="space-y-1 overflow-hidden mt-1">
                 {visibleItems.map((item, itemIdx) => {
                   const Icon = item.icon;
                   // If path is helpdesk or specific sub-path, check exact or partial matches
@@ -160,7 +201,8 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                     </li>
                   );
                 })}
-              </ul>
+                </ul>
+              </div>
             </div>
           );
         })}

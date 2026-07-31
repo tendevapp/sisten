@@ -47,6 +47,14 @@ interface ActiveUserRow {
   first_event: string | null;
   last_event: string | null;
 }
+interface UserPageVisit {
+  id: string;
+  path: string;
+  page_label: string | null;
+  created_at: string;
+  session_id: string | null;
+  dwell_seconds: number | null;
+}
 
 const DOW_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -112,6 +120,10 @@ export default function UsageDashboard() {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [pageUsers, setPageUsers] = useState<Map<string, PageUserRow[]>>(new Map());
   const [pageUsersLoading, setPageUsersLoading] = useState<Set<string>>(new Set());
+
+  const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(new Set());
+  const [userPageHistory, setUserPageHistory] = useState<Map<string, UserPageVisit[]>>(new Map());
+  const [userHistoryLoading, setUserHistoryLoading] = useState<Set<string>>(new Set());
 
   const { fromISO, toISO } = useMemo(() => {
     const to = new Date();
@@ -190,6 +202,9 @@ export default function UsageDashboard() {
     setExpandedPaths(new Set());
     setPageUsers(new Map());
     setPageUsersLoading(new Set());
+    setExpandedUserIds(new Set());
+    setUserPageHistory(new Map());
+    setUserHistoryLoading(new Set());
   }, [fromISO, toISO, selectedUser]);
 
   // Trocar o período invalida a lista, mas não a fecha: quem abriu o painel
@@ -223,6 +238,77 @@ export default function UsageDashboard() {
       return next;
     });
   }, []);
+
+  const toggleUserExpand = useCallback((userId: string) => {
+    setExpandedUserIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    expandedUserIds.forEach(userId => {
+      if (userPageHistory.has(userId) || userHistoryLoading.has(userId)) return;
+      setUserHistoryLoading(prev => new Set(prev).add(userId));
+
+      supabase
+        .from('usage_events')
+        .select('id, event_type, path, page_label, session_id, created_at')
+        .eq('user_id', userId)
+        .gte('created_at', fromISO)
+        .lte('created_at', toISO)
+        .order('created_at', { ascending: true })
+        .then(({ data, error }) => {
+          if (error || !data) {
+            setUserPageHistory(prev => new Map(prev).set(userId, []));
+            return;
+          }
+
+          const visits: UserPageVisit[] = [];
+          for (let i = 0; i < data.length; i++) {
+            const current = data[i];
+            if (current.event_type !== 'page_view' || !current.path) continue;
+
+            const next = data[i + 1];
+            let dwell: number | null = null;
+            if (next) {
+              const diffSec = (new Date(next.created_at).getTime() - new Date(current.created_at).getTime()) / 1000;
+              if (diffSec > 0 && diffSec <= 1800 && (!current.session_id || !next.session_id || current.session_id === next.session_id)) {
+                dwell = diffSec;
+              }
+            }
+
+            visits.push({
+              id: current.id || `${current.created_at}-${i}`,
+              path: current.path,
+              page_label: current.page_label || labelForPath(current.path),
+              created_at: current.created_at,
+              session_id: current.session_id,
+              dwell_seconds: dwell,
+            });
+          }
+
+          setUserPageHistory(prev => new Map(prev).set(userId, visits));
+        })
+        .catch(err => {
+          console.error('Falha ao carregar histórico de navegação do usuário:', err);
+          setUserPageHistory(prev => new Map(prev).set(userId, []));
+        })
+        .finally(() => {
+          setUserHistoryLoading(prev => {
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          });
+        });
+    });
+  }, [expandedUserIds, fromISO, toISO, userPageHistory, userHistoryLoading]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -261,242 +347,234 @@ export default function UsageDashboard() {
     [activeUsers]
   );
 
-  const pageChartData = useMemo(
-    () => pageRanking.slice(0, 12).map(r => ({
-      ...r,
-      name: r.page_label || labelForPath(r.path),
-    })),
-    [pageRanking]
+  const selectedProfile = useMemo(
+    () => profiles.find(p => p.id === selectedUser),
+    [profiles, selectedUser]
   );
 
-  const selectedProfile = profiles.find(p => p.id === selectedUser);
-  const selectClass = 'rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer';
-
   return (
-    <div className="space-y-6 text-left">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Activity className="h-6 w-6 text-emerald-600" /> Uso do Aplicativo
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Indicadores de uso a partir de logins e navegação: usuários ativos, páginas mais acessadas, horários e atividade por usuário.
-          </p>
+    <div className="p-4 sm:p-6 w-full space-y-6">
+      {/* Top Header & Filters */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600">
+            <Activity className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Uso do Sistema</h1>
+            <p className="text-xs text-slate-500">Métricas de engajamento, navegação e comportamento de usuários</p>
+          </div>
         </div>
-        <button
-          onClick={loadAll}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
-      </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm flex flex-wrap items-end gap-4">
-        <div>
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Período</label>
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Preset range buttons */}
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-800/50">
             {(['today', '7', '30', '90'] as Preset[]).map(p => (
               <button
                 key={p}
-                onClick={() => setPreset(p)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors cursor-pointer ${preset === p ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                onClick={() => { setPreset(p); }}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  preset === p
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
               >
-                {p === 'today' ? 'Hoje' : `${p} dias`}
+                {p === 'today' ? 'Hoje' : `${p}d`}
               </button>
             ))}
+          </div>
 
-            <button
-              onClick={() => setPreset('custom')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors flex items-center gap-1 ${preset === 'custom' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-gray-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+          {/* User selector */}
+          <div className="relative">
+            <select
+              value={selectedUser}
+              onChange={e => setSelectedUser(e.target.value)}
+              className="text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             >
-              <Calendar className="h-3.5 w-3.5" /> Custom
-            </button>
-          </div>
-        </div>
-
-        {preset === 'custom' && (
-          <div className="flex items-end gap-2">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">De</label>
-              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className={selectClass} />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Até</label>
-              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className={selectClass} />
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Usuário</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Buscar por nome ou e-mail..."
-              value={userSearch}
-              onChange={e => setUserSearch(e.target.value)}
-              className={`${selectClass} flex-1 cursor-text`}
-            />
-            <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className={`${selectClass} max-w-[240px]`}>
               <option value="todos">Todos os usuários</option>
               {filteredProfiles.map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.email})</option>
+                <option key={p.id} value={p.id}>{p.name || p.email || p.id}</option>
               ))}
             </select>
           </div>
+
+          <button
+            onClick={() => loadAll()}
+            disabled={loading}
+            className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            title="Atualizar dados"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 dark:bg-red-950/40 p-3 text-xs font-semibold text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900 flex items-center">
-          <AlertTriangle className="mr-2 h-4 w-4 shrink-0" /> {error}
+        <div className="rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 p-4 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* KPIs */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={Users} label="Ativos hoje" value={kpis?.active_today ?? 0} accent="emerald" />
-        <KpiCard icon={LogIn} label="Sessões (período)" value={kpis?.sessions ?? 0} accent="blue" />
-        <KpiCard icon={Clock} label="Tempo médio/sessão" value={`${kpis?.avg_session_minutes ?? 0} min`} accent="amber" />
-        <KpiCard icon={MousePointerClick} label="Visualizações de página" value={kpis?.page_views ?? 0} accent="indigo" />
+        <KpiCard icon={Users} label="Ativos hoje" value={kpis ? kpis.active_today : '—'} accent="emerald" />
+        <KpiCard icon={LogIn} label="Sessões" value={kpis ? kpis.sessions : '—'} accent="blue" />
+        <KpiCard icon={FileText} label="Visualizações" value={kpis ? kpis.page_views : '—'} accent="indigo" />
+        <KpiCard icon={Clock} label="Tempo médio/sessão" value={kpis ? fmtDwell(kpis.avg_session_minutes * 60) : '—'} accent="amber" />
       </div>
 
-      {/* Active users chart */}
+      {/* Active Users Chart */}
       <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos ao longo do tempo</h3>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos por dia</h3>
+            <p className="text-xs text-slate-400">Total de usuários únicos que acessaram o app no período</p>
+          </div>
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-800/50">
             {(['day', 'week', 'month'] as Granularity[]).map(g => (
               <button
                 key={g}
                 onClick={() => setGranularity(g)}
-                className={`rounded px-2.5 py-1 text-[11px] font-semibold border transition-colors ${granularity === g ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 border-slate-800 dark:border-slate-200' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-gray-200 dark:border-slate-700'}`}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors ${
+                  granularity === g
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-2xs font-semibold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
               >
-                {g === 'day' ? 'Diário' : g === 'week' ? 'Semanal' : 'Mensal'}
+                {g === 'day' ? 'Dia' : g === 'week' ? 'Semana' : 'Mês'}
               </button>
             ))}
           </div>
         </div>
-        {activeChartData.length === 0 ? (
-          <EmptyState loading={loading} />
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={activeChartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="activeGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#059669" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#059669" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" strokeOpacity={0.4} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <Tooltip
-                contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
-                labelFormatter={(l) => `Período: ${l}`}
-                formatter={(v: any) => [v, 'Usuários ativos']}
-              />
-              <Area type="monotone" dataKey="active_users" stroke="#059669" strokeWidth={2} fill="url(#activeGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
+
+        <div className="h-64 w-full">
+          {loading && !activeUsers.length ? (
+            <EmptyState loading={loading} />
+          ) : activeUsers.length === 0 ? (
+            <EmptyState loading={false} />
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={activeChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="activeGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                  labelStyle={{ color: '#94a3b8' }}
+                  formatter={(val: any) => [`${val} usuários`, 'Ativos']}
+                />
+                <Area type="monotone" dataKey="active_users" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#activeGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
 
-      {/* Page ranking + heatmap */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+      {/* Grid Page Ranking & Heatmap */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Page Ranking */}
         <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Páginas mais acessadas</h3>
-          {pageChartData.length === 0 ? (
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Páginas mais visitadas</h3>
+            <p className="text-xs text-slate-400">Ranking por acessos e tempo médio de permanência</p>
+          </div>
+
+          {loading && !pageRanking.length ? (
             <EmptyState loading={loading} />
+          ) : pageRanking.length === 0 ? (
+            <EmptyState loading={false} />
           ) : (
-            <>
-              <ResponsiveContainer width="100%" height={Math.max(220, pageChartData.length * 30)}>
-                <BarChart data={pageChartData} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" strokeOpacity={0.4} />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-                  <Tooltip
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
-                    formatter={(v: any) => [v, 'Visitas']}
-                  />
-                  <Bar dataKey="visits" fill="#059669" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="py-2">Página</th>
-                      <th className="py-2 text-right">Visitas</th>
-                      <th className="py-2 text-right">Tempo médio</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {pageRanking.slice(0, 12).map(r => {
-                      const isOpen = expandedPaths.has(r.path);
-                      const isLoadingUsers = pageUsersLoading.has(r.path);
-                      const users = pageUsers.get(r.path);
-                      return (
-                        <React.Fragment key={r.path}>
-                          <tr
-                            onClick={() => togglePageUsers(r.path)}
-                            className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                          >
-                            <td className="py-2 font-medium text-slate-700 dark:text-slate-300">
-                              <span className="flex items-center gap-1.5">
-                                {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
-                                {r.page_label || labelForPath(r.path)}
-                              </span>
-                            </td>
-                            <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{r.visits}</td>
-                            <td className="py-2 text-right text-slate-500">{fmtDwell(r.avg_dwell_seconds)}</td>
-                          </tr>
-                          {isOpen && (
-                            <tr>
-                              <td colSpan={3} className="pb-2 pt-0">
-                                <div className="ml-5 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 p-2">
-                                  {isLoadingUsers ? (
-                                    <p className="flex items-center gap-2 text-[11px] text-slate-400 py-1">
-                                      <RefreshCw className="h-3 w-3 animate-spin" /> Carregando usuários...
-                                    </p>
-                                  ) : !users || users.length === 0 ? (
-                                    <p className="text-[11px] text-slate-400 py-1">Nenhum usuário no período.</p>
-                                  ) : (
-                                    <ul className="space-y-1">
-                                      {users.map(u => (
-                                        <li key={u.user_id} className="flex items-center justify-between text-[11px] gap-2">
-                                          <span className="font-medium text-slate-600 dark:text-slate-300 truncate">{u.user_name || u.email || u.user_id}</span>
-                                          <span className="flex items-center gap-3 shrink-0 text-slate-400">
-                                            <span className="font-mono text-slate-500">{u.visits}</span>
-                                            <span>{fmtDateTime(u.last_visit)}</span>
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {pageRanking.map(r => {
+                const isExpanded = expandedPaths.has(r.path);
+                const usersList = pageUsers.get(r.path);
+                const isUsersLoading = pageUsersLoading.has(r.path);
+
+                return (
+                  <div key={r.path} className="border border-slate-100 dark:border-slate-800 rounded-lg overflow-hidden">
+                    <div
+                      onClick={() => togglePageUsers(r.path)}
+                      className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                            {r.page_label || labelForPath(r.path)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono truncate">{r.path}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-right shrink-0">
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 font-mono">{r.visits}</span>
+                          <span className="text-[10px] text-slate-400 block">visitas</span>
+                        </div>
+                        <div className="w-16">
+                          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 font-mono">
+                            {fmtDwell(r.avg_dwell_seconds)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">médio</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="bg-slate-50 dark:bg-slate-800/40 p-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                        <p className="font-semibold text-slate-600 dark:text-slate-400 mb-2">
+                          Usuários que visitaram esta página ({usersList?.length ?? 0}):
+                        </p>
+                        {isUsersLoading ? (
+                          <div className="flex items-center gap-2 text-slate-400 py-2">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            <span>Carregando usuários...</span>
+                          </div>
+                        ) : !usersList?.length ? (
+                          <p className="text-slate-400 py-1">Nenhum usuário encontrado.</p>
+                        ) : (
+                          <ul className="space-y-1 max-h-40 overflow-y-auto">
+                            {usersList.map(u => (
+                              <li key={u.user_id} className="flex items-center justify-between py-1 px-2 rounded bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+                                <span className="font-medium text-slate-700 dark:text-slate-300 truncate">
+                                  {u.user_name || u.email || u.user_id}
+                                </span>
+                                <div className="text-right flex items-center gap-3 font-mono text-[11px]">
+                                  <span className="text-slate-600 dark:text-slate-400">{u.visits}x</span>
+                                  <span className="text-slate-400 text-[10px]">{fmtDateTime(u.last_visit)}</span>
                                 </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* Heatmap */}
+        {/* Heatmap / Usage by Hour */}
         <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Acessos por horário</h3>
-          <p className="text-[11px] text-slate-400">Concentração de eventos por hora do dia e dia da semana.</p>
-          {byHour.length === 0 ? (
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Horários de maior uso</h3>
+            <p className="text-xs text-slate-400">Distribuição por dia da semana e hora</p>
+          </div>
+
+          {loading && !byHour.length ? (
             <EmptyState loading={loading} />
           ) : (
             <div className="overflow-x-auto">
@@ -533,59 +611,7 @@ export default function UsageDashboard() {
         </div>
       </div>
 
-      {/* Per-user panel */}
-      {selectedUser !== 'todos' && (
-        <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-            Atividade de {selectedProfile?.name || 'usuário'}
-          </h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <MiniStat label="Último login" value={fmtDateTime(userSummary?.last_login ?? null)} />
-            <MiniStat label="Sessões" value={String(userSummary?.sessions ?? 0)} />
-            <MiniStat label="Total de eventos" value={String(userSummary?.total_events ?? 0)} />
-            <MiniStat label="Páginas favoritas" value={String(userSummary?.favorite_pages?.length ?? 0)} />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div>
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Páginas favoritas</h4>
-              {userSummary?.favorite_pages?.length ? (
-                <ul className="space-y-1.5">
-                  {userSummary.favorite_pages.map(fp => (
-                    <li key={fp.path} className="flex items-center justify-between text-xs bg-white dark:bg-slate-900 rounded-lg px-3 py-2 border border-slate-100 dark:border-slate-800">
-                      <span className="font-medium text-slate-700 dark:text-slate-300">{fp.page_label || labelForPath(fp.path)}</span>
-                      <span className="font-mono text-slate-500">{fp.visits}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-xs text-slate-400">Sem dados no período.</p>}
-            </div>
-
-            <div>
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Linha do tempo recente</h4>
-              {timeline.length ? (
-                <ul className="space-y-1 max-h-72 overflow-y-auto pr-1">
-                  {timeline.map((t, i) => (
-                    <li key={i} className="flex items-center gap-2 text-xs bg-white dark:bg-slate-900 rounded-lg px-3 py-1.5 border border-slate-100 dark:border-slate-800">
-                      {t.event_type === 'login'
-                        ? <LogIn className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                        : <FileText className="h-3.5 w-3.5 text-emerald-500 shrink-0" />}
-                      <span className="flex-1 truncate text-slate-700 dark:text-slate-300">
-                        {t.event_type === 'login' ? 'Login' : (t.page_label || labelForPath(t.path || ''))}
-                      </span>
-                      <span className="text-slate-400 shrink-0">{fmtDateTime(t.created_at)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="text-xs text-slate-400">Sem atividade registrada.</p>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Usuários ativos no período — quem, e quando foi a última vez.
-          Segue o filtro de período do topo: com "Hoje" marcado, é a lista de
-          quem usou o app hoje. Fechado por padrão; a consulta só sai ao abrir. */}
+      {/* Active Users Table */}
       <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
         <button
           onClick={() => setShowActiveUsers(v => !v)}
@@ -593,7 +619,7 @@ export default function UsageDashboard() {
           className="w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
         >
           {showActiveUsers
-            ? <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
+            ? <ChevronDown className="h-4 w-4 text-emerald-600 shrink-0" />
             : <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />}
           <Users className="h-4 w-4 text-emerald-600 shrink-0" />
           <span className="text-sm font-bold text-slate-800 dark:text-slate-200">Usuários ativos no período</span>
@@ -615,33 +641,130 @@ export default function UsageDashboard() {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="py-2 pl-2 w-8"></th>
                       <th className="py-2">Usuário</th>
                       <th className="py-2 text-right">Sessões</th>
                       <th className="py-2 text-right">Páginas</th>
                       <th className="py-2 text-right">Primeiro acesso</th>
-                      <th className="py-2 text-right">Último uso</th>
+                      <th className="py-2 text-right pr-2">Último uso</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {activeUserList.map(u => (
-                      <tr key={u.user_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                        <td className="py-2 pr-3">
-                          <div className="font-medium text-slate-700 dark:text-slate-300 truncate">
-                            {u.user_name || u.email || u.user_id}
-                          </div>
-                          {u.user_name && u.email && (
-                            <div className="text-[10px] text-slate-400 truncate">{u.email}</div>
+                    {activeUserList.map(u => {
+                      const isUserExpanded = expandedUserIds.has(u.user_id);
+                      const history = userPageHistory.get(u.user_id);
+                      const isHistLoading = userHistoryLoading.has(u.user_id);
+
+                      return (
+                        <React.Fragment key={u.user_id}>
+                          <tr
+                            onClick={() => toggleUserExpand(u.user_id)}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors"
+                          >
+                            <td className="py-2 pl-2 text-slate-400">
+                              {isUserExpanded ? (
+                                <ChevronDown className="h-4 w-4 text-emerald-600" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </td>
+                            <td className="py-2 pr-3">
+                              <div className="font-medium text-slate-700 dark:text-slate-300 truncate">
+                                {u.user_name || u.email || u.user_id}
+                              </div>
+                              {u.user_name && u.email && (
+                                <div className="text-[10px] text-slate-400 truncate">{u.email}</div>
+                              )}
+                            </td>
+                            <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.sessions}</td>
+                            <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.page_views}</td>
+                            <td className="py-2 text-right text-slate-500 whitespace-nowrap">{fmtDateTime(u.first_event)}</td>
+                            <td className="py-2 text-right whitespace-nowrap pr-2">
+                              <div className="font-medium text-slate-700 dark:text-slate-300">{fmtDateTime(u.last_event)}</div>
+                              <div className="text-[10px] text-slate-400">{fmtDesde(u.last_event)}</div>
+                            </td>
+                          </tr>
+
+                          {isUserExpanded && (
+                            <tr className="bg-slate-50/70 dark:bg-slate-800/40">
+                              <td colSpan={6} className="p-4 pl-8">
+                                {isHistLoading ? (
+                                  <div className="flex items-center gap-2 text-xs text-slate-400 py-3">
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                                    <span>Carregando histórico de navegação...</span>
+                                  </div>
+                                ) : !history || history.length === 0 ? (
+                                  <p className="text-xs text-slate-400 py-2">
+                                    Nenhuma navegação de página registrada para este usuário no período.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700/60 pb-2 gap-2">
+                                      <span>
+                                        Páginas visitadas ({history.length}) · Ordem da hora
+                                      </span>
+                                      <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                                        Tempo total aproximado em tela:{' '}
+                                        <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                                          {fmtDwell(history.reduce((acc, curr) => acc + (curr.dwell_seconds || 0), 0))}
+                                        </strong>
+                                      </span>
+                                    </div>
+
+                                    <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+                                      {history.map((visit, idx) => (
+                                        <div
+                                          key={visit.id}
+                                          className="flex items-center justify-between gap-3 text-xs bg-white dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-2xs"
+                                        >
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="font-mono text-[10px] text-slate-400 w-6 text-right shrink-0">
+                                              #{idx + 1}
+                                            </span>
+                                            <div className="min-w-0">
+                                              <div className="font-medium text-slate-700 dark:text-slate-200 truncate">
+                                                {visit.page_label}
+                                              </div>
+                                              <div className="font-mono text-[10px] text-slate-400 truncate">
+                                                {visit.path}
+                                              </div>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex items-center gap-4 text-right shrink-0">
+                                            <div>
+                                              <div className="text-[11px] text-slate-600 dark:text-slate-400 font-mono">
+                                                {new Date(visit.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                              </div>
+                                              <div className="text-[9px] text-slate-400">
+                                                {new Date(visit.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                              </div>
+                                            </div>
+
+                                            <div className="w-24 text-right">
+                                              {visit.dwell_seconds !== null ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-mono">
+                                                  <Clock className="h-3 w-3" />
+                                                  {fmtDwell(visit.dwell_seconds)}
+                                                </span>
+                                              ) : (
+                                                <span className="text-[10px] text-slate-400 italic">
+                                                  Última tela
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.sessions}</td>
-                        <td className="py-2 text-right font-mono text-slate-600 dark:text-slate-400">{u.page_views}</td>
-                        <td className="py-2 text-right text-slate-500 whitespace-nowrap">{fmtDateTime(u.first_event)}</td>
-                        <td className="py-2 text-right whitespace-nowrap">
-                          <div className="font-medium text-slate-700 dark:text-slate-300">{fmtDateTime(u.last_event)}</div>
-                          <div className="text-[10px] text-slate-400">{fmtDesde(u.last_event)}</div>
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

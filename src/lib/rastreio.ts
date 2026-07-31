@@ -99,12 +99,35 @@ export type DeliveryStatus = 'entregue' | 'no_prazo' | 'atrasado' | 'sem_data';
 
 export type DeliveryScope = 'todos' | 'aberto'; // 'aberto' = ainda sem entrega (MIGO)
 
+export type TipoItemFilter = 'todos' | 'consumo' | 'projeto';
+
+/**
+ * Verifica se uma RM (Requisição de Compra) pertence a um serviço
+ * (RMs que começam com 17, ignorando zeros à esquerda).
+ */
+export function isServicoItem(rmCode: string): boolean {
+  if (!rmCode || rmCode === '—') return false;
+  const clean = rmCode.trim().replace(/^0+/, '');
+  return clean.startsWith('17') || rmCode.trim().startsWith('17');
+}
+
+/**
+ * Verifica se um código de material pertence a item de projeto
+ * (códigos que começam com 100000, ignorando zeros à esquerda).
+ */
+export function isProjetoItem(materialCode: string): boolean {
+  if (!materialCode || materialCode === '—') return false;
+  const clean = materialCode.trim().replace(/^0+/, '');
+  return clean.startsWith('100000') || materialCode.trim().startsWith('100000');
+}
+
 export interface RastreioFilters {
   query: string;
   status: string; // 'Todos' ou um item_status
   setor: string;  // 'Todos' ou um setor
   ano: string;    // 'Todos' ou um ano (YYYY)
   scope: DeliveryScope;
+  tipo?: TipoItemFilter;
 }
 
 const EMPTY = '—';
@@ -126,41 +149,47 @@ export const parseDate = (d?: string): Date | null => {
   return toDate(d);
 };
 
-// Mapeia os registros enriquecidos do SAP para linhas da tela de rastreio.
+// Mapeia os registros enriquecidos do SAP para linhas da tela de rastreio,
+// ignorando RMs de serviços (que começam com 17).
 export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
-  return records.map(r => {
-    const raw = r as any;
-    return {
-      ri: txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri,
-      rm: txt(r.requisicao_de_compra),
-      item: txt(r.item_reqc),
-      po: txt(r.documento_compra),
-      material: txt(r.material_code),
-      descricao: txt(r.texto_breve),
-      fornecedor: txt(r.fornecedor_name),
-      setor: txt(r.area_solicitante) !== EMPTY ? txt(r.area_solicitante) : txt(r.requisitante_name),
-      qtd: typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
-      unidade: txt(r.unidade_medida),
-      precoUnitario: typeof r.preco_unitario === 'number' ? r.preco_unitario : undefined,
-      valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
-      dataCriacao: txt(r.data_solicitacao) !== EMPTY ? txt(r.data_solicitacao) : txt(raw.data_solicitacao),
-      dataPo: txt(r.data_pedido),
-      // Data prevista = a promessa de entrega inserida pelo comprador na tela
-      // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como
-      // fallback: é a data de remessa do próprio SAP, não a promessa do
-      // comprador, e misturar as duas confundiria a origem do prazo exibido.
-      dataPrevista: txt(r.data_entrega_prevista),
-      dataEntrega: txt(r.data_migo),
-      // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
-      // independentemente do item_status registrado.
-      status: hasValue(txt(r.data_migo))
-        ? 'Entregue'
-        : (txt(r.item_status) === EMPTY ? 'Sem status' : txt(r.item_status)),
-      statusReq: txt(r.status_requisicao),
-      observacoes: txt(r.obs_comprador),
-      grupoComprador: txt(r.grupo_comprador) === EMPTY ? '' : txt(r.grupo_comprador),
-    };
-  });
+  return records
+    .filter(r => {
+      const rm = txt(r.requisicao_de_compra) !== EMPTY ? txt(r.requisicao_de_compra) : txt(r.ri);
+      return !isServicoItem(rm);
+    })
+    .map(r => {
+      const raw = r as any;
+      return {
+        ri: txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri,
+        rm: txt(r.requisicao_de_compra),
+        item: txt(r.item_reqc),
+        po: txt(r.documento_compra),
+        material: txt(r.material_code),
+        descricao: txt(r.texto_breve),
+        fornecedor: txt(r.fornecedor_name),
+        setor: txt(r.area_solicitante) !== EMPTY ? txt(r.area_solicitante) : txt(r.requisitante_name),
+        qtd: typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
+        unidade: txt(r.unidade_medida),
+        precoUnitario: typeof r.preco_unitario === 'number' ? r.preco_unitario : undefined,
+        valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
+        dataCriacao: txt(r.data_solicitacao) !== EMPTY ? txt(r.data_solicitacao) : txt(raw.data_solicitacao),
+        dataPo: txt(r.data_pedido),
+        // Data prevista = a promessa de entrega inserida pelo comprador na tela
+        // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como
+        // fallback: é a data de remessa do próprio SAP, não a promessa do
+        // comprador, e misturar as duas confundiria a origem do prazo exibido.
+        dataPrevista: txt(r.data_entrega_prevista),
+        dataEntrega: txt(r.data_migo),
+        // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
+        // independentemente do item_status registrado.
+        status: hasValue(txt(r.data_migo))
+          ? 'Entregue'
+          : (txt(r.item_status) === EMPTY ? 'Sem status' : txt(r.item_status)),
+        statusReq: txt(r.status_requisicao),
+        observacoes: txt(r.obs_comprador),
+        grupoComprador: txt(r.grupo_comprador) === EMPTY ? '' : txt(r.grupo_comprador),
+      };
+    });
 }
 
 // Deriva o status de prazo de entrega de uma linha, para colorir o cronograma.
@@ -190,6 +219,11 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
     if (f.status !== 'Todos' && r.status !== f.status) return false;
     if (f.setor !== 'Todos' && r.setor !== f.setor) return false;
     if (f.ano !== 'Todos' && yearOf(r.dataCriacao) !== f.ano) return false;
+    if (f.tipo && f.tipo !== 'todos') {
+      const eProjeto = isProjetoItem(r.material);
+      if (f.tipo === 'projeto' && !eProjeto) return false;
+      if (f.tipo === 'consumo' && eProjeto) return false;
+    }
     if (q) {
       const hit =
         r.rm.toLowerCase().includes(q) ||

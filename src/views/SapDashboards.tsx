@@ -60,9 +60,10 @@ const DIAS_PADRAO = 90;
 
 function filtrosIniciais(): EstadoFiltros {
   const j = janelaPadrao(DIAS_PADRAO);
+  const anoAtual = new Date().getFullYear();
   return {
     granularidade: 'semana',
-    dateFrom: j.de,
+    dateFrom: `${anoAtual}-01-01`,
     dateTo: j.ate,
     tipo: 'todos',
     criticidade: 'todas',
