@@ -15,6 +15,8 @@ import {
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
 import { limparCacheBusca } from '../lib/materiais';
+import { canAccessPage } from '../lib/pages';
+import { NOME_SETOR_JURIDICO } from '../lib/juridico';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
@@ -2310,6 +2312,9 @@ class LocalDatabase {
         category_id: draft.category_id,
         target_sector_id: draft.target_sector_id,
         registration_type: draft.registration_type,
+        contrato_tipo: draft.contrato_tipo,
+        fornecedor_terceiro: draft.fornecedor_terceiro,
+        titulo: draft.titulo,
         paused_minutes: 0
       } as Request;
 
@@ -2391,9 +2396,20 @@ class LocalDatabase {
           );
         });
       } else if (request.type === 'chamado') {
-        // Send to target helpdesk attendants
-        const targetAttendants = this.getProfiles().filter(u => u.sector_id === request.target_sector_id && u.roles.includes('atendente'));
-        targetAttendants.forEach(att => {
+        // Setor Jurídico: além do atendente do setor (se houver), notifica
+        // quem o admin marcou em Módulos de Acesso — o time jurídico não
+        // necessariamente tem sector_id/role 'atendente' configurado.
+        const destino = this.getSectors().find(s => s.id === request.target_sector_id);
+        const recipients = new Map<string, Profile>();
+        this.getProfiles()
+          .filter(u => u.sector_id === request.target_sector_id && u.roles.includes('atendente'))
+          .forEach(u => recipients.set(u.id, u));
+        if (destino?.name === NOME_SETOR_JURIDICO) {
+          this.getProfiles()
+            .filter(u => canAccessPage(u, 'juridico_notificar'))
+            .forEach(u => recipients.set(u.id, u));
+        }
+        recipients.forEach(att => {
           this.createNotification(
             att.id,
             'Novo Chamado de Suporte',
@@ -5950,6 +5966,30 @@ class LocalDatabase {
     }
     await this.transitionRequestStatus(reqId, status, comment);
     return true;
+  }
+
+  /** Prazo de conclusão do quadro Kanban (Contratos > Demandas). `prazo` em ISO (YYYY-MM-DD) ou null para limpar. */
+  public async updateRequestPrazoConclusao(reqId: string, prazo: string | null): Promise<void> {
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return;
+
+    requests[idx] = { ...requests[idx], prazo_conclusao: prazo, updated_at: new Date().toISOString() };
+    this.setStorageItem(this.requestsKey, requests);
+    await this.publishRequestRow(requests[idx]);
+    this.notifyListeners();
+  }
+
+  /** Título editável do card do Kanban (Contratos > Demandas). */
+  public async updateRequestTitulo(reqId: string, titulo: string): Promise<void> {
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return;
+
+    requests[idx] = { ...requests[idx], titulo: titulo || null, updated_at: new Date().toISOString() };
+    this.setStorageItem(this.requestsKey, requests);
+    await this.publishRequestRow(requests[idx]);
+    this.notifyListeners();
   }
 
   public transferTicketSector(reqId: string, sectorId: string, userId: string): void {

@@ -84,6 +84,15 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Ver valores de compra (Rastreio Compras)',
     defaultRoles: ['comprador', 'coordenador_suprimentos', 'gestor', 'admin'],
   },
+  // Sem role padrão: quem recebe notificação de chamado jurídico é decidido
+  // usuário a usuário pelo admin (aqui mesmo, em Módulos de Acesso), não por
+  // papel — o time jurídico não necessariamente tem um setor/role próprio.
+  {
+    id: 'juridico_notificar',
+    group: 'HELPDESK',
+    label: 'Chamados Jurídicos (receber notificações)',
+    defaultRoles: [],
+  },
 ];
 
 const ALL_ENTRIES: PageDef[] = [...PAGES, ...FEATURE_FLAGS];

@@ -7,13 +7,14 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
-  AlertCircle, Siren, Laptop2, Building2, Wrench, X,
+  AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
-import { formatBRL } from '../lib/format';
+import { formatBRL, formatDateBR } from '../lib/format';
+import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico } from '../lib/juridico';
 import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
@@ -120,6 +121,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
   'TI': Laptop2,
   'Facilities': Building2,
   'Manutenção': Wrench,
+  [NOME_SETOR_JURIDICO]: Scale,
 };
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
@@ -257,6 +259,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [helpdeskSectorId, setHelpdeskSectorId] = useState(''); // E.g., '9' for TI, '3' for Facilities
   const [helpdeskCategory, setHelpdeskCategory] = useState('');
   const [helpdeskLocal, setHelpdeskLocal] = useState('');
+  // Específicos do destino Jurídico
+  const [juridicoTitulo, setJuridicoTitulo] = useState('');
+  const [juridicoTipoContrato, setJuridicoTipoContrato] = useState('');
+  const [juridicoFornecedor, setJuridicoFornecedor] = useState('');
 
   // States
   const [uploadProgress, setUploadProgress] = useState(false);
@@ -329,6 +335,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (req.target_sector_id) setHelpdeskSectorId(req.target_sector_id);
     if (req.category_id) setHelpdeskCategory(req.category_id);
     if (req.local) setHelpdeskLocal(req.local);
+    if (req.titulo) setJuridicoTitulo(req.titulo);
+    if (req.contrato_tipo) setJuridicoTipoContrato(req.contrato_tipo);
+    if (req.fornecedor_terceiro) setJuridicoFornecedor(req.fornecedor_terceiro);
     if (req.solicitante_sector_id) setChamadoSectorId(req.solicitante_sector_id);
 
     const itensExistentes = localDb.getRequestItems(req.id);
@@ -391,6 +400,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.helpdeskSectorId) setHelpdeskSectorId(parsed.helpdeskSectorId);
         if (parsed.helpdeskCategory) setHelpdeskCategory(parsed.helpdeskCategory);
         if (parsed.helpdeskLocal) setHelpdeskLocal(parsed.helpdeskLocal);
+        if (parsed.juridicoTitulo) setJuridicoTitulo(parsed.juridicoTitulo);
+        if (parsed.juridicoTipoContrato) setJuridicoTipoContrato(parsed.juridicoTipoContrato);
+        if (parsed.juridicoFornecedor) setJuridicoFornecedor(parsed.juridicoFornecedor);
       } catch (err) {
         console.error('Error loading draft', err);
       }
@@ -414,7 +426,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
     items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
-    chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
+    chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
+    juridicoTitulo, juridicoTipoContrato, juridicoFornecedor,
   ]);
 
   const saveDraft = () => {
@@ -431,7 +444,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       items: items.map(({ attachments, ...resto }) => resto),
       registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
-      chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal
+      chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
+      juridicoTitulo, juridicoTipoContrato, juridicoFornecedor,
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
     setTimeout(() => setAutosaveStatus('saved'), 600);
@@ -509,10 +523,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return ['Acesso/Senha', 'Equipamento', 'Software', 'Rede', 'E-mail', 'Outro'];
     } else if (secId === '3') { // Facilities
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Mobiliário', 'Limpeza', 'Chaves/Acesso', 'Outro'];
+    } else if (sectors.find(s => s.id === secId)?.name === NOME_SETOR_JURIDICO) {
+      return [...TIPOS_CHAMADO_JURIDICO];
     } else { // Manutenção / Others
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Equipamento', 'Outro'];
     }
   };
+
+  const isDestinoJuridico = sectors.find(s => s.id === helpdeskSectorId)?.name === NOME_SETOR_JURIDICO;
 
 
 
@@ -585,7 +603,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           target_sector_id: helpdeskSectorId,
           category_id: helpdeskCategory || getHelpdeskCategories(helpdeskSectorId)[0],
           justificativa,
-          local: helpdeskLocal
+          local: helpdeskLocal,
+          ...(isDestinoJuridico && {
+            titulo: juridicoTitulo,
+            contrato_tipo: juridicoTipoContrato,
+            fornecedor_terceiro: juridicoFornecedor,
+          }),
         };
       }
 
@@ -1428,6 +1451,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               </div>
 
+              {isDestinoJuridico && (
+                <div>
+                  <label className={labelClass} style={labelStyle}>Título da solicitação *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex.: Análise de minuta - fornecimento de EPIs"
+                    value={juridicoTitulo}
+                    onChange={(e) => setJuridicoTitulo(e.target.value)}
+                    className={fieldClass}
+                    style={fieldStyle}
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass} style={labelStyle}>Categoria do incidente/pedido *</label>
@@ -1445,21 +1483,54 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </select>
                 </div>
 
+                {isDestinoJuridico ? (
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Tipo de contrato *</label>
+                    <select
+                      value={juridicoTipoContrato}
+                      onChange={(e) => setJuridicoTipoContrato(e.target.value)}
+                      required
+                      className={`${fieldClass} cursor-pointer`}
+                      style={fieldStyle}
+                    >
+                      <option value="">Selecione...</option>
+                      {TIPOS_CONTRATO_JURIDICO.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className={labelClass} style={labelStyle}>
+                      Local de ocorrência {helpdeskSectorId === '3' ? '*' : '(Opcional)'}
+                    </label>
+                    <input
+                      type="text"
+                      required={helpdeskSectorId === '3'} // Required for Facilities
+                      placeholder="Ex: Galpão B, Ponte Rolante ou Sala de Reunião 104"
+                      value={helpdeskLocal}
+                      onChange={(e) => setHelpdeskLocal(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {isDestinoJuridico && (
                 <div>
-                  <label className={labelClass} style={labelStyle}>
-                    Local de ocorrência {helpdeskSectorId === '3' ? '*' : '(Opcional)'}
-                  </label>
+                  <label className={labelClass} style={labelStyle}>Fornecedor / terceiro *</label>
                   <input
                     type="text"
-                    required={helpdeskSectorId === '3'} // Required for Facilities
-                    placeholder="Ex: Galpão B, Ponte Rolante ou Sala de Reunião 104"
-                    value={helpdeskLocal}
-                    onChange={(e) => setHelpdeskLocal(e.target.value)}
+                    required
+                    placeholder="Razão social"
+                    value={juridicoFornecedor}
+                    onChange={(e) => setJuridicoFornecedor(e.target.value)}
                     className={fieldClass}
                     style={fieldStyle}
                   />
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className={labelClass} style={labelStyle}>Descrição detalhada *</label>
@@ -1557,6 +1628,25 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   <strong>Criticidade alta.</strong>
                   <p className="mt-0.5" style={{ color: 'var(--ink-secondary)' }}>
                     Dispara notificação aos gestores e gera numeração prioritária. Justifique tecnicamente o prazo ou risco.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'chamado' && isDestinoJuridico && criticality !== null && (
+              <div
+                className="rounded-lg border p-3 flex items-start gap-2.5 text-[12px] reveal"
+                style={{
+                  borderColor: 'var(--brand)',
+                  background: 'var(--brand-wash)',
+                  color: 'var(--ink-primary)',
+                }}
+              >
+                <Clock className="h-4 w-4 shrink-0 mt-0.5" style={{ color: 'var(--brand-strong)' }} />
+                <div>
+                  <strong>Prazo estimado: {formatDateBR(calcularPrazoSlaJuridico(criticality))}</strong>
+                  <p className="mt-0.5" style={{ color: 'var(--ink-secondary)' }}>
+                    O SLA é calculado automaticamente pela criticidade selecionada.
                   </p>
                 </div>
               </div>

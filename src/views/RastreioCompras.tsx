@@ -88,9 +88,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         // POs/status novos mesmo quando a versão do dataset não mudou (correção
         // direta no banco, cache local corrompido) — antes só um novo login
         // resolvia.
-        // Só requisições/pedidos (o que esta tela usa) — não há motivo para
-        // um clique aqui rebaixar cidadeforn (26 MB) ou contatos junto.
-        try { await localDb.syncFromSupabase(true, ['requisicoes', 'pedidos']); } catch (e) { console.warn('Falha ao sincronizar dataset completo:', e); }
+        // Requisições, pedidos e pedidosforn (o que esta tela usa)
+        try { await localDb.syncFromSupabase(true, ['requisicoes', 'pedidos', 'pedidosforn']); } catch (e) { console.warn('Falha ao sincronizar dataset completo:', e); }
         // Reflete edições de obs/status/previsão feitas no Painel SAP por outros
         // usuários (que não disparam um sync completo do dataset).
         try { await localDb.refreshBuyerFieldsFromSupabase(); } catch (e) { console.warn('Falha ao atualizar campos do comprador:', e); }

@@ -204,6 +204,17 @@ export interface Request {
   representante_cargo?: string;
   representante_telefone?: string;
   representante_email?: string;
+  // Específicos do chamado com destino Jurídico (ver lib/juridico.ts). Nulos
+  // em todo o resto — não vale a pena uma tabela própria para 2 campos de um
+  // único destino de chamado.
+  contrato_tipo?: string;
+  fornecedor_terceiro?: string;
+  // Prazo de conclusão definido manualmente no quadro Kanban (Contratos >
+  // Demandas). Genérico em `requests`, nulo em todo o resto.
+  prazo_conclusao?: string | null;
+  // Título curto e editável, mostrado no card do Kanban. Opcional na criação;
+  // sem ele o card cai para `category_id` como rótulo.
+  titulo?: string | null;
 }
 
 export interface Notification {
