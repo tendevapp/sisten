@@ -21,6 +21,7 @@ import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
 import { supabase } from './supabaseClient';
+import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
@@ -5428,6 +5429,103 @@ class LocalDatabase {
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação de posição de estoque (ZL0024) no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // Contas a Pagar (FBL1N): assim como ZL0024/estoque, é uma foto do momento
+  // (partidas em aberto/compensadas na data da extração) — não um histórico
+  // incremental. Cada carga substitui integralmente o conteúdo anterior.
+  public async importFBL1NRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, FBL1N_COLUMNS);
+
+    if (!mappedFields.includes('numero_documento') || !mappedFields.includes('empresa')) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do SAP ("Nº documento" e "Empresa") não encontradas.');
+    }
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const { record, camposExtras } = mapFbl1nRow(headers, mappedFields, row);
+
+      if (!record.numero_documento || !record.empresa) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: record.numero_documento || 'N/A',
+          reason: 'Nº documento ou Empresa vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        ...record,
+        campos_extras: Object.keys(camposExtras).length ? camposExtras : null,
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const { count: previousCount } = await supabase
+        .from('fbl1n_c_pagar')
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from('fbl1n_c_pagar').delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from('fbl1n_c_pagar').insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'FBL1N',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contas a Pagar', `Importou Contas a Pagar FBL1N (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de contas a pagar (FBL1N) no Supabase:', e);
       throw e;
     }
   }
