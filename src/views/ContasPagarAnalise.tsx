@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  BarChart3, Wallet, CalendarClock, Building2, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt,
+  BarChart3, Wallet, CalendarClock, Building2, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../db/supabaseClient';
 import { Profile } from '../types';
-import { formatBRL, formatBRLCompacto, formatDateBR } from '../lib/format';
+import { formatBRL, formatBRLCompacto, formatDateBR, formatPct } from '../lib/format';
 import { useChartTokens, seriesColor } from '../lib/chartTokens';
 import { useChartConfig } from '../components/charts/chartDefaults';
 import ChartCard from '../components/charts/ChartCard';
@@ -127,6 +127,15 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
   const [selectedPeriodModal, setSelectedPeriodModal] = useState<SelectedPeriodModalData | null>(null);
   const [modalExpandedSuppliers, setModalExpandedSuppliers] = useState<Record<string, boolean>>({});
+  const [modalSearchQuery, setModalSearchQuery] = useState('');
+  const [modalSortDir, setModalSortDir] = useState<'desc' | 'asc'>('desc');
+
+  useEffect(() => {
+    if (selectedPeriodModal) {
+      setModalSearchQuery('');
+      setModalSortDir('desc');
+    }
+  }, [selectedPeriodModal]);
 
   const tokens = useChartTokens();
   const c = useChartConfig();
@@ -320,8 +329,86 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     setModalExpandedSuppliers(initialExpanded);
   };
 
+  const handleCategoriaClick = (entry: any) => {
+    if (!entry || !entry.categoria) return;
+    const catTarget = entry.categoria;
+    const items = abertas.filter(l => (l.tipo_documento_descricao || 'Sem categoria') === catTarget);
+
+    const initialExpanded: Record<string, boolean> = {};
+    items.forEach(i => {
+      const name = i.razao_social_fornecedor || i.fornecedor || 'Sem fornecedor';
+      initialExpanded[name] = true;
+    });
+
+    setSelectedPeriodModal({
+      label: `Tipo: ${catTarget}`,
+      key: `cat-${catTarget}`,
+      metric: 'aberto',
+      items,
+    });
+    setModalExpandedSuppliers(initialExpanded);
+  };
+
+  const handleFornecedorClick = (entry: any) => {
+    if (!entry || !entry.fornecedor) return;
+    const fornTarget = entry.fornecedor;
+    const items = abertas.filter(l => (l.razao_social_fornecedor || 'Sem fornecedor') === fornTarget);
+
+    const initialExpanded: Record<string, boolean> = {
+      [fornTarget]: true,
+    };
+
+    setSelectedPeriodModal({
+      label: `Fornecedor: ${fornTarget}`,
+      key: `forn-${fornTarget}`,
+      metric: 'aberto',
+      items,
+    });
+    setModalExpandedSuppliers(initialExpanded);
+  };
+
+  const handleAgingClick = (entry: any) => {
+    if (!entry || !entry.bucket) return;
+    const bucket = entry.bucket;
+    const items = abertas.filter(l => {
+      if (bucket === 'Sem vencimento informado') return !l.vencimento_liquido;
+      if (!l.vencimento_liquido) return false;
+      if (bucket === 'Vencido') return l.vencimento_liquido < hoje;
+      if (bucket === 'Vence em até 7 dias') return l.vencimento_liquido >= hoje && l.vencimento_liquido < em7dias;
+      if (bucket === 'Vence em até 30 dias') return l.vencimento_liquido >= em7dias && l.vencimento_liquido < em30dias;
+      if (bucket === 'Vence em 30+ dias') return l.vencimento_liquido >= em30dias;
+      return false;
+    });
+
+    const initialExpanded: Record<string, boolean> = {};
+    items.forEach(i => {
+      const name = i.razao_social_fornecedor || i.fornecedor || 'Sem fornecedor';
+      initialExpanded[name] = true;
+    });
+
+    setSelectedPeriodModal({
+      label: `Aging: ${bucket}`,
+      key: `aging-${bucket}`,
+      metric: 'aberto',
+      items,
+    });
+    setModalExpandedSuppliers(initialExpanded);
+  };
+
   const modalSupplierGroups = useMemo(() => {
     if (!selectedPeriodModal) return [];
+
+    let filteredItems = selectedPeriodModal.items;
+    if (modalSearchQuery.trim()) {
+      const q = modalSearchQuery.toLowerCase().trim();
+      filteredItems = filteredItems.filter(item =>
+        (item.razao_social_fornecedor || '').toLowerCase().includes(q) ||
+        (item.fornecedor || '').toLowerCase().includes(q) ||
+        (item.numero_documento || '').toLowerCase().includes(q) ||
+        (item.tipo_documento_descricao || '').toLowerCase().includes(q) ||
+        (item.tipo_documento || '').toLowerCase().includes(q)
+      );
+    }
 
     const map = new Map<string, {
       supplierName: string;
@@ -335,7 +422,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       qtdVencidos: number;
     }>();
 
-    selectedPeriodModal.items.forEach(item => {
+    filteredItems.forEach(item => {
       const rawVal = item.montante_moeda_doc || 0;
       const isComp = Boolean(
         (item.doc_compensacao && item.doc_compensacao.trim() !== '' && item.doc_compensacao.trim() !== '—') ||
@@ -397,8 +484,15 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.totalValor - a.totalValor);
-  }, [selectedPeriodModal, hoje]);
+    return Array.from(map.values()).sort((a, b) => {
+      return modalSortDir === 'desc' ? b.totalValor - a.totalValor : a.totalValor - b.totalValor;
+    });
+  }, [selectedPeriodModal, hoje, modalSearchQuery, modalSortDir]);
+
+  const modalTotalValor = useMemo(() => {
+    if (!selectedPeriodModal) return 0;
+    return modalSupplierGroups.reduce((acc, g) => acc + g.totalValor, 0);
+  }, [selectedPeriodModal, modalSupplierGroups]);
 
   const categoriaChartData = useMemo(() => {
     const porCategoria = new Map<string, number>();
@@ -475,7 +569,14 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const rows: { label: string; value: React.ReactNode; color?: string }[] = [
       { color: row.cor, label: 'Em aberto', value: formatBRL(row.valor) },
     ];
-    return <ChartTooltip title={row.categoria} rows={rows} />;
+    return (
+      <div className="space-y-1">
+        <ChartTooltip title={row.categoria} rows={rows} />
+        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
+          💡 Clique na barra para abrir a tabela detalhada
+        </p>
+      </div>
+    );
   }
 
   function FornecedorTooltip({ active, payload }: any) {
@@ -484,7 +585,14 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const rows: { label: string; value: React.ReactNode; color?: string }[] = [
       { color: tokens.brand, label: 'Em aberto', value: formatBRL(row.valor) },
     ];
-    return <ChartTooltip title={row.fornecedor} rows={rows} />;
+    return (
+      <div className="space-y-1">
+        <ChartTooltip title={row.fornecedor} rows={rows} />
+        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
+          💡 Clique na barra para abrir a tabela detalhada
+        </p>
+      </div>
+    );
   }
 
   function AgingTooltip({ active, payload }: any) {
@@ -493,7 +601,14 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const rows: { label: string; value: React.ReactNode; color?: string }[] = [
       { color: row.cor, label: 'Valor', value: formatBRL(row.valor) },
     ];
-    return <ChartTooltip title={row.bucket} rows={rows} />;
+    return (
+      <div className="space-y-1">
+        <ChartTooltip title={row.bucket} rows={rows} />
+        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
+          💡 Clique na barra para abrir a tabela detalhada
+        </p>
+      </div>
+    );
   }
 
   const temporalActions = (
@@ -686,7 +801,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       <ChartCard
         title="Em Aberto por Tipo de Documento"
         icon={BarChart3}
-        description="Soma do valor em aberto por tipo de documento SAP (ex.: Fatura de Logística, Estorno de Fornecedor)."
+        description="Soma do valor em aberto por tipo de documento SAP (ex.: Fatura de Logística, Estorno de Fornecedor). (Clique na barra para detalhar)"
         height={260}
         loading={loading}
         empty={!loading && categoriaChartData.length === 0}
@@ -698,7 +813,14 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
             <YAxis type="category" dataKey="categoria" {...c.xAxis} width={180} />
             <Tooltip content={<CategoriaTooltip />} cursor={c.cursor} />
-            <Bar dataKey="valor" radius={c.radius.right} maxBarSize={28} {...c.animation}>
+            <Bar
+              dataKey="valor"
+              radius={c.radius.right}
+              maxBarSize={28}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={(entry) => handleCategoriaClick(entry)}
+              {...c.animation}
+            >
               {categoriaChartData.map(d => <Cell key={d.categoria} fill={d.cor} />)}
               <LabelList dataKey="valor" position="right" formatter={(v: number) => formatBRLCompacto(v)} style={c.labelOnSurface} />
             </Bar>
@@ -709,7 +831,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       <ChartCard
         title="Maiores Fornecedores em Aberto"
         icon={Building2}
-        description="Top 10 fornecedores por valor em aberto."
+        description="Top 10 fornecedores por valor em aberto. (Clique na barra para detalhar)"
         height={300}
         loading={loading}
         empty={!loading && fornecedoresChartData.length === 0}
@@ -721,7 +843,15 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
             <YAxis type="category" dataKey="fornecedor" {...c.xAxis} width={200} />
             <Tooltip content={<FornecedorTooltip />} cursor={c.cursor} />
-            <Bar dataKey="valor" fill={tokens.brand} radius={c.radius.right} maxBarSize={22} {...c.animation}>
+            <Bar
+              dataKey="valor"
+              fill={tokens.brand}
+              radius={c.radius.right}
+              maxBarSize={22}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={(entry) => handleFornecedorClick(entry)}
+              {...c.animation}
+            >
               <LabelList dataKey="valor" position="right" formatter={(v: number) => formatBRLCompacto(v)} style={c.labelOnSurface} />
             </Bar>
           </BarChart>
@@ -731,7 +861,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       <ChartCard
         title="Aging das Partidas em Aberto"
         icon={CalendarClock}
-        description="Distribuição do valor em aberto por proximidade do vencimento."
+        description="Distribuição do valor em aberto por proximidade do vencimento. (Clique na barra para detalhar)"
         height={260}
         loading={loading}
         empty={!loading && kpis.qtdAbertas === 0}
@@ -743,7 +873,14 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <XAxis type="number" allowDecimals={false} tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} />
             <YAxis type="category" dataKey="bucket" {...c.xAxis} width={180} />
             <Tooltip content={<AgingTooltip />} cursor={c.cursor} />
-            <Bar dataKey="valor" radius={c.radius.right} maxBarSize={28} {...c.animation}>
+            <Bar
+              dataKey="valor"
+              radius={c.radius.right}
+              maxBarSize={28}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={(entry) => handleAgingClick(entry)}
+              {...c.animation}
+            >
               {agingChartData.map(d => <Cell key={d.bucket} fill={d.cor} />)}
               <LabelList dataKey="valor" position="right" formatter={(v: number) => formatBRLCompacto(v)} style={c.labelOnSurface} />
             </Bar>
@@ -754,11 +891,11 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       {/* Modal / Janela Suspensa ao Clicar no Gráfico de Evolução Temporal */}
       {selectedPeriodModal && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedPeriodModal(null)}
         >
           <div
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden select-text"
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-[98vw] max-h-[95vh] flex flex-col overflow-hidden select-text"
             onClick={e => e.stopPropagation()}
           >
             {/* Cabeçalho do Modal */}
@@ -828,24 +965,84 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                 </div>
               </div>
 
+              {/* Barra de Pesquisa e Ordenação */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar fornecedor, nº documento ou tipo de doc..."
+                    value={modalSearchQuery}
+                    onChange={e => setModalSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  />
+                  {modalSearchQuery && (
+                    <button
+                      onClick={() => setModalSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                      title="Limpar pesquisa"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500 font-medium">
+                    Exibindo <strong>{modalSupplierGroups.length}</strong> fornecedor(es)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setModalSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <span>Ordenar por Montante:</span>
+                    {modalSortDir === 'desc' ? (
+                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                        Maior p/ Menor <ArrowDown className="h-3.5 w-3.5" />
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                        Menor p/ Maior <ArrowUp className="h-3.5 w-3.5" />
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {/* Tabela por Fornecedor (Idêntica ao Contas a Pagar) */}
               {modalSupplierGroups.length === 0 ? (
                 <div className="text-center py-12 text-slate-500">
-                  Nenhum lançamento encontrado para esta barra.
+                  {modalSearchQuery ? 'Nenhum lançamento encontrado para a pesquisa informada.' : 'Nenhum lançamento encontrado para esta barra.'}
                 </div>
               ) : (
-                <TableShell>
+                <TableShell maxHeight="58vh" className="w-full">
                   <table className="w-full text-xs border-collapse">
                     <TableHeadRow>
                       <th className="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Fornecedor (Razão Social)</th>
                       <th className="px-4 py-3 text-center font-bold text-slate-600 dark:text-slate-400">Qtd. Lançamentos</th>
                       <th className="px-4 py-3 text-right font-bold text-slate-600 dark:text-slate-400">Total em Aberto</th>
-                      <th className="px-4 py-3 text-right font-bold text-slate-600 dark:text-slate-400">Montante Líquido Total</th>
+                      <th className="px-4 py-3 text-right font-bold text-slate-600 dark:text-slate-400">
+                        <button
+                          type="button"
+                          onClick={() => setModalSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+                          className="inline-flex items-center gap-1.5 font-bold hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                          title="Clique para alterar ordenação por Montante Líquido Total"
+                        >
+                          Montante Líquido Total
+                          {modalSortDir === 'desc' ? (
+                            <ArrowDown className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          ) : (
+                            <ArrowUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          )}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 text-right font-bold text-slate-600 dark:text-slate-400 w-28">% do Total</th>
                       <th className="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status Geral</th>
                     </TableHeadRow>
                     <TableBody>
                       {modalSupplierGroups.map(group => {
                         const isExpanded = !!modalExpandedSuppliers[group.supplierName];
+                        const pctSupplier = modalTotalValor > 0 ? (group.totalValor / modalTotalValor) * 100 : 0;
                         return (
                           <React.Fragment key={group.supplierName}>
                             {/* Linha Mãe: Totalizador por Fornecedor */}
@@ -900,6 +1097,9 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                               <Td align="right" numeric strong className="text-slate-900 dark:text-slate-100 font-extrabold">
                                 {formatBRL(group.totalValor)}
                               </Td>
+                              <Td align="right" numeric className="font-bold text-slate-700 dark:text-slate-300">
+                                {formatPct(pctSupplier)}
+                              </Td>
                               <Td>
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {group.qtdVencidos > 0 && (
@@ -924,7 +1124,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                             {/* Linhas Filhas: Detalhes dos Lançamentos */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={5} className="p-0 border-b-2 border-emerald-500/40 bg-slate-50/70 dark:bg-slate-950/60">
+                                <td colSpan={6} className="p-0 border-b-2 border-emerald-500/40 bg-slate-50/70 dark:bg-slate-950/60">
                                   <div className="py-2.5 px-4 sm:px-8 border-l-4 border-emerald-500">
                                     <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider flex items-center justify-between">
                                       <span>Detalhes das Partidas — {group.supplierName} ({group.items.length} lançamento(s))</span>
@@ -939,6 +1139,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                             <th className="px-3 py-2 text-left font-bold">Data Lançamento</th>
                                             <th className="px-3 py-2 text-left font-bold">Vencimento Líquido</th>
                                             <th className="px-3 py-2 text-right font-bold">Valor Moeda Doc.</th>
+                                            <th className="px-3 py-2 text-right font-bold w-24">% do Total</th>
                                             <th className="px-3 py-2 text-left font-bold">Doc. Compensação</th>
                                             <th className="px-3 py-2 text-center font-bold">Status</th>
                                           </tr>
@@ -952,6 +1153,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                             );
                                             const st = isComp ? 'Compensado' : 'Em aberto';
                                             const isVencido = st === 'Em aberto' && l.vencimento_liquido && l.vencimento_liquido < hoje;
+                                            const pctDoc = modalTotalValor > 0 ? (Math.abs(l.montante_moeda_doc || 0) / modalTotalValor) * 100 : 0;
                                             return (
                                               <tr key={l.id || `${l.numero_documento}-${l.vencimento_liquido}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                                                 <td className="px-3 py-2 font-mono font-medium text-slate-800 dark:text-slate-200">
@@ -968,6 +1170,9 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                                 </td>
                                                 <td className="px-3 py-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
                                                   {formatBRL(l.montante_moeda_doc)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-mono font-medium text-slate-700 dark:text-slate-300">
+                                                  {formatPct(pctDoc)}
                                                 </td>
                                                 <td className="px-3 py-2 font-mono text-slate-500 dark:text-slate-400">{l.doc_compensacao || '—'}</td>
                                                 <td className="px-3 py-2 text-center">

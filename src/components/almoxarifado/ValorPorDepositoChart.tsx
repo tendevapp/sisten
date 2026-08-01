@@ -22,15 +22,20 @@ function TooltipConteudo({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as Agregado;
   return (
-    <ChartTooltip
-      title={`Depósito ${row.chave}`}
-      rows={[
-        { label: 'Valor', value: formatBRL(row.valor) },
-        { label: 'Itens', value: formatInt(row.itens) },
-        { label: 'Materiais', value: formatInt(row.materiais) },
-        { label: 'Quantidade', value: formatQtd(row.quantidade) },
-      ]}
-    />
+    <div className="space-y-1">
+      <ChartTooltip
+        title={`Depósito ${row.chave}`}
+        rows={[
+          { label: 'Valor', value: formatBRL(row.valor) },
+          { label: 'Itens', value: formatInt(row.itens) },
+          { label: 'Materiais', value: formatInt(row.materiais) },
+          { label: 'Quantidade', value: formatQtd(row.quantidade) },
+        ]}
+      />
+      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
+        💡 Clique para abrir a janela detalhada
+      </p>
+    </div>
   );
 }
 

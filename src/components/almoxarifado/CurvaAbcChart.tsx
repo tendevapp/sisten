@@ -28,16 +28,21 @@ function TooltipConteudo({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const row = payload[0].payload as AbcResumo;
   return (
-    <ChartTooltip
-      title={`Classe ${row.classe}`}
-      subtitle={DESCRICAO[row.classe]}
-      rows={[
-        { label: 'Valor imobilizado', value: formatBRL(row.valor) },
-        { label: 'Participação', value: formatPct(row.pctValor) },
-        { label: 'Materiais', value: formatInt(row.materiais) },
-      ]}
-      footer={`Acumulado até esta classe: ${formatPct(row.pctAcumulado)}`}
-    />
+    <div className="space-y-1">
+      <ChartTooltip
+        title={`Classe ${row.classe}`}
+        subtitle={DESCRICAO[row.classe]}
+        rows={[
+          { label: 'Valor imobilizado', value: formatBRL(row.valor) },
+          { label: 'Participação', value: formatPct(row.pctValor) },
+          { label: 'Materiais', value: formatInt(row.materiais) },
+        ]}
+        footer={`Acumulado até esta classe: ${formatPct(row.pctAcumulado)}`}
+      />
+      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
+        💡 Clique para abrir a janela detalhada
+      </p>
+    </div>
   );
 }
 

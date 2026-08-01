@@ -23,6 +23,16 @@ export const CLASSE_ABC_COR: Record<ClasseAbc, string> = {
   C: 'var(--abc-c)',
 };
 
+/**
+ * Verifica se um código de material pertence a item de projeto
+ * (códigos que começam com 100000, ignorando zeros à esquerda).
+ */
+export function isProjetoItem(materialCode?: string | null): boolean {
+  if (!materialCode || materialCode === '—') return false;
+  const clean = materialCode.trim().replace(/^0+/, '');
+  return clean.startsWith('100000') || materialCode.trim().startsWith('100000');
+}
+
 // Normaliza códigos de material ignorando zeros à esquerda, para que o mesmo
 // material escrito '01433206' e '1433206' seja tratado como um só.
 export const normalizeCode = (c: any): string => {
