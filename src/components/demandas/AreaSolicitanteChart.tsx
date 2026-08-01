@@ -16,11 +16,13 @@ import ChartTooltip from '../charts/ChartTooltip';
 interface AreaSolicitanteChartProps {
   records: EnrichedSAPRecord[];
   loading?: boolean;
+  /** Drill-down: área solicitante da barra clicada. */
+  onSelecionar?: (area: string) => void;
 }
 
 const TOP_N = 10;
 
-export default function AreaSolicitanteChart({ records, loading }: AreaSolicitanteChartProps) {
+export default function AreaSolicitanteChart({ records, loading, onSelecionar }: AreaSolicitanteChartProps) {
   const c = useChartConfig();
   const corMaterial = demandaColor(c.tokens, 'material');
   const corServico = demandaColor(c.tokens, 'servico');
@@ -90,6 +92,8 @@ export default function AreaSolicitanteChart({ records, loading }: AreaSolicitan
             barSize={18}
             stroke={c.tokens.surface}
             strokeWidth={c.stackGap}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.area)}
             {...c.animation}
           />
           <Bar
@@ -101,6 +105,8 @@ export default function AreaSolicitanteChart({ records, loading }: AreaSolicitan
             barSize={18}
             stroke={c.tokens.surface}
             strokeWidth={c.stackGap}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.area)}
             {...c.animation}
           >
             <LabelList

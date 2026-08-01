@@ -1,21 +1,75 @@
-import React, { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { FileText, CheckCircle2, TrendingUp, AlertTriangle, DollarSign } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
-import { classifyTipoDemanda, classifyCriticidadeNatureza, resolveDataCorte, Granularidade } from '../../lib/demandas';
+import {
+  classifyTipoDemanda, classifyCriticidadeNatureza, resolveDataCorte, bucketDate, Granularidade,
+  CompradorInfo, Criticidade, CRITICIDADE_LABEL,
+} from '../../lib/demandas';
 import { calcSpend } from '../../lib/suprimentos';
 import { formatInt, formatPctInt, formatPct, formatBRLCompacto } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
+import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
+import {
+  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
+} from '../../lib/composicaoSuprimentos';
 import RequisitadoVsPedidoChart from '../demandas/RequisitadoVsPedidoChart';
 import CriticidadeChart from '../demandas/CriticidadeChart';
 import AreaSolicitanteChart from '../demandas/AreaSolicitanteChart';
+
+const TIPO_LABEL_TO_CLASS: Record<string, 'material' | 'servico'> = {
+  Materiais: 'material',
+  Serviços: 'servico',
+};
 
 interface TabDemandasProps {
   records: EnrichedSAPRecord[];
   allRecords?: EnrichedSAPRecord[];
   granularidade: Granularidade;
+  compradores: CompradorInfo[];
+  onAbrirComposicao: (config: ComposicaoModalConfig<EnrichedSAPRecord>) => void;
 }
 
-export default function TabDemandas({ records, allRecords, granularidade }: TabDemandasProps) {
+export default function TabDemandas({ records, allRecords, granularidade, compradores, onAbrirComposicao }: TabDemandasProps) {
+  const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+
+  const abrirModalRecords = useCallback((title: string, badge: string, items: EnrichedSAPRecord[]) => {
+    onAbrirComposicao({
+      title,
+      badge,
+      items,
+      groupBy: r => r.area_solicitante?.trim() || 'Não informada',
+      groupLabelHeader: 'Área Solicitante',
+      valueOf: valorEnrichedSAPRecord,
+      formatValue: formatBRLCompacto,
+      valueHeader: 'Valor Total',
+      unidadeItem: 'RI(ns)',
+      detailColumns: colunas,
+      searchPredicate: searchEnrichedSAPRecord,
+      searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
+      itemKey: itemKeyEnrichedSAPRecord,
+    });
+  }, [onAbrirComposicao, colunas]);
+
+  const abrirModalPeriodo = useCallback((base: EnrichedSAPRecord[], tituloBase: string, bucketKey: string) => {
+    const items = base.filter(r => bucketDate(resolveDataCorte(r), granularidade)?.key === bucketKey);
+    const rotulo = items.length > 0 ? bucketDate(resolveDataCorte(items[0]), granularidade)?.label || bucketKey : bucketKey;
+    abrirModalRecords(`${tituloBase} — ${rotulo}`, `Período: ${rotulo}`, items);
+  }, [granularidade, abrirModalRecords]);
+
+  const abrirModalCriticidade = useCallback((tipo: string, criticidade: Criticidade) => {
+    const items = records.filter(r =>
+      TIPO_LABEL_TO_CLASS[tipo] === classifyTipoDemanda(r.requisicao_de_compra) &&
+      classifyCriticidadeNatureza((r as any).natureza) === criticidade
+    );
+    abrirModalRecords(`${tipo} — ${CRITICIDADE_LABEL[criticidade]}`, `${tipo} · ${CRITICIDADE_LABEL[criticidade]}`, items);
+  }, [records, abrirModalRecords]);
+
+  const abrirModalArea = useCallback((area: string) => {
+    const items = records.filter(r => (r.area_solicitante?.trim() || 'Não informada') === area);
+    abrirModalRecords(`Área Solicitante — ${area}`, area, items);
+  }, [records, abrirModalRecords]);
+
   const servicos = useMemo(
     () => records.filter(r => classifyTipoDemanda(r.requisicao_de_compra) === 'servico'),
     [records]
@@ -124,6 +178,7 @@ export default function TabDemandas({ records, allRecords, granularidade }: TabD
         granularidade={granularidade}
         title="Demandas Gerais"
         subtitle="Itens requisitados x pedidos efetivados, com volume acumulado no período"
+        onSelecionarPeriodo={key => abrirModalPeriodo(records, 'Demandas Gerais', key)}
       />
 
       <RequisitadoVsPedidoChart
@@ -131,11 +186,12 @@ export default function TabDemandas({ records, allRecords, granularidade }: TabD
         granularidade={granularidade}
         title="Demandas de Serviço (RI 17)"
         subtitle="Serviços requisitados x pedidos colocados, com volume acumulado no período"
+        onSelecionarPeriodo={key => abrirModalPeriodo(servicos, 'Demandas de Serviço', key)}
       />
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        <CriticidadeChart records={records} />
-        <AreaSolicitanteChart records={records} />
+        <CriticidadeChart records={records} onSelecionar={abrirModalCriticidade} />
+        <AreaSolicitanteChart records={records} onSelecionar={abrirModalArea} />
       </div>
     </div>
   );

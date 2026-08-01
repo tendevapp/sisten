@@ -30,6 +30,7 @@ import TabDemandas from '../components/suprimentos/TabDemandas';
 import TabCarteira from '../components/suprimentos/TabCarteira';
 import TabFornecedores from '../components/suprimentos/TabFornecedores';
 import TabAnaliseCompras from '../components/suprimentos/TabAnaliseCompras';
+import ComposicaoModal, { ComposicaoModalConfig } from '../components/charts/ComposicaoModal';
 
 export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras';
 
@@ -79,6 +80,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
   const [syncing, setSyncing] = useState(false);
   const [aba, setAba] = useState<AbaSuprimentos>(abaInicial);
   const [filtros, setFiltros] = useState<EstadoFiltros>(filtrosIniciais);
+  const [composicao, setComposicao] = useState<ComposicaoModalConfig<EnrichedSAPRecord> | null>(null);
 
   /* Dados --------------------------------------------------------------- */
 
@@ -213,6 +215,15 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
     onNavigate(`/suprimentos/painel?${chave}=${encodeURIComponent(valor)}`);
   }, [onNavigate]);
 
+  /** Abre o modal de composição a partir de um clique de gráfico, nas 4 abas
+   *  que compartilham `EnrichedSAPRecord[]` como base (Análise de Compras usa
+   *  outra base e mantém seu próprio estado de modal). */
+  const abrirComposicao = useCallback((config: ComposicaoModalConfig<EnrichedSAPRecord>) => {
+    setComposicao(config);
+  }, []);
+
+  const fecharComposicao = useCallback(() => setComposicao(null), []);
+
   const abaAtiva = ABAS.find(a => a.id === aba) ?? ABAS[0];
 
   return (
@@ -291,12 +302,20 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
           records={filtrados}
           recordsAnterior={filtradosAnterior}
           temComparacao={temComparacao}
+          compradores={compradores}
           onDrilldown={drilldown}
+          onAbrirComposicao={abrirComposicao}
         />
       )}
 
       {aba === 'demandas' && (
-        <TabDemandas records={filtrados} allRecords={filtradosSemData} granularidade={filtros.granularidade} />
+        <TabDemandas
+          records={filtrados}
+          allRecords={filtradosSemData}
+          granularidade={filtros.granularidade}
+          compradores={compradores}
+          onAbrirComposicao={abrirComposicao}
+        />
       )}
 
       {aba === 'carteira' && (
@@ -305,12 +324,17 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
           compradores={compradores}
           granularidade={filtros.granularidade}
           onSelecionarComprador={nome => drilldown('buyer', nome)}
+          onAbrirComposicao={abrirComposicao}
         />
       )}
 
-      {aba === 'fornecedores' && <TabFornecedores records={filtrados} />}
+      {aba === 'fornecedores' && (
+        <TabFornecedores records={filtrados} compradores={compradores} onAbrirComposicao={abrirComposicao} />
+      )}
 
       {aba === 'compras' && <TabAnaliseCompras onNavigate={onNavigate} />}
+
+      <ComposicaoModal config={composicao} onClose={fecharComposicao} />
     </div>
   );
 }

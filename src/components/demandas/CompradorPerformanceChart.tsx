@@ -17,9 +17,11 @@ interface CompradorPerformanceChartProps {
   records: EnrichedSAPRecord[];
   compradores: CompradorInfo[];
   loading?: boolean;
+  /** Drill-down: comprador da barra clicada. */
+  onSelecionar?: (comprador: string) => void;
 }
 
-export default function CompradorPerformanceChart({ records, compradores, loading }: CompradorPerformanceChartProps) {
+export default function CompradorPerformanceChart({ records, compradores, loading, onSelecionar }: CompradorPerformanceChartProps) {
   const c = useChartConfig();
   const corPedido = demandaColor(c.tokens, 'pedido');
   const corAberto = demandaColor(c.tokens, 'aberto');
@@ -84,6 +86,8 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
             barSize={26}
             stroke={c.tokens.surface}
             strokeWidth={c.stackGap}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.comprador)}
             {...c.animation}
           />
           <Bar
@@ -95,6 +99,8 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
             barSize={26}
             stroke={c.tokens.surface}
             strokeWidth={c.stackGap}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.comprador)}
             {...c.animation}
           >
             {/* Só o total ganha rótulo direto: um número em cada segmento

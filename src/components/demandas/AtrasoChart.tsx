@@ -17,6 +17,10 @@ interface AtrasoChartProps {
   records: EnrichedSAPRecord[];
   compradores: CompradorInfo[];
   loading?: boolean;
+  /** Drill-down: faixa de atraso clicada (ex.: "8-15 dias"). */
+  onSelecionarFaixa?: (faixa: string) => void;
+  /** Drill-down: comprador clicado no ranking de atraso médio. */
+  onSelecionarComprador?: (comprador: string) => void;
 }
 
 const TOP_N_COMPRADORES = 8;
@@ -32,7 +36,7 @@ function faixaDoAtraso(atrasoMedio: number): number {
 
 const FAIXA_LABEL = FAIXA_ATRASO_ORDER;
 
-export default function AtrasoChart({ records, compradores, loading }: AtrasoChartProps) {
+export default function AtrasoChart({ records, compradores, loading, onSelecionarFaixa, onSelecionarComprador }: AtrasoChartProps) {
   const c = useChartConfig();
   const backlog = useMemo(() => records.filter(r => r.status_requisicao !== 'Processado'), [records]);
 
@@ -130,7 +134,14 @@ export default function AtrasoChart({ records, compradores, loading }: AtrasoCha
               <Tooltip content={<TooltipFaixa />} cursor={c.cursor} />
               {/* Rampa ordinal: a faixa mais grave é o passo mais forte, então a
                   ordem das faixas se lê na própria cor. */}
-              <Bar dataKey="count" radius={c.radius.top} barSize={36} {...c.animation}>
+              <Bar
+                dataKey="count"
+                radius={c.radius.top}
+                barSize={36}
+                cursor={onSelecionarFaixa ? 'pointer' : undefined}
+                onClick={(d: any) => onSelecionarFaixa?.(d?.faixa)}
+                {...c.animation}
+              >
                 {faixaData.map(d => (
                   <Cell key={d.faixa} fill={c.tokens.atraso[FAIXA_ATRASO_INDEX[d.faixa]]} />
                 ))}
@@ -162,7 +173,14 @@ export default function AtrasoChart({ records, compradores, loading }: AtrasoCha
                   width={110}
                 />
                 <Tooltip content={<TooltipComprador />} cursor={c.cursor} />
-                <Bar dataKey="atrasoMedio" radius={c.radius.right} barSize={18} {...c.animation}>
+                <Bar
+                  dataKey="atrasoMedio"
+                  radius={c.radius.right}
+                  barSize={18}
+                  cursor={onSelecionarComprador ? 'pointer' : undefined}
+                  onClick={(d: any) => onSelecionarComprador?.(d?.comprador)}
+                  {...c.animation}
+                >
                   {compradorData.map(d => (
                     <Cell key={d.comprador} fill={c.tokens.atraso[faixaDoAtraso(d.atrasoMedio)]} />
                   ))}

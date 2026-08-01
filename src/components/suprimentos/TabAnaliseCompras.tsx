@@ -32,6 +32,7 @@ import {
 } from '../../lib/historicoAnalytics';
 import { formatInt, formatPct, formatBRLCompacto, formatDateBR } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
+import ComposicaoModal, { ComposicaoColuna, ComposicaoModalConfig } from '../charts/ComposicaoModal';
 import ParetoValorChart from '../historico/ParetoValorChart';
 import DistribuicaoBarras from '../historico/DistribuicaoBarras';
 import RiscoFonteUnica from '../historico/RiscoFonteUnica';
@@ -39,6 +40,36 @@ import CurvaAbcGrupos from '../historico/CurvaAbcGrupos';
 import MatrizCalor from '../historico/MatrizCalor';
 import FragmentacaoChart from '../historico/FragmentacaoChart';
 import HierarquiaGeograficaTree from '../historico/HierarquiaGeograficaTree';
+
+const COLUNAS_HISTORICO: ComposicaoColuna<HistoricoPedidoView>[] = [
+  { header: 'Material', render: l => React.createElement('span', { className: 'font-mono' }, l.material) },
+  { header: 'Descrição', render: l => l.txt_breve || '—' },
+  { header: 'Fornecedor', render: l => porFornecedor(l) || 'Não informado' },
+  { header: 'Doc. Compra', render: l => l.doc_compra || '—' },
+  { header: 'Data', render: l => formatDateBR(l.data_doc) },
+  { header: 'Qtd.', align: 'right', render: l => (l.qtd_pedido != null ? formatInt(l.qtd_pedido) : '—') },
+  {
+    header: 'Valor (BRL)',
+    align: 'right',
+    render: l => (typeof l.valor_liquido === 'number' ? formatBRLCompacto(l.valor_liquido) : '—'),
+  },
+];
+
+function valorHistorico(l: HistoricoPedidoView): number {
+  return typeof l.valor_liquido === 'number' && Number.isFinite(l.valor_liquido) ? l.valor_liquido : 0;
+}
+
+function itemKeyHistorico(l: HistoricoPedidoView, idx: number): string {
+  return `${l.material}-${l.doc_compra || ''}-${idx}`;
+}
+
+function searchHistorico(l: HistoricoPedidoView, q: string): boolean {
+  return (
+    (l.material || '').toLowerCase().includes(q) ||
+    (l.txt_breve || '').toLowerCase().includes(q) ||
+    (porFornecedor(l) || '').toLowerCase().includes(q)
+  );
+}
 
 type SubAba = 'fornecedores' | 'geografia' | 'categorias';
 
@@ -77,6 +108,7 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
   const [sincronizando, setSincronizando] = useState(false);
   const [sub, setSub] = useState<SubAba>('fornecedores');
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VAZIOS);
+  const [composicaoModal, setComposicaoModal] = useState<ComposicaoModalConfig<HistoricoPedidoView> | null>(null);
 
   const carregar = useCallback(async (force = false) => {
     if (force) setSincronizando(true);
@@ -175,6 +207,53 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
   const riscos = useMemo(() => calcRiscoFonte(filtradas), [filtradas]);
   const fragmentacao = useMemo(() => calcFragmentacao(filtradas), [filtradas]);
   const matriz = useMemo(() => calcMatriz(filtradas, porGrupo, porRegiao, 12, 7), [filtradas]);
+
+  /* Modal de composição --------------------------------------------------- */
+
+  const abrirModalHistorico = useCallback((titulo: string, badge: string, items: HistoricoPedidoView[]) => {
+    setComposicaoModal({
+      title: titulo,
+      badge,
+      items,
+      groupBy: l => porFornecedor(l) || NAO_INFORMADO,
+      groupLabelHeader: 'Fornecedor',
+      valueOf: valorHistorico,
+      formatValue: formatBRLCompacto,
+      valueHeader: 'Valor Total',
+      unidadeItem: 'item(ns)',
+      detailColumns: COLUNAS_HISTORICO,
+      searchPredicate: searchHistorico,
+      searchPlaceholder: 'Pesquisar por material, descrição ou fornecedor...',
+      itemKey: itemKeyHistorico,
+    });
+  }, []);
+
+  const fecharModalHistorico = useCallback(() => setComposicaoModal(null), []);
+
+  const abrirModalFornecedor = useCallback((fornecedor: string) => {
+    const items = filtradas.filter(l => (porFornecedor(l) || NAO_INFORMADO) === fornecedor);
+    abrirModalHistorico(`Fornecedor — ${fornecedor}`, fornecedor, items);
+  }, [filtradas, abrirModalHistorico]);
+
+  const abrirModalGrupo = useCallback((grupo: string) => {
+    const items = filtradas.filter(l => (porGrupo(l) || NAO_INFORMADO) === grupo);
+    abrirModalHistorico(`Grupo de Mercadoria — ${grupo}`, grupo, items);
+  }, [filtradas, abrirModalHistorico]);
+
+  const abrirModalRegiao = useCallback((regiao: string) => {
+    const items = filtradas.filter(l => porRegiao(l) === regiao);
+    abrirModalHistorico(`Região — ${regiao}`, regiao, items);
+  }, [filtradas, abrirModalHistorico]);
+
+  const abrirModalCidade = useCallback((cidade: string) => {
+    const items = filtradas.filter(l => {
+      const loc = cidadeDe(l);
+      const rawCid = l.cidade || l.localidade || '';
+      return normalizarTexto(loc).includes(normalizarTexto(cidade)) ||
+        (rawCid && normalizarTexto(rawCid).includes(normalizarTexto(cidade)));
+    });
+    abrirModalHistorico(`Cidade — ${cidade}`, cidade, items);
+  }, [filtradas, cidadeDe, abrirModalHistorico]);
 
   const composicao = useMemo(() => {
     const fatias = agregarPor(filtradas, porTipoItem);
@@ -423,7 +502,7 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
                     ? `${formatInt(resumo.fornecedoresPara80)} de ${formatInt(resumo.fornecedores)} fornecedores concentram 80% do gasto. Clique numa barra para filtrar.`
                     : undefined
                 }
-                onSelecionar={f => patch({ fornecedor: f })}
+                onSelecionar={f => { patch({ fornecedor: f }); abrirModalFornecedor(f); }}
               />
               <FragmentacaoChart dados={fragmentacao} />
             </div>
@@ -433,8 +512,8 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
             <div className="space-y-6">
               <HierarquiaGeograficaTree
                 hierarquia={hierarquiaGeografica}
-                onSelecionarEstado={e => patch({ regiao: e })}
-                onSelecionarCidade={c => patch({ cidade: c })}
+                onSelecionarEstado={e => { patch({ regiao: e }); abrirModalRegiao(e); }}
+                onSelecionarCidade={c => { patch({ cidade: c }); abrirModalCidade(c); }}
               />
 
               <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
@@ -445,7 +524,7 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
                   description="UF quando o fornecedor é brasileiro; país quando é importado. O campo de região do SAP traz código numérico estrangeiro nos importados, que sozinho não se lê."
                   top={10}
                   larguraRotulo={150}
-                  onSelecionar={r => patch({ regiao: r })}
+                  onSelecionar={r => { patch({ regiao: r }); abrirModalRegiao(r); }}
                 />
                 <DistribuicaoBarras
                   fatias={paises}
@@ -470,7 +549,7 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
                 larguraRotulo={220}
                 cor="var(--series-3)"
                 height={360}
-                onSelecionar={c => patch({ cidade: c })}
+                onSelecionar={c => { patch({ cidade: c }); abrirModalCidade(c); }}
               />
               <MatrizCalor
                 matriz={matriz}
@@ -484,8 +563,8 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
 
           {sub === 'categorias' && (
             <div className="space-y-6">
-              <CurvaAbcGrupos fatias={gruposAbc} onSelecionar={g => patch({ grupo: g })} />
-              <RiscoFonteUnica riscos={riscos} onSelecionarGrupo={g => patch({ grupo: g })} />
+              <CurvaAbcGrupos fatias={gruposAbc} onSelecionar={g => { patch({ grupo: g }); abrirModalGrupo(g); }} />
+              <RiscoFonteUnica riscos={riscos} onSelecionarGrupo={g => { patch({ grupo: g }); abrirModalGrupo(g); }} />
               <DistribuicaoBarras
                 fatias={ramos.map(r => ({ ...r, chave: RAMO_LABEL[r.chave] ?? r.chave }))}
                 title="Gasto por Família de Grupo"
@@ -500,6 +579,8 @@ export default function TabAnaliseCompras({ onNavigate }: TabAnaliseComprasProps
           )}
         </>
       )}
+
+      <ComposicaoModal config={composicaoModal} onClose={fecharModalHistorico} />
     </div>
   );
 }

@@ -294,6 +294,18 @@ export function calcAging(records: EnrichedSAPRecord[]): FaixaAging[] {
   return faixas;
 }
 
+/**
+ * Rótulo da faixa de aging de um registro aberto — mesma regra de `calcAging`,
+ * exposta por registro para o modal de composição filtrar de volta os itens
+ * de uma faixa clicada no gráfico. `null` para itens já processados.
+ */
+export function faixaAgingDoRegistro(r: EnrichedSAPRecord): string | null {
+  if (!estaAberto(r)) return null;
+  const dias = r.dias_em_aberto || 0;
+  const alvo = FAIXAS.find(f => dias <= f.ate) ?? FAIXAS[FAIXAS.length - 1];
+  return alvo.rotulo;
+}
+
 /** Limite a partir do qual um item aberto é tratado como crítico na carteira. */
 export const DIAS_CRITICO = 30;
 

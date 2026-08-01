@@ -29,9 +29,11 @@ interface SpendConcentracaoChartProps {
   /** Quantos fornecedores mostrar. O resto entra na curva mas não vira barra. */
   top?: number;
   loading?: boolean;
+  /** Drill-down: fornecedor da barra clicada. */
+  onSelecionar?: (fornecedor: string) => void;
 }
 
-export default function SpendConcentracaoChart({ linhas, top = 12, loading }: SpendConcentracaoChartProps) {
+export default function SpendConcentracaoChart({ linhas, top = 12, loading, onSelecionar }: SpendConcentracaoChartProps) {
   const c = useChartConfig();
 
   const { data, totalSpend, fornecedoresPara80 } = useMemo(() => {
@@ -116,7 +118,16 @@ export default function SpendConcentracaoChart({ linhas, top = 12, loading }: Sp
             strokeDasharray="4 4"
             label={{ value: '80%', position: 'right', fontSize: 10, fill: c.tokens.inkMuted }}
           />
-          <Bar yAxisId="valor" dataKey="spend" fill={c.tokens.series[0]} radius={c.radius.top} maxBarSize={44} {...c.animation} />
+          <Bar
+            yAxisId="valor"
+            dataKey="spend"
+            fill={c.tokens.series[0]}
+            radius={c.radius.top}
+            maxBarSize={44}
+            cursor={onSelecionar ? 'pointer' : undefined}
+            onClick={(d: any) => onSelecionar?.(d?.fornecedor)}
+            {...c.animation}
+          />
           <Line
             yAxisId="pct"
             type="monotone"

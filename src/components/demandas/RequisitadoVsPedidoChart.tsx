@@ -23,6 +23,8 @@ interface RequisitadoVsPedidoChartProps {
   title: string;
   subtitle: string;
   loading?: boolean;
+  /** Drill-down: chave do bucket clicado (mesma `key` de `bucketDate`). */
+  onSelecionarPeriodo?: (bucketKey: string) => void;
 }
 
 interface Bucket {
@@ -39,8 +41,9 @@ interface Bucket {
   crit_outros: number;
 }
 
-export default function RequisitadoVsPedidoChart({ records, granularidade, title, subtitle, loading }: RequisitadoVsPedidoChartProps) {
+export default function RequisitadoVsPedidoChart({ records, granularidade, title, subtitle, loading, onSelecionarPeriodo }: RequisitadoVsPedidoChartProps) {
   const c = useChartConfig();
+  const handleBarClick = (d: any) => onSelecionarPeriodo?.(d?.key);
 
   // "Pedido Colocado" toma o slot 1 aqui porque a pilha de Requisitado usa a
   // escala de status (Normal em verde) — reaproveitar o verde de pedido faria
@@ -114,6 +117,7 @@ export default function RequisitadoVsPedidoChart({ records, granularidade, title
           value: formatInt(r.value),
           indent: (r as any).indent,
         }))}
+        footer={onSelecionarPeriodo ? 'Clique na barra para ver a composição' : undefined}
       />
     );
   }
@@ -155,19 +159,29 @@ export default function RequisitadoVsPedidoChart({ records, granularidade, title
                 Normal/Urgente/Máquina Parada. O rótulo com o total vai numa linha
                 invisível (abaixo), pra ficar sempre no topo da pilha mesmo quando
                 o segmento superior (ex.: Máquina Parada) é zero. */}
-            <Bar yAxisId="left" dataKey="crit_normal" name="Requisitado · Normal" stackId="req" fill={demandaColor(c.tokens, 'normal')} barSize={18} stroke={c.tokens.surface} strokeWidth={c.stackGap} {...c.animation} />
-            <Bar yAxisId="left" dataKey="crit_urgente" name="Requisitado · Urgente" stackId="req" fill={demandaColor(c.tokens, 'urgente')} barSize={18} stroke={c.tokens.surface} strokeWidth={c.stackGap} {...c.animation} />
-            <Bar yAxisId="left" dataKey="crit_maquina_parada" name="Requisitado · Máquina Parada" stackId="req" fill={demandaColor(c.tokens, 'maquinaParada')} barSize={18} radius={c.radius.top} stroke={c.tokens.surface} strokeWidth={c.stackGap} {...c.animation} />
+            <Bar yAxisId="left" dataKey="crit_normal" name="Requisitado · Normal" stackId="req" fill={demandaColor(c.tokens, 'normal')} barSize={18} stroke={c.tokens.surface} strokeWidth={c.stackGap} cursor={onSelecionarPeriodo ? 'pointer' : undefined} onClick={handleBarClick} {...c.animation} />
+            <Bar yAxisId="left" dataKey="crit_urgente" name="Requisitado · Urgente" stackId="req" fill={demandaColor(c.tokens, 'urgente')} barSize={18} stroke={c.tokens.surface} strokeWidth={c.stackGap} cursor={onSelecionarPeriodo ? 'pointer' : undefined} onClick={handleBarClick} {...c.animation} />
+            <Bar yAxisId="left" dataKey="crit_maquina_parada" name="Requisitado · Máquina Parada" stackId="req" fill={demandaColor(c.tokens, 'maquinaParada')} barSize={18} radius={c.radius.top} stroke={c.tokens.surface} strokeWidth={c.stackGap} cursor={onSelecionarPeriodo ? 'pointer' : undefined} onClick={handleBarClick} {...c.animation} />
             {hasOutros && (
-              <Bar yAxisId="left" dataKey="crit_outros" name="Requisitado · Outros" stackId="req" fill={c.tokens.inkMuted} barSize={18} radius={c.radius.top} stroke={c.tokens.surface} strokeWidth={c.stackGap} {...c.animation} />
+              <Bar yAxisId="left" dataKey="crit_outros" name="Requisitado · Outros" stackId="req" fill={c.tokens.inkMuted} barSize={18} radius={c.radius.top} stroke={c.tokens.surface} strokeWidth={c.stackGap} cursor={onSelecionarPeriodo ? 'pointer' : undefined} onClick={handleBarClick} {...c.animation} />
             )}
             {/* Rótulo direto no topo de pedido e aberto, em tinta de texto: o
                 número herdava a cor da série e ficava ilegível justamente nos
                 tons mais claros. A identidade fica na barra, não no número. */}
-            <Bar yAxisId="left" dataKey="pedido" name="Pedido colocado" fill={corPedido} radius={c.radius.top} barSize={18} {...c.animation}>
+            <Bar
+              yAxisId="left" dataKey="pedido" name="Pedido colocado" fill={corPedido} radius={c.radius.top} barSize={18}
+              cursor={onSelecionarPeriodo ? 'pointer' : undefined}
+              onClick={handleBarClick}
+              {...c.animation}
+            >
               <LabelList dataKey="pedido" position="top" formatter={(v: number) => (v > 0 ? formatInt(v) : '')} style={{ ...c.labelOnSurface, fontSize: 11 }} />
             </Bar>
-            <Bar yAxisId="left" dataKey="aberto" name="Aberto" fill={corAberto} radius={c.radius.top} barSize={18} {...c.animation}>
+            <Bar
+              yAxisId="left" dataKey="aberto" name="Aberto" fill={corAberto} radius={c.radius.top} barSize={18}
+              cursor={onSelecionarPeriodo ? 'pointer' : undefined}
+              onClick={handleBarClick}
+              {...c.animation}
+            >
               <LabelList dataKey="aberto" position="top" formatter={(v: number) => (v > 0 ? formatInt(v) : '')} style={{ ...c.labelOnSurface, fontSize: 11 }} />
             </Bar>
             {/* Linha invisível só para carregar o rótulo do TOTAL requisitado no

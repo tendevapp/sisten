@@ -12,16 +12,22 @@
  * página, com o drill-down para o painel preservado.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { AlertTriangle, CheckCircle, Clock, CircleDashed, TrendingUp, Wallet } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
 import {
-  calcResumoSetor, delta, cobertura, MetricaComCobertura, DIAS_CRITICO,
+  calcResumoSetor, delta, cobertura, MetricaComCobertura, DIAS_CRITICO, faixaAgingDoRegistro, temPO,
 } from '../../lib/suprimentos';
+import { CompradorInfo, resolveComprador } from '../../lib/demandas';
 import { formatInt, formatPct, formatPctInt, formatBRLCompacto } from '../../lib/format';
 import { useChartTokens } from '../../lib/chartTokens';
 import ChartCard from '../charts/ChartCard';
 import KpiCard from '../charts/KpiCard';
+import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
+import {
+  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
+} from '../../lib/composicaoSuprimentos';
 import DeltaBadge from './DeltaBadge';
 import AgingCarteiraChart from './AgingCarteiraChart';
 
@@ -31,7 +37,9 @@ interface TabVisaoGeralProps {
   recordsAnterior: EnrichedSAPRecord[];
   /** False quando o período filtrado não define uma janela anterior comparável. */
   temComparacao: boolean;
+  compradores: CompradorInfo[];
   onDrilldown: (tipo: 'status' | 'alert' | 'buyer', valor: string) => void;
+  onAbrirComposicao: (config: ComposicaoModalConfig<EnrichedSAPRecord>) => void;
 }
 
 // Os três níveis de alerta são *status*, não identidade: escala reservada, e
@@ -63,8 +71,51 @@ function NotaCobertura({ m, sufixo }: { m: MetricaComCobertura; sufixo: string }
 /** Diferença em pontos percentuais — sem o "%", que aqui seria enganoso. */
 const pontosPercentuais = (v: number) => `${formatPct(Math.abs(v)).replace('%', '')} p.p.`;
 
-export default function TabVisaoGeral({ records, recordsAnterior, temComparacao, onDrilldown }: TabVisaoGeralProps) {
+export default function TabVisaoGeral({
+  records, recordsAnterior, temComparacao, compradores, onDrilldown, onAbrirComposicao,
+}: TabVisaoGeralProps) {
   const tokens = useChartTokens();
+
+  const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+
+  const abrirModalRecords = useCallback((title: string, badge: string, items: EnrichedSAPRecord[], irParaPainel?: () => void) => {
+    onAbrirComposicao({
+      title,
+      badge,
+      items,
+      groupBy: r => resolveComprador(r, compradores),
+      groupLabelHeader: 'Comprador',
+      valueOf: valorEnrichedSAPRecord,
+      formatValue: formatBRLCompacto,
+      valueHeader: 'Valor Total',
+      unidadeItem: 'RI(ns)',
+      detailColumns: colunas,
+      searchPredicate: searchEnrichedSAPRecord,
+      searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
+      itemKey: itemKeyEnrichedSAPRecord,
+      onIrParaPainel: irParaPainel,
+      irParaPainelLabel: 'Ir p/ Painel',
+    });
+  }, [onAbrirComposicao, compradores, colunas]);
+
+  const abrirModalFaixaAging = useCallback((rotulo: string) => {
+    const items = records.filter(r => faixaAgingDoRegistro(r) === rotulo);
+    abrirModalRecords(`Carteira Aberta — ${rotulo}`, 'Aging da Carteira', items);
+  }, [records, abrirModalRecords]);
+
+  const abrirModalStatus = useCallback((destino: 'Sem PO' | 'Com PO') => {
+    const items = records.filter(r => (destino === 'Sem PO' ? !temPO(r) : temPO(r)));
+    abrirModalRecords(`Fluxo de Conversão — ${destino}`, destino, items, () => onDrilldown('status', destino));
+  }, [records, abrirModalRecords, onDrilldown]);
+
+  const abrirModalNivel = useCallback((chave: string, rotulo: string) => {
+    const items = records.filter(r => {
+      if (chave === '⚠️ AÇÃO URGENTE') return r.alerta === '⚠️ ESCALAR IMEDIATAMENTE' || r.alerta === '⚠️ AÇÃO URGENTE';
+      if (chave === '⚡ ACOMPANHAR') return r.alerta === '⚡ ACOMPANHAR';
+      return r.alerta === '✅ OK' || r.alerta === '📋 MONITORAR';
+    });
+    abrirModalRecords(`Níveis de Alerta — ${rotulo}`, rotulo, items, () => onDrilldown('alert', chave));
+  }, [records, abrirModalRecords, onDrilldown]);
 
   const atual = useMemo(() => calcResumoSetor(records), [records]);
   const anterior = useMemo(() => calcResumoSetor(recordsAnterior), [recordsAnterior]);
@@ -185,7 +236,7 @@ export default function TabVisaoGeral({ records, recordsAnterior, temComparacao,
         </div>
       </div>
 
-      <AgingCarteiraChart records={records} />
+      <AgingCarteiraChart records={records} onSelecionarFaixa={abrirModalFaixaAging} />
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         {/* Funil de conversão. A sequência é real (sem PO → com PO), então a
@@ -200,14 +251,14 @@ export default function TabVisaoGeral({ records, recordsAnterior, temComparacao,
         >
           <ol className="space-y-3 py-2 stagger">
             {[
-              { passo: 1, rotulo: 'Aguardando cotação / pedido', valor: atual.abertos, destino: 'Sem PO', cor: 'var(--atraso-2)' },
-              { passo: 2, rotulo: 'Convertido em pedido SAP', valor: atual.processados, destino: 'Com PO', cor: 'var(--atraso-4)' },
+              { passo: 1, rotulo: 'Aguardando cotação / pedido', valor: atual.abertos, destino: 'Sem PO' as const, cor: 'var(--atraso-2)' },
+              { passo: 2, rotulo: 'Convertido em pedido SAP', valor: atual.processados, destino: 'Com PO' as const, cor: 'var(--atraso-4)' },
             ].map(e => {
               const pct = atual.total > 0 ? (e.valor / atual.total) * 100 : 0;
               return (
                 <li key={e.passo}>
                   <button
-                    onClick={() => onDrilldown('status', e.destino)}
+                    onClick={() => abrirModalStatus(e.destino)}
                     className="w-full rounded-lg border p-3.5 text-left group transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2"
                     style={{ borderColor: 'var(--hairline)', outlineColor: e.cor }}
                   >
@@ -275,7 +326,7 @@ export default function TabVisaoGeral({ records, recordsAnterior, temComparacao,
               {niveis.map(n => (
                 <li key={n.chave}>
                   <button
-                    onClick={() => onDrilldown('alert', n.chave)}
+                    onClick={() => abrirModalNivel(n.chave, n.rotulo)}
                     className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg text-left transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-1"
                     style={{ outlineColor: n.token }}
                   >

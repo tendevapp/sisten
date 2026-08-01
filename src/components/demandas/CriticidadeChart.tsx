@@ -19,6 +19,8 @@ interface CriticidadeChartProps {
   // por tipo e classifica a criticidade a partir da natureza (serve para ambos).
   records: EnrichedSAPRecord[];
   loading?: boolean;
+  /** Drill-down: tipo ("Materiais"/"Serviços") e criticidade do segmento clicado. */
+  onSelecionar?: (tipo: string, criticidade: Criticidade) => void;
 }
 
 const ORDER: Criticidade[] = ['normal', 'urgente', 'maquina_parada'];
@@ -40,7 +42,7 @@ interface Row {
   total: number;
 }
 
-export default function CriticidadeChart({ records, loading }: CriticidadeChartProps) {
+export default function CriticidadeChart({ records, loading, onSelecionar }: CriticidadeChartProps) {
   const c = useChartConfig();
 
   const { data, total } = useMemo(() => {
@@ -110,6 +112,8 @@ export default function CriticidadeChart({ records, loading }: CriticidadeChartP
               radius={i === ORDER.length - 1 ? c.radius.top : undefined}
               stroke={c.tokens.surface}
               strokeWidth={c.stackGap}
+              cursor={onSelecionar ? 'pointer' : undefined}
+              onClick={(d: any) => onSelecionar?.(d?.tipo, k)}
               {...c.animation}
             >
               <LabelList

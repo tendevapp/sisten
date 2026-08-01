@@ -9,22 +9,51 @@
  * valor, e incluí-los diluiria todo percentual desta aba.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Building2, Receipt, Users, Wallet } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
+import { CompradorInfo } from '../../lib/demandas';
 import { calcFornecedores, concentracaoTop, calcSpend, cobertura, temPO } from '../../lib/suprimentos';
 import { formatInt, formatPctInt, formatBRLCompacto } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
+import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
+import {
+  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
+} from '../../lib/composicaoSuprimentos';
 import SpendConcentracaoChart from './SpendConcentracaoChart';
 import OtdFornecedorTable from './OtdFornecedorTable';
 
 interface TabFornecedoresProps {
   records: EnrichedSAPRecord[];
+  compradores: CompradorInfo[];
+  onAbrirComposicao: (config: ComposicaoModalConfig<EnrichedSAPRecord>) => void;
 }
 
-export default function TabFornecedores({ records }: TabFornecedoresProps) {
+export default function TabFornecedores({ records, compradores, onAbrirComposicao }: TabFornecedoresProps) {
   const linhas = useMemo(() => calcFornecedores(records), [records]);
   const spend = useMemo(() => calcSpend(records), [records]);
+
+  const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+
+  const abrirModalFornecedor = useCallback((fornecedor: string) => {
+    const items = records.filter(r => temPO(r) && (r.fornecedor_name?.trim() || 'Não informado') === fornecedor);
+    onAbrirComposicao({
+      title: `Fornecedor — ${fornecedor}`,
+      badge: fornecedor,
+      items,
+      groupBy: r => r.texto_breve?.trim() || 'Sem descrição',
+      groupLabelHeader: 'Material',
+      valueOf: valorEnrichedSAPRecord,
+      formatValue: formatBRLCompacto,
+      valueHeader: 'Valor Total',
+      unidadeItem: 'item(ns)',
+      detailColumns: colunas,
+      searchPredicate: searchEnrichedSAPRecord,
+      searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
+      itemKey: itemKeyEnrichedSAPRecord,
+    });
+  }, [records, colunas, onAbrirComposicao]);
 
   const kpis = useMemo(() => {
     const totalSpend = linhas.reduce((s, l) => s + l.spend, 0);
@@ -90,7 +119,7 @@ export default function TabFornecedores({ records }: TabFornecedoresProps) {
         />
       </div>
 
-      <SpendConcentracaoChart linhas={linhas} />
+      <SpendConcentracaoChart linhas={linhas} onSelecionar={abrirModalFornecedor} />
       <OtdFornecedorTable linhas={linhas} />
     </div>
   );
