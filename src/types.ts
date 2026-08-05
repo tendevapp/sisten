@@ -499,6 +499,7 @@ export interface ContatoFornecedor {
   nome_fantasia?: string;
   telefone?: string; // Telefone geral da empresa
   email?: string; // E-mail geral da empresa
+  cnpj?: string | null;
   representante_nome?: string;
   representante_cargo?: string;
   representante_telefone?: string;
@@ -636,5 +637,190 @@ export interface CidadeForn {
   created_at?: string;
   updated_at?: string;
 }
+
+// ============================================================================
+// Módulo de Análise de Cotações
+// ============================================================================
+// Espelham as colunas de cotacao_lote/cotacao_item/cotacao_proposta/
+// cotacao_proposta_item/cotacao_decisao/cotacao_preco_historico
+// (ver criar_tabelas_cotacao_analise.sql). Os tipos "de trabalho" usados
+// pela lógica pura (extração, validação, vínculo, cálculo) ficam em
+// src/lib/cotacao/tipos.ts — estes aqui são o formato de linha de banco.
+
+export type CotacaoLoteStatus = 'rascunho' | 'aguardando_propostas' | 'em_analise' | 'decidido' | 'cancelado';
+export type CotacaoValidacaoStatus = 'ok' | 'divergente' | 'nao_declarado';
+export type CotacaoExtracaoStatus = 'pendente' | 'processando' | 'extraido' | 'erro';
+export type CotacaoVinculoOrigem = 'referencia' | 'ncm_descricao' | 'ia' | 'usuario' | 'nenhum';
+
+export interface CotacaoLote {
+  id: string;
+  numero: string | null;
+  titulo: string;
+  status: CotacaoLoteStatus;
+  criado_por?: string | null;
+  criado_por_nome?: string | null;
+  observacoes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CotacaoItem {
+  id: string;
+  lote_id: string;
+  ordem: number;
+  ri?: string | null;
+  rm?: string | null;
+  item_reqc?: string | null;
+  material_code?: string | null;
+  descricao_canonica: string;
+  texto_tecnico?: string | null;
+  referencia?: string | null;
+  unidade?: string | null;
+  quantidade?: number | null;
+}
+
+export interface CotacaoProposta {
+  id: string;
+  lote_id: string;
+  cod_forn?: string | null;
+  cnpj?: string | null;
+  fornecedor_nome?: string | null;
+  uf?: string | null;
+  numero_proposta?: string | null;
+  data_cotacao?: string | null;
+  validade_texto?: string | null;
+  validade_data?: string | null;
+  condicao_pagamento_texto?: string | null;
+  ddp_codigo?: string | null;
+  ddp_confirmado: boolean;
+  ddp_pendente: boolean;
+  frete_texto?: string | null;
+  frete_valor?: number | null;
+  frete_modalidade?: string | null;
+  faturamento_minimo?: number | null;
+  prazo_entrega_texto?: string | null;
+  notas_gerais: string[];
+  total_declarado?: number | null;
+  total_calculado?: number | null;
+  itens_declarados?: number | null;
+  validacao_status: CotacaoValidacaoStatus;
+  validacao_detalhe?: string | null;
+  markdown_bruto?: string | null;
+  extracao_json?: unknown;
+  extracao_modelo?: string | null;
+  extracao_status: CotacaoExtracaoStatus;
+  extracao_tentativas: number;
+  created_at: string;
+}
+
+export interface CotacaoPropostaItem {
+  id: string;
+  proposta_id: string;
+  cotacao_item_id?: string | null;
+  numero_item_original?: string | null;
+  linha_ordem: number;
+  codigo_fornecedor?: string | null;
+  descricao_bruta: string;
+  referencia?: string | null;
+  referencia_normalizada?: string | null;
+  marca?: string | null;
+  unidade?: string | null;
+  quantidade?: number | null;
+  preco_unitario_bruto?: number | null;
+  desconto_valor?: number | null;
+  desconto_percentual?: number | null;
+  subtotal?: number | null;
+  preco_unitario_efetivo?: number | null;
+  custo_total_unitario?: number | null;
+  ipi_percentual?: number | null;
+  ipi_valor?: number | null;
+  icms_percentual?: number | null;
+  icms_reducao_percentual?: number | null;
+  st_percentual?: number | null;
+  st_valor?: number | null;
+  fcp_valor?: number | null;
+  pis_percentual?: number | null;
+  cofins_percentual?: number | null;
+  ncm?: string | null;
+  cst?: string | null;
+  cfop?: string | null;
+  imposto_codigo?: string | null;
+  imposto_confirmado: boolean;
+  disponibilidade_texto?: string | null;
+  prazo_entrega_texto?: string | null;
+  observacoes?: string | null;
+  confianca_extracao?: number | null;
+  match_confianca?: number | null;
+  vinculo_origem: CotacaoVinculoOrigem;
+  divergente: boolean;
+  divergencia_atributo?: string | null;
+  divergencia_detalhe?: string | null;
+  validacao_item_ok: boolean;
+}
+
+export interface CotacaoDecisao {
+  id: string;
+  lote_id: string;
+  cotacao_item_id: string;
+  proposta_item_id: string;
+  quantidade_adjudicada?: number | null;
+  eh_menor_preco: boolean;
+  aceita_divergencia: boolean;
+  justificativa?: string | null;
+  decidido_por?: string | null;
+  decidido_por_nome?: string | null;
+  decidido_em: string;
+}
+
+export interface CotacaoPrecoHistorico {
+  id: string;
+  material_code?: string | null;
+  descricao?: string | null;
+  referencia?: string | null;
+  cod_forn?: string | null;
+  fornecedor_nome?: string | null;
+  data_cotacao?: string | null;
+  unidade?: string | null;
+  quantidade?: number | null;
+  preco_unitario_efetivo?: number | null;
+  custo_total_unitario?: number | null;
+  lote_id?: string | null;
+  proposta_item_id?: string | null;
+  foi_vencedor: boolean;
+  foi_divergente: boolean;
+  created_at: string;
+}
+
+export interface TabelaFrete {
+  id?: string;
+  origem: string;
+  uf: string;
+  destino: string;
+  rotas?: string;
+  kg_1_10: number;
+  kg_11_20: number;
+  kg_21_30: number;
+  kg_31_50: number;
+  kg_51_70: number;
+  kg_71_100: number;
+  kg_acima_100: number;
+  lead_time_entrega?: string;
+  ad_valores: number;
+  pedagio_fracao_100kg: number;
+  cat: number;
+  itr_tas: number;
+  taxa_fixa_itr_redespacho: number;
+  fiorino: number;
+  veiculo_3_4_ate_2_5t: number;
+  toco_ate_5_5t: number;
+  truck_ate_14t: number;
+  carreta_ate_25t: number;
+  carreta_acima_27t: number;
+  lead_time_entrega_2?: string;
+  icms_aplicado?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 
 

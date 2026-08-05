@@ -25,11 +25,10 @@ export const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024;
 /** Quantos anexos cabem por item de compra / por solicitação de cadastro SAP. */
 export const MAX_ANEXOS = 3;
 
-const TIPOS_IMAGEM = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const TIPO_PDF = 'application/pdf';
 
-/** O que o input aceita — espelha os MIME types liberados no bucket. */
-export const ACCEPT_ANEXO = [...TIPOS_IMAGEM, TIPO_PDF].join(',');
+/** O que o input aceita: qualquer imagem (o navegador filtra pelo MIME real) + PDF. */
+export const ACCEPT_ANEXO = ['image/*', TIPO_PDF].join(',');
 
 export interface PreparedAttachment {
   blob: Blob;
@@ -107,11 +106,11 @@ async function comprimirImagem(file: File): Promise<{ blob: Blob; mimeType: stri
  * @throws {AnexoInvalidoError} tipo não suportado ou acima do teto de tamanho.
  */
 export async function prepareAttachment(file: File): Promise<PreparedAttachment> {
-  const ehImagem = TIPOS_IMAGEM.includes(file.type) || file.type.startsWith('image/');
+  const ehImagem = file.type.startsWith('image/');
   const ehPdf = file.type === TIPO_PDF;
 
   if (!ehImagem && !ehPdf) {
-    throw new AnexoInvalidoError('Formato não aceito. Envie uma imagem (JPG, PNG, WebP) ou PDF.');
+    throw new AnexoInvalidoError('Formato não aceito. Envie uma imagem ou PDF.');
   }
   if (file.size > TAMANHO_MAXIMO_BYTES) {
     throw new AnexoInvalidoError('Arquivo acima de 10 MB. Reduza o tamanho antes de anexar.');

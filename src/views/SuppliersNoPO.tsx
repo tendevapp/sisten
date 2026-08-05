@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes
+  MessageCircle, Flag, MapPin, Boxes, Scale
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -22,6 +22,7 @@ import {
 
 import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc } from '../lib/rastreio';
 import { formatDateBR, formatDateTimeBR } from '../lib/format';
+import { canAccessPage } from '../lib/pages';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
@@ -1737,6 +1738,17 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                   <Send className="h-3.5 w-3.5" />
                   <span>Enviar Cotação</span>
                 </button>
+                {canAccessPage(user, 'sup_analise_cotacoes') && (
+                  <button
+                    onClick={() => onNavigate(`/suprimentos/analise-cotacoes?ris=${encodeURIComponent(Array.from(selectedRis).join(','))}`)}
+                    title="Criar cotação para análise com os itens selecionados"
+                    className="px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    style={{ background: 'var(--brand)' }}
+                  >
+                    <Scale className="h-3.5 w-3.5" />
+                    <span>Criar Cotação</span>
+                  </button>
+                )}
               </div>
             </div>
           )}

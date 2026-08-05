@@ -13,7 +13,7 @@ import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
-  ClipboardList, FileText, Receipt,
+  ClipboardList, FileText, Receipt, Scale, Sparkles,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -54,9 +54,11 @@ export const PAGES: PageDef[] = [
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise Cotações', path: '/suprimentos/analise-cotacoes', icon: Scale, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos', 'gestor', 'requisitante'] },
   { id: 'sup_importar', group: 'SUPRIMENTOS', label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
 
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -76,6 +78,7 @@ export const PAGES: PageDef[] = [
   { id: 'admin_importar_sap_log', group: 'ADMINISTRAÇÃO', label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
+  { id: 'admin_teste', group: 'ADMINISTRAÇÃO', label: 'Teste', path: '/admin/teste', icon: Sparkles, defaultRoles: ['admin'], alwaysAdmin: true },
 ];
 
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),

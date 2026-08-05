@@ -14,6 +14,7 @@ import { Profile, Request, RequestItem, RequestComment, RequestStatusHistory } f
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { podeEditar, avisoEdicao } from '../lib/solicitacoes';
+import { canAccessPage } from '../lib/pages';
 
 interface MyRequestsProps {
   user: Profile;
@@ -76,12 +77,27 @@ export default function MyRequests({ user, onNavigate }: MyRequestsProps) {
   };
 
   const getFilteredUserRequests = (allReqs: Request[]) => {
+    // Quem tem acesso ao módulo "Cadastros SAP" (papel padrão ou liberação
+    // individual em Módulos de Acesso) precisa ver todo cadastro SAP aberto
+    // por qualquer solicitante aqui também, não só na fila dedicada — senão
+    // a solicitação "some" pra esse atendente até ele lembrar de checar a
+    // outra tela.
+    const podeVerCadastrosSap = canAccessPage(user, 'sup_cadastros_sap');
+
     return allReqs.filter(r => {
       if (r.type === 'chamado') {
         return r.solicitante_id === user.id;
       }
+      if (r.type === 'cadastro_sap') {
+        return (
+          r.solicitante_id === user.id ||
+          podeVerCadastrosSap ||
+          (user.roles.includes('gestor') && r.solicitante_sector_id === user.sector_id) ||
+          user.roles.includes('admin')
+        );
+      }
       return (
-        r.solicitante_id === user.id || 
+        r.solicitante_id === user.id ||
         (user.roles.includes('gestor') && r.solicitante_sector_id === user.sector_id) ||
         user.roles.includes('admin') ||
         user.roles.includes('coordenador_suprimentos') ||

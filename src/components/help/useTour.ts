@@ -5,14 +5,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const seenKey = (tourId: string) => `sisten:tour-seen:${tourId}`;
+export const seenKey = (tourId: string) => `sisten:tour-seen:${tourId}`;
 
 /**
  * Estado de um tour guiado (spotlight) por página. `tourId` isola o
  * "já visto" no localStorage por página, então cada tela tem sua própria
  * primeira-visita.
  */
-function readSeen(tourId: string): boolean {
+export function readSeen(tourId: string): boolean {
   try {
     return localStorage.getItem(seenKey(tourId)) === '1';
   } catch {
@@ -58,9 +58,10 @@ export function useTour(tourId: string, stepCount: number) {
   const autoOpenWhenReady = useCallback((ready: boolean) => {
     if (ready && !autoOpened.current && !hasSeenBefore()) {
       autoOpened.current = true;
+      markSeen();
       open();
     }
-  }, [hasSeenBefore, open]);
+  }, [hasSeenBefore, open, markSeen]);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -14,7 +14,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
-import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico } from '../lib/juridico';
+import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
 import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
@@ -596,14 +596,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return ['Acesso/Senha', 'Equipamento', 'Software', 'Rede', 'E-mail', 'Outro'];
     } else if (secId === '3') { // Facilities
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Mobiliário', 'Limpeza', 'Chaves/Acesso', 'Outro'];
-    } else if (sectors.find(s => s.id === secId)?.name === NOME_SETOR_JURIDICO) {
+    } else if (isJuridicoSector(sectors.find(s => s.id === secId))) {
       return [...TIPOS_CHAMADO_JURIDICO];
     } else { // Manutenção / Others
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Equipamento', 'Outro'];
     }
   };
 
-  const isDestinoJuridico = sectors.find(s => s.id === helpdeskSectorId)?.name === NOME_SETOR_JURIDICO;
+  const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
 
 
 

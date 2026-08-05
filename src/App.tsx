@@ -29,6 +29,7 @@ const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
 const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
+const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
@@ -38,6 +39,8 @@ const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
+const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
+const TesteExtracaoIA = lazy(() => import('./views/TesteExtracaoIA'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -59,6 +62,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/dashboards',
   '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
+  '/suprimentos/analise-cotacoes',
   '/suprimentos/historico',
   '/suprimentos/historico/dashboards',
   '/suprimentos/fornecedores',
@@ -75,6 +79,9 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/admin/importacao-materiais',
   '/admin/helpdesk',
   '/admin/uso',
+  // Mantém o markdown colado e o resultado da IA — remontar jogaria fora o
+  // texto em andamento na próxima sincronização em segundo plano.
+  '/admin/teste',
   '/suprimentos/importar',
   '/suprimentos/importar/log',
   '/suprimentos/grupos-comprador',
@@ -469,6 +476,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/suprimentos/analise-cotacoes':
+        if (canAccessPage(user, 'sup_analise_cotacoes')) {
+          return <AnaliseCotacoes user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/suprimentos/historico':
         if (canAccessPage(user, 'sup_historico')) {
           return <HistoricoPedidos user={user} onNavigate={handleNavigate} />;
@@ -484,6 +497,12 @@ export default function App() {
       case '/suprimentos/contratos':
         if (canAccessPage(user, 'sup_contratos')) {
           return <Contratos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/frete':
+        if (canAccessPage(user, 'sup_estimador_frete')) {
+          return <FreteEstimator user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -554,6 +573,12 @@ export default function App() {
       case '/admin/helpdesk':
         if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin/teste':
+        if (canAccessPage(user, 'admin_teste')) {
+          return <TesteExtracaoIA user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

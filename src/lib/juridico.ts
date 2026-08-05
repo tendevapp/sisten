@@ -8,6 +8,17 @@
 
 export const NOME_SETOR_JURIDICO = 'Jurídico';
 
+export function isJuridicoSector(sector?: { name: string } | null): boolean {
+  if (!sector || !sector.name) return false;
+  if (sector.name === NOME_SETOR_JURIDICO) return true;
+  const normalized = sector.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return normalized.includes('juridic') || normalized.includes('contrato');
+}
+
+export function findJuridicoSector<T extends { name: string }>(sectors: T[]): T | undefined {
+  return sectors.find(s => s.name === NOME_SETOR_JURIDICO) || sectors.find(s => isJuridicoSector(s));
+}
+
 export const TIPOS_CHAMADO_JURIDICO = [
   'Análise de Minuta',
   'Elaboração de Novo Contrato',

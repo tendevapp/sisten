@@ -85,6 +85,7 @@ class LocalDatabase {
   private contratosKey = 'sisten_contratos';
   private contratosDetalhesKey = 'sisten_contratos_detalhes';
   private contratoAnexosKey = 'sisten_contrato_anexos';
+  private tabelaFreteKey = 'sisten_tabela_frete';
 
   // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
   // dataset pesado (versão + data da última importação + data do último download).
@@ -102,6 +103,7 @@ class LocalDatabase {
       pedidosforn: this.pedidosFornKey,
       contatos: this.contatosKey,
       cidadeforn: this.cidadeFornKey,
+      tabela_frete: this.tabelaFreteKey,
     };
     return map[dataset];
   }
@@ -238,6 +240,7 @@ class LocalDatabase {
           ['buyer_groups', () => this.syncBuyerGroups()],
           ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
           ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
+          ['tabela_frete', () => this.syncSimpleTable('tabela_frete', this.tabelaFreteKey, true, undefined, 'id')],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
@@ -803,345 +806,40 @@ class LocalDatabase {
       this.setStorageItem(this.pedidosKey, sapSeed.pedidos);
     }
 
-    // 7. Request Engine Seeds (13 requests including 2 pending for approval)
-    if (!this.cache.has(this.requestsKey)) {
-      const seededRequests: Request[] = [
-        {
-          id: 'r5',
-          number: '4000005',
-          type: 'compra',
-          status: 'pendente',
-          criticality: 4,
-          solicitante_id: 'u10',
-          solicitante_name: 'Solicitante Diretoria',
-          solicitante_sector_id: '16', // Diretoria (Aprovável por u3 / gestor1@ten.com.br)
-          created_at: '2026-07-05T01:00:00-03:00',
-          updated_at: '2026-07-05T01:00:00-03:00',
-          data_necessidade: '2026-08-31',
-          comprador_id: 'u5',
-          tipo_compra: 'Estoque',
-          justificativa: 'Demanda de insumos críticos de fixação para torre da torre eólica Jacobina III.'
-        },
-        {
-          id: 'r4',
-          number: '4000004',
-          type: 'compra',
-          status: 'pendente',
-          criticality: 4,
-          solicitante_id: 'u10',
-          solicitante_name: 'Solicitante Diretoria',
-          solicitante_sector_id: '16', // Diretoria
-          created_at: '2026-07-04T15:30:00-03:00',
-          updated_at: '2026-07-04T15:30:00-03:00',
-          data_necessidade: '2026-08-14',
-          comprador_id: 'u6',
-          tipo_compra: 'Direta',
-          justificativa: 'Aquisição de EPI emergencial para equipe de campo.'
-        },
-        {
-          id: 'r1',
-          number: '1000001',
-          type: 'chamado',
-          status: 'aberto',
-          criticality: 1,
-          solicitante_id: 'u11',
-          solicitante_name: 'Solicitante Manutenção',
-          solicitante_sector_id: '15',
-          target_sector_id: '9', // TI
-          category_id: 'Acesso/Senha',
-          created_at: '2026-07-05T05:00:00-03:00',
-          updated_at: '2026-07-05T05:00:00-03:00',
-          justificativa: 'Problema ao acessar a rede corporativa. Solicito redefinição de credenciais.',
-          paused_minutes: 0
-        },
-        {
-          id: 'r2',
-          number: '3000003',
-          type: 'chamado',
-          status: 'em_atendimento',
-          criticality: 3,
-          solicitante_id: 'u12',
-          solicitante_name: 'Solicitante Qualidade',
-          solicitante_sector_id: '11',
-          target_sector_id: '3', // Facilities
-          category_id: 'Climatização',
-          atendente_id: 'u9',
-          atendente_name: 'Atendente Facilities',
-          first_response_at: '2026-07-04T10:00:00-03:00',
-          created_at: '2026-07-04T08:15:00-03:00',
-          updated_at: '2026-07-04T10:00:00-03:00',
-          justificativa: 'O ar-condicionado da sala da Qualidade está pingando água e não está resfriando.',
-          local: 'Prédio Administrativo - Sala 202',
-          paused_minutes: 0
-        },
-        {
-          id: 'r3',
-          number: '5000002',
-          type: 'chamado',
-          status: 'resolvido',
-          criticality: 5,
-          solicitante_id: 'u11',
-          solicitante_name: 'Solicitante Manutenção',
-          solicitante_sector_id: '15',
-          target_sector_id: '15', // Manutenção Helpdesk
-          category_id: 'Outro',
-          atendente_id: 'u11', // Solicitante e atendente
-          first_response_at: '2026-07-03T09:00:00-03:00',
-          resolved_at: '2026-07-03T11:30:00-03:00',
-          created_at: '2026-07-03T08:45:00-03:00',
-          updated_at: '2026-07-03T11:30:00-03:00',
-          justificativa: 'Vazamento de óleo hidráulico na ponte rolante principal do Galpão B.',
-          local: 'Galpão de Produção B - Ponte 02',
-          paused_minutes: 0
-        },
-        {
-          id: 'r6',
-          number: '2000001',
-          type: 'cadastro_sap',
-          status: 'aberto',
-          criticality: 2,
-          solicitante_id: 'u12',
-          solicitante_name: 'Solicitante Qualidade',
-          solicitante_sector_id: '11',
-          registration_type: 'Item',
-          created_at: '2026-07-04T14:00:00-03:00',
-          updated_at: '2026-07-04T14:00:00-03:00',
-          justificativa: 'Item necessário para testes metalográficos nos parafusos de união dos flanges.',
-          paused_minutes: 0
-        },
-        {
-          id: 'r7',
-          number: '1000002',
-          type: 'compra',
-          status: 'aprovada',
-          criticality: 1,
-          solicitante_id: 'u10',
-          solicitante_name: 'Solicitante Diretoria',
-          solicitante_sector_id: '16',
-          created_at: '2026-07-02T10:00:00-03:00',
-          updated_at: '2026-07-02T14:00:00-03:00',
-          data_necessidade: '2026-07-25',
-          comprador_id: 'u5',
-          tipo_compra: 'Estoque',
-          justificativa: 'Materiais de escritório para reposição.',
-          linked_rm_number: '4500000001' // Matches ME5A seed row!
-        },
-        {
-          id: 'r8',
-          number: '2000002',
-          type: 'compra',
-          status: 'rejeitada',
-          criticality: 2,
-          solicitante_id: 'u10',
-          solicitante_name: 'Solicitante Diretoria',
-          solicitante_sector_id: '16',
-          created_at: '2026-07-01T09:00:00-03:00',
-          updated_at: '2026-07-01T11:00:00-03:00',
-          data_necessidade: '2026-07-15',
-          comprador_id: 'u5',
-          tipo_compra: 'Estoque',
-          justificativa: 'Compra de copos térmicos personalizados.'
-        },
-        {
-          id: 'r9',
-          number: '3000002',
-          type: 'compra',
-          status: 'rascunho',
-          criticality: 3,
-          solicitante_id: 'u10',
-          solicitante_name: 'Solicitante Diretoria',
-          solicitante_sector_id: '16',
-          created_at: '2026-07-05T06:00:00-03:00',
-          updated_at: '2026-07-05T06:00:00-03:00',
-          data_necessidade: '2026-07-20',
-          tipo_compra: 'Estoque',
-          justificativa: 'Outra compra em rascunho de exemplo.'
-        },
-        {
-          id: 'r10',
-          number: '2000003',
-          type: 'chamado',
-          status: 'fechado',
-          criticality: 2,
-          solicitante_id: 'u11',
-          solicitante_name: 'Solicitante Manutenção',
-          solicitante_sector_id: '15',
-          target_sector_id: '9',
-          category_id: 'Equipamento',
-          atendente_id: 'u8',
-          atendente_name: 'Suporte TI',
-          first_response_at: '2026-06-28T09:00:00-03:00',
-          resolved_at: '2026-06-28T10:30:00-03:00',
-          created_at: '2026-06-28T08:00:00-03:00',
-          updated_at: '2026-06-28T10:30:00-03:00',
-          justificativa: 'Minha impressora térmica do Almoxarifado parou de funcionar.',
-          paused_minutes: 0,
-          rating: 5,
-          rating_comment: 'Excelente atendimento, rápido e resolutivo!'
-        },
-        {
-          id: 'r11',
-          number: '3000004',
-          type: 'cadastro_sap',
-          status: 'resolvido',
-          criticality: 3,
-          solicitante_id: 'u11',
-          solicitante_name: 'Solicitante Manutenção',
-          solicitante_sector_id: '15',
-          registration_type: 'Fornecedor',
-          atendente_id: 'u2',
-          atendente_name: 'Coordenador de Suprimentos',
-          created_at: '2026-07-01T10:00:00-03:00',
-          updated_at: '2026-07-02T16:00:00-03:00',
-          justificativa: 'Cadastro de fornecedor homologado para chapas espessas de contra-torre.',
-          paused_minutes: 0
-        },
-        {
-          id: 'r12',
-          number: '4000006',
-          type: 'compra',
-          status: 'em_revisao',
-          criticality: 4,
-          solicitante_id: 'u12',
-          solicitante_name: 'Solicitante Qualidade',
-          solicitante_sector_id: '11',
-          created_at: '2026-07-02T14:00:00-03:00',
-          updated_at: '2026-07-03T10:00:00-03:00',
-          data_necessidade: '2026-07-10',
-          comprador_id: 'u6',
-          tipo_compra: 'Serviço',
-          justificativa: 'Calibração anual dos torquímetros hidráulicos.'
-        },
-        {
-          id: 'r13',
-          number: '5000003',
-          type: 'chamado',
-          status: 'aguardando_solicitante',
-          criticality: 5,
-          solicitante_id: 'u11',
-          solicitante_name: 'Solicitante Manutenção',
-          solicitante_sector_id: '15',
-          target_sector_id: '9', // TI
-          category_id: 'Rede',
-          atendente_id: 'u8',
-          atendente_name: 'Suporte TI',
-          created_at: '2026-07-04T16:00:00-03:00',
-          updated_at: '2026-07-04T17:00:00-03:00',
-          justificativa: 'Instabilidade na antena de rádio do pátio de estocagem de pás.',
-          paused_minutes: 0
-        }
-      ];
+    // 7. Limpeza de dados de demonstração (legado): solicitações fictícias
+    // (r1..r13 e afins) eram semeadas aqui no primeiro carregamento. O merge
+    // de sync (`syncMergedTable`) só soma linhas remotas às locais e nunca
+    // remove uma linha local sem par remoto, então esses IDs fixos ficavam
+    // para sempre em "Minhas Solicitações", misturados com dados reais.
+    // Roda sempre (não só quando `requestsKey` está vazio) para também
+    // limpar quem já tinha esses registros presos no localStorage.
+    this.purgeLegacyDemoRequests();
+  }
 
-      this.setStorageItem(this.requestsKey, seededRequests);
+  private purgeLegacyDemoRequests(): void {
+    const idsLegado = new Set(['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13']);
+    const itemIdsLegado = new Set(['ri1', 'ri2', 'ri3', 'ri4']);
+    const historyIdsLegado = new Set(['h1', 'h2', 'h3', 'h4']);
+    const commentIdsLegado = new Set(['c1']);
 
-      // Seed Items
-      const seededItems: RequestItem[] = [
-        {
-          id: 'ri1',
-          request_id: 'r5',
-          description: 'PARAFUSO M16 X 60 CLASSE 8.8 ZINCADO',
-          sap_code: '10000002',
-          has_no_sap_code: false,
-          quantity: 200,
-          unit: 'KG',
-          brand: 'FIXASUL',
-          is_similar_allowed: true,
-          suggested_supplier: 'FIXACAMP COMÉRCIO DE PARAFUSOS',
-          estimated_value: 4500
-        },
-        {
-          id: 'ri2',
-          request_id: 'r4',
-          description: 'LUVA NITRÍLICA ANTI-CORTE TAM M',
-          sap_code: '10000008',
-          has_no_sap_code: false,
-          quantity: 50,
-          unit: 'UN',
-          brand: 'Danny',
-          is_similar_allowed: true,
-          estimated_value: 1250
-        },
-        {
-          id: 'ri3',
-          request_id: 'r7',
-          description: 'CHAPA AÇO GALVANIZADO 1050 x 2000 x 3MM',
-          sap_code: '10000001',
-          has_no_sap_code: false,
-          quantity: 10,
-          unit: 'UN',
-          estimated_value: 3000
-        },
-        {
-          id: 'ri4',
-          request_id: 'r8',
-          description: 'Copos térmicos personalizados com logo TEN',
-          has_no_sap_code: true,
-          quantity: 100,
-          unit: 'UN',
-          estimated_value: 8000
-        }
-      ];
-      this.setStorageItem(this.requestItemsKey, seededItems);
+    const requests = this.getStorageItem<Request[]>(this.requestsKey, []);
+    if (requests.some(r => idsLegado.has(r.id))) {
+      this.setStorageItem(this.requestsKey, requests.filter(r => !idsLegado.has(r.id)));
+    }
 
-      // Seed Status Histories
-      const seededHistory: RequestStatusHistory[] = [
-        {
-          id: 'h1',
-          request_id: 'r5',
-          from_status: 'rascunho',
-          to_status: 'pendente',
-          user_id: 'u10',
-          user_name: 'Solicitante Diretoria',
-          comment: 'Solicitação de compra enviada para aprovação do gestor.',
-          created_at: '2026-07-05T01:00:00-03:00'
-        },
-        {
-          id: 'h2',
-          request_id: 'r4',
-          from_status: 'rascunho',
-          to_status: 'pendente',
-          user_id: 'u10',
-          user_name: 'Solicitante Diretoria',
-          comment: 'Solicitação emergencial enviada.',
-          created_at: '2026-07-04T15:30:00-03:00'
-        },
-        {
-          id: 'h3',
-          request_id: 'r7',
-          from_status: 'pendente',
-          to_status: 'aprovada',
-          user_id: 'u3',
-          user_name: 'Gestor Diretoria',
-          comment: 'Compra aprovada conforme planejamento de orçamento.',
-          created_at: '2026-07-02T14:00:00-03:00'
-        },
-        {
-          id: 'h4',
-          request_id: 'r8',
-          from_status: 'pendente',
-          to_status: 'rejeitada',
-          user_id: 'u3',
-          user_name: 'Gestor Diretoria',
-          comment: 'Rejeitado por falta de dotação orçamentária para brindes não planejados.',
-          created_at: '2026-07-01T11:00:00-03:00'
-        }
-      ];
-      this.setStorageItem(this.historyKey, seededHistory);
+    const items = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+    if (items.some(i => itemIdsLegado.has(i.id))) {
+      this.setStorageItem(this.requestItemsKey, items.filter(i => !itemIdsLegado.has(i.id)));
+    }
 
-      // Seed Comments
-      const seededComments: RequestComment[] = [
-        {
-          id: 'c1',
-          request_id: 'r5',
-          user_id: 'u10',
-          user_name: 'Solicitante Diretoria',
-          user_roles: ['solicitante'],
-          content: 'Qualquer dúvida sobre a marca recomendada por favor me contatem.',
-          is_internal: false,
-          created_at: '2026-07-05T01:05:00-03:00'
-        }
-      ];
-      this.setStorageItem(this.commentsKey, seededComments);
+    const history = this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []);
+    if (history.some(h => historyIdsLegado.has(h.id))) {
+      this.setStorageItem(this.historyKey, history.filter(h => !historyIdsLegado.has(h.id)));
+    }
+
+    const comments = this.getStorageItem<RequestComment[]>(this.commentsKey, []);
+    if (comments.some(c => commentIdsLegado.has(c.id))) {
+      this.setStorageItem(this.commentsKey, comments.filter(c => !commentIdsLegado.has(c.id)));
     }
   }
 
@@ -1873,7 +1571,7 @@ class LocalDatabase {
     const all = this.getProfiles();
     const byId = new Map<string, Profile>();
     all
-      .filter(u => u.roles.includes('coordenador_suprimentos') || u.roles.includes('comprador') || u.aprovador_cadastro_sap)
+      .filter(u => u.roles.includes('coordenador_suprimentos') || u.roles.includes('comprador') || u.aprovador_cadastro_sap || canAccessPage(u, 'sup_cadastros_sap'))
       .forEach(u => byId.set(u.id, u));
     return Array.from(byId.values());
   }
@@ -2180,7 +1878,22 @@ class LocalDatabase {
   }
 
   // Request Sequences & Numbers
-  private generateRequestNumber(criticality: number): string {
+  /**
+   * Gera o número via RPC atômica (`proximo_numero_solicitacao`) — um simples
+   * incremento local, por mais que fosse sincronizado com `sequences` na
+   * entrada, colidia sempre que dois clientes geravam o "próximo" número a
+   * partir do mesmo valor-base: o segundo a publicar batia em
+   * `requests_number_key` (23505) e a solicitação ficava presa só localmente.
+   * Sem Supabase (modo offline/demo), cai no incremento local antigo, que
+   * nesse caso não tem concorrência real para colidir.
+   */
+  private async generateRequestNumber(criticality: number): Promise<string> {
+    if (supabase) {
+      const { data, error } = await supabase.rpc('proximo_numero_solicitacao', { p_criticidade: criticality });
+      if (!error && typeof data === 'string') return data;
+      console.error('Falha ao gerar número da solicitação via RPC; usando contador local.', error);
+    }
+
     const seqs = this.getStorageItem<Record<string, number>>(this.sequencesKey, { '1': 1000, '2': 1000, '3': 1000, '4': 1000, '5': 1000 });
     const nextSeq = (seqs[criticality.toString()] || 1000) + 1;
     seqs[criticality.toString()] = nextSeq;
@@ -2277,7 +1990,7 @@ class LocalDatabase {
       const prev = requests[idx];
       let number = prev.number;
       if (!isDraft && (!number || number.startsWith('draft'))) {
-        number = this.generateRequestNumber(draft.criticality || prev.criticality || 1);
+        number = await this.generateRequestNumber(draft.criticality || prev.criticality || 1);
       }
 
       request = {
@@ -2292,7 +2005,7 @@ class LocalDatabase {
     } else {
       // Create new
       const id = 'r_' + Math.random().toString(36).substr(2, 9);
-      const number = isDraft ? 'draft_' + Math.random().toString(36).substr(2, 6) : this.generateRequestNumber(draft.criticality || 1);
+      const number = isDraft ? 'draft_' + Math.random().toString(36).substr(2, 6) : await this.generateRequestNumber(draft.criticality || 1);
 
       request = {
         id,
@@ -2606,24 +2319,51 @@ class LocalDatabase {
    * (ex.: "314") quando o grupo não tem usuário vinculado, e código de grupo
    * não é id de perfil.
    */
+  private sanitizeRequestRow(request: Request): Record<string, unknown> {
+    const row: Record<string, unknown> = { ...request };
+    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at']) {
+      if (row[campo] === '') row[campo] = null;
+    }
+
+    const idsDePerfil = new Set(this.getProfiles().map(p => p.id));
+    for (const campo of ['solicitante_id', 'comprador_id', 'atendente_id']) {
+      if (row[campo] && !idsDePerfil.has(row[campo] as string)) row[campo] = null;
+    }
+    return row;
+  }
+
   private async publishRequestRow(request: Request): Promise<boolean> {
     if (!supabase) return false;
 
     try {
-      const row: Record<string, unknown> = { ...request };
-      for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at']) {
-        if (row[campo] === '') row[campo] = null;
-      }
-
-      const idsDePerfil = new Set(this.getProfiles().map(p => p.id));
-      for (const campo of ['solicitante_id', 'comprador_id', 'atendente_id']) {
-        if (row[campo] && !idsDePerfil.has(row[campo] as string)) row[campo] = null;
-      }
-
-      const { error } = await supabase.from('requests').upsert(row, { onConflict: 'id' });
+      const { error } = await supabase.from('requests').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
       if (error) throw error;
       return true;
-    } catch (err) {
+    } catch (err: any) {
+      // 23505 em requests_number_key: sobra de um número gerado localmente (modo
+      // offline, ou de antes da RPC atômica existir) que colidiu com uma
+      // solicitação já publicada por outra sessão. Gera um número novo e tenta
+      // de novo uma vez — sem isso a solicitação fica presa localmente para
+      // sempre, e toda ação que depende dela publicada primeiro (ex.: anexos)
+      // falha para sempre junto.
+      if (err?.code === '23505' && String(err?.message || '').includes('requests_number_key')) {
+        try {
+          const novoNumero = await this.generateRequestNumber(request.criticality || 1);
+          request.number = novoNumero;
+          const requests = this.getStorageItem<Request[]>(this.requestsKey, []);
+          const idx = requests.findIndex(r => r.id === request.id);
+          if (idx !== -1) { requests[idx].number = novoNumero; this.setStorageItem(this.requestsKey, requests); }
+
+          const { error: retryErr } = await supabase.from('requests').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
+          if (retryErr) throw retryErr;
+          this.notifyListeners();
+          return true;
+        } catch (retryErr) {
+          console.error(`Falha ao publicar a solicitação #${request.number} no Supabase mesmo após renumerar.`, retryErr);
+          return false;
+        }
+      }
+
       console.error(`Falha ao publicar a solicitação #${request.number} no Supabase.`, err);
       return false;
     }
@@ -5798,6 +5538,207 @@ class LocalDatabase {
       columns_new: [],
       created_at: new Date().toISOString()
     };
+  }
+
+  private TABELA_FRETE_COLUMNS = [
+    { header: 'ORIGEM', field: 'origem' },
+    { header: 'UF', field: 'uf' },
+    { header: 'DESTINO', field: 'destino' },
+    { header: 'ROTAS', field: 'rotas' },
+    { header: '1 - 10 kg', field: 'kg_1_10' },
+    { header: '11 - 20 kg', field: 'kg_11_20' },
+    { header: '21 - 30 kg', field: 'kg_21_30' },
+    { header: '31 - 50 kg', field: 'kg_31_50' },
+    { header: '51 - 70 kg', field: 'kg_51_70' },
+    { header: '71 - 100 kg', field: 'kg_71_100' },
+    { header: 'Acima de 100 kg', field: 'kg_acima_100' },
+    { header: 'LEAD-TIME ENTREGA', field: 'lead_time_entrega' },
+    { header: 'AD. VALORES', field: 'ad_valores' },
+    { header: 'Pedagio a cada fração de 100kg', field: 'pedagio_fracao_100kg' },
+    { header: 'CAT', field: 'cat' },
+    { header: 'ITR/TAS', field: 'itr_tas' },
+    { header: 'Taxa Fixa ITR/ REDESPACHO', field: 'taxa_fixa_itr_redespacho' },
+    { header: 'FIORINO', field: 'fiorino' },
+    { header: '3/4 (ate 2,5 ton)', field: 'veiculo_3_4_ate_2_5t' },
+    { header: 'TOCO (ate 5,5 ton)', field: 'toco_ate_5_5t' },
+    { header: 'TRUCK (até 14 ton)', field: 'truck_ate_14t' },
+    { header: 'CARRETA (ate 25ton)', field: 'carreta_ate_25t' },
+    { header: 'CARRETA (acima 27001 ton)', field: 'carreta_acima_27t' },
+    { header: 'LEAD TIME ENTREGA', field: 'lead_time_entrega_2' },
+    { header: 'ICMS APLICADO', field: 'icms_aplicado' }
+  ];
+
+  public getTabelaFrete(): any[] {
+    return this.getStorageItem<any[]>(this.tabelaFreteKey, []);
+  }
+
+  public async importTabelaFreteRaw(
+    rawRows: any[][],
+    filename: string,
+    onProgress?: (percent: number, message?: string) => void
+  ): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+
+    onProgress?.(5, 'Reconciliando colunas da Tabela de Frete...');
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.TABELA_FRETE_COLUMNS);
+
+    const colIdx = (field: string) => mappedFields.findIndex(f => f === field);
+
+    const ltIndices: number[] = [];
+    headers.forEach((h, idx) => {
+      const cleanH = h.toLowerCase().trim();
+      if (cleanH.includes('lead-time') || cleanH.includes('lead time')) {
+        ltIndices.push(idx);
+      }
+    });
+
+    const origemIdx = colIdx('origem');
+    const ufIdx = colIdx('uf');
+    const destinoIdx = colIdx('destino');
+    const rotasIdx = colIdx('rotas');
+    const kg1_10Idx = colIdx('kg_1_10');
+    const kg11_20Idx = colIdx('kg_11_20');
+    const kg21_30Idx = colIdx('kg_21_30');
+    const kg31_50Idx = colIdx('kg_31_50');
+    const kg51_70Idx = colIdx('kg_51_70');
+    const kg71_100Idx = colIdx('kg_71_100');
+    const kgAcima100Idx = colIdx('kg_acima_100');
+    const lt1Idx = colIdx('lead_time_entrega') !== -1 ? colIdx('lead_time_entrega') : (ltIndices[0] ?? -1);
+    const adValoresIdx = colIdx('ad_valores');
+    const pedagioIdx = colIdx('pedagio_fracao_100kg');
+    const catIdx = colIdx('cat');
+    const itrTasIdx = colIdx('itr_tas');
+    const taxaFixaItrIdx = colIdx('taxa_fixa_itr_redespacho');
+    const fiorinoIdx = colIdx('fiorino');
+    const v3_4Idx = colIdx('veiculo_3_4_ate_2_5t');
+    const tocoIdx = colIdx('toco_ate_5_5t');
+    const truckIdx = colIdx('truck_ate_14t');
+    const carreta25tIdx = colIdx('carreta_ate_25t');
+    const carretaAcima27tIdx = colIdx('carreta_acima_27t');
+    const lt2Idx = colIdx('lead_time_entrega_2') !== -1 ? colIdx('lead_time_entrega_2') : (ltIndices[1] ?? -1);
+    const icmsIdx = colIdx('icms_aplicado');
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const parseNum = (val: any): number => {
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      let str = String(val).trim().replace(/R\$\s?/, '').replace(/%\s?/, '').replace(/\s/g, '');
+      if (!str) return 0;
+      if (str.includes(',') && str.includes('.')) {
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else if (str.includes(',')) {
+        str = str.replace(',', '.');
+      }
+      const n = parseFloat(str);
+      return isNaN(n) ? 0 : n;
+    };
+
+    const strVal = (row: any[], idx: number) => idx !== -1 ? String(row[idx] ?? '').trim() : '';
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const origem = strVal(row, origemIdx);
+      const destino = strVal(row, destinoIdx);
+
+      if (!origem && !destino) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Linha sem Origem e sem Destino.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        origem,
+        uf: strVal(row, ufIdx),
+        destino,
+        rotas: strVal(row, rotasIdx),
+        kg_1_10: parseNum(row[kg1_10Idx]),
+        kg_11_20: parseNum(row[kg11_20Idx]),
+        kg_21_30: parseNum(row[kg21_30Idx]),
+        kg_31_50: parseNum(row[kg31_50Idx]),
+        kg_51_70: parseNum(row[kg51_70Idx]),
+        kg_71_100: parseNum(row[kg71_100Idx]),
+        kg_acima_100: parseNum(row[kgAcima100Idx]),
+        lead_time_entrega: strVal(row, lt1Idx),
+        ad_valores: parseNum(row[adValoresIdx]),
+        pedagio_fracao_100kg: parseNum(row[pedagioIdx]),
+        cat: parseNum(row[catIdx]),
+        itr_tas: parseNum(row[itrTasIdx]),
+        taxa_fixa_itr_redespacho: parseNum(row[taxaFixaItrIdx]),
+        fiorino: parseNum(row[fiorinoIdx]),
+        veiculo_3_4_ate_2_5t: parseNum(row[v3_4Idx]),
+        toco_ate_5_5t: parseNum(row[tocoIdx]),
+        truck_ate_14t: parseNum(row[truckIdx]),
+        carreta_ate_25t: parseNum(row[carreta25tIdx]),
+        carreta_acima_27t: parseNum(row[carretaAcima27tIdx]),
+        lead_time_entrega_2: strVal(row, lt2Idx),
+        icms_aplicado: strVal(row, icmsIdx),
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(30, `Preparando ${dbRows.length} registros de frete para envio ao Supabase...`);
+
+    try {
+      if (supabase) {
+        const { error: deleteError } = await supabase.from('tabela_frete').delete().neq('origem', '___INVALID_KEY___');
+        if (deleteError) console.warn('Aviso ao limpar tabela_frete anterior:', deleteError.message);
+
+        for (let i = 0; i < dbRows.length; i += 50) {
+          const pct = Math.floor(30 + ((i / dbRows.length) * 60));
+          onProgress?.(pct, `Salvando lote ${Math.floor(i / 50) + 1}...`);
+          const { error } = await supabase.from('tabela_frete').insert(dbRows.slice(i, i + 50));
+          if (error) throw error;
+        }
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'TABELA_FRETE',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        created_at: new Date().toISOString(),
+        ignored_rows: ignoredRows
+      };
+
+      if (supabase) {
+        await supabase.from('import_logs').insert(logObj);
+      }
+
+      this.setStorageItem(this.tabelaFreteKey, dbRows);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Tabela de Frete', `Importou Tabela de Frete (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
+
+      onProgress?.(100, 'Importação concluída com sucesso!');
+      return logObj as any;
+    } catch (e: any) {
+      console.error('Erro ao importar Tabela de Frete no Supabase:', e);
+      throw e;
+    }
   }
 
   public importZL0132(rows: any[], filename: string): SAPImportLog {

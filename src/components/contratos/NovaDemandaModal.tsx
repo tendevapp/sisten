@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 import { Loader2, Check, AlertTriangle } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, RequestStatus } from '../../types';
-import { TIPOS_CHAMADO_JURIDICO } from '../../lib/juridico';
+import { TIPOS_CHAMADO_JURIDICO, findJuridicoSector } from '../../lib/juridico';
 import { PRIORIDADE_LABEL } from '../../lib/kanban';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 
@@ -42,11 +42,13 @@ export default function NovaDemandaModal({ user, juridicoSectorId, statusInicial
     setSaving(true);
     setError('');
     try {
+      const targetSecId = juridicoSectorId || findJuridicoSector(localDb.getSectors())?.id;
+
       const req = await localDb.submitRequest({
         type: 'chamado',
         criticality,
         solicitante_sector_id: user.sector_id,
-        target_sector_id: juridicoSectorId,
+        target_sector_id: targetSecId,
         category_id: categoria,
         titulo: titulo.trim(),
         justificativa: descricao.trim() || titulo.trim(),

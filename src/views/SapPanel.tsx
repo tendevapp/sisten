@@ -8,11 +8,11 @@ import {
   Database, Filter, Edit3, Calendar, Check, AlertCircle, 
   ChevronRight, ArrowRight, MessageSquare, ListCollapse, BookOpen, 
   ExternalLink, RefreshCw, Search, Download, Upload, X, AlertTriangle, 
-  Clock, FileText, FileSpreadsheet, ChevronDown, CheckCircle2, SlidersHorizontal, Info
+  Clock, FileText, FileSpreadsheet, ChevronDown, CheckCircle2, SlidersHorizontal, Info, Truck, Calculator
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
-import { Profile, EnrichedSAPRecord, SAPPedido, ItemStatus } from '../types';
+import { Profile, EnrichedSAPRecord, SAPPedido, ItemStatus, TabelaFrete } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import { useToast } from '../components/ui/Toast';
 
@@ -348,8 +348,9 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   });
 
   // Navigation & Tabs
-  const [activeTab, setActiveTab] = useState<'me5a' | 'zl0132'>(pageCache.activeTab as 'me5a' | 'zl0132');
+  const [activeTab, setActiveTab] = useState<'me5a' | 'zl0132' | 'frete'>(pageCache.activeTab as 'me5a' | 'zl0132' | 'frete' || 'me5a');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tabelaFreteList, setTabelaFreteList] = useState<TabelaFrete[]>([]);
 
   // Columns visibility & customization to prevent lateral scroll
   const [visibleColsMe5a, setVisibleColsMe5a] = useState<string[]>(pageCache.visibleColsMe5a);
@@ -389,7 +390,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
 
   // Upload Base Modal state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [uploadType, setUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
+  const [uploadType, setUploadType] = useState<'ME5A' | 'ZL0132' | 'TABELA_FRETE'>('ME5A');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [uploadMessage, setUploadMessage] = useState('');
 
@@ -490,6 +491,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
       };
     });
     setPedidos(enrichedPeds);
+    setTabelaFreteList(localDb.getTabelaFrete());
   };
 
   // Perform Filters on Requisicoes (ME5A)
@@ -729,10 +731,17 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
   const handleExportXLS = () => {
     let dataToExport: any[] = [];
     const timestamp = new Date().toISOString().split('T')[0];
-    const sheetName = activeTab === 'me5a' ? 'Requisicoes ME5A' : 'Pedidos ZL0132';
-    const filename = activeTab === 'me5a'
+    let filename = activeTab === 'me5a'
       ? `Requisicoes_ME5A_${timestamp}.xlsx`
-      : `Pedidos_ZL0132_${timestamp}.xlsx`;
+      : activeTab === 'zl0132'
+      ? `Pedidos_ZL0132_${timestamp}.xlsx`
+      : `Tabela_Frete_${timestamp}.xlsx`;
+
+    let sheetName = activeTab === 'me5a'
+      ? 'Requisicoes ME5A'
+      : activeTab === 'zl0132'
+      ? 'Pedidos ZL0132'
+      : 'Tabela de Frete';
 
     if (activeTab === 'me5a') {
       dataToExport = sortedRequisicoes.map(r => ({
@@ -753,7 +762,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
         'Obs Comprador': r.obs_comprador || '',
         'Entrega Prevista': r.data_entrega_prevista ? new Date(r.data_entrega_prevista).toLocaleDateString('pt-BR') : '',
       }));
-    } else {
+    } else if (activeTab === 'zl0132') {
       dataToExport = sortedPedidos.map(p => ({
         'Pedido (PO)': p.documento_compra || '',
         'Item': p.item_pedido || '',
@@ -769,6 +778,34 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
         'Valor BRL': p.valor_brl ?? '',
         'Status Entrega': p.status_entrega || '',
         'Atraso (dias)': p.dias_atrasado ?? 0,
+      }));
+    } else {
+      dataToExport = tabelaFreteList.map(f => ({
+        'ORIGEM': f.origem || '',
+        'UF': f.uf || '',
+        'DESTINO': f.destino || '',
+        'ROTAS': f.rotas || '',
+        '1 - 10 kg': f.kg_1_10 || 0,
+        '11 - 20 kg': f.kg_11_20 || 0,
+        '21 - 30 kg': f.kg_21_30 || 0,
+        '31 - 50 kg': f.kg_31_50 || 0,
+        '51 - 70 kg': f.kg_51_70 || 0,
+        '71 - 100 kg': f.kg_71_100 || 0,
+        'Acima de 100 kg': f.kg_acima_100 || 0,
+        'LEAD-TIME ENTREGA': f.lead_time_entrega || '',
+        'AD. VALORES': f.ad_valores || 0,
+        'Pedagio a cada fração de 100kg': f.pedagio_fracao_100kg || 0,
+        'CAT': f.cat || 0,
+        'ITR/TAS': f.itr_tas || 0,
+        'Taxa Fixa ITR/ REDESPACHO': f.taxa_fixa_itr_redespacho || 0,
+        'FIORINO': f.fiorino || 0,
+        '3/4 (ate 2,5 ton)': f.veiculo_3_4_ate_2_5t || 0,
+        'TOCO (ate 5,5 ton)': f.toco_ate_5_5t || 0,
+        'TRUCK (até 14 ton)': f.truck_ate_14t || 0,
+        'CARRETA (ate 25ton)': f.carreta_ate_25t || 0,
+        'CARRETA (acima 27001 ton)': f.carreta_acima_27t || 0,
+        'LEAD TIME ENTREGA': f.lead_time_entrega_2 || '',
+        'ICMS APLICADO': f.icms_aplicado || ''
       }));
     }
 
@@ -835,7 +872,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
             setUploadStatus('error');
             setUploadMessage(err.message || 'Falha ao processar arquivo.');
           });
-        } else {
+        } else if (uploadType === 'ZL0132') {
           localDb.importZL0132Raw(rawRows, file.name).then(log => {
             setUploadMessage(`ZL0132 importada com sucesso! ${rawRows.length - 1} linhas lidas.`);
             setUploadStatus('success');
@@ -843,6 +880,17 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
           }).catch(err => {
             setUploadStatus('error');
             setUploadMessage(err.message || 'Falha ao processar arquivo.');
+          });
+        } else if (uploadType === 'TABELA_FRETE') {
+          localDb.importTabelaFreteRaw(rawRows, file.name, (pct, msg) => {
+            if (msg) setUploadMessage(msg);
+          }).then(log => {
+            setUploadMessage(`Tabela de Frete importada com sucesso! ${rawRows.length - 1} linhas lidas.`);
+            setUploadStatus('success');
+            loadData();
+          }).catch(err => {
+            setUploadStatus('error');
+            setUploadMessage(err.message || 'Falha ao processar planilha de frete.');
           });
         }
       } catch (err: any) {
@@ -1024,6 +1072,17 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'zl0132' ? 'bg-slate-100 text-slate-900 border border-slate-200/80 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
             >
               ZL0132 — Pedidos ({sortedPedidos.length})
+            </button>
+            <button 
+              onClick={() => {
+                setActiveTab('frete');
+                setSortConfig({ key: '', direction: null });
+                setIsColMenuOpen(false);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center space-x-1.5 ${activeTab === 'frete' ? 'bg-cyan-50 text-cyan-900 border border-cyan-200 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+            >
+              <Truck className="h-3.5 w-3.5 text-cyan-600" />
+              <span>Tabela de Frete ({tabelaFreteList.length})</span>
             </button>
           </div>
 
@@ -1302,7 +1361,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                 })}
               </tbody>
             </table>
-          ) : (
+          ) : activeTab === 'zl0132' ? (
             // ZL0132 Pedidos Grid Table
             <table className="w-full text-left border-collapse">
               <thead>
@@ -1451,6 +1510,109 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                 })}
               </tbody>
             </table>
+          ) : (
+            /* Freight Table View */
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Tabela de Frete Rodoviário</h3>
+                  <p className="text-xs text-slate-500">Faixas de peso, taxas de frete, tipos de veículo e ICMS.</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-semibold px-2.5 py-1 bg-cyan-50 text-cyan-800 border border-cyan-200 rounded-lg">
+                    {tabelaFreteList.filter(f => {
+                      if (!searchQuery.trim()) return true;
+                      const q = searchQuery.toLowerCase();
+                      return (f.origem || '').toLowerCase().includes(q) || (f.uf || '').toLowerCase().includes(q) || (f.destino || '').toLowerCase().includes(q) || (f.rotas && f.rotas.toLowerCase().includes(q));
+                    }).length} rotas encontradas
+                  </span>
+                  <button
+                    onClick={() => onNavigate('/suprimentos/frete')}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Calculator className="h-3.5 w-3.5" />
+                    <span>Simular Custos</span>
+                  </button>
+                </div>
+              </div>
+
+              {tabelaFreteList.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-200 rounded-xl p-12 text-center text-slate-500 space-y-3">
+                  <Truck className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="text-sm font-bold text-slate-700">Nenhuma tabela de frete importada.</p>
+                  <p className="text-xs text-slate-400">Clique em "Atualizar base" acima ou vá em Administração SAP para importar a planilha com as 25 colunas.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm max-h-[calc(100vh-280px)]">
+                  <table className="w-full text-left border-collapse text-[11px]">
+                    <thead>
+                      <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10">
+                        <th className="py-2.5 px-3">Origem</th>
+                        <th className="py-2.5 px-3">UF</th>
+                        <th className="py-2.5 px-3">Destino</th>
+                        <th className="py-2.5 px-3">Rota</th>
+                        <th className="py-2.5 px-3 text-right">1-10 kg</th>
+                        <th className="py-2.5 px-3 text-right">11-20 kg</th>
+                        <th className="py-2.5 px-3 text-right">21-30 kg</th>
+                        <th className="py-2.5 px-3 text-right">31-50 kg</th>
+                        <th className="py-2.5 px-3 text-right">51-70 kg</th>
+                        <th className="py-2.5 px-3 text-right">71-100 kg</th>
+                        <th className="py-2.5 px-3 text-right">&gt; 100 kg</th>
+                        <th className="py-2.5 px-3">Lead Time</th>
+                        <th className="py-2.5 px-3 text-right">Ad Valorem</th>
+                        <th className="py-2.5 px-3 text-right">Pedágio/100kg</th>
+                        <th className="py-2.5 px-3 text-right">CAT</th>
+                        <th className="py-2.5 px-3 text-right">ITR/TAS</th>
+                        <th className="py-2.5 px-3 text-right">Taxa Fixa</th>
+                        <th className="py-2.5 px-3 text-right">Fiorino</th>
+                        <th className="py-2.5 px-3 text-right">3/4 (2,5t)</th>
+                        <th className="py-2.5 px-3 text-right">Toco (5,5t)</th>
+                        <th className="py-2.5 px-3 text-right">Truck (14t)</th>
+                        <th className="py-2.5 px-3 text-right">Carreta (25t)</th>
+                        <th className="py-2.5 px-3 text-right">Carreta (&gt;27t)</th>
+                        <th className="py-2.5 px-3">ICMS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {tabelaFreteList
+                        .filter(f => {
+                          if (!searchQuery.trim()) return true;
+                          const q = searchQuery.toLowerCase();
+                          return (f.origem || '').toLowerCase().includes(q) || (f.uf || '').toLowerCase().includes(q) || (f.destino || '').toLowerCase().includes(q) || (f.rotas && f.rotas.toLowerCase().includes(q));
+                        })
+                        .map((f, idx) => (
+                          <tr key={f.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2 px-3 font-semibold text-slate-800 whitespace-nowrap">{f.origem}</td>
+                            <td className="py-2 px-3 font-bold text-cyan-700 whitespace-nowrap">{f.uf}</td>
+                            <td className="py-2 px-3 font-medium text-slate-700 whitespace-nowrap">{f.destino}</td>
+                            <td className="py-2 px-3 text-slate-500 font-mono text-[10px] whitespace-nowrap">{f.rotas || '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_1_10 ? `R$ ${f.kg_1_10.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_11_20 ? `R$ ${f.kg_11_20.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_21_30 ? `R$ ${f.kg_21_30.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_31_50 ? `R$ ${f.kg_31_50.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_51_70 ? `R$ ${f.kg_51_70.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium whitespace-nowrap">{f.kg_71_100 ? `R$ ${f.kg_71_100.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-semibold text-slate-900 whitespace-nowrap">{f.kg_acima_100 ? `R$ ${f.kg_acima_100.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-slate-600 whitespace-nowrap">{f.lead_time_entrega || '—'}</td>
+                            <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">{f.ad_valores ? `${f.ad_valores}%` : '—'}</td>
+                            <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">{f.pedagio_fracao_100kg ? `R$ ${f.pedagio_fracao_100kg.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">{f.cat ? `R$ ${f.cat.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">{f.itr_tas ? `R$ ${f.itr_tas.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right text-slate-600 whitespace-nowrap">{f.taxa_fixa_itr_redespacho ? `R$ ${f.taxa_fixa_itr_redespacho.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.fiorino ? `R$ ${f.fiorino.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.veiculo_3_4_ate_2_5t ? `R$ ${f.veiculo_3_4_ate_2_5t.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.toco_ate_5_5t ? `R$ ${f.toco_ate_5_5t.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.truck_ate_14t ? `R$ ${f.truck_ate_14t.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.carreta_ate_25t ? `R$ ${f.carreta_ate_25t.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-right font-medium text-slate-700 whitespace-nowrap">{f.carreta_acima_27t ? `R$ ${f.carreta_acima_27t.toFixed(2)}` : '—'}</td>
+                            <td className="py-2 px-3 text-slate-700 font-semibold whitespace-nowrap">{f.icms_aplicado || '—'}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -1599,6 +1761,12 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${uploadType === 'ZL0132' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}
                 >
                   ZL0132 (Pedidos PO)
+                </button>
+                <button
+                  onClick={() => { setUploadType('TABELA_FRETE'); setUploadStatus('idle'); setUploadMessage(''); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${uploadType === 'TABELA_FRETE' ? 'bg-cyan-100 text-cyan-900 font-bold' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  Tabela de Frete
                 </button>
               </div>
 

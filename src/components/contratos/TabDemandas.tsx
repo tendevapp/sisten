@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, Request, RequestStatus } from '../../types';
-import { NOME_SETOR_JURIDICO } from '../../lib/juridico';
+import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, findJuridicoSector, isJuridicoSector } from '../../lib/juridico';
 import {
   COLUNA_INICIAL, DEFAULT_KANBAN_COLUMNS, KanbanColumnConfig,
   carregarColunasKanban, salvarColunasKanban, corDoStatus, corPrioridade,
@@ -376,10 +376,12 @@ export default function TabDemandas({ user }: TabDemandasProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [novaDemandaStatus, setNovaDemandaStatus] = useState<RequestStatus | null>(null);
 
-  const juridicoSectorId = useMemo(
-    () => localDb.getSectors().find(s => s.name === NOME_SETOR_JURIDICO)?.id,
-    []
-  );
+  const getJuridicoSectorId = useCallback(() => {
+    const sectors = localDb.getSectors();
+    return findJuridicoSector(sectors)?.id;
+  }, []);
+
+  const juridicoSectorId = getJuridicoSectorId();
 
   const setorPorId = useMemo(
     () => new Map(localDb.getSectors().map(s => [s.id, s.name])),
@@ -387,11 +389,23 @@ export default function TabDemandas({ user }: TabDemandasProps) {
   );
 
   const carregar = useCallback(() => {
-    if (!juridicoSectorId) { setRequests([]); return; }
-    setRequests(
-      localDb.getRequests().filter(r => r.type === 'chamado' && r.target_sector_id === juridicoSectorId)
-    );
-  }, [juridicoSectorId]);
+    const sectors = localDb.getSectors();
+    const jurSector = findJuridicoSector(sectors);
+    const jurSectorId = jurSector?.id;
+
+    const all = localDb.getRequests();
+    const demandas = all.filter(r => {
+      if (r.type !== 'chamado') return false;
+      const ehSetorJuridico = jurSectorId ? r.target_sector_id === jurSectorId : false;
+      const ehCategoriaJuridica = r.category_id ? (TIPOS_CHAMADO_JURIDICO as readonly string[]).includes(r.category_id) : false;
+      const targetSector = r.target_sector_id ? sectors.find(s => s.id === r.target_sector_id) : null;
+      const ehTargetJuridico = isJuridicoSector(targetSector);
+
+      return ehSetorJuridico || ehCategoriaJuridica || ehTargetJuridico;
+    });
+
+    setRequests(demandas);
+  }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => localDb.subscribe(carregar), [carregar]);

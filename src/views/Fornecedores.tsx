@@ -19,8 +19,18 @@ interface FornecedoresProps {
   user: Profile;
 }
 
-type SortField = 'cod_vendor' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
+type SortField = 'cod_vendor' | 'cnpj' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
 type SortDir = 'asc' | 'desc';
+
+// Formatação visual de CNPJ
+function formatCNPJ(cnpj?: string | null): string {
+  if (!cnpj) return '—';
+  const clean = cnpj.replace(/\D/g, '');
+  if (clean.length === 14) {
+    return clean.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  }
+  return cnpj;
+}
 
 const CLASSIFICACOES = ['Preferencial', 'Aprovado', 'Em avaliação', 'Bloqueado', ''];
 
@@ -77,6 +87,7 @@ interface CadastroModalProps {
 
 function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
   const [codVendor, setCodVendor] = useState('');
+  const [cnpj, setCnpj] = useState('');
   const [fornecedor, setFornecedor] = useState('');
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
@@ -138,6 +149,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
 
       const payload = {
         cod_vendor: codVendor.trim(),
+        cnpj: cnpj.trim() || null,
         fornecedor: fornecedor.trim() || null,
         nome_fantasia: nomeFantasia.trim() || null,
         telefone: telefonesFiltrados || null,
@@ -205,6 +217,20 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
                   onChange={e => setCodVendor(e.target.value)}
                   placeholder="Ex: 10001234"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="new_cnpj" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  CNPJ
+                </label>
+                <input
+                  id="new_cnpj"
+                  type="text"
+                  value={cnpj}
+                  onChange={e => setCnpj(e.target.value)}
+                  placeholder="Ex: 00.000.000/0000-00"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
                 />
               </div>
 
@@ -434,6 +460,7 @@ interface EdicaoModalProps {
 }
 
 function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) {
+  const [cnpj, setCnpj] = useState(supplier.cnpj || '');
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
   const [nomeContato, setNomeContato] = useState(supplier.nome_contato || '');
   const [nomeFantasia, setNomeFantasia] = useState(supplier.nome_fantasia || '');
@@ -504,6 +531,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
       const { error: upErr } = await supabase
         .from('contatos')
         .update({
+          cnpj: cnpj.trim() || null,
           fornecedor: fornecedor.trim() || null,
           nome_contato: nomeContato.trim() || null,
           nome_fantasia: nomeFantasia.trim() || null,
@@ -564,6 +592,21 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   disabled
                   value={supplier.cod_vendor}
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-850 px-3.5 py-2.5 text-sm text-slate-500 dark:text-slate-400 focus:outline-none cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="edit_cnpj" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  CNPJ
+                </label>
+                <input
+                  id="edit_cnpj"
+                  type="text"
+                  disabled={!canEdit}
+                  value={cnpj}
+                  onChange={e => setCnpj(e.target.value)}
+                  placeholder="Ex: 00.000.000/0000-00"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
                 />
               </div>
 
@@ -814,7 +857,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
       if (search.trim()) {
         const term = search.trim();
-        q = q.or(`cod_vendor.ilike.%${term}%,fornecedor.ilike.%${term}%,email.ilike.%${term}%`);
+        q = q.or(`cod_vendor.ilike.%${term}%,cnpj.ilike.%${term}%,fornecedor.ilike.%${term}%,email.ilike.%${term}%`);
       }
 
       if (classificacaoFilter === '__vazio__') {
@@ -938,7 +981,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Buscar por código, nome ou e-mail..."
+              placeholder="Buscar por código, CNPJ, nome ou e-mail..."
               value={searchRaw}
               onChange={e => setSearchRaw(e.target.value)}
               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
@@ -1030,9 +1073,16 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0 truncate">
                       {row.fornecedor || row.nome_fantasia || '— Sem razão social —'}
                     </span>
-                    <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5 shrink-0">
-                      {row.cod_vendor}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
+                        {row.cod_vendor}
+                      </span>
+                      {row.cnpj && (
+                        <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                          {formatCNPJ(row.cnpj)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {row.nome_contato && (
                     <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{row.nome_contato}</p>
@@ -1061,6 +1111,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                   <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
                     {([
                       { field: 'cod_vendor', label: 'Cód. Vendor' },
+                      { field: 'cnpj', label: 'CNPJ' },
                       { field: 'fornecedor', label: 'Fornecedor' },
                       { field: 'nome_fantasia', label: 'Nome Fantasia' },
                       { field: 'nome_contato', label: 'Contato' },
@@ -1088,7 +1139,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                   {loading ? (
                     Array.from({ length: 8 }).map((_, i) => (
                       <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
-                        {Array.from({ length: 7 }).map((_, j) => (
+                        {Array.from({ length: 8 }).map((_, j) => (
                           <td key={j} className="px-4 py-3">
                             <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
                           </td>
@@ -1097,7 +1148,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                     ))
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                      <td colSpan={8} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
                         <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                         <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                         {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1121,6 +1172,11 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       <td className="px-4 py-3.5">
                         <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
                           {row.cod_vendor}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <span className="font-mono text-xs text-slate-700 dark:text-slate-300" title={row.cnpj || ''}>
+                          {formatCNPJ(row.cnpj)}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 max-w-[240px]">

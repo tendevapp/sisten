@@ -16,6 +16,7 @@ import { Profile, Sector, Material } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
+import AdminChatbot from '../components/admin/AdminChatbot';
 
 interface AdminPanelProps {
   user: Profile;
@@ -1464,6 +1465,74 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV FBL1N</p>
                 </div>
               </div>
+
+              {/* Tabela de Frete Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-cyan-500" /> Tabela de Frete (Rodoviário)
+                </h4>
+                <p className="text-[10px] text-slate-400">Importa a tabela de frete com faixas de peso, taxas (CAT, ITR/TAS, Pedágio), ICMS e tipos de veículos.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setSapProgress(0);
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+
+                            localDb.importTabelaFreteRaw(rawRows, file.name, (pct, msg) => {
+                              setSapProgress(pct);
+                              if (msg) setSapLogMessage(msg);
+                            }).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha de frete.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha de frete.');
+                            setSapLogStatus('error');
+                          }
+                        };
+
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Tabela de Frete</p>
+                </div>
+              </div>
             </div>
 
 
@@ -2191,6 +2260,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           />
         );
       })()}
+
+      {/* Botão flutuante e janela de chatbot para o usuário Admin */}
+      <AdminChatbot user={user} />
 
     </div>
   );
