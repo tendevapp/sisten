@@ -58,7 +58,7 @@ export const PAGES: PageDef[] = [
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
-  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos', 'gestor', 'requisitante', 'solicitante'] },
+  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
   { id: 'sup_importar', group: 'SUPRIMENTOS', label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
 
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
