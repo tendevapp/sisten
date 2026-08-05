@@ -120,18 +120,18 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
       </div>
 
       {/* ===== CONTEUDO PRINCIPAL ===== */}
-      <div className="relative z-10 flex-1 flex items-start px-6 sm:px-10 lg:px-16 pt-10 pb-12">
-        <div className="max-w-7xl mx-auto w-full flex flex-col lg:flex-row items-start justify-between gap-12 lg:gap-8">
+      <div className="relative z-10 flex-1 flex items-center px-6 sm:px-10 lg:px-16 py-6 lg:py-8">
+        <div className="max-w-7xl mx-auto w-full flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-8">
 
           {/* ===== LADO ESQUERDO: institucional + tagline (layout original com animacoes) ===== */}
-          <div className="hidden lg:flex flex-col max-w-2xl text-left mt-2 login-stagger">
+          <div className="hidden lg:flex flex-col max-w-2xl text-left login-stagger">
             {/* Logo em destaque */}
             <div className="login-logo-enter">
-              <img src="/logo-ten.png" alt="TEN" className="h-64 w-auto object-contain -ml-6" />
+              <img src="/logo-ten.png" alt="TEN" className="h-32 xl:h-40 w-auto object-contain -ml-6" />
             </div>
 
             {/* Localização */}
-            <div className="flex items-center gap-2 bg-slate-100/90 border border-slate-200/50 px-3.5 py-1.5 rounded-full w-fit mb-2 -mt-5 shadow-2xs relative z-30">
+            <div className="flex items-center gap-2 bg-slate-100/90 border border-slate-200/50 px-3.5 py-1.5 rounded-full w-fit mb-2 -mt-3 shadow-2xs relative z-30">
               <MapPin className="h-4 w-4 text-[#0056c6]" />
               <span className="text-xs font-semibold text-[#0056c6]">
                 Torres Eólicas do Nordeste — Jacobina/BA
@@ -139,45 +139,45 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
             </div>
 
             {/* Tagline */}
-            <h1 className="text-4xl xl:text-5xl font-extrabold leading-tight tracking-tight text-slate-900">
+            <h1 className="text-3xl xl:text-4xl font-extrabold leading-tight tracking-tight text-slate-900">
               Solução integrada <br />
               para uma gestão <span className="text-[#0056c6]">eficiente</span>.
             </h1>
-            <p className="mt-1.5 text-base text-slate-600 max-w-lg leading-relaxed">
+            <p className="mt-1.5 text-sm xl:text-base text-slate-600 max-w-lg leading-relaxed">
               Gerencie materiais, solicitações, helpdesk e suprimentos em uma única plataforma, com segurança e agilidade.
             </p>
           </div>
 
           {/* ===== LADO DIREITO: Card de Login Flutuante ===== */}
-          <div className="w-full max-w-md ml-auto z-20 mt-8 lg:mt-48 login-card-enter">
+          <div className="w-full max-w-md ml-auto z-20 login-card-enter">
             {/* Logo no mobile */}
             <div className="lg:hidden flex justify-center mb-6 login-logo-enter">
               <img src="/logo-ten.png" alt="TEN" className="h-20 w-auto object-contain" />
             </div>
 
             <div className="login-card-float login-card-shadow login-glass rounded-3xl w-full transition-shadow duration-500 hover:shadow-[0_32px_80px_-12px_rgba(0,86,198,0.22),0_16px_40px_-8px_rgba(0,0,0,0.14)]">
-              <div className="p-8 sm:p-10">
+              <div className="p-6 sm:p-8">
 
                 {/* Header do card com logo icone SISTEN */}
-                <div className="mb-7 login-stagger">
-                  <div className="flex items-center gap-3 mb-4">
+                <div className="mb-5 login-stagger">
+                  <div className="flex items-center gap-3 mb-3">
                     <img
                       src="/logo.png"
                       alt="SISTEN"
-                      className="h-10 w-10 object-contain"
+                      className="h-12 w-12 object-contain"
                     />
-                    <span className="text-lg font-extrabold tracking-tight text-slate-800">SISTEN</span>
+                    <span className="text-xl font-extrabold tracking-tight text-slate-800">SISTEN</span>
                   </div>
-                  <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                  <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
                     Acesse a plataforma
                   </h2>
-                  <p className="text-slate-500 mt-1.5 text-sm leading-relaxed">
+                  <p className="text-slate-500 mt-1 text-sm leading-relaxed">
                     Entre com suas credenciais corporativas.
                   </p>
                 </div>
 
                 {isForgotPassword ? (
-                  <form onSubmit={handleResetPassword} className="space-y-5 text-left login-stagger">
+                  <form onSubmit={handleResetPassword} className="space-y-4 text-left login-stagger">
                     <div className="mb-4">
                       <p className="text-sm text-slate-500">
                         Insira seu e-mail corporativo cadastrado. Nós enviaremos um link de redefinição de senha para você.
@@ -194,7 +194,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                           id="resetEmail"
                           type="email"
                           placeholder="seu.nome@ten.com.br"
-                          className="w-full pl-11 h-12 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
+                          className="w-full pl-11 h-11 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
                           value={resetEmail}
                           onChange={(e) => setResetEmail(e.target.value)}
                           required
@@ -220,7 +220,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                     <div className="space-y-3 pt-2">
                       <button
                         type="submit"
-                        className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] active:scale-[0.98] text-white font-bold rounded-xl transition-all duration-200 text-base shadow-sm disabled:opacity-50 cursor-pointer"
+                        className="w-full h-11 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] active:scale-[0.98] text-white font-bold rounded-xl transition-all duration-200 text-base shadow-sm disabled:opacity-50 cursor-pointer"
                         disabled={resetLoading}
                       >
                         {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
@@ -235,7 +235,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                           setResetMessage('');
                           setResetError('');
                         }}
-                        className="w-full h-12 flex items-center justify-center bg-slate-100/80 hover:bg-slate-200/80 active:scale-[0.98] text-slate-700 font-bold rounded-xl transition-all duration-200 text-base cursor-pointer"
+                        className="w-full h-11 flex items-center justify-center bg-slate-100/80 hover:bg-slate-200/80 active:scale-[0.98] text-slate-700 font-bold rounded-xl transition-all duration-200 text-base cursor-pointer"
                       >
                         Voltar ao Login
                       </button>
@@ -284,7 +284,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                     </div>
                   </div>
                 ) : (
-                  <form onSubmit={handleSubmit} className="space-y-5 text-left login-stagger">
+                  <form onSubmit={handleSubmit} className="space-y-4 text-left login-stagger">
                     <div className="space-y-2">
                       <label htmlFor="email" className="text-sm font-semibold text-slate-700">
                         E-mail
@@ -295,7 +295,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                           id="email"
                           type="email"
                           placeholder="seu.nome@ten.com.br"
-                          className="w-full pl-11 h-12 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
+                          className="w-full pl-11 h-11 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
@@ -323,7 +323,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                           id="password"
                           type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
-                          className="w-full pl-11 pr-11 h-12 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
+                          className="w-full pl-11 pr-11 h-11 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
@@ -359,7 +359,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
 
                     <button
                       type="submit"
-                      className="w-full h-12 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] hover:scale-[1.02] active:scale-[0.98] text-white font-bold rounded-xl transition-all duration-200 text-base shadow-md hover:shadow-lg mt-2 disabled:opacity-50 cursor-pointer"
+                      className="w-full h-11 flex items-center justify-center bg-[#0056c6] hover:bg-[#004bb0] hover:scale-[1.02] active:scale-[0.98] text-white font-bold rounded-xl transition-all duration-200 text-base shadow-md hover:shadow-lg mt-2 disabled:opacity-50 cursor-pointer"
                       disabled={loading}
                     >
                       {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
@@ -369,7 +369,7 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                 )}
 
                 {/* Separador "ou" */}
-                <div className="flex items-center gap-3 my-6">
+                <div className="flex items-center gap-3 my-5">
                   <div className="flex-1 h-px bg-slate-200/80" />
                   <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">ou</span>
                   <div className="flex-1 h-px bg-slate-200/80" />
