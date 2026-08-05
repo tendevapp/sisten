@@ -105,6 +105,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
       admin: 'Admin',
       visualizador: 'Visualizador',
       solicitante: 'Solicitante',
+      requisitante: 'Requisitante',
       gestor: 'Gestor',
       comprador: 'Comprador',
       coordenador_suprimentos: 'Coord. Suprimentos',
@@ -117,11 +118,12 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
 
   const rolesList = [
     { value: 'admin', label: 'Administrador (Padrão)' },
+    { value: 'requisitante', label: 'Requisitante' },
+    { value: 'solicitante', label: 'Solicitante' },
     { value: 'gestor', label: 'Gestor' },
     { value: 'comprador', label: 'Comprador' },
     { value: 'coordenador_suprimentos', label: 'Coordenador Suprimentos' },
     { value: 'atendente', label: 'Atendente' },
-    { value: 'solicitante', label: 'Solicitante' },
     { value: 'visualizador', label: 'Visualizador' },
   ];
 

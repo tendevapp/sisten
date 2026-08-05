@@ -103,6 +103,7 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
       admin: 'Administrador',
       visualizador: 'Visualizador (Padrão)',
       solicitante: 'Solicitante',
+      requisitante: 'Requisitante',
       gestor: 'Gestor de Setor',
       comprador: 'Comprador SAP',
       coordenador_suprimentos: 'Coordenador de Suprimentos',
