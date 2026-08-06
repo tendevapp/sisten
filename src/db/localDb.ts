@@ -898,6 +898,11 @@ class LocalDatabase {
 
         if (insertError) {
           console.error('Erro ao inserir perfil padrão:', insertError);
+          // Sem o perfil gravado no Supabase, o login seguiria com um id que não
+          // existe em `profiles` — FKs (comprador_id, solicitante_id, etc.) e
+          // sanitizeRequestRow descartariam silenciosamente esse usuário depois.
+          await supabase.auth.signOut();
+          return 'Erro ao criar perfil do usuário. Tente novamente ou procure o administrador.';
         }
 
         mappedProfile = newProfile;
@@ -1604,8 +1609,8 @@ class LocalDatabase {
         request_number: newNotif.request_number || null,
         created_at: newNotif.created_at
       }]).then(({ error }) => {
-        if (error) console.warn('Falha ao persistir notificação no Supabase:', error);
-      }).catch(err => console.warn('Erro ao inserir notificação no Supabase:', err));
+        if (error) console.error('Falha ao persistir notificação no Supabase:', error);
+      }).catch(err => console.error('Erro ao inserir notificação no Supabase:', err));
     }
   }
 
@@ -1624,7 +1629,7 @@ class LocalDatabase {
       const nid = notifications[idx].id;
       (async () => {
         try { if (supabase) await supabase.from('notifications').update({ is_read: true }).eq('id', nid); }
-        catch (e) { console.warn('Falha ao marcar notificação como lida no Supabase:', e); }
+        catch (e) { console.error('Falha ao marcar notificação como lida no Supabase:', e); }
       })();
     }
   }
@@ -1946,7 +1951,8 @@ class LocalDatabase {
     if (reqIdx !== -1 && requests[reqIdx].type === 'chamado' && requests[reqIdx].status === 'aguardando_solicitante') {
       const solicitante = requests[reqIdx].solicitante_id;
       if (user.id === solicitante) {
-        await this.transitionRequestStatus(reqId, 'em_atendimento', 'Solicitante respondeu ao chamado, SLA retomado.');
+        const reactivated = await this.transitionRequestStatus(reqId, 'em_atendimento', 'Solicitante respondeu ao chamado, SLA retomado.');
+        if (!reactivated) console.error(`Falha ao reativar SLA do chamado #${requests[reqIdx].number} após resposta do solicitante.`);
       }
     }
   }
@@ -2026,6 +2032,12 @@ class LocalDatabase {
         category_id: draft.category_id,
         target_sector_id: draft.target_sector_id,
         registration_type: draft.registration_type,
+        brand: draft.brand,
+        suggested_supplier: draft.suggested_supplier,
+        representante_nome: draft.representante_nome,
+        representante_cargo: draft.representante_cargo,
+        representante_telefone: draft.representante_telefone,
+        representante_email: draft.representante_email,
         contrato_tipo: draft.contrato_tipo,
         fornecedor_terceiro: draft.fornecedor_terceiro,
         titulo: draft.titulo,
@@ -2327,7 +2339,14 @@ class LocalDatabase {
 
     const idsDePerfil = new Set(this.getProfiles().map(p => p.id));
     for (const campo of ['solicitante_id', 'comprador_id', 'atendente_id']) {
-      if (row[campo] && !idsDePerfil.has(row[campo] as string)) row[campo] = null;
+      if (row[campo] && !idsDePerfil.has(row[campo] as string)) {
+        // Não é necessariamente um id inválido: pode ser só o cache local de perfis
+        // desatualizado (usuário criado recentemente, sync ainda não rodou). Zerar
+        // sem avisar faz o campo sumir silenciosamente do Supabase mesmo quando o
+        // valor selecionado na tela era válido — loga para dar visibilidade.
+        console.warn(`sanitizeRequestRow: ${campo}="${row[campo]}" não está no cache local de perfis; campo será enviado como null.`);
+        row[campo] = null;
+      }
     }
     return row;
   }
@@ -2397,43 +2416,63 @@ class LocalDatabase {
    * aprova e ninguém mais fica sabendo — cada usuário veria um status diferente
    * da mesma solicitação. Ver o design da página Solicitações.
    */
-  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): Promise<void> {
+  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): Promise<boolean> {
     const user = this.getCurrentUser();
-    if (!user) return;
+    if (!user) return false;
 
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
-    if (idx !== -1) {
-      const request = requests[idx];
-      const fromStatus = request.status;
+    if (idx === -1) return false;
 
-      request.status = toStatus;
-      request.updated_at = new Date().toISOString();
+    const request = requests[idx];
+    const fromStatus = request.status;
+    const prevUpdatedAt = request.updated_at;
+    const prevFirstResponseAt = request.first_response_at;
+    const prevResolvedAt = request.resolved_at;
 
-      if (toStatus === 'em_atendimento' && !request.first_response_at) {
-        request.first_response_at = new Date().toISOString();
-      }
+    request.status = toStatus;
+    request.updated_at = new Date().toISOString();
 
-      if (toStatus === 'resolvido') {
-        request.resolved_at = new Date().toISOString();
-      }
-
-      this.setStorageItem(this.requestsKey, requests);
-
-      await this.publishRequestRow(request);
-      await this.logStatusChange(reqId, fromStatus, toStatus, user.id, user.name, comment);
-      this.logActivity(user.id, 'Solicitações', 'Alteração de Status', `Transicionou #${request.number} de ${fromStatus} para ${toStatus}.`);
-
-      // Notify owner
-      this.createNotification(
-        request.solicitante_id,
-        `Status Atualizado: #${request.number}`,
-        `Sua solicitação foi alterada para: ${toStatus.toUpperCase()}.${comment ? ` Motivo: ${comment}` : ''}`,
-        toStatus === 'rejeitada' ? 'alert' : (toStatus === 'resolvido' ? 'success' : 'info'),
-        request.id,
-        request.number
-      );
+    if (toStatus === 'em_atendimento' && !request.first_response_at) {
+      request.first_response_at = new Date().toISOString();
     }
+
+    if (toStatus === 'resolvido') {
+      request.resolved_at = new Date().toISOString();
+    }
+
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(request);
+    if (!published) {
+      // Reverte o cache local: sem isso o autor da ação veria o novo status
+      // enquanto o Supabase (fonte de verdade para os demais usuários) manteve o antigo.
+      const revertRequests = this.getRequests();
+      const revertIdx = revertRequests.findIndex(r => r.id === reqId);
+      if (revertIdx !== -1) {
+        revertRequests[revertIdx].status = fromStatus;
+        revertRequests[revertIdx].updated_at = prevUpdatedAt;
+        revertRequests[revertIdx].first_response_at = prevFirstResponseAt;
+        revertRequests[revertIdx].resolved_at = prevResolvedAt;
+        this.setStorageItem(this.requestsKey, revertRequests);
+      }
+      return false;
+    }
+
+    await this.logStatusChange(reqId, fromStatus, toStatus, user.id, user.name, comment);
+    this.logActivity(user.id, 'Solicitações', 'Alteração de Status', `Transicionou #${request.number} de ${fromStatus} para ${toStatus}.`);
+
+    // Notify owner
+    this.createNotification(
+      request.solicitante_id,
+      `Status Atualizado: #${request.number}`,
+      `Sua solicitação foi alterada para: ${toStatus.toUpperCase()}.${comment ? ` Motivo: ${comment}` : ''}`,
+      toStatus === 'rejeitada' ? 'alert' : (toStatus === 'resolvido' ? 'success' : 'info'),
+      request.id,
+      request.number
+    );
+
+    return true;
   }
 
   private async logStatusChange(
@@ -3182,7 +3221,7 @@ class LocalDatabase {
     return transitions[f]?.includes(t) || false;
   }
 
-  public updateBuyerFields(ri: string, obs: string, deliveryDate: string, itemStatus?: ItemStatus | ''): boolean {
+  public async updateBuyerFields(ri: string, obs: string, deliveryDate: string, itemStatus?: ItemStatus | ''): Promise<boolean> {
     const reqs = this.getRequisicoes();
     const idx = reqs.findIndex(r => r.ri === ri);
     if (idx !== -1) {
@@ -3192,6 +3231,10 @@ class LocalDatabase {
       const prevObs = reqs[idx].obs_comprador || '';
       const prevDate = reqs[idx].data_entrega_prevista || '';
       const prevStatus = reqs[idx].item_status || null;
+      const prevObsUpdatedAt = reqs[idx].obs_updated_at;
+      const prevObsUpdatedBy = reqs[idx].obs_updated_by;
+      const prevStatusUpdatedAt = reqs[idx].item_status_updated_at;
+      const prevStatusUpdatedBy = reqs[idx].item_status_updated_by;
 
       reqs[idx].obs_comprador = obs;
       reqs[idx].data_entrega_prevista = deliveryDate;
@@ -3222,9 +3265,7 @@ class LocalDatabase {
       });
       this.setStorageItem(this.obsHistoryKey, hist);
 
-      // Async write to Supabase
-      (async () => {
-        try {
+      try {
           const updatePayload: any = {
             obs_comprador: obs,
             data_entrega_prevista: deliveryDate || null,
@@ -3238,7 +3279,8 @@ class LocalDatabase {
             updatePayload.item_status_updated_by = userName;
           }
 
-          await supabase.from('requisicoes').update(updatePayload).eq('ri', ri);
+          const { error: updateErr } = await supabase.from('requisicoes').update(updatePayload).eq('ri', ri);
+          if (updateErr) throw updateErr;
 
           // Registra histórico detalhado
           await supabase.from('obs_historico').insert({
@@ -3283,12 +3325,28 @@ class LocalDatabase {
             }
             this.setStorageItem(this.requisicoesKey, latestReqs);
           }
-        } catch (e) {
-          console.error("Erro ao sincronizar updateBuyerFields no Supabase:", e);
-        }
-      })();
 
-      return true;
+          return true;
+      } catch (e) {
+        console.error("Erro ao sincronizar updateBuyerFields no Supabase:", e);
+
+        // Reverte o cache local: sem isso a tela mostraria "salvo" enquanto o
+        // Supabase (fonte de verdade para outros usuários) ficou com o valor antigo.
+        const revertReqs = this.getRequisicoes();
+        const revertIdx = revertReqs.findIndex(r => r.ri === ri);
+        if (revertIdx !== -1) {
+          revertReqs[revertIdx].obs_comprador = prevObs;
+          revertReqs[revertIdx].data_entrega_prevista = prevDate;
+          revertReqs[revertIdx].obs_updated_at = prevObsUpdatedAt;
+          revertReqs[revertIdx].obs_updated_by = prevObsUpdatedBy;
+          revertReqs[revertIdx].item_status = prevStatus || undefined;
+          revertReqs[revertIdx].item_status_updated_at = prevStatusUpdatedAt;
+          revertReqs[revertIdx].item_status_updated_by = prevStatusUpdatedBy;
+          this.setStorageItem(this.requisicoesKey, revertReqs);
+        }
+
+        return false;
+      }
     }
     return false;
   }
@@ -5798,102 +5856,116 @@ class LocalDatabase {
 
   // --- SYSTEM UTILITY ADDITIONS ---
 
-  public updateUserStatus(userId: string, status: 'ativo' | 'rejeitado' | 'inativo'): boolean {
-    const users = this.getProfiles();
-    const idx = users.findIndex(u => u.id === userId);
-    if (idx !== -1) {
-      users[idx].status = status as any;
-
-      if (status === 'ativo' && users[idx].roles.includes('pendente')) {
-        users[idx].roles = ['visualizador'];
-      }
-
-      this.setStorageItem(this.profilesKey, users);
-      this.logActivity('admin', 'Administração', 'Aprovar Usuário', `Usuário ${users[idx].name} status atualizado para ${status}.`);
-
-      // Atualiza o status no Supabase de forma assíncrona
-      if (supabase) {
-        supabase.from('profiles')
-          .update({ 
-            status: status,
-            roles: users[idx].roles
-          })
-          .eq('id', userId)
-          .then(({ error }) => {
-            if (error) {
-              console.error('Erro ao sincronizar status do usuário no Supabase:', error);
-            }
-          })
-          .catch(err => {
-            console.error('Falha de escrita de status no Supabase:', err);
-          });
-      }
-
-      return true;
-    }
-    return false;
-  }
-
-  public updateUserRole(userId: string, role: string): boolean {
-    const users = this.getProfiles();
-    const idx = users.findIndex(u => u.id === userId);
-    if (idx !== -1) {
-      users[idx].roles = [role as any];
-
-      if (users[idx].status === 'pendente' && role !== 'pendente') {
-        users[idx].status = 'ativo';
-      }
-
-      this.setStorageItem(this.profilesKey, users);
-      this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
-
-      // Atualiza os papéis de acesso no Supabase de forma assíncrona
-      if (supabase) {
-        supabase.from('profiles')
-          .update({ 
-            roles: [role],
-            status: users[idx].status
-          })
-          .eq('id', userId)
-          .then(({ error }) => {
-            if (error) {
-              console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
-            }
-          })
-          .catch(err => {
-            console.error('Falha de escrita de papéis no Supabase:', err);
-          });
-      }
-
-      return true;
-    }
-    return false;
-  }
-
-  // Define o grupo de compras SAP (ex.: 314, 358) associado a este usuário,
-  // editável na tela de Gestão de Usuários (Admin). Vazio remove a associação.
-  public updateUserGrupoCompras(userId: string, grupoCompras: string): boolean {
+  public async updateUserStatus(userId: string, status: 'ativo' | 'rejeitado' | 'inativo'): Promise<boolean> {
     const users = this.getProfiles();
     const idx = users.findIndex(u => u.id === userId);
     if (idx === -1) return false;
 
+    const prevStatus = users[idx].status;
+    const prevRoles = users[idx].roles;
+
+    users[idx].status = status as any;
+    if (status === 'ativo' && users[idx].roles.includes('pendente')) {
+      users[idx].roles = ['visualizador'];
+    }
+    this.setStorageItem(this.profilesKey, users);
+
+    if (supabase) {
+      const { error } = await supabase.from('profiles')
+        .update({
+          status: status,
+          roles: users[idx].roles
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar status do usuário no Supabase:', error);
+        // Reverte o cache local: sem isso o admin veria a mudança como aplicada
+        // enquanto o Supabase (visto por todos os outros usuários) mantém o valor antigo.
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].status = prevStatus;
+          revertUsers[revertIdx].roles = prevRoles;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
+    }
+
+    this.logActivity('admin', 'Administração', 'Aprovar Usuário', `Usuário ${users[idx].name} status atualizado para ${status}.`);
+    return true;
+  }
+
+  public async updateUserRole(userId: string, role: string): Promise<boolean> {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    const prevRoles = users[idx].roles;
+    const prevStatus = users[idx].status;
+
+    users[idx].roles = [role as any];
+    if (users[idx].status === 'pendente' && role !== 'pendente') {
+      users[idx].status = 'ativo';
+    }
+    this.setStorageItem(this.profilesKey, users);
+
+    if (supabase) {
+      const { error } = await supabase.from('profiles')
+        .update({
+          roles: [role],
+          status: users[idx].status
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].roles = prevRoles;
+          revertUsers[revertIdx].status = prevStatus;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
+    }
+
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
+    return true;
+  }
+
+  // Define o grupo de compras SAP (ex.: 314, 358) associado a este usuário,
+  // editável na tela de Gestão de Usuários (Admin). Vazio remove a associação.
+  public async updateUserGrupoCompras(userId: string, grupoCompras: string): Promise<boolean> {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    const prevValue = users[idx].grupo_compras;
     const value = grupoCompras.trim() || null;
     users[idx].grupo_compras = value;
     this.setStorageItem(this.profilesKey, users);
-    this.logActivity('admin', 'Administração', 'Editar Perfil', `Grupo de compras de ${users[idx].name} definido como "${value ?? '—'}".`);
 
     if (supabase) {
-      supabase.from('profiles')
+      const { error } = await supabase.from('profiles')
         .update({ grupo_compras: value })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) console.error('Erro ao sincronizar grupo de compras no Supabase:', error);
-        })
-        .catch(err => {
-          console.error('Falha de escrita do grupo de compras no Supabase:', err);
-        });
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar grupo de compras no Supabase:', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].grupo_compras = prevValue;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
     }
 
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Grupo de compras de ${users[idx].name} definido como "${value ?? '—'}".`);
     return true;
   }
 
@@ -5901,27 +5973,33 @@ class LocalDatabase {
   // (solicitações de compra), editável na coluna "Aprovador" de Gestão de
   // Usuários. É a única regra usada em Approvals/notificações para decidir
   // quem vê e é notificado de cada solicitação.
-  public updateUserAprovadorSetores(userId: string, sectorIds: string[]): boolean {
+  public async updateUserAprovadorSetores(userId: string, sectorIds: string[]): Promise<boolean> {
     const users = this.getProfiles();
     const idx = users.findIndex(u => u.id === userId);
     if (idx === -1) return false;
 
+    const prevSectorIds = users[idx].aprovador_setores;
     users[idx].aprovador_setores = sectorIds;
     this.setStorageItem(this.profilesKey, users);
-    this.logActivity('admin', 'Administração', 'Editar Perfil', `Setores de aprovação de ${users[idx].name} atualizados (${sectorIds.length} setor(es)).`);
 
     if (supabase) {
-      supabase.from('profiles')
+      const { error } = await supabase.from('profiles')
         .update({ aprovador_setores: sectorIds })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) console.error('Erro ao sincronizar setores de aprovação no Supabase:', error);
-        })
-        .catch(err => {
-          console.error('Falha de escrita dos setores de aprovação no Supabase:', err);
-        });
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar setores de aprovação no Supabase:', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].aprovador_setores = prevSectorIds;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
     }
 
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Setores de aprovação de ${users[idx].name} atualizados (${sectorIds.length} setor(es)).`);
     return true;
   }
 
@@ -5929,27 +6007,33 @@ class LocalDatabase {
   // mesmo modal "Aprovador" de Gestão de Usuários. Aditivo: soma com a
   // notificação automática por role (coordenador_suprimentos/comprador) em
   // submitRequest/saveRequestEdit, não a substitui.
-  public updateUserAprovadorCadastroSap(userId: string, value: boolean): boolean {
+  public async updateUserAprovadorCadastroSap(userId: string, value: boolean): Promise<boolean> {
     const users = this.getProfiles();
     const idx = users.findIndex(u => u.id === userId);
     if (idx === -1) return false;
 
+    const prevValue = users[idx].aprovador_cadastro_sap;
     users[idx].aprovador_cadastro_sap = value;
     this.setStorageItem(this.profilesKey, users);
-    this.logActivity('admin', 'Administração', 'Editar Perfil', `${users[idx].name} ${value ? 'marcado' : 'desmarcado'} como aprovador de Cadastro SAP.`);
 
     if (supabase) {
-      supabase.from('profiles')
+      const { error } = await supabase.from('profiles')
         .update({ aprovador_cadastro_sap: value })
-        .eq('id', userId)
-        .then(({ error }) => {
-          if (error) console.error('Erro ao sincronizar aprovador de Cadastro SAP no Supabase:', error);
-        })
-        .catch(err => {
-          console.error('Falha de escrita do aprovador de Cadastro SAP no Supabase:', err);
-        });
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar aprovador de Cadastro SAP no Supabase:', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].aprovador_cadastro_sap = prevValue;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
     }
 
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `${users[idx].name} ${value ? 'marcado' : 'desmarcado'} como aprovador de Cadastro SAP.`);
     return true;
   }
 
@@ -6003,8 +6087,7 @@ class LocalDatabase {
         return true;
       }
     }
-    await this.transitionRequestStatus(reqId, status, comment);
-    return true;
+    return await this.transitionRequestStatus(reqId, status, comment);
   }
 
   /** Prazo de conclusão do quadro Kanban (Contratos > Demandas). `prazo` em ISO (YYYY-MM-DD) ou null para limpar. */
@@ -6236,41 +6319,53 @@ class LocalDatabase {
   }
 
   // Profile Management methods
-  public updateProfileFields(userId: string, name: string, cargo: string): Profile | null {
+  public async updateProfileFields(userId: string, name: string, cargo: string): Promise<Profile | null> {
     const users = this.getProfiles();
     const idx = users.findIndex(u => u.id === userId);
-    if (idx !== -1) {
-      users[idx].name = name;
-      users[idx].cargo = cargo;
-      this.setStorageItem(this.profilesKey, users);
+    if (idx === -1) return null;
 
-      // Also update in session if it's the current user
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.id === userId) {
-        currentUser.name = name;
-        currentUser.cargo = cargo;
-        this.setStorageItem(this.currentUserKey, currentUser);
-      }
-      this.logActivity(userId, 'Perfil', 'Atualização', `Nome atualizado para "${name}" e cargo para "${cargo}".`);
+    const prevName = users[idx].name;
+    const prevCargo = users[idx].cargo;
 
-      // Atualiza os dados de nome e cargo no Supabase de forma assíncrona
-      if (supabase) {
-        supabase.from('profiles')
-          .update({ name, cargo })
-          .eq('id', userId)
-          .then(({ error }) => {
-            if (error) {
-              console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
-            }
-          })
-          .catch(err => {
-            console.error('Falha de escrita de campos de perfil no Supabase:', err);
-          });
-      }
+    users[idx].name = name;
+    users[idx].cargo = cargo;
+    this.setStorageItem(this.profilesKey, users);
 
-      return users[idx];
+    // Also update in session if it's the current user
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      currentUser.name = name;
+      currentUser.cargo = cargo;
+      this.setStorageItem(this.currentUserKey, currentUser);
     }
-    return null;
+
+    if (supabase) {
+      const { error } = await supabase.from('profiles')
+        .update({ name, cargo })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
+        // Reverte cache local e sessão: sem isso o usuário veria o novo nome/cargo
+        // aplicado enquanto o Supabase mantém o valor antigo.
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].name = prevName;
+          revertUsers[revertIdx].cargo = prevCargo;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        if (currentUser && currentUser.id === userId) {
+          currentUser.name = prevName;
+          currentUser.cargo = prevCargo;
+          this.setStorageItem(this.currentUserKey, currentUser);
+        }
+        return null;
+      }
+    }
+
+    this.logActivity(userId, 'Perfil', 'Atualização', `Nome atualizado para "${name}" e cargo para "${cargo}".`);
+    return users[idx];
   }
 
   public async changePassword(newPass: string): Promise<boolean> {

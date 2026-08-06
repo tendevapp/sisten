@@ -11,7 +11,7 @@ export const PAGE_WIDTH = 595.28; // A4 portrait, pt
 export const PAGE_HEIGHT = 841.89;
 export const MARGIN = 48;
 
-const LOGO_SIZE = 32; // pt, desenhado no canto superior direito da 1ª página
+const LOGO_HEIGHT = 56; // pt — a largura é derivada da proporção real do PNG, nunca esticada
 
 // Buscado uma vez por sessão e reaproveitado entre exportações — é o mesmo
 // arquivo estático em public/logo.png. `undefined` = ainda não tentou buscar;
@@ -21,7 +21,7 @@ let cachedLogoBytes: ArrayBuffer | null | undefined;
 async function getLogoBytes(): Promise<ArrayBuffer | null> {
   if (cachedLogoBytes !== undefined) return cachedLogoBytes;
   try {
-    const response = await fetch('/logo.png');
+    const response = await fetch('/logo-ten.png');
     if (!response.ok) throw new Error(`Falha ao buscar logo (${response.status})`);
     cachedLogoBytes = await response.arrayBuffer();
   } catch (e) {
@@ -69,12 +69,12 @@ export class PdfTextWriter {
     this.contentWidth = PAGE_WIDTH - MARGIN * 2;
 
     if (this.logo) {
-      this.page.drawImage(this.logo, {
-        x: PAGE_WIDTH - MARGIN - LOGO_SIZE,
-        y: PAGE_HEIGHT - MARGIN - LOGO_SIZE + 8,
-        width: LOGO_SIZE,
-        height: LOGO_SIZE
-      });
+      // Largura derivada da proporção real do PNG — width/height fixos e
+      // iguais (como antes) distorcia a logo, que não é quadrada.
+      const logoWidth = (this.logo.width / this.logo.height) * LOGO_HEIGHT;
+      const logoY = this.y - LOGO_HEIGHT;
+      this.page.drawImage(this.logo, { x: MARGIN, y: logoY, width: logoWidth, height: LOGO_HEIGHT });
+      this.y = logoY - 20;
     }
   }
 

@@ -76,6 +76,7 @@ function SapObservationForm({ ri, initialComment, initialDate, initialStatus, on
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [history, setHistory] = useState<SAPObsHistory[]>([]);
+  const toast = useToast();
 
   // Reset internal state when ri changes
   useEffect(() => {
@@ -89,26 +90,31 @@ function SapObservationForm({ ri, initialComment, initialDate, initialStatus, on
     setHistory(hist.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }, [ri, initialComment, initialDate, initialStatus]);
 
-  // Unified save function (instant write, no unnecessary delay)
-  const handleSave = (currentComment: string, currentDate: string, currentStatus: ItemStatus | '', showIndicator = true) => {
+  // Unified save function
+  const handleSave = async (currentComment: string, currentDate: string, currentStatus: ItemStatus | '', showIndicator = true) => {
     setIsSaving(true);
     if (showIndicator) setSaveSuccess(false);
-    
-    // Instant save in local database
-    localDb.updateBuyerFields(ri, currentComment, currentDate, currentStatus);
-    
+
+    const ok = await localDb.updateBuyerFields(ri, currentComment, currentDate, currentStatus);
+
     setIsSaving(false);
+
+    if (!ok) {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+      return;
+    }
+
     if (showIndicator) {
       setSaveSuccess(true);
       setTimeout(() => {
         setSaveSuccess(false);
       }, 2000);
     }
-    
+
     // Reload history from database
     const hist = localDb.getObsHistory(ri);
     setHistory(hist.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-    
+
     onSaveSuccess();
   };
 
@@ -644,33 +650,21 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
     setSyncStatus('syncing');
     const nextComment = field === 'obs' ? tempComment : (selectedRecord?.obs_comprador || '');
     const nextDate = field === 'promessa' ? tempDate : (selectedRecord?.data_entrega_prevista || '');
-    
-    // Simulating exponential backoff retries offline queue logic
-    let attempt = 0;
-    const maxRetries = 2;
-    const tryUpdate = async (): Promise<boolean> => {
-      attempt++;
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(Math.random() > 0.05); // low failure simulation
-        }, 150);
-      });
-    };
 
+    const maxRetries = 2;
     let success = false;
-    while (attempt < maxRetries && !success) {
-      success = await tryUpdate();
+    for (let attempt = 0; attempt < maxRetries && !success; attempt++) {
+      success = await localDb.updateBuyerFields(ri, nextComment, nextDate);
     }
 
     if (success) {
-      localDb.updateBuyerFields(ri, nextComment, nextDate);
       setEditingId(null);
       setEditingField(null);
       setSyncStatus('idle');
       loadData();
     } else {
       setSyncStatus('failed');
-      toast.warning('Instabilidade de rede detectada. Os dados foram retidos em fila offline para sincronização.');
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 

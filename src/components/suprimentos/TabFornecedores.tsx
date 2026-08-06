@@ -18,7 +18,7 @@ import { formatInt, formatPctInt, formatBRLCompacto } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
 import {
-  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  colunasEnrichedSAPRecord, filtrosEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
   searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
 } from '../../lib/composicaoSuprimentos';
 import SpendConcentracaoChart from './SpendConcentracaoChart';
@@ -35,6 +35,7 @@ export default function TabFornecedores({ records, compradores, onAbrirComposica
   const spend = useMemo(() => calcSpend(records), [records]);
 
   const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+  const filtros = useMemo(() => filtrosEnrichedSAPRecord(compradores), [compradores]);
 
   const abrirModalFornecedor = useCallback((fornecedor: string) => {
     const items = records.filter(r => temPO(r) && (r.fornecedor_name?.trim() || 'Não informado') === fornecedor);
@@ -49,11 +50,12 @@ export default function TabFornecedores({ records, compradores, onAbrirComposica
       valueHeader: 'Valor Total',
       unidadeItem: 'item(ns)',
       detailColumns: colunas,
+      filters: filtros,
       searchPredicate: searchEnrichedSAPRecord,
       searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
       itemKey: itemKeyEnrichedSAPRecord,
     });
-  }, [records, colunas, onAbrirComposicao]);
+  }, [records, colunas, filtros, onAbrirComposicao]);
 
   const kpis = useMemo(() => {
     const totalSpend = linhas.reduce((s, l) => s + l.spend, 0);

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestComment } from '../types';
+import { useToast } from '../components/ui/Toast';
 
 interface HelpdeskProps {
   user: Profile;
@@ -19,6 +20,7 @@ interface HelpdeskProps {
 }
 
 export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProps) {
+  const toast = useToast();
   const [tickets, setTickets] = useState<Request[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   
@@ -73,13 +75,19 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
 
   const handleTakeOver = async () => {
     if (!selectedTicket) return;
-    await localDb.updateRequestStatus(selectedTicket.id, 'em_atendimento', user.id, 'Técnico assumiu o atendimento do chamado.');
+    const ok = await localDb.updateRequestStatus(selectedTicket.id, 'em_atendimento', user.id, 'Técnico assumiu o atendimento do chamado.');
+    if (!ok) toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     loadTickets();
   };
 
   const handleResolve = async () => {
     if (!selectedTicket) return;
-    await localDb.updateRequestStatus(selectedTicket.id, 'resolvido', user.id, 'Chamado resolvido com sucesso pelo suporte.');
+    const ok = await localDb.updateRequestStatus(selectedTicket.id, 'resolvido', user.id, 'Chamado resolvido com sucesso pelo suporte.');
+    if (!ok) {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+      loadTickets();
+      return;
+    }
     await localDb.addComment(selectedTicket.id, user.id, 'Atendimento finalizado com sucesso pelo técnico. Por favor, avalie a satisfação nas Minhas Solicitações!', 'public');
     loadTickets();
   };
@@ -88,11 +96,12 @@ export default function Helpdesk({ user, onNavigate, initialView }: HelpdeskProp
     if (!selectedTicket) return;
     // Toggles between waiting for user (paused) or in progress
     const nextStatus = selectedTicket.status === 'em_atendimento' ? 'aguardando_solicitante' : 'em_atendimento';
-    const msg = nextStatus === 'aguardando_solicitante' 
-      ? 'Atendimento pausado: Aguardando retorno com informações do solicitante.' 
+    const msg = nextStatus === 'aguardando_solicitante'
+      ? 'Atendimento pausado: Aguardando retorno com informações do solicitante.'
       : 'Atendimento retomado pelo suporte técnico.';
 
-    await localDb.updateRequestStatus(selectedTicket.id, nextStatus, user.id, msg);
+    const ok = await localDb.updateRequestStatus(selectedTicket.id, nextStatus, user.id, msg);
+    if (!ok) toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     loadTickets();
   };
 

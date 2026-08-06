@@ -142,11 +142,15 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
 
     try {
-      await localDb.transitionRequestStatus(
+      const ok = await localDb.transitionRequestStatus(
         selectedReq.id,
         'aguardando_solicitante',
         `Dúvida/Pendência de Suprimentos: ${question}`
       );
+      if (!ok) {
+        setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+        return;
+      }
 
       // Post comment
       await localDb.addRequestComment(selectedReq.id, question, false);
@@ -175,7 +179,11 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         finalComment += ` | Código SAP Gerado: ${sapResultCode}`;
       }
 
-      await localDb.transitionRequestStatus(selectedReq.id, 'resolvido', finalComment);
+      const ok = await localDb.transitionRequestStatus(selectedReq.id, 'resolvido', finalComment);
+      if (!ok) {
+        setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+        return;
+      }
 
       // Add official comment
       await localDb.addRequestComment(selectedReq.id, finalComment, false);

@@ -136,46 +136,55 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
-  const handleApproveUser = (id: string, approve: boolean) => {
-    const ok = localDb.updateUserStatus(id, approve ? 'ativo' : 'rejeitado');
+  const handleApproveUser = async (id: string, approve: boolean) => {
+    const ok = await localDb.updateUserStatus(id, approve ? 'ativo' : 'rejeitado');
     if (ok) {
       loadData();
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 
-  const handleToggleUserStatus = (id: string, newStatus: 'ativo' | 'inativo') => {
-    const ok = localDb.updateUserStatus(id, newStatus);
+  const handleToggleUserStatus = async (id: string, newStatus: 'ativo' | 'inativo') => {
+    const ok = await localDb.updateUserStatus(id, newStatus);
     if (ok) {
       toast.success(`Status do usuário alterado para ${newStatus.toUpperCase()}.`);
       loadData();
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 
-  const handleUpdateRole = (id: string) => {
+  const handleUpdateRole = async (id: string) => {
     if (!editingRole) return;
-    const ok = localDb.updateUserRole(id, editingRole);
+    const ok = await localDb.updateUserRole(id, editingRole);
     if (ok) {
       setSelectedProfileId(null);
       setEditingRole('');
       loadData();
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 
-  const handleSaveGrupoCompras = (id: string) => {
+  const handleSaveGrupoCompras = async (id: string) => {
     const value = grupoComprasInputs[id] ?? '';
-    const ok = localDb.updateUserGrupoCompras(id, value);
+    const ok = await localDb.updateUserGrupoCompras(id, value);
     if (ok) {
       loadData();
       setGrupoComprasInputs(prev => { const next = { ...prev }; delete next[id]; return next; });
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 
   // Salvam a cada clique, sem botão de confirmar: é um toggle, e o estado da
-  // linha já mostra o resultado. Em falha, o loadData() do catch redesenha a
+  // linha já mostra o resultado. Em falha, o loadData() redesenha a
   // partir do que de fato está gravado, desfazendo a marcação otimista.
-  const handleChangeAprovadorSetores = (id: string, next: string[]) => {
+  const handleChangeAprovadorSetores = async (id: string, next: string[]) => {
     try {
-      localDb.updateUserAprovadorSetores(id, next);
+      const ok = await localDb.updateUserAprovadorSetores(id, next);
+      if (!ok) toast.error('Não foi possível salvar os setores. Tente novamente.');
       loadData();
     } catch (e) {
       console.error('Falha ao atualizar setores de aprovação:', e);
@@ -184,9 +193,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
   };
 
-  const handleChangeAprovadorCadastroSap = (id: string, next: boolean) => {
+  const handleChangeAprovadorCadastroSap = async (id: string, next: boolean) => {
     try {
-      localDb.updateUserAprovadorCadastroSap(id, next);
+      const ok = await localDb.updateUserAprovadorCadastroSap(id, next);
+      if (!ok) toast.error('Não foi possível salvar. Tente novamente.');
       loadData();
     } catch (e) {
       console.error('Falha ao atualizar aprovador de Cadastro SAP:', e);

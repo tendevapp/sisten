@@ -8,6 +8,7 @@ import { X, Copy, Check, ExternalLink, Calendar, User, Package, FileText, Phone,
 import { EnrichedSAPRecord, FornecedorMaterialRow, ItemStatus } from '../types';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
+import { useToast } from './ui/Toast';
 
 interface SapDetailModalProps {
   record: EnrichedSAPRecord;
@@ -38,21 +39,27 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
   const [statusInput, setStatusInput] = useState<ItemStatus | ''>(record.item_status || 'Aguardando Cotação');
   const [obsInput, setObsInput] = useState<string>(record.obs_comprador || '');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const toast = useToast();
 
   useEffect(() => {
     setStatusInput(record.item_status || 'Aguardando Cotação');
     setObsInput(record.obs_comprador || '');
   }, [record.ri]);
 
-  const handleSaveBuyerFields = () => {
+  const handleSaveBuyerFields = async () => {
     setSaveState('saving');
-    localDb.updateBuyerFields(record.ri, obsInput, record.data_entrega_prevista || '', statusInput);
+    const ok = await localDb.updateBuyerFields(record.ri, obsInput, record.data_entrega_prevista || '', statusInput);
+
+    if (!ok) {
+      setSaveState('idle');
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+      return;
+    }
+
     setAuditHistory(localDb.getObsHistory(record.ri).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-    setTimeout(() => {
-      setSaveState('saved');
-      onUpdate?.();
-      setTimeout(() => setSaveState('idle'), 1500);
-    }, 300);
+    setSaveState('saved');
+    onUpdate?.();
+    setTimeout(() => setSaveState('idle'), 1500);
   };
 
   useEffect(() => {

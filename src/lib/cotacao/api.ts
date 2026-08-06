@@ -594,7 +594,8 @@ async function atualizarStatusItensAdjudicados(loteId: string, decisoes: Decisao
     if (!registro) continue;
     if (!localDb.isValidStatusTransition(registro.item_status, 'Aguardando Aprovação PO')) continue;
     try {
-      localDb.updateBuyerFields(item.ri, registro.obs_comprador || '', registro.data_entrega_prevista || '', 'Aguardando Aprovação PO');
+      const ok = await localDb.updateBuyerFields(item.ri, registro.obs_comprador || '', registro.data_entrega_prevista || '', 'Aguardando Aprovação PO');
+      if (!ok) console.error(`Falha ao atualizar status do item ${item.ri} após adjudicação: escrita no Supabase não confirmada.`);
     } catch (e) {
       console.error(`Falha ao atualizar status do item ${item.ri} após adjudicação:`, e);
     }

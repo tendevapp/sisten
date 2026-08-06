@@ -10,7 +10,7 @@ import { formatInt, formatPctInt, formatPct, formatBRLCompacto } from '../../lib
 import KpiCard from '../charts/KpiCard';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
 import {
-  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  colunasEnrichedSAPRecord, filtrosEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
   searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
 } from '../../lib/composicaoSuprimentos';
 import RequisitadoVsPedidoChart from '../demandas/RequisitadoVsPedidoChart';
@@ -32,6 +32,7 @@ interface TabDemandasProps {
 
 export default function TabDemandas({ records, allRecords, granularidade, compradores, onAbrirComposicao }: TabDemandasProps) {
   const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+  const filtros = useMemo(() => filtrosEnrichedSAPRecord(compradores), [compradores]);
 
   const abrirModalRecords = useCallback((title: string, badge: string, items: EnrichedSAPRecord[]) => {
     onAbrirComposicao({
@@ -45,11 +46,12 @@ export default function TabDemandas({ records, allRecords, granularidade, compra
       valueHeader: 'Valor Total',
       unidadeItem: 'RI(ns)',
       detailColumns: colunas,
+      filters: filtros,
       searchPredicate: searchEnrichedSAPRecord,
       searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
       itemKey: itemKeyEnrichedSAPRecord,
     });
-  }, [onAbrirComposicao, colunas]);
+  }, [onAbrirComposicao, colunas, filtros]);
 
   const abrirModalPeriodo = useCallback((base: EnrichedSAPRecord[], tituloBase: string, bucketKey: string) => {
     const items = base.filter(r => bucketDate(resolveDataCorte(r), granularidade)?.key === bucketKey);

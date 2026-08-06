@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
+import { useToast } from '../components/ui/Toast';
 
 interface ProfileViewProps {
   user: Profile;
@@ -17,6 +18,7 @@ interface ProfileViewProps {
 }
 
 export default function ProfileView({ user, onNavigate, onProfileUpdate }: ProfileViewProps) {
+  const toast = useToast();
   const [profile, setProfile] = useState<Profile>(user);
   
   // Profile Form State
@@ -44,12 +46,12 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
     setNotifPref(pref);
   }, [user.id]);
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setProfileSuccess(false);
     if (!name.trim() || !cargo.trim()) return;
 
-    const updated = localDb.updateProfileFields(user.id, name, cargo);
+    const updated = await localDb.updateProfileFields(user.id, name, cargo);
     if (updated) {
       setProfile(updated);
       setProfileSuccess(true);
@@ -57,6 +59,8 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
       onProfileUpdate?.();
       // Trigger a session reload or window reload of current user if needed, or simply let it persist
       window.dispatchEvent(new Event('storage'));
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
     }
   };
 

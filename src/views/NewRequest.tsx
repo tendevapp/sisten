@@ -26,6 +26,7 @@ import { useTour } from '../components/help/useTour';
 import TourSpotlight from '../components/help/TourSpotlight';
 import HelpButton from '../components/help/HelpButton';
 import type { TourStep } from '../components/help/types';
+import { useToast } from '../components/ui/Toast';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -191,6 +192,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
+  const toast = useToast();
   const tour = useTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
   const [sectorId, setSectorId] = useState('');
@@ -398,6 +400,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         setSapRegName(fornecedorMatch[1]);
         setJustificativa(fornecedorMatch[2]);
       }
+      if (req.brand) setSapRegBrand(req.brand);
+      if (req.suggested_supplier) setSapRegVendorInfo(req.suggested_supplier);
+      if (req.representante_nome) setSapRepresentanteNome(req.representante_nome);
+      if (req.representante_cargo) setSapRepresentanteCargo(req.representante_cargo);
+      if (req.representante_telefone) setSapRepresentanteTelefone(req.representante_telefone);
+      if (req.representante_email) setSapRepresentanteEmail(req.representante_email);
     }
     if (req.target_sector_id) setHelpdeskSectorId(req.target_sector_id);
     if (req.category_id) setHelpdeskCategory(req.category_id);
@@ -605,7 +613,54 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
 
+  const CADASTRO_SAP_EMAIL_DESTINO = 'jefferson.santana@ten.ind.br';
 
+  // Monta o corpo do e-mail de aviso ao Suprimentos com o conteúdo preenchido no
+  // formulário. Um mailto: não consegue anexar arquivos (restrição de segurança
+  // do navegador/SO) — por isso os anexos entram como lista + link para a
+  // solicitação no SISTEN, e o usuário precisa anexá-los manualmente no Outlook.
+  const buildCadastroSapEmailBody = (reqId: string, reqNumero: string): string => {
+    const linhas: string[] = [
+      'Olá, Jeff!',
+      '',
+      'Abri uma solicitação de cadastro no SAP:',
+      '',
+      `Número da solicitação: #${reqNumero}`,
+      `Tipo de cadastro: ${registrationType}`,
+      `Solicitante: ${user.name}${user.cargo ? ` (${user.cargo})` : ''}`,
+      '',
+      registrationType === 'Item' ? `Nome / Descrição: ${sapRegName}` : `Razão Social / Nome Fantasia: ${sapRegName}`,
+      registrationType === 'Item' ? `Fabricante: ${sapRegBrand}` : `CNPJ / Site corporativo: ${sapRegBrand}`,
+      registrationType === 'Item' ? `Fornecedor de referência: ${sapRegVendorInfo || '—'}` : `Representante / Contato: ${sapRegVendorInfo || '—'}`,
+    ];
+
+    if (registrationType === 'Fornecedor') {
+      linhas.push(
+        `Nome do representante: ${sapRepresentanteNome || '—'}`,
+        `Cargo: ${sapRepresentanteCargo || '—'}`,
+        `Telefone: ${sapRepresentanteTelefone || '—'}`,
+        `E-mail: ${sapRepresentanteEmail || '—'}`
+      );
+    }
+
+    if (registrationType === 'Item') {
+      linhas.push('', `Especificações técnicas: ${sapRegSpecs}`);
+    }
+
+    linhas.push('', `Justificativa: ${justificativa}`);
+
+    linhas.push(
+      '',
+      `Anexos (${sapAttachments.length}) - ${sapAttachments.length > 0 ? 'Essa solicitação contém anexos' : 'Essa solicitação não contém anexos'}`
+    );
+
+    linhas.push(
+      '',
+      `Acompanhe a solicitação no SISTEN: ${window.location.origin}/#/solicitacoes/minhas?id=${reqId}`
+    );
+
+    return linhas.join('\n');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -725,6 +780,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           `A solicitação #${reqNumero} foi ${editandoId ? 'atualizada' : 'criada'}, mas ${failed.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
           `${failed.join(', ')}. Você pode reenviá-${failed.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
         );
+      }
+
+      if (activeTab === 'cadastro_sap') {
+        const subject = `Cadastro SAP #${reqNumero}`;
+        const body = buildCadastroSapEmailBody(reqId, reqNumero);
+        window.location.href = `mailto:${CADASTRO_SAP_EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        if (sapAttachments.length > 0) {
+          toast.info('E-mail aberto no Outlook. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
+        }
       }
 
       // Navigate to tracking

@@ -14,7 +14,7 @@ import { classifyTipoDemanda, resolveComprador, Granularidade, CompradorInfo } f
 import { formatBRLCompacto } from '../../lib/format';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
 import {
-  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  colunasEnrichedSAPRecord, filtrosEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
   searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
 } from '../../lib/composicaoSuprimentos';
 import CompradorPerformanceChart from '../demandas/CompradorPerformanceChart';
@@ -45,6 +45,7 @@ export default function TabCarteira({
   );
 
   const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+  const filtros = useMemo(() => filtrosEnrichedSAPRecord(compradores), [compradores]);
 
   const abrirModalComprador = useCallback((titulo: string, badge: string, items: EnrichedSAPRecord[]) => {
     onAbrirComposicao({
@@ -58,11 +59,12 @@ export default function TabCarteira({
       valueHeader: 'Valor Total',
       unidadeItem: 'RI(ns)',
       detailColumns: colunas,
+      filters: filtros,
       searchPredicate: searchEnrichedSAPRecord,
       searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
       itemKey: itemKeyEnrichedSAPRecord,
     });
-  }, [onAbrirComposicao, colunas]);
+  }, [onAbrirComposicao, colunas, filtros]);
 
   const abrirModalPerformance = useCallback((comprador: string) => {
     const items = materiais.filter(r => resolveComprador(r, compradores) === comprador);

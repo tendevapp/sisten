@@ -191,6 +191,12 @@ export interface Request {
   category_id?: string; // Specific to Helpdesk
   target_sector_id?: string; // Helpdesk sector target or sap registration target
   registration_type?: 'Item' | 'Fornecedor'; // Item vs Fornecedor
+  // Cadastro SAP (Item): fabricante do material. Cadastro SAP (Fornecedor):
+  // CNPJ ou site corporativo — o form reaproveita o mesmo campo pros dois.
+  brand?: string;
+  // Cadastro SAP (Item): fornecedor de referência sugerido. (Fornecedor):
+  // representante/contato em texto livre, quando não há campos estruturados.
+  suggested_supplier?: string;
   linked_rm_number?: string; // 10-digit RM reference from SAP
   rating?: number; // 1-5 for resolved tickets
   rating_comment?: string;

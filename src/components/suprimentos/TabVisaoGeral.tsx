@@ -25,7 +25,7 @@ import ChartCard from '../charts/ChartCard';
 import KpiCard from '../charts/KpiCard';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
 import {
-  colunasEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
+  colunasEnrichedSAPRecord, filtrosEnrichedSAPRecord, valorEnrichedSAPRecord, itemKeyEnrichedSAPRecord,
   searchEnrichedSAPRecord, SEARCH_PLACEHOLDER_SUPRIMENTOS,
 } from '../../lib/composicaoSuprimentos';
 import DeltaBadge from './DeltaBadge';
@@ -77,6 +77,7 @@ export default function TabVisaoGeral({
   const tokens = useChartTokens();
 
   const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
+  const filtros = useMemo(() => filtrosEnrichedSAPRecord(compradores), [compradores]);
 
   const abrirModalRecords = useCallback((title: string, badge: string, items: EnrichedSAPRecord[], irParaPainel?: () => void) => {
     onAbrirComposicao({
@@ -90,13 +91,14 @@ export default function TabVisaoGeral({
       valueHeader: 'Valor Total',
       unidadeItem: 'RI(ns)',
       detailColumns: colunas,
+      filters: filtros,
       searchPredicate: searchEnrichedSAPRecord,
       searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
       itemKey: itemKeyEnrichedSAPRecord,
       onIrParaPainel: irParaPainel,
       irParaPainelLabel: 'Ir p/ Painel',
     });
-  }, [onAbrirComposicao, compradores, colunas]);
+  }, [onAbrirComposicao, compradores, colunas, filtros]);
 
   const abrirModalFaixaAging = useCallback((rotulo: string) => {
     const items = records.filter(r => faixaAgingDoRegistro(r) === rotulo);

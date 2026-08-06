@@ -13,7 +13,7 @@ import React from 'react';
 import { EnrichedSAPRecord } from '../types';
 import { CompradorInfo, resolveComprador } from './demandas';
 import { formatBRL, formatDateBR } from './format';
-import { ComposicaoColuna } from '../components/charts/ComposicaoModal';
+import { ComposicaoColuna, ComposicaoFiltro } from '../components/charts/ComposicaoModal';
 
 /** Colunas de detalhe padrão para um item de RI/pedido dentro do modal. */
 export function colunasEnrichedSAPRecord(compradores: CompradorInfo[]): ComposicaoColuna<EnrichedSAPRecord>[] {
@@ -26,11 +26,20 @@ export function colunasEnrichedSAPRecord(compradores: CompradorInfo[]): Composic
     { header: 'Comprador', render: r => resolveComprador(r, compradores) },
     { header: 'Status', render: r => r.status_requisicao },
     { header: 'Data Solicitação', render: r => formatDateBR(r.data_solicitacao) },
+    { header: 'Data do PO', render: r => (r.data_pedido ? formatDateBR(r.data_pedido) : '—') },
     {
       header: 'Valor',
       align: 'right',
       render: r => (typeof r.valor_total === 'number' && Number.isFinite(r.valor_total) ? formatBRL(r.valor_total) : '—'),
     },
+  ];
+}
+
+/** Filtros de Status e Comprador exibidos no modal de composição. */
+export function filtrosEnrichedSAPRecord(compradores: CompradorInfo[]): ComposicaoFiltro<EnrichedSAPRecord>[] {
+  return [
+    { key: 'status', label: 'Status', valueOf: r => r.status_requisicao },
+    { key: 'comprador', label: 'Comprador', valueOf: r => resolveComprador(r, compradores) },
   ];
 }
 

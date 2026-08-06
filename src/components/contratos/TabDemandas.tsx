@@ -452,7 +452,11 @@ export default function TabDemandas({ user }: TabDemandasProps) {
     setRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: novoStatus } : r));
 
     try {
-      await localDb.updateRequestStatus(reqId, novoStatus, user.id, `Movido para "${colunasVisiveis.find(c => c.status === novoStatus)?.label}" no quadro Kanban.`);
+      const ok = await localDb.updateRequestStatus(reqId, novoStatus, user.id, `Movido para "${colunasVisiveis.find(c => c.status === novoStatus)?.label}" no quadro Kanban.`);
+      if (!ok) {
+        console.error('Falha ao mover a demanda no quadro: escrita no Supabase não confirmada.');
+        carregar();
+      }
     } catch (err) {
       console.error('Falha ao mover a demanda no quadro.', err);
       carregar();

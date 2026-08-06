@@ -26,6 +26,7 @@ import { canAccessPage } from '../lib/pages';
 import SapDetailModal from '../components/SapDetailModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
+import { useToast } from '../components/ui/Toast';
 
 interface SuppliersNoPOProps {
   user: Profile;
@@ -323,6 +324,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   // Modal SAP
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
@@ -517,6 +519,33 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       rms,
       items
     });
+  };
+
+  // Copia RM, Material, Descrição e Quantidade dos itens marcados, uma linha por
+  // item separada por tab — cola direto em planilha. Varre rawRmGroups (não os
+  // itens filtrados), pelo mesmo motivo do envio em lote: não perder itens
+  // marcados que tenham saído do filtro/busca ativos.
+  const [copiedSelection, setCopiedSelection] = useState(false);
+
+  const handleCopySelectedItems = async () => {
+    if (selectedRis.size === 0) return;
+
+    const linhas: string[] = ['RM\tMaterial\tDescrição\tQuantidade'];
+    rawRmGroups.forEach(g => {
+      g.items.forEach(it => {
+        if (!selectedRis.has(it.record.ri)) return;
+        const r = it.record;
+        linhas.push([g.rm || '—', r.material_code || '—', r.texto_breve || '—', r.qtd_requisicao ?? '—'].join('\t'));
+      });
+    });
+
+    try {
+      await navigator.clipboard.writeText(linhas.join('\n'));
+      setCopiedSelection(true);
+      setTimeout(() => setCopiedSelection(false), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar itens selecionados:', err);
+    }
   };
 
   // Aplica o status e/ou a promessa de entrega escolhidos na barra de seleção
@@ -823,29 +852,32 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   }, [buildSuppliersData]);
 
   // Função para salvar observações, data prevista e status
-  const handleSaveFields = (ri: string) => {
+  const handleSaveFields = async (ri: string) => {
     setSaveStatus(prev => ({ ...prev, [ri]: 'saving' }));
     const comment = obsInputState[ri] || '';
     const date = dateInputState[ri] || '';
     const status = statusInputState[ri];
 
-    // Atualiza base local de forma instantânea
-    localDb.updateBuyerFields(ri, comment, date, status);
+    const ok = await localDb.updateBuyerFields(ri, comment, date, status);
 
+    if (!ok) {
+      setSaveStatus(prev => ({ ...prev, [ri]: 'idle' }));
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+      return;
+    }
+
+    setSaveStatus(prev => ({ ...prev, [ri]: 'saved' }));
     setTimeout(() => {
-      setSaveStatus(prev => ({ ...prev, [ri]: 'saved' }));
-      setTimeout(() => {
-        setSaveStatus(prev => ({ ...prev, [ri]: 'idle' }));
-        // Recarrega os dados locais para atualizar a tela
-        buildSuppliersData();
-      }, 1500);
-    }, 400);
+      setSaveStatus(prev => ({ ...prev, [ri]: 'idle' }));
+      // Recarrega os dados locais para atualizar a tela
+      buildSuppliersData();
+    }, 1500);
   };
 
   // Salva de uma vez todos os itens com edições pendentes (obs, previsão e
   // status). Reaproveita updateBuyerFields por item e recarrega a tela uma
   // única vez ao final.
-  const handleSaveAllFields = () => {
+  const handleSaveAllFields = async () => {
     const alterados = modifiedRis;
     if (alterados.length === 0 || bulkSaving) return;
 
@@ -856,22 +888,26 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       return next;
     });
 
-    alterados.forEach(ri => {
-      localDb.updateBuyerFields(ri, obsInputState[ri] || '', dateInputState[ri] || '', statusInputState[ri]);
+    const results = await Promise.all(
+      alterados.map(ri => localDb.updateBuyerFields(ri, obsInputState[ri] || '', dateInputState[ri] || '', statusInputState[ri]))
+    );
+    const failedRis = alterados.filter((_, i) => !results[i]);
+
+    setSaveStatus(prev => {
+      const next = { ...prev };
+      alterados.forEach((ri, i) => { next[ri] = results[i] ? 'saved' : 'idle'; });
+      return next;
     });
 
+    if (failedRis.length > 0) {
+      toast.error(`Falha ao salvar ${failedRis.length} de ${alterados.length} item(ns) no Supabase. Tente novamente.`);
+    }
+
     setTimeout(() => {
-      setSaveStatus(prev => {
-        const next = { ...prev };
-        alterados.forEach(ri => { next[ri] = 'saved'; });
-        return next;
-      });
-      setTimeout(() => {
-        setBulkSaving(false);
-        // Recarrega os dados locais para refletir o que foi salvo.
-        buildSuppliersData();
-      }, 1200);
-    }, 500);
+      setBulkSaving(false);
+      // Recarrega os dados locais para refletir o que foi salvo.
+      buildSuppliersData();
+    }, failedRis.length > 0 ? 0 : 1200);
   };
 
   // Carrega histórico de observações de uma RM/Item específica
@@ -883,20 +919,23 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   };
 
   // Salva o comentário digitado direto no modal de histórico.
-  const handleSaveHistoryComment = (ri: string) => {
+  const handleSaveHistoryComment = async (ri: string) => {
     setHistorySaving(true);
     const comment = historyCommentDraft;
     const date = dateInputState[ri] || '';
     const status = statusInputState[ri];
 
-    localDb.updateBuyerFields(ri, comment, date, status);
-    setObsInputState(prev => ({ ...prev, [ri]: comment }));
+    const ok = await localDb.updateBuyerFields(ri, comment, date, status);
+    setHistorySaving(false);
 
-    setTimeout(() => {
-      setHistorySaving(false);
-      setHistoryOpenRi(null);
-      buildSuppliersData();
-    }, 400);
+    if (!ok) {
+      toast.error('Falha ao salvar comentário no Supabase. Tente novamente.');
+      return;
+    }
+
+    setObsInputState(prev => ({ ...prev, [ri]: comment }));
+    setHistoryOpenRi(null);
+    buildSuppliersData();
   };
 
   // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
@@ -1737,6 +1776,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 >
                   <Send className="h-3.5 w-3.5" />
                   <span>Enviar Cotação</span>
+                </button>
+                <button
+                  onClick={handleCopySelectedItems}
+                  className="px-4 py-1.5 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Copiar RM, Material, Descrição e Quantidade dos itens selecionados"
+                >
+                  {copiedSelection ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedSelection ? 'Copiado!' : 'Copiar Itens'}</span>
                 </button>
                 {canAccessPage(user, 'sup_analise_cotacoes') && (
                   <button

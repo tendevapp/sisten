@@ -25,6 +25,13 @@ export interface ComposicaoColuna<T> {
   width?: string;
 }
 
+/** Filtro adicional (select) exibido ao lado da busca — ex.: Status, Comprador. */
+export interface ComposicaoFiltro<T> {
+  key: string;
+  label: string;
+  valueOf: (item: T) => string;
+}
+
 export interface ComposicaoModalConfig<T> {
   title: string;
   badge: string;
@@ -42,6 +49,8 @@ export interface ComposicaoModalConfig<T> {
   /** Unidade dos itens individuais — ex.: "RI(ns)", "item(ns)", "pedido(s)". */
   unidadeItem: string;
   detailColumns: ComposicaoColuna<T>[];
+  /** Filtros extras (selects) exibidos ao lado da busca — ex.: Status, Comprador. */
+  filters?: ComposicaoFiltro<T>[];
   searchPredicate: (item: T, query: string) => boolean;
   searchPlaceholder?: string;
   itemKey: (item: T, idx: number) => string | number;
@@ -64,17 +73,40 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
   const [query, setQuery] = useState('');
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [expandido, setExpandido] = useState<Record<string, boolean>>({});
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (config) {
       setQuery('');
       setSortDir('desc');
+      setFilterValues({});
     }
+  }, [config]);
+
+  /** Opções de cada filtro — derivadas dos valores presentes no recorte atual. */
+  const filterOptions = useMemo(() => {
+    if (!config?.filters) return [] as { key: string; label: string; opcoes: string[] }[];
+    return config.filters.map(f => {
+      const valores = new Set<string>();
+      config.items.forEach(item => {
+        const v = f.valueOf(item);
+        if (v) valores.add(v);
+      });
+      return { key: f.key, label: f.label, opcoes: Array.from(valores).sort((a, b) => a.localeCompare(b, 'pt-BR')) };
+    });
   }, [config]);
 
   const grupos: Grupo<T>[] = useMemo(() => {
     if (!config) return [];
     let itens = config.items;
+    if (config.filters) {
+      for (const f of config.filters) {
+        const selecionado = filterValues[f.key];
+        if (selecionado && selecionado !== 'todos') {
+          itens = itens.filter(item => f.valueOf(item) === selecionado);
+        }
+      }
+    }
     if (query.trim()) {
       const q = query.toLowerCase().trim();
       itens = itens.filter(item => config.searchPredicate(item, q));
@@ -92,7 +124,7 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
     });
     mapa.forEach(g => g.itens.sort((a, b) => config.valueOf(b) - config.valueOf(a)));
     return Array.from(mapa.values()).sort((a, b) => (sortDir === 'desc' ? b.total - a.total : a.total - b.total));
-  }, [config, query, sortDir]);
+  }, [config, query, sortDir, filterValues]);
 
   // Expande todos os grupos por padrão quando o modal abre ou a lista de grupos muda.
   useEffect(() => {
@@ -215,6 +247,24 @@ export default function ComposicaoModal<T>({ config, onClose }: ComposicaoModalP
                 </button>
               )}
             </div>
+            {filterOptions.length > 0 && (
+              <div className="flex items-center gap-2">
+                {filterOptions.map(f => (
+                  <select
+                    key={f.key}
+                    value={filterValues[f.key] || 'todos'}
+                    onChange={e => setFilterValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    className="py-2 px-2.5 text-xs border rounded-lg outline-none cursor-pointer transition-all focus:ring-2"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
+                  >
+                    <option value="todos">{f.label}: Todos</option>
+                    {f.opcoes.map(op => (
+                      <option key={op} value={op}>{op}</option>
+                    ))}
+                  </select>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <span className="text-xs font-medium" style={{ color: 'var(--ink-muted)' }}>
                 Exibindo <strong>{grupos.length}</strong> {config.groupLabelHeader.toLowerCase()}(s)
