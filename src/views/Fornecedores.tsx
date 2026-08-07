@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, Filter, X, Check, Star, AlertTriangle, Loader2,
   ChevronUp, ChevronDown, RefreshCw, Building2, ChevronsUpDown, Plus,
-  Phone, Mail, Trash2
+  Phone, Mail, Trash2, UserX, Download, UserPlus
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { ContatoFornecedor, Profile } from '../types';
@@ -81,14 +82,19 @@ function useDebounce<T>(value: T, delay: number): T {
 
 // Modal de cadastro (Novo Fornecedor)
 interface CadastroModalProps {
+  initialValues?: {
+    codVendor?: string;
+    cnpj?: string;
+    fornecedor?: string;
+  };
   onClose: () => void;
   onSaved: () => void;
 }
 
-function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
-  const [codVendor, setCodVendor] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [fornecedor, setFornecedor] = useState('');
+function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) {
+  const [codVendor, setCodVendor] = useState(initialValues?.codVendor && initialValues.codVendor !== '—' ? initialValues.codVendor : '');
+  const [cnpj, setCnpj] = useState(initialValues?.cnpj && initialValues.cnpj !== '—' ? initialValues.cnpj : '');
+  const [fornecedor, setFornecedor] = useState(initialValues?.fornecedor && initialValues.fornecedor !== '— Sem razão social —' ? initialValues.fornecedor : '');
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [emails, setEmails] = useState<string[]>(['']);
@@ -355,7 +361,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {emails.map((email, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
@@ -393,7 +399,7 @@ function CadastroModal({ onClose, onSaved }: CadastroModalProps) {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {telefones.map((tel, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
@@ -691,7 +697,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   )}
                 </div>
 
-                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {emails.map((email, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
@@ -732,7 +738,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                   )}
                 </div>
 
-                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {telefones.map((tel, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
@@ -793,16 +799,36 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
   );
 }
 
+type SubTab = 'cadastrados' | 'nao_cadastrados';
+
+interface NaoCadastradoItem {
+  cod_forn: string;
+  cnpj: string;
+  fornecedor: string;
+  total_pedidos: number;
+}
+
 const PAGE_SIZE = 50;
 
 export default function Fornecedores({ user }: FornecedoresProps) {
   const canEdit = user.roles.includes('admin') || user.roles.includes('comprador');
 
-  // Dados
+  // Sub-abas (Cadastrados x Não Cadastrados)
+  const [subTab, setSubTab] = useState<SubTab>('cadastrados');
+  const [cadastroInitialValues, setCadastroInitialValues] = useState<{ codVendor?: string; cnpj?: string; fornecedor?: string } | undefined>(undefined);
+
+  // Dados Cadastrados
   const [rows, setRows] = useState<ContatoFornecedor[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Dados Não Cadastrados
+  const [naoCadastradosList, setNaoCadastradosList] = useState<NaoCadastradoItem[]>([]);
+  const [naoCadastradosLoading, setNaoCadastradosLoading] = useState(false);
+  const [naoCadastradosError, setNaoCadastradosError] = useState('');
+  const [naoCadastradosSearch, setNaoCadastradosSearch] = useState('');
+  const [naoCadastradosPage, setNaoCadastradosPage] = useState(0);
 
   // Modais de controle
   const [showCadastro, setShowCadastro] = useState(false);
@@ -883,6 +909,143 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     }
   }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir, page]);
 
+  // Carrega fornecedores da pedidosforn que não existem na contatos
+  const loadNaoCadastradosData = useCallback(async () => {
+    setNaoCadastradosLoading(true);
+    setNaoCadastradosError('');
+    try {
+      const registeredCodes = new Set<string>();
+      const registeredCnpjs = new Set<string>();
+
+      if (supabase) {
+        let pageIndex = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error: cErr } = await supabase
+            .from('contatos')
+            .select('cod_vendor, cnpj')
+            .range(pageIndex * 1000, (pageIndex + 1) * 1000 - 1);
+
+          if (cErr || !data || data.length === 0) {
+            hasMore = false;
+          } else {
+            for (const c of data) {
+              if (c.cod_vendor) {
+                const code = String(c.cod_vendor).trim();
+                if (code) registeredCodes.add(code);
+              }
+              if (c.cnpj) {
+                const clean = String(c.cnpj).replace(/\D/g, '');
+                if (clean) registeredCnpjs.add(clean);
+              }
+            }
+            if (data.length < 1000) hasMore = false;
+            else pageIndex++;
+          }
+          if (pageIndex > 10) break;
+        }
+      }
+
+      let rawPedidos: any[] = [];
+      if (supabase) {
+        let pageIndex = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error: pErr } = await supabase
+            .from('pedidosforn')
+            .select('fornecedor_codigo, cod_forn, cnpj_fornecedor, cnpj, fornecedor_nome, fornecedor')
+            .range(pageIndex * 1000, (pageIndex + 1) * 1000 - 1);
+
+          if (pErr || !data || data.length === 0) {
+            hasMore = false;
+          } else {
+            rawPedidos.push(...data);
+            if (data.length < 1000) hasMore = false;
+            else pageIndex++;
+          }
+          if (pageIndex > 15) break;
+        }
+      }
+
+      if (rawPedidos.length === 0) {
+        rawPedidos = localDb.getPedidosForn() as any[];
+      }
+
+      const map = new Map<string, NaoCadastradoItem>();
+
+      for (const row of rawPedidos) {
+        const rawCode = String(row.fornecedor_codigo || row.cod_forn || '').trim();
+        const rawCnpj = String(row.cnpj_fornecedor || row.cnpj || '').trim();
+        const rawNome = String(row.fornecedor_nome || row.fornecedor || '').trim();
+        const cleanCnpj = rawCnpj.replace(/\D/g, '');
+
+        if (!rawCode && !rawCnpj && !rawNome) continue;
+
+        const isRegistered =
+          (rawCode && registeredCodes.has(rawCode)) ||
+          (cleanCnpj && registeredCnpjs.has(cleanCnpj));
+
+        if (!isRegistered) {
+          const key = rawCode || cleanCnpj || rawNome.toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              cod_forn: rawCode || '—',
+              cnpj: rawCnpj || '—',
+              fornecedor: rawNome || '— Sem razão social —',
+              total_pedidos: 1
+            });
+          } else {
+            const item = map.get(key)!;
+            item.total_pedidos += 1;
+            if (item.cod_forn === '—' && rawCode) item.cod_forn = rawCode;
+            if (item.cnpj === '—' && rawCnpj) item.cnpj = rawCnpj;
+            if (item.fornecedor === '— Sem razão social —' && rawNome) item.fornecedor = rawNome;
+          }
+        }
+      }
+
+      const result = Array.from(map.values()).sort((a, b) => b.total_pedidos - a.total_pedidos);
+      setNaoCadastradosList(result);
+    } catch (e: any) {
+      setNaoCadastradosError(e.message || 'Erro ao carregar fornecedores não cadastrados.');
+    } finally {
+      setNaoCadastradosLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNaoCadastradosData();
+  }, [loadNaoCadastradosData]);
+
+  const filteredNaoCadastrados = useMemo(() => {
+    if (!naoCadastradosSearch.trim()) return naoCadastradosList;
+    const q = naoCadastradosSearch.trim().toLowerCase();
+    return naoCadastradosList.filter(item =>
+      item.cod_forn.toLowerCase().includes(q) ||
+      item.cnpj.toLowerCase().includes(q) ||
+      item.fornecedor.toLowerCase().includes(q)
+    );
+  }, [naoCadastradosList, naoCadastradosSearch]);
+
+  const naoCadastradosTotalPages = Math.ceil(filteredNaoCadastrados.length / PAGE_SIZE);
+  const paginatedNaoCadastrados = useMemo(() => {
+    const start = naoCadastradosPage * PAGE_SIZE;
+    return filteredNaoCadastrados.slice(start, start + PAGE_SIZE);
+  }, [filteredNaoCadastrados, naoCadastradosPage]);
+
+  const handleExportNaoCadastrados = () => {
+    const exportData = filteredNaoCadastrados.map(item => ({
+      'Código Fornecedor': item.cod_forn,
+      'CNPJ': item.cnpj !== '—' ? formatCNPJ(item.cnpj) : '—',
+      'Razão Social / Nome': item.fornecedor,
+      'Qtd. Pedidos no SAP': item.total_pedidos
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Não Cadastrados');
+    XLSX.writeFile(wb, `Fornecedores_Nao_Cadastrados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -924,8 +1087,9 @@ export default function Fornecedores({ user }: FornecedoresProps) {
       {/* Modal de cadastro */}
       {showCadastro && (
         <CadastroModal
-          onClose={() => setShowCadastro(false)}
-          onSaved={() => { loadData(); }}
+          initialValues={cadastroInitialValues}
+          onClose={() => { setShowCadastro(false); setCadastroInitialValues(undefined); }}
+          onSaved={() => { loadData(); loadNaoCadastradosData(); }}
         />
       )}
 
@@ -935,307 +1099,515 @@ export default function Fornecedores({ user }: FornecedoresProps) {
           supplier={selectedSupplier}
           canEdit={canEdit}
           onClose={() => setSelectedSupplier(null)}
-          onSaved={() => { loadData(); }}
+          onSaved={() => { loadData(); loadNaoCadastradosData(); }}
         />
       )}
 
       <div className="space-y-5">
         {/* Cabecalho */}
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Building2 className="h-5 w-5 text-blue-500" />
               <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Fornecedores</h1>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {loading ? 'Carregando...' : `${totalCount.toLocaleString('pt-BR')} registro${totalCount !== 1 ? 's' : ''} encontrado${totalCount !== 1 ? 's' : ''}`}
-              {canEdit && <span className="ml-2 text-xs text-blue-500">(clique em um fornecedor para editar)</span>}
+              {subTab === 'cadastrados'
+                ? (loading ? 'Carregando...' : `${totalCount.toLocaleString('pt-BR')} registro${totalCount !== 1 ? 's' : ''} cadastrado${totalCount !== 1 ? 's' : ''}`)
+                : (naoCadastradosLoading ? 'Buscando fornecedores não cadastrados...' : `${naoCadastradosList.length.toLocaleString('pt-BR')} fornecedor${naoCadastradosList.length !== 1 ? 'es' : ''} em pedidos (pedidosforn) sem cadastro`)
+              }
+              {canEdit && subTab === 'cadastrados' && <span className="ml-2 text-xs text-blue-500">(clique em um fornecedor para editar)</span>}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => loadData()}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              title="Atualizar"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </button>
-
-            {canEdit && (
-              <button
-                onClick={() => setShowCadastro(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors"
-              >
-                <Plus className="h-4 w-4" />
-                Cadastrar
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Barra de filtros */}
-        <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Buscar por código, CNPJ, nome ou e-mail..."
-              value={searchRaw}
-              onChange={e => setSearchRaw(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
-            />
-            {searchRaw && (
-              <button onClick={() => setSearchRaw('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-            <select
-              value={classificacaoFilter}
-              onChange={e => setClassificacaoFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
-            >
-              {CLASSIFICACAO_OPTS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-            <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
-            <Phone className="h-3.5 w-3.5" />
-            Com telefone
-          </label>
-
-          <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-            <input type="checkbox" checked={hasEmail} onChange={e => setHasEmail(e.target.checked)} className="accent-blue-500" />
-            <Mail className="h-3.5 w-3.5" />
-            Com e-mail
-          </label>
-
-          {hasFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
-            >
-              <X className="h-3.5 w-3.5" />
-              Limpar filtros
-            </button>
-          )}
-        </div>
-
-        {/* Tabela */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-          {error ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500 dark:text-slate-400 gap-3">
-              <AlertTriangle className="h-8 w-8 text-red-400" />
-              <p className="text-sm font-medium">{error}</p>
-              <button onClick={loadData} className="text-xs text-blue-500 hover:underline">Tentar novamente</button>
-            </div>
-          ) : (
-            <>
-            {/* Mobile: lista em cards (evita scroll horizontal em tabela larga) */}
-            <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="p-4 animate-pulse space-y-2">
-                    <div className="h-4 w-2/3 rounded bg-slate-100 dark:bg-slate-800" />
-                    <div className="h-3 w-1/2 rounded bg-slate-100 dark:bg-slate-800" />
-                  </div>
-                ))
-              ) : rows.length === 0 ? (
-                <div className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
-                  <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
-                  {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
-                  {canEdit && !hasFilters && (
-                    <button
-                      onClick={() => setShowCadastro(true)}
-                      className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Cadastrar primeiro fornecedor
-                    </button>
-                  )}
-                </div>
-              ) : rows.map(row => (
+            {subTab === 'cadastrados' ? (
+              <>
                 <button
-                  key={row.id}
-                  onClick={() => setSelectedSupplier(row)}
-                  className="w-full text-left p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                  onClick={() => loadData()}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  title="Atualizar"
                 >
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0 truncate">
-                      {row.fornecedor || row.nome_fantasia || '— Sem razão social —'}
-                    </span>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
-                        {row.cod_vendor}
-                      </span>
-                      {row.cnpj && (
-                        <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                          {formatCNPJ(row.cnpj)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {row.nome_contato && (
-                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{row.nome_contato}</p>
-                  )}
-                  <div className="mt-1.5 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
-                    {row.telefone && (
-                      <span className="flex items-center gap-1.5 truncate">
-                        <Phone className="h-3 w-3 shrink-0" /> {splitMultiValues(row.telefone).join(', ')}
-                      </span>
-                    )}
-                    {row.email && (
-                      <span className="flex items-center gap-1.5 truncate">
-                        <Mail className="h-3 w-3 shrink-0" /> {splitMultiValues(row.email).join(', ')}
-                      </span>
-                    )}
-                  </div>
-                  {classifBadge(row.classificacao) && <div className="mt-2">{classifBadge(row.classificacao)}</div>}
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  Atualizar
                 </button>
-              ))}
+
+                {canEdit && (
+                  <button
+                    onClick={() => { setCadastroInitialValues(undefined); setShowCadastro(true); }}
+                    className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Cadastrar
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => loadNaoCadastradosData()}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  title="Atualizar lista"
+                >
+                  <RefreshCw className={`h-4 w-4 ${naoCadastradosLoading ? 'animate-spin' : ''}`} />
+                  Atualizar
+                </button>
+
+                <button
+                  onClick={handleExportNaoCadastrados}
+                  disabled={naoCadastradosList.length === 0}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors disabled:opacity-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Exportar Excel
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Sub-navegação por SubPáginas / Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
+          <button
+            onClick={() => setSubTab('cadastrados')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              subTab === 'cadastrados'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Building2 className="h-4 w-4" />
+            Cadastrados
+            <span className={`ml-1 text-xs px-2 py-0.5 rounded-full ${subTab === 'cadastrados' ? 'bg-blue-500/40 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+              {totalCount.toLocaleString('pt-BR')}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSubTab('nao_cadastrados')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              subTab === 'nao_cadastrados'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <UserX className="h-4 w-4" />
+            Não Cadastrados
+            {naoCadastradosLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin ml-1" />
+            ) : (
+              <span className={`ml-1 text-xs px-2 py-0.5 rounded-full ${subTab === 'nao_cadastrados' ? 'bg-amber-500/40 text-white' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'}`}>
+                {naoCadastradosList.length.toLocaleString('pt-BR')}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Conteúdo da Aba Cadastrados */}
+        {subTab === 'cadastrados' && (
+          <>
+            {/* Barra de filtros */}
+            <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código, CNPJ, nome ou e-mail..."
+                  value={searchRaw}
+                  onChange={e => setSearchRaw(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
+                />
+                {searchRaw && (
+                  <button onClick={() => setSearchRaw('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={classificacaoFilter}
+                  onChange={e => setClassificacaoFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                >
+                  {CLASSIFICACAO_OPTS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
+                <Phone className="h-3.5 w-3.5" />
+                Com telefone
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <input type="checkbox" checked={hasEmail} onChange={e => setHasEmail(e.target.checked)} className="accent-blue-500" />
+                <Mail className="h-3.5 w-3.5" />
+                Com e-mail
+              </label>
+
+              {hasFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  Limpar filtros
+                </button>
+              )}
             </div>
 
-            {/* Desktop: tabela completa */}
-            <div className="hidden lg:block overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
-                    {([
-                      { field: 'cod_vendor', label: 'Cód. Vendor' },
-                      { field: 'cnpj', label: 'CNPJ' },
-                      { field: 'fornecedor', label: 'Fornecedor' },
-                      { field: 'nome_fantasia', label: 'Nome Fantasia' },
-                      { field: 'nome_contato', label: 'Contato' },
-                      { field: 'telefone', label: 'Telefone' },
-                      { field: 'email', label: 'E-mail' },
-                      { field: 'classificacao', label: 'Classificação' },
-                    ] as { field: SortField; label: string }[]).map(col => (
-                      <th
-                        key={col.field}
-                        className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
-                        onClick={() => handleSort(col.field)}
-                      >
-                        <div className="flex items-center">
-                          {col.label}
-                          <SortIcon field={col.field} />
-                        </div>
-                      </th>
-                    ))}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">
-                      Atualizado em
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+            {/* Tabela de Cadastrados */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+              {error ? (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-500 dark:text-slate-400 gap-3">
+                  <AlertTriangle className="h-8 w-8 text-red-400" />
+                  <p className="text-sm font-medium">{error}</p>
+                  <button onClick={loadData} className="text-xs text-blue-500 hover:underline">Tentar novamente</button>
+                </div>
+              ) : (
+                <>
+                {/* Mobile: lista em cards */}
+                <div className="lg:hidden divide-y divide-slate-100 dark:divide-slate-800">
                   {loading ? (
-                    Array.from({ length: 8 }).map((_, i) => (
-                      <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
-                        {Array.from({ length: 8 }).map((_, j) => (
-                          <td key={j} className="px-4 py-3">
-                            <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
-                          </td>
-                        ))}
-                      </tr>
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="p-4 animate-pulse space-y-2">
+                        <div className="h-4 w-2/3 rounded bg-slate-100 dark:bg-slate-800" />
+                        <div className="h-3 w-1/2 rounded bg-slate-100 dark:bg-slate-800" />
+                      </div>
                     ))
                   ) : rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
-                        <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
-                        <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
-                        {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
-                        {canEdit && !hasFilters && (
-                          <button
-                            onClick={() => setShowCadastro(true)}
-                            className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Cadastrar primeiro fornecedor
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ) : rows.map((row, idx) => (
-                    <tr
+                    <div className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                      <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
+                      {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
+                      {canEdit && !hasFilters && (
+                        <button
+                          onClick={() => { setCadastroInitialValues(undefined); setShowCadastro(true); }}
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Cadastrar primeiro fornecedor
+                        </button>
+                      )}
+                    </div>
+                  ) : rows.map(row => (
+                    <button
                       key={row.id}
                       onClick={() => setSelectedSupplier(row)}
-                      className={`border-b border-slate-50 dark:border-slate-800/60 transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${idx % 2 === 0 ? '' : 'bg-slate-50/30 dark:bg-slate-800/20'}`}
+                      className="w-full text-left p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
                     >
-                      <td className="px-4 py-3.5">
-                        <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
-                          {row.cod_vendor}
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0 truncate">
+                          {row.fornecedor || row.nome_fantasia || '— Sem razão social —'}
                         </span>
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="font-mono text-xs text-slate-700 dark:text-slate-300" title={row.cnpj || ''}>
-                          {formatCNPJ(row.cnpj)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 max-w-[240px]">
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate block" title={row.fornecedor}>
-                          {row.fornecedor || <span className="text-slate-400 font-normal">—</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 max-w-[200px]">
-                        <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={row.nome_fantasia || ''}>
-                          {row.nome_fantasia || <span className="text-slate-400 font-normal">—</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 max-w-[180px]">
-                        <span className="text-sm text-slate-700 dark:text-slate-200 truncate block" title={row.nome_contato || ''}>
-                          {row.nome_contato || <span className="text-slate-400 font-normal">—</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={splitMultiValues(row.telefone).join(', ')}>
-                          {row.telefone ? splitMultiValues(row.telefone).join(', ') : <span className="text-slate-400">—</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="text-sm text-slate-700 dark:text-slate-200" title={splitMultiValues(row.email).join(', ')}>
-                          {row.email ? splitMultiValues(row.email).join(', ') : <span className="text-slate-400">—</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {classifBadge(row.classificacao) || <span className="text-slate-400 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="text-xs text-slate-400">
-                          {row.updated_at
-                            ? new Date(row.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-                            : row.created_at
-                              ? new Date(row.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-                              : '—'
-                          }
-                        </span>
-                      </td>
-                    </tr>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
+                            {row.cod_vendor}
+                          </span>
+                          {row.cnpj && (
+                            <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                              {formatCNPJ(row.cnpj)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {row.nome_contato && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{row.nome_contato}</p>
+                      )}
+                      <div className="mt-1.5 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
+                        {row.telefone && (
+                          <span className="flex items-center gap-1.5 truncate">
+                            <Phone className="h-3 w-3 shrink-0" /> {splitMultiValues(row.telefone).join(', ')}
+                          </span>
+                        )}
+                        {row.email && (
+                          <span className="flex items-center gap-1.5 truncate">
+                            <Mail className="h-3 w-3 shrink-0" /> {splitMultiValues(row.email).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      {classifBadge(row.classificacao) && <div className="mt-2">{classifBadge(row.classificacao)}</div>}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            </>
-          )}
+                </div>
 
-          {/* Paginacao */}
-          {!loading && !error && totalCount > PAGE_SIZE && (
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              onPageChange={setPage}
-              className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
-              info={<>Página {page + 1} de {totalPages} · {totalCount.toLocaleString('pt-BR')} registros</>}
-            />
-          )}
-        </div>
+                {/* Desktop: tabela completa */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                        {([
+                          { field: 'cod_vendor', label: 'Cód. Vendor' },
+                          { field: 'cnpj', label: 'CNPJ' },
+                          { field: 'fornecedor', label: 'Fornecedor' },
+                          { field: 'nome_fantasia', label: 'Nome Fantasia' },
+                          { field: 'nome_contato', label: 'Contato' },
+                          { field: 'telefone', label: 'Telefone' },
+                          { field: 'email', label: 'E-mail' },
+                          { field: 'classificacao', label: 'Classificação' },
+                        ] as { field: SortField; label: string }[]).map(col => (
+                          <th
+                            key={col.field}
+                            className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 select-none"
+                            onClick={() => handleSort(col.field)}
+                          >
+                            <div className="flex items-center">
+                              {col.label}
+                              <SortIcon field={col.field} />
+                            </div>
+                          </th>
+                        ))}
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide whitespace-nowrap">
+                          Atualizado em
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        Array.from({ length: 8 }).map((_, i) => (
+                          <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
+                            {Array.from({ length: 8 }).map((_, j) => (
+                              <td key={j} className="px-4 py-3">
+                                <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      ) : rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                            <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                            <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
+                            {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
+                            {canEdit && !hasFilters && (
+                              <button
+                                onClick={() => { setCadastroInitialValues(undefined); setShowCadastro(true); }}
+                                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Cadastrar primeiro fornecedor
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ) : rows.map((row, idx) => (
+                        <tr
+                          key={row.id}
+                          onClick={() => setSelectedSupplier(row)}
+                          className={`border-b border-slate-50 dark:border-slate-800/60 transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer ${idx % 2 === 0 ? '' : 'bg-slate-50/30 dark:bg-slate-800/20'}`}
+                        >
+                          <td className="px-4 py-3.5">
+                            <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
+                              {row.cod_vendor}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="font-mono text-xs text-slate-700 dark:text-slate-300" title={row.cnpj || ''}>
+                              {formatCNPJ(row.cnpj)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 max-w-[240px]">
+                            <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate block" title={row.fornecedor}>
+                              {row.fornecedor || <span className="text-slate-400 font-normal">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 max-w-[200px]">
+                            <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={row.nome_fantasia || ''}>
+                              {row.nome_fantasia || <span className="text-slate-400 font-normal">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 max-w-[180px]">
+                            <span className="text-sm text-slate-700 dark:text-slate-200 truncate block" title={row.nome_contato || ''}>
+                              {row.nome_contato || <span className="text-slate-400 font-normal">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-sm text-slate-700 dark:text-slate-200 block truncate max-w-[200px]" title={splitMultiValues(row.telefone).join(', ')}>
+                              {row.telefone ? splitMultiValues(row.telefone).join(', ') : <span className="text-slate-400">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-sm text-slate-700 dark:text-slate-200" title={splitMultiValues(row.email).join(', ')}>
+                              {row.email ? splitMultiValues(row.email).join(', ') : <span className="text-slate-400">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            {classifBadge(row.classificacao) || <span className="text-slate-400 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <span className="text-xs text-slate-400">
+                              {row.updated_at
+                                ? new Date(row.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                                : row.created_at
+                                  ? new Date(row.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                                  : '—'
+                              }
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                </>
+              )}
+
+              {/* Paginacao */}
+              {!loading && !error && totalCount > PAGE_SIZE && (
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+                  info={<>Página {page + 1} de {totalPages} · {totalCount.toLocaleString('pt-BR')} registros</>}
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Conteúdo da Aba Não Cadastrados */}
+        {subTab === 'nao_cadastrados' && (
+          <div className="space-y-4">
+            {/* Barra de Busca e Filtros de Não Cadastrados */}
+            <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar não cadastrado por código, CNPJ ou nome..."
+                  value={naoCadastradosSearch}
+                  onChange={e => { setNaoCadastradosSearch(e.target.value); setNaoCadastradosPage(0); }}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder-slate-400"
+                />
+                {naoCadastradosSearch && (
+                  <button onClick={() => { setNaoCadastradosSearch(''); setNaoCadastradosPage(0); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Tabela de Não Cadastrados */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+              {naoCadastradosError ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-500 dark:text-slate-400 gap-3">
+                  <AlertTriangle className="h-8 w-8 text-amber-400" />
+                  <p className="text-sm font-medium">{naoCadastradosError}</p>
+                  <button onClick={loadNaoCadastradosData} className="text-xs text-amber-500 hover:underline">Tentar novamente</button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          Cód. Fornecedor
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          CNPJ
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          Nome / Razão Social
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          Pedidos no SAP
+                        </th>
+                        {canEdit && (
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                            Ação
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {naoCadastradosLoading ? (
+                        Array.from({ length: 6 }).map((_, i) => (
+                          <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
+                            <td className="px-4 py-3.5"><div className="h-4 w-20 rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            <td className="px-4 py-3.5"><div className="h-4 w-32 rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            <td className="px-4 py-3.5"><div className="h-4 w-48 rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            <td className="px-4 py-3.5 text-center"><div className="h-4 w-12 mx-auto rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            {canEdit && <td className="px-4 py-3.5 text-right"><div className="h-7 w-24 ml-auto rounded bg-slate-100 dark:bg-slate-800" /></td>}
+                          </tr>
+                        ))
+                      ) : paginatedNaoCadastrados.length === 0 ? (
+                        <tr>
+                          <td colSpan={canEdit ? 5 : 4} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                            <UserX className="h-8 w-8 mx-auto mb-3 opacity-30" />
+                            <p className="text-sm font-medium">Nenhum fornecedor pendente de cadastro</p>
+                            {naoCadastradosSearch && <p className="text-xs mt-1">Tente ajustar a busca</p>}
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedNaoCadastrados.map((item, idx) => (
+                          <tr
+                            key={`${item.cod_forn}-${item.cnpj}-${idx}`}
+                            className={`border-b border-slate-50 dark:border-slate-800/60 transition-colors hover:bg-amber-50/30 dark:hover:bg-amber-950/20 ${idx % 2 === 0 ? '' : 'bg-slate-50/30 dark:bg-slate-800/20'}`}
+                          >
+                            <td className="px-4 py-3.5">
+                              <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-2 py-1">
+                                {item.cod_forn}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
+                                {item.cnpj !== '—' ? formatCNPJ(item.cnpj) : '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                                {item.fornecedor}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                                {item.total_pedidos} {item.total_pedidos === 1 ? 'pedido' : 'pedidos'}
+                              </span>
+                            </td>
+                            {canEdit && (
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                                <button
+                                  onClick={() => {
+                                    setCadastroInitialValues({
+                                      codVendor: item.cod_forn !== '—' ? item.cod_forn : '',
+                                      cnpj: item.cnpj !== '—' ? item.cnpj : '',
+                                      fornecedor: item.fornecedor !== '— Sem razão social —' ? item.fornecedor : ''
+                                    });
+                                    setShowCadastro(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors shadow-sm"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                  Cadastrar
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Paginacao de Nao Cadastrados */}
+              {!naoCadastradosLoading && !naoCadastradosError && filteredNaoCadastrados.length > PAGE_SIZE && (
+                <Pagination
+                  page={naoCadastradosPage}
+                  totalPages={naoCadastradosTotalPages}
+                  onPageChange={setNaoCadastradosPage}
+                  className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+                  info={<>Página {naoCadastradosPage + 1} de {naoCadastradosTotalPages} · {filteredNaoCadastrados.length.toLocaleString('pt-BR')} fornecedores</>}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

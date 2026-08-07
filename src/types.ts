@@ -77,7 +77,7 @@ export interface ActivityLog {
 export interface UserBuyerGroup {
   id: string;
   user_id: string;
-  group_code: string; // E.g., 314, 358, 447, 575, 588, 602
+  group_code: string; // E.g., 314, 358, 447, 575, 588, 602, 610
   is_primary: boolean;
 }
 
@@ -286,7 +286,7 @@ export interface SAPRequisicao {
   texto_breve: string;
   qtd_requisicao: number;
   unidade_medida: string;
-  grupo_comprador: string; // 314, 358, 447, 575, 588, 602...
+  grupo_comprador: string; // 314, 358, 447, 575, 588, 602, 610...
   /**
    * Grupo de mercadoria do SAP (prefixos B/E/M/S, ex.: `M08018002`). Vem da
    * view e chega ao registro pelo spread de `normalizeRequisicaoRow`; a

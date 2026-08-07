@@ -789,7 +789,8 @@ class LocalDatabase {
         { grupo_compras: '447', nome_comprador: 'Comprador 447' },
         { grupo_compras: '575', nome_comprador: 'Comprador 575' },
         { grupo_compras: '588', nome_comprador: 'Comprador 588' },
-        { grupo_compras: '602', nome_comprador: 'Jamille' }
+        { grupo_compras: '602', nome_comprador: 'Jamille' },
+        { grupo_compras: '610', nome_comprador: 'Giulia' }
       ];
       this.setStorageItem(this.compradoresKey, seededCompradores);
     }
@@ -1279,10 +1280,15 @@ class LocalDatabase {
       { grupo_compras: '447', nome_comprador: 'Comprador 447' },
       { grupo_compras: '575', nome_comprador: 'Comprador 575' },
       { grupo_compras: '588', nome_comprador: 'Comprador 588' },
-      { grupo_compras: '602', nome_comprador: 'Jamille' }
+      { grupo_compras: '602', nome_comprador: 'Jamille' },
+      { grupo_compras: '610', nome_comprador: 'Giulia' }
     ]);
     if (!list.some(c => c.grupo_compras === '602')) {
       list.push({ grupo_compras: '602', nome_comprador: 'Jamille' });
+      this.setStorageItem(this.compradoresKey, list);
+    }
+    if (!list.some(c => c.grupo_compras === '610')) {
+      list.push({ grupo_compras: '610', nome_comprador: 'Giulia' });
       this.setStorageItem(this.compradoresKey, list);
     }
     return list;
