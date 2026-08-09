@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { seenKey, readSeen } from './useTour';
+import { localDb } from '../../db/localDb';
 
 describe('useTour storage helpers', () => {
   let store: Record<string, string> = {};
@@ -26,5 +27,15 @@ describe('useTour storage helpers', () => {
   it('deve retornar true quando o tour foi marcado como visto (1)', () => {
     localStorage.setItem(seenKey('nova-solicitacao'), '1');
     expect(readSeen('nova-solicitacao')).toBe(true);
+  });
+
+  it('deve restaurar o tour visto pelo perfil do usuario mesmo apos o localStorage ser limpo', () => {
+    vi.spyOn(localDb, 'getCurrentUser').mockReturnValue({
+      id: 'usr1',
+      tours_seen: { 'nova-solicitacao': true },
+    } as any);
+
+    expect(readSeen('nova-solicitacao')).toBe(true);
+    expect(localStorage.getItem(seenKey('nova-solicitacao'))).toBe('1');
   });
 });

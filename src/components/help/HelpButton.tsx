@@ -16,7 +16,7 @@ interface HelpButtonProps {
 /** Botão flutuante que reabre o tour guiado da página a qualquer momento. */
 export default function HelpButton({ onClick, pulse }: HelpButtonProps) {
   return (
-    <div className="fixed bottom-6 right-6 z-[90]">
+    <div className="fixed bottom-6 right-6 z-[90]" data-tour="help-button">
       {pulse && (
         <motion.span
           className="absolute inset-0 rounded-full bg-emerald-500"

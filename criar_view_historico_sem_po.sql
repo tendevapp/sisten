@@ -50,7 +50,7 @@ left join lateral (
   where p.material = h.material
     and p.fornecedor_codigo = h.cod_forn
     and p.doc_compra = h.doc_compra
-    and lower(coalesce(p.crf, '')) = 'x'
+    and (lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0)
 ) m on true
 
 where h.material in (

@@ -26,6 +26,15 @@ export interface MultiSelectFilterProps {
   /** Exibe o campo de busca. Padrão: automático a partir de 8 opções. */
   searchable?: boolean;
   className?: string;
+  /**
+   * Largura do painel sobreposto quando aberto. Por padrão o painel acompanha
+   * a largura do gatilho (`w-full min-w-[200px]`) — suficiente para opções
+   * curtas, mas opções longas (descrições de grupo de mercadoria, por
+   * exemplo) ficam espremidas mesmo com quebra de linha. Passe algo como
+   * `"w-80 sm:w-96"` para esses casos; o painel continua ancorado no gatilho,
+   * só abre mais largo, sobreposto ao resto da barra de filtros.
+   */
+  panelClassName?: string;
 }
 
 export default function MultiSelectFilter({
@@ -38,6 +47,7 @@ export default function MultiSelectFilter({
   renderOption,
   searchable,
   className = 'min-w-[150px]',
+  panelClassName,
 }: MultiSelectFilterProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -121,7 +131,7 @@ export default function MultiSelectFilter({
         <div
           role="listbox"
           aria-multiselectable
-          className="absolute z-30 mt-1 w-full min-w-[200px] max-h-72 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg"
+          className={`absolute z-30 mt-1 max-h-72 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg ${panelClassName || 'w-full min-w-[200px]'}`}
         >
           {showSearch && (
             <div className="relative border-b border-slate-150 dark:border-slate-850 p-2">
@@ -151,12 +161,15 @@ export default function MultiSelectFilter({
                   onClick={() => toggle(option)}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
                 >
-                  <span className={`h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                  <span className={`h-4 w-4 shrink-0 mt-0.5 rounded border flex items-center justify-center transition-colors ${
                     marcado ? 'bg-[#0056c6] border-[#0056c6]' : 'border-slate-300 dark:border-slate-700'
                   }`}>
                     {marcado && <Check className="h-3 w-3 text-white" />}
                   </span>
-                  <span className="truncate">{renderOption ? renderOption(option) : option}</span>
+                  {/* Quebra em vez de truncar: opção cortada com "..." é
+                      inútil quando o que o usuário quer ler é justo o fim do
+                      texto (ex.: descrições de grupo de mercadoria). */}
+                  <span className="break-words leading-snug">{renderOption ? renderOption(option) : option}</span>
                 </button>
               );
             })}

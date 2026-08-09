@@ -7,11 +7,13 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
   RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
-  Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock, BarChart3
+  Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock, BarChart3, Scale
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, ContatoFornecedor, CidadeForn, HistoricoPedidoView } from '../types';
+import AuditoriaPrecos from '../components/historico/AuditoriaPrecos';
+import { porTipoItem } from '../lib/historicoAnalytics';
 
 import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
 import {
@@ -40,12 +42,18 @@ interface Row {
   telefone: string;
   email: string;
   classificacao: string;
+  grp_mercads: string;
+  grp_mercads_desc: string;
+  /** 'Projeto' (material 18 dígitos iniciado em 100000000) ou 'Consumo'. */
+  tipo_item: string;
   doc_compra: string;
   rm: string;
   data_doc: string;
   qtd?: number;
   preco_unit?: number;
   valor_total?: number;
+  /** Entrega ainda não fechou (0 < qtd_fornecida < qtd_pedido no SAP). */
+  pedido_parcial?: boolean;
 }
 
 type SortDir = 'asc' | 'desc';
@@ -136,7 +144,18 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
 
 // SortableTh, a casca da tabela e os estados vazios vêm de components/ui/DataTable.
 
+type AbaHistorico = 'consulta' | 'auditoria';
+
 export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosProps) {
+  // Consulta e auditoria respondem perguntas diferentes ("quem já forneceu isso"
+  // contra "pagamos bem por isso") e por isso têm filtros próprios. Abas em vez
+  // de colunas extras: a tabela de consulta já tem doze.
+  const [aba, setAba] = useState<AbaHistorico>(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tab') === 'auditoria'
+      ? 'auditoria'
+      : 'consulta'
+  );
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -146,6 +165,11 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const [ufFilter, setUfFilter] = useState('Todos');
   const [classFilter, setClassFilter] = useState('Todos');
   const [yearFilter, setYearFilter] = useState('Todos');
+  const [grupoFilter, setGrupoFilter] = useState('Todos');
+  // 'Projeto' = material de 18 dígitos iniciado em 100000000; o resto é 'Consumo'.
+  // As duas naturezas têm perfil de gasto oposto (ver spec de Análise de
+  // Compras) — analisá-las juntas distorce ticket médio e concentração.
+  const [tipoItemFilter, setTipoItemFilter] = useState<'Todos' | 'Consumo' | 'Projeto'>('Todos');
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -196,12 +220,16 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
         telefone: contato?.telefone || '—',
         email: contato?.email || '—',
         classificacao: contato?.classificacao || '—',
+        grp_mercads: l.grp_mercads || '—',
+        grp_mercads_desc: l.grp_mercads_desc || l.grp_mercads || '—',
+        tipo_item: porTipoItem(l),
         doc_compra: l.doc_compra || '—',
         rm: l.reqc || '—',
         data_doc: l.data_doc || '—',
         qtd: l.qtd_pedido ?? undefined,
         preco_unit: l.preco_liquido_unit ?? undefined,
         valor_total: l.valor_liquido ?? undefined,
+        pedido_parcial: l.pedido_parcial ?? false,
       };
     });
   }, []);
@@ -234,7 +262,10 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
     }
   }, [buildRows]);
 
-  useEffect(() => { load(false); }, [load]);
+  // Só busca o histórico quando a aba de consulta está à vista: quem abre direto
+  // na auditoria (via ?tab=auditoria) não precisa da view completa, que é o
+  // maior dos dois downloads.
+  useEffect(() => { if (aba === 'consulta') load(false); }, [load, aba]);
 
   // Opções de filtro derivadas dos dados.
   const ufOptions = useMemo(() => {
@@ -255,13 +286,24 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
     return Array.from(s).sort((a, b) => Number(b) - Number(a));
   }, [rows]);
 
-  // Filtragem por busca, UF, classificação e ano.
+  // Grupo de mercadoria pela descrição amigável (ex.: "EPI", "TORRES/COLUNAS"),
+  // com fallback ao código quando a tabela de descrições não cobre o grupo —
+  // sem isso um grupo sem descrição some da lista em vez de aparecer como opção.
+  const grupoOptions = useMemo(() => {
+    const s = new Set<string>();
+    rows.forEach(r => { if (r.grp_mercads_desc && r.grp_mercads_desc !== '—') s.add(r.grp_mercads_desc); });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [rows]);
+
+  // Filtragem por busca, UF, classificação, ano e grupo de material.
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter(r => {
       if (ufFilter !== 'Todos' && r.regiao_uf !== ufFilter) return false;
       if (classFilter !== 'Todos' && r.classificacao !== classFilter) return false;
       if (yearFilter !== 'Todos' && yearOf(r.data_doc) !== yearFilter) return false;
+      if (grupoFilter !== 'Todos' && r.grp_mercads_desc !== grupoFilter) return false;
+      if (tipoItemFilter !== 'Todos' && r.tipo_item !== tipoItemFilter) return false;
       if (q) {
         const hit =
           r.material.toLowerCase().includes(q) ||
@@ -276,7 +318,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
       }
       return true;
     });
-  }, [rows, searchQuery, ufFilter, classFilter, yearFilter]);
+  }, [rows, searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter]);
 
   // Ordenação: por coluna quando ativa; caso contrário material asc + data desc.
   const sortedRows = useMemo(() => {
@@ -318,7 +360,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, ufFilter, classFilter, yearFilter, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -371,12 +413,15 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
 
       'E-mail': r.email,
       'Classificação': r.classificacao,
+      'Grupo de Mercadoria': r.grp_mercads_desc,
+      'Natureza': r.tipo_item,
       'Quantidade': r.qtd ?? '—',
       'Preço Unitário': r.preco_unit ?? '—',
       'Valor Total': r.valor_total ?? '—',
       'RM': r.rm,
       'Nº Pedido': r.doc_compra,
       'Data Pedido': formatDateBR(r.data_doc),
+      'Pedido Parcial': r.pedido_parcial ? 'Sim' : 'Não',
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -395,11 +440,13 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             Histórico de Pedidos
           </h2>
           <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-            Consulte todo o histórico de compras por material. Cada linha é um pedido consolidado por fornecedor. Identifique fornecedores já utilizados e obtenha contato para agilizar cotações.
+            {aba === 'consulta'
+              ? 'Consulte todo o histórico de compras por material. Cada linha é um pedido consolidado por fornecedor. Identifique fornecedores já utilizados e obtenha contato para agilizar cotações.'
+              : 'Audite as compras de 2026 contra o que o mesmo material custou no passado, corrigido pelo IPCA. Cada linha abre o histórico que formou a referência.'}
           </p>
-          {lastUpdated && (
+          {aba === 'consulta' && lastUpdated && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
-              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+              <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('historico_pedidos')}
             </p>
           )}
         </div>
@@ -413,24 +460,54 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
           >
             <BarChart3 className="h-3.5 w-3.5" /> Análise de Compras
           </button>
-          <button
-            onClick={() => load(true)}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
-          </button>
-          {filteredRows.length > 0 && (
-            <button
-              onClick={handleExportExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
-            >
-              <FileSpreadsheet className="h-4 w-4" /> Exportar
-            </button>
+          {/* Atualizar e Exportar pertencem à consulta; a auditoria traz os seus
+              junto dos próprios filtros, porque operam sobre outro recorte. */}
+          {aba === 'consulta' && (
+            <>
+              <button
+                onClick={() => load(true)}
+                disabled={loading}
+                className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+              </button>
+              {filteredRows.length > 0 && (
+                <button
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95"
+                >
+                  <FileSpreadsheet className="h-4 w-4" /> Exportar
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
+      {/* Abas */}
+      <div className="flex items-center gap-1 border-b border-slate-150 dark:border-slate-850 -mt-2">
+        {([
+          { id: 'consulta',  label: 'Consulta',            icon: History },
+          { id: 'auditoria', label: 'Auditoria de Preços', icon: Scale },
+        ] as const).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setAba(id)}
+            aria-current={aba === id ? 'page' : undefined}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-colors cursor-pointer
+              ${aba === id
+                ? 'border-emerald-600 text-emerald-700 dark:text-emerald-500'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+          >
+            <Icon className="h-3.5 w-3.5" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'auditoria' && <AuditoriaPrecos />}
+
+      {aba === 'consulta' && (
+      <>
       {/* KPIs */}
       {!loading && !error && rows.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -471,7 +548,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busque por material, descrição, fornecedor, CNPJ, RM ou Nº do pedido..."
+              placeholder="Busque por item (código ou descrição), fornecedor, CNPJ, RM ou Nº do pedido..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
             />
           </div>
@@ -507,6 +584,30 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
               >
                 <option value="Todos">Ano: Todos</option>
                 {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="relative min-w-[170px]">
+              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={grupoFilter}
+                onChange={(e) => setGrupoFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+              >
+                <option value="Todos">Grupo: Todos</option>
+                {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div className="relative min-w-[130px]">
+              <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={tipoItemFilter}
+                onChange={(e) => setTipoItemFilter(e.target.value as 'Todos' | 'Consumo' | 'Projeto')}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                title="Itens de projeto (código de 18 dígitos) têm perfil de gasto muito diferente de consumo"
+              >
+                <option value="Todos">Natureza: Todas</option>
+                <option value="Consumo">Consumo</option>
+                <option value="Projeto">Projeto</option>
               </select>
             </div>
           </div>
@@ -622,6 +723,15 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                       {r.preco_unit !== undefined && <span>Unit: <strong className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unit)}</strong></span>}
                       {r.doc_compra !== '—' && <span className="font-mono">PO {r.doc_compra}</span>}
                       {r.data_doc && <span>{formatDateBR(r.data_doc)}</span>}
+                      {r.pedido_parcial && (
+                        <span
+                          title="Entrega ainda não fechou no SAP — quantidade e valor podem mudar até concluir."
+                          className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap"
+                          style={{ color: 'var(--status-warning)', background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)' }}
+                        >
+                          pedido parcial
+                        </span>
+                      )}
                     </div>
                     {(r.telefone !== '—' || r.email !== '—') && (
                       <div className="flex flex-col gap-1 pt-1">
@@ -724,7 +834,20 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                               <Td align="right" numeric strong className="whitespace-nowrap">{formatPreco(r.valor_total)}</Td>
                             )}
                             {visibleColumns.rm && <Td mono title={r.rm}>{r.rm}</Td>}
-                            {visibleColumns.doc_compra && <Td mono title={r.doc_compra}>{r.doc_compra}</Td>}
+                            {visibleColumns.doc_compra && (
+                              <Td mono title={r.doc_compra}>
+                                {r.doc_compra}
+                                {r.pedido_parcial && (
+                                  <span
+                                    title="Entrega ainda não fechou no SAP — quantidade e valor podem mudar até concluir."
+                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap align-middle"
+                                    style={{ color: 'var(--status-warning)', background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)' }}
+                                  >
+                                    pedido parcial
+                                  </span>
+                                )}
+                              </Td>
+                            )}
                             {visibleColumns.data_doc && (
                               <Td numeric className="whitespace-nowrap">{formatDateBR(r.data_doc)}</Td>
                             )}
@@ -747,6 +870,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             />
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

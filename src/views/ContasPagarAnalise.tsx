@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  BarChart3, Wallet, CalendarClock, Building2, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown,
+  BarChart3, Wallet, CalendarClock, Building2, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown, Clock,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, Legend, ResponsiveContainer,
 } from 'recharts';
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import { Profile } from '../types';
-import { formatBRL, formatBRLCompacto, formatDateBR, formatPct } from '../lib/format';
+import { formatBRL, formatBRLCompacto, formatDateBR, formatDateTimeBR, formatPct } from '../lib/format';
 import { useChartTokens, seriesColor } from '../lib/chartTokens';
 import { useChartConfig } from '../components/charts/chartDefaults';
 import ChartCard from '../components/charts/ChartCard';
@@ -636,16 +637,26 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     </div>
   );
 
+  const lastUpdated = useMemo(() => localDb.getDatasetUpdatedAt('fbl1n_c_pagar'), [linhas]);
+
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
-      <div className="border-b border-slate-100 dark:border-slate-800 pb-5">
-        <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-          <BarChart3 className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
-          Análise de Contas a Pagar
-        </h2>
-        <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-          Visão consolidada das partidas em aberto por categoria de documento, fornecedor, evolução temporal e vencimento.
-        </p>
+      <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
+            <BarChart3 className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+            Análise de Contas a Pagar
+          </h2>
+          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
+            Visão consolidada das partidas em aberto por categoria de documento, fornecedor, evolução temporal e vencimento.
+          </p>
+        </div>
+        {lastUpdated && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Clock className="h-3 w-3" />
+            <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -109,8 +109,10 @@ export default function TabContratosLista() {
 
   const contratos = useMemo(() => mesclarDetalhes(contratosBase, detalhesList), [contratosBase, detalhesList]);
 
-  // Data/hora da última importação (imported_at mais recente entre os itens).
+  // Data/hora da última importação SAP (planilha ME3N).
   const lastUpdated = useMemo(() => {
+    const sapDate = localDb.getDatasetUpdatedAt('contratos');
+    if (sapDate) return sapDate;
     let max = '';
     contratosBase.forEach(c => c.itens.forEach(it => { if (it.imported_at && it.imported_at > max) max = it.imported_at; }));
     return max || null;
@@ -325,7 +327,7 @@ export default function TabContratosLista() {
           </p>
           {lastUpdated && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
-              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+              <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('contratos')}
             </p>
           )}
         </div>

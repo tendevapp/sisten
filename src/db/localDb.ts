@@ -10,13 +10,14 @@ import {
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
   RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
-  ContratoDetalhes, ContratoAnexo
+  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
 import { limparCacheBusca } from '../lib/materiais';
 import { canAccessPage } from '../lib/pages';
 import { NOME_SETOR_JURIDICO } from '../lib/juridico';
+import { formatDateTimeBR } from '../lib/format';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
@@ -109,6 +110,11 @@ class LocalDatabase {
   }
 
   private historicoPedidosKey = 'sisten_historico_pedidos';
+  // Auditoria de preços (vw_auditoria_compras): as compras de 2026 com a
+  // referência histórica corrigida pelo IPCA ao lado. ~750 linhas. Não entra na
+  // sincronização periódica — a aba busca sob demanda, como Estoque, porque só
+  // uma tela consome e o dado só muda quando entra importação nova de pedidos.
+  private auditoriaComprasKey = 'sisten_auditoria_compras';
   // Cache separado: histórico de fornecedores restrito aos materiais com
   // requisição "Sem PO" em aberto (view vw_historico_fornecedores_sem_po).
   // Usado pela tela "Central de Compras" para sugerir fornecedores sem
@@ -123,11 +129,13 @@ class LocalDatabase {
   }
 
   private async init(): Promise<void> {
-    try {
-      const allEntries = await idbEntries<string, any>();
-      allEntries.forEach(([key, value]) => this.cache.set(String(key), value));
-    } catch (err) {
-      console.warn('Não foi possível carregar o cache do IndexedDB. Iniciando com armazenamento vazio.', err);
+    if (typeof indexedDB !== 'undefined') {
+      try {
+        const allEntries = await idbEntries<string, any>();
+        allEntries.forEach(([key, value]) => this.cache.set(String(key), value));
+      } catch (err) {
+        console.warn('Não foi possível carregar o cache do IndexedDB. Iniciando com armazenamento vazio.', err);
+      }
     }
 
     await this.migrateFromLocalStorageIfNeeded();
@@ -138,7 +146,7 @@ class LocalDatabase {
   // localStorage (síncrono, cota de poucos MB). Copia cada chave para o cache/IndexedDB
   // e limpa o localStorage para liberar a cota do navegador.
   private async migrateFromLocalStorageIfNeeded(): Promise<void> {
-    if (this.cache.has(this.migratedFlagKey)) return;
+    if (typeof localStorage === 'undefined' || this.cache.has(this.migratedFlagKey)) return;
 
     const legacyKeys = Object.keys(localStorage).filter(k => k !== 'theme');
     for (const key of legacyKeys) {
@@ -319,7 +327,11 @@ class LocalDatabase {
     const { data: profiles, error } = await supabase.from('profiles').select('*');
     if (error) throw error;
     if (profiles && profiles.length > 0) {
-      const mappedProfiles = profiles.map(p => ({ ...p, roles: p.roles || [] }));
+      const mappedProfiles = profiles.map(p => ({
+        ...p,
+        roles: p.roles || [],
+        tours_seen: p.tours_seen || {},
+      }));
       this.setStorageItem(this.profilesKey, mappedProfiles);
     }
   }
@@ -425,9 +437,11 @@ class LocalDatabase {
   // principal e sem a cota de ~5-10MB do localStorage.
   public setStorageItem<T>(key: string, value: T): void {
     this.cache.set(key, value);
-    idbSet(key, value).catch(err => {
-      console.warn(`Não foi possível persistir "${key}" no IndexedDB.`, err);
-    });
+    if (typeof indexedDB !== 'undefined') {
+      idbSet(key, value).catch(err => {
+        console.warn(`Não foi possível persistir "${key}" no IndexedDB.`, err);
+      });
+    }
   }
 
   public getPageCache<T>(pageKey: string, defaultValue: T): T {
@@ -533,13 +547,154 @@ class LocalDatabase {
     });
   }
 
-  // Data/hora em que a base foi atualizada pela última vez (última importação),
-  // para exibição nas telas ("Dados atualizados em: ..."). Usa o carimbo remoto
-  // quando disponível; caso contrário, a data do último download local.
+  // Data/hora em que a base foi atualizada pela última vez (última importação SAP),
+  // para exibição nas telas ("Dados atualizados em: ..."). Busca preferencialmente
+  // a data da última importação SAP da planilha de referência correspondente ao dataset.
   public getDatasetUpdatedAt(dataset: string): string | null {
+    if (!dataset) return null;
+
+    const datasetTypeMap: Record<string, string[]> = {
+      'estoque': ['ZL0024'],
+      'zl0024': ['ZL0024'],
+      'contratos': ['ME3N', 'ME3M'],
+      'me3n_contratos': ['ME3N', 'ME3M'],
+      'me3m_contratos': ['ME3N', 'ME3M'],
+      'fbl1n_c_pagar': ['FBL1N'],
+      'contas_pagar': ['FBL1N'],
+      'requisicoes': ['ME5A', 'ZL0132'],
+      'pedidos': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'historico_pedidos': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'pedidosforn': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'materials': ['MATERIAIS', 'CATALOGO'],
+      'tabela_frete': ['TABELA_FRETE', 'FRETE'],
+      'contatos': ['CONTATOS'],
+      'cidadeforn': ['CIDADE_FORN', 'ENDERECOS_FORNECEDORES'],
+    };
+
+    const targetTypes = datasetTypeMap[dataset.toLowerCase()] || [];
+
+    // 1. Tenta buscar nos logs de importação SAP gravados
+    const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+    let latestLogDate: string | null = null;
+    if (logs && logs.length > 0 && targetTypes.length > 0) {
+      const matchingLogs = logs.filter(l => l.type && targetTypes.includes(String(l.type).toUpperCase()));
+      if (matchingLogs.length > 0) {
+        matchingLogs.forEach(l => {
+          if (l.created_at && (!latestLogDate || l.created_at > latestLogDate)) {
+            latestLogDate = l.created_at;
+          }
+        });
+      }
+    }
+
+    // 2. Tenta buscar no carimbo de versão remota/local (updatedAt)
     const meta = this.getDatasetMeta(dataset);
-    if (!meta) return null;
-    return meta.updatedAt || meta.fetchedAt || null;
+    const metaUpdatedAt = meta?.updatedAt || null;
+
+    // Retorna a data mais recente entre a importação SAP e o carimbo de versão
+    if (latestLogDate && metaUpdatedAt) {
+      return latestLogDate > metaUpdatedAt ? latestLogDate : metaUpdatedAt;
+    }
+
+    return latestLogDate || metaUpdatedAt || meta?.fetchedAt || null;
+  }
+
+  // Retorna os detalhes de atualização: data do download do banco local, data do último upload de importação SAP e a tag da planilha (ex.: ME5A, ZL0024, ME3N, FBL1N).
+  public getDatasetUpdateDetails(dataset: string): { dbUpdatedAt: string | null; sapImportAt: string | null; sapTag: string } {
+    if (!dataset) {
+      return { dbUpdatedAt: null, sapImportAt: null, sapTag: 'SAP' };
+    }
+
+    const defaultTags: Record<string, string> = {
+      'estoque': 'ZL0024',
+      'zl0024': 'ZL0024',
+      'contratos': 'ME3N',
+      'me3n_contratos': 'ME3N',
+      'me3m_contratos': 'ME3N',
+      'fbl1n_c_pagar': 'FBL1N',
+      'contas_pagar': 'FBL1N',
+      'requisicoes': 'ME5A',
+      'pedidos': 'ZL0132',
+      'historico_pedidos': 'ZL0132',
+      'pedidosforn': 'ZL0132',
+      'materials': 'MATERIAIS',
+      'tabela_frete': 'FRETE',
+      'contatos': 'CONTATOS',
+      'cidadeforn': 'ENDEREÇOS',
+    };
+
+    const datasetTypeMap: Record<string, string[]> = {
+      'estoque': ['ZL0024'],
+      'zl0024': ['ZL0024'],
+      'contratos': ['ME3N', 'ME3M'],
+      'me3n_contratos': ['ME3N', 'ME3M'],
+      'me3m_contratos': ['ME3N', 'ME3M'],
+      'fbl1n_c_pagar': ['FBL1N'],
+      'contas_pagar': ['FBL1N'],
+      'requisicoes': ['ME5A', 'ZL0132'],
+      'pedidos': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'historico_pedidos': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'pedidosforn': ['ZL0132', 'HISTORICO_FORNECEDORES'],
+      'materials': ['MATERIAIS', 'CATALOGO'],
+      'tabela_frete': ['TABELA_FRETE', 'FRETE'],
+      'contatos': ['CONTATOS'],
+      'cidadeforn': ['CIDADE_FORN', 'ENDERECOS_FORNECEDORES'],
+    };
+
+    const key = dataset.toLowerCase();
+    const targetTypes = datasetTypeMap[key] || [];
+    const defaultTag = defaultTags[key] || 'SAP';
+
+    const meta = this.getDatasetMeta(dataset);
+    const dbUpdatedAt = meta?.fetchedAt || meta?.updatedAt || null;
+
+    const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+    let sapImportAt: string | null = null;
+    let sapTag = defaultTag;
+
+    if (logs && logs.length > 0 && targetTypes.length > 0) {
+      const matchingLogs = logs.filter(l => l.type && targetTypes.includes(String(l.type).toUpperCase()));
+      if (matchingLogs.length > 0) {
+        let latestLog: SAPImportLog | null = null;
+        matchingLogs.forEach(l => {
+          if (l.created_at && (!latestLog || l.created_at > latestLog.created_at)) {
+            latestLog = l;
+          }
+        });
+        if (latestLog) {
+          sapImportAt = (latestLog as SAPImportLog).created_at;
+          sapTag = String((latestLog as SAPImportLog).type).toUpperCase();
+        }
+      }
+    }
+
+    if (!sapImportAt && meta?.updatedAt) {
+      sapImportAt = meta.updatedAt;
+    }
+
+    return {
+      dbUpdatedAt,
+      sapImportAt,
+      sapTag,
+    };
+  }
+
+  // Gera o texto formatado para o badge de cabeçalho das telas:
+  // "Banco de dados atualizado em: DD/MM/AAAA, HH:mm | ME5A: DD/MM/AAAA, HH:mm"
+  public getDatasetUpdateBadge(dataset: string): string {
+    const details = this.getDatasetUpdateDetails(dataset);
+    const dbStr = details.dbUpdatedAt ? formatDateTimeBR(details.dbUpdatedAt) : null;
+    const sapStr = details.sapImportAt ? formatDateTimeBR(details.sapImportAt) : null;
+    const tag = details.sapTag || 'SAP';
+
+    if (dbStr && sapStr) {
+      return `Banco de dados atualizado em: ${dbStr} | ${tag}: ${sapStr}`;
+    } else if (dbStr) {
+      return `Banco de dados atualizado em: ${dbStr}`;
+    } else if (sapStr) {
+      return `Importação ${tag} atualizada em: ${sapStr}`;
+    }
+    return 'Dados atualizados recentemente';
   }
 
   // Incrementa a versão de um dataset no servidor (após uma importação) e alinha
@@ -788,7 +943,6 @@ class LocalDatabase {
         { grupo_compras: '358', nome_comprador: 'Comprador 358' },
         { grupo_compras: '447', nome_comprador: 'Comprador 447' },
         { grupo_compras: '575', nome_comprador: 'Comprador 575' },
-        { grupo_compras: '588', nome_comprador: 'Comprador 588' },
         { grupo_compras: '602', nome_comprador: 'Jamille' },
         { grupo_compras: '610', nome_comprador: 'Giulia' }
       ];
@@ -911,7 +1065,8 @@ class LocalDatabase {
         mappedProfile = {
           ...profile,
           roles: profile.roles || [],
-          page_access: profile.page_access || {}
+          page_access: profile.page_access || {},
+          tours_seen: profile.tours_seen || {},
         };
       }
 
@@ -1279,19 +1434,20 @@ class LocalDatabase {
       { grupo_compras: '358', nome_comprador: 'Comprador 358' },
       { grupo_compras: '447', nome_comprador: 'Comprador 447' },
       { grupo_compras: '575', nome_comprador: 'Comprador 575' },
-      { grupo_compras: '588', nome_comprador: 'Comprador 588' },
       { grupo_compras: '602', nome_comprador: 'Jamille' },
       { grupo_compras: '610', nome_comprador: 'Giulia' }
     ]);
-    if (!list.some(c => c.grupo_compras === '602')) {
-      list.push({ grupo_compras: '602', nome_comprador: 'Jamille' });
-      this.setStorageItem(this.compradoresKey, list);
+    let filteredList = list.filter(c => c.grupo_compras !== '588');
+    if (!filteredList.some(c => c.grupo_compras === '602')) {
+      filteredList.push({ grupo_compras: '602', nome_comprador: 'Jamille' });
     }
-    if (!list.some(c => c.grupo_compras === '610')) {
-      list.push({ grupo_compras: '610', nome_comprador: 'Giulia' });
-      this.setStorageItem(this.compradoresKey, list);
+    if (!filteredList.some(c => c.grupo_compras === '610')) {
+      filteredList.push({ grupo_compras: '610', nome_comprador: 'Giulia' });
     }
-    return list;
+    if (filteredList.length !== list.length || !list.some(c => c.grupo_compras === '610')) {
+      this.setStorageItem(this.compradoresKey, filteredList);
+    }
+    return filteredList;
   }
 
   // Pedidos de priorização feitos sobre itens de compra (Rastreio Compras),
@@ -2953,6 +3109,75 @@ class LocalDatabase {
     } catch (err) {
       console.warn('Falha ao sincronizar histórico de fornecedores (Sem PO); usando cache local.', err);
       return this.getHistoricoFornecedoresSemPO();
+    }
+  }
+
+  // Auditoria de preços: uma linha por compra de 2026 com a referência do
+  // material corrigida pelo IPCA (vw_auditoria_compras).
+  public getAuditoriaCompras(): AuditoriaCompra[] {
+    return this.getStorageItem<AuditoriaCompra[]>(this.auditoriaComprasKey, []);
+  }
+
+  /**
+   * Rebaixa a auditoria só quando a origem mudou. Meta própria
+   * ('auditoria_compras') pelo mesmo motivo de `historico_sem_po`: caches
+   * distintos não podem compartilhar carimbo de sincronização, senão um
+   * "adianta o relógio" do outro. A versão comparada é a de
+   * 'historico_pedidos', que é a mesma origem (pedidosforn) e já é incrementada
+   * nas importações.
+   *
+   * A referência também muda quando o IBGE publica um mês novo, mas isso não
+   * mexe na versão do dataset. Por isso o botão "Atualizar" da aba passa
+   * `force` — é o caminho para pegar IPCA novo sem esperar importação.
+   */
+  public async fetchAuditoriaCompras(force = false): Promise<AuditoriaCompra[]> {
+    if (!supabase) return this.getAuditoriaCompras();
+    try {
+      const markers = await this.fetchRemoteMarkers();
+      const metaDataset = 'auditoria_compras';
+      const hasCache = this.cache.has(this.auditoriaComprasKey);
+      const meta = this.getDatasetMeta(metaDataset);
+      const marker = markers?.get('historico_pedidos');
+      const upToDate = !!meta && hasCache && (!marker || meta.version === marker.version);
+      if (!force && upToDate) {
+        return this.getAuditoriaCompras();
+      }
+      const rows = await this.fetchAllFromTable<AuditoriaCompra>('vw_auditoria_compras');
+      this.setStorageItem(this.auditoriaComprasKey, rows);
+      const now = new Date().toISOString();
+      this.setStorageItem(this.datasetMetaKey(metaDataset), {
+        version: marker?.version ?? 0,
+        updatedAt: marker?.updatedAt ?? now,
+        fetchedAt: now,
+      });
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao sincronizar a auditoria de preços; usando cache local.', err);
+      return this.getAuditoriaCompras();
+    }
+  }
+
+  /**
+   * As compras passadas de UM material, já corrigidas — o drill-down que torna
+   * a mediana conferível.
+   *
+   * Buscado sob demanda e não sincronizado: são 6,5 mil linhas no total, e o
+   * usuário abre um punhado delas por sessão. Baixar todas para exibir cinco é
+   * o tipo de egress que a otimização do projeto existe para evitar.
+   */
+  public async fetchAuditoriaHistoricoMaterial(material: string): Promise<AuditoriaHistoricoMaterial[]> {
+    if (!supabase || !material) return [];
+    try {
+      const { data, error } = await supabase
+        .from('vw_auditoria_historico_material')
+        .select('*')
+        .eq('material', material)
+        .order('data_doc', { ascending: false });
+      if (error) throw error;
+      return (data || []) as AuditoriaHistoricoMaterial[];
+    } catch (err) {
+      console.warn(`Falha ao buscar o histórico do material ${material}.`, err);
+      return [];
     }
   }
 
@@ -5227,6 +5452,8 @@ class LocalDatabase {
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
+      await this.bumpDatasetVersion('estoque', dbRows.length);
+
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Posição de Estoque', `Importou Posição de Estoque ZL0024 (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
 
       onProgress?.(100);
@@ -5323,6 +5550,8 @@ class LocalDatabase {
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('fbl1n_c_pagar', dbRows.length);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contas a Pagar', `Importou Contas a Pagar FBL1N (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
 
@@ -5568,6 +5797,8 @@ class LocalDatabase {
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
 
+      await this.bumpDatasetVersion('contratos', dbRows.length);
+
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Contratos', `Importou Contratos ME3N (${filename}). Lidos: ${dataRows.length}, novos: ${recordsInserted}, atualizados: ${recordsUpdated}, ausentes neste arquivo: ${recordsEliminated}.`);
 
       onProgress?.(100);
@@ -5794,6 +6025,8 @@ class LocalDatabase {
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
       this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('tabela_frete', dbRows.length);
 
       this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Tabela de Frete', `Importou Tabela de Frete (${filename}). Lidos: ${dataRows.length}, salvos: ${dbRows.length}.`);
 
@@ -6040,6 +6273,49 @@ class LocalDatabase {
     }
 
     this.logActivity('admin', 'Administração', 'Editar Perfil', `${users[idx].name} ${value ? 'marcado' : 'desmarcado'} como aprovador de Cadastro SAP.`);
+    return true;
+  }
+
+  // Persiste que o usuário já viu um tour guiado específico (ex.: 'nova-solicitacao'),
+  // gravando no cache local do usuário logado e na coluna tours_seen da tabela profiles.
+  public async markTourSeen(tourId: string): Promise<boolean> {
+    const user = this.getCurrentUser();
+    if (!user) return false;
+
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === user.id);
+
+    const currentTours: Record<string, boolean> = {
+      ...(user.tours_seen || {}),
+      ...(idx !== -1 ? users[idx].tours_seen || {} : {}),
+      [tourId]: true,
+    };
+
+    user.tours_seen = currentTours;
+    this.setStorageItem(this.currentUserKey, user);
+
+    if (idx !== -1) {
+      users[idx].tours_seen = currentTours;
+      this.setStorageItem(this.profilesKey, users);
+    }
+
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ tours_seen: currentTours })
+          .eq('id', user.id);
+
+        if (error) {
+          console.warn('Coluna tours_seen indisponível em profiles ou erro ao atualizar no Supabase:', error);
+          await supabase.auth.updateUser({
+            data: { tours_seen: currentTours }
+          }).catch(console.error);
+        }
+      } catch (err) {
+        console.warn('Erro ao persistir tour visto no Supabase:', err);
+      }
+    }
     return true;
   }
 

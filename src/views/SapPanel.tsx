@@ -15,6 +15,7 @@ import { localDb } from '../db/localDb';
 import { Profile, EnrichedSAPRecord, SAPPedido, ItemStatus, TabelaFrete } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import { useToast } from '../components/ui/Toast';
+import { formatDateTimeBR } from '../lib/format';
 
 const allColsMe5a = [
   { key: 'Status', label: 'Status' },
@@ -935,7 +936,14 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-800">Painel SAP</h2>
-            <p className="text-xs text-slate-500">Requisições (ME5A) e pedidos (ZL0132) consolidados por chave RI.</p>
+            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5 flex-wrap">
+              <span>Requisições (ME5A) e pedidos (ZL0132) consolidados por chave RI.</span>
+              {localDb.getDatasetUpdatedAt('requisicoes') && (
+                <span className="inline-flex items-center gap-1 text-slate-400 font-medium shrink-0">
+                  <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('requisicoes')}
+                </span>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center space-x-2">

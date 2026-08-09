@@ -29,7 +29,6 @@ const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
 const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
-const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
@@ -62,7 +61,6 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/dashboards',
   '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
-  '/suprimentos/analise-cotacoes',
   '/suprimentos/historico',
   '/suprimentos/historico/dashboards',
   '/suprimentos/fornecedores',
@@ -473,12 +471,6 @@ export default function App() {
       case '/suprimentos/fornecedores-sem-po':
         if (canAccessPage(user, 'sup_central_compras')) {
           return <SuppliersNoPO user={user} onNavigate={handleNavigate} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
-
-      case '/suprimentos/analise-cotacoes':
-        if (canAccessPage(user, 'sup_analise_cotacoes')) {
-          return <AnaliseCotacoes user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

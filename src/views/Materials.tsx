@@ -14,38 +14,21 @@ interface MaterialsProps {
   user: Profile;
 }
 
-const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
-const sanitizeTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
+const sanitizeTerm = (term: string) => term.trim();
 
-// Reordena os resultados já paginados priorizando, na exibição, os materiais cuja
-// descrição contém os termos pesquisados (em vez de deixar valer só material_code/
-// technical_text). Não altera a busca no servidor — é um ajuste só de exibição.
-const sortByDescriptionRelevance = (items: Material[], chips: string[]): Material[] => {
-  const terms = chips.map(sanitizeTerm).filter(Boolean).map(t => t.toLowerCase());
-  if (!terms.length) return items;
-
-  // Por termo: descrição começando com a palavra > palavra inteira em qualquer
-  // posição > apenas substring solta. Ex.: buscando "valvula", "Válvula gaveta..."
-  // vem antes de "Suporte para válvula...".
-  const termScore = (description: string, term: string) => {
-    if (description.startsWith(term)) return 3;
-    const wordBoundaryRegex = new RegExp(`\\b${term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`);
-    if (wordBoundaryRegex.test(description)) return 2;
-    if (description.includes(term)) return 1;
-    return 0;
-  };
-
-  const scoreOf = (item: Material) => {
-    const description = (item.description || '').toLowerCase();
-    return terms.reduce((score, term) => score + termScore(description, term), 0);
-  };
-
-  return [...items].sort((a, b) => scoreOf(b) - scoreOf(a));
-};
-
-// Colunas realmente usadas na tela/exportação — evita trafegar colunas extras
-// da tabela materials (reduz egress vs. select('*')).
-const MATERIAL_COLS = 'id,material_code,description,technical_text,category,company,unit';
+// Linha da RPC buscar_materiais_catalogo -> Material. is_active/created_at não
+// vêm da RPC (a tela só lista ativos e não usa a data de criação).
+const rowToMaterial = (r: any): Material => ({
+  id: r.id,
+  material_code: r.material_code,
+  description: r.description,
+  technical_text: r.technical_text,
+  category: r.category,
+  company: r.company,
+  unit: r.unit,
+  is_active: true,
+  created_at: '',
+});
 
 export default function Materials({ user }: MaterialsProps) {
   // Carrega do cache se houver, senão usa os defaults
@@ -55,6 +38,7 @@ export default function Materials({ user }: MaterialsProps) {
     selectedCategory: 'Todas',
     selectedCompany: 'Todas',
     onlyFavorites: false,
+    incluirTecnico: false,
     currentPage: 1
   });
 
@@ -63,6 +47,10 @@ export default function Materials({ user }: MaterialsProps) {
   const [selectedCategory, setSelectedCategory] = useState(pageCache.selectedCategory);
   const [selectedCompany, setSelectedCompany] = useState(pageCache.selectedCompany);
   const [onlyFavorites, setOnlyFavorites] = useState(pageCache.onlyFavorites);
+  // Por padrão a busca casa só na descrição — igual ao modal de Nova
+  // Solicitação (MaterialSearchModal). O texto técnico só ajuda a separar
+  // itens de descrição idêntica, e fora esse caso é ruído no resultado.
+  const [incluirTecnico, setIncluirTecnico] = useState(pageCache.incluirTecnico ?? false);
 
   const [results, setResults] = useState<Material[]>([]);
   const [totalResults, setTotalResults] = useState(0);
@@ -90,9 +78,10 @@ export default function Materials({ user }: MaterialsProps) {
       selectedCategory,
       selectedCompany,
       onlyFavorites,
+      incluirTecnico,
       currentPage
     });
-  }, [queryInput, chips, selectedCategory, selectedCompany, onlyFavorites, currentPage]);
+  }, [queryInput, chips, selectedCategory, selectedCompany, onlyFavorites, incluirTecnico, currentPage]);
 
   useEffect(() => {
     setFavorites(localDb.getFavorites(user.id));
@@ -114,21 +103,22 @@ export default function Materials({ user }: MaterialsProps) {
       return;
     }
     setCurrentPage(1);
-  }, [chips, selectedCategory, selectedCompany, onlyFavorites]);
+  }, [chips, selectedCategory, selectedCompany, onlyFavorites, incluirTecnico]);
 
-  const applyFilters = useCallback(<T,>(query: T): T => {
-    let q = query as any;
-    if (selectedCategory !== 'Todas') {
-      q = q.eq('category', selectedCategory);
-    }
-    if (selectedCompany !== 'Todas') {
-      q = q.or(`company.eq.${selectedCompany},company.eq.AMBAS`);
-    }
-    chips.map(sanitizeTerm).filter(Boolean).forEach(term => {
-      q = q.or(`material_code.ilike.%${term}%,description.ilike.%${term}%,technical_text.ilike.%${term}%`);
-    });
-    return q as T;
-  }, [chips, selectedCategory, selectedCompany]);
+  // Parâmetros da RPC `buscar_materiais_catalogo` (ver
+  // criar_rpc_buscar_materiais_catalogo.sql) — casa cada chip em material_code
+  // OU descrição (technical_text só entra com incluirTecnico marcado — ver
+  // adicionar_incluir_tecnico_buscar_materiais_catalogo.sql), com AND entre
+  // chips, usando os índices GIN trigram do catálogo. Substitui o `.ilike()`
+  // encadeado no PostgREST, que em 172 mil linhas sem cobertura de índice nas
+  // 3 colunas do OR chegava a ~3-4s por busca (medido em pg_stat_statements).
+  const rpcParams = useCallback((codigosFavoritos: string[] | null) => ({
+    termos: chips.map(sanitizeTerm).filter(Boolean),
+    categoria: selectedCategory,
+    empresa: selectedCompany,
+    apenas_codigos: codigosFavoritos,
+    incluir_tecnico: incluirTecnico,
+  }), [chips, selectedCategory, selectedCompany, incluirTecnico]);
 
   useEffect(() => {
     const thisRequestId = ++requestIdRef.current;
@@ -145,21 +135,21 @@ export default function Materials({ user }: MaterialsProps) {
       }
 
       try {
-        let query = supabase.from('materials').select(MATERIAL_COLS, { count: 'exact' }).eq('is_active', true);
-        if (onlyFavorites) {
-          query = query.in('material_code', favorites);
-        }
-        query = applyFilters(query);
-
         const from = (currentPage - 1) * itemsPerPage;
-        const to = from + itemsPerPage - 1;
-        const { data, error, count } = await query.order('material_code', { ascending: true }).range(from, to);
+        const { data, error } = await supabase.rpc('buscar_materiais_catalogo', {
+          ...rpcParams(onlyFavorites ? favorites : null),
+          limite: itemsPerPage,
+          deslocamento: from,
+        });
 
         if (error) throw error;
         if (requestIdRef.current !== thisRequestId) return; // resposta obsoleta
 
-        setResults(sortByDescriptionRelevance(data || [], chips));
-        setTotalResults(count || 0);
+        // A ordem de relevância (termo casa na descrição, depois posição do
+        // termo, depois material_code) já vem pronta da RPC — ver
+        // ordenar_buscar_materiais_catalogo_por_posicao_termo.sql.
+        setResults((data || []).map(rowToMaterial));
+        setTotalResults((data && data[0]?.total_count) || 0);
       } catch (err) {
         console.error('Erro ao buscar materiais no Supabase:', err);
         if (requestIdRef.current === thisRequestId) {
@@ -173,7 +163,7 @@ export default function Materials({ user }: MaterialsProps) {
     };
 
     run();
-  }, [chips, selectedCategory, selectedCompany, onlyFavorites, favorites, currentPage, applyFilters]);
+  }, [chips, selectedCategory, selectedCompany, onlyFavorites, favorites, currentPage, rpcParams]);
 
   const handleAddChip = (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +185,7 @@ export default function Materials({ user }: MaterialsProps) {
     setSelectedCategory('Todas');
     setSelectedCompany('Todas');
     setOnlyFavorites(false);
+    setIncluirTecnico(false);
   };
 
   const handleCopyCode = (code: string) => {
@@ -227,16 +218,18 @@ export default function Materials({ user }: MaterialsProps) {
     setIsExporting(true);
     try {
       const allRows: Material[] = [];
-      const pageSize = 1000;
+      // Teto server-side da RPC (ver criar_rpc_buscar_materiais_catalogo.sql).
+      const pageSize = 200;
       let from = 0;
       while (allRows.length < EXPORT_CAP) {
-        let query = supabase.from('materials').select(MATERIAL_COLS).eq('is_active', true);
-        if (onlyFavorites) query = query.in('material_code', favorites);
-        query = applyFilters(query);
-        const { data, error } = await query.order('material_code', { ascending: true }).range(from, from + pageSize - 1);
+        const { data, error } = await supabase.rpc('buscar_materiais_catalogo', {
+          ...rpcParams(onlyFavorites ? favorites : null),
+          limite: pageSize,
+          deslocamento: from,
+        });
         if (error) throw error;
         if (!data || data.length === 0) break;
-        allRows.push(...data);
+        allRows.push(...(data as any[]).map(rowToMaterial));
         if (data.length < pageSize) break;
         from += pageSize;
       }
@@ -277,7 +270,7 @@ export default function Materials({ user }: MaterialsProps) {
           <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips para busca cumulativa.</p>
           {lastUpdated && (
             <p className="mt-1.5 text-[11px] font-medium text-slate-400 flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+              <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('materials')}
             </p>
           )}
         </div>
@@ -373,6 +366,19 @@ export default function Materials({ user }: MaterialsProps) {
           </div>
 
           <div className="flex items-center space-x-4">
+            <label
+              className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer"
+              title="Existem materiais com descrição idêntica que só o texto técnico separa (ex.: GALVANIZADO FOGO vs SEM REVESTIMENTO). Fora esse caso, incluí-lo só traz ruído no resultado."
+            >
+              <input
+                type="checkbox"
+                checked={incluirTecnico}
+                onChange={(e) => setIncluirTecnico(e.target.checked)}
+                className="mr-2 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              Incluir texto técnico na busca
+            </label>
+
             <label className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer">
               <input
                 type="checkbox"

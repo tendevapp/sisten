@@ -150,8 +150,10 @@ export default function Estoque({ user }: EstoqueProps) {
     }
   }, []);
 
-  // Data/hora da última importação (imported_at mais recente das linhas).
+  // Data/hora da última importação SAP (planilha ZL0024).
   const lastUpdated = useMemo(() => {
+    const sapDate = localDb.getDatasetUpdatedAt('estoque');
+    if (sapDate) return sapDate;
     let max = '';
     rows.forEach(r => { if (r.imported_at && r.imported_at > max) max = r.imported_at; });
     return max || null;
@@ -338,7 +340,7 @@ export default function Estoque({ user }: EstoqueProps) {
           </p>
           {lastUpdated && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
-              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+              <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('estoque')}
             </p>
           )}
         </div>

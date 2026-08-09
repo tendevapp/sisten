@@ -4,17 +4,27 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { localDb } from '../../db/localDb';
 
 export const seenKey = (tourId: string) => `sisten:tour-seen:${tourId}`;
 
 /**
  * Estado de um tour guiado (spotlight) por página. `tourId` isola o
- * "já visto" no localStorage por página, então cada tela tem sua própria
- * primeira-visita.
+ * "já visto" no localStorage e na conta do usuário no Supabase por página.
  */
 export function readSeen(tourId: string): boolean {
   try {
-    return localStorage.getItem(seenKey(tourId)) === '1';
+    const local = localStorage.getItem(seenKey(tourId)) === '1';
+    if (local) return true;
+
+    // Se o cache local do navegador foi limpo, verifica se a conta do usuário já registrou o tour no Supabase
+    const user = localDb.getCurrentUser();
+    if (user?.tours_seen?.[tourId]) {
+      try { localStorage.setItem(seenKey(tourId), '1'); } catch {}
+      return true;
+    }
+
+    return false;
   } catch {
     return true;
   }
@@ -30,6 +40,7 @@ export function useTour(tourId: string, stepCount: number) {
 
   const markSeen = useCallback(() => {
     try { localStorage.setItem(seenKey(tourId), '1'); } catch {}
+    localDb.markTourSeen(tourId).catch(console.error);
     setSeen(true);
   }, [tourId]);
 

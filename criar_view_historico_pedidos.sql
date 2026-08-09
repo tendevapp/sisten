@@ -1,7 +1,22 @@
 -- =====================================================================
 -- Histórico de Pedidos agregado por FORNECEDOR + PEDIDO (Nº Pedido).
--- Considera apenas as linhas com 'x' na coluna CRF.
--- Soma quantidade e valor; preço unitário derivado (valor / qtd).
+-- Considera linhas com 'x' na coluna CRF OU com alguma entrega registrada
+-- (qtd_fornecida > 0). Soma quantidade e valor; preço unitário derivado
+-- (valor / qtd).
+--
+-- CRF só amplia: o SAP marca 'x' quando a entrega fecha 100%, mas um pedido
+-- em entrega parcial já tem preço e quantidade reais — não é "sem compra".
+-- Investigação de 2026-08-09: buscar por "NUT" não trazia a compra de
+-- parafusos/porcas de 05/03/2026 (pedido 4100441709, ~R$233 mil) porque a
+-- entrega estava 69,6% concluída e o crf nunca chegou a 'x'. Historicamente
+-- há também pedidos 100% entregues cujo crf nunca foi marcado — puro atraso
+-- do flag no SAP, sem relação com o quanto foi entregue.
+--
+-- Ficam de fora só os pedidos com ZERO entrega (qtd_fornecida = 0): nada foi
+-- recebido, não há preço realizado a auditar ainda.
+--
+-- `pedido_parcial` (true quando 0 < qtd_fornecida < qtd_pedido) avisa a
+-- interface que a linha pode mudar de valor/quantidade até a entrega fechar.
 --
 -- MOEDA: o valor somado é `valor_em_brl`, não `valor_liquido`.
 -- `pedidosforn.valor_liquido` está na moeda ORIGINAL do pedido (BRL, USD, EUR
@@ -48,14 +63,17 @@ select
   max(p.reqc)                                        as reqc,
   max(p.data_doc)                                    as data_doc,
   sum(coalesce(p.qtd_pedido, 0))                     as qtd_pedido,
+  sum(coalesce(p.qtd_fornecida, 0))                  as qtd_fornecida,
   sum(coalesce(p.valor_em_brl, 0))                   as valor_liquido,
   case
     when sum(coalesce(p.qtd_pedido, 0)) > 0
     then sum(coalesce(p.valor_em_brl, 0)) / sum(coalesce(p.qtd_pedido, 0))
     else null
-  end                                                as preco_liquido_unit
+  end                                                as preco_liquido_unit,
+  (sum(coalesce(p.qtd_fornecida, 0)) > 0
+    and sum(coalesce(p.qtd_fornecida, 0)) < sum(coalesce(p.qtd_pedido, 0))) as pedido_parcial
 from public.pedidosforn p
-where lower(coalesce(p.crf, '')) = 'x'
+where lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0
 group by
   p.material,
   p.fornecedor_codigo,

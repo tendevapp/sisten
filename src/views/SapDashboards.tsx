@@ -16,10 +16,11 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
+import { formatDateTimeBR } from '../lib/format';
 import {
   classifyTipoDemanda, classifyCriticidade, resolveDataCorte, resolveComprador, CompradorInfo,
 } from '../lib/demandas';
@@ -226,6 +227,8 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
   const abaAtiva = ABAS.find(a => a.id === aba) ?? ABAS[0];
 
+  const lastSapImport = useMemo(() => localDb.getDatasetUpdatedAt('requisicoes'), [records]);
+
   return (
     <div className="space-y-6 text-left">
       {/* Cabeçalho */}
@@ -239,12 +242,16 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
             {abaAtiva.pergunta}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
-          {lastSync && <span className="tabular">Atualizado às {lastSync.toLocaleTimeString('pt-BR')}</span>}
+        <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
+          {lastSapImport && (
+            <span className="inline-flex items-center gap-1.5 tabular text-slate-500 dark:text-slate-400 font-medium">
+              <Clock className="h-3.5 w-3.5" /> {localDb.getDatasetUpdateBadge('requisicoes')}
+            </span>
+          )}
           <button
             onClick={refresh}
             disabled={syncing}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors duration-150 hover:bg-[var(--surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer"
             style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', outlineColor: 'var(--brand)' }}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />

@@ -61,6 +61,9 @@ export interface Profile {
   // a notificação automática por role (coordenador_suprimentos/comprador),
   // não a substitui.
   aprovador_cadastro_sap?: boolean;
+  // Dicionário de tours guiados já vistos pelo usuário (ex.: { 'nova-solicitacao': true }),
+  // persistido no Supabase para não reabrir o tour quando o cache do navegador for limpo.
+  tours_seen?: Record<string, boolean>;
 }
 
 export interface ActivityLog {
@@ -434,6 +437,15 @@ export interface HistoricoPedidoView {
   reqc?: string;
   data_doc?: string;
   qtd_pedido?: number;
+  /** Quantidade já entregue (SAP). Base de `pedido_parcial`. */
+  qtd_fornecida?: number;
+  /**
+   * true quando 0 < qtd_fornecida < qtd_pedido: a entrega ainda não fechou,
+   * então valor e quantidade da linha podem mudar. A view inclui esses
+   * pedidos (não só os com `crf='x'`, que o SAP só marca na entrega 100%) —
+   * ver docs/superpowers/specs/2026-08-08-auditoria-precos-ipca-design.md.
+   */
+  pedido_parcial?: boolean;
   /**
    * Valor líquido do item **em BRL**. A view soma `pedidosforn.valor_em_brl`,
    * não `valor_liquido` — este último está na moeda original do pedido e
@@ -461,6 +473,96 @@ export interface HistoricoPedidoView {
   rua?: string;
   codigo_postal?: string;
   data_migo?: string | null;
+}
+
+
+// ---------------------------------------------------------------------------
+// Auditoria de preços — compras de 2026 contra o histórico corrigido pelo IPCA.
+// Ver docs/superpowers/specs/2026-08-08-auditoria-precos-ipca-design.md.
+// ---------------------------------------------------------------------------
+
+/**
+ * Quanto se pode confiar na referência de preço de um material.
+ * 'Sem referência' não é um grau ruim — é a ausência de histórico do material,
+ * e responde por 45% do valor comprado em 2026.
+ */
+export type ConfiancaBenchmark = 'Alta' | 'Média' | 'Baixa' | 'Sem referência';
+
+/** Posição do preço pago contra a faixa P25–P75 do histórico corrigido. */
+export type VereditoCompra = 'Bom' | 'Na faixa' | 'Atenção' | 'Sem referência';
+
+/**
+ * Uma linha de `vw_auditoria_compras`: uma compra de 2026 (material +
+ * fornecedor + pedido, o mesmo grão de vw_historico_pedidos) com a referência
+ * histórica corrigida ao lado.
+ */
+export interface AuditoriaCompra {
+  material: string;
+  txt_breve?: string;
+  cod_forn?: string;
+  fornecedor?: string;
+  doc_compra?: string;
+  rm?: string;
+  grp_mercads?: string;
+  grp_mercads_desc?: string;
+  tipo_item?: 'Projeto' | 'Consumo';
+  data_doc?: string;
+  unidade?: string;
+  qtd: number;
+  /** Valor da compra em BRL (soma de valor_em_brl). */
+  valor: number;
+  /** valor / qtd — imune à base de preço `por` do SAP, que varia entre pedidos. */
+  preco_unit: number;
+  /**
+   * true quando a entrega do pedido ainda não fechou (0 < qtd_fornecida < qtd).
+   * A view inclui essas linhas — não só as com `crf='x'` — para pedidos em
+   * andamento não sumirem da auditoria; o preço já é real, só a quantidade
+   * final pode mudar até a entrega concluir.
+   */
+  pedido_parcial?: boolean;
+
+  // Referência do material, nula quando não houve compra anterior a 2026.
+  /** Compras históricas que formaram a referência. */
+  n_compras?: number | null;
+  primeira_compra?: string | null;
+  ultima_compra?: string | null;
+  qtd_mediana?: number | null;
+  /** Percentis do preço unitário histórico, já corrigidos pelo IPCA até hoje. */
+  ref_p25?: number | null;
+  ref_p50?: number | null;
+  ref_p75?: number | null;
+  /** Desvio-padrão do log do preço histórico — o detector de item genérico. */
+  sd_log?: number | null;
+
+  confianca: ConfiancaBenchmark;
+  veredito: VereditoCompra;
+  /** preco_unit / ref_p50 − 1. */
+  delta_pct?: number | null;
+  /** (preco_unit − ref_p50) × qtd. Negativo = pagou menos que a referência. */
+  delta_valor?: number | null;
+  /** Quantidade fora de [qtd_mediana/3, qtd_mediana×3]: ganho pode ser de escala. */
+  lote_atipico?: boolean;
+  /** Último mês do IPCA usado na correção (o IBGE publica com ~10 dias de atraso). */
+  ipca_mes_referencia?: string;
+}
+
+/**
+ * Uma compra passada de um material auditado (`vw_auditoria_historico_material`).
+ * Buscada sob demanda ao expandir a linha — são 6,5 mil registros no total, que
+ * não justificam sincronização permanente. É o que torna a mediana conferível.
+ */
+export interface AuditoriaHistoricoMaterial {
+  material: string;
+  doc_compra?: string;
+  cod_forn?: string;
+  fornecedor?: string;
+  data_doc?: string;
+  qtd: number;
+  valor: number;
+  /** Preço unitário na moeda e no valor da época. */
+  preco_unit: number;
+  fator_ipca: number;
+  preco_corrigido: number;
 }
 
 
@@ -642,159 +744,6 @@ export interface CidadeForn {
   estado_uf?: string;
   created_at?: string;
   updated_at?: string;
-}
-
-// ============================================================================
-// Módulo de Análise de Cotações
-// ============================================================================
-// Espelham as colunas de cotacao_lote/cotacao_item/cotacao_proposta/
-// cotacao_proposta_item/cotacao_decisao/cotacao_preco_historico
-// (ver criar_tabelas_cotacao_analise.sql). Os tipos "de trabalho" usados
-// pela lógica pura (extração, validação, vínculo, cálculo) ficam em
-// src/lib/cotacao/tipos.ts — estes aqui são o formato de linha de banco.
-
-export type CotacaoLoteStatus = 'rascunho' | 'aguardando_propostas' | 'em_analise' | 'decidido' | 'cancelado';
-export type CotacaoValidacaoStatus = 'ok' | 'divergente' | 'nao_declarado';
-export type CotacaoExtracaoStatus = 'pendente' | 'processando' | 'extraido' | 'erro';
-export type CotacaoVinculoOrigem = 'referencia' | 'ncm_descricao' | 'ia' | 'usuario' | 'nenhum';
-
-export interface CotacaoLote {
-  id: string;
-  numero: string | null;
-  titulo: string;
-  status: CotacaoLoteStatus;
-  criado_por?: string | null;
-  criado_por_nome?: string | null;
-  observacoes?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CotacaoItem {
-  id: string;
-  lote_id: string;
-  ordem: number;
-  ri?: string | null;
-  rm?: string | null;
-  item_reqc?: string | null;
-  material_code?: string | null;
-  descricao_canonica: string;
-  texto_tecnico?: string | null;
-  referencia?: string | null;
-  unidade?: string | null;
-  quantidade?: number | null;
-}
-
-export interface CotacaoProposta {
-  id: string;
-  lote_id: string;
-  cod_forn?: string | null;
-  cnpj?: string | null;
-  fornecedor_nome?: string | null;
-  uf?: string | null;
-  numero_proposta?: string | null;
-  data_cotacao?: string | null;
-  validade_texto?: string | null;
-  validade_data?: string | null;
-  condicao_pagamento_texto?: string | null;
-  ddp_codigo?: string | null;
-  ddp_confirmado: boolean;
-  ddp_pendente: boolean;
-  frete_texto?: string | null;
-  frete_valor?: number | null;
-  frete_modalidade?: string | null;
-  faturamento_minimo?: number | null;
-  prazo_entrega_texto?: string | null;
-  notas_gerais: string[];
-  total_declarado?: number | null;
-  total_calculado?: number | null;
-  itens_declarados?: number | null;
-  validacao_status: CotacaoValidacaoStatus;
-  validacao_detalhe?: string | null;
-  markdown_bruto?: string | null;
-  extracao_json?: unknown;
-  extracao_modelo?: string | null;
-  extracao_status: CotacaoExtracaoStatus;
-  extracao_tentativas: number;
-  created_at: string;
-}
-
-export interface CotacaoPropostaItem {
-  id: string;
-  proposta_id: string;
-  cotacao_item_id?: string | null;
-  numero_item_original?: string | null;
-  linha_ordem: number;
-  codigo_fornecedor?: string | null;
-  descricao_bruta: string;
-  referencia?: string | null;
-  referencia_normalizada?: string | null;
-  marca?: string | null;
-  unidade?: string | null;
-  quantidade?: number | null;
-  preco_unitario_bruto?: number | null;
-  desconto_valor?: number | null;
-  desconto_percentual?: number | null;
-  subtotal?: number | null;
-  preco_unitario_efetivo?: number | null;
-  custo_total_unitario?: number | null;
-  ipi_percentual?: number | null;
-  ipi_valor?: number | null;
-  icms_percentual?: number | null;
-  icms_reducao_percentual?: number | null;
-  st_percentual?: number | null;
-  st_valor?: number | null;
-  fcp_valor?: number | null;
-  pis_percentual?: number | null;
-  cofins_percentual?: number | null;
-  ncm?: string | null;
-  cst?: string | null;
-  cfop?: string | null;
-  imposto_codigo?: string | null;
-  imposto_confirmado: boolean;
-  disponibilidade_texto?: string | null;
-  prazo_entrega_texto?: string | null;
-  observacoes?: string | null;
-  confianca_extracao?: number | null;
-  match_confianca?: number | null;
-  vinculo_origem: CotacaoVinculoOrigem;
-  divergente: boolean;
-  divergencia_atributo?: string | null;
-  divergencia_detalhe?: string | null;
-  validacao_item_ok: boolean;
-}
-
-export interface CotacaoDecisao {
-  id: string;
-  lote_id: string;
-  cotacao_item_id: string;
-  proposta_item_id: string;
-  quantidade_adjudicada?: number | null;
-  eh_menor_preco: boolean;
-  aceita_divergencia: boolean;
-  justificativa?: string | null;
-  decidido_por?: string | null;
-  decidido_por_nome?: string | null;
-  decidido_em: string;
-}
-
-export interface CotacaoPrecoHistorico {
-  id: string;
-  material_code?: string | null;
-  descricao?: string | null;
-  referencia?: string | null;
-  cod_forn?: string | null;
-  fornecedor_nome?: string | null;
-  data_cotacao?: string | null;
-  unidade?: string | null;
-  quantidade?: number | null;
-  preco_unitario_efetivo?: number | null;
-  custo_total_unitario?: number | null;
-  lote_id?: string | null;
-  proposta_item_id?: string | null;
-  foi_vencedor: boolean;
-  foi_divergente: boolean;
-  created_at: string;
 }
 
 export interface TabelaFrete {

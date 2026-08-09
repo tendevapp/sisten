@@ -8,7 +8,7 @@ import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
-  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText,
+  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -86,7 +86,13 @@ const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
     target: 'novasol-enviar',
     icon: Send,
     title: 'Envie quando estiver pronto',
-    description: 'Um rascunho é salvo automaticamente a cada 30 segundos, então você pode sair e continuar depois. Pronto — reabra este tour a qualquer momento pelo botão Ajuda.',
+    description: 'Um rascunho é salvo automaticamente a cada 30 segundos, então você pode sair e continuar depois.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão de Ajuda a qualquer momento no canto inferior para reabrir o tour guiado.',
   },
 ];
 
@@ -1856,7 +1862,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         />
       )}
 
-      {!tour.isOpen && <HelpButton onClick={tour.open} pulse={!tour.seen} />}
+      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={NOVA_SOLICITACAO_TOUR_STEPS}

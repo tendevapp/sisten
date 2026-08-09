@@ -10,12 +10,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Receipt, RefreshCw, FileSpreadsheet, Search, AlertCircle, Wallet, CalendarClock, ListChecks,
-  ChevronRight, ChevronDown, ChevronsUpDown, Building2, Layers,
+  ChevronRight, ChevronDown, ChevronsUpDown, Building2, Layers, Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import { Profile } from '../types';
-import { formatBRL, formatDateBR } from '../lib/format';
+import { formatBRL, formatDateBR, formatDateTimeBR } from '../lib/format';
 import KpiCard from '../components/charts/KpiCard';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
@@ -323,16 +324,26 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
     return groupedSuppliers.every(g => expandedSuppliers[g.supplierName]);
   }, [groupedSuppliers, expandedSuppliers]);
 
+  const lastUpdated = useMemo(() => localDb.getDatasetUpdatedAt('fbl1n_c_pagar'), [lancamentos]);
+
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
-      <div className="border-b border-slate-100 dark:border-slate-800 pb-5">
-        <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
-          <Receipt className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
-          Contas a Pagar
-        </h2>
-        <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-          Tabela dinâmica de contas a pagar agrupada por fornecedor com detalhamento expansível (FBL1N).
-        </p>
+      <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
+            <Receipt className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
+            Contas a Pagar
+          </h2>
+          <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
+            Tabela dinâmica de contas a pagar agrupada por fornecedor com detalhamento expansível (FBL1N).
+          </p>
+        </div>
+        {lastUpdated && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Clock className="h-3 w-3" />
+            <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

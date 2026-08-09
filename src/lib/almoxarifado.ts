@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { localDb } from '../db/localDb';
 import { EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
 
 export type ClasseAbc = 'A' | 'B' | 'C';
@@ -142,14 +143,14 @@ export function calcularKpis(itens: EstoqueItem[]): EstoqueKpi {
   const materiais = new Set<string>();
   const depositos = new Set<string>();
   let valor = 0;
-  let dataPosicao = '';
+  let dataPosicao = localDb.getDatasetUpdatedAt('estoque') || '';
   itens.forEach(i => {
     const mat = normalizeCode(i.material);
     if (mat) materiais.add(mat);
     const dep = String(i.deposito ?? '').trim();
     if (dep) depositos.add(dep);
     valor += i.valor_total || 0;
-    if (i.imported_at && i.imported_at > dataPosicao) dataPosicao = i.imported_at;
+    if (!dataPosicao && i.imported_at && i.imported_at > dataPosicao) dataPosicao = i.imported_at;
   });
   return {
     valor,

@@ -35,6 +35,14 @@ function formatCNPJ(cnpj?: string | null): string {
 
 const CLASSIFICACOES = ['Preferencial', 'Aprovado', 'Em avaliação', 'Bloqueado', ''];
 
+// Caracteres com significado especial na sintaxe de filtro do PostgREST
+// (separador de condição, agrupamento, coringa ilike). Sem isso, um termo
+// digitado com vírgula ou parêntese altera a estrutura do `.or()` montado
+// por interpolação de string abaixo — ex.: "a,cnpj.ilike.%b" injeta uma
+// condição extra na query.
+const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
+const sanitizeFilterTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
+
 // Contatos e telefones podem vir de planilhas importadas usando diferentes
 // separadores (";", ",", "/" ou quebras de linha). Normaliza tudo para uma
 // lista de valores individuais.
@@ -881,8 +889,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     try {
       let q = supabase.from('contatos').select('*', { count: 'exact' });
 
-      if (search.trim()) {
-        const term = search.trim();
+      const term = sanitizeFilterTerm(search);
+      if (term) {
         q = q.or(`cod_vendor.ilike.%${term}%,cnpj.ilike.%${term}%,fornecedor.ilike.%${term}%,email.ilike.%${term}%`);
       }
 

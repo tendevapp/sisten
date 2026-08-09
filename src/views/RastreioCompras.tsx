@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -72,7 +72,13 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
     target: 'rastreio-exportar',
     icon: FileSpreadsheet,
     title: 'Exporte o que estiver filtrado',
-    description: 'Gere um PDF para impressão ou uma planilha Excel com os registros filtrados. Pronto — reabra este tour a qualquer momento pelo botão Ajuda.',
+    description: 'Gere um PDF para impressão ou uma planilha Excel com os registros filtrados.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão de Ajuda a qualquer momento no canto inferior para reabrir o tour guiado.',
   },
 ];
 
@@ -336,7 +342,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
           </p>
           {lastUpdated && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
-              <Clock className="h-3 w-3" /> Dados atualizados em: {formatDateTimeBR(lastUpdated)}
+              <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('historico_pedidos')}
             </p>
           )}
         </div>
@@ -587,7 +593,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         />
       )}
 
-      {!tour.isOpen && <HelpButton onClick={tour.open} pulse={!tour.seen} />}
+      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={RASTREIO_TOUR_STEPS}
