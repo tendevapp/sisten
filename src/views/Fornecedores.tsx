@@ -618,7 +618,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
   };
 
   return (
-    <Modal onClose={onClose} ariaLabel={canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'}>
+    <Modal onClose={onClose} ariaLabel={canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'} disableOutsideClose>
       <ModalHeader onClose={onClose}>
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
@@ -1235,7 +1235,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
           initialValues={cadastroInitialValues}
           classificacaoOpts={classificacaoOpts}
           onClose={() => { setShowCadastro(false); setCadastroInitialValues(undefined); }}
-          onSaved={() => { loadData(); loadNaoCadastradosData(); }}
+          onSaved={() => { loadData(); loadNaoCadastradosData(); loadClassificacoes(); }}
         />
       )}
 
@@ -1246,7 +1246,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
           canEdit={canEdit}
           classificacaoOpts={classificacaoOpts}
           onClose={() => setSelectedSupplier(null)}
-          onSaved={() => { loadData(); loadNaoCadastradosData(); }}
+          onSaved={() => { loadData(); loadNaoCadastradosData(); loadClassificacoes(); }}
         />
       )}
 
@@ -1511,10 +1511,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
                 {/* Desktop: tabela completa */}
                 <div className="hidden lg:block">
-                  <TableShell maxHeight="none">
+                  <TableShell maxHeight="65vh">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                      <tr className="sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 shadow-sm">
                         {([
                           { field: 'cod_vendor', label: 'Cód. Vendor' },
                           { field: 'cnpj', label: 'CNPJ' },
@@ -1702,10 +1702,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                   <button onClick={loadNaoCadastradosData} className="text-xs text-amber-500 hover:underline">Tentar novamente</button>
                 </div>
               ) : (
-                <TableShell maxHeight="none">
+                <TableShell maxHeight="65vh">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                      <tr className="sticky top-0 z-10 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 shadow-sm">
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                           Cód. Fornecedor
                         </th>
