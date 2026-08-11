@@ -15,6 +15,7 @@ import { localDb } from '../db/localDb';
 import { ContatoFornecedor, Profile } from '../types';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
+import { TableShell } from '../components/ui/DataTable';
 
 interface FornecedoresProps {
   user: Profile;
@@ -1524,7 +1525,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 </div>
 
                 {/* Desktop: tabela completa */}
-                <div className="hidden lg:block overflow-x-auto">
+                <div className="hidden lg:block">
+                  <TableShell maxHeight="none">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
@@ -1665,6 +1667,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       ))}
                     </tbody>
                   </table>
+                  </TableShell>
                 </div>
                 </>
               )}
@@ -1714,7 +1717,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                   <button onClick={loadNaoCadastradosData} className="text-xs text-amber-500 hover:underline">Tentar novamente</button>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <TableShell maxHeight="none">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
@@ -1805,7 +1808,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       )}
                     </tbody>
                   </table>
-                </div>
+                </TableShell>
               )}
 
               {/* Paginacao de Nao Cadastrados */}

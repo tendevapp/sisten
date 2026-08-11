@@ -9,6 +9,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
 import { formatDateTimeBR } from '../lib/format';
+import { TableShell } from '../components/ui/DataTable';
 
 interface MaterialsProps {
   user: Profile;
@@ -460,7 +461,8 @@ export default function Materials({ user }: MaterialsProps) {
         </div>
 
         {/* Desktop: tabela */}
-        <div className="hidden lg:block overflow-x-auto">
+        <div className="hidden lg:block">
+          <TableShell maxHeight="none">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-gray-100 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -564,6 +566,7 @@ export default function Materials({ user }: MaterialsProps) {
               )}
             </tbody>
           </table>
+          </TableShell>
         </div>
 
         {/* Pagination Row */}
