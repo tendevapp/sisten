@@ -160,16 +160,37 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
 
-  // Filtros
+  // Filtros (Drafts / Rápidos)
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [ufInput, setUfInput] = useState('Todos');
   const [ufFilter, setUfFilter] = useState('Todos');
+  const [classInput, setClassInput] = useState('Todos');
   const [classFilter, setClassFilter] = useState('Todos');
+  const [yearInput, setYearInput] = useState('Todos');
   const [yearFilter, setYearFilter] = useState('Todos');
+  const [grupoInput, setGrupoInput] = useState('Todos');
   const [grupoFilter, setGrupoFilter] = useState('Todos');
   // 'Projeto' = material de 18 dígitos iniciado em 100000000; o resto é 'Consumo'.
   // As duas naturezas têm perfil de gasto oposto (ver spec de Análise de
   // Compras) — analisá-las juntas distorce ticket médio e concentração.
+  const [tipoItemInput, setTipoItemInput] = useState<'Todos' | 'Consumo' | 'Projeto'>('Todos');
   const [tipoItemFilter, setTipoItemFilter] = useState<'Todos' | 'Consumo' | 'Projeto'>('Todos');
+
+  const handleApplyFilters = useCallback(() => {
+    setSearchQuery(searchInput);
+    setUfFilter(ufInput);
+    setClassFilter(classInput);
+    setYearFilter(yearInput);
+    setGrupoFilter(grupoInput);
+    setTipoItemFilter(tipoItemInput);
+  }, [searchInput, ufInput, classInput, yearInput, grupoInput, tipoItemInput]);
+
+  const handleKeyDownSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleApplyFilters();
+    }
+  };
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -541,68 +562,80 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
 
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
-        <div className="flex flex-col xl:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busque por item (código ou descrição), fornecedor, CNPJ, RM ou Nº do pedido..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
-            />
+        <div className="flex flex-col gap-3">
+          {/* Linha principal: Campo de Pesquisa expandido + Botão Buscar */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={handleKeyDownSearch}
+                placeholder="Busque por item (código ou descrição), fornecedor, CNPJ, RM ou Nº do pedido..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
+              />
+            </div>
+            <button
+              onClick={handleApplyFilters}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer h-[42px] shrink-0"
+            >
+              <Search className="h-4 w-4" /> Buscar
+            </button>
           </div>
+
+          {/* Linha secundária: Filtros Específicos/Selects compactos */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[130px]">
-              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
+            <div className="relative flex-1 min-w-[110px]">
+              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={ufFilter}
-                onChange={(e) => setUfFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                value={ufInput}
+                onChange={(e) => setUfInput(e.target.value)}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">UF: Todas</option>
                 {ufOptions.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[150px]">
-              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+            <div className="relative flex-1 min-w-[130px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={classFilter}
-                onChange={(e) => setClassFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                value={classInput}
+                onChange={(e) => setClassInput(e.target.value)}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Classificação: Todas</option>
                 {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[120px]">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+            <div className="relative flex-1 min-w-[100px]">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={yearFilter}
-                onChange={(e) => setYearFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                value={yearInput}
+                onChange={(e) => setYearInput(e.target.value)}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Ano: Todos</option>
                 {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[170px]">
-              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+            <div className="relative flex-[1.5] min-w-[140px]">
+              <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={grupoFilter}
-                onChange={(e) => setGrupoFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                value={grupoInput}
+                onChange={(e) => setGrupoInput(e.target.value)}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Grupo: Todos</option>
                 {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[130px]">
-              <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+            <div className="relative flex-1 min-w-[110px]">
+              <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={tipoItemFilter}
-                onChange={(e) => setTipoItemFilter(e.target.value as 'Todos' | 'Consumo' | 'Projeto')}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                value={tipoItemInput}
+                onChange={(e) => setTipoItemInput(e.target.value as 'Todos' | 'Consumo' | 'Projeto')}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
                 title="Itens de projeto (código de 18 dígitos) têm perfil de gasto muito diferente de consumo"
               >
                 <option value="Todos">Natureza: Todas</option>
