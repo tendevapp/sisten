@@ -601,7 +601,7 @@ export interface EstoqueAnalise {
 
 export interface ContatoFornecedor {
   id: string;
-  cod_vendor: string;
+  cod_vendor?: string | null;
   fornecedor?: string;
   nome_contato?: string; // Mantido por compatibilidade; usar representante_nome quando possível
   nome_fantasia?: string;
@@ -613,6 +613,7 @@ export interface ContatoFornecedor {
   representante_telefone?: string;
   representante_email?: string;
   classificacao?: string;
+  status?: string | null;
   created_at: string;
   updated_at?: string;
 }

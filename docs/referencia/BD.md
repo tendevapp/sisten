@@ -489,18 +489,24 @@ Histórico de pedidos de compra associando fornecedores a códigos de material (
 ---
 
 ### 19. `public.contatos`
-Cadastro de contatos e classificação mercadológica por fornecedor.
+Cadastro de contatos, classificação mercadológica e status por fornecedor.
 - **Chave Primária:** `id`
-- **Restrição de Unicidade:** `cod_vendor` é único.
+- **Restrição de Unicidade:** `cod_vendor` (opcional, único se preenchido).
 - **Colunas:**
   | Coluna | Tipo de Dados | Opções | Valor Padrão |
   | --- | --- | --- | --- |
   | `id` | `uuid` | `PRIMARY KEY` | `gen_random_uuid()` |
-  | `cod_vendor` | `text` | `unique`, `updatable` | - |
+  | `cod_vendor` | `text` | `nullable`, `unique`, `updatable` | - |
   | `fornecedor` | `text` | `nullable`, `updatable` | - |
   | `nome_fantasia` | `text` | `nullable`, `updatable` | - |
+  | `nome_contato` | `text` | `nullable`, `updatable` | - |
   | `telefone` | `text` | `nullable`, `updatable` | - |
   | `email` | `text` | `nullable`, `updatable` | - |
   | `classificacao` | `text` | `nullable`, `updatable` | - |
+  | `status` | `text` | `nullable`, `updatable` | `'Atualizado'::text` |
+  | `representante_nome` | `text` | `nullable`, `updatable` | - |
+  | `representante_cargo` | `text` | `nullable`, `updatable` | - |
+  | `representante_telefone` | `text` | `nullable`, `updatable` | - |
+  | `representante_email` | `text` | `nullable`, `updatable` | - |
   | `created_at` | `timestamp with time zone` | `nullable` | `now()` |
   | `updated_at` | `timestamp with time zone` | `nullable` | `now()` |

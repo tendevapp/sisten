@@ -13,6 +13,18 @@
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
+
+    // Rigor de tipos ativado por etapas. Estes seis já passam com zero erros no
+    // código atual. Faltam para `"strict": true` (54 erros hoje, contados com
+    // `tsc --noEmit`): `noImplicitAny` (~29), `strictNullChecks` (~7) e
+    // `strictFunctionTypes` (~18, todos em formatters do Recharts).
+    "alwaysStrict": true,
+    "strictBindCallApply": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {

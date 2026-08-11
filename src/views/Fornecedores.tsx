@@ -20,7 +20,7 @@ interface FornecedoresProps {
   user: Profile;
 }
 
-type SortField = 'cod_vendor' | 'cnpj' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao';
+type SortField = 'cod_vendor' | 'cnpj' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao' | 'status';
 type SortDir = 'asc' | 'desc';
 
 // Formatação visual de CNPJ
@@ -33,19 +33,56 @@ function formatCNPJ(cnpj?: string | null): string {
   return cnpj;
 }
 
-const CLASSIFICACOES = ['Preferencial', 'Aprovado', 'Em avaliação', 'Bloqueado', ''];
+const CLASSIFICACOES = [
+  'Equipamentos Pesados e Motores',
+  'Material de Construção, Siderurgia e Premoldados',
+  'Amplo Varejo',
+  'Preferencial',
+  'Aprovado',
+  'Em avaliação',
+  'Bloqueado',
+  ''
+];
+
+const STATUS_OPTS = ['Atualizado', 'Em Atualização', 'Pendente', 'Sem SAP', 'Inativo'];
+
+const STATUS_FILTER_OPTS = [
+  { value: '', label: 'Todos os status' },
+  { value: 'Atualizado', label: 'Atualizado' },
+  { value: 'Em Atualização', label: 'Em Atualização' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Sem SAP', label: 'Sem SAP' },
+  { value: 'Inativo', label: 'Inativo' },
+  { value: '__vazio__', label: 'Sem status' },
+];
+
+const statusStyle: Record<string, { badge: string; dot: string }> = {
+  'Atualizado': {
+    badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/50 dark:border-emerald-700/50',
+    dot: 'bg-emerald-500',
+  },
+  'Em Atualização': {
+    badge: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300/50 dark:border-blue-700/50',
+    dot: 'bg-blue-500',
+  },
+  'Pendente': {
+    badge: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300/50 dark:border-amber-700/50',
+    dot: 'bg-amber-500',
+  },
+  'Sem SAP': {
+    badge: 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300/50 dark:border-purple-700/50',
+    dot: 'bg-purple-500',
+  },
+  'Inativo': {
+    badge: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300/50 dark:border-rose-700/50',
+    dot: 'bg-rose-500',
+  },
+};
 
 // Caracteres com significado especial na sintaxe de filtro do PostgREST
-// (separador de condição, agrupamento, coringa ilike). Sem isso, um termo
-// digitado com vírgula ou parêntese altera a estrutura do `.or()` montado
-// por interpolação de string abaixo — ex.: "a,cnpj.ilike.%b" injeta uma
-// condição extra na query.
 const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
 const sanitizeFilterTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
 
-// Contatos e telefones podem vir de planilhas importadas usando diferentes
-// separadores (";", ",", "/" ou quebras de linha). Normaliza tudo para uma
-// lista de valores individuais.
 function splitMultiValues(raw?: string | null): string[] {
   if (!raw) return [];
   return raw.split(/[;,/\n]+/).map(v => v.trim()).filter(Boolean);
@@ -53,6 +90,9 @@ function splitMultiValues(raw?: string | null): string[] {
 
 const CLASSIFICACAO_OPTS = [
   { value: '', label: 'Todas classificações' },
+  { value: 'Equipamentos Pesados e Motores', label: 'Equipamentos Pesados e Motores' },
+  { value: 'Material de Construção, Siderurgia e Premoldados', label: 'Material de Construção, Siderurgia e Premoldados' },
+  { value: 'Amplo Varejo', label: 'Amplo Varejo' },
   { value: 'Preferencial', label: 'Preferencial' },
   { value: 'Aprovado', label: 'Aprovado' },
   { value: 'Em avaliação', label: 'Em avaliação' },
@@ -105,6 +145,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
   const [fornecedor, setFornecedor] = useState(initialValues?.fornecedor && initialValues.fornecedor !== '— Sem razão social —' ? initialValues.fornecedor : '');
   const [nomeFantasia, setNomeFantasia] = useState('');
   const [classificacao, setClassificacao] = useState('');
+  const [status, setStatus] = useState('Atualizado');
   const [emails, setEmails] = useState<string[]>(['']);
   const [telefones, setTelefones] = useState<string[]>(['']);
 
@@ -143,7 +184,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!codVendor.trim()) { setError('Código SAP é obrigatório.'); return; }
+    if (!status) { setError('O campo Status é obrigatório.'); return; }
     if (!supabase) { setError('Supabase não configurado.'); return; }
 
     setSaving(true);
@@ -162,7 +203,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
         .join('; ');
 
       const payload = {
-        cod_vendor: codVendor.trim(),
+        cod_vendor: codVendor.trim() || null,
         cnpj: cnpj.trim() || null,
         fornecedor: fornecedor.trim() || null,
         nome_fantasia: nomeFantasia.trim() || null,
@@ -173,6 +214,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
         representante_telefone: representanteTelefone.trim() || null,
         representante_email: representanteEmail.trim() || null,
         classificacao: classificacao || null,
+        status: status || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -187,7 +229,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
       onSaved();
       onClose();
     } catch (e: any) {
-      if (e.code === '23505') {
+      if (e.code === '23505' && codVendor.trim()) {
         setError(`Já existe um fornecedor com o Código SAP "${codVendor.trim()}".`);
       } else {
         setError(e.message || 'Erro ao cadastrar fornecedor.');
@@ -221,17 +263,34 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
               
               <div className="space-y-1.5">
                 <label htmlFor="new_cod_vendor" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Código SAP <span className="text-red-500">*</span>
+                  Código SAP <span className="text-xs font-normal text-slate-400">(opcional)</span>
                 </label>
                 <input
                   id="new_cod_vendor"
                   type="text"
-                  required
                   value={codVendor}
                   onChange={e => setCodVendor(e.target.value)}
                   placeholder="Ex: 10001234"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="new_status" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="new_status"
+                  required
+                  value={status}
+                  onChange={e => setStatus(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                >
+                  <option value="">— Selecione um status —</option>
+                  {STATUS_OPTS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
@@ -453,7 +512,7 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
           </button>
           <button
             type="submit"
-            disabled={saving || !codVendor.trim()}
+            disabled={saving || !status}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-sm"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -474,11 +533,13 @@ interface EdicaoModalProps {
 }
 
 function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) {
+  const [codVendor, setCodVendor] = useState(supplier.cod_vendor || '');
   const [cnpj, setCnpj] = useState(supplier.cnpj || '');
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
   const [nomeContato, setNomeContato] = useState(supplier.nome_contato || '');
   const [nomeFantasia, setNomeFantasia] = useState(supplier.nome_fantasia || '');
   const [classificacao, setClassificacao] = useState(supplier.classificacao || '');
+  const [status, setStatus] = useState(supplier.status || 'Atualizado');
   
   // Converte a string de emails (possivelmente com múltiplos valores) em um array editável
   const [emails, setEmails] = useState<string[]>(() => {
@@ -527,6 +588,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!status) { setError('O campo Status é obrigatório.'); return; }
     if (!supabase) { setError('Supabase não configurado.'); return; }
 
     setSaving(true);
@@ -545,6 +607,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
       const { error: upErr } = await supabase
         .from('contatos')
         .update({
+          cod_vendor: codVendor.trim() || null,
           cnpj: cnpj.trim() || null,
           fornecedor: fornecedor.trim() || null,
           nome_contato: nomeContato.trim() || null,
@@ -552,6 +615,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
           telefone: telefonesFiltrados || null,
           email: emailsFiltrados || null,
           classificacao: classificacao || null,
+          status: status || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', supplier.id);
@@ -583,7 +647,7 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
               {canEdit ? 'Editar Fornecedor' : 'Detalhes do Fornecedor'}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              SAP Código: <span className="font-mono font-semibold">{supplier.cod_vendor}</span>
+              SAP Código: <span className="font-mono font-semibold">{codVendor || 'Sem SAP'}</span>
             </p>
           </div>
         </div>
@@ -599,14 +663,35 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
 
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  Código SAP (Vendor)
+                  Código SAP (Vendor) <span className="text-xs font-normal text-slate-400">(opcional)</span>
                 </label>
                 <input
                   type="text"
-                  disabled
-                  value={supplier.cod_vendor}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-850 px-3.5 py-2.5 text-sm text-slate-500 dark:text-slate-400 focus:outline-none cursor-not-allowed"
+                  disabled={!canEdit}
+                  value={codVendor}
+                  onChange={e => setCodVendor(e.target.value)}
+                  placeholder="Ex: 10001234 (opcional)"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-850 disabled:text-slate-500 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="edit_status" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="edit_status"
+                  disabled={!canEdit}
+                  required
+                  value={status}
+                  onChange={e => setStatus(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                >
+                  <option value="">— Selecione um status —</option>
+                  {STATUS_OPTS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">
@@ -846,6 +931,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const pageCache = localDb.getPageCache('fornecedores', {
     searchRaw: '',
     classificacaoFilter: '',
+    statusFilter: '',
     hasPhone: false,
     hasEmail: false,
     page: 0,
@@ -856,9 +942,53 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   // Filtros
   const [searchRaw, setSearchRaw] = useState(pageCache.searchRaw);
   const [classificacaoFilter, setClassificacaoFilter] = useState(pageCache.classificacaoFilter);
+  const [statusFilter, setStatusFilter] = useState(pageCache.statusFilter || '');
   const [hasPhone, setHasPhone] = useState(pageCache.hasPhone);
   const [hasEmail, setHasEmail] = useState(pageCache.hasEmail);
   const search = useDebounce(searchRaw, 350);
+
+  // Lista dinâmica de classificações extraídas dos dados reais da tabela contatos
+  const [classificacaoOpts, setClassificacaoOpts] = useState<string[]>([]);
+
+  const loadClassificacoes = useCallback(async () => {
+    const set = new Set<string>([
+      'Equipamentos Pesados e Motores',
+      'Material de Construção, Siderurgia e Premoldados',
+      'Amplo Varejo',
+      'Preferencial',
+      'Aprovado',
+      'Em avaliação',
+      'Bloqueado'
+    ]);
+
+    const localContatos = localDb.getContatosForn();
+    localContatos.forEach(c => {
+      if (c.classificacao && c.classificacao.trim()) set.add(c.classificacao.trim());
+    });
+
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('contatos')
+          .select('classificacao')
+          .not('classificacao', 'is', null)
+          .neq('classificacao', '');
+        if (data) {
+          data.forEach(d => {
+            if (d.classificacao && d.classificacao.trim()) set.add(d.classificacao.trim());
+          });
+        }
+      } catch (e) {
+        console.warn('Erro ao carregar classificações únicas do Supabase:', e);
+      }
+    }
+
+    setClassificacaoOpts(Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR')));
+  }, []);
+
+  useEffect(() => {
+    loadClassificacoes();
+  }, [loadClassificacoes]);
 
   // Paginacao
   const [page, setPage] = useState(pageCache.page);
@@ -874,13 +1004,14 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     localDb.setPageCache('fornecedores', {
       searchRaw,
       classificacaoFilter,
+      statusFilter,
       hasPhone,
       hasEmail,
       page,
       sortField,
       sortDir
     });
-  }, [searchRaw, classificacaoFilter, hasPhone, hasEmail, page, sortField, sortDir]);
+  }, [searchRaw, classificacaoFilter, statusFilter, hasPhone, hasEmail, page, sortField, sortDir]);
 
   const loadData = useCallback(async () => {
     if (!supabase) { setError('Supabase não configurado.'); setLoading(false); return; }
@@ -900,6 +1031,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         q = q.eq('classificacao', classificacaoFilter);
       }
 
+      if (statusFilter === '__vazio__') {
+        q = q.or('status.is.null,status.eq.');
+      } else if (statusFilter) {
+        q = q.eq('status', statusFilter);
+      }
+
       if (hasPhone) q = q.not('telefone', 'is', null).neq('telefone', '');
       if (hasEmail) q = q.not('email', 'is', null).neq('email', '');
 
@@ -915,7 +1052,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     } finally {
       setLoading(false);
     }
-  }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir, page]);
+  }, [search, classificacaoFilter, statusFilter, hasPhone, hasEmail, sortField, sortDir, page]);
 
   // Carrega fornecedores da pedidosforn que não existem na contatos
   const loadNaoCadastradosData = useCallback(async () => {
@@ -1054,13 +1191,28 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     XLSX.writeFile(wb, `Fornecedores_Nao_Cadastrados_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  const handleStatusChange = async (supplierId: string, newStatus: string) => {
+    if (!canEdit || !supabase) return;
+    try {
+      const { error: upErr } = await supabase
+        .from('contatos')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', supplierId);
+      if (upErr) throw upErr;
+      setRows(prev => prev.map(r => r.id === supplierId ? { ...r, status: newStatus } : r));
+      localDb.syncContatos().catch(err => console.error('Erro ao sincronizar após alterar status:', err));
+    } catch (e: any) {
+      alert('Erro ao atualizar status: ' + (e.message || e.toString()));
+    }
+  };
+
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
     setPage(0);
-  }, [search, classificacaoFilter, hasPhone, hasEmail, sortField, sortDir]);
+  }, [search, classificacaoFilter, statusFilter, hasPhone, hasEmail, sortField, sortDir]);
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleSort = (field: SortField) => {
@@ -1080,11 +1232,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasFilters = !!search.trim() || !!classificacaoFilter || hasPhone || hasEmail;
+  const hasFilters = !!search.trim() || !!classificacaoFilter || !!statusFilter || hasPhone || hasEmail;
 
   const clearFilters = () => {
     setSearchRaw('');
     setClassificacaoFilter('');
+    setStatusFilter('');
     setHasPhone(false);
     setHasEmail(false);
     setPage(0);
@@ -1237,12 +1390,29 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 <select
                   value={classificacaoFilter}
                   onChange={e => setClassificacaoFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                 >
-                  {CLASSIFICACAO_OPTS.map(o => (
+                  <option value="">Todas classificações</option>
+                  {classificacaoOpts.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="__vazio__">Sem classificação</option>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                >
+                  {STATUS_FILTER_OPTS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
@@ -1314,7 +1484,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         </span>
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <span className="font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
-                            {row.cod_vendor}
+                            {row.cod_vendor || 'Sem SAP'}
                           </span>
                           {row.cnpj && (
                             <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
@@ -1338,7 +1508,17 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           </span>
                         )}
                       </div>
-                      {classifBadge(row.classificacao) && <div className="mt-2">{classifBadge(row.classificacao)}</div>}
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {classifBadge(row.classificacao)}
+                        {row.status && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                            statusStyle[row.status]?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200'
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusStyle[row.status]?.dot || 'bg-slate-400'}`} />
+                            {row.status}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1357,6 +1537,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           { field: 'telefone', label: 'Telefone' },
                           { field: 'email', label: 'E-mail' },
                           { field: 'classificacao', label: 'Classificação' },
+                          { field: 'status', label: 'Status' },
                         ] as { field: SortField; label: string }[]).map(col => (
                           <th
                             key={col.field}
@@ -1378,7 +1559,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       {loading ? (
                         Array.from({ length: 8 }).map((_, i) => (
                           <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
-                            {Array.from({ length: 8 }).map((_, j) => (
+                            {Array.from({ length: 9 }).map((_, j) => (
                               <td key={j} className="px-4 py-3">
                                 <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
                               </td>
@@ -1387,7 +1568,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         ))
                       ) : rows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                          <td colSpan={10} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
                             <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                             {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1410,7 +1591,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         >
                           <td className="px-4 py-3.5">
                             <span className="font-mono text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
-                              {row.cod_vendor}
+                              {row.cod_vendor || <span className="text-slate-400 font-normal italic">Sem SAP</span>}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
@@ -1445,6 +1626,30 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           </td>
                           <td className="px-4 py-3.5">
                             {classifBadge(row.classificacao) || <span className="text-slate-400 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            {canEdit ? (
+                              <select
+                                value={row.status || 'Atualizado'}
+                                onChange={e => handleStatusChange(row.id, e.target.value)}
+                                className={`text-xs font-semibold rounded-lg px-2.5 py-1 border focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all ${
+                                  statusStyle[row.status || 'Atualizado']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                              >
+                                {STATUS_OPTS.map(st => (
+                                  <option key={st} value={st} className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-medium">
+                                    {st}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                                statusStyle[row.status || 'Atualizado']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                              }`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusStyle[row.status || 'Atualizado']?.dot || 'bg-slate-400'}`} />
+                                {row.status || 'Atualizado'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
                             <span className="text-xs text-slate-400">

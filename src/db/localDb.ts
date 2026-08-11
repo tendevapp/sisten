@@ -283,7 +283,7 @@ class LocalDatabase {
           // vw_historico_pedidos não tem coluna única (é uma view agregada); não dá
           // para forçar um ORDER BY seguro aqui sem arriscar um nome de coluna
           // inválido. Ver P5 no plano de egress.
-          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01')))],
+          ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
           ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true, undefined, 'id'))],
           ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true, undefined, 'id'))],
           // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
@@ -2838,7 +2838,7 @@ class LocalDatabase {
       if (!force && !this.needsSync('historico_pedidos', this.historicoPedidosKey, markers)) {
         return this.getHistoricoPedidos();
       }
-      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos', '*', 1000, q => q.gte('data_doc', '2026-01-01'));
+      const rows = await this.fetchAllFromTable<HistoricoPedidoView>('vw_historico_pedidos', '*', 1000);
       this.setStorageItem(this.historicoPedidosKey, rows);
       this.commitDatasetMeta('historico_pedidos', markers);
       return rows;
@@ -4602,12 +4602,10 @@ class LocalDatabase {
       await supabase.from('import_logs').insert(logObj);
       onProgress?.(90);
 
-      // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos — com o
-      // mesmo corte de data usado na sincronização periódica (sem ele, cada
-      // importação rebaixava as tabelas inteiras: ~66 mil e ~61 mil linhas).
+      // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       await this.refreshPedidosMatViews();
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
       const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
       const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
@@ -5036,13 +5034,11 @@ class LocalDatabase {
 
       await supabase.from('import_logs').insert(logObj);
       
-      // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos —
-      // com o mesmo corte de data da sincronização periódica (sem ele, rebaixava as tabelas
-      // inteiras: ~66 mil e ~61 mil linhas a cada importação).
+      // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos
       onProgress?.(95, 'Sincronizando cache local...');
       await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       await this.refreshPedidosMatViews();
-      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true, q => q.gte('data_doc', '2026-01-01'));
+      await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
       // pedidosforn alimenta view_enriched_pedidos/view_enriched_requisicoes (status_requisicao,
       // documento_compra, data_pedido, criado_por_pedido) — sem reidratar e bumpar 'requisicoes'/
