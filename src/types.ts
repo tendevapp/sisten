@@ -608,6 +608,8 @@ export interface ContatoFornecedor {
   telefone?: string; // Telefone geral da empresa
   email?: string; // E-mail geral da empresa
   cnpj?: string | null;
+  cidade?: string;
+  estado_uf?: string;
   representante_nome?: string;
   representante_cargo?: string;
   representante_telefone?: string;

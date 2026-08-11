@@ -7,12 +7,12 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Search, Filter, X, Check, Star, AlertTriangle, Loader2,
   ChevronUp, ChevronDown, RefreshCw, Building2, ChevronsUpDown, Plus,
-  Phone, Mail, Trash2, UserX, Download, UserPlus
+  Phone, Mail, Trash2, UserX, Download, UserPlus, MapPin
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
-import { ContatoFornecedor, Profile } from '../types';
+import { ContatoFornecedor, CidadeForn, Profile } from '../types';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import { TableShell } from '../components/ui/DataTable';
@@ -21,7 +21,7 @@ interface FornecedoresProps {
   user: Profile;
 }
 
-type SortField = 'cod_vendor' | 'cnpj' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'telefone' | 'email' | 'classificacao' | 'status';
+type SortField = 'cod_vendor' | 'cnpj' | 'fornecedor' | 'nome_contato' | 'nome_fantasia' | 'estado_uf' | 'cidade' | 'telefone' | 'email' | 'classificacao' | 'status';
 type SortDir = 'asc' | 'desc';
 
 // Formatação visual de CNPJ
@@ -123,6 +123,8 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
   const [cnpj, setCnpj] = useState(initialValues?.cnpj && initialValues.cnpj !== '—' ? initialValues.cnpj : '');
   const [fornecedor, setFornecedor] = useState(initialValues?.fornecedor && initialValues.fornecedor !== '— Sem razão social —' ? initialValues.fornecedor : '');
   const [nomeFantasia, setNomeFantasia] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estadoUf, setEstadoUf] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [status, setStatus] = useState('Atualizado');
   const [emails, setEmails] = useState<string[]>(['']);
@@ -186,6 +188,8 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
         cnpj: cnpj.trim() || null,
         fornecedor: fornecedor.trim() || null,
         nome_fantasia: nomeFantasia.trim() || null,
+        cidade: cidade.trim() || null,
+        estado_uf: estadoUf.trim() || null,
         telefone: telefonesFiltrados || null,
         email: emailsFiltrados || null,
         representante_nome: representanteNome.trim() || null,
@@ -312,6 +316,36 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
                   placeholder="Ex: Nome Fantasia Comercial"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1 space-y-1.5">
+                  <label htmlFor="new_estado_uf" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    UF
+                  </label>
+                  <input
+                    id="new_estado_uf"
+                    type="text"
+                    maxLength={2}
+                    value={estadoUf}
+                    onChange={e => setEstadoUf(e.target.value.toUpperCase())}
+                    placeholder="Ex: BA"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
+                  />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <label htmlFor="new_cidade" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Cidade
+                  </label>
+                  <input
+                    id="new_cidade"
+                    type="text"
+                    value={cidade}
+                    onChange={e => setCidade(e.target.value)}
+                    placeholder="Ex: Salvador"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
               </div>
 
               <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -520,6 +554,26 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
   const [nomeContato, setNomeContato] = useState(supplier.nome_contato || '');
   const [nomeFantasia, setNomeFantasia] = useState(supplier.nome_fantasia || '');
+  const [cidade, setCidade] = useState(() => {
+    if (supplier.cidade) return supplier.cidade;
+    if (supplier.cod_vendor) {
+      const raw = String(supplier.cod_vendor).trim();
+      const list = localDb.getCidadeForn();
+      const found = list.find(cf => String(cf.forn_codigo).trim() === raw || String(cf.forn_codigo).trim() === raw.replace(/^0+/, ''));
+      if (found?.localidade) return found.localidade;
+    }
+    return '';
+  });
+  const [estadoUf, setEstadoUf] = useState(() => {
+    if (supplier.estado_uf) return supplier.estado_uf;
+    if (supplier.cod_vendor) {
+      const raw = String(supplier.cod_vendor).trim();
+      const list = localDb.getCidadeForn();
+      const found = list.find(cf => String(cf.forn_codigo).trim() === raw || String(cf.forn_codigo).trim() === raw.replace(/^0+/, ''));
+      if (found?.estado_uf) return found.estado_uf;
+    }
+    return '';
+  });
   const [classificacao, setClassificacao] = useState(supplier.classificacao || '');
   const [status, setStatus] = useState(supplier.status || 'Atualizado');
   
@@ -594,6 +648,8 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
           fornecedor: fornecedor.trim() || null,
           nome_contato: nomeContato.trim() || null,
           nome_fantasia: nomeFantasia.trim() || null,
+          cidade: cidade.trim() || null,
+          estado_uf: estadoUf.trim() || null,
           telefone: telefonesFiltrados || null,
           email: emailsFiltrados || null,
           classificacao: classificacao || null,
@@ -719,6 +775,38 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
                   placeholder="Ex: Nome Fantasia Comercial"
                   className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-550 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                 />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1 space-y-1.5">
+                  <label htmlFor="edit_estado_uf" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    UF
+                  </label>
+                  <input
+                    id="edit_estado_uf"
+                    type="text"
+                    disabled={!canEdit}
+                    maxLength={2}
+                    value={estadoUf}
+                    onChange={e => setEstadoUf(e.target.value.toUpperCase())}
+                    placeholder="Ex: BA"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
+                  />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <label htmlFor="edit_cidade" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Cidade
+                  </label>
+                  <input
+                    id="edit_cidade"
+                    type="text"
+                    disabled={!canEdit}
+                    value={cidade}
+                    onChange={e => setCidade(e.target.value)}
+                    placeholder="Ex: Salvador"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-500 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -911,11 +999,56 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const [showCadastro, setShowCadastro] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<ContatoFornecedor | null>(null);
 
+  // Mapeamento dinâmico de cidades e estados (cidadeforn)
+  const [cidadeFornList, setCidadeFornList] = useState<CidadeForn[]>(() => localDb.getCidadeForn());
+
+  useEffect(() => {
+    const updateCidades = () => {
+      setCidadeFornList(localDb.getCidadeForn());
+    };
+    window.addEventListener('storage', updateCidades);
+    return () => window.removeEventListener('storage', updateCidades);
+  }, []);
+
+  const cidadesMap = useMemo(() => {
+    const map = new Map<string, CidadeForn>();
+    cidadeFornList.forEach(cf => {
+      if (cf.forn_codigo) {
+        const raw = String(cf.forn_codigo).trim();
+        map.set(raw, cf);
+        const clean = raw.replace(/^0+/, '');
+        if (clean && !map.has(clean)) {
+          map.set(clean, cf);
+        }
+      }
+    });
+    return map;
+  }, [cidadeFornList]);
+
+  const getSupplierLocation = useCallback((codVendor?: string | null, rowCidade?: string, rowEstado?: string) => {
+    let uf = rowEstado || '';
+    let cidade = rowCidade || '';
+    if ((!uf || !cidade) && codVendor) {
+      const raw = String(codVendor).trim();
+      const cidForn = cidadesMap.get(raw) || cidadesMap.get(raw.replace(/^0+/, ''));
+      if (cidForn) {
+        if (!uf && cidForn.estado_uf) uf = cidForn.estado_uf;
+        if (!cidade && cidForn.localidade) cidade = cidForn.localidade;
+      }
+    }
+    return {
+      uf: uf || '—',
+      cidade: cidade || '—'
+    };
+  }, [cidadesMap]);
+
   // Carrega do cache
   const pageCache = localDb.getPageCache('fornecedores', {
     searchRaw: '',
     classificacaoFilter: '',
     statusFilter: '',
+    ufFilter: '',
+    cidadeFilter: '',
     hasPhone: false,
     hasEmail: false,
     page: 0,
@@ -927,9 +1060,46 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const [searchRaw, setSearchRaw] = useState(pageCache.searchRaw);
   const [classificacaoFilter, setClassificacaoFilter] = useState(pageCache.classificacaoFilter);
   const [statusFilter, setStatusFilter] = useState(pageCache.statusFilter || '');
+  const [ufFilter, setUfFilter] = useState(pageCache.ufFilter || '');
+  const [cidadeFilter, setCidadeFilter] = useState(pageCache.cidadeFilter || '');
   const [hasPhone, setHasPhone] = useState(pageCache.hasPhone);
   const [hasEmail, setHasEmail] = useState(pageCache.hasEmail);
   const search = useDebounce(searchRaw, 350);
+
+  // Lista única de UFs a partir do mapa de cidades e contatos
+  const ufOpts = useMemo(() => {
+    const set = new Set<string>();
+    cidadeFornList.forEach(cf => {
+      if (cf.estado_uf && cf.estado_uf.trim()) {
+        set.add(cf.estado_uf.trim().toUpperCase());
+      }
+    });
+    rows.forEach(r => {
+      const loc = getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf);
+      if (loc.uf && loc.uf !== '—') set.add(loc.uf.toUpperCase());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [cidadeFornList, rows, getSupplierLocation]);
+
+  // Lista única de Cidades (opcionalmente filtrada por UF selecionada)
+  const cidadeOpts = useMemo(() => {
+    const set = new Set<string>();
+    cidadeFornList.forEach(cf => {
+      const uf = cf.estado_uf ? cf.estado_uf.trim().toUpperCase() : '';
+      if (!ufFilter || uf === ufFilter.toUpperCase()) {
+        if (cf.localidade && cf.localidade.trim()) {
+          set.add(cf.localidade.trim());
+        }
+      }
+    });
+    rows.forEach(r => {
+      const loc = getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf);
+      if (!ufFilter || loc.uf.toUpperCase() === ufFilter.toUpperCase()) {
+        if (loc.cidade && loc.cidade !== '—') set.add(loc.cidade);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [cidadeFornList, rows, ufFilter, getSupplierLocation]);
 
   // Lista dinâmica de classificações extraídas dos dados reais da tabela contatos
   const [classificacaoOpts, setClassificacaoOpts] = useState<string[]>([]);
@@ -989,13 +1159,15 @@ export default function Fornecedores({ user }: FornecedoresProps) {
       searchRaw,
       classificacaoFilter,
       statusFilter,
+      ufFilter,
+      cidadeFilter,
       hasPhone,
       hasEmail,
       page,
       sortField,
       sortDir
     });
-  }, [searchRaw, classificacaoFilter, statusFilter, hasPhone, hasEmail, page, sortField, sortDir]);
+  }, [searchRaw, classificacaoFilter, statusFilter, ufFilter, cidadeFilter, hasPhone, hasEmail, page, sortField, sortDir]);
 
   const loadData = useCallback(async () => {
     if (!supabase) { setError('Supabase não configurado.'); setLoading(false); return; }
@@ -1147,14 +1319,34 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   }, [loadNaoCadastradosData]);
 
   const filteredNaoCadastrados = useMemo(() => {
-    if (!naoCadastradosSearch.trim()) return naoCadastradosList;
-    const q = naoCadastradosSearch.trim().toLowerCase();
-    return naoCadastradosList.filter(item =>
-      item.cod_forn.toLowerCase().includes(q) ||
-      item.cnpj.toLowerCase().includes(q) ||
-      item.fornecedor.toLowerCase().includes(q)
-    );
-  }, [naoCadastradosList, naoCadastradosSearch]);
+    let list = naoCadastradosList;
+    if (naoCadastradosSearch.trim()) {
+      const q = naoCadastradosSearch.trim().toLowerCase();
+      list = list.filter(item =>
+        item.cod_forn.toLowerCase().includes(q) ||
+        item.cnpj.toLowerCase().includes(q) ||
+        item.fornecedor.toLowerCase().includes(q)
+      );
+    }
+    if (ufFilter) {
+      list = list.filter(item => getSupplierLocation(item.cod_forn).uf.toUpperCase() === ufFilter.toUpperCase());
+    }
+    if (cidadeFilter) {
+      list = list.filter(item => getSupplierLocation(item.cod_forn).cidade.toLowerCase() === cidadeFilter.toLowerCase());
+    }
+    return list;
+  }, [naoCadastradosList, naoCadastradosSearch, ufFilter, cidadeFilter, getSupplierLocation]);
+
+  const filteredRows = useMemo(() => {
+    let list = rows;
+    if (ufFilter) {
+      list = list.filter(r => getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).uf.toUpperCase() === ufFilter.toUpperCase());
+    }
+    if (cidadeFilter) {
+      list = list.filter(r => getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).cidade.toLowerCase() === cidadeFilter.toLowerCase());
+    }
+    return list;
+  }, [rows, ufFilter, cidadeFilter, getSupplierLocation]);
 
   const naoCadastradosTotalPages = Math.ceil(filteredNaoCadastrados.length / PAGE_SIZE);
   const paginatedNaoCadastrados = useMemo(() => {
@@ -1163,12 +1355,17 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   }, [filteredNaoCadastrados, naoCadastradosPage]);
 
   const handleExportNaoCadastrados = () => {
-    const exportData = filteredNaoCadastrados.map(item => ({
-      'Código Fornecedor': item.cod_forn,
-      'CNPJ': item.cnpj !== '—' ? formatCNPJ(item.cnpj) : '—',
-      'Razão Social / Nome': item.fornecedor,
-      'Qtd. Pedidos no SAP': item.total_pedidos
-    }));
+    const exportData = filteredNaoCadastrados.map(item => {
+      const loc = getSupplierLocation(item.cod_forn);
+      return {
+        'Código Fornecedor': item.cod_forn,
+        'CNPJ': item.cnpj !== '—' ? formatCNPJ(item.cnpj) : '—',
+        'Razão Social / Nome': item.fornecedor,
+        'UF': loc.uf,
+        'Cidade': loc.cidade,
+        'Qtd. Pedidos no SAP': item.total_pedidos
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Não Cadastrados');
@@ -1196,7 +1393,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
       return;
     }
     setPage(0);
-  }, [search, classificacaoFilter, statusFilter, hasPhone, hasEmail, sortField, sortDir]);
+  }, [search, classificacaoFilter, statusFilter, ufFilter, cidadeFilter, hasPhone, hasEmail, sortField, sortDir]);
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleSort = (field: SortField) => {
@@ -1216,12 +1413,14 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasFilters = !!search.trim() || !!classificacaoFilter || !!statusFilter || hasPhone || hasEmail;
+  const hasFilters = !!search.trim() || !!classificacaoFilter || !!statusFilter || !!ufFilter || !!cidadeFilter || hasPhone || hasEmail;
 
   const clearFilters = () => {
     setSearchRaw('');
     setClassificacaoFilter('');
     setStatusFilter('');
+    setUfFilter('');
+    setCidadeFilter('');
     setHasPhone(false);
     setHasEmail(false);
     setPage(0);
@@ -1401,6 +1600,38 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
 
+              {/* Filtro UF */}
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={ufFilter}
+                  onChange={e => { setUfFilter(e.target.value); setCidadeFilter(''); setPage(0); }}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                >
+                  <option value="">Todos os estados (UF)</option>
+                  {ufOpts.map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Filtro Cidade */}
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={cidadeFilter}
+                  onChange={e => { setCidadeFilter(e.target.value); setPage(0); }}
+                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer max-w-[200px] truncate"
+                >
+                  <option value="">Todas as cidades</option>
+                  {cidadeOpts.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              </div>
+
               <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
                 <Phone className="h-3.5 w-3.5" />
@@ -1443,7 +1674,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         <div className="h-3 w-1/2 rounded bg-slate-100 dark:bg-slate-800" />
                       </div>
                     ))
-                  ) : rows.length === 0 ? (
+                  ) : filteredRows.length === 0 ? (
                     <div className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
                       <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
@@ -1458,7 +1689,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         </button>
                       )}
                     </div>
-                  ) : rows.map(row => (
+                  ) : filteredRows.map(row => {
+                    const loc = getSupplierLocation(row.cod_vendor, row.cidade, row.estado_uf);
+                    const locText = [loc.cidade !== '—' ? loc.cidade : null, loc.uf !== '—' ? loc.uf : null].filter(Boolean).join(' - ');
+                    return (
                     <button
                       key={row.id}
                       onClick={() => setSelectedSupplier(row)}
@@ -1483,6 +1717,11 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{row.nome_contato}</p>
                       )}
                       <div className="mt-1.5 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400">
+                        {locText && (
+                          <span className="flex items-center gap-1.5 truncate text-slate-600 dark:text-slate-300 font-medium">
+                            <MapPin className="h-3 w-3 shrink-0 text-slate-400" /> {locText}
+                          </span>
+                        )}
                         {row.telefone && (
                           <span className="flex items-center gap-1.5 truncate">
                             <Phone className="h-3 w-3 shrink-0" /> {splitMultiValues(row.telefone).join(', ')}
@@ -1506,7 +1745,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         )}
                       </div>
                     </button>
-                  ))}
+                  );
+                })}
                 </div>
 
                 {/* Desktop: tabela completa */}
@@ -1521,6 +1761,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           { field: 'fornecedor', label: 'Fornecedor' },
                           { field: 'nome_fantasia', label: 'Nome Fantasia' },
                           { field: 'nome_contato', label: 'Contato' },
+                          { field: 'estado_uf', label: 'UF' },
+                          { field: 'cidade', label: 'Cidade' },
                           { field: 'telefone', label: 'Telefone' },
                           { field: 'email', label: 'E-mail' },
                           { field: 'classificacao', label: 'Classificação' },
@@ -1546,16 +1788,16 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                       {loading ? (
                         Array.from({ length: 8 }).map((_, i) => (
                           <tr key={i} className="border-b border-slate-50 dark:border-slate-800/60 animate-pulse">
-                            {Array.from({ length: 9 }).map((_, j) => (
+                            {Array.from({ length: 12 }).map((_, j) => (
                               <td key={j} className="px-4 py-3">
                                 <div className="h-4 rounded bg-slate-100 dark:bg-slate-800" style={{ width: `${60 + Math.random() * 30}%` }} />
                               </td>
                             ))}
                           </tr>
                         ))
-                      ) : rows.length === 0 ? (
+                      ) : filteredRows.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
+                          <td colSpan={12} className="px-4 py-20 text-center text-slate-400 dark:text-slate-500">
                             <Building2 className="h-8 w-8 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">Nenhum fornecedor encontrado</p>
                             {hasFilters && <p className="text-xs mt-1">Tente ajustar os filtros</p>}
@@ -1570,7 +1812,9 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                             )}
                           </td>
                         </tr>
-                      ) : rows.map((row, idx) => (
+                      ) : filteredRows.map((row, idx) => {
+                        const loc = getSupplierLocation(row.cod_vendor, row.cidade, row.estado_uf);
+                        return (
                         <tr
                           key={row.id}
                           onClick={() => setSelectedSupplier(row)}
@@ -1599,6 +1843,20 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           <td className="px-4 py-3.5 max-w-[180px]">
                             <span className="text-sm text-slate-700 dark:text-slate-200 truncate block" title={row.nome_contato || ''}>
                               {row.nome_contato || <span className="text-slate-400 font-normal">—</span>}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            {loc.uf !== '—' ? (
+                              <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
+                                {loc.uf}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 max-w-[160px]">
+                            <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={loc.cidade}>
+                              {loc.cidade}
                             </span>
                           </td>
                           <td className="px-4 py-3.5">
@@ -1649,7 +1907,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                             </span>
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                   </TableShell>
@@ -1715,6 +1974,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                           Nome / Razão Social
                         </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          UF
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                          Cidade
+                        </th>
                         <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                           Pedidos no SAP
                         </th>
@@ -1732,20 +1997,24 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                             <td className="px-4 py-3.5"><div className="h-4 w-20 rounded bg-slate-100 dark:bg-slate-800" /></td>
                             <td className="px-4 py-3.5"><div className="h-4 w-32 rounded bg-slate-100 dark:bg-slate-800" /></td>
                             <td className="px-4 py-3.5"><div className="h-4 w-48 rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            <td className="px-4 py-3.5"><div className="h-4 w-10 rounded bg-slate-100 dark:bg-slate-800" /></td>
+                            <td className="px-4 py-3.5"><div className="h-4 w-24 rounded bg-slate-100 dark:bg-slate-800" /></td>
                             <td className="px-4 py-3.5 text-center"><div className="h-4 w-12 mx-auto rounded bg-slate-100 dark:bg-slate-800" /></td>
                             {canEdit && <td className="px-4 py-3.5 text-right"><div className="h-7 w-24 ml-auto rounded bg-slate-100 dark:bg-slate-800" /></td>}
                           </tr>
                         ))
                       ) : paginatedNaoCadastrados.length === 0 ? (
                         <tr>
-                          <td colSpan={canEdit ? 5 : 4} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                          <td colSpan={canEdit ? 7 : 6} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
                             <UserX className="h-8 w-8 mx-auto mb-3 opacity-30" />
                             <p className="text-sm font-medium">Nenhum fornecedor pendente de cadastro</p>
                             {naoCadastradosSearch && <p className="text-xs mt-1">Tente ajustar a busca</p>}
                           </td>
                         </tr>
                       ) : (
-                        paginatedNaoCadastrados.map((item, idx) => (
+                        paginatedNaoCadastrados.map((item, idx) => {
+                          const loc = getSupplierLocation(item.cod_forn);
+                          return (
                           <tr
                             key={`${item.cod_forn}-${item.cnpj}-${idx}`}
                             className={`border-b border-slate-50 dark:border-slate-800/60 transition-colors hover:bg-amber-50/30 dark:hover:bg-amber-950/20 ${idx % 2 === 0 ? '' : 'bg-slate-50/30 dark:bg-slate-800/20'}`}
@@ -1763,6 +2032,20 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                             <td className="px-4 py-3.5">
                               <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                                 {item.fornecedor}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 whitespace-nowrap">
+                              {loc.uf !== '—' ? (
+                                <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded px-1.5 py-0.5">
+                                  {loc.uf}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5 max-w-[160px]">
+                              <span className="text-sm text-slate-700 dark:text-slate-200 truncate block font-medium" title={loc.cidade}>
+                                {loc.cidade}
                               </span>
                             </td>
                             <td className="px-4 py-3.5 text-center whitespace-nowrap">
@@ -1789,7 +2072,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                               </td>
                             )}
                           </tr>
-                        ))
+                        );
+                      })
                       )}
                     </tbody>
                   </table>
