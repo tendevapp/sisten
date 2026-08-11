@@ -35,12 +35,81 @@ interface TableShellProps {
 }
 
 export function TableShell({ children, maxHeight = '70vh', className = '' }: TableShellProps) {
+  const topScrollRef = React.useRef<HTMLDivElement>(null);
+  const mainScrollRef = React.useRef<HTMLDivElement>(null);
+  const [contentWidth, setContentWidth] = React.useState<number>(0);
+  const [hasHorizontalOverflow, setHasHorizontalOverflow] = React.useState<boolean>(false);
+  const isSyncingRef = React.useRef<boolean>(false);
+
+  React.useEffect(() => {
+    const mainEl = mainScrollRef.current;
+    if (!mainEl) return;
+
+    const checkOverflow = () => {
+      const scrollWidth = mainEl.scrollWidth;
+      const clientWidth = mainEl.clientWidth;
+      setContentWidth(scrollWidth);
+      setHasHorizontalOverflow(scrollWidth > clientWidth + 1);
+    };
+
+    checkOverflow();
+
+    const resizeObserver = new ResizeObserver(() => {
+      checkOverflow();
+    });
+
+    resizeObserver.observe(mainEl);
+    if (mainEl.firstElementChild) {
+      resizeObserver.observe(mainEl.firstElementChild as Element);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, [children]);
+
+  const handleTopScroll = () => {
+    if (isSyncingRef.current) return;
+    if (topScrollRef.current && mainScrollRef.current) {
+      isSyncingRef.current = true;
+      mainScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      requestAnimationFrame(() => {
+        isSyncingRef.current = false;
+      });
+    }
+  };
+
+  const handleMainScroll = () => {
+    if (isSyncingRef.current) return;
+    if (topScrollRef.current && mainScrollRef.current) {
+      isSyncingRef.current = true;
+      topScrollRef.current.scrollLeft = mainScrollRef.current.scrollLeft;
+      requestAnimationFrame(() => {
+        isSyncingRef.current = false;
+      });
+    }
+  };
+
   return (
     <div
-      className={`rounded-xl border overflow-hidden ${className}`}
+      className={`rounded-xl border overflow-hidden flex flex-col ${className}`}
       style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
     >
-      <div className="overflow-auto" style={{ maxHeight }}>
+      {/* Barra de rolagem no topo, visível apenas quando houver transbordo horizontal */}
+      {hasHorizontalOverflow && (
+        <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
+          className="overflow-x-auto overflow-y-hidden border-b shrink-0"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+        >
+          <div style={{ width: contentWidth, height: 8 }} />
+        </div>
+      )}
+      <div
+        ref={mainScrollRef}
+        onScroll={handleMainScroll}
+        className="overflow-auto flex-1"
+        style={{ maxHeight }}
+      >
         {children}
       </div>
     </div>
