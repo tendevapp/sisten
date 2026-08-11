@@ -34,17 +34,6 @@ function formatCNPJ(cnpj?: string | null): string {
   return cnpj;
 }
 
-const CLASSIFICACOES = [
-  'Equipamentos Pesados e Motores',
-  'Material de Construção, Siderurgia e Premoldados',
-  'Amplo Varejo',
-  'Preferencial',
-  'Aprovado',
-  'Em avaliação',
-  'Bloqueado',
-  ''
-];
-
 const STATUS_OPTS = ['Atualizado', 'Em Atualização', 'Pendente', 'Sem SAP', 'Inativo'];
 
 const STATUS_FILTER_OPTS = [
@@ -89,18 +78,6 @@ function splitMultiValues(raw?: string | null): string[] {
   return raw.split(/[;,/\n]+/).map(v => v.trim()).filter(Boolean);
 }
 
-const CLASSIFICACAO_OPTS = [
-  { value: '', label: 'Todas classificações' },
-  { value: 'Equipamentos Pesados e Motores', label: 'Equipamentos Pesados e Motores' },
-  { value: 'Material de Construção, Siderurgia e Premoldados', label: 'Material de Construção, Siderurgia e Premoldados' },
-  { value: 'Amplo Varejo', label: 'Amplo Varejo' },
-  { value: 'Preferencial', label: 'Preferencial' },
-  { value: 'Aprovado', label: 'Aprovado' },
-  { value: 'Em avaliação', label: 'Em avaliação' },
-  { value: 'Bloqueado', label: 'Bloqueado' },
-  { value: '__vazio__', label: 'Sem classificação' },
-];
-
 const classifColor: Record<string, string> = {
   Preferencial: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   Aprovado: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
@@ -136,11 +113,12 @@ interface CadastroModalProps {
     cnpj?: string;
     fornecedor?: string;
   };
+  classificacaoOpts: string[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) {
+function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: CadastroModalProps) {
   const [codVendor, setCodVendor] = useState(initialValues?.codVendor && initialValues.codVendor !== '—' ? initialValues.codVendor : '');
   const [cnpj, setCnpj] = useState(initialValues?.cnpj && initialValues.cnpj !== '—' ? initialValues.cnpj : '');
   const [fornecedor, setFornecedor] = useState(initialValues?.fornecedor && initialValues.fornecedor !== '— Sem razão social —' ? initialValues.fornecedor : '');
@@ -400,17 +378,19 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
                 <label htmlFor="new_classificacao" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Classificação
                 </label>
-                <select
+                <input
                   id="new_classificacao"
+                  list="classificacao-list-new"
                   value={classificacao}
                   onChange={e => setClassificacao(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
-                >
-                  <option value="">— Sem classificação</option>
-                  {CLASSIFICACOES.filter(Boolean).map(c => (
-                    <option key={c} value={c}>{c}</option>
+                  placeholder="Selecione ou digite para criar uma nova"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+                <datalist id="classificacao-list-new">
+                  {classificacaoOpts.filter(Boolean).map(c => (
+                    <option key={c} value={c} />
                   ))}
-                </select>
+                </datalist>
               </div>
             </div>
 
@@ -529,11 +509,12 @@ function CadastroModal({ initialValues, onClose, onSaved }: CadastroModalProps) 
 interface EdicaoModalProps {
   supplier: ContatoFornecedor;
   canEdit: boolean;
+  classificacaoOpts: string[];
   onClose: () => void;
   onSaved: () => void;
 }
 
-function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) {
+function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }: EdicaoModalProps) {
   const [codVendor, setCodVendor] = useState(supplier.cod_vendor || '');
   const [cnpj, setCnpj] = useState(supplier.cnpj || '');
   const [fornecedor, setFornecedor] = useState(supplier.fornecedor || '');
@@ -759,18 +740,20 @@ function EdicaoModal({ supplier, canEdit, onClose, onSaved }: EdicaoModalProps) 
                 <label htmlFor="edit_classificacao" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   Classificação
                 </label>
-                <select
+                <input
                   id="edit_classificacao"
                   disabled={!canEdit}
+                  list="classificacao-list-edit"
                   value={classificacao}
                   onChange={e => setClassificacao(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
-                >
-                  <option value="">— Sem classificação</option>
-                  {CLASSIFICACOES.filter(Boolean).map(c => (
-                    <option key={c} value={c}>{c}</option>
+                  placeholder="Selecione ou digite para criar uma nova"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-55 dark:bg-slate-800 disabled:bg-slate-100 dark:disabled:bg-slate-800/50 disabled:text-slate-555 px-3.5 py-2.5 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                />
+                <datalist id="classificacao-list-edit">
+                  {classificacaoOpts.filter(Boolean).map(c => (
+                    <option key={c} value={c} />
                   ))}
-                </select>
+                </datalist>
               </div>
             </div>
 
@@ -1250,6 +1233,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
       {showCadastro && (
         <CadastroModal
           initialValues={cadastroInitialValues}
+          classificacaoOpts={classificacaoOpts}
           onClose={() => { setShowCadastro(false); setCadastroInitialValues(undefined); }}
           onSaved={() => { loadData(); loadNaoCadastradosData(); }}
         />
@@ -1260,6 +1244,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         <EdicaoModal
           supplier={selectedSupplier}
           canEdit={canEdit}
+          classificacaoOpts={classificacaoOpts}
           onClose={() => setSelectedSupplier(null)}
           onSaved={() => { loadData(); loadNaoCadastradosData(); }}
         />
