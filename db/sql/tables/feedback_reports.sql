@@ -25,8 +25,23 @@ create index feedback_reports_created_at_idx on public.feedback_reports (created
 
 alter table public.feedback_reports enable row level security;
 
-create policy feedback_reports_all on public.feedback_reports
-  for all to authenticated using (true) with check (true);
+-- Qualquer usuário autenticado pode enviar um reporte, mas só admin pode ler:
+-- prints são capturas indiscriminadas da tela e podem conter dados que nem
+-- todo perfil deveria ver (ex.: valores de compra atrás do feature flag
+-- rastreio_valores). Substituiu a policy permissiva original
+-- (feedback_reports_all), corrigida após revisão final do branch.
+create policy feedback_reports_insert on public.feedback_reports
+  for insert to authenticated
+  with check (true);
+
+create policy feedback_reports_select_admin on public.feedback_reports
+  for select to authenticated
+  using (exists (select 1 from public.profiles p where p.id = auth.uid()::text and 'admin' = any(p.roles)));
+
+create policy feedback_reports_update_admin on public.feedback_reports
+  for update to authenticated
+  using (exists (select 1 from public.profiles p where p.id = auth.uid()::text and 'admin' = any(p.roles)))
+  with check (exists (select 1 from public.profiles p where p.id = auth.uid()::text and 'admin' = any(p.roles)));
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('feedback-screenshots', 'feedback-screenshots', false, 5242880, array['image/webp', 'image/jpeg', 'image/png']);
@@ -35,6 +50,6 @@ create policy feedback_screenshots_insert on storage.objects
   for insert to authenticated
   with check (bucket_id = 'feedback-screenshots');
 
-create policy feedback_screenshots_select on storage.objects
+create policy feedback_screenshots_select_admin on storage.objects
   for select to authenticated
-  using (bucket_id = 'feedback-screenshots');
+  using (bucket_id = 'feedback-screenshots' and exists (select 1 from public.profiles p where p.id = auth.uid()::text and 'admin' = any(p.roles)));
