@@ -9,6 +9,7 @@ import { useTour } from './useTour';
 export interface ActiveTourControls {
   open: () => void;
   seen: boolean;
+  isOpen: boolean;
 }
 
 interface TourRegistryValue {
@@ -52,9 +53,9 @@ export function usePageTour(tourId: string, stepCount: number) {
   const { registerTour } = useTourRegistry();
 
   useEffect(() => {
-    registerTour({ open: tour.open, seen: tour.seen });
+    registerTour({ open: tour.open, seen: tour.seen, isOpen: tour.isOpen });
     return () => registerTour(null);
-  }, [registerTour, tour.open, tour.seen]);
+  }, [registerTour, tour.open, tour.seen, tour.isOpen]);
 
   return tour;
 }

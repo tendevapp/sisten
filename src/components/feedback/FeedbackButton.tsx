@@ -32,7 +32,7 @@ export default function FeedbackButton({ pagePath }: FeedbackButtonProps) {
     setModal({ mode: 'bug', prefill });
   }), []);
 
-  const pulse = !!activeTour && !activeTour.seen;
+  const pulse = !!activeTour && !activeTour.seen && !activeTour.isOpen;
 
   return (
     <div className="fixed bottom-6 right-6 z-[90]" data-tour="help-button">
