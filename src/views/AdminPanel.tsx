@@ -2401,7 +2401,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-500">
-                  <div><span className="font-semibold text-slate-700">Reportado por:</span> {selectedFeedback.user_name} ({selectedFeedback.user_email})</div>
+                  <div><span className="font-semibold text-slate-700">Reportado por:</span> {selectedFeedback.user_name}{selectedFeedback.user_email ? ` (${selectedFeedback.user_email})` : ''}</div>
                   <div><span className="font-semibold text-slate-700">Página:</span> {selectedFeedback.page_path}</div>
                   <div><span className="font-semibold text-slate-700">Data:</span> {new Date(selectedFeedback.created_at).toLocaleString('pt-BR')}</div>
                   <div><span className="font-semibold text-slate-700">Navegador:</span> {selectedFeedback.user_agent}</div>

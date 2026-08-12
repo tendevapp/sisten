@@ -77,7 +77,7 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
     target: 'help-button',
     icon: HelpCircle,
     title: 'Reabra o tour a qualquer momento',
-    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão de Ajuda a qualquer momento no canto inferior para reabrir o tour guiado.',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
   },
 ];
 
