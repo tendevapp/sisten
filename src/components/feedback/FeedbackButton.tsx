@@ -8,13 +8,14 @@ import { motion } from 'motion/react';
 import { Bug, HelpCircle, Lightbulb, MessageCircleQuestion } from 'lucide-react';
 import { useTourRegistry } from '../help/TourRegistryContext';
 import { onBugPrefill, BugPrefill } from '../../lib/feedbackReportBus';
+import { captureViewport } from '../../lib/screenshotCapture';
 import FeedbackModal from './FeedbackModal';
 
 interface FeedbackButtonProps {
   pagePath: string;
 }
 
-type ModalState = { mode: 'bug' | 'sugestao'; prefill?: BugPrefill } | null;
+type ModalState = { mode: 'bug' | 'sugestao'; prefill?: BugPrefill; initialScreenshotBlob?: Blob | null } | null;
 
 /**
  * Botão flutuante único, montado uma vez no layout autenticado (App.tsx).
@@ -62,7 +63,12 @@ export default function FeedbackButton({ pagePath }: FeedbackButtonProps) {
           <button
             type="button"
             role="menuitem"
-            onClick={() => { setMenuOpen(false); setModal({ mode: 'bug' }); }}
+            onClick={async () => {
+              setMenuOpen(false);
+              // Captura antes do modal existir, para o print nunca incluir o próprio modal.
+              const blob = await captureViewport().catch(() => null);
+              setModal({ mode: 'bug', initialScreenshotBlob: blob });
+            }}
             className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${activeTour ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
           >
             <Bug className="h-4 w-4 text-red-600 shrink-0" />
@@ -94,6 +100,7 @@ export default function FeedbackButton({ pagePath }: FeedbackButtonProps) {
         <FeedbackModal
           mode={modal.mode}
           pagePath={pagePath}
+          initialScreenshotBlob={modal.initialScreenshotBlob}
           prefillDescription={modal.prefill?.message}
           prefillStack={modal.prefill?.stack}
           onClose={() => setModal(null)}
