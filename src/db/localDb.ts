@@ -10,7 +10,7 @@ import {
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
   RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
-  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial
+  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -29,6 +29,9 @@ import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval'
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
 const ATTACHMENTS_BUCKET = 'request-attachments';
+
+/** Bucket privado dos prints anexados a reportes de bug. Leitura só por URL assinada. */
+const FEEDBACK_BUCKET = 'feedback-screenshots';
 
 /** Validade da URL assinada de um anexo: 1 hora. */
 const SIGNED_URL_TTL_SEGUNDOS = 3600;
@@ -6586,6 +6589,114 @@ class LocalDatabase {
 
     if (error || !data?.signedUrl) {
       console.error('Falha ao gerar URL do anexo.', error);
+      return null;
+    }
+
+    this.signedUrlCache.set(path, {
+      url: data.signedUrl,
+      expiresAt: Date.now() + (SIGNED_URL_TTL_SEGUNDOS / 2) * 1000
+    });
+    return data.signedUrl;
+  }
+
+  /**
+   * Envia um reporte de bug/sugestão. Sobe o print (quando houver) primeiro;
+   * só insere a linha da tabela depois — sem FK entre os dois, essa ordem
+   * evita uma linha "órfã" apontando para um arquivo que falhou ao subir.
+   */
+  public async submitFeedbackReport(input: {
+    type: 'bug' | 'sugestao';
+    description: string;
+    pagePath: string;
+    screenshotBlob?: Blob | null;
+    consoleLogs: FeedbackLogEntry[];
+    errorStack?: string;
+  }): Promise<boolean> {
+    if (!supabase) return false;
+    const user = this.getCurrentUser();
+    if (!user) return false;
+
+    const id = gerarUUID();
+    let screenshotPath: string | null = null;
+
+    if (input.screenshotBlob) {
+      const path = `${id}/screenshot.webp`;
+      const { error: upErr } = await supabase.storage
+        .from(FEEDBACK_BUCKET)
+        .upload(path, input.screenshotBlob, { contentType: input.screenshotBlob.type || 'image/webp', upsert: false });
+      if (upErr) {
+        console.error('Falha ao enviar o print do reporte.', upErr);
+      } else {
+        screenshotPath = path;
+      }
+    }
+
+    const row: FeedbackReport = {
+      id,
+      type: input.type,
+      status: 'novo',
+      description: input.description,
+      page_path: input.pagePath,
+      user_id: user.id,
+      user_name: user.name,
+      user_email: user.email,
+      screenshot_path: screenshotPath,
+      console_logs: input.consoleLogs,
+      error_stack: input.errorStack || null,
+      user_agent: navigator.userAgent,
+      admin_notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: dbErr } = await supabase.from('feedback_reports').insert(row);
+    if (dbErr) {
+      console.error('Falha ao registrar o reporte.', dbErr);
+      return false;
+    }
+    return true;
+  }
+
+  /** Busca sob demanda para o painel admin — não entra no ciclo de sync geral (baixo volume, só admin lê). */
+  public async getFeedbackReports(): Promise<FeedbackReport[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from('feedback_reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Falha ao carregar reportes.', error);
+      return [];
+    }
+    return (data || []) as FeedbackReport[];
+  }
+
+  public async updateFeedbackReport(id: string, patch: { status?: FeedbackReport['status']; admin_notes?: string }): Promise<boolean> {
+    if (!supabase) return false;
+    const { error } = await supabase
+      .from('feedback_reports')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) {
+      console.error('Falha ao atualizar o reporte.', error);
+      return false;
+    }
+    return true;
+  }
+
+  /** URL assinada do print de um reporte — mesmo cache em memória e TTL dos anexos de solicitação. */
+  public async getFeedbackScreenshotUrl(path: string): Promise<string | null> {
+    if (!supabase || !path) return null;
+
+    const cached = this.signedUrlCache.get(path);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+    const { data, error } = await supabase.storage
+      .from(FEEDBACK_BUCKET)
+      .createSignedUrl(path, SIGNED_URL_TTL_SEGUNDOS);
+
+    if (error || !data?.signedUrl) {
+      console.error('Falha ao gerar URL do print.', error);
       return null;
     }
 
