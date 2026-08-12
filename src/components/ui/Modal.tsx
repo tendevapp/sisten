@@ -29,11 +29,9 @@ interface ModalProps {
   zIndexClassName?: string;
   /** Quando true, desabilita fechar clicando fora do painel ou pressionando Esc — só fecha via botão explícito (X, Cancelar, Salvar). */
   disableOutsideClose?: boolean;
-  /** Quando true, o modal fica temporariamente invisível (mas montado) — usado para excluir o próprio modal de uma captura de tela. */
-  hidden?: boolean;
 }
 
-export default function Modal({ onClose, children, maxWidth = 'max-w-2xl', ariaLabel, zIndexClassName = 'z-50', disableOutsideClose = false, hidden = false }: ModalProps) {
+export default function Modal({ onClose, children, maxWidth = 'max-w-2xl', ariaLabel, zIndexClassName = 'z-50', disableOutsideClose = false }: ModalProps) {
   useEffect(() => {
     if (disableOutsideClose) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -46,7 +44,6 @@ export default function Modal({ onClose, children, maxWidth = 'max-w-2xl', ariaL
   return (
     <div
       className={`fixed inset-0 ${zIndexClassName} flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-sm p-0 sm:p-4 animate-fade-in`}
-      style={hidden ? { visibility: 'hidden' } : undefined}
       onClick={e => { if (!disableOutsideClose && e.target === e.currentTarget) onClose(); }}
     >
       <div
