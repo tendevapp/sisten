@@ -97,7 +97,7 @@ const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
     target: 'help-button',
     icon: Bug,
     title: 'Encontrou um erro nesta tela?',
-    description: 'No mesmo botão, escolha "Reportar um erro" — ele já captura um print da tela e o histórico técnico recente e envia direto para o time responsável.',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
   },
   {
     target: 'help-button',
