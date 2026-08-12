@@ -6,7 +6,6 @@
  * `imageCompression.ts` (canvas + WebP 0.7, fallback JPEG), aplicada sobre o
  * canvas que o html2canvas devolve em vez de um File do usuário.
  */
-import html2canvas from 'html2canvas';
 
 const MAX_DIMENSAO = 1600;
 const QUALIDADE = 0.7;
@@ -30,6 +29,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string): Promise<Blob | n
  */
 export async function captureViewport(target: HTMLElement = document.body): Promise<Blob | null> {
   try {
+    const { default: html2canvas } = await import('html2canvas');
     const rendered = await html2canvas(target, { logging: false, useCORS: true });
     const { width, height } = computeScaledDimensions(rendered.width, rendered.height, MAX_DIMENSAO);
 
