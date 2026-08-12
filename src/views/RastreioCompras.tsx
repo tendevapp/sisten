@@ -21,9 +21,8 @@ import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '..
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
 import { useToast } from '../components/ui/Toast';
-import { useTour } from '../components/help/useTour';
 import TourSpotlight from '../components/help/TourSpotlight';
-import HelpButton from '../components/help/HelpButton';
+import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 
 const RASTREIO_TOUR_STEPS: TourStep[] = [
@@ -94,7 +93,7 @@ const PAGE_SIZE = 50;
 
 export default function RastreioCompras({ user }: RastreioComprasProps) {
   const toast = useToast();
-  const tour = useTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
+  const tour = usePageTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
@@ -593,7 +592,6 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         />
       )}
 
-      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={RASTREIO_TOUR_STEPS}

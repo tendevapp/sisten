@@ -22,9 +22,8 @@ import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
-import { useTour } from '../components/help/useTour';
 import TourSpotlight from '../components/help/TourSpotlight';
-import HelpButton from '../components/help/HelpButton';
+import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import { useToast } from '../components/ui/Toast';
 
@@ -199,7 +198,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const toast = useToast();
-  const tour = useTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
+  const tour = usePageTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
@@ -1862,7 +1861,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         />
       )}
 
-      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={NOVA_SOLICITACAO_TOUR_STEPS}
