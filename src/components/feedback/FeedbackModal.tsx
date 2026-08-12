@@ -26,8 +26,13 @@ export default function FeedbackModal({ mode, pagePath, prefillDescription, pref
   const [description, setDescription] = useState(prefillDescription || '');
   const [screenshotBlob, setScreenshotBlob] = useState<Blob | null>(null);
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null);
+  const screenshotPreviewUrlRef = useRef<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    screenshotPreviewUrlRef.current = screenshotPreviewUrl;
+  }, [screenshotPreviewUrl]);
 
   useEffect(() => {
     // Print automático só no fluxo de bug reportado manualmente pelo menu (não
@@ -36,7 +41,7 @@ export default function FeedbackModal({ mode, pagePath, prefillDescription, pref
       void retakeScreenshot();
     }
     return () => {
-      if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl);
+      if (screenshotPreviewUrlRef.current) URL.revokeObjectURL(screenshotPreviewUrlRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
