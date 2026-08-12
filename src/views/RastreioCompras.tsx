@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -78,6 +78,18 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
     icon: HelpCircle,
     title: 'Reabra o tour a qualquer momento',
     description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" — ele já captura um print da tela e o histórico técnico recente e envia direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
   },
 ];
 
