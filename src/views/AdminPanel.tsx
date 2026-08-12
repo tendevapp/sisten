@@ -132,9 +132,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   useEffect(() => {
     setFeedbackScreenshotUrl(null);
     setFeedbackNotesDraft(selectedFeedback?.admin_notes || '');
-    if (selectedFeedback?.screenshot_path) {
-      localDb.getFeedbackScreenshotUrl(selectedFeedback.screenshot_path).then(setFeedbackScreenshotUrl);
-    }
+    if (!selectedFeedback?.screenshot_path) return;
+    let cancelled = false;
+    localDb.getFeedbackScreenshotUrl(selectedFeedback.screenshot_path).then(url => {
+      if (!cancelled) setFeedbackScreenshotUrl(url);
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFeedback?.id]);
 
