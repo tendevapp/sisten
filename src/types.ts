@@ -780,5 +780,27 @@ export interface TabelaFrete {
   updated_at?: string;
 }
 
+export interface FeedbackLogEntry {
+  level: 'error' | 'warn';
+  message: string;
+  timestamp: string;
+}
 
+export interface FeedbackReport {
+  id: string;
+  type: 'bug' | 'sugestao';
+  status: 'novo' | 'em_analise' | 'resolvido' | 'arquivado';
+  description: string;
+  page_path: string;
+  user_id: string | null;
+  user_name: string;
+  user_email: string | null;
+  screenshot_path: string | null;
+  console_logs: FeedbackLogEntry[] | null;
+  error_stack: string | null;
+  user_agent: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
