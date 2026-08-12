@@ -50,14 +50,16 @@ O preview no modal mostra um aviso curto: "A imagem pode conter dados da tela at
 
 ### Tabela `feedback_reports`
 
+Verificado via MCP (`list_tables`): `profiles.id` e todo o resto do schema usam `id text` (gerado no cliente por `gerarUUID()`), não `uuid`. `feedback_reports` segue a mesma convenção — sem isso a FK para `profiles(id)` seria um erro de tipo.
+
 ```sql
 create table public.feedback_reports (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key,
   type text not null check (type in ('bug', 'sugestao')),
   status text not null default 'novo' check (status in ('novo', 'em_analise', 'resolvido', 'arquivado')),
   description text not null,
   page_path text not null,
-  user_id uuid references public.profiles(id),
+  user_id text references public.profiles(id),
   user_name text not null,
   user_email text,
   screenshot_path text,
