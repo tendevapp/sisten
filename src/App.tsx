@@ -9,6 +9,8 @@ import { canAccessPage, pageIdForPath } from './lib/pages';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundary';
+import { TourRegistryProvider } from './components/help/TourRegistryContext';
+import FeedbackButton from './components/feedback/FeedbackButton';
 
 // Views
 import Login from './views/Login';
@@ -580,6 +582,7 @@ export default function App() {
   };
 
   return (
+    <TourRegistryProvider>
     <div className="flex h-full w-full overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
       {/* Collapsible / off-canvas Sidebar */}
       <Sidebar
@@ -641,6 +644,8 @@ export default function App() {
           </ErrorBoundary>
         </main>
       </div>
+      <FeedbackButton pagePath={currentPath} />
     </div>
+    </TourRegistryProvider>
   );
 }
