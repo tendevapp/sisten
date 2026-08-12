@@ -9,6 +9,8 @@ import { canAccessPage, pageIdForPath } from './lib/pages';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundary';
+import { TourRegistryProvider } from './components/help/TourRegistryContext';
+import FeedbackButton from './components/feedback/FeedbackButton';
 
 // Views
 import Login from './views/Login';
@@ -77,6 +79,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/admin/importacao-materiais',
   '/admin/helpdesk',
   '/admin/uso',
+  '/admin/feedback',
   // Mantém o markdown colado e o resultado da IA — remontar jogaria fora o
   // texto em andamento na próxima sincronização em segundo plano.
   '/admin/teste',
@@ -563,6 +566,7 @@ export default function App() {
       case '/suprimentos/importar/log':
       case '/suprimentos/grupos-comprador':
       case '/admin/helpdesk':
+      case '/admin/feedback':
         if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;
         }
@@ -580,6 +584,7 @@ export default function App() {
   };
 
   return (
+    <TourRegistryProvider>
     <div className="flex h-full w-full overflow-hidden bg-slate-50/50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors">
       {/* Collapsible / off-canvas Sidebar */}
       <Sidebar
@@ -641,6 +646,8 @@ export default function App() {
           </ErrorBoundary>
         </main>
       </div>
+      <FeedbackButton pagePath={currentPath} />
     </div>
+    </TourRegistryProvider>
   );
 }

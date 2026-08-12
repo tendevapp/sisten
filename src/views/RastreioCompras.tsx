@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -21,9 +21,8 @@ import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '..
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
 import { useToast } from '../components/ui/Toast';
-import { useTour } from '../components/help/useTour';
 import TourSpotlight from '../components/help/TourSpotlight';
-import HelpButton from '../components/help/HelpButton';
+import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 
 const RASTREIO_TOUR_STEPS: TourStep[] = [
@@ -78,7 +77,19 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
     target: 'help-button',
     icon: HelpCircle,
     title: 'Reabra o tour a qualquer momento',
-    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão de Ajuda a qualquer momento no canto inferior para reabrir o tour guiado.',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
   },
 ];
 
@@ -94,7 +105,7 @@ const PAGE_SIZE = 50;
 
 export default function RastreioCompras({ user }: RastreioComprasProps) {
   const toast = useToast();
-  const tour = useTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
+  const tour = usePageTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
@@ -593,7 +604,6 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         />
       )}
 
-      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={RASTREIO_TOUR_STEPS}

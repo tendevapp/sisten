@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { emitBugPrefill } from '../lib/feedbackReportBus';
 
 interface Props {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ interface Props {
 
 interface State {
   hasError: boolean;
+  error: Error | null;
 }
 
 // Depois de um novo deploy, o chunk JS de uma tela lazy-loaded referenciado pela
@@ -21,10 +23,10 @@ const CHUNK_LOAD_ERROR = /failed to fetch dynamically imported module|loading ch
 export const CHUNK_RELOAD_GUARD_KEY = 'sisten_chunk_reload_attempted';
 
 export default class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { hasError: false };
+  state: State = { hasError: false, error: null };
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error) {
@@ -37,6 +39,14 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     }
   }
 
+  handleReport = () => {
+    emitBugPrefill({
+      message: this.state.error?.message || 'Erro desconhecido',
+      stack: this.state.error?.stack,
+      pagePath: window.location.hash ? window.location.hash.slice(1).split('?')[0] : '/',
+    });
+  };
+
   render() {
     if (this.state.hasError) {
       return (
@@ -44,13 +54,22 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
             Não foi possível carregar esta tela.
           </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Recarregar
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Recarregar
+            </button>
+            <button
+              type="button"
+              onClick={this.handleReport}
+              className="rounded-md border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              Reportar este erro
+            </button>
+          </div>
         </div>
       );
     }

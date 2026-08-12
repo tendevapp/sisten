@@ -8,7 +8,7 @@ import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
-  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle,
+  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -22,9 +22,8 @@ import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
-import { useTour } from '../components/help/useTour';
 import TourSpotlight from '../components/help/TourSpotlight';
-import HelpButton from '../components/help/HelpButton';
+import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import { useToast } from '../components/ui/Toast';
 
@@ -92,7 +91,19 @@ const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
     target: 'help-button',
     icon: HelpCircle,
     title: 'Reabra o tour a qualquer momento',
-    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão de Ajuda a qualquer momento no canto inferior para reabrir o tour guiado.',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
   },
 ];
 
@@ -199,7 +210,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
 
 export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const toast = useToast();
-  const tour = useTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
+  const tour = usePageTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
@@ -1862,7 +1873,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         />
       )}
 
-      <HelpButton onClick={tour.open} pulse={!tour.seen && !tour.isOpen} />
       {tour.isOpen && (
         <TourSpotlight
           steps={NOVA_SOLICITACAO_TOUR_STEPS}
