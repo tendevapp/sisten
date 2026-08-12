@@ -79,6 +79,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/admin/importacao-materiais',
   '/admin/helpdesk',
   '/admin/uso',
+  '/admin/feedback',
   // Mantém o markdown colado e o resultado da IA — remontar jogaria fora o
   // texto em andamento na próxima sincronização em segundo plano.
   '/admin/teste',
@@ -565,6 +566,7 @@ export default function App() {
       case '/suprimentos/importar/log':
       case '/suprimentos/grupos-comprador':
       case '/admin/helpdesk':
+      case '/admin/feedback':
         if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;
         }

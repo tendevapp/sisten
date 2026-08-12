@@ -4,15 +4,16 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Users, Map, Shield, Upload, Check, X, AlertTriangle, 
+import {
+  Users, Map, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
-  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus
+  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus,
+  Flag, Bug, Lightbulb, Image as ImageIcon
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
-import { Profile, Sector, Material } from '../types';
+import { Profile, Sector, Material, FeedbackReport } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
@@ -25,7 +26,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
-    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config'
+    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback'
   >('usuarios');
   
   // Users Management State
@@ -80,6 +81,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [selectedHelpdeskSectorId, setSelectedHelpdeskSectorId] = useState<string | null>(null);
   const [newHelpdeskCategory, setNewHelpdeskCategory] = useState<string>('');
 
+  // Feedback (Reportes) States
+  const [feedbackReports, setFeedbackReports] = useState<FeedbackReport[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
+  const [feedbackFilterType, setFeedbackFilterType] = useState<'all' | 'bug' | 'sugestao'>('all');
+  const [feedbackFilterStatus, setFeedbackFilterStatus] = useState<'all' | FeedbackReport['status']>('all');
+  const [feedbackScreenshotUrl, setFeedbackScreenshotUrl] = useState<string | null>(null);
+  const [feedbackNotesDraft, setFeedbackNotesDraft] = useState('');
+
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '#/';
@@ -92,11 +102,55 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       else if (path === '/suprimentos/importar/log') setActiveTab('importar_sap_log');
       else if (path === '/suprimentos/grupos-comprador') setActiveTab('grupos_comprador');
       else if (path === '/admin/helpdesk') setActiveTab('helpdesk_config');
+      else if (path === '/admin/feedback') setActiveTab('feedback');
     };
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'feedback') return;
+    let cancelled = false;
+    setFeedbackLoading(true);
+    localDb.getFeedbackReports().then(rows => {
+      if (!cancelled) {
+        setFeedbackReports(rows);
+        setFeedbackLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  const selectedFeedback = feedbackReports.find(r => r.id === selectedFeedbackId) || null;
+  const filteredFeedbackReports = feedbackReports.filter(r =>
+    (feedbackFilterType === 'all' || r.type === feedbackFilterType) &&
+    (feedbackFilterStatus === 'all' || r.status === feedbackFilterStatus)
+  );
+  const novosFeedbackCount = feedbackReports.filter(r => r.status === 'novo').length;
+
+  useEffect(() => {
+    setFeedbackScreenshotUrl(null);
+    setFeedbackNotesDraft(selectedFeedback?.admin_notes || '');
+    if (selectedFeedback?.screenshot_path) {
+      localDb.getFeedbackScreenshotUrl(selectedFeedback.screenshot_path).then(setFeedbackScreenshotUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFeedback?.id]);
+
+  const handleUpdateFeedbackStatus = async (id: string, status: FeedbackReport['status']) => {
+    const ok = await localDb.updateFeedbackReport(id, { status });
+    if (!ok) { toast.error('Falha ao atualizar status.'); return; }
+    setFeedbackReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  };
+
+  const handleSaveFeedbackNotes = async () => {
+    if (!selectedFeedback) return;
+    const ok = await localDb.updateFeedbackReport(selectedFeedback.id, { admin_notes: feedbackNotesDraft });
+    if (!ok) { toast.error('Falha ao salvar nota.'); return; }
+    setFeedbackReports(prev => prev.map(r => r.id === selectedFeedback.id ? { ...r, admin_notes: feedbackNotesDraft } : r));
+    toast.success('Nota salva.');
+  };
 
   useEffect(() => {
     loadData();
@@ -455,6 +509,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           >
             <RefreshCw className="h-4 w-4 mr-1.5 text-indigo-600" />
             Config. Helpdesk
+          </button>
+        )}
+        {user.roles.includes('admin') && (
+          <button
+            onClick={() => { setActiveTab('feedback'); window.location.hash = '/admin/feedback'; }}
+            className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'feedback' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            <Flag className="h-4 w-4 mr-1.5 text-rose-600" />
+            Reportes
+            {novosFeedbackCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5">{novosFeedbackCount}</span>
+            )}
           </button>
         )}
       </div>
@@ -2255,6 +2321,149 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'feedback' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 h-[calc(100vh-220px)]">
+          {/* Lista */}
+          <div className="flex flex-col rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="p-3 border-b border-slate-100 flex items-center gap-2">
+              <select
+                value={feedbackFilterType}
+                onChange={e => setFeedbackFilterType(e.target.value as any)}
+                className="text-xs rounded-md border border-slate-200 px-2 py-1.5 flex-1"
+              >
+                <option value="all">Todos os tipos</option>
+                <option value="bug">Bug</option>
+                <option value="sugestao">Sugestão</option>
+              </select>
+              <select
+                value={feedbackFilterStatus}
+                onChange={e => setFeedbackFilterStatus(e.target.value as any)}
+                className="text-xs rounded-md border border-slate-200 px-2 py-1.5 flex-1"
+              >
+                <option value="all">Todos os status</option>
+                <option value="novo">Novo</option>
+                <option value="em_analise">Em análise</option>
+                <option value="resolvido">Resolvido</option>
+                <option value="arquivado">Arquivado</option>
+              </select>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {feedbackLoading && (
+                <p className="p-4 text-xs text-slate-400">Carregando...</p>
+              )}
+              {!feedbackLoading && filteredFeedbackReports.length === 0 && (
+                <p className="p-4 text-xs text-slate-400">Nenhum reporte encontrado.</p>
+              )}
+              {filteredFeedbackReports.map(r => (
+                <div
+                  key={r.id}
+                  onClick={() => setSelectedFeedbackId(r.id)}
+                  className={`p-3.5 cursor-pointer hover:bg-slate-50/60 transition-colors ${selectedFeedbackId === r.id ? 'bg-emerald-50/40 border-l-4 border-emerald-600' : ''}`}
+                >
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    {r.type === 'bug' ? <Bug className="h-3.5 w-3.5 text-red-600 shrink-0" /> : <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                    <span className="truncate">{r.description.slice(0, 60)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">{r.user_name} · {r.page_path} · {new Date(r.created_at).toLocaleString('pt-BR')}</p>
+                  <span className={`inline-block mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    r.status === 'novo' ? 'bg-rose-100 text-rose-700' :
+                    r.status === 'em_analise' ? 'bg-amber-100 text-amber-700' :
+                    r.status === 'resolvido' ? 'bg-emerald-100 text-emerald-700' :
+                    'bg-slate-100 text-slate-500'
+                  }`}>
+                    {r.status === 'novo' ? 'Novo' : r.status === 'em_analise' ? 'Em análise' : r.status === 'resolvido' ? 'Resolvido' : 'Arquivado'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Detalhe */}
+          <div className="rounded-xl border border-slate-200 bg-white overflow-y-auto p-5">
+            {!selectedFeedback ? (
+              <p className="text-xs text-slate-400">Selecione um reporte na lista.</p>
+            ) : (
+              <div className="space-y-5 text-xs">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    {selectedFeedback.type === 'bug' ? <Bug className="h-4 w-4 text-red-600" /> : <Lightbulb className="h-4 w-4 text-amber-500" />}
+                    {selectedFeedback.type === 'bug' ? 'Bug reportado' : 'Sugestão'}
+                  </h3>
+                  <p className="text-slate-500 mt-2 whitespace-pre-wrap">{selectedFeedback.description}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-500">
+                  <div><span className="font-semibold text-slate-700">Reportado por:</span> {selectedFeedback.user_name} ({selectedFeedback.user_email})</div>
+                  <div><span className="font-semibold text-slate-700">Página:</span> {selectedFeedback.page_path}</div>
+                  <div><span className="font-semibold text-slate-700">Data:</span> {new Date(selectedFeedback.created_at).toLocaleString('pt-BR')}</div>
+                  <div><span className="font-semibold text-slate-700">Navegador:</span> {selectedFeedback.user_agent}</div>
+                </div>
+
+                {feedbackScreenshotUrl && (
+                  <div>
+                    <p className="font-semibold text-slate-700 mb-1.5 flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" /> Print</p>
+                    <a href={feedbackScreenshotUrl} target="_blank" rel="noreferrer">
+                      <img src={feedbackScreenshotUrl} alt="Print do reporte" className="max-h-64 rounded-lg border border-slate-200" />
+                    </a>
+                  </div>
+                )}
+
+                {selectedFeedback.error_stack && (
+                  <div>
+                    <p className="font-semibold text-slate-700 mb-1.5">Stack trace</p>
+                    <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 text-[10px] overflow-x-auto whitespace-pre-wrap">{selectedFeedback.error_stack}</pre>
+                  </div>
+                )}
+
+                {selectedFeedback.console_logs && selectedFeedback.console_logs.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-slate-700 mb-1.5">Logs de console ({selectedFeedback.console_logs.length})</p>
+                    <div className="bg-slate-50 rounded-lg border border-slate-200 p-2 max-h-40 overflow-y-auto space-y-1">
+                      {selectedFeedback.console_logs.map((log, i) => (
+                        <p key={i} className={`text-[10px] font-mono ${log.level === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                          [{log.level}] {log.message}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="font-semibold text-slate-700 mb-1.5">Status</p>
+                  <select
+                    value={selectedFeedback.status}
+                    onChange={e => handleUpdateFeedbackStatus(selectedFeedback.id, e.target.value as FeedbackReport['status'])}
+                    className="text-xs rounded-md border border-slate-200 px-2 py-1.5 w-full"
+                  >
+                    <option value="novo">Novo</option>
+                    <option value="em_analise">Em análise</option>
+                    <option value="resolvido">Resolvido</option>
+                    <option value="arquivado">Arquivado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-slate-700 mb-1.5">Nota interna</p>
+                  <textarea
+                    value={feedbackNotesDraft}
+                    onChange={e => setFeedbackNotesDraft(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs"
+                  />
+                  <button
+                    onClick={handleSaveFeedbackNotes}
+                    className="mt-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5"
+                  >
+                    Salvar nota
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
