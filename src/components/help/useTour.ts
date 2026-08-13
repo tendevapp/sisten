@@ -38,6 +38,12 @@ export function useTour(tourId: string, stepCount: number) {
 
   const hasSeenBefore = useCallback(() => readSeen(tourId), [tourId]);
 
+  useEffect(() => {
+    if (!seen && readSeen(tourId)) {
+      setSeen(true);
+    }
+  }, [tourId, seen]);
+
   const markSeen = useCallback(() => {
     try { localStorage.setItem(seenKey(tourId), '1'); } catch {}
     localDb.markTourSeen(tourId).catch(console.error);

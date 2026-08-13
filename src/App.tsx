@@ -200,7 +200,7 @@ export default function App() {
             .maybeSingle();
 
           if (profile && profile.status === 'ativo') {
-            const mapped = { ...profile, roles: profile.roles || [] };
+            const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
             localDb.setCurrentUser(mapped);
             setUser(mapped);
             trackLogin(mapped);
@@ -235,7 +235,7 @@ export default function App() {
               .maybeSingle();
 
             if (profile && profile.status === 'ativo') {
-              const mapped = { ...profile, roles: profile.roles || [] };
+              const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
               trackLogin(mapped);
