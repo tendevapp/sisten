@@ -326,144 +326,155 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const VALID_COMPANIES = ['TEN2', 'AG', 'AMBAS'];
 
+  // Normalização padronizada de cabeçalhos SAP (remove acentos, pontuações e espaços para matching exato)
+  const sanitizeSAPHeader = (h: any): string => {
+    return String(h || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  };
+
   // ZL0169: Parser de Cadastro de Materiais SAP (Texto técnico opcional)
   const parseZL0169Rows = (rawRows: any[][]): Omit<Material, 'id' | 'is_active' | 'created_at'>[] => {
     if (rawRows.length < 2) {
       throw new Error('Planilha vazia ou sem linhas de dados.');
     }
 
-    const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
-    const headers = rawRows[0].map(normalizeHeader);
+    const rawHeaders = rawRows[0];
+    const cleanHeaders = rawHeaders.map(sanitizeSAPHeader);
 
-    const codeIdx = headers.findIndex(h => 
-      h === 'material' || 
-      h === 'código' || 
-      h === 'codigo' || 
-      h === 'cod. material' || 
-      h === 'cod material' || 
-      h === 'nº material' || 
-      h === 'no material' || 
-      h === 'num. material' ||
-      (h.includes('material') && (h.includes('nº') || h.includes('num') || h.includes('cod') || h.includes('cód')))
+    // 1. Código do Material (ex: Material, Codigo, Cod. Material, Nº Material)
+    const codeIdx = cleanHeaders.findIndex(c => 
+      c === 'material' || 
+      c === 'codigomaterial' || 
+      c === 'codmaterial' || 
+      c === 'nmaterial' || 
+      c === 'nomaterial' || 
+      c === 'nummaterial' ||
+      c === 'codigo' ||
+      c === 'codigosap' ||
+      c === 'codigodosap' ||
+      (c.includes('material') && (c.includes('n') || c.includes('num') || c.includes('cod')))
     );
     
-    // Identificação precisa da Descrição do Material:
-    // Deve ignorar estritamente colunas de grupo, tipo, status, centro, etc.
-    const findMaterialDescriptionIndex = (hdrs: string[]): number => {
-      // 1. Prioridade máxima: correspondências diretas para a coluna do material
+    // 2. Descrição Breve do Material (ex: TxtBreveMaterial, Texto breve material, Txt.breve material, Denominação do material)
+    // ATENÇÃO: NUNCA capturar Denominação 2 do grupo de mercadorias ou Denominação tp.material!
+    const findMaterialDescriptionIndex = (cleanHdrs: string[]): number => {
+      // Prioridade 1: correspondência exata para descrição do material
       const primaryMatches = [
-        'texto breve material',
-        'texto breve de material',
-        'texto breve do material',
-        'texto breve mat',
-        'texto breve mat.',
-        'texto breve',
-        'txt.breve material',
-        'txt.breve de material',
-        'txt.breve do material',
-        'txt.breve',
-        'txt breve material',
-        'txt breve',
-        'descrição do material',
-        'descricao do material',
-        'descrição de material',
-        'descricao de material',
-        'descrição material',
-        'descricao material',
-        'denominação do material',
-        'denominacao do material',
-        'denominação de material',
-        'denominacao de material',
-        'denominação material',
-        'denominacao material',
-        'material description',
-        'short text'
+        'txtbrevematerial',
+        'textobrevematerial',
+        'textobrevedomaterial',
+        'textobrevedematerial',
+        'txtbrevemat',
+        'textobrevemat',
+        'txtbreve',
+        'textobreve',
+        'descricaodomaterial',
+        'descricaodematerial',
+        'descricaomaterial',
+        'denominacaodomaterial',
+        'denominacaodematerial',
+        'denominacaomaterial',
+        'materialdescription',
+        'shorttext'
       ];
 
-      for (const kw of primaryMatches) {
-        const idx = hdrs.findIndex(h => h === kw);
+      for (const target of primaryMatches) {
+        const idx = cleanHdrs.indexOf(target);
         if (idx !== -1) return idx;
       }
 
-      // 2. Busca refinada por headers que contenham 'texto breve' ou 'descrição' sem palavras de outros conceitos
-      const excludedWords = ['grupo', 'tipo', 'status', 'centro', 'deposito', 'depósito', 'avaliacao', 'avaliação', 'setor', 'classe', 'ncm', 'controle', 'unidade', 'medida', 'fornecedor', 'comprador'];
+      // Prioridade 2: termos que contenham 'txtbreve' ou 'textobreve'
+      const txtBreveIdx = cleanHdrs.findIndex(c => c.includes('txtbreve') || c.includes('textobreve'));
+      if (txtBreveIdx !== -1) return txtBreveIdx;
 
-      const secondaryIdx = hdrs.findIndex(h => {
-        const isExcluded = excludedWords.some(w => h.includes(w));
-        if (isExcluded) return false;
-        return (
-          h.includes('texto breve') ||
-          h.includes('txt.breve') ||
-          h.includes('txt breve') ||
-          h === 'descrição' ||
-          h === 'descricao' ||
-          (h.includes('denomin') && (h.includes('mat') || !h.includes('mercadoria')))
-        );
+      // Prioridade 3: 'descricao' ou 'denominacao' puras, garantindo que não sejam de grupo ou tipo
+      const genericIdx = cleanHdrs.findIndex(c => {
+        if (c.includes('grupo') || c.includes('tipo') || c.includes('tpmaterial') || c.includes('status') || c.includes('centro') || c.includes('deposito') || c.includes('setor') || c.includes('classe') || c.includes('mercadoria')) {
+          return false;
+        }
+        return c === 'descricao' || c === 'descricaodomaterial' || c === 'denominacao' || c === 'denominacaodomaterial';
       });
 
-      return secondaryIdx;
+      return genericIdx;
     };
 
-    const descIdx = findMaterialDescriptionIndex(headers);
-    const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text'));
-    const companyIdx = headers.findIndex(h => h === 'empresa' || h === 'emp' || h.includes('empresa'));
+    const descIdx = findMaterialDescriptionIndex(cleanHeaders);
     
-    // Additional ZL0169 fields
-    const unitIdx = headers.findIndex(h => 
-      h === 'unidade' || 
-      h === 'um' || 
-      h === 'un. medida' || 
-      h === 'unidade de medida' || 
-      h === 'un' || 
-      h === 'medida' ||
-      h === 'unidade basica' ||
-      h === 'unidade de medida basica' ||
-      h === 'un.medida básica' ||
-      h === 'un.medida basica' ||
-      h.includes('unidade de medida') ||
-      h.includes('unidade básica') ||
-      h.includes('unidade basica')
+    // 3. Texto Técnico (Opcional)
+    const techIdx = cleanHeaders.findIndex(c => 
+      c.includes('textolongo') || 
+      c.includes('textotecnico') || 
+      c.includes('technicaltext') ||
+      c.includes('especificacao')
+    );
+
+    // 4. Empresa / Centro (ex: Cen., Centro, Empresa, Emp)
+    const companyIdx = cleanHeaders.findIndex(c => 
+      c === 'cen' || 
+      c === 'centro' || 
+      c === 'empresa' || 
+      c === 'emp'
     );
     
-    const tmatIdx = headers.findIndex(h => 
-      h === 'tmat' || 
-      h === 'tipo de material' || 
-      h === 'tipo de mat' || 
-      h === 'tipo material' || 
-      h === 'tmat (tipo)' ||
-      h === 'tipo do material' ||
-      (h.includes('tipo') && h.includes('mat') && !h.includes('texto') && !h.includes('desc') && !h.includes('denomin'))
+    // 5. Unidade de Medida (ex: UMB, Unidade, UM, UN, Un. Medida)
+    const unitIdx = cleanHeaders.findIndex(c => 
+      c === 'umb' || 
+      c === 'unidade' || 
+      c === 'um' || 
+      c === 'un' || 
+      c === 'unmedida' || 
+      c === 'unidadedemedida' || 
+      c === 'unidadebasica' || 
+      c === 'unidadedemedidabasica' || 
+      c === 'unmedidabasica' || 
+      c === 'medida'
     );
     
-    const ncmIdx = headers.findIndex(h => 
-      h === 'código de controle' || 
-      h === 'codigo de controle' || 
-      h === 'cod. controle' || 
-      h === 'cod controle' || 
-      h === 'ncm' || 
-      h === 'classe fiscal' || 
-      h === 'ncm (cod. controle)' || 
-      h === 'ncm (cód. controle)' ||
-      h.includes('controle') ||
-      h.includes('ncm')
+    // 6. Tipo de Material (ex: TMat, Tipo de material, Tipo de mat)
+    const tmatIdx = cleanHeaders.findIndex(c => 
+      c === 'tmat' || 
+      c === 'tipodematerial' || 
+      c === 'tipodemat' || 
+      c === 'tipomaterial' || 
+      c === 'tmattipo' ||
+      c === 'tipodomaterial'
     );
     
-    const statusGeralIdx = headers.findIndex(h => 
-      (h.includes('status') && (h.includes('geral') || h.includes('global'))) || 
-      h === 'sts.geral' || 
-      h === 'status_geral' ||
-      h === 'status geral'
+    // 7. Código de Controle / NCM (ex: Cód.controle, Cod. controle, NCM, ClFis)
+    const ncmIdx = cleanHeaders.findIndex(c => 
+      c === 'codcontrole' || 
+      c === 'codigodecontrole' || 
+      c === 'codigocontrole' || 
+      c === 'ncm' || 
+      c === 'classefiscal' || 
+      c === 'ncmcodcontrole'
     );
     
-    const statusCentroIdx = headers.findIndex(h => 
-      (h.includes('status') && (h.includes('centro') || h.includes('planta'))) || 
-      h === 'sts.centro' || 
-      h === 'status_centro' ||
-      h === 'status centro'
+    // 8. Status Geral (ex: Status Geral, Status mat.geral, Sts.geral)
+    const statusGeralIdx = cleanHeaders.findIndex(c => 
+      c === 'statusgeral' || 
+      c === 'statusmatgeral' || 
+      c === 'statusdomaterialgeral' || 
+      c === 'stsgeral' || 
+      c === 'statusglobal' ||
+      (c.includes('status') && (c.includes('geral') || c.includes('global')))
+    );
+    
+    // 9. Status Centro (ex: Status no Centro, Status mat.centro, Sts.centro)
+    const statusCentroIdx = cleanHeaders.findIndex(c => 
+      c === 'statusnocentro' || 
+      c === 'statuscentro' || 
+      c === 'statusmatcentro' || 
+      c === 'statusdomaterialnocentro' || 
+      c === 'stscentro' ||
+      (c.includes('status') && (c.includes('centro') || c.includes('planta')))
     );
 
     if (codeIdx === -1 || descIdx === -1) {
-      throw new Error('Colunas obrigatórias não encontradas na ZL0169. Esperado: "Material" e "Texto breve material". A coluna "Texto técnico" é opcional.');
+      throw new Error('Colunas obrigatórias não encontradas na ZL0169. Esperado: "Material" e "TxtBreveMaterial" / "Texto breve material". A coluna "Texto técnico" é opcional.');
     }
 
     const items: Omit<Material, 'id' | 'is_active' | 'created_at'>[] = [];
@@ -534,15 +545,24 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       reader.onload = (event) => {
         try {
           const text = event.target?.result as string;
-          const rawRows = text.split('\n').filter(l => l.trim()).map(line =>
-            line.split(';').map(c => c.trim().replace(/"/g, ''))
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length === 0) throw new Error('Arquivo vazio.');
+          const firstLine = lines[0];
+          let delimiter = ';';
+          if (firstLine.includes('\t')) delimiter = '\t';
+          else if (firstLine.includes(';') && !firstLine.includes(',')) delimiter = ';';
+          else if (firstLine.includes(',') && !firstLine.includes(';')) delimiter = ',';
+          else if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/;/g) || []).length) delimiter = '\t';
+
+          const rawRows = lines.map(line =>
+            line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
           );
           const items = parseZL0169Rows(rawRows);
           setPendingZL0169Items(items);
           setZl0169Preview(items.slice(0, 10));
           setZl0169Status('parsed');
         } catch (err: any) {
-          setZl0169Error(err.message || 'Falha ao processar o arquivo CSV ZL0169. Verifique o delimitador (;).');
+          setZl0169Error(err.message || 'Falha ao processar o arquivo ZL0169. Verifique os cabeçalhos.');
           setZl0169Status('error');
         }
       };
@@ -587,24 +607,39 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       throw new Error('Planilha vazia ou sem linhas de dados.');
     }
 
-    const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
-    const headers = rawRows[0].map(normalizeHeader);
+    const rawHeaders = rawRows[0];
+    const cleanHeaders = rawHeaders.map(sanitizeSAPHeader);
 
-    const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
+    const codeIdx = cleanHeaders.findIndex(c => 
+      c === 'material' || 
+      c === 'codigomaterial' || 
+      c === 'codmaterial' || 
+      c === 'nmaterial' || 
+      c === 'nomaterial' || 
+      c === 'nummaterial' || 
+      c === 'codigo'
+    );
     
-    // Prioritize exact description fields and exclude group/type headers
-    let descIdx = headers.findIndex(h => h === 'texto breve material' || h === 'texto breve do material' || h === 'texto breve');
-    if (descIdx === -1) {
-      descIdx = headers.findIndex(h => 
-        (h.includes('texto breve') && !h.includes('tipo') && !h.includes('grupo') && !h.includes('status')) || 
-        h === 'descrição' || 
-        h === 'descricao' || 
-        h.includes('denominacao') || 
-        h.includes('denominação')
-      );
-    }
+    // Texto longo do material / Texto técnico
+    const techIdx = cleanHeaders.findIndex(c => 
+      c.includes('textolongo') || 
+      c.includes('textotecnico') || 
+      c.includes('technicaltext') || 
+      c.includes('especificacao') ||
+      c === 'txtlongo' ||
+      c === 'txtlongodomaterial'
+    );
 
-    const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text') || h.includes('especificacao') || h.includes('especificação'));
+    // Texto breve do material (opcional na ZL0162)
+    const descIdx = cleanHeaders.findIndex(c => 
+      c === 'txtbrevematerial' || 
+      c === 'textobrevematerial' || 
+      c === 'textobrevedomaterial' || 
+      c === 'txtbreve' || 
+      c === 'textobreve' ||
+      c === 'descricaodomaterial' ||
+      c === 'descricaomaterial'
+    );
 
     if (codeIdx === -1 || techIdx === -1) {
       throw new Error('Colunas obrigatórias não encontradas na ZL0162. Esperado: "Material" e "Texto longo do material" (a coluna "Texto breve material" é opcional).');
@@ -667,15 +702,24 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       reader.onload = (event) => {
         try {
           const text = event.target?.result as string;
-          const rawRows = text.split('\n').filter(l => l.trim()).map(line =>
-            line.split(';').map(c => c.trim().replace(/"/g, ''))
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length === 0) throw new Error('Arquivo vazio.');
+          const firstLine = lines[0];
+          let delimiter = ';';
+          if (firstLine.includes('\t')) delimiter = '\t';
+          else if (firstLine.includes(';') && !firstLine.includes(',')) delimiter = ';';
+          else if (firstLine.includes(',') && !firstLine.includes(';')) delimiter = ',';
+          else if ((firstLine.match(/\t/g) || []).length > (firstLine.match(/;/g) || []).length) delimiter = '\t';
+
+          const rawRows = lines.map(line =>
+            line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''))
           );
           const items = parseZL0162Rows(rawRows);
           setPendingZL0162Items(items);
           setZl0162Preview(items.slice(0, 10));
           setZl0162Status('parsed');
         } catch (err: any) {
-          setZl0162Error(err.message || 'Falha ao processar o arquivo CSV ZL0162. Verifique o delimitador (;).');
+          setZl0162Error(err.message || 'Falha ao processar o arquivo CSV ZL0162. Verifique o delimitador (; ou TAB).');
           setZl0162Status('error');
         }
       };
