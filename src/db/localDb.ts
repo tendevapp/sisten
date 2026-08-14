@@ -1580,6 +1580,7 @@ class LocalDatabase {
     filename?: string,
     onProgress?: (progress: number, message?: string) => void
   ): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
+    const user = this.getCurrentUser();
     // Deduplica por material_code (última ocorrência prevalece)
     const dedupedMaterials = new Map<string, Omit<Material, 'id' | 'is_active' | 'created_at'>>();
     materials.forEach(m => {
@@ -1667,10 +1668,39 @@ class LocalDatabase {
       console.warn('Não foi possível atualizar o cache local de materiais:', err);
     }
 
+    // Sincroniza log de importação no Supabase
+    try {
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ZL0169',
+        user_name: user?.name || 'Sistema',
+        filename: filename || 'export_zl0169.xlsx',
+        records_read: materials.length,
+        records_inserted: inserted,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: [],
+        columns_new: [],
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: [],
+        created_at: new Date().toISOString()
+      };
+      if (supabase) {
+        await supabase.from('import_logs').insert(logObj);
+      }
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs.slice(0, 50));
+    } catch (logErr) {
+      console.warn('Erro ao inserir log de importação ZL0169:', logErr);
+    }
+
     // Incrementa a versão do dataset para que os demais clientes rebaixem o catálogo
     await this.bumpDatasetVersion('materials', itemsToImport.length);
 
-    const user = this.getCurrentUser();
     this.logActivity(
       user?.id || 'admin',
       'Catálogo SAP',
@@ -1765,6 +1795,36 @@ class LocalDatabase {
       }
     } catch (e) {
       console.warn('Erro ao atualizar cache local de materiais para ZL0162:', e);
+    }
+
+    // Sincroniza log de importação no Supabase
+    try {
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ZL0162',
+        user_name: user?.name || 'Sistema',
+        filename: filename || 'export_zl0162.xlsx',
+        records_read: items.length,
+        records_inserted: 0,
+        records_updated: updated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: [],
+        columns_new: [],
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: [],
+        created_at: new Date().toISOString()
+      };
+      if (supabase) {
+        await supabase.from('import_logs').insert(logObj);
+      }
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs.slice(0, 50));
+    } catch (logErr) {
+      console.warn('Erro ao inserir log de importação ZL0162:', logErr);
     }
 
     // Incrementa versão do dataset

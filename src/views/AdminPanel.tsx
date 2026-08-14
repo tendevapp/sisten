@@ -336,9 +336,28 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const headers = rawRows[0].map(normalizeHeader);
 
     const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
-    const descIdx = headers.findIndex(h => h.includes('texto breve') || h === 'descrição' || h === 'descricao' || h.includes('denominacao') || h.includes('denominação'));
+    
+    // Prioritize exact description fields and exclude group/type headers
+    let descIdx = headers.findIndex(h => h === 'texto breve material' || h === 'texto breve do material' || h === 'texto breve');
+    if (descIdx === -1) {
+      descIdx = headers.findIndex(h => 
+        (h.includes('texto breve') && !h.includes('tipo') && !h.includes('grupo') && !h.includes('status')) || 
+        h === 'descrição' || 
+        h === 'descricao' || 
+        h.includes('denominacao') || 
+        h.includes('denominação')
+      );
+    }
+
     const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text'));
     const companyIdx = headers.findIndex(h => h === 'empresa' || h === 'emp' || h.includes('empresa'));
+    
+    // Additional ZL0169 fields
+    const unitIdx = headers.findIndex(h => h === 'unidade' || h === 'um' || h === 'un. medida' || h === 'unidade de medida' || h === 'un' || h === 'medida');
+    const tmatIdx = headers.findIndex(h => h === 'tmat' || h === 'tipo de material' || h === 'tipo de mat' || h === 'tipo material' || h === 'tmat (tipo)');
+    const ncmIdx = headers.findIndex(h => h === 'código de controle' || h === 'codigo de controle' || h === 'cod. controle' || h === 'cod controle' || h === 'ncm' || h === 'classe fiscal' || h === 'ncm (cod. controle)' || h === 'ncm (cód. controle)');
+    const statusGeralIdx = headers.findIndex(h => h === 'status geral' || h === 'status mat.geral' || h === 'status geral mat.' || h === 'sts.geral' || h === 'status_geral' || h === 'status mat geral');
+    const statusCentroIdx = headers.findIndex(h => h === 'status centro' || h === 'status mat.centro' || h === 'status centro mat.' || h === 'sts.centro' || h === 'status_centro' || h === 'status mat centro');
 
     if (codeIdx === -1 || descIdx === -1) {
       throw new Error('Colunas obrigatórias não encontradas na ZL0169. Esperado: "Material" e "Texto breve material". A coluna "Texto técnico" é opcional.');
@@ -351,6 +370,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
       const description = String(row[descIdx] ?? '').trim();
       const rawCompany = companyIdx !== -1 ? String(row[companyIdx] ?? '').trim().toUpperCase() : '';
+      const unit = unitIdx !== -1 ? String(row[unitIdx] ?? '').trim().toUpperCase() : 'UN';
+      const tipo_material = tmatIdx !== -1 ? String(row[tmatIdx] ?? '').trim() : '';
+      const codigo_controle = ncmIdx !== -1 ? String(row[ncmIdx] ?? '').trim() : '';
+      const status_geral = statusGeralIdx !== -1 ? String(row[statusGeralIdx] ?? '').trim() : '';
+      const status_centro = statusCentroIdx !== -1 ? String(row[statusCentroIdx] ?? '').trim() : '';
 
       items.push({
         material_code,
@@ -358,7 +382,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         technical_text: techIdx !== -1 ? String(row[techIdx] ?? '').trim() : '',
         category: getAutoCategory(description),
         company: (VALID_COMPANIES.includes(rawCompany) ? rawCompany : 'TEN2') as Material['company'],
-        unit: 'UN'
+        unit: unit || 'UN',
+        tipo_material,
+        codigo_controle,
+        status_geral,
+        status_centro
       });
     });
 
@@ -458,7 +486,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const headers = rawRows[0].map(normalizeHeader);
 
     const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
-    const descIdx = headers.findIndex(h => h.includes('texto breve') || h === 'descrição' || h === 'descricao' || h.includes('denominacao') || h.includes('denominação'));
+    
+    // Prioritize exact description fields and exclude group/type headers
+    let descIdx = headers.findIndex(h => h === 'texto breve material' || h === 'texto breve do material' || h === 'texto breve');
+    if (descIdx === -1) {
+      descIdx = headers.findIndex(h => 
+        (h.includes('texto breve') && !h.includes('tipo') && !h.includes('grupo') && !h.includes('status')) || 
+        h === 'descrição' || 
+        h === 'descricao' || 
+        h.includes('denominacao') || 
+        h.includes('denominação')
+      );
+    }
+
     const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text') || h.includes('especificacao') || h.includes('especificação'));
 
     if (codeIdx === -1 || techIdx === -1) {

@@ -24,6 +24,10 @@ BEGIN
       COALESCE(NULLIF(trim(item->>'category'), ''), 'Outros') AS category,
       COALESCE(NULLIF(trim(item->>'company'), ''), 'TEN2') AS company,
       COALESCE(NULLIF(trim(item->>'unit'), ''), 'UN') AS unit,
+      NULLIF(trim(item->>'tipo_material'), '') AS tipo_material,
+      NULLIF(trim(item->>'codigo_controle'), '') AS codigo_controle,
+      NULLIF(trim(item->>'status_geral'), '') AS status_geral,
+      NULLIF(trim(item->>'status_centro'), '') AS status_centro,
       COALESCE((item->>'is_active')::boolean, true) AS is_active,
       COALESCE((item->>'created_at')::timestamptz, now()) AS created_at
     FROM jsonb_array_elements(p_materiais) AS item
@@ -31,10 +35,14 @@ BEGIN
   ),
   upserted AS (
     INSERT INTO public.materials (
-      id, material_code, description, technical_text, category, company, unit, is_active, created_at
+      id, material_code, description, technical_text, category, company, unit, 
+      tipo_material, codigo_controle, status_geral, status_centro,
+      is_active, created_at
     )
     SELECT 
-      id, material_code, description, technical_text, category, company, unit, is_active, created_at
+      id, material_code, description, technical_text, category, company, unit,
+      tipo_material, codigo_controle, status_geral, status_centro,
+      is_active, created_at
     FROM dados
     ON CONFLICT (material_code) DO UPDATE
     SET 
@@ -43,6 +51,10 @@ BEGIN
       category = EXCLUDED.category,
       company = EXCLUDED.company,
       unit = EXCLUDED.unit,
+      tipo_material = COALESCE(EXCLUDED.tipo_material, public.materials.tipo_material),
+      codigo_controle = COALESCE(EXCLUDED.codigo_controle, public.materials.codigo_controle),
+      status_geral = COALESCE(EXCLUDED.status_geral, public.materials.status_geral),
+      status_centro = COALESCE(EXCLUDED.status_centro, public.materials.status_centro),
       is_active = EXCLUDED.is_active
     RETURNING (xmax = 0) AS inserido
   )
