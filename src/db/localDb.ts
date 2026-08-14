@@ -1575,141 +1575,287 @@ class LocalDatabase {
     return allRows;
   }
 
-  public async importMaterials(materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[]): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
-    // O Supabase é a única fonte de verdade aqui (o cache local não guarda mais
-    // o catálogo inteiro). Para evitar rebaixar ~180k linhas x todas as colunas só
-    // para deduplicar, buscamos APENAS a coluna material_code — leve — para
-    // reconhecer códigos que já existem remotamente. O upsert com
-    // onConflict:'material_code' resolve qualquer duplicata.
-    const currentList: Material[] = [];
-    const currentMap = new Map<string, Material>();
-
-    const remoteCodeSet = new Set<string>();
-    try {
-      const remoteCodes = await this.fetchAllFromTable<{ material_code: string }>('materials', 'material_code', 1000, undefined, 'id');
-      remoteCodes.forEach(r => { if (r.material_code) remoteCodeSet.add(r.material_code); });
-    } catch (err) {
-      console.warn('Não foi possível buscar a lista de códigos do catálogo no Supabase; usando apenas o cache local.', err);
-    }
-
-    // Deduplica por material_code (última ocorrência prevalece), pois a própria
-    // planilha SAP pode conter o mesmo código em mais de uma linha — duas linhas
-    // novas com o mesmo código na mesma leva de upsert também violariam a
-    // constraint unique.
+  public async importMaterials(
+    materials: Omit<Material, 'id' | 'is_active' | 'created_at'>[],
+    filename?: string,
+    onProgress?: (progress: number, message?: string) => void
+  ): Promise<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number }> {
+    // Deduplica por material_code (última ocorrência prevalece)
     const dedupedMaterials = new Map<string, Omit<Material, 'id' | 'is_active' | 'created_at'>>();
-    materials.forEach(m => dedupedMaterials.set(m.material_code, m));
-
-    const importedCodes = new Set(dedupedMaterials.keys());
-
-    let inserted = 0;
-    let updated = 0;
-    let deactivated = 0;
-
-    const newList: Material[] = [];
-
-    // Upsert imported materials
-    dedupedMaterials.forEach(m => {
-      const existing = currentMap.get(m.material_code);
-      if (existing) {
-        newList.push({
-          ...existing,
-          description: m.description,
-          technical_text: m.technical_text,
-          category: getAutoCategory(m.description),
-          company: m.company,
-          unit: m.unit,
-          is_active: true
-        });
-        updated++;
-      } else if (remoteCodeSet.has(m.material_code)) {
-        // Existe no Supabase mas não no cache local: gera um id novo; o
-        // onConflict:'material_code' fará UPDATE da linha remota (sem duplicar).
-        newList.push({
-          id: 'm_' + Math.random().toString(36).substr(2, 9),
-          material_code: m.material_code,
-          description: m.description,
-          technical_text: m.technical_text,
-          category: getAutoCategory(m.description),
-          company: m.company,
-          unit: m.unit,
-          is_active: true,
-          created_at: new Date().toISOString()
-        });
-        updated++;
-      } else {
-        newList.push({
-          id: 'm_' + Math.random().toString(36).substr(2, 9),
-          material_code: m.material_code,
-          description: m.description,
-          technical_text: m.technical_text,
-          category: getAutoCategory(m.description),
-          company: m.company,
-          unit: m.unit,
-          is_active: true,
-          created_at: new Date().toISOString()
-        });
-        inserted++;
-      }
+    materials.forEach(m => {
+      if (m.material_code) dedupedMaterials.set(m.material_code, m);
     });
 
-    // Handle soft deletes for missing ones: busca do Supabase (não do cache local,
-    // que não guarda mais o catálogo inteiro) apenas as linhas dos códigos que
-    // existiam remotamente e não vieram nesta planilha.
-    const codesToDeactivate = Array.from(remoteCodeSet).filter(code => !importedCodes.has(code));
-    for (let i = 0; i < codesToDeactivate.length; i += 500) {
-      const chunk = codesToDeactivate.slice(i, i + 500);
-      try {
-        const { data, error } = await supabase
-          .from('materials')
-          .select('id, material_code, description, technical_text, category, company, unit, created_at')
-          .in('material_code', chunk)
-          .eq('is_active', true);
-        if (error) throw error;
-        data?.forEach((existing: any) => {
-          newList.push({ ...existing, is_active: false });
-          deactivated++;
-        });
-      } catch (err) {
-        console.warn('Falha ao buscar materiais a desativar no Supabase.', err);
-      }
-    }
-
-    try {
-      this.setStorageItem(this.materialsKey, newList);
-    } catch (err) {
-      // Catálogos SAP grandes podem exceder a cota do localStorage (~5-10MB).
-      // Não deve bloquear a sincronização com o Supabase, que é a fonte de verdade.
-      console.warn('Não foi possível atualizar o cache local de materiais (cota do navegador excedida). Prosseguindo com a sincronização no Supabase.', err);
-    }
-
-    // Sincroniza o catálogo completo com o Supabase (upsert por material_code em lotes).
-    // Cada lote é isolado: uma falha em um lote não interrompe os demais.
+    const itemsToImport = Array.from(dedupedMaterials.values());
+    let inserted = 0;
+    let updated = 0;
     let syncFailed = 0;
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < newList.length; i += BATCH_SIZE) {
-      const batch = newList.slice(i, i + BATCH_SIZE);
+
+    const BATCH_SIZE = 2000;
+    const totalBatches = Math.ceil(itemsToImport.length / BATCH_SIZE);
+
+    for (let i = 0; i < itemsToImport.length; i += BATCH_SIZE) {
+      const chunk = itemsToImport.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+
+      if (onProgress) {
+        const pct = Math.round((i / itemsToImport.length) * 85);
+        onProgress(pct, `Importando materiais ZL0169 no Supabase (lote ${batchNum}/${totalBatches})...`);
+      }
+
       try {
-        const { error } = await supabase.from('materials').upsert(batch, { onConflict: 'material_code' });
+        const { data, error } = await supabase.rpc('importar_materiais_zl0169', {
+          p_materiais: chunk
+        });
+
         if (error) throw error;
-      } catch (err) {
-        syncFailed += batch.length;
-        console.error(`Falha ao sincronizar lote de materiais com o Supabase (linhas ${i + 1}-${i + batch.length}):`, err);
+        if (data) {
+          inserted += Number(data.inseridos || 0);
+          updated += Number(data.atualizados || 0);
+        }
+      } catch (rpcErr) {
+        console.warn(`RPC importar_materiais_zl0169 falhou no lote ${batchNum}, tentando fallback direto via upsert:`, rpcErr);
+        try {
+          const fallbackBatch = chunk.map(m => ({
+            id: 'm_' + Math.random().toString(36).substr(2, 9),
+            material_code: m.material_code,
+            description: m.description,
+            technical_text: m.technical_text || null,
+            category: m.category || getAutoCategory(m.description),
+            company: m.company || 'TEN2',
+            unit: m.unit || 'UN',
+            is_active: true,
+            created_at: new Date().toISOString()
+          }));
+          const { error: upsertErr } = await supabase.from('materials').upsert(fallbackBatch, { onConflict: 'material_code' });
+          if (upsertErr) throw upsertErr;
+          updated += chunk.length;
+        } catch (err) {
+          syncFailed += chunk.length;
+          console.error(`Falha ao sincronizar lote de materiais ZL0169 com o Supabase:`, err);
+        }
       }
     }
 
-    // Incrementa a versão do dataset para que os demais clientes rebaixem o
-    // catálogo na próxima abertura (e alinha o carimbo local deste importador).
-    await this.bumpDatasetVersion('materials', newList.length);
+    if (onProgress) {
+      onProgress(92, 'Sincronizando cache local e versão do dataset...');
+    }
+
+    // Atualiza cache local parcial se houver itens no localStorage
+    try {
+      const localMaterials = this.getStorageItem<Material[]>(this.materialsKey, []);
+      if (localMaterials && localMaterials.length > 0) {
+        const itemMap = new Map(itemsToImport.map(it => [it.material_code, it]));
+        const nextLocal = localMaterials.map(m => {
+          const incoming = itemMap.get(m.material_code);
+          if (incoming) {
+            return {
+              ...m,
+              description: incoming.description,
+              technical_text: incoming.technical_text || m.technical_text,
+              category: incoming.category || m.category,
+              company: incoming.company || m.company,
+              unit: incoming.unit || m.unit,
+              is_active: true
+            };
+          }
+          return m;
+        });
+        this.setStorageItem(this.materialsKey, nextLocal);
+      }
+    } catch (err) {
+      console.warn('Não foi possível atualizar o cache local de materiais:', err);
+    }
+
+    // Incrementa a versão do dataset para que os demais clientes rebaixem o catálogo
+    await this.bumpDatasetVersion('materials', itemsToImport.length);
 
     const user = this.getCurrentUser();
     this.logActivity(
       user?.id || 'admin',
       'Catálogo SAP',
-      'Importar Catálogo',
-      `Excel processado. Lidos: ${materials.length}, Inseridos: ${inserted}, Atualizados: ${updated}, Desativados: ${deactivated}, Falhas de sync: ${syncFailed}.`
+      'Importar ZL0169',
+      `Importou ZL0169 (${filename || 'planilha'}). Lidos: ${materials.length}, Inseridos: ${inserted}, Atualizados: ${updated}, Falhas de sync: ${syncFailed}.`
     );
 
-    return { read: materials.length, inserted, updated, deactivated, syncFailed };
+    if (onProgress) {
+      onProgress(100, 'Importação ZL0169 concluída com sucesso!');
+    }
+
+    return { read: materials.length, inserted, updated, deactivated: 0, syncFailed };
+  }
+
+  /**
+   * Importação de Textos Técnicos / Longos do SAP (Transação ZL0162).
+   * Vincula pelo código do material na tabela materials e atualiza a coluna technical_text.
+   */
+  public async importZL0162(
+    items: { material_code: string; technical_text: string; description?: string }[],
+    filename?: string,
+    onProgress?: (progress: number, message?: string) => void
+  ): Promise<{ read: number; updated: number; notFound: number; syncFailed: number }> {
+    const user = this.getCurrentUser();
+    let updated = 0;
+    let notFound = 0;
+    let syncFailed = 0;
+
+    // Deduplica por material_code preservando o último texto não vazio
+    const dedupedMap = new Map<string, { material_code: string; technical_text: string }>();
+    items.forEach(it => {
+      const code = String(it.material_code || '').trim();
+      const tech = String(it.technical_text || '').trim();
+      if (!code) return;
+      if (!dedupedMap.has(code) || tech) {
+        dedupedMap.set(code, { material_code: code, technical_text: tech });
+      }
+    });
+
+    const itemsToUpdate = Array.from(dedupedMap.values());
+    const BATCH_SIZE = 2000;
+    const totalBatches = Math.ceil(itemsToUpdate.length / BATCH_SIZE);
+
+    for (let i = 0; i < itemsToUpdate.length; i += BATCH_SIZE) {
+      const batch = itemsToUpdate.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+
+      if (onProgress) {
+        const pct = Math.round((i / itemsToUpdate.length) * 88);
+        onProgress(pct, `Atualizando textos técnicos ZL0162 no Supabase (lote ${batchNum}/${totalBatches})...`);
+      }
+
+      try {
+        const { data, error } = await supabase.rpc('atualizar_textos_tecnicos_zl0162', {
+          p_itens: batch
+        });
+
+        if (error) throw error;
+        if (data) {
+          updated += Number(data.atualizados || 0);
+          notFound += Number(data.nao_encontrados || 0);
+        }
+      } catch (err) {
+        console.error(`Erro ao atualizar lote ${batchNum} da ZL0162 no Supabase:`, err);
+        syncFailed += batch.length;
+      }
+    }
+
+    if (onProgress) {
+      onProgress(94, 'Sincronizando cache local e versão do dataset...');
+    }
+
+    // Atualiza cache local se houver
+    try {
+      const localMaterials = this.getStorageItem<Material[]>(this.materialsKey, []);
+      if (localMaterials && localMaterials.length > 0) {
+        const itemMap = new Map(itemsToUpdate.map(it => [it.material_code, it.technical_text]));
+        let localUpdated = 0;
+        const nextLocal = localMaterials.map(m => {
+          if (itemMap.has(m.material_code)) {
+            localUpdated++;
+            return {
+              ...m,
+              technical_text: itemMap.get(m.material_code) || m.technical_text
+            };
+          }
+          return m;
+        });
+        if (localUpdated > 0) {
+          this.setStorageItem(this.materialsKey, nextLocal);
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao atualizar cache local de materiais para ZL0162:', e);
+    }
+
+    // Incrementa versão do dataset
+    try {
+      await this.bumpDatasetVersion('materials');
+    } catch (e) {
+      console.warn('Falha ao atualizar dataset_version para materials:', e);
+    }
+
+    // Registra log de auditoria
+    this.logActivity(
+      user?.id || 'admin',
+      'Catálogo SAP',
+      'Importar ZL0162',
+      `Importou ZL0162 (${filename || 'planilha'}). Lidos: ${items.length}, Atualizados no catálogo: ${updated}, Não encontrados: ${notFound}, Falhas de sync: ${syncFailed}.`
+    );
+
+    if (onProgress) {
+      onProgress(100, 'Atualização de textos técnicos (ZL0162) concluída!');
+    }
+
+    return { read: items.length, updated, notFound, syncFailed };
+  }
+
+  /**
+   * Obtém os maiores códigos de material cadastrados no Supabase para as 2 faixas
+   * do SAP (padrão de 7 dígitos e longo de 18 dígitos iniciados em 100000),
+   * além do total de itens e última inclusão.
+   */
+  public async getCatalogCodeStats(): Promise<{
+    maxStandard7d: string | null;
+    maxLong18d: string | null;
+    totalMaterials: number;
+    lastCreatedAt: string | null;
+  }> {
+    try {
+      const { data, error } = await supabase.rpc('obter_maiores_codigos_catalogo');
+      if (!error && data) {
+        return {
+          maxStandard7d: data.max_padrao_7d || null,
+          maxLong18d: data.max_longo_18d || null,
+          totalMaterials: data.total_materiais || 0,
+          lastCreatedAt: data.ultimo_cadastro || null,
+        };
+      }
+      if (error) {
+        console.warn('RPC obter_maiores_codigos_catalogo retornou erro, usando fallback direto:', error);
+      }
+    } catch (err) {
+      console.warn('Falha ao chamar RPC obter_maiores_codigos_catalogo; usando fallback:', err);
+    }
+
+    // Fallback caso a RPC não esteja disponível
+    try {
+      const [standardRes, longRes, countRes] = await Promise.all([
+        supabase
+          .from('materials')
+          .select('material_code')
+          .gte('material_code', '1000000')
+          .lt('material_code', '2000000')
+          .order('material_code', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('materials')
+          .select('material_code')
+          .gte('material_code', '100000000000000000')
+          .like('material_code', '100000%')
+          .order('material_code', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('materials')
+          .select('id', { count: 'exact', head: true }),
+      ]);
+
+      return {
+        maxStandard7d: standardRes.data?.material_code || null,
+        maxLong18d: longRes.data?.material_code || null,
+        totalMaterials: countRes.count || 0,
+        lastCreatedAt: null,
+      };
+    } catch (err) {
+      console.error('Erro no fallback de estatísticas de códigos do catálogo:', err);
+      return {
+        maxStandard7d: null,
+        maxLong18d: null,
+        totalMaterials: 0,
+        lastCreatedAt: null,
+      };
+    }
   }
 
   // Notifications

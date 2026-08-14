@@ -17,19 +17,43 @@ interface MaterialsProps {
 
 const sanitizeTerm = (term: string) => term.trim();
 
-// Linha da RPC buscar_materiais_catalogo -> Material. is_active/created_at não
-// vêm da RPC (a tela só lista ativos e não usa a data de criação).
-const rowToMaterial = (r: any): Material => ({
-  id: r.id,
-  material_code: r.material_code,
-  description: r.description,
-  technical_text: r.technical_text,
-  category: r.category,
-  company: r.company,
-  unit: r.unit,
-  is_active: true,
-  created_at: '',
-});
+const SAP_TMATS = [
+  { code: 'Todos', label: 'Todos os Tipos' },
+  { code: 'ZPEC', label: 'ZPEC - Peças' },
+  { code: 'ZCON', label: 'ZCON - Materiais Consumo' },
+  { code: 'ZENG', label: 'ZENG - Materiais Engenharia' },
+  { code: 'ZIMO', label: 'ZIMO - Imobilizado (fora ETM)' },
+  { code: 'ZETM', label: 'ZETM - Equipamento (contrl. ETM)' },
+  { code: 'ZCAP', label: 'ZCAP - Materiais CAP' },
+  { code: 'ZAGP', label: 'ZAGP - Material Agrupador' },
+  { code: 'ZSER', label: 'ZSER - Serviços' },
+  { code: 'ZGEN', label: 'ZGEN - Materiais Genéricos' },
+];
+
+const SAP_UNITS = [
+  'Todas', 'UN', 'M', 'KG', 'M2', 'PAR', 'L', 'TO', 'PEC', 'M3', 'PAC', 'CX', 'GAL', 'CJ', 'MIL', 'RL', 'BL', 'BR', 'CT', 'SAC', 'TON'
+];
+
+// Linha da RPC buscar_materiais_catalogo -> Material.
+const rowToMaterial = (r: any): Material => {
+  const isObsoleto = (r.status_sap === 'Obsoleto') || (r.status_geral === 'Z1' || r.status_centro === 'Z1');
+  return {
+    id: r.id,
+    material_code: r.material_code,
+    description: r.description,
+    technical_text: r.technical_text,
+    category: r.category,
+    company: r.company,
+    unit: r.unit,
+    tipo_material: r.tipo_material,
+    codigo_controle: r.codigo_controle,
+    status_geral: r.status_geral,
+    status_centro: r.status_centro,
+    status_sap: isObsoleto ? 'Obsoleto' : 'Ativo',
+    is_active: true,
+    created_at: '',
+  };
+};
 
 export default function Materials({ user }: MaterialsProps) {
   // Carrega do cache se houver, senão usa os defaults
@@ -38,6 +62,10 @@ export default function Materials({ user }: MaterialsProps) {
     chips: [],
     selectedCategory: 'Todas',
     selectedCompany: 'Todas',
+    selectedUnit: 'Todas',
+    selectedTmat: 'Todos',
+    selectedStatus: 'Todos',
+    ncmFilter: '',
     onlyFavorites: false,
     incluirTecnico: false,
     currentPage: 1
@@ -47,6 +75,10 @@ export default function Materials({ user }: MaterialsProps) {
   const [chips, setChips] = useState<string[]>(pageCache.chips);
   const [selectedCategory, setSelectedCategory] = useState(pageCache.selectedCategory);
   const [selectedCompany, setSelectedCompany] = useState(pageCache.selectedCompany);
+  const [selectedUnit, setSelectedUnit] = useState(pageCache.selectedUnit ?? 'Todas');
+  const [selectedTmat, setSelectedTmat] = useState(pageCache.selectedTmat ?? 'Todos');
+  const [selectedStatus, setSelectedStatus] = useState(pageCache.selectedStatus ?? 'Todos');
+  const [ncmFilter, setNcmFilter] = useState(pageCache.ncmFilter ?? '');
   const [onlyFavorites, setOnlyFavorites] = useState(pageCache.onlyFavorites);
   // Por padrão a busca casa só na descrição — igual ao modal de Nova
   // Solicitação (MaterialSearchModal). O texto técnico só ajuda a separar
@@ -78,11 +110,15 @@ export default function Materials({ user }: MaterialsProps) {
       chips,
       selectedCategory,
       selectedCompany,
+      selectedUnit,
+      selectedTmat,
+      selectedStatus,
+      ncmFilter,
       onlyFavorites,
       incluirTecnico,
       currentPage
     });
-  }, [queryInput, chips, selectedCategory, selectedCompany, onlyFavorites, incluirTecnico, currentPage]);
+  }, [queryInput, chips, selectedCategory, selectedCompany, selectedUnit, selectedTmat, selectedStatus, ncmFilter, onlyFavorites, incluirTecnico, currentPage]);
 
   useEffect(() => {
     setFavorites(localDb.getFavorites(user.id));
@@ -104,22 +140,20 @@ export default function Materials({ user }: MaterialsProps) {
       return;
     }
     setCurrentPage(1);
-  }, [chips, selectedCategory, selectedCompany, onlyFavorites, incluirTecnico]);
+  }, [chips, selectedCategory, selectedCompany, selectedUnit, selectedTmat, selectedStatus, ncmFilter, onlyFavorites, incluirTecnico]);
 
-  // Parâmetros da RPC `buscar_materiais_catalogo` (ver
-  // criar_rpc_buscar_materiais_catalogo.sql) — casa cada chip em material_code
-  // OU descrição (technical_text só entra com incluirTecnico marcado — ver
-  // adicionar_incluir_tecnico_buscar_materiais_catalogo.sql), com AND entre
-  // chips, usando os índices GIN trigram do catálogo. Substitui o `.ilike()`
-  // encadeado no PostgREST, que em 172 mil linhas sem cobertura de índice nas
-  // 3 colunas do OR chegava a ~3-4s por busca (medido em pg_stat_statements).
+  // Parâmetros da RPC `buscar_materiais_catalogo`
   const rpcParams = useCallback((codigosFavoritos: string[] | null) => ({
     termos: chips.map(sanitizeTerm).filter(Boolean),
     categoria: selectedCategory,
     empresa: selectedCompany,
+    unidade: selectedUnit,
+    tmat: selectedTmat,
+    ncm: ncmFilter.trim() || null,
+    status_filtro: selectedStatus === 'Todos' ? null : selectedStatus,
     apenas_codigos: codigosFavoritos,
     incluir_tecnico: incluirTecnico,
-  }), [chips, selectedCategory, selectedCompany, incluirTecnico]);
+  }), [chips, selectedCategory, selectedCompany, selectedUnit, selectedTmat, selectedStatus, ncmFilter, incluirTecnico]);
 
   useEffect(() => {
     const thisRequestId = ++requestIdRef.current;
@@ -146,9 +180,6 @@ export default function Materials({ user }: MaterialsProps) {
         if (error) throw error;
         if (requestIdRef.current !== thisRequestId) return; // resposta obsoleta
 
-        // A ordem de relevância (termo casa na descrição, depois posição do
-        // termo, depois material_code) já vem pronta da RPC — ver
-        // ordenar_buscar_materiais_catalogo_por_posicao_termo.sql.
         setResults((data || []).map(rowToMaterial));
         setTotalResults((data && data[0]?.total_count) || 0);
       } catch (err) {
@@ -164,7 +195,7 @@ export default function Materials({ user }: MaterialsProps) {
     };
 
     run();
-  }, [chips, selectedCategory, selectedCompany, onlyFavorites, favorites, currentPage, rpcParams]);
+  }, [chips, selectedCategory, selectedCompany, selectedUnit, selectedTmat, selectedStatus, ncmFilter, onlyFavorites, favorites, currentPage, rpcParams]);
 
   const handleAddChip = (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,9 +216,25 @@ export default function Materials({ user }: MaterialsProps) {
     setQueryInput('');
     setSelectedCategory('Todas');
     setSelectedCompany('Todas');
+    setSelectedUnit('Todas');
+    setSelectedTmat('Todos');
+    setSelectedStatus('Todos');
+    setNcmFilter('');
     setOnlyFavorites(false);
     setIncluirTecnico(false);
   };
+
+  const activeFilterCount = (
+    (chips.length > 0 ? chips.length : 0) +
+    (selectedCategory !== 'Todas' ? 1 : 0) +
+    (selectedCompany !== 'Todas' ? 1 : 0) +
+    (selectedUnit !== 'Todas' ? 1 : 0) +
+    (selectedTmat !== 'Todos' ? 1 : 0) +
+    (selectedStatus !== 'Todos' ? 1 : 0) +
+    (ncmFilter.trim() !== '' ? 1 : 0) +
+    (onlyFavorites ? 1 : 0) +
+    (incluirTecnico ? 1 : 0)
+  );
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -219,7 +266,6 @@ export default function Materials({ user }: MaterialsProps) {
     setIsExporting(true);
     try {
       const allRows: Material[] = [];
-      // Teto server-side da RPC (ver criar_rpc_buscar_materiais_catalogo.sql).
       const pageSize = 200;
       let from = 0;
       while (allRows.length < EXPORT_CAP) {
@@ -235,14 +281,17 @@ export default function Materials({ user }: MaterialsProps) {
         from += pageSize;
       }
 
-      const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Categoria', 'Empresa', 'Unidade'];
+      const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Status SAP', 'Categoria', 'Empresa', 'Unidade', 'TMAT', 'NCM'];
       const rows = allRows.map(m => [
         m.material_code,
         m.description,
         m.technical_text || '',
+        m.status_sap || 'Ativo',
         m.category,
         m.company,
-        m.unit
+        m.unit,
+        m.tipo_material || '',
+        m.codigo_controle || ''
       ]);
 
       const csvContent = "data:text/csv;charset=utf-8,﻿"
@@ -268,7 +317,7 @@ export default function Materials({ user }: MaterialsProps) {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Catálogo de Materiais SAP</h2>
-          <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips para busca cumulativa.</p>
+          <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips e filtros avançados para refinar.</p>
           {lastUpdated && (
             <p className="mt-1.5 text-[11px] font-medium text-slate-400 flex items-center gap-1">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('materials')}
@@ -316,31 +365,108 @@ export default function Materials({ user }: MaterialsProps) {
             {chips.map((chip, idx) => (
               <span key={idx} className="inline-flex items-center space-x-1 rounded-full bg-emerald-50 border border-emerald-100 py-1 px-3 text-xs font-semibold text-emerald-800">
                 <span>{chip}</span>
-                <button type="button" onClick={() => handleRemoveChip(chip)} className="text-emerald-500 hover:text-emerald-800 focus:outline-none">
+                <button type="button" onClick={() => handleRemoveChip(chip)} className="text-emerald-500 hover:text-emerald-800 focus:outline-none cursor-pointer">
                   <X className="h-3 w-3" />
                 </button>
               </span>
             ))}
             <button
-              onClick={handleClearAll}
+              onClick={() => { setChips([]); setQueryInput(''); }}
               className="text-xs font-bold text-red-500 hover:underline ml-2 cursor-pointer"
             >
-              Limpar tudo
+              Limpar termos
             </button>
           </div>
         )}
 
         {/* Filters Selectors Row */}
-        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between pt-1 border-t border-slate-50">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-semibold text-slate-500">Categoria:</span>
+        <div className="pt-3 border-t border-slate-100 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+            {/* Status SAP */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Status SAP:
+              </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className={`w-full rounded-lg border py-1.5 px-2.5 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer shadow-2xs font-medium ${selectedStatus === 'Obsoleto' ? 'border-amber-300 bg-amber-50 text-amber-900 font-bold' : selectedStatus === 'Ativo' ? 'border-emerald-300 bg-emerald-50 text-emerald-900 font-bold' : 'border-gray-200 bg-white text-slate-800'}`}
+              >
+                <option value="Todos">Todos os Status</option>
+                <option value="Ativo">Apenas Ativos</option>
+                <option value="Obsoleto">Apenas Obsoletos (Z1)</option>
+              </select>
+            </div>
+
+            {/* Unidade */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Unidade:
+              </label>
+              <select
+                value={selectedUnit}
+                onChange={(e) => setSelectedUnit(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer shadow-2xs"
+              >
+                {SAP_UNITS.map(u => (
+                  <option key={u} value={u}>{u === 'Todas' ? 'Todas as Unidades' : u}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* TMAT (Tipo de Material) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                TMAT (Tipo):
+              </label>
+              <select
+                value={selectedTmat}
+                onChange={(e) => setSelectedTmat(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer shadow-2xs"
+              >
+                {SAP_TMATS.map(t => (
+                  <option key={t.code} value={t.code}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* NCM / Código de Controle */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                NCM (Cód. Controle):
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ex: 8708, 8431..."
+                  value={ncmFilter}
+                  onChange={(e) => setNcmFilter(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 pr-7 text-xs focus:outline-none focus:border-emerald-600 shadow-2xs font-mono"
+                />
+                {ncmFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setNcmFilter('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    title="Limpar NCM"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Categoria */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Categoria:
+              </label>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer"
+                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer shadow-2xs"
               >
-                <option value="Todas">Todas</option>
+                <option value="Todas">Todas as Categorias</option>
                 <option value="CHAPAS">Chapas</option>
                 <option value="PARAFUSOS E FIXADORES">Parafusos e Fixadores</option>
                 <option value="CABOS E CONECTORES">Cabos e Conectores</option>
@@ -352,12 +478,15 @@ export default function Materials({ user }: MaterialsProps) {
               </select>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-semibold text-slate-500">Empresa:</span>
+            {/* Empresa */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Empresa:
+              </label>
               <select
                 value={selectedCompany}
                 onChange={(e) => setSelectedCompany(e.target.value)}
-                className="rounded-lg border border-gray-200 bg-white py-1.5 px-3 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer"
+                className="w-full rounded-lg border border-gray-200 bg-white py-1.5 px-2.5 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer shadow-2xs"
               >
                 <option value="Todas">Todas (TEN2 / AG)</option>
                 <option value="TEN2">TEN2</option>
@@ -366,29 +495,41 @@ export default function Materials({ user }: MaterialsProps) {
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <label
-              className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer"
-              title="Existem materiais com descrição idêntica que só o texto técnico separa (ex.: GALVANIZADO FOGO vs SEM REVESTIMENTO). Fora esse caso, incluí-lo só traz ruído no resultado."
-            >
-              <input
-                type="checkbox"
-                checked={incluirTecnico}
-                onChange={(e) => setIncluirTecnico(e.target.checked)}
-                className="mr-2 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              Incluir texto técnico na busca
-            </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-50 text-xs">
+            <div className="flex flex-wrap items-center gap-4">
+              <label
+                className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer select-none"
+                title="Existem materiais com descrição idêntica que só o texto técnico separa (ex.: GALVANIZADO FOGO vs SEM REVESTIMENTO). Fora esse caso, incluí-lo só traz ruído no resultado."
+              >
+                <input
+                  type="checkbox"
+                  checked={incluirTecnico}
+                  onChange={(e) => setIncluirTecnico(e.target.checked)}
+                  className="mr-2 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                Incluir texto técnico na busca
+              </label>
 
-            <label className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={onlyFavorites}
-                onChange={(e) => setOnlyFavorites(e.target.checked)}
-                className="mr-2 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <Star className="h-3.5 w-3.5 mr-1 fill-amber-400 stroke-amber-400 inline" /> Meus favoritos
-            </label>
+              <label className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyFavorites}
+                  onChange={(e) => setOnlyFavorites(e.target.checked)}
+                  className="mr-2 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <Star className="h-3.5 w-3.5 mr-1 fill-amber-400 stroke-amber-400 inline" /> Meus favoritos
+              </label>
+            </div>
+
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="text-xs font-bold text-red-600 hover:text-red-800 hover:underline cursor-pointer flex items-center gap-1"
+              >
+                <X className="h-3.5 w-3.5" /> Limpar filtros ativos ({activeFilterCount})
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -402,7 +543,7 @@ export default function Materials({ user }: MaterialsProps) {
       {/* Warning banner for refined searches */}
       {totalResults > 500 && (
         <div className="rounded-lg bg-blue-50 border border-blue-100 p-3.5 text-xs text-blue-800">
-          <strong>Resultados abundantes ({totalResults.toLocaleString('pt-BR')} encontrados).</strong> O catálogo exibe até 50 itens por página. Adicione mais chips ou filtre por categoria para refinar sua busca.
+          <strong>Resultados abundantes ({totalResults.toLocaleString('pt-BR')} encontrados).</strong> O catálogo exibe até 50 itens por página. Adicione mais chips ou filtre por status, unidade, TMAT, NCM ou categoria para refinar sua busca.
         </div>
       )}
 
@@ -416,7 +557,7 @@ export default function Materials({ user }: MaterialsProps) {
             </div>
           ) : results.length === 0 ? (
             <div className="py-10 px-4 text-center text-slate-400 text-sm">
-              Nenhum material correspondente aos filtros. Tente remover termos da busca.
+              Nenhum material correspondente aos filtros. Tente remover termos ou limpar filtros.
             </div>
           ) : (
             results.map((m) => {
@@ -426,23 +567,42 @@ export default function Materials({ user }: MaterialsProps) {
                   <div className="flex items-start gap-2">
                     <button
                       onClick={() => handleToggleFavorite(m.material_code)}
-                      className="p-1.5 -m-1 focus:outline-none shrink-0"
+                      className="p-1.5 -m-1 focus:outline-none shrink-0 cursor-pointer"
                       aria-label={isFav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                     >
                       <Star className={`h-5 w-5 ${isFav ? 'fill-amber-400 stroke-amber-400' : 'text-slate-300'}`} />
                     </button>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">{m.material_code}</span>
                         <button
                           onClick={() => handleCopyCode(m.material_code)}
-                          className="p-1.5 -m-1 text-slate-400 hover:text-slate-600 focus:outline-none shrink-0"
+                          className="p-1.5 -m-1 text-slate-400 hover:text-slate-600 focus:outline-none shrink-0 cursor-pointer"
                           aria-label="Copiar código"
                         >
                           {copiedCode === m.material_code
                             ? <Check className="h-3.5 w-3.5 text-emerald-600" />
                             : <Copy className="h-3.5 w-3.5" />}
                         </button>
+                        {m.status_sap === 'Obsoleto' ? (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            Obsoleto
+                          </span>
+                        ) : (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Ativo
+                          </span>
+                        )}
+                        {m.tipo_material && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {m.tipo_material}
+                          </span>
+                        )}
+                        {m.codigo_controle && (
+                          <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            NCM: {m.codigo_controle}
+                          </span>
+                        )}
                         <span className={`ml-auto inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${m.company === 'AG' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
                           {m.company}
                         </span>
@@ -470,21 +630,24 @@ export default function Materials({ user }: MaterialsProps) {
                 <th className="py-3 px-4 w-28">Código SAP</th>
                 <th className="py-3 px-4">Descrição</th>
                 <th className="py-3 px-4">Texto Técnico</th>
-                <th className="py-3 px-4 w-24 text-center">Empresa</th>
-                <th className="py-3 px-4 w-16 text-center">Un.</th>
+                <th className="py-3 px-3 w-20 text-center">Status</th>
+                <th className="py-3 px-3 w-20 text-center">TMAT</th>
+                <th className="py-3 px-3 w-28 text-center">NCM</th>
+                <th className="py-3 px-3 w-20 text-center">Empresa</th>
+                <th className="py-3 px-3 w-16 text-center">Un.</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                  <td colSpan={9} className="py-10 text-center text-slate-400">
                     <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Buscando materiais...
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-slate-400">
-                    Nenhum material correspondente aos filtros. Tente remover termos da busca.
+                  <td colSpan={9} className="py-10 text-center text-slate-400">
+                    Nenhum material correspondente aos filtros. Tente remover termos ou limpar filtros.
                   </td>
                 </tr>
               ) : (
@@ -496,7 +659,7 @@ export default function Materials({ user }: MaterialsProps) {
                     <React.Fragment key={m.id}>
                       <tr className="hover:bg-slate-50/50 transition-colors">
                         <td className="py-3.5 px-4 text-center">
-                          <button onClick={() => handleToggleFavorite(m.material_code)} className="focus:outline-none">
+                          <button onClick={() => handleToggleFavorite(m.material_code)} className="focus:outline-none cursor-pointer">
                             <Star className={`h-4.5 w-4.5 ${isFav ? 'fill-amber-400 stroke-amber-400' : 'text-slate-300 hover:text-slate-500'}`} />
                           </button>
                         </td>
@@ -505,7 +668,7 @@ export default function Materials({ user }: MaterialsProps) {
                             <span className="text-emerald-700 font-bold">{m.material_code}</span>
                             <button
                               onClick={() => handleCopyCode(m.material_code)}
-                              className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                              className="text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
                               title="Copiar Código"
                             >
                               {copiedCode === m.material_code ? (
@@ -527,34 +690,69 @@ export default function Materials({ user }: MaterialsProps) {
                             {m.technical_text && m.technical_text.length > 50 && (
                               <button
                                 onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 self-start mt-0.5"
+                                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 self-start mt-0.5 cursor-pointer"
                               >
                                 {isExpanded ? 'Ocultar detalhes' : 'Ver mais'}
                               </button>
                             )}
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-center">
+                        <td className="py-3.5 px-3 text-center">
+                          {m.status_sap === 'Obsoleto' ? (
+                            <span
+                              title={`Material obsoleto no SAP${m.status_geral ? ' (Status Geral: ' + m.status_geral + ')' : ''}${m.status_centro ? ' (Status Centro: ' + m.status_centro + ')' : ''}`}
+                              className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80"
+                            >
+                              Obsoleto
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                              Ativo
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
+                          {m.tipo_material ? (
+                            <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                              {m.tipo_material}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-3 text-center font-mono text-[11px] text-slate-600 font-semibold">
+                          {m.codigo_controle || <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
                           <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold ${m.company === 'AG' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
                             {m.company}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-center font-bold text-slate-500 text-xs">
+                        <td className="py-3.5 px-3 text-center font-bold text-slate-500 text-xs">
                           {m.unit}
                         </td>
                       </tr>
                       {isExpanded && (
                         <tr className="bg-slate-50/40">
-                          <td colSpan={6} className="py-3 px-6 text-xs text-slate-500 text-left border-l-4 border-emerald-500">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div>
+                          <td colSpan={9} className="py-3 px-6 text-xs text-slate-500 text-left border-l-4 border-emerald-500">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                              <div className="sm:col-span-2">
                                 <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Texto Completo SAP</p>
-                                <p className="mt-1 font-mono text-slate-600 leading-normal bg-white p-2 rounded border border-slate-100">{m.technical_text}</p>
+                                <p className="mt-1 font-mono text-slate-600 leading-normal bg-white p-2.5 rounded border border-slate-100">{m.technical_text || '—'}</p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Classificação de Estoque</p>
-                                <p className="text-slate-600 mt-1">Categoria Automática: <span className="font-semibold text-slate-900">{m.category}</span></p>
-                                <p className="text-slate-400 text-[10px]">Autocategorizado com base nas regras linguísticas de palavras-chave do catálogo oficial de materiais da Torres Eólicas do Nordeste.</p>
+                              <div className="space-y-1.5">
+                                <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Classificação Fiscal & Status</p>
+                                <div className="bg-white p-2.5 rounded border border-slate-100 space-y-1 text-xs">
+                                  <p className="text-slate-600">
+                                    Status SAP:{' '}
+                                    <span className={`font-bold ${m.status_sap === 'Obsoleto' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                      {m.status_sap} {m.status_geral === 'Z1' ? '(Z1 Geral)' : ''} {m.status_centro === 'Z1' ? '(Z1 Centro)' : ''}
+                                    </span>
+                                  </p>
+                                  <p className="text-slate-600">TMAT: <span className="font-bold font-mono text-slate-900">{m.tipo_material || 'Não informado'}</span></p>
+                                  <p className="text-slate-600">NCM (Cód. Controle): <span className="font-bold font-mono text-slate-900">{m.codigo_controle || 'Não informado'}</span></p>
+                                  <p className="text-slate-600">Categoria: <span className="font-semibold text-slate-900">{m.category}</span></p>
+                                </div>
                               </div>
                             </div>
                           </td>

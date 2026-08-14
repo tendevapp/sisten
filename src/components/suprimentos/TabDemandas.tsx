@@ -67,9 +67,14 @@ export default function TabDemandas({ records, allRecords, granularidade, compra
     abrirModalRecords(`${tipo} — ${CRITICIDADE_LABEL[criticidade]}`, `${tipo} · ${CRITICIDADE_LABEL[criticidade]}`, items);
   }, [records, abrirModalRecords]);
 
-  const abrirModalArea = useCallback((area: string) => {
-    const items = records.filter(r => (r.area_solicitante?.trim() || 'Não informada') === area);
-    abrirModalRecords(`Área Solicitante — ${area}`, area, items);
+  const abrirModalArea = useCallback((area: string, criticidade?: Criticidade) => {
+    let items = records.filter(r => (r.area_solicitante?.trim() || 'Não informada') === area);
+    if (criticidade) {
+      items = items.filter(r => (classifyCriticidadeNatureza((r as any).natureza) || 'normal') === criticidade);
+      abrirModalRecords(`Área Solicitante — ${area} (${CRITICIDADE_LABEL[criticidade] || criticidade})`, `${area} · ${CRITICIDADE_LABEL[criticidade] || criticidade}`, items);
+    } else {
+      abrirModalRecords(`Área Solicitante — ${area}`, area, items);
+    }
   }, [records, abrirModalRecords]);
 
   const servicos = useMemo(

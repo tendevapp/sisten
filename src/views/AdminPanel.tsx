@@ -5,14 +5,15 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Users, Map, Shield, Upload, Check, X, AlertTriangle,
+  Users, Map as MapIcon, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus,
-  Flag, Bug, Lightbulb, Image as ImageIcon
+  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
+import { calcularProximoCodigoMaterial } from '../lib/materiais';
 import { Profile, Sector, Material, FeedbackReport } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
@@ -41,12 +42,57 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
 
-  // Materials Importer (aceita planilha SAP .xlsx/.xls ou .csv)
-  const [importPreview, setImportPreview] = useState<any[]>([]);
-  const [pendingImportItems, setPendingImportItems] = useState<Omit<Material, 'id' | 'is_active' | 'created_at'>[]>([]);
-  const [importStatus, setImportStatus] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
-  const [importError, setImportError] = useState('');
-  const [importSummary, setImportSummary] = useState<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number } | null>(null);
+  // Materials Importer ZL0169 (Cadastro de Materiais SAP)
+  const [zl0169File, setZl0169File] = useState<File | null>(null);
+  const [zl0169Preview, setZl0169Preview] = useState<any[]>([]);
+  const [pendingZL0169Items, setPendingZL0169Items] = useState<Omit<Material, 'id' | 'is_active' | 'created_at'>[]>([]);
+  const [zl0169Status, setZl0169Status] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
+  const [zl0169Progress, setZl0169Progress] = useState(0);
+  const [zl0169ProgressMsg, setZl0169ProgressMsg] = useState('');
+  const [zl0169Error, setZl0169Error] = useState('');
+  const [zl0169Summary, setZl0169Summary] = useState<{ read: number; inserted: number; updated: number; deactivated: number; syncFailed: number } | null>(null);
+
+  // Materials Importer ZL0162 (Texto Técnico / Longo SAP)
+  const [zl0162File, setZl0162File] = useState<File | null>(null);
+  const [zl0162Preview, setZl0162Preview] = useState<{ material_code: string; description?: string; technical_text: string }[]>([]);
+  const [pendingZL0162Items, setPendingZL0162Items] = useState<{ material_code: string; description?: string; technical_text: string }[]>([]);
+  const [zl0162Status, setZl0162Status] = useState<'idle' | 'parsed' | 'saving' | 'success' | 'error'>('idle');
+  const [zl0162Progress, setZl0162Progress] = useState(0);
+  const [zl0162ProgressMsg, setZl0162ProgressMsg] = useState('');
+  const [zl0162Error, setZl0162Error] = useState('');
+  const [zl0162Summary, setZl0162Summary] = useState<{ read: number; updated: number; notFound: number; syncFailed: number } | null>(null);
+
+  // Maiores códigos de material cadastrados no catálogo para referência de nova importação SAP
+  const [catalogCodeStats, setCatalogCodeStats] = useState<{
+    maxStandard7d: string | null;
+    maxLong18d: string | null;
+    totalMaterials: number;
+    lastCreatedAt: string | null;
+  } | null>(null);
+  const [loadingCatalogStats, setLoadingCatalogStats] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const loadCatalogStats = async () => {
+    setLoadingCatalogStats(true);
+    try {
+      const stats = await localDb.getCatalogCodeStats();
+      setCatalogCodeStats(stats);
+    } catch (err) {
+      console.error('Erro ao carregar maiores códigos do catálogo:', err);
+    } finally {
+      setLoadingCatalogStats(false);
+    }
+  };
+
+  const handleCopyCode = (code: string, label: string) => {
+    if (!code || code === '—') return;
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    toast.success(`Código ${code} (${label}) copiado para a área de transferência!`);
+    setTimeout(() => setCopiedCode(null), 2500);
+  };
+
+  const calcNextCode = calcularProximoCodigoMaterial;
 
   // SAP ME5A/ZL0132 upload simulation states
   const [sapLogPreview, setSapLogPreview] = useState<any[]>([]);
@@ -120,6 +166,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       }
     });
     return () => { cancelled = true; };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'importar') {
+      loadCatalogStats();
+    }
   }, [activeTab]);
 
   const selectedFeedback = feedbackReports.find(r => r.id === selectedFeedbackId) || null;
@@ -272,10 +324,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     loadData();
   };
 
-  // Materials import: SAP export structure -> Material | Texto breve material | Texto longo do material | empresa
   const VALID_COMPANIES = ['TEN2', 'AG', 'AMBAS'];
 
-  const parseMaterialsRows = (rawRows: any[][]): Omit<Material, 'id' | 'is_active' | 'created_at'>[] => {
+  // ZL0169: Parser de Cadastro de Materiais SAP (Texto técnico opcional)
+  const parseZL0169Rows = (rawRows: any[][]): Omit<Material, 'id' | 'is_active' | 'created_at'>[] => {
     if (rawRows.length < 2) {
       throw new Error('Planilha vazia ou sem linhas de dados.');
     }
@@ -283,13 +335,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
     const headers = rawRows[0].map(normalizeHeader);
 
-    const codeIdx = headers.findIndex(h => h === 'material');
-    const descIdx = headers.findIndex(h => h.includes('texto breve'));
-    const techIdx = headers.findIndex(h => h.includes('texto longo'));
-    const companyIdx = headers.findIndex(h => h === 'empresa');
+    const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
+    const descIdx = headers.findIndex(h => h.includes('texto breve') || h === 'descrição' || h === 'descricao' || h.includes('denominacao') || h.includes('denominação'));
+    const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text'));
+    const companyIdx = headers.findIndex(h => h === 'empresa' || h === 'emp' || h.includes('empresa'));
 
     if (codeIdx === -1 || descIdx === -1) {
-      throw new Error('Colunas obrigatórias não encontradas. Esperado: "Material" e "Texto breve material".');
+      throw new Error('Colunas obrigatórias não encontradas na ZL0169. Esperado: "Material" e "Texto breve material". A coluna "Texto técnico" é opcional.');
     }
 
     const items: Omit<Material, 'id' | 'is_active' | 'created_at'>[] = [];
@@ -311,20 +363,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     });
 
     if (items.length === 0) {
-      throw new Error('Nenhum material válido encontrado na planilha.');
+      throw new Error('Nenhum material válido encontrado na planilha ZL0169.');
     }
 
     return items;
   };
 
-  const processMaterialsFile = (file: File) => {
-    setImportError('');
+  const processZL0169File = (file: File) => {
+    setZl0169Error('');
+    setZl0169File(file);
     const isExcel = /\.(xlsx|xls)$/i.test(file.name);
     const reader = new FileReader();
 
     reader.onerror = () => {
-      setImportError('Falha ao ler o arquivo selecionado.');
-      setImportStatus('error');
+      setZl0169Error('Falha ao ler o arquivo selecionado.');
+      setZl0169Status('error');
     };
 
     if (isExcel) {
@@ -334,13 +387,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           const workbook = XLSX.read(data, { type: 'array' });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
-          const items = parseMaterialsRows(rawRows);
-          setPendingImportItems(items);
-          setImportPreview(items.slice(0, 10));
-          setImportStatus('parsed');
+          const items = parseZL0169Rows(rawRows);
+          setPendingZL0169Items(items);
+          setZl0169Preview(items.slice(0, 10));
+          setZl0169Status('parsed');
         } catch (err: any) {
-          setImportError(err.message || 'Falha ao processar a planilha .xlsx.');
-          setImportStatus('error');
+          setZl0169Error(err.message || 'Falha ao processar a planilha ZL0169 (.xlsx/.xls).');
+          setZl0169Status('error');
         }
       };
       reader.readAsArrayBuffer(file);
@@ -351,48 +404,161 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           const rawRows = text.split('\n').filter(l => l.trim()).map(line =>
             line.split(';').map(c => c.trim().replace(/"/g, ''))
           );
-          const items = parseMaterialsRows(rawRows);
-          setPendingImportItems(items);
-          setImportPreview(items.slice(0, 10));
-          setImportStatus('parsed');
+          const items = parseZL0169Rows(rawRows);
+          setPendingZL0169Items(items);
+          setZl0169Preview(items.slice(0, 10));
+          setZl0169Status('parsed');
         } catch (err: any) {
-          setImportError(err.message || 'Falha ao processar o arquivo CSV. Verifique o delimitador (;).');
-          setImportStatus('error');
+          setZl0169Error(err.message || 'Falha ao processar o arquivo CSV ZL0169. Verifique o delimitador (;).');
+          setZl0169Status('error');
         }
       };
       reader.readAsText(file);
     }
   };
 
-  const handleCSVDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleCSVDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files?.length) {
-      processMaterialsFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) {
-      processMaterialsFile(e.target.files[0]);
-    }
-  };
-
-  const handleBulkImport = async () => {
-    setImportStatus('saving');
+  const handleBulkImportZL0169 = async () => {
+    setZl0169Status('saving');
+    setZl0169Progress(0);
+    setZl0169ProgressMsg('Iniciando importação ZL0169...');
     try {
-      const result = await localDb.importMaterials(pendingImportItems);
-      setImportSummary(result);
-      setImportStatus('success');
-      setImportPreview([]);
-      setPendingImportItems([]);
+      const result = await localDb.importMaterials(
+        pendingZL0169Items,
+        zl0169File?.name || 'export_zl0169.xlsx',
+        (progress, message) => {
+          setZl0169Progress(progress);
+          if (message) setZl0169ProgressMsg(message);
+        }
+      );
+      setZl0169Summary(result);
+      setZl0169Status('success');
+      setZl0169Preview([]);
+      setPendingZL0169Items([]);
+      loadCatalogStats();
     } catch (err: any) {
-      console.error('Erro ao importar catálogo de materiais:', err);
-      setImportError(`Erro ao realizar salvamento do catálogo: ${err?.message || String(err)}`);
-      setImportStatus('error');
+      console.error('Erro ao importar catálogo de materiais ZL0169:', err);
+      setZl0169Error(`Erro ao realizar salvamento do catálogo: ${err?.message || String(err)}`);
+      setZl0169Status('error');
+    }
+  };
+
+  // ZL0162: Parser de Textos Técnicos / Longos do SAP
+  interface ZL0162Item {
+    material_code: string;
+    description?: string;
+    technical_text: string;
+  }
+
+  const parseZL0162Rows = (rawRows: any[][]): ZL0162Item[] => {
+    if (rawRows.length < 2) {
+      throw new Error('Planilha vazia ou sem linhas de dados.');
+    }
+
+    const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
+    const headers = rawRows[0].map(normalizeHeader);
+
+    const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
+    const descIdx = headers.findIndex(h => h.includes('texto breve') || h === 'descrição' || h === 'descricao' || h.includes('denominacao') || h.includes('denominação'));
+    const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text') || h.includes('especificacao') || h.includes('especificação'));
+
+    if (codeIdx === -1 || techIdx === -1) {
+      throw new Error('Colunas obrigatórias não encontradas na ZL0162. Esperado: "Material" e "Texto longo do material" (a coluna "Texto breve material" é opcional).');
+    }
+
+    const itemsMap = new Map<string, ZL0162Item>();
+    rawRows.slice(1).forEach(row => {
+      const material_code = String(row[codeIdx] ?? '').trim();
+      if (!material_code) return;
+
+      const technical_text = String(row[techIdx] ?? '').trim();
+      const description = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : '';
+
+      if (technical_text || !itemsMap.has(material_code)) {
+        itemsMap.set(material_code, {
+          material_code,
+          description,
+          technical_text
+        });
+      }
+    });
+
+    const items = Array.from(itemsMap.values());
+    if (items.length === 0) {
+      throw new Error('Nenhum registro com código de material válido encontrado na planilha ZL0162.');
+    }
+
+    return items;
+  };
+
+  const processZL0162File = (file: File) => {
+    setZl0162Error('');
+    setZl0162File(file);
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    const reader = new FileReader();
+
+    reader.onerror = () => {
+      setZl0162Error('Falha ao ler o arquivo selecionado.');
+      setZl0162Status('error');
+    };
+
+    if (isExcel) {
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+          const items = parseZL0162Rows(rawRows);
+          setPendingZL0162Items(items);
+          setZl0162Preview(items.slice(0, 10));
+          setZl0162Status('parsed');
+        } catch (err: any) {
+          setZl0162Error(err.message || 'Falha ao processar a planilha ZL0162 (.xlsx/.xls).');
+          setZl0162Status('error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          const rawRows = text.split('\n').filter(l => l.trim()).map(line =>
+            line.split(';').map(c => c.trim().replace(/"/g, ''))
+          );
+          const items = parseZL0162Rows(rawRows);
+          setPendingZL0162Items(items);
+          setZl0162Preview(items.slice(0, 10));
+          setZl0162Status('parsed');
+        } catch (err: any) {
+          setZl0162Error(err.message || 'Falha ao processar o arquivo CSV ZL0162. Verifique o delimitador (;).');
+          setZl0162Status('error');
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleBulkImportZL0162 = async () => {
+    setZl0162Status('saving');
+    setZl0162Progress(0);
+    setZl0162ProgressMsg('Iniciando atualização de textos técnicos ZL0162...');
+    try {
+      const result = await localDb.importZL0162(
+        pendingZL0162Items,
+        zl0162File?.name || 'export_zl0162.xlsx',
+        (progress, message) => {
+          setZl0162Progress(progress);
+          if (message) setZl0162ProgressMsg(message);
+        }
+      );
+      setZl0162Summary(result);
+      setZl0162Status('success');
+      setZl0162Preview([]);
+      setPendingZL0162Items([]);
+    } catch (err: any) {
+      console.error('Erro ao importar textos técnicos ZL0162:', err);
+      setZl0162Error(`Erro ao atualizar textos técnicos: ${err?.message || String(err)}`);
+      setZl0162Status('error');
     }
   };
 
@@ -463,7 +629,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           onClick={() => { setActiveTab('setores'); window.location.hash = '/admin/setores'; }}
           className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'setores' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          <Map className="h-4 w-4 mr-1.5" />
+          <MapIcon className="h-4 w-4 mr-1.5" />
           Setores ({sectors.length})
         </button>
         <button
@@ -838,66 +1004,397 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       {/* Tab 4: Materials import (cadastro SAP) */}
       {activeTab === 'importar' && (
         <div className="space-y-6">
-          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-800">Importação do Cadastro de Materiais SAP</h3>
-            <p className="text-xs text-slate-500">Carregue a planilha exportada do SAP com as colunas "Material", "Texto breve material", "Texto longo do material" e "empresa". O catálogo local e a tabela <code>materials</code> no Supabase são atualizados automaticamente.</p>
-
-            <div
-              onDragOver={handleCSVDragOver}
-              onDrop={handleCSVDrop}
-              className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:bg-slate-50/50 transition-colors cursor-pointer relative"
-            >
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileSelect}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              />
-              <FileSpreadsheet className="mx-auto h-10 w-10 text-gray-400" />
-              <p className="mt-2 text-xs font-semibold text-slate-700">Solte a planilha de materiais aqui, ou clique para buscar</p>
-              <p className="mt-1 text-[10px] text-slate-400">Aceita .xlsx, .xls ou .csv (delimitado por ponto e vírgula). Máx 10 MB.</p>
+          {/* Painel de Referência de Códigos para Próxima Exportação no SAP */}
+          <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/50 via-white to-slate-50 p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-100/80 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center p-1.5 rounded-lg bg-emerald-700 text-white shadow-2xs">
+                    <Database className="h-4 w-4" />
+                  </span>
+                  <h3 className="text-sm font-bold text-slate-800">
+                    Referência de Códigos SAP para Nova Importação
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    2 Consultas Distintas
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Use os maiores códigos abaixo para parametrizar o filtro de extração incremental no SAP (filtro &gt; maior código cadastrado) e trazer apenas os novos materiais.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadCatalogStats}
+                disabled={loadingCatalogStats}
+                title="Recarregar maiores códigos"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs cursor-pointer transition-colors shrink-0 self-start sm:self-auto disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-emerald-600 ${loadingCatalogStats ? 'animate-spin' : ''}`} />
+                <span>{loadingCatalogStats ? 'Atualizando...' : 'Recarregar'}</span>
+              </button>
             </div>
 
-            {importError && (
-              <div className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-100 flex items-center">
-                <AlertTriangle className="mr-2 h-4.5 w-4.5 shrink-0 text-red-500" />
-                <span>{importError}</span>
-              </div>
-            )}
+            {/* Cards das 2 Consultas Distintas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card 1: Faixa Padrão (7 dígitos) */}
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4.5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/60">
+                      <Hash className="h-3.5 w-3.5 text-emerald-700" /> Consulta 1: Código Padrão (7 dígitos)
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Faixa 1.000.000 a 1.999.999</span>
+                  </div>
 
-            {importStatus === 'saving' && (
-              <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 flex items-center">
-                <RefreshCw className="mr-2 h-4.5 w-4.5 shrink-0 text-blue-600 animate-spin" />
-                <span>Salvando catálogo no banco local e sincronizando com o Supabase...</span>
-              </div>
-            )}
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 block">
+                      Maior código atual no SISTEN:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-2xl font-black text-slate-900 tracking-tight">
+                        {loadingCatalogStats ? (
+                          <span className="inline-block w-24 h-7 bg-slate-100 rounded animate-pulse" />
+                        ) : (
+                          catalogCodeStats?.maxStandard7d || '—'
+                        )}
+                      </span>
+                      {catalogCodeStats?.maxStandard7d && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(catalogCodeStats.maxStandard7d!, 'Padrão 7d')}
+                          title="Copiar maior código"
+                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                        >
+                          {copiedCode === catalogCodeStats.maxStandard7d ? (
+                            <Check className="h-4 w-4 text-emerald-600 font-bold" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-            {importStatus === 'success' && importSummary && (
-              <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${importSummary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
-                {importSummary.syncFailed > 0 ? (
-                  <AlertTriangle className="mr-2 h-4.5 w-4.5 shrink-0 text-amber-600" />
-                ) : (
-                  <Check className="mr-2 h-4.5 w-4.5 shrink-0 text-emerald-600 font-black" />
-                )}
+                  {/* Próxima exportação a partir de */}
+                  <div className="rounded-lg bg-emerald-50/80 border border-emerald-200/80 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-emerald-900 flex items-center gap-1">
+                        <ArrowRight className="h-3.5 w-3.5 text-emerald-700" /> Nova importação a partir de:
+                      </span>
+                      <span className="font-mono font-black text-emerald-800 text-sm">
+                        {loadingCatalogStats ? '...' : calcNextCode(catalogCodeStats?.maxStandard7d)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 leading-tight">
+                      Filtro no SAP: <code className="bg-emerald-100/70 px-1 py-0.5 rounded font-mono text-emerald-900">&gt; {catalogCodeStats?.maxStandard7d || '1487950'}</code> ou <code className="bg-emerald-100/70 px-1 py-0.5 rounded font-mono text-emerald-900">&gt;= {calcNextCode(catalogCodeStats?.maxStandard7d)}</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span>Consulta de materiais gerais, insumos e peças com numeração padrão de 7 dígitos.</span>
+                </div>
+              </div>
+
+              {/* Card 2: Faixa Longa (18 dígitos iniciados em 100000...) */}
+              <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4.5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-800 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200/60">
+                      <Layers className="h-3.5 w-3.5 text-blue-700" /> Consulta 2: Código Longo (18 dígitos)
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Iniciados em 100000...</span>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 block">
+                      Maior código atual no SISTEN:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-base sm:text-lg font-black text-slate-900 tracking-tight break-all">
+                        {loadingCatalogStats ? (
+                          <span className="inline-block w-40 h-7 bg-slate-100 rounded animate-pulse" />
+                        ) : (
+                          catalogCodeStats?.maxLong18d || '—'
+                        )}
+                      </span>
+                      {catalogCodeStats?.maxLong18d && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(catalogCodeStats.maxLong18d!, 'Longo 18d')}
+                          title="Copiar maior código"
+                          className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors shrink-0"
+                        >
+                          {copiedCode === catalogCodeStats.maxLong18d ? (
+                            <Check className="h-4 w-4 text-emerald-600 font-bold" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Próxima exportação a partir de */}
+                  <div className="rounded-lg bg-blue-50/80 border border-blue-200/80 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-blue-900 flex items-center gap-1">
+                        <ArrowRight className="h-3.5 w-3.5 text-blue-700" /> Nova importação a partir de:
+                      </span>
+                      <span className="font-mono font-black text-blue-800 text-xs sm:text-sm break-all">
+                        {loadingCatalogStats ? '...' : calcNextCode(catalogCodeStats?.maxLong18d)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-blue-700 leading-tight">
+                      Filtro no SAP: <code className="bg-blue-100/70 px-1 py-0.5 rounded font-mono text-blue-900">&gt; {catalogCodeStats?.maxLong18d || '100000000000047981'}</code> ou <code className="bg-blue-100/70 px-1 py-0.5 rounded font-mono text-blue-900">&gt;= {calcNextCode(catalogCodeStats?.maxLong18d)}</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span>Consulta SAP específica para a série estendida de 18 dígitos com prefixo 100000.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Rodapé informativo */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-slate-500 border-t border-slate-100">
+              <div className="flex items-center gap-3">
                 <span>
-                  Importação concluída! Lidos: {importSummary.read}, Inseridos: {importSummary.inserted}, Atualizados: {importSummary.updated}, Desativados: {importSummary.deactivated}.
-                  {importSummary.syncFailed > 0 && ` ${importSummary.syncFailed} linha(s) não sincronizaram com o Supabase — veja o console para detalhes e tente reimportar.`}
+                  Total no catálogo: <strong className="text-slate-800 font-bold">{catalogCodeStats?.totalMaterials ? Number(catalogCodeStats.totalMaterials).toLocaleString('pt-BR') : '452.072'}</strong> materiais
                 </span>
+                {catalogCodeStats?.lastCreatedAt && (
+                  <span className="text-[11px] text-slate-400">
+                    • Última inclusão em {new Date(catalogCodeStats.lastCreatedAt).toLocaleDateString('pt-BR')} às {new Date(catalogCodeStats.lastCreatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
               </div>
-            )}
+              <span className="text-[11px] text-slate-400 italic">
+                Dica: Realize as duas extrações no SAP separadamente e importe as planilhas aqui.
+              </span>
+            </div>
           </div>
 
-          {/* Import preview panel if parsed */}
-          {importStatus === 'parsed' && importPreview.length > 0 && (
-            <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pré-visualização da Importação ({pendingImportItems.length} itens lidos, amostra dos 10 primeiros)</h4>
-                <button
-                  onClick={handleBulkImport}
-                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-1.5 px-4 cursor-pointer"
-                >
-                  Confirmar Importação de Planilha
-                </button>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5 text-emerald-700" /> Carga de Catálogo e Textos Técnicos do SAP
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  O catálogo do SISTEN é alimentado em 2 etapas: primeiro importe o cadastro mestre com código e descrição breve (transação <strong>ZL0169</strong>), e depois enriqueça a base com os textos técnicos longos e especificações detalhadas (transação <strong>ZL0162</strong>).
+                </p>
+              </div>
+            </div>
+
+
+
+            {/* Grid de Cards de Importação (Estilo Importar SAP) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pt-1">
+              {/* Card 1: Importar ZL0169 (Cadastro de Materiais) */}
+              <div className="border border-slate-200 rounded-xl p-5 space-y-3.5 bg-white shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-2xs" />
+                      Importar ZL0169 (Cadastro de Materiais SAP)
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Cadastro Mestre
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Carregue a planilha exportada da transação <strong>ZL0169</strong> para cadastrar ou atualizar o catálogo mestre de materiais. O texto técnico nesta planilha agora é <strong>não obrigatório</strong>.
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-2 py-0.5 rounded border border-slate-200">
+                      Material (Obrigatório)
+                    </span>
+                    <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-2 py-0.5 rounded border border-slate-200">
+                      Texto breve material (Obrigatório)
+                    </span>
+                    <span className="text-[10px] bg-slate-50 text-slate-500 font-mono px-2 py-0.5 rounded border border-slate-200">
+                      empresa (Opcional)
+                    </span>
+                    <span className="text-[10px] bg-amber-50 text-amber-700 font-mono px-2 py-0.5 rounded border border-amber-200">
+                      Texto técnico (Opcional)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <div className="border-2 border-dashed border-emerald-200/80 hover:border-emerald-500 hover:bg-emerald-50/30 rounded-xl p-6 text-center cursor-pointer relative transition-all group">
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        if (e.target.files?.length) {
+                          processZL0169File(e.target.files[0]);
+                        }
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <Upload className="mx-auto h-7 w-7 text-emerald-600 group-hover:scale-110 transition-transform" />
+                    <p className="text-xs font-bold text-slate-700 mt-2">Carregar planilha ZL0169</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
+                  </div>
+
+                  {zl0169Error && (
+                    <div className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-100 flex items-center">
+                      <AlertTriangle className="mr-2 h-4 w-4 shrink-0 text-red-500" />
+                      <span>{zl0169Error}</span>
+                    </div>
+                  )}
+
+                  {zl0169Status === 'saving' && (
+                    <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 space-y-1.5">
+                      <div className="flex items-center">
+                        <RefreshCw className="mr-2 h-4 w-4 shrink-0 text-blue-600 animate-spin" />
+                        <span>{zl0169ProgressMsg || 'Salvando catálogo ZL0169 no Supabase...'}</span>
+                      </div>
+                      {zl0169Progress > 0 && (
+                        <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${zl0169Progress}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {zl0169Status === 'success' && zl0169Summary && (
+                    <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${zl0169Summary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
+                      {zl0169Summary.syncFailed > 0 ? (
+                        <AlertTriangle className="mr-2 h-4 w-4 shrink-0 text-amber-600" />
+                      ) : (
+                        <Check className="mr-2 h-4 w-4 shrink-0 text-emerald-600 font-black" />
+                      )}
+                      <span>
+                        Importação ZL0169 concluída! Lidos: {zl0169Summary.read}, Inseridos: {zl0169Summary.inserted}, Atualizados: {zl0169Summary.updated}.
+                        {zl0169Summary.syncFailed > 0 && ` ${zl0169Summary.syncFailed} linha(s) falharam na sincronização.`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: Importar ZL0162 (Texto Técnico dos Materiais) */}
+              <div className="border border-slate-200 rounded-xl p-5 space-y-3.5 bg-white shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      <span className="h-2.5 w-2.5 rounded-full bg-blue-500 shadow-2xs" />
+                      Importar ZL0162 (Texto Técnico dos Materiais)
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      Texto Técnico
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Carregue a planilha exportada da transação <strong>ZL0162</strong> com as especificações técnicas longas. O sistema vincula pela coluna <strong>Material</strong> e atualiza o texto técnico dos materiais no catálogo.
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <span className="text-[10px] bg-slate-100 text-slate-700 font-mono px-2 py-0.5 rounded border border-slate-200">
+                      Material (Obrigatório)
+                    </span>
+                    <span className="text-[10px] bg-blue-50 text-blue-700 font-mono px-2 py-0.5 rounded border border-blue-200">
+                      Texto longo do material (Obrigatório)
+                    </span>
+                    <span className="text-[10px] bg-slate-50 text-slate-500 font-mono px-2 py-0.5 rounded border border-slate-200">
+                      Texto breve material (Opcional)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <div className="border-2 border-dashed border-blue-200/80 hover:border-blue-500 hover:bg-blue-50/30 rounded-xl p-6 text-center cursor-pointer relative transition-all group">
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      onChange={(e) => {
+                        if (e.target.files?.length) {
+                          processZL0162File(e.target.files[0]);
+                        }
+                      }}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <Upload className="mx-auto h-7 w-7 text-blue-600 group-hover:scale-110 transition-transform" />
+                    <p className="text-xs font-bold text-slate-700 mt-2">Carregar planilha ZL0162</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Aceita .xlsx, .xls ou .csv (delimitado por ;) • Máx 10 MB</p>
+                  </div>
+
+                  {zl0162Error && (
+                    <div className="rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-100 flex items-center">
+                      <AlertTriangle className="mr-2 h-4 w-4 shrink-0 text-red-500" />
+                      <span>{zl0162Error}</span>
+                    </div>
+                  )}
+
+                  {zl0162Status === 'saving' && (
+                    <div className="rounded-lg bg-blue-50 p-3 text-xs font-semibold text-blue-800 border border-blue-100 space-y-1.5">
+                      <div className="flex items-center">
+                        <RefreshCw className="mr-2 h-4 w-4 shrink-0 text-blue-600 animate-spin" />
+                        <span>{zl0162ProgressMsg || 'Atualizando textos técnicos ZL0162 no Supabase...'}</span>
+                      </div>
+                      {zl0162Progress > 0 && (
+                        <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style={{ width: `${zl0162Progress}%` }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {zl0162Status === 'success' && zl0162Summary && (
+                    <div className={`rounded-lg p-3 text-xs font-semibold border flex items-center ${zl0162Summary.syncFailed > 0 ? 'bg-amber-50 text-amber-800 border-amber-100' : 'bg-emerald-50 text-emerald-800 border-emerald-100'}`}>
+                      {zl0162Summary.syncFailed > 0 ? (
+                        <AlertTriangle className="mr-2 h-4 w-4 shrink-0 text-amber-600" />
+                      ) : (
+                        <Check className="mr-2 h-4 w-4 shrink-0 text-emerald-600 font-black" />
+                      )}
+                      <span>
+                        Textos técnicos atualizados! Lidos: {zl0162Summary.read}, Atualizados no catálogo: {zl0162Summary.updated}, Não encontrados: {zl0162Summary.notFound}.
+                        {zl0162Summary.syncFailed > 0 && ` ${zl0162Summary.syncFailed} linha(s) falharam na sincronização.`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Import preview panel ZL0169 */}
+          {zl0169Status === 'parsed' && zl0169Preview.length > 0 && (
+            <div className="rounded-xl border border-emerald-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-100 pb-3">
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" /> Pré-visualização ZL0169 ({pendingZL0169Items.length} materiais lidos, amostra dos 10 primeiros)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Confira os dados antes de gravar as inclusões/atualizações no banco.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZl0169Status('idle');
+                      setZl0169Preview([]);
+                      setPendingZL0169Items([]);
+                    }}
+                    className="rounded border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs py-1.5 px-3 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkImportZL0169}
+                    className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-1.5 px-4 cursor-pointer shadow-2xs flex items-center gap-1.5"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Confirmar Importação ZL0169
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-slate-100">
@@ -905,18 +1402,75 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
                       <th className="py-2 px-3">Código SAP</th>
-                      <th className="py-2 px-3">Descrição</th>
+                      <th className="py-2 px-3">Descrição Breve</th>
                       <th className="py-2 px-3">Categoria Sugerida</th>
                       <th className="py-2 px-3 text-center">Empresa</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {importPreview.map((item, idx) => (
+                    {zl0169Preview.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/50">
                         <td className="py-2 px-3 font-mono text-emerald-800 font-bold">{item.material_code}</td>
                         <td className="py-2 px-3 font-semibold text-slate-800">{item.description}</td>
                         <td className="py-2 px-3 font-medium text-slate-600">{item.category}</td>
                         <td className="py-2 px-3 text-center font-bold text-slate-500">{item.company}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Import preview panel ZL0162 */}
+          {zl0162Status === 'parsed' && zl0162Preview.length > 0 && (
+            <div className="rounded-xl border border-blue-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-blue-100 pb-3">
+                <div>
+                  <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" /> Pré-visualização ZL0162 ({pendingZL0162Items.length} textos técnicos lidos, amostra dos 10 primeiros)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Estes textos serão vinculados aos materiais pelo código SAP correspondente.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZl0162Status('idle');
+                      setZl0162Preview([]);
+                      setPendingZL0162Items([]);
+                    }}
+                    className="rounded border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs py-1.5 px-3 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkImportZL0162}
+                    className="rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-1.5 px-4 cursor-pointer shadow-2xs flex items-center gap-1.5"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Confirmar Atualização (ZL0162)
+                  </button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-slate-100">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                      <th className="py-2 px-3 w-32">Código SAP</th>
+                      <th className="py-2 px-3 w-64">Descrição (Referência)</th>
+                      <th className="py-2 px-3">Texto Longo do Material (Especificação Técnica)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {zl0162Preview.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="py-2 px-3 font-mono text-blue-800 font-bold align-top">{item.material_code}</td>
+                        <td className="py-2 px-3 font-medium text-slate-700 align-top">{item.description || '—'}</td>
+                        <td className="py-2 px-3 text-slate-600 font-mono text-[11px] leading-relaxed break-words max-w-xl">
+                          {item.technical_text || <span className="text-slate-400 italic">Vazio</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

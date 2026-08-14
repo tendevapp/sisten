@@ -93,6 +93,11 @@ export interface Material {
   category: string;
   company: 'TEN2' | 'AG' | 'AMBAS';
   unit: string; // UN, KG, M, L, M2, etc.
+  tipo_material?: string;
+  codigo_controle?: string;
+  status_geral?: string;
+  status_centro?: string;
+  status_sap?: 'Ativo' | 'Obsoleto';
   is_active: boolean;
   created_at: string;
 }

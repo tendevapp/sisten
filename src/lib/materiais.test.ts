@@ -4,6 +4,7 @@ import {
   limparCacheBusca,
   normalizarTermo,
   resumoSinais,
+  calcularProximoCodigoMaterial,
   type MaterialResultado,
 } from './materiais';
 
@@ -168,3 +169,28 @@ describe('buscarMateriais', () => {
     expect(rpc).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('calcularProximoCodigoMaterial', () => {
+  it('calcula o próximo código para padrão de 7 dígitos', () => {
+    expect(calcularProximoCodigoMaterial('1487950')).toBe('1487951');
+    expect(calcularProximoCodigoMaterial('1000000')).toBe('1000001');
+  });
+
+  it('calcula o próximo código para código longo de 18 dígitos com precisão BigInt', () => {
+    expect(calcularProximoCodigoMaterial('100000000000047981')).toBe('100000000000047982');
+    expect(calcularProximoCodigoMaterial('100000000000000110')).toBe('100000000000000111');
+  });
+
+  it('retorna traço para nulo, indefinido ou vazio', () => {
+    expect(calcularProximoCodigoMaterial(null)).toBe('—');
+    expect(calcularProximoCodigoMaterial(undefined)).toBe('—');
+    expect(calcularProximoCodigoMaterial('')).toBe('—');
+    expect(calcularProximoCodigoMaterial('   ')).toBe('—');
+  });
+
+  it('retorna traço para códigos não puramente numéricos', () => {
+    expect(calcularProximoCodigoMaterial('DIESEL')).toBe('—');
+    expect(calcularProximoCodigoMaterial('ABC-123')).toBe('—');
+  });
+});
+

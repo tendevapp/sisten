@@ -217,3 +217,28 @@ export async function buscarMateriais(
 
   return linhas;
 }
+
+/**
+ * Calcula o próximo código sequencial de material para referência de nova importação SAP.
+ * Trata números de 7 dígitos (padrão) e 18 dígitos (longos com BigInt).
+ */
+export function calcularProximoCodigoMaterial(code?: string | null): string {
+  if (!code) return '—';
+  const trimmed = code.trim();
+  if (!trimmed) return '—';
+  if (/^\d+$/.test(trimmed)) {
+    try {
+      if (trimmed.length <= 15) {
+        const num = parseInt(trimmed, 10);
+        return isNaN(num) ? '—' : (num + 1).toString();
+      } else {
+        const big = BigInt(trimmed);
+        return (big + 1n).toString();
+      }
+    } catch {
+      return '—';
+    }
+  }
+  return '—';
+}
+
