@@ -335,29 +335,132 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const normalizeHeader = (h: any) => String(h || '').trim().toLowerCase();
     const headers = rawRows[0].map(normalizeHeader);
 
-    const codeIdx = headers.findIndex(h => h === 'material' || h === 'código' || h === 'codigo' || h === 'cod. material' || h === 'cod material' || h === 'nº material');
+    const codeIdx = headers.findIndex(h => 
+      h === 'material' || 
+      h === 'código' || 
+      h === 'codigo' || 
+      h === 'cod. material' || 
+      h === 'cod material' || 
+      h === 'nº material' || 
+      h === 'no material' || 
+      h === 'num. material' ||
+      (h.includes('material') && (h.includes('nº') || h.includes('num') || h.includes('cod') || h.includes('cód')))
+    );
     
-    // Prioritize exact description fields and exclude group/type headers
-    let descIdx = headers.findIndex(h => h === 'texto breve material' || h === 'texto breve do material' || h === 'texto breve');
-    if (descIdx === -1) {
-      descIdx = headers.findIndex(h => 
-        (h.includes('texto breve') && !h.includes('tipo') && !h.includes('grupo') && !h.includes('status')) || 
-        h === 'descrição' || 
-        h === 'descricao' || 
-        h.includes('denominacao') || 
-        h.includes('denominação')
-      );
-    }
+    // Identificação precisa da Descrição do Material:
+    // Deve ignorar estritamente colunas de grupo, tipo, status, centro, etc.
+    const findMaterialDescriptionIndex = (hdrs: string[]): number => {
+      // 1. Prioridade máxima: correspondências diretas para a coluna do material
+      const primaryMatches = [
+        'texto breve material',
+        'texto breve de material',
+        'texto breve do material',
+        'texto breve mat',
+        'texto breve mat.',
+        'texto breve',
+        'txt.breve material',
+        'txt.breve de material',
+        'txt.breve do material',
+        'txt.breve',
+        'txt breve material',
+        'txt breve',
+        'descrição do material',
+        'descricao do material',
+        'descrição de material',
+        'descricao de material',
+        'descrição material',
+        'descricao material',
+        'denominação do material',
+        'denominacao do material',
+        'denominação de material',
+        'denominacao de material',
+        'denominação material',
+        'denominacao material',
+        'material description',
+        'short text'
+      ];
 
+      for (const kw of primaryMatches) {
+        const idx = hdrs.findIndex(h => h === kw);
+        if (idx !== -1) return idx;
+      }
+
+      // 2. Busca refinada por headers que contenham 'texto breve' ou 'descrição' sem palavras de outros conceitos
+      const excludedWords = ['grupo', 'tipo', 'status', 'centro', 'deposito', 'depósito', 'avaliacao', 'avaliação', 'setor', 'classe', 'ncm', 'controle', 'unidade', 'medida', 'fornecedor', 'comprador'];
+
+      const secondaryIdx = hdrs.findIndex(h => {
+        const isExcluded = excludedWords.some(w => h.includes(w));
+        if (isExcluded) return false;
+        return (
+          h.includes('texto breve') ||
+          h.includes('txt.breve') ||
+          h.includes('txt breve') ||
+          h === 'descrição' ||
+          h === 'descricao' ||
+          (h.includes('denomin') && (h.includes('mat') || !h.includes('mercadoria')))
+        );
+      });
+
+      return secondaryIdx;
+    };
+
+    const descIdx = findMaterialDescriptionIndex(headers);
     const techIdx = headers.findIndex(h => h.includes('texto longo') || h.includes('texto tecnico') || h.includes('texto técnico') || h.includes('technical text'));
     const companyIdx = headers.findIndex(h => h === 'empresa' || h === 'emp' || h.includes('empresa'));
     
     // Additional ZL0169 fields
-    const unitIdx = headers.findIndex(h => h === 'unidade' || h === 'um' || h === 'un. medida' || h === 'unidade de medida' || h === 'un' || h === 'medida');
-    const tmatIdx = headers.findIndex(h => h === 'tmat' || h === 'tipo de material' || h === 'tipo de mat' || h === 'tipo material' || h === 'tmat (tipo)');
-    const ncmIdx = headers.findIndex(h => h === 'código de controle' || h === 'codigo de controle' || h === 'cod. controle' || h === 'cod controle' || h === 'ncm' || h === 'classe fiscal' || h === 'ncm (cod. controle)' || h === 'ncm (cód. controle)');
-    const statusGeralIdx = headers.findIndex(h => h === 'status geral' || h === 'status mat.geral' || h === 'status geral mat.' || h === 'sts.geral' || h === 'status_geral' || h === 'status mat geral');
-    const statusCentroIdx = headers.findIndex(h => h === 'status centro' || h === 'status mat.centro' || h === 'status centro mat.' || h === 'sts.centro' || h === 'status_centro' || h === 'status mat centro');
+    const unitIdx = headers.findIndex(h => 
+      h === 'unidade' || 
+      h === 'um' || 
+      h === 'un. medida' || 
+      h === 'unidade de medida' || 
+      h === 'un' || 
+      h === 'medida' ||
+      h === 'unidade basica' ||
+      h === 'unidade de medida basica' ||
+      h === 'un.medida básica' ||
+      h === 'un.medida basica' ||
+      h.includes('unidade de medida') ||
+      h.includes('unidade básica') ||
+      h.includes('unidade basica')
+    );
+    
+    const tmatIdx = headers.findIndex(h => 
+      h === 'tmat' || 
+      h === 'tipo de material' || 
+      h === 'tipo de mat' || 
+      h === 'tipo material' || 
+      h === 'tmat (tipo)' ||
+      h === 'tipo do material' ||
+      (h.includes('tipo') && h.includes('mat') && !h.includes('texto') && !h.includes('desc') && !h.includes('denomin'))
+    );
+    
+    const ncmIdx = headers.findIndex(h => 
+      h === 'código de controle' || 
+      h === 'codigo de controle' || 
+      h === 'cod. controle' || 
+      h === 'cod controle' || 
+      h === 'ncm' || 
+      h === 'classe fiscal' || 
+      h === 'ncm (cod. controle)' || 
+      h === 'ncm (cód. controle)' ||
+      h.includes('controle') ||
+      h.includes('ncm')
+    );
+    
+    const statusGeralIdx = headers.findIndex(h => 
+      (h.includes('status') && (h.includes('geral') || h.includes('global'))) || 
+      h === 'sts.geral' || 
+      h === 'status_geral' ||
+      h === 'status geral'
+    );
+    
+    const statusCentroIdx = headers.findIndex(h => 
+      (h.includes('status') && (h.includes('centro') || h.includes('planta'))) || 
+      h === 'sts.centro' || 
+      h === 'status_centro' ||
+      h === 'status centro'
+    );
 
     if (codeIdx === -1 || descIdx === -1) {
       throw new Error('Colunas obrigatórias não encontradas na ZL0169. Esperado: "Material" e "Texto breve material". A coluna "Texto técnico" é opcional.');
@@ -375,6 +478,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       const codigo_controle = ncmIdx !== -1 ? String(row[ncmIdx] ?? '').trim() : '';
       const status_geral = statusGeralIdx !== -1 ? String(row[statusGeralIdx] ?? '').trim() : '';
       const status_centro = statusCentroIdx !== -1 ? String(row[statusCentroIdx] ?? '').trim() : '';
+      const isObsoleto = status_geral.toUpperCase() === 'Z1' || status_centro.toUpperCase() === 'Z1';
 
       items.push({
         material_code,
@@ -386,7 +490,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         tipo_material,
         codigo_controle,
         status_geral,
-        status_centro
+        status_centro,
+        status_sap: isObsoleto ? 'Obsoleto' : 'Ativo'
       });
     });
 
@@ -1443,6 +1548,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <tr className="border-b border-slate-100 bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
                       <th className="py-2 px-3">Código SAP</th>
                       <th className="py-2 px-3">Descrição Breve</th>
+                      <th className="py-2 px-3 text-center">Status SAP</th>
+                      <th className="py-2 px-3 text-center">TMAT</th>
+                      <th className="py-2 px-3">NCM</th>
+                      <th className="py-2 px-3 text-center">UN</th>
                       <th className="py-2 px-3">Categoria Sugerida</th>
                       <th className="py-2 px-3 text-center">Empresa</th>
                     </tr>
@@ -1452,6 +1561,20 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                       <tr key={idx} className="hover:bg-slate-50/50">
                         <td className="py-2 px-3 font-mono text-emerald-800 font-bold">{item.material_code}</td>
                         <td className="py-2 px-3 font-semibold text-slate-800">{item.description}</td>
+                        <td className="py-2 px-3 text-center">
+                          {item.status_sap === 'Obsoleto' ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Obsoleto (Z1)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Ativo
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-center font-mono text-slate-600 font-semibold">{item.tipo_material || '—'}</td>
+                        <td className="py-2 px-3 font-mono text-slate-600">{item.codigo_controle || '—'}</td>
+                        <td className="py-2 px-3 text-center font-mono text-slate-600">{item.unit || 'UN'}</td>
                         <td className="py-2 px-3 font-medium text-slate-600">{item.category}</td>
                         <td className="py-2 px-3 text-center font-bold text-slate-500">{item.company}</td>
                       </tr>
