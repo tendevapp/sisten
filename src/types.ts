@@ -84,7 +84,6 @@ export interface UserBuyerGroup {
   is_primary: boolean;
 }
 
-// 2. Materials
 export interface Material {
   id: string;
   material_code: string; // 8 digits
@@ -93,13 +92,33 @@ export interface Material {
   category: string;
   company: 'TEN2' | 'AG' | 'AMBAS';
   unit: string; // UN, KG, M, L, M2, etc.
-  tipo_material?: string;
-  codigo_controle?: string;
+  centro?: string;
+  eliminacao?: string;
+  elim_nivel_centro?: string;
   status_geral?: string;
   status_centro?: string;
   status_sap?: 'Ativo' | 'Obsoleto';
+  modificado_por?: string;
+  tipo_material?: string;
+  tipo_material_desc?: string;
+  codigo_controle?: string;
+  categoria_item?: string;
+  indicador_s?: string;
+  grupo_mercadoria_codigo?: string;
+  grupo_mercadoria_desc?: string;
+  denominacao?: string;
+  material_basico?: string;
+  classe_fiscal?: string;
+  unidade_medida_alt?: string;
+  classe_avaliacao?: string;
+  numero_pf?: string;
+  idioma?: string;
+  pais?: string;
+  criado_em?: string;
+  ultima_modificacao?: string;
   is_active: boolean;
   created_at: string;
+  imported_at?: string;
 }
 
 export interface MaterialCategory {
@@ -384,7 +403,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'FBL1N';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'FBL1N' | 'MB51' | 'FRETE' | 'CADMATERIAIS';
   user_name: string;
   filename: string;
   records_read: number;
@@ -396,6 +415,17 @@ export interface SAPImportLog {
   columns_new: string[];
   quantity_changes?: any[];
   missing_ris?: string[];
+  new_ris?: {
+    ri: string;
+    requisicao_de_compra: string;
+    item_reqc: string;
+    material: string;
+    texto_breve: string;
+    requisitante: string;
+    qtd_solicitada: number;
+    grupo_comprador: string;
+    is_new_rm: boolean;
+  }[];
   ignored_rows?: { row: number; identifier: string; reason: string }[];
   // Contagens (colunas geradas no banco) usadas quando o sync geral traz o log
   // sem `ignored_rows`/`missing_ris` — ver localDb.syncImportLogs.
@@ -809,3 +839,191 @@ export interface FeedbackReport {
   updated_at: string;
 }
 
+export interface TipoMovEstoque {
+  tmv: string;
+  descricao?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type MB51ImportMode = 'upsert' | 'replace';
+
+export interface MB51MovEstoque {
+  id?: number | string;
+  centro?: string | null;
+  deposito?: string | null;
+  referencia?: string | null;
+  doc_material: string;
+  pedido?: string | null;
+  item?: string | null;
+  material?: string | null;
+  texto_breve_material?: string | null;
+  qtd_um_registro?: number | null;
+  unid_medida_basica?: string | null;
+  montante_mi?: number | null;
+  moeda?: string | null;
+  texto_cabecalho_doc?: string | null;
+  data_lancamento?: string | null;
+  tipo_movimento?: string | null;
+  hora_registro?: string | null;
+  um_registro?: string | null;
+  data_documento?: string | null;
+  data_entrada?: string | null;
+  fornecedor?: string | null;
+  razao_social_fornecedor?: string | null;
+  txt_tipo_movimento?: string | null;
+  nome_usuario?: string | null;
+  posicao_deposito?: string | null;
+  elemento_pep?: string | null;
+  imobilizado?: string | null;
+  chave_unica?: string | null;
+  campos_extras?: Record<string, any> | null;
+  imported_at?: string;
+  created_at?: string;
+}
+
+export interface TipoMovEstoque {
+  tmv: string;
+  descricao?: string | null;
+}
+
+/** Categoria funcional do tipo de movimento, atribuída por `vw_mb51_classificado`. */
+export type CategoriaMovimento =
+  | 'entrada_compra' | 'entrada_sem_pedido' | 'estorno_entrada'
+  | 'consumo' | 'estorno_consumo'
+  | 'devolucao_fornecedor' | 'estorno_devolucao'
+  | 'saida_remessa' | 'estorno_remessa'
+  | 'baixa_sucata' | 'estorno_sucata'
+  | 'ajuste_inventario' | 'transferencia' | 'outros';
+
+/**
+ * Linha da MB51 já classificada pela view. `movimenta_estoque` é falso para
+ * transferência interna, que gera par negativo/positivo e não altera o saldo
+ * do almoxarifado — toda agregação de fluxo precisa filtrar por ele.
+ */
+export interface MB51Classificado {
+  id: number;
+  centro?: string | null;
+  deposito?: string | null;
+  doc_material: string;
+  item?: string | null;
+  pedido?: string | null;
+  referencia?: string | null;
+  material?: string | null;
+  texto_breve_material?: string | null;
+  qtd_um_registro?: number | null;
+  unid_medida_basica?: string | null;
+  montante_mi?: number | null;
+  moeda?: string | null;
+  data_lancamento?: string | null;
+  data_documento?: string | null;
+  data_entrada?: string | null;
+  tipo_movimento?: string | null;
+  fornecedor?: string | null;
+  razao_social_fornecedor?: string | null;
+  nome_usuario?: string | null;
+  elemento_pep?: string | null;
+  chave_unica?: string | null;
+  descricao_tipo_movimento: string;
+  categoria: CategoriaMovimento;
+  movimenta_estoque: boolean;
+  sinal: 'entrada' | 'saida' | 'neutro';
+}
+
+/** Classificação da permanência de uma camada, atribuída pela view FIFO. */
+export type ClassePermanencia =
+  | 'legado_pre_reabertura' | 'em_estoque' | 'cross_dock'
+  | 'saudavel' | 'antecipada' | 'consumo_saldo_anterior' | 'indeterminado';
+
+/**
+ * Camada de entrada casada por FIFO contra as saídas do mesmo material.
+ * `legado = true` marca a camada de abertura sintética: o saldo que
+ * atravessou a parada da fábrica (2023–2026) e não tem entrada registrada
+ * na MB51. Nela `data_entrada` e `dias_em_estoque` são nulos de propósito.
+ */
+export interface EstoqueCamadaFifo {
+  material: string;
+  data_entrada?: string | null;
+  legado: boolean;
+  qtd_entrada?: number | null;
+  preco_unit?: number | null;
+  qtd_remanescente?: number | null;
+  qtd_consumida?: number | null;
+  valor_remanescente?: number | null;
+  data_consumo_total?: string | null;
+  dias_permanencia?: number | null;
+  dias_em_estoque?: number | null;
+  classe_permanencia: ClassePermanencia;
+}
+
+/**
+ * Fatos de reposição por material, medidos sobre a janela de PRODUÇÃO
+ * (a partir de 01/05/2026 — jan-abr foi comissionamento, não demanda real).
+ * A política que transforma isso em sugestão de mínimo vive em
+ * `src/lib/reposicao.ts`.
+ */
+export interface EstoqueReposicao {
+  material: string;
+  descricao?: string | null;
+  grupo_mercadorias?: string | null;
+  tipo_material?: string | null;
+  umb?: string | null;
+  saldo_atual?: number | null;
+  valor_estoque?: number | null;
+  preco_medio?: number | null;
+  janela_inicio?: string | null;
+  janela_fim?: string | null;
+  janela_dias?: number | null;
+  janela_periodos?: number | null;
+  eventos_consumo: number;
+  meses_com_consumo: number;
+  consumo_total?: number | null;
+  maior_lote?: number | null;
+  media_lote?: number | null;
+  dp_lote?: number | null;
+  /** Percentis do tamanho de saída. A proteção usa o p90 — o máximo persegue outlier. */
+  lote_p75?: number | null;
+  lote_p90?: number | null;
+  /** Fração do consumo total concentrada na maior retirada isolada (0..1). */
+  concentracao_maior_lote?: number | null;
+  primeiro_consumo?: string | null;
+  ultimo_consumo?: string | null;
+  consumo_diario?: number | null;
+  /** Intervalo médio entre demandas (períodos ÷ períodos com demanda). */
+  adi?: number | null;
+  /** Quadrado do coeficiente de variação do tamanho do lote. */
+  cv2?: number | null;
+  lead_dias?: number | null;
+  lead_dias_max?: number | null;
+  lead_amostras: number;
+  /** Falso quando o lead time caiu na mediana global por falta de histórico próprio. */
+  lead_proprio: boolean;
+}
+
+/** Um registro por material: giro, cobertura e sinalizadores de estoque parado. */
+export interface EstoqueGiro {
+  material: string;
+  descricao?: string | null;
+  grupo_mercadorias?: string | null;
+  tipo_material?: string | null;
+  umb?: string | null;
+  saldo_atual?: number | null;
+  valor_estoque?: number | null;
+  janela_inicio?: string | null;
+  janela_fim?: string | null;
+  janela_dias?: number | null;
+  qtd_consumida?: number | null;
+  valor_consumido?: number | null;
+  eventos_consumo?: number | null;
+  qtd_recebida?: number | null;
+  ultima_entrada?: string | null;
+  ultima_movimentacao?: string | null;
+  dias_sem_movimento?: number | null;
+  consumo_diario?: number | null;
+  /** Nulo quando não houve consumo — cobertura infinita não é um número. */
+  cobertura_dias?: number | null;
+  giro_anualizado?: number | null;
+  sem_consumo_na_janela: boolean;
+  /** Saldo que atravessou a parada sem nenhuma movimentação desde a reabertura. */
+  legado_intocado: boolean;
+}

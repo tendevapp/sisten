@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { RotateCcw } from 'lucide-react';
-import { Criticidade, Granularidade, CompradorInfo } from '../../lib/demandas';
+import { Criticidade, Granularidade, CompradorInfo, TipoItemFilter } from '../../lib/demandas';
 import { TipoDemanda } from '../../lib/demandas';
 import { formatInt } from '../../lib/format';
 
@@ -21,6 +21,7 @@ export interface EstadoFiltros {
   dateFrom: string;
   dateTo: string;
   tipo: 'todos' | TipoDemanda;
+  tipoItem: TipoItemFilter;
   criticidade: 'todas' | Criticidade;
   area: string;
   comprador: string;
@@ -110,6 +111,17 @@ export default function FiltrosSuprimentos({
         <option value="todos">Todos os tipos</option>
         <option value="material">Materiais</option>
         <option value="servico">Serviços</option>
+      </select>
+
+      <select
+        value={filtros.tipoItem}
+        onChange={e => onChange({ tipoItem: e.target.value as EstadoFiltros['tipoItem'] })}
+        className={selectClass}
+        aria-label="Natureza do item"
+      >
+        <option value="consumo">Consumo</option>
+        <option value="projeto">Projeto</option>
+        <option value="todos">Consumo e Projeto</option>
       </select>
 
       <select

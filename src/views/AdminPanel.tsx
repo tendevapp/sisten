@@ -8,7 +8,7 @@ import {
   Users, Map as MapIcon, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus,
-  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database
+  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -19,6 +19,7 @@ import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
+import Diretrizes from '../components/admin/Diretrizes';
 
 interface AdminPanelProps {
   user: Profile;
@@ -27,7 +28,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
-    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback'
+    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback' | 'diretrizes'
   >('usuarios');
   
   // Users Management State
@@ -110,6 +111,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [sapLogError, setSapLogError] = useState('');
   const [currentSapUploadType, setCurrentSapUploadType] = useState<'ME5A' | 'ZL0132'>('ME5A');
   const [sapCsvText, setSapCsvText] = useState('');
+  const [mb51ImportMode, setMb51ImportMode] = useState<'upsert' | 'replace'>('upsert');
   const [lastUploadLog, setLastUploadLog] = useState<any | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   // O sync geral não traz mais `ignored_rows`/`missing_ris` (jsonb pesado — ver
@@ -149,6 +151,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       else if (path === '/suprimentos/grupos-comprador') setActiveTab('grupos_comprador');
       else if (path === '/admin/helpdesk') setActiveTab('helpdesk_config');
       else if (path === '/admin/feedback') setActiveTab('feedback');
+      else if (path === '/admin/diretrizes') setActiveTab('diretrizes');
     };
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
@@ -327,6 +330,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const VALID_COMPANIES = ['TEN2', 'AG', 'AMBAS'];
 
   // Normalização padronizada de cabeçalhos SAP (remove acentos, pontuações e espaços para matching exato)
+  // Normalização padronizada de cabeçalhos SAP (remove acentos, pontuações e espaços para matching exato)
   const sanitizeSAPHeader = (h: any): string => {
     return String(h || '')
       .normalize('NFD')
@@ -335,7 +339,58 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       .replace(/[^a-z0-9]/g, '');
   };
 
-  // ZL0169: Parser de Cadastro de Materiais SAP (Texto técnico opcional)
+  // Conversão segura de datas SAP (número serial Excel ex: 46245 ou strings DD/MM/YYYY) para ISO YYYY-MM-DD
+  const parseSAPDate = (val: any): string | undefined => {
+    if (val === null || val === undefined) return undefined;
+    
+    // 1. Se for número de série de data do Excel (ex: 46245 ou "46245")
+    const strVal = String(val).trim();
+    if (typeof val === 'number' || (/^\d{4,5}(\.\d+)?$/.test(strVal) && !strVal.includes('-') && !strVal.includes('/'))) {
+      const num = Number(val);
+      if (!isNaN(num) && num > 1000 && num < 100000) {
+        // Excel epoch date: 25569 dias entre 1899-12-30 e 1970-01-01
+        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if (!isNaN(date.getTime())) {
+          const y = date.getUTCFullYear();
+          const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+          const d = String(date.getUTCDate()).padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        }
+      }
+    }
+
+    if (!strVal || strVal === '0' || strVal === 'null' || strVal === 'undefined' || strVal === '—' || strVal === '-') return undefined;
+
+    // 2. Se já estiver no formato ISO YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
+      return strVal;
+    }
+
+    // 3. Se estiver no formato DD/MM/YYYY ou DD-MM-YYYY ou DD.MM.YYYY
+    const parts = strVal.split(/[\/\-\.]/);
+    if (parts.length === 3) {
+      if (parts[2].length === 4) {
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2];
+        const dayNum = parseInt(d, 10);
+        const monthNum = parseInt(m, 10);
+        const yearNum = parseInt(y, 10);
+        if (dayNum >= 1 && dayNum <= 31 && monthNum >= 1 && monthNum <= 12 && yearNum >= 1900 && yearNum <= 2100) {
+          return `${y}-${m}-${d}`;
+        }
+      } else if (parts[0].length === 4) {
+        const y = parts[0];
+        const m = parts[1].padStart(2, '0');
+        const d = parts[2].padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+    }
+
+    return undefined;
+  };
+
+  // ZL0169: Parser de Cadastro de Materiais SAP (Todas as colunas da planilha SAP)
   const parseZL0169Rows = (rawRows: any[][]): Omit<Material, 'id' | 'is_active' | 'created_at'>[] => {
     if (rawRows.length < 2) {
       throw new Error('Planilha vazia ou sem linhas de dados.');
@@ -344,7 +399,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const rawHeaders = rawRows[0];
     const cleanHeaders = rawHeaders.map(sanitizeSAPHeader);
 
-    // 1. Código do Material (ex: Material, Codigo, Cod. Material, Nº Material)
+    // 1. Código do Material (Material)
     const codeIdx = cleanHeaders.findIndex(c => 
       c === 'material' || 
       c === 'codigomaterial' || 
@@ -358,10 +413,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       (c.includes('material') && (c.includes('n') || c.includes('num') || c.includes('cod')))
     );
     
-    // 2. Descrição Breve do Material (ex: TxtBreveMaterial, Texto breve material, Txt.breve material, Denominação do material)
-    // ATENÇÃO: NUNCA capturar Denominação 2 do grupo de mercadorias ou Denominação tp.material!
+    // 2. Descrição Breve do Material (TxtBreveMaterial)
     const findMaterialDescriptionIndex = (cleanHdrs: string[]): number => {
-      // Prioridade 1: correspondência exata para descrição do material
       const primaryMatches = [
         'txtbrevematerial',
         'textobrevematerial',
@@ -386,11 +439,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         if (idx !== -1) return idx;
       }
 
-      // Prioridade 2: termos que contenham 'txtbreve' ou 'textobreve'
       const txtBreveIdx = cleanHdrs.findIndex(c => c.includes('txtbreve') || c.includes('textobreve'));
       if (txtBreveIdx !== -1) return txtBreveIdx;
 
-      // Prioridade 3: 'descricao' ou 'denominacao' puras, garantindo que não sejam de grupo ou tipo
       const genericIdx = cleanHdrs.findIndex(c => {
         if (c.includes('grupo') || c.includes('tipo') || c.includes('tpmaterial') || c.includes('status') || c.includes('centro') || c.includes('deposito') || c.includes('setor') || c.includes('classe') || c.includes('mercadoria')) {
           return false;
@@ -403,23 +454,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
     const descIdx = findMaterialDescriptionIndex(cleanHeaders);
     
-    // 3. Texto Técnico (Opcional)
-    const techIdx = cleanHeaders.findIndex(c => 
-      c.includes('textolongo') || 
-      c.includes('textotecnico') || 
-      c.includes('technicaltext') ||
-      c.includes('especificacao')
-    );
-
-    // 4. Empresa / Centro (ex: Cen., Centro, Empresa, Emp)
-    const companyIdx = cleanHeaders.findIndex(c => 
-      c === 'cen' || 
-      c === 'centro' || 
-      c === 'empresa' || 
-      c === 'emp'
-    );
-    
-    // 5. Unidade de Medida (ex: UMB, Unidade, UM, UN, Un. Medida)
+    // 3. Unidade de Medida (UMB)
     const unitIdx = cleanHeaders.findIndex(c => 
       c === 'umb' || 
       c === 'unidade' || 
@@ -432,28 +467,22 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       c === 'unmedidabasica' || 
       c === 'medida'
     );
-    
-    // 6. Tipo de Material (ex: TMat, Tipo de material, Tipo de mat)
-    const tmatIdx = cleanHeaders.findIndex(c => 
-      c === 'tmat' || 
-      c === 'tipodematerial' || 
-      c === 'tipodemat' || 
-      c === 'tipomaterial' || 
-      c === 'tmattipo' ||
-      c === 'tipodomaterial'
+
+    // 4. Centro / Empresa (Cen.)
+    const centroIdx = cleanHeaders.findIndex(c => 
+      c === 'cen' || 
+      c === 'centro' || 
+      c === 'empresa' || 
+      c === 'emp'
     );
-    
-    // 7. Código de Controle / NCM (ex: Cód.controle, Cod. controle, NCM, ClFis)
-    const ncmIdx = cleanHeaders.findIndex(c => 
-      c === 'codcontrole' || 
-      c === 'codigodecontrole' || 
-      c === 'codigocontrole' || 
-      c === 'ncm' || 
-      c === 'classefiscal' || 
-      c === 'ncmcodcontrole'
-    );
-    
-    // 8. Status Geral (ex: Status Geral, Status mat.geral, Sts.geral)
+
+    // 5. Eliminação (Eliminação)
+    const eliminacaoIdx = cleanHeaders.findIndex(c => c === 'eliminacao');
+
+    // 6. Elim.nv.Centro (Elim.nv.Centro)
+    const elimNivelCentroIdx = cleanHeaders.findIndex(c => c === 'elimnvcentro' || c === 'elimnivelcentro');
+
+    // 7. Status Geral (Status Geral)
     const statusGeralIdx = cleanHeaders.findIndex(c => 
       c === 'statusgeral' || 
       c === 'statusmatgeral' || 
@@ -463,7 +492,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       (c.includes('status') && (c.includes('geral') || c.includes('global')))
     );
     
-    // 9. Status Centro (ex: Status no Centro, Status mat.centro, Sts.centro)
+    // 8. Status no Centro (Status no Centro)
     const statusCentroIdx = cleanHeaders.findIndex(c => 
       c === 'statusnocentro' || 
       c === 'statuscentro' || 
@@ -471,6 +500,82 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       c === 'statusdomaterialnocentro' || 
       c === 'stscentro' ||
       (c.includes('status') && (c.includes('centro') || c.includes('planta')))
+    );
+
+    // 9. Modificado por (Modif.por)
+    const modifPorIdx = cleanHeaders.findIndex(c => c === 'modifpor' || c === 'modificadopor');
+
+    // 10. Tipo de Material (TMat)
+    const tmatIdx = cleanHeaders.findIndex(c => 
+      c === 'tmat' || 
+      c === 'tipodematerial' || 
+      c === 'tipodemat' || 
+      c === 'tipomaterial' || 
+      c === 'tmattipo' ||
+      c === 'tipodomaterial'
+    );
+    
+    // 11. Código de Controle / NCM (Cód.controle)
+    const ncmIdx = cleanHeaders.findIndex(c => 
+      c === 'codcontrole' || 
+      c === 'codigodecontrole' || 
+      c === 'codigocontrole' || 
+      c === 'ncm' || 
+      c === 'classefiscal' || 
+      c === 'ncmcodcontrole'
+    );
+
+    // 12. Categoria do Item (ItsMt)
+    const itsMtIdx = cleanHeaders.findIndex(c => c === 'itsmt' || c === 'categoriaitem');
+
+    // 13. Indicador S (S)
+    const sIdx = cleanHeaders.findIndex(c => c === 's' || c === 'indicadors');
+
+    // 14. Grupo de Mercadorias (GrpMercads.)
+    const grpMercadsIdx = cleanHeaders.findIndex(c => c === 'grpmercads' || c === 'grupodemercadorias' || c === 'grupomercadorias');
+
+    // 15. Criado em (Criado)
+    const criadoIdx = cleanHeaders.findIndex(c => c === 'criado' || c === 'criadoem' || c === 'datadecriacao');
+
+    // 16. Última Modificação (ÚltModif)
+    const ultModifIdx = cleanHeaders.findIndex(c => c === 'ultmodif' || c === 'ultimamodificacao' || c === 'datamodificacao');
+
+    // 17. Idioma (Idioma)
+    const idiomaIdx = cleanHeaders.findIndex(c => c === 'idioma');
+
+    // 18. País (País)
+    const paisIdx = cleanHeaders.findIndex(c => c === 'pais');
+
+    // 19. Classe Fiscal (ClFis)
+    const clFisIdx = cleanHeaders.findIndex(c => c === 'clfis' || c === 'classefiscal');
+
+    // 20. Unidade Alternativa (U)
+    const uIdx = cleanHeaders.findIndex(c => c === 'u' || c === 'unidadealternativa' || c === 'unidademedidaalt');
+
+    // 21. Classe de Avaliação (ClAv.)
+    const clAvIdx = cleanHeaders.findIndex(c => c === 'clav' || c === 'classeavaliacao' || c === 'classeavaliação');
+
+    // 22. Nº PF (NºPF)
+    const npfIdx = cleanHeaders.findIndex(c => c === 'npf' || c === 'numeropf' || c === 'numpf');
+
+    // 23. Denominação do Grupo de Mercadorias (Denominação 2 do grupo de mercadorias)
+    const grpDescIdx = cleanHeaders.findIndex(c => c === 'denominacao2dogrupodemercadorias' || c.includes('denominacaogrupo') || c.includes('denominacao2dogrupo'));
+
+    // 24. Denominação do Tipo de Material (Denominação tp.material)
+    const tmatDescIdx = cleanHeaders.findIndex(c => c === 'denominacaotpmaterial' || c === 'denominacaotipomaterial' || c.includes('denominacaotp'));
+
+    // 25. Denominação Geral (Denominação)
+    const denominacaoIdx = cleanHeaders.findIndex(c => c === 'denominacao');
+
+    // 26. Material Básico (Mat.básico)
+    const matBasicoIdx = cleanHeaders.findIndex(c => c === 'matbasico' || c === 'materialbasico');
+
+    // Texto Técnico (Opcional)
+    const techIdx = cleanHeaders.findIndex(c => 
+      c.includes('textolongo') || 
+      c.includes('textotecnico') || 
+      c.includes('technicaltext') ||
+      c.includes('especificacao')
     );
 
     if (codeIdx === -1 || descIdx === -1) {
@@ -483,12 +588,31 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       if (!material_code) return;
 
       const description = String(row[descIdx] ?? '').trim();
-      const rawCompany = companyIdx !== -1 ? String(row[companyIdx] ?? '').trim().toUpperCase() : '';
+      const centro = centroIdx !== -1 ? String(row[centroIdx] ?? '').trim() : '';
+      const rawCompany = centro.toUpperCase();
       const unit = unitIdx !== -1 ? String(row[unitIdx] ?? '').trim().toUpperCase() : 'UN';
-      const tipo_material = tmatIdx !== -1 ? String(row[tmatIdx] ?? '').trim() : '';
-      const codigo_controle = ncmIdx !== -1 ? String(row[ncmIdx] ?? '').trim() : '';
+      const eliminacao = eliminacaoIdx !== -1 ? String(row[eliminacaoIdx] ?? '').trim() : '';
+      const elim_nivel_centro = elimNivelCentroIdx !== -1 ? String(row[elimNivelCentroIdx] ?? '').trim() : '';
       const status_geral = statusGeralIdx !== -1 ? String(row[statusGeralIdx] ?? '').trim() : '';
       const status_centro = statusCentroIdx !== -1 ? String(row[statusCentroIdx] ?? '').trim() : '';
+      const modificado_por = modifPorIdx !== -1 ? String(row[modifPorIdx] ?? '').trim() : '';
+      const tipo_material = tmatIdx !== -1 ? String(row[tmatIdx] ?? '').trim() : '';
+      const tipo_material_desc = tmatDescIdx !== -1 ? String(row[tmatDescIdx] ?? '').trim() : '';
+      const codigo_controle = ncmIdx !== -1 ? String(row[ncmIdx] ?? '').trim() : '';
+      const categoria_item = itsMtIdx !== -1 ? String(row[itsMtIdx] ?? '').trim() : '';
+      const indicador_s = sIdx !== -1 ? String(row[sIdx] ?? '').trim() : '';
+      const grupo_mercadoria_codigo = grpMercadsIdx !== -1 ? String(row[grpMercadsIdx] ?? '').trim() : '';
+      const grupo_mercadoria_desc = grpDescIdx !== -1 ? String(row[grpDescIdx] ?? '').trim() : '';
+      const denominacao = denominacaoIdx !== -1 ? String(row[denominacaoIdx] ?? '').trim() : '';
+      const material_basico = matBasicoIdx !== -1 ? String(row[matBasicoIdx] ?? '').trim() : '';
+      const classe_fiscal = clFisIdx !== -1 ? String(row[clFisIdx] ?? '').trim() : '';
+      const unidade_medida_alt = uIdx !== -1 ? String(row[uIdx] ?? '').trim() : '';
+      const classe_avaliacao = clAvIdx !== -1 ? String(row[clAvIdx] ?? '').trim() : '';
+      const numero_pf = npfIdx !== -1 ? String(row[npfIdx] ?? '').trim() : '';
+      const idioma = idiomaIdx !== -1 ? String(row[idiomaIdx] ?? '').trim() : '';
+      const pais = paisIdx !== -1 ? String(row[paisIdx] ?? '').trim() : '';
+      const criado_em = criadoIdx !== -1 ? parseSAPDate(row[criadoIdx]) : undefined;
+      const ultima_modificacao = ultModifIdx !== -1 ? parseSAPDate(row[ultModifIdx]) : undefined;
       const isObsoleto = status_geral.toUpperCase() === 'Z1' || status_centro.toUpperCase() === 'Z1';
 
       items.push({
@@ -498,11 +622,30 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         category: getAutoCategory(description),
         company: (VALID_COMPANIES.includes(rawCompany) ? rawCompany : 'TEN2') as Material['company'],
         unit: unit || 'UN',
-        tipo_material,
-        codigo_controle,
+        centro,
+        eliminacao,
+        elim_nivel_centro,
         status_geral,
         status_centro,
-        status_sap: isObsoleto ? 'Obsoleto' : 'Ativo'
+        status_sap: isObsoleto ? 'Obsoleto' : 'Ativo',
+        modificado_por,
+        tipo_material,
+        tipo_material_desc,
+        codigo_controle,
+        categoria_item,
+        indicador_s,
+        grupo_mercadoria_codigo,
+        grupo_mercadoria_desc,
+        denominacao,
+        material_basico,
+        classe_fiscal,
+        unidade_medida_alt,
+        classe_avaliacao,
+        numero_pf,
+        idioma,
+        pais,
+        criado_em,
+        ultima_modificacao
       });
     });
 
@@ -879,6 +1022,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             {novosFeedbackCount > 0 && (
               <span className="ml-1.5 rounded-full bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5">{novosFeedbackCount}</span>
             )}
+          </button>
+        )}
+        {user.roles.includes('admin') && (
+          <button
+            onClick={() => { setActiveTab('diretrizes'); window.location.hash = '/admin/diretrizes'; }}
+            className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'diretrizes' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            <BookOpen className="h-4 w-4 mr-1.5 text-[#0056c6]" />
+            Diretrizes
           </button>
         )}
       </div>
@@ -2373,6 +2525,108 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Tabela de Frete</p>
                 </div>
               </div>
+
+              {/* MB51 Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-white shadow-xs">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-orange-500" /> Transação MB51 (Mov. Estoque)
+                  </h4>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Importa entradas, saídas, baixas de projeto (PEP) e transferências de estoque.
+                </p>
+
+                {/* Seletor de Modo de Importação */}
+                <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80 space-y-1.5">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Modo de Carga</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMb51ImportMode('upsert')}
+                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
+                        mb51ImportMode === 'upsert'
+                          ? 'bg-orange-500 text-white shadow-xs font-bold'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      ➕ Apenas Novos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMb51ImportMode('replace')}
+                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
+                        mb51ImportMode === 'replace'
+                          ? 'bg-red-600 text-white shadow-xs font-bold'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      🔄 Substituir Tudo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-5 text-center cursor-pointer relative transition-colors">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setSapProgress(0);
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+
+                            localDb.importMB51Raw(rawRows, file.name, mb51ImportMode, setSapProgress).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha MB51.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha MB51.');
+                            setSapLogStatus('error');
+                          }
+                        };
+
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV MB51</p>
+                  <span className="text-[9px] text-slate-400 mt-0.5 block">
+                    {mb51ImportMode === 'upsert' ? 'Modo: Upsert de novos registros' : 'Modo: Substituição completa da tabela'}
+                  </span>
+                </div>
+              </div>
             </div>
 
 
@@ -2579,6 +2833,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-rose-100 text-rose-800'
                                   : log.type === 'FBL1N'
                                   ? 'bg-cyan-100 text-cyan-800'
+                                  : log.type === 'MB51'
+                                  ? 'bg-orange-100 text-orange-800'
                                   : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {log.type}
@@ -3231,6 +3487,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           </div>
         </div>
       )}
+
+      {activeTab === 'diretrizes' && <Diretrizes />}
 
       {pageAccessProfileId && (() => {
         const target = profiles.find(p => p.id === pageAccessProfileId);

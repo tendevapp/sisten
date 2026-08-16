@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes
+  MessageCircle, Flag, MapPin, Boxes, Sparkles
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -23,6 +23,7 @@ import {
 import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc } from '../lib/rastreio';
 import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import SapDetailModal from '../components/SapDetailModal';
+import NovidadesModal from '../components/NovidadesModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
@@ -197,6 +198,9 @@ const precoUnitarioPorBase = (preco?: number | null, por?: string | null): numbe
   return preco / divisor;
 };
 
+// RM de serviço (começa com "17") nunca recebe MIGO no SAP — não deve entrar no grupo "Sem MIGO".
+const isServicoRM = (rm: string): boolean => String(rm || '').trim().startsWith('17');
+
 // Componente local de cópia rápida reutilizável
 const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) => {
   const [copied, setCopied] = useState(false);
@@ -327,6 +331,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Modal SAP
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
+  const [showNovidades, setShowNovidades] = useState(false);
 
   // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
   const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
@@ -428,7 +433,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
         const items = g.items.filter(it => {
           const hasPO = it.record.status_requisicao === 'Processado';
           const hasMigo = !!it.record.data_migo;
-          return hasPO && !hasMigo;
+          return hasPO && !hasMigo && !isServicoRM(it.record.requisicao_de_compra);
         });
         return { rm: g.rm, items };
       }).filter(g => g.items.length > 0);
@@ -1396,7 +1401,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       if (poFilter === 'Sem MIGO') {
         const hasPO = it.record.status_requisicao === 'Processado';
         const hasMigo = !!it.record.data_migo;
-        if (!hasPO || hasMigo) return;
+        if (!hasPO || hasMigo || isServicoRM(it.record.requisicao_de_compra)) return;
       }
       rmsSet.add(g.rm);
       itens++;
@@ -1505,6 +1510,12 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             </button>
           </div>
 
+          <button
+            onClick={() => setShowNovidades(true)}
+            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Novidades
+          </button>
           <button
             onClick={() => buildSuppliersData(true)}
             disabled={loading}
@@ -2730,6 +2741,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           </div>
         </div>
       );})()}
+
+      {showNovidades && (
+        <NovidadesModal user={user} onClose={() => setShowNovidades(false)} />
+      )}
 
       {/* Modal Universal de Detalhes SAP */}
       {selectedRecordForModal && (

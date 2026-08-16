@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { EnrichedSAPRecord } from '../types';
-import { CompradorInfo, resolveComprador } from './demandas';
+import { CompradorInfo, resolveComprador, isProjetoItem } from './demandas';
 import { formatBRL, formatDateBR } from './format';
 import { ComposicaoColuna, ComposicaoFiltro } from '../components/charts/ComposicaoModal';
 
@@ -35,10 +35,11 @@ export function colunasEnrichedSAPRecord(compradores: CompradorInfo[]): Composic
   ];
 }
 
-/** Filtros de Status e Comprador exibidos no modal de composição. */
+/** Filtros de Status, Natureza e Comprador exibidos no modal de composição. */
 export function filtrosEnrichedSAPRecord(compradores: CompradorInfo[]): ComposicaoFiltro<EnrichedSAPRecord>[] {
   return [
     { key: 'status', label: 'Status', valueOf: r => r.status_requisicao },
+    { key: 'tipo_item', label: 'Natureza', valueOf: r => (isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo') },
     { key: 'comprador', label: 'Comprador', valueOf: r => resolveComprador(r, compradores) },
   ];
 }

@@ -38,6 +38,8 @@ const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
+const Movimentacoes = lazy(() => import('./views/Movimentacoes'));
+const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -80,6 +82,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/admin/helpdesk',
   '/admin/uso',
   '/admin/feedback',
+  '/admin/diretrizes',
   // Mantém o markdown colado e o resultado da IA — remontar jogaria fora o
   // texto em andamento na próxima sincronização em segundo plano.
   '/admin/teste',
@@ -88,6 +91,14 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/grupos-comprador',
   '/rastreio',
   '/almoxarifado/estoque',
+  '/almoxarifado/movimentacoes',
+  '/almoxarifado/movimentacoes/giro',
+  '/almoxarifado/movimentacoes/idade',
+  '/almoxarifado/movimentacoes/urgencia',
+  '/almoxarifado/movimentacoes/minimo',
+  // Mantém material selecionado, filtros e ordenação da lista — remontar a
+  // cada sincronização em segundo plano jogaria fora o recorte montado.
+  '/almoxarifado/consumo-semanal',
   '/almoxarifado/dashboards',
   // A página Sobre é só leitura, mas remontá-la a cada sincronização em segundo
   // plano reiniciaria as animações de entrada no meio da leitura.
@@ -546,6 +557,44 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/almoxarifado/movimentacoes':
+        if (canAccessPage(user, 'almox_movimentacoes')) {
+          return <Movimentacoes user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Atalhos diretos para as análises: abrem a mesma página já na aba
+      // correspondente, como as rotas históricas de /suprimentos/demandas.
+      case '/almoxarifado/movimentacoes/giro':
+        if (canAccessPage(user, 'almox_movimentacoes')) {
+          return <Movimentacoes user={user} abaInicial="giro" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/movimentacoes/idade':
+        if (canAccessPage(user, 'almox_movimentacoes')) {
+          return <Movimentacoes user={user} abaInicial="idade" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/movimentacoes/urgencia':
+        if (canAccessPage(user, 'almox_movimentacoes')) {
+          return <Movimentacoes user={user} abaInicial="urgencia" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/consumo-semanal':
+        if (canAccessPage(user, 'almox_consumo_semanal')) {
+          return <ConsumoSemanal user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/movimentacoes/minimo':
+        if (canAccessPage(user, 'almox_movimentacoes')) {
+          return <Movimentacoes user={user} abaInicial="minimo" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/almoxarifado/dashboards':
         if (canAccessPage(user, 'almox_dashboards')) {
           return <AlmoxarifadoDashboards user={user} onNavigate={handleNavigate} />;
@@ -567,6 +616,7 @@ export default function App() {
       case '/suprimentos/grupos-comprador':
       case '/admin/helpdesk':
       case '/admin/feedback':
+      case '/admin/diretrizes':
         if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;
         }

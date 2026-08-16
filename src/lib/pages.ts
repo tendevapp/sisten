@@ -13,7 +13,7 @@ import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
-  ClipboardList, FileText, Receipt, Sparkles, Flag,
+  ClipboardList, FileText, Receipt, Sparkles, Flag, BookOpen, ArrowLeftRight, CalendarDays,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -61,6 +61,8 @@ export const PAGES: PageDef[] = [
   { id: 'sup_importar', group: 'SUPRIMENTOS', label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
 
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
@@ -79,6 +81,7 @@ export const PAGES: PageDef[] = [
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_teste', group: 'ADMINISTRAÇÃO', label: 'Teste', path: '/admin/teste', icon: Sparkles, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_feedback', group: 'ADMINISTRAÇÃO', label: 'Reportes', path: '/admin/feedback', icon: Flag, defaultRoles: ['admin'], alwaysAdmin: true },
+  { id: 'admin_diretrizes', group: 'ADMINISTRAÇÃO', label: 'Diretrizes', path: '/admin/diretrizes', icon: BookOpen, defaultRoles: ['admin'], alwaysAdmin: true },
 ];
 
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),

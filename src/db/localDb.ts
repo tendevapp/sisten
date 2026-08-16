@@ -10,7 +10,8 @@ import {
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
   RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
-  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry
+  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry,
+  MB51MovEstoque, MB51ImportMode, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -21,8 +22,9 @@ import { formatDateTimeBR } from '../lib/format';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
-import { supabase } from './supabaseClient';
+import { supabase, supabaseAdmin } from './supabaseClient';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
+import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
@@ -90,6 +92,10 @@ class LocalDatabase {
   private contratosDetalhesKey = 'sisten_contratos_detalhes';
   private contratoAnexosKey = 'sisten_contrato_anexos';
   private tabelaFreteKey = 'sisten_tabela_frete';
+  private mb51Key = 'sisten_mb51';
+  private camadasFifoKey = 'sisten_camadas_fifo';
+  private giroEstoqueKey = 'sisten_giro_estoque';
+  private reposicaoKey = 'sisten_reposicao';
 
   // Cache versionado: prefixo das chaves que guardam o "carimbo" local de cada
   // dataset pesado (versão + data da última importação + data do último download).
@@ -572,6 +578,9 @@ class LocalDatabase {
       'tabela_frete': ['TABELA_FRETE', 'FRETE'],
       'contatos': ['CONTATOS'],
       'cidadeforn': ['CIDADE_FORN', 'ENDERECOS_FORNECEDORES'],
+      'mb51_mov_estoque': ['MB51'],
+      'mb51': ['MB51'],
+      'movimentacoes_estoque': ['MB51'],
     };
 
     const targetTypes = datasetTypeMap[dataset.toLowerCase()] || [];
@@ -624,6 +633,8 @@ class LocalDatabase {
       'tabela_frete': 'FRETE',
       'contatos': 'CONTATOS',
       'cidadeforn': 'ENDEREÇOS',
+      'mb51_mov_estoque': 'MB51',
+      'mb51': 'MB51',
     };
 
     const datasetTypeMap: Record<string, string[]> = {
@@ -642,6 +653,9 @@ class LocalDatabase {
       'tabela_frete': ['TABELA_FRETE', 'FRETE'],
       'contatos': ['CONTATOS'],
       'cidadeforn': ['CIDADE_FORN', 'ENDERECOS_FORNECEDORES'],
+      'mb51_mov_estoque': ['MB51'],
+      'mb51': ['MB51'],
+      'movimentacoes_estoque': ['MB51'],
     };
 
     const key = dataset.toLowerCase();
@@ -1592,7 +1606,8 @@ class LocalDatabase {
     let updated = 0;
     let syncFailed = 0;
 
-    const BATCH_SIZE = 2000;
+    const client = supabaseAdmin || supabase;
+    const BATCH_SIZE = 1000;
     const totalBatches = Math.ceil(itemsToImport.length / BATCH_SIZE);
 
     for (let i = 0; i < itemsToImport.length; i += BATCH_SIZE) {
@@ -1605,42 +1620,98 @@ class LocalDatabase {
       }
 
       try {
-        const { data, error } = await supabase.rpc('importar_materiais_zl0169', {
-          p_materiais: chunk
-        });
+        const codes = chunk.map(c => c.material_code);
 
-        if (error) throw error;
-        if (data) {
-          inserted += Number(data.inseridos || 0);
-          updated += Number(data.atualizados || 0);
+        // 1. Busca registros existentes para preservar o que já foi cadastrado (ex: technical_text, created_at, id)
+        let existingMap = new Map<string, any>();
+        if (client) {
+          const { data: existingRows } = await client
+            .from('materials')
+            .select('id, material_code, technical_text, created_at')
+            .in('material_code', codes);
+
+          existingMap = new Map((existingRows || []).map((r: any) => [r.material_code, r]));
         }
-      } catch (rpcErr) {
-        console.warn(`RPC importar_materiais_zl0169 falhou no lote ${batchNum}, tentando fallback direto via upsert:`, rpcErr);
-        try {
-          const fallbackBatch = chunk.map(m => ({
-            id: 'm_' + Math.random().toString(36).substr(2, 9),
+
+        const normalizeDateForDb = (val: any): string | null => {
+          if (!val) return null;
+          const s = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+          if (/^\d{4,5}(\.\d+)?$/.test(s)) {
+            const num = Number(s);
+            if (!isNaN(num) && num > 1000 && num < 100000) {
+              const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+              if (!isNaN(d.getTime())) {
+                return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+              }
+            }
+          }
+          return null;
+        };
+
+        // 2. Prepara batch completo com ID e todos os 26 campos SAP
+        const batch = chunk.map(m => {
+          const prev = existingMap.get(m.material_code);
+          return {
+            id: prev?.id || ('m_' + Math.random().toString(36).substr(2, 9)),
             material_code: m.material_code,
             description: m.description,
-            technical_text: m.technical_text || null,
+            technical_text: m.technical_text || prev?.technical_text || null,
             category: m.category || getAutoCategory(m.description),
             company: m.company || 'TEN2',
             unit: m.unit || 'UN',
+            centro: m.centro || null,
+            eliminacao: m.eliminacao || null,
+            elim_nivel_centro: m.elim_nivel_centro || null,
+            status_geral: m.status_geral || null,
+            status_centro: m.status_centro || null,
+            modificado_por: m.modificado_por || null,
+            tipo_material: m.tipo_material || null,
+            tipo_material_desc: m.tipo_material_desc || null,
+            codigo_controle: m.codigo_controle || null,
+            categoria_item: m.categoria_item || null,
+            indicador_s: m.indicador_s || null,
+            grupo_mercadoria_codigo: m.grupo_mercadoria_codigo || null,
+            grupo_mercadoria_desc: m.grupo_mercadoria_desc || null,
+            denominacao: m.denominacao || null,
+            material_basico: m.material_basico || null,
+            classe_fiscal: m.classe_fiscal || null,
+            unidade_medida_alt: m.unidade_medida_alt || null,
+            classe_avaliacao: m.classe_avaliacao || null,
+            numero_pf: m.numero_pf || null,
+            idioma: m.idioma || null,
+            pais: m.pais || null,
+            criado_em: normalizeDateForDb(m.criado_em),
+            ultima_modificacao: normalizeDateForDb(m.ultima_modificacao),
             is_active: true,
-            created_at: new Date().toISOString()
-          }));
-          const { error: upsertErr } = await supabase.from('materials').upsert(fallbackBatch, { onConflict: 'material_code' });
+            created_at: prev?.created_at || new Date().toISOString(),
+            imported_at: new Date().toISOString()
+          };
+        });
+
+        if (client) {
+          const { error: upsertErr } = await client
+            .from('materials')
+            .upsert(batch, { onConflict: 'material_code' });
+
           if (upsertErr) throw upsertErr;
-          updated += chunk.length;
-        } catch (err) {
-          syncFailed += chunk.length;
-          console.error(`Falha ao sincronizar lote de materiais ZL0169 com o Supabase:`, err);
         }
+
+        const newCount = batch.filter(b => !existingMap.has(b.material_code)).length;
+        inserted += newCount;
+        updated += (batch.length - newCount);
+      } catch (err) {
+        syncFailed += chunk.length;
+        console.error(`Falha ao sincronizar lote de materiais ZL0169 com o Supabase:`, err);
       }
     }
 
     if (onProgress) {
       onProgress(92, 'Sincronizando cache local e versão do dataset...');
     }
+
+    // Limpa cache de busca em memória
+    limparCacheBusca();
 
     // Atualiza cache local parcial se houver itens no localStorage
     try {
@@ -1652,11 +1723,7 @@ class LocalDatabase {
           if (incoming) {
             return {
               ...m,
-              description: incoming.description,
-              technical_text: incoming.technical_text || m.technical_text,
-              category: incoming.category || m.category,
-              company: incoming.company || m.company,
-              unit: incoming.unit || m.unit,
+              ...incoming,
               is_active: true
             };
           }
@@ -1688,8 +1755,8 @@ class LocalDatabase {
         ignored_rows: [],
         created_at: new Date().toISOString()
       };
-      if (supabase) {
-        await supabase.from('import_logs').insert(logObj);
+      if (client) {
+        await client.from('import_logs').insert(logObj);
       }
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
@@ -1740,6 +1807,7 @@ class LocalDatabase {
       }
     });
 
+    const client = supabaseAdmin || supabase;
     const itemsToUpdate = Array.from(dedupedMap.values());
     const BATCH_SIZE = 2000;
     const totalBatches = Math.ceil(itemsToUpdate.length / BATCH_SIZE);
@@ -1754,14 +1822,16 @@ class LocalDatabase {
       }
 
       try {
-        const { data, error } = await supabase.rpc('atualizar_textos_tecnicos_zl0162', {
-          p_itens: batch
-        });
+        if (client) {
+          const { data, error } = await client.rpc('atualizar_textos_tecnicos_zl0162', {
+            p_itens: batch
+          });
 
-        if (error) throw error;
-        if (data) {
-          updated += Number(data.atualizados || 0);
-          notFound += Number(data.nao_encontrados || 0);
+          if (error) throw error;
+          if (data) {
+            updated += Number(data.atualizados || 0);
+            notFound += Number(data.nao_encontrados || 0);
+          }
         }
       } catch (err) {
         console.error(`Erro ao atualizar lote ${batchNum} da ZL0162 no Supabase:`, err);
@@ -1772,6 +1842,9 @@ class LocalDatabase {
     if (onProgress) {
       onProgress(94, 'Sincronizando cache local e versão do dataset...');
     }
+
+    // Limpa cache de busca em memória
+    limparCacheBusca();
 
     // Atualiza cache local se houver
     try {
@@ -3104,6 +3177,96 @@ class LocalDatabase {
     }
   }
 
+  // Movimentações de Estoque (MB51) e as análises derivadas. Mesma política de
+  // `fetchEstoque`: busca sob demanda, cache em memória por sessão, fora do
+  // `syncFromSupabase` para não cobrar egress de quem nunca abre o módulo.
+  //
+  // A leitura vem de `vw_mb51_classificado`, não da tabela crua: a view já traz
+  // a descrição do TMV e a categoria funcional do movimento. O join TMV ->
+  // descrição costumava ser feito em memória aqui; passou para o banco porque
+  // as views de FIFO e giro precisam da mesma classificação e ela não pode
+  // divergir entre as duas camadas.
+  public getMb51(): MB51Classificado[] {
+    return this.getStorageItem<MB51Classificado[]>(this.mb51Key, []);
+  }
+
+  public async fetchMb51(force = false): Promise<MB51Classificado[]> {
+    if (!supabase) return this.getMb51();
+    if (!force && this.cache.has(this.mb51Key)) {
+      return this.getMb51();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<MB51Classificado>('vw_mb51_classificado', '*', 1000, undefined, 'id');
+      this.setStorageItem(this.mb51Key, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar as movimentações de estoque (MB51); usando cache local.', err);
+      return this.getMb51();
+    }
+  }
+
+  // Camadas FIFO (vw_estoque_camadas_fifo): ~4 mil linhas. Sustenta as abas de
+  // Idade do Estoque e Urgência de Compra.
+  public getCamadasFifo(): EstoqueCamadaFifo[] {
+    return this.getStorageItem<EstoqueCamadaFifo[]>(this.camadasFifoKey, []);
+  }
+
+  public async fetchCamadasFifo(force = false): Promise<EstoqueCamadaFifo[]> {
+    if (!supabase) return this.getCamadasFifo();
+    if (!force && this.cache.has(this.camadasFifoKey)) {
+      return this.getCamadasFifo();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<EstoqueCamadaFifo>('vw_estoque_camadas_fifo', '*', 1000);
+      this.setStorageItem(this.camadasFifoKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar as camadas FIFO de estoque; usando cache local.', err);
+      return this.getCamadasFifo();
+    }
+  }
+
+  // Giro e cobertura por material (vw_estoque_giro): ~2,1 mil linhas.
+  public getGiroEstoque(): EstoqueGiro[] {
+    return this.getStorageItem<EstoqueGiro[]>(this.giroEstoqueKey, []);
+  }
+
+  public async fetchGiroEstoque(force = false): Promise<EstoqueGiro[]> {
+    if (!supabase) return this.getGiroEstoque();
+    if (!force && this.cache.has(this.giroEstoqueKey)) {
+      return this.getGiroEstoque();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<EstoqueGiro>('vw_estoque_giro', '*', 1000);
+      this.setStorageItem(this.giroEstoqueKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar o giro de estoque; usando cache local.', err);
+      return this.getGiroEstoque();
+    }
+  }
+
+  // Base de reposição (vw_estoque_reposicao): um registro por material com o
+  // consumo medido na janela de PRODUÇÃO e o lead time real. ~2,1 mil linhas.
+  public getReposicao(): EstoqueReposicao[] {
+    return this.getStorageItem<EstoqueReposicao[]>(this.reposicaoKey, []);
+  }
+
+  public async fetchReposicao(force = false): Promise<EstoqueReposicao[]> {
+    if (!supabase) return this.getReposicao();
+    if (!force && this.cache.has(this.reposicaoKey)) {
+      return this.getReposicao();
+    }
+    try {
+      const rows = await this.fetchAllFromTable<EstoqueReposicao>('vw_estoque_reposicao', '*', 1000);
+      this.setStorageItem(this.reposicaoKey, rows);
+      return rows;
+    } catch (err) {
+      console.warn('Falha ao buscar a base de reposição; usando cache local.', err);
+      return this.getReposicao();
+    }
+  }
+
   // Contratos (ME3N). Mesma política de `fetchEstoque`: tabela "foto do
   // momento", busca sob demanda, cache em memória por sessão. Tenta
   // `me3n_contratos` com fallback para `me3m_contratos` (nome antigo), espelhando
@@ -3462,8 +3625,15 @@ class LocalDatabase {
       const localPf = pedsFornByRi.get(String(r.ri || '').trim());
       const localDocCompra = String(localPf?.doc_compra || localPf?.documento_compra || '').trim();
 
-      // PO efetivo: servidor tem precedência; fallback para pedidosForn local (offline)
-      const docCompra = rawDocCompra || localDocCompra;
+      // RM de serviço (começa com "17"): o PO muitas vezes não chega via ZL0132/pedidosforn,
+      // mas já vem preenchido no próprio ME5A (coluna "Pedido"). Usar como último fallback,
+      // só quando servidor/pedidosforn não encontraram PO nenhum para essa RM.
+      const isServicoRM = String(r.requisicao_de_compra || '').trim().startsWith('17');
+      const pedidoME5A = isServicoRM ? String((r as any).pedido || '').trim() : '';
+
+      // PO efetivo: servidor tem precedência; fallback para pedidosForn local (offline);
+      // por último, para RM de serviço, o número de pedido informado no próprio ME5A.
+      const docCompra = rawDocCompra || localDocCompra || pedidoME5A;
 
       // Verificação de eliminação: eflag_e = 'L' na pedidosForn é a única fonte de verdade.
       // Escopo por RI+doc — eflag_e é por linha do pedido, não pelo PO inteiro,
@@ -4202,6 +4372,7 @@ class LocalDatabase {
     }
     onProgress?.(10);
     const currentMap = new Map(current.map(r => [r.ri, r]));
+    const existingRMs = new Set(current.map(r => r.requisicao_de_compra));
     const user = this.getCurrentUser();
 
     let inserted = 0;
@@ -4210,6 +4381,7 @@ class LocalDatabase {
     let unchanged = 0;
 
     const quantityChanges: any[] = [];
+    const newRisDetail: SAPImportLog['new_ris'] = [];
     const newReqsMap = new Map<string, SAPRequisicao>();
     const importedRIs = new Set<string>();
     const ignoredRows: any[] = [];
@@ -4306,6 +4478,19 @@ class LocalDatabase {
           campos_extras
         } as any);
         inserted++;
+        if (!isEliminated) {
+          newRisDetail!.push({
+            ri,
+            requisicao_de_compra: reqNo,
+            item_reqc: itemNo,
+            material: record.material || '',
+            texto_breve: record.texto_breve || '',
+            requisitante: record.requisitante || '',
+            qtd_solicitada: record.qtd_solicitada || 0,
+            grupo_comprador: record.grupo_de_compradores || '',
+            is_new_rm: !existingRMs.has(reqNo)
+          });
+        }
       }
     });
 
@@ -4412,6 +4597,7 @@ class LocalDatabase {
         columns_new: newColumns,
         quantity_changes: quantityChanges,
         missing_ris: missingRIsList,
+        new_ris: newRisDetail,
         ignored_rows: ignoredRows,
         created_at: new Date().toISOString()
       };
@@ -5768,6 +5954,187 @@ class LocalDatabase {
     }
   }
 
+  /**
+   * Importação da transação SAP MB51 (Movimentações de Estoque).
+   * @param rawRows Linhas cruas da planilha (matriz com headers na linha 0).
+   * @param filename Nome do arquivo importado.
+   * @param mode 'upsert' (apenas novos/atualização incremental) ou 'replace' (substituição total).
+   * @param onProgress Callback de progresso (0 a 100).
+   */
+  public async importMB51Raw(
+    rawRows: any[][],
+    filename: string,
+    mode: MB51ImportMode = 'upsert',
+    onProgress?: (percent: number) => void
+  ): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    // Mapeamento flexível com suporte a aliases
+    const mappedFields: (string | null)[] = [];
+    const newColumns: string[] = [];
+    const matchedFieldSet = new Set<string>();
+
+    headers.forEach(h => {
+      const clean = h ? h.toLowerCase().trim() : '';
+      if (!clean) {
+        mappedFields.push(null);
+        return;
+      }
+      const match = MB51_COLUMNS.find(c => 
+        c.header.toLowerCase().trim() === clean || 
+        c.aliases?.some(a => a.toLowerCase().trim() === clean)
+      );
+      if (match) {
+        mappedFields.push(match.field);
+        matchedFieldSet.add(match.field);
+      } else {
+        mappedFields.push(null);
+        newColumns.push(h);
+      }
+    });
+
+    const missingColumns = MB51_COLUMNS
+      .filter(c => !matchedFieldSet.has(c.field))
+      .map(c => c.header);
+
+    if (!mappedFields.includes('doc_material')) {
+      throw new Error('Formato rejeitado: Coluna obrigatória do SAP ("Doc.material") não encontrada.');
+    }
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+    const occurrenceTracker = new Map<string, number>();
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const { record, camposExtras } = mapMb51Row(headers, mappedFields, row, occurrenceTracker);
+
+      if (!record.doc_material) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: record.material || 'N/A',
+          reason: 'Doc.material vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        ...record,
+        campos_extras: Object.keys(camposExtras).length ? camposExtras : null,
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    if (dbRows.length === 0) {
+      throw new Error('Nenhum registro válido encontrado para importação na planilha.');
+    }
+
+    onProgress?.(10);
+
+    try {
+      let recordsInserted = 0;
+      let recordsUpdated = 0;
+      let recordsEliminated = 0;
+
+      if (mode === 'replace') {
+        // Modo Substituição Total: Delete de tudo + Upsert em lotes
+        const { count: previousCount } = await supabase
+          .from('mb51_mov_estoque')
+          .select('id', { count: 'exact', head: true });
+
+        const { error: deleteError } = await supabase.from('mb51_mov_estoque').delete().gte('id', 0);
+        if (deleteError) throw deleteError;
+        recordsEliminated = previousCount || 0;
+        onProgress?.(20);
+
+        const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+        for (let i = 0; i < dbRows.length; i += 500) {
+          const batch = dbRows.slice(i, i + 500);
+          const { error } = await supabase
+            .from('mb51_mov_estoque')
+            .upsert(batch, { onConflict: 'chave_unica' });
+          if (error) throw error;
+          recordsInserted += batch.length;
+          const batchIndex = Math.floor(i / 500) + 1;
+          onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+        }
+      } else {
+        // Modo Upsert / Apenas novos: onConflict na chave_unica sem estourar limite de URL
+        onProgress?.(15);
+
+        const { count: countBefore } = await supabase
+          .from('mb51_mov_estoque')
+          .select('id', { count: 'exact', head: true });
+
+        const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+        for (let i = 0; i < dbRows.length; i += 500) {
+          const batch = dbRows.slice(i, i + 500);
+          const { error } = await supabase
+            .from('mb51_mov_estoque')
+            .upsert(batch, { onConflict: 'chave_unica' });
+          if (error) throw error;
+          const batchIndex = Math.floor(i / 500) + 1;
+          onProgress?.(15 + Math.round((batchIndex / totalBatches) * 75));
+        }
+
+        const { count: countAfter } = await supabase
+          .from('mb51_mov_estoque')
+          .select('id', { count: 'exact', head: true });
+
+        recordsInserted = Math.max(0, (countAfter || 0) - (countBefore || 0));
+        recordsUpdated = Math.max(0, dbRows.length - recordsInserted);
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj: SAPImportLog = {
+        id: logId,
+        type: 'MB51',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: recordsInserted,
+        records_updated: recordsUpdated,
+        records_unchanged: 0,
+        records_eliminated: recordsEliminated,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('mb51_mov_estoque', dbRows.length);
+
+      this.logActivity(
+        user?.id || 'sistema',
+        'Suprimentos',
+        'Importar MB51',
+        `Importou Movimentações de Estoque MB51 (${filename}) [Modo: ${mode === 'replace' ? 'Substituição Total' : 'Upsert/Novos'}]. Lidos: ${dataRows.length}, novos: ${recordsInserted}, atualizados: ${recordsUpdated}, eliminados: ${recordsEliminated}.`
+      );
+
+      onProgress?.(100);
+      return logObj;
+    } catch (e) {
+      console.error('Erro ao salvar importação de movimentação de estoque (MB51) no Supabase:', e);
+      throw e;
+    }
+  }
+
   // Contratos (ME3N): upsert por (documento_compras, item) — atualiza o que
   // mudou, insere o que é novo, e nunca apaga. Diferente de ZL0024/estoque
   // (foto do momento, delete+insert): aqui a tela de Contratos guarda campos
@@ -6287,15 +6654,15 @@ class LocalDatabase {
   // Busca sob demanda o conteúdo pesado (`ignored_rows`, `missing_ris`) de UM
   // log de importação — chamada quando o usuário expande a linha no AdminPanel,
   // em vez de baixar isso para todos os logs em todo sync.
-  public async fetchImportLogDetail(id: string): Promise<{ ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[] } | null> {
+  public async fetchImportLogDetail(id: string): Promise<{ ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[]; new_ris: SAPImportLog['new_ris'] } | null> {
     if (!supabase) return null;
     const { data, error } = await supabase
       .from('import_logs')
-      .select('ignored_rows, missing_ris')
+      .select('ignored_rows, missing_ris, new_ris')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
-    return data as { ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[] } | null;
+    return data as { ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[]; new_ris: SAPImportLog['new_ris'] } | null;
   }
 
   // --- SYSTEM UTILITY ADDITIONS ---

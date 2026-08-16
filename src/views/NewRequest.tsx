@@ -8,7 +8,7 @@ import {
   ShoppingBag, ClipboardCopy, Radio, Plus, Trash2, Calendar,
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
-  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb,
+  ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -553,6 +553,50 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     localStorage.removeItem(`sisten_draft_${user.id}`);
   };
 
+  const handleResetForm = () => {
+    if (editandoId) return;
+
+    const confirmed = window.confirm(
+      'Tem certeza de que deseja limpar todos os campos e apagar o rascunho para comecar uma nova solicitacao?'
+    );
+    if (!confirmed) return;
+
+    clearDraft();
+    setActiveTab('compra');
+    setSectorId('');
+    setCompradorId('');
+    setTipoCompra('Estoque');
+    setCriticality(null);
+    setDataNecessidade('');
+    setJustificativa('');
+    setItems([itemVazio()]);
+    setRegistrationType('Item');
+    setSapRegName('');
+    setSapRegSpecs('');
+    setSapRegBrand('');
+    setSapRegVendorInfo('');
+    setSapRepresentanteNome('');
+    setSapRepresentanteCargo('');
+    setSapRepresentanteTelefone('');
+    setSapRepresentanteEmail('');
+    setSapAttachments([]);
+    setChamadoSectorId('');
+    const supportSectors = sectors.filter(s => s.helpdesk_enabled);
+    setHelpdeskSectorId(supportSectors.length > 0 ? supportSectors[0].id : '');
+    setHelpdeskCategory('');
+    setHelpdeskLocal('');
+    setJuridicoTitulo('');
+    setJuridicoTipoContrato('');
+    setJuridicoFornecedor('');
+    setActiveSearchIndex(null);
+    setActiveSearchResults([]);
+    setErroBusca(false);
+    setBuscaModalIndex(null);
+    setAutosaveStatus('idle');
+
+    toast.info('Formulario reiniciado e rascunho apagado.');
+  };
+
   const handleAddItem = () => {
     setItems([...items, itemVazio()]);
   };
@@ -910,6 +954,17 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               >
                 <Save className="h-3 w-3" /> Salvar agora
               </button>
+              {!editandoId && (
+                <button
+                  type="button"
+                  onClick={handleResetForm}
+                  className="text-[11px] inline-flex items-center gap-1 font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--status-critical)]"
+                  style={{ color: 'var(--ink-muted)' }}
+                  title="Limpar todos os campos e apagar rascunho"
+                >
+                  <RotateCcw className="h-3 w-3" /> Limpar / Novo
+                </button>
+              )}
             </div>
           </div>
 
@@ -1835,6 +1890,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               <p className="text-[12px] text-center" style={{ color: 'var(--ink-muted)' }}>
                 {avisoEdicao(activeTab)}
               </p>
+            )}
+
+            {!editandoId && (
+              <button
+                type="button"
+                onClick={handleResetForm}
+                className="w-full rounded-lg border py-2 text-sm font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)] flex items-center justify-center gap-1.5"
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Limpar / Novo</span>
+              </button>
             )}
 
             <button

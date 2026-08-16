@@ -45,13 +45,32 @@ const rowToMaterial = (r: any): Material => {
     category: r.category,
     company: r.company,
     unit: r.unit,
-    tipo_material: r.tipo_material,
-    codigo_controle: r.codigo_controle,
+    centro: r.centro,
+    eliminacao: r.eliminacao,
+    elim_nivel_centro: r.elim_nivel_centro,
     status_geral: r.status_geral,
     status_centro: r.status_centro,
     status_sap: isObsoleto ? 'Obsoleto' : 'Ativo',
+    modificado_por: r.modificado_por,
+    tipo_material: r.tipo_material,
+    tipo_material_desc: r.tipo_material_desc,
+    codigo_controle: r.codigo_controle,
+    categoria_item: r.categoria_item,
+    indicador_s: r.indicador_s,
+    grupo_mercadoria_codigo: r.grupo_mercadoria_codigo,
+    grupo_mercadoria_desc: r.grupo_mercadoria_desc,
+    denominacao: r.denominacao,
+    material_basico: r.material_basico,
+    classe_fiscal: r.classe_fiscal,
+    unidade_medida_alt: r.unidade_medida_alt,
+    classe_avaliacao: r.classe_avaliacao,
+    numero_pf: r.numero_pf,
+    idioma: r.idioma,
+    pais: r.pais,
+    criado_em: r.criado_em,
+    ultima_modificacao: r.ultima_modificacao,
     is_active: true,
-    created_at: '',
+    created_at: r.created_at || '',
   };
 };
 
@@ -736,9 +755,30 @@ export default function Materials({ user }: MaterialsProps) {
                         <tr className="bg-slate-50/40">
                           <td colSpan={9} className="py-3 px-6 text-xs text-slate-500 text-left border-l-4 border-emerald-500">
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                              <div className="sm:col-span-2">
-                                <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Texto Completo SAP</p>
-                                <p className="mt-1 font-mono text-slate-600 leading-normal bg-white p-2.5 rounded border border-slate-100">{m.technical_text || '—'}</p>
+                              <div className="sm:col-span-2 space-y-2">
+                                <div>
+                                  <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Texto Completo SAP / Especificação</p>
+                                  <p className="mt-1 font-mono text-slate-600 leading-normal bg-white p-2.5 rounded border border-slate-100 whitespace-pre-wrap">{m.technical_text || '—'}</p>
+                                </div>
+                                {(m.grupo_mercadoria_desc || m.tipo_material_desc || m.denominacao) && (
+                                  <div className="bg-white p-2.5 rounded border border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    {m.grupo_mercadoria_desc && (
+                                      <p className="text-slate-600">
+                                        <span className="font-bold text-slate-700">Grupo Mercadoria:</span> {m.grupo_mercadoria_codigo ? `[${m.grupo_mercadoria_codigo}] ` : ''}{m.grupo_mercadoria_desc}
+                                      </p>
+                                    )}
+                                    {m.tipo_material_desc && (
+                                      <p className="text-slate-600">
+                                        <span className="font-bold text-slate-700">Tipo Material:</span> {m.tipo_material ? `[${m.tipo_material}] ` : ''}{m.tipo_material_desc}
+                                      </p>
+                                    )}
+                                    {m.denominacao && (
+                                      <p className="text-slate-600 sm:col-span-2">
+                                        <span className="font-bold text-slate-700">Denominação:</span> {m.denominacao}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               <div className="space-y-1.5">
                                 <p className="font-bold text-slate-700 uppercase tracking-wider text-[9px]">Classificação Fiscal & Status</p>
@@ -751,7 +791,9 @@ export default function Materials({ user }: MaterialsProps) {
                                   </p>
                                   <p className="text-slate-600">TMAT: <span className="font-bold font-mono text-slate-900">{m.tipo_material || 'Não informado'}</span></p>
                                   <p className="text-slate-600">NCM (Cód. Controle): <span className="font-bold font-mono text-slate-900">{m.codigo_controle || 'Não informado'}</span></p>
-                                  <p className="text-slate-600">Categoria: <span className="font-semibold text-slate-900">{m.category}</span></p>
+                                  <p className="text-slate-600">Centro: <span className="font-bold font-mono text-slate-900">{m.centro || m.company || 'TEN2'}</span></p>
+                                  {m.criado_em && <p className="text-slate-500 text-[11px]">Criado em: <span className="font-mono">{m.criado_em}</span></p>}
+                                  {m.ultima_modificacao && <p className="text-slate-500 text-[11px]">Última Modif.: <span className="font-mono">{m.ultima_modificacao}</span></p>}
                                 </div>
                               </div>
                             </div>

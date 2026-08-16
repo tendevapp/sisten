@@ -126,7 +126,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
   const [cidade, setCidade] = useState('');
   const [estadoUf, setEstadoUf] = useState('');
   const [classificacao, setClassificacao] = useState('');
-  const [status, setStatus] = useState('Atualizado');
+  const [status, setStatus] = useState('Pendente');
   const [emails, setEmails] = useState<string[]>(['']);
   const [telefones, setTelefones] = useState<string[]>(['']);
 
@@ -575,7 +575,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
     return '';
   });
   const [classificacao, setClassificacao] = useState(supplier.classificacao || '');
-  const [status, setStatus] = useState(supplier.status || 'Atualizado');
+  const [status, setStatus] = useState(supplier.status || 'Pendente');
   
   // Converte a string de emails (possivelmente com múltiplos valores) em um array editável
   const [emails, setEmails] = useState<string[]>(() => {
@@ -1875,10 +1875,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                           <td className="px-4 py-3.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                             {canEdit ? (
                               <select
-                                value={row.status || 'Atualizado'}
+                                value={row.status || 'Pendente'}
                                 onChange={e => handleStatusChange(row.id, e.target.value)}
                                 className={`text-xs font-semibold rounded-lg px-2.5 py-1 border focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all ${
-                                  statusStyle[row.status || 'Atualizado']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                  statusStyle[row.status || 'Pendente']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                                 }`}
                               >
                                 {STATUS_OPTS.map(st => (
@@ -1889,10 +1889,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                               </select>
                             ) : (
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                                statusStyle[row.status || 'Atualizado']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                statusStyle[row.status || 'Pendente']?.badge || 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                               }`}>
-                                <span className={`h-1.5 w-1.5 rounded-full ${statusStyle[row.status || 'Atualizado']?.dot || 'bg-slate-400'}`} />
-                                {row.status || 'Atualizado'}
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusStyle[row.status || 'Pendente']?.dot || 'bg-slate-400'}`} />
+                                {row.status || 'Pendente'}
                               </span>
                             )}
                           </td>

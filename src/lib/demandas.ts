@@ -11,6 +11,17 @@ import { ptBR } from 'date-fns/locale';
 // (prefixo 11 = ZR01/Normal, 12 = ZR02/Urgente, 17 = ZR11/ZR16/Serviço).
 export type TipoDemanda = 'material' | 'servico' | 'outro';
 export type Criticidade = 'normal' | 'urgente' | 'maquina_parada';
+export type TipoItemFilter = 'todos' | 'consumo' | 'projeto';
+
+/**
+ * Verifica se um codigo de material pertence a item de projeto
+ * (codigos que comecam com 1000000 / 100000 / 100000000, faixa de 18 digitos do SAP).
+ */
+export function isProjetoItem(materialCode?: string | null): boolean {
+  if (!materialCode || materialCode === '—') return false;
+  const clean = String(materialCode).trim().replace(/^0+/, '');
+  return clean.startsWith('100000') || String(materialCode).trim().startsWith('100000');
+}
 
 export function classifyTipoDemanda(requisicaoDeCompra: string | null | undefined): TipoDemanda {
   const prefix = (requisicaoDeCompra || '').slice(0, 2);
