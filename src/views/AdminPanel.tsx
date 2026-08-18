@@ -13,7 +13,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
-import { calcularProximoCodigoMaterial } from '../lib/materiais';
+import { calcularProximoCodigoMaterial, sanitizeTechnicalText } from '../lib/materiais';
 import { Profile, Sector, Material, FeedbackReport } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
@@ -618,7 +618,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       items.push({
         material_code,
         description,
-        technical_text: techIdx !== -1 ? String(row[techIdx] ?? '').trim() : '',
+        technical_text: techIdx !== -1 ? sanitizeTechnicalText(row[techIdx]) : '',
         category: getAutoCategory(description),
         company: (VALID_COMPANIES.includes(rawCompany) ? rawCompany : 'TEN2') as Material['company'],
         unit: unit || 'UN',
@@ -793,7 +793,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       const material_code = String(row[codeIdx] ?? '').trim();
       if (!material_code) return;
 
-      const technical_text = String(row[techIdx] ?? '').trim();
+      const technical_text = sanitizeTechnicalText(row[techIdx]);
       const description = descIdx !== -1 ? String(row[descIdx] ?? '').trim() : '';
 
       if (technical_text || !itemsMap.has(material_code)) {

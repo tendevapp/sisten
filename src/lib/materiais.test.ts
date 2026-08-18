@@ -5,6 +5,7 @@ import {
   normalizarTermo,
   resumoSinais,
   calcularProximoCodigoMaterial,
+  sanitizeTechnicalText,
   type MaterialResultado,
 } from './materiais';
 
@@ -191,6 +192,47 @@ describe('calcularProximoCodigoMaterial', () => {
   it('retorna traço para códigos não puramente numéricos', () => {
     expect(calcularProximoCodigoMaterial('DIESEL')).toBe('—');
     expect(calcularProximoCodigoMaterial('ABC-123')).toBe('—');
+  });
+});
+
+describe('sanitizeTechnicalText', () => {
+  it('retorna string vazia para nulo, indefinido ou vazio', () => {
+    expect(sanitizeTechnicalText(null)).toBe('');
+    expect(sanitizeTechnicalText(undefined)).toBe('');
+    expect(sanitizeTechnicalText('')).toBe('');
+  });
+
+  it('mantém intactos textos técnicos limpos com acentuação e caracteres válidos', () => {
+    const texto = 'PORCA SEXTAVADA AÇO CARBONO SAE 1020 Ø 1/2" 20°C ±5% 4µF';
+    expect(sanitizeTechnicalText(texto)).toBe(texto);
+  });
+
+  it('substitui o mojibake de truncamento SAP ALV 旰掳籷 por reticências', () => {
+    expect(
+      sanitizeTechnicalText(
+        'PORCA  TIPO: SEXTAVADA MATERIAL: ACO CARBONO SAE 1020 NORMA DIMENS旰掳籷'
+      )
+    ).toBe('PORCA  TIPO: SEXTAVADA MATERIAL: ACO CARBONO SAE 1020 NORMA DIMENS...');
+  });
+
+  it('trata espaços antes do mojibake e evita reticências duplicadas', () => {
+    expect(
+      sanitizeTechnicalText(
+        'PORCA SXT AC1020 UNC 1/2" NORMA DIMENS 旰掳籷'
+      )
+    ).toBe('PORCA SXT AC1020 UNC 1/2" NORMA DIMENS...');
+
+    expect(
+      sanitizeTechnicalText(
+        'PORCA SXT AC1020 UNC 1/2" NORMA DIMENS...旰掳籷'
+      )
+    ).toBe('PORCA SXT AC1020 UNC 1/2" NORMA DIMENS...');
+  });
+
+  it('substitui quaisquer ideogramas/caracteres CJK no meio ou final por reticências', () => {
+    expect(
+      sanitizeTechnicalText('ESPECIFICAÇÃO 測試 TESTE')
+    ).toBe('ESPECIFICAÇÃO ... TESTE');
   });
 });
 

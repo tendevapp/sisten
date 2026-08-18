@@ -16,3 +16,6 @@ graphify-out/
 
 # Worktrees de execucao isolada
 .worktrees/
+
+# Scripts de rascunho / testes temporarios
+scratch/

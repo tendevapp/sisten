@@ -13,7 +13,8 @@ import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
-  ClipboardList, FileText, Receipt, Sparkles, Flag, BookOpen, ArrowLeftRight, CalendarDays,
+  ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -54,6 +55,7 @@ export const PAGES: PageDef[] = [
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise de Cotações', path: '/suprimentos/cotacoes', icon: FileSpreadsheet, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
@@ -79,7 +81,6 @@ export const PAGES: PageDef[] = [
   { id: 'admin_importar_sap_log', group: 'ADMINISTRAÇÃO', label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
-  { id: 'admin_teste', group: 'ADMINISTRAÇÃO', label: 'Teste', path: '/admin/teste', icon: Sparkles, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_feedback', group: 'ADMINISTRAÇÃO', label: 'Reportes', path: '/admin/feedback', icon: Flag, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_diretrizes', group: 'ADMINISTRAÇÃO', label: 'Diretrizes', path: '/admin/diretrizes', icon: BookOpen, defaultRoles: ['admin'], alwaysAdmin: true },
 ];

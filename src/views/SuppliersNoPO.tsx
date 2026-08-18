@@ -22,6 +22,9 @@ import {
 
 import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc } from '../lib/rastreio';
 import { formatDateBR, formatDateTimeBR } from '../lib/format';
+import { sanitizeTechnicalText } from '../lib/materiais';
+import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
+import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
@@ -116,7 +119,8 @@ const buildQuoteItemsTable = (items: QuoteItemEntry[], techTextByCode: Map<strin
   });
 
   return dedupedItems.map(({ record: r, rm }, idx) => {
-    const techText = techTextByCode.get(normalizeCode(r.material_code)) || '—';
+    const rawTech = techTextByCode.get(normalizeCode(r.material_code));
+    const techText = rawTech ? sanitizeTechnicalText(rawTech) : '—';
     return [
       `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}`,
       `   RM: ${rm || '—'}   |   Unidade: ${r.unidade_medida || '—'}   |   Quantidade: ${r.qtd_requisicao ?? '—'}`,
@@ -552,6 +556,46 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     }
   };
 
+  // Leva a seleção para a tela de Análise de Cotações. Varre rawRmGroups
+  // (não os filtrados), pelo mesmo motivo do envio em lote: não perder itens
+  // marcados que saíram do filtro depois de marcados. O roteador de hash
+  // descarta a query string ao trocar de rota (App.tsx), então query param
+  // não serve de transporte — sessionStorage é o carregador, lido e apagado
+  // pela tela de destino assim que monta.
+  const handleCriarProcessoCotacao = () => {
+    if (selectedRis.size === 0) return;
+
+    const itens: CotacaoProcessoItemDraft[] = [];
+    rawRmGroups.forEach(g => {
+      g.items.forEach(it => {
+        if (!selectedRis.has(it.record.ri)) return;
+        const r = it.record;
+        itens.push({
+          ri: r.ri,
+          rm: g.rm || null,
+          item_reqc: r.item_reqc || null,
+          material_code: r.material_code || null,
+          texto_breve: r.texto_breve || null,
+          qtd_solicitada: r.qtd_requisicao ?? null,
+          unidade_medida: r.unidade_medida || null,
+          centro: (r.campos_extras?.centro as string) || null,
+          deposito: (r.campos_extras?.deposito as string) || null,
+        });
+      });
+    });
+
+    try {
+      sessionStorage.setItem(RASCUNHO_COTACAO_KEY, JSON.stringify({
+        criadoEm: new Date().toISOString(),
+        itens,
+      }));
+    } catch (err) {
+      console.error('Falha ao salvar rascunho do processo de cotação:', err);
+      return;
+    }
+    onNavigate('/suprimentos/cotacoes');
+  };
+
   // Aplica o status e/ou a promessa de entrega escolhidos na barra de seleção
   // a todos os itens marcados de uma vez, deixando-os como edição pendente
   // (mesmo caminho da edição individual) — o usuário revisa e confirma com
@@ -681,7 +725,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               .in('material_code', codesArr.slice(i, i + 500));
             if (error) throw error;
             data?.forEach((m: any) => {
-              if (m.technical_text) techMap.set(normalizeCode(m.material_code), m.technical_text);
+              if (m.technical_text) techMap.set(normalizeCode(m.material_code), sanitizeTechnicalText(m.technical_text));
             });
           }
           setTechTextByCode(techMap);
@@ -1794,6 +1838,14 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                 >
                   {copiedSelection ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copiedSelection ? 'Copiado!' : 'Copiar Itens'}</span>
+                </button>
+                <button
+                  onClick={handleCriarProcessoCotacao}
+                  className="px-4 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  title="Criar um processo de cotação com os itens selecionados"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  <span>Criar processo de cotação</span>
                 </button>
               </div>
             </div>

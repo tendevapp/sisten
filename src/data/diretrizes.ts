@@ -40,6 +40,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-16',
+    resumo: 'Higienização e sanitização automática de textos técnicos SAP (materials): remoção de artefatos de truncamento/codificação do SAP ALV (ex: "旰掳籷" e ideogramas asiáticos decorrentes de estouro do limite de 255 caracteres) substituindo por "..." na ingestão (AdminPanel/ZL0169/ZL0162/localDb), na busca e em todas as telas de cotação/catálogo (SuppliersNoPO, SapDetailModal, Materials).'
+  },
+  {
+    data: '2026-08-16',
     resumo: 'Expansão do módulo Almoxarifado: novas telas de Movimentações de Estoque (MB51 - 5 abas: Visão Geral, Giro & Cobertura, Idade do Estoque, Urgência de Compra, Estoque Mínimo) e Perfil de Consumo Semanal (mestre-detalhe por material com sparklines). Novas views SQL (`movimentacoes_analise.sql`, `estoque_reposicao.sql`) e módulos de cálculo (`movimentacoes.ts`, `giroEstoque.ts`, `reposicao.ts`, `consumoSemanal.ts`).'
   },
   {
@@ -1163,20 +1167,6 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           }
         ]
       },
-      {
-        id: 'teste-extracao-ia',
-        nome: 'Teste de Extração IA (protótipo)',
-        arquivo: 'src/views/TesteExtracaoIA.tsx',
-        secoes: [
-          {
-            titulo: 'Regras de negócio',
-            itens: [
-              'Ferramenta de exploração — cola markdown de cotação e extrai tabela estruturada via LLM (OpenRouter). Não persiste nada no banco. Só `admin`.',
-              '⚠️ A chave de API da OpenRouter é uma variável `VITE_*`, portanto fica exposta no bundle client-side — a restrição de acesso é só de rota (não impede extrair a chave inspecionando o JS carregado no navegador).'
-            ]
-          }
-        ]
-      }
     ]
   },
 
@@ -1368,7 +1358,8 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: [
               'Colunas obrigatórias: "Material" e a descrição breve do material (texto técnico agora opcional). Detecção da coluna de descrição é tolerante (`findMaterialDescriptionIndex`): tenta nomes canônicos exatos, depois qualquer coluna contendo "txtbreve"/"textobreve", depois um fallback genérico que evita confundir com "Descrição do Grupo" e afins.',
               '`company` fora de TEN2/AG/AMBAS cai para default TEN2 (não rejeita a linha). `status_sap` calculado como "Obsoleto" se `status_geral` ou `status_centro` = "Z1".',
-              'Duplicado por `material_code` no mesmo arquivo: a ÚLTIMA ocorrência prevalece. Upsert (`onConflict: material_code`) preserva `id`/`created_at`/`technical_text` já existentes quando a nova linha não os traz.'
+              'Duplicado por `material_code` no mesmo arquivo: a ÚLTIMA ocorrência prevalece. Upsert (`onConflict: material_code`) preserva `id`/`created_at`/`technical_text` já existentes quando a nova linha não os traz.',
+              'Sanitização de texto técnico (`sanitizeTechnicalText`): textos longos truncados pelo grid ALV do SAP GUI com artefatos de codificação/mojibake (ex: "旰掳籷" ou caracteres CJK) são automaticamente normalizados e substituídos por "..." tanto na ingestão de ZL0169 quanto ZL0162.'
             ]
           },
           {
@@ -1376,6 +1367,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: [
               'Colunas obrigatórias: "Material" e "Texto longo do material". É UPDATE-ONLY (não cria material novo) — material não encontrado só é contabilizado em `notFound`, não gera erro.',
               'Duplicado no arquivo com texto vazio NÃO apaga um texto já capturado de uma ocorrência anterior do mesmo material.',
+              'Sanitiza automaticamente caracteres corrompidos de truncamento ALV antes de gravar.',
               'Usa a RPC `atualizar_textos_tecnicos_zl0162` (essa sim é chamada de fato).'
             ]
           }

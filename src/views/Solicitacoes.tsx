@@ -13,11 +13,12 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, Search, Filter, Download, FileSpreadsheet, Send, Paperclip, Loader2 } from 'lucide-react';
+import { ClipboardList, Search, Filter, Download, FileSpreadsheet, Send, Paperclip, Loader2, Copy, Check, Info } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, Sector } from '../types';
 import { formatDateBR } from '../lib/format';
 import { AttachmentGallery } from '../components/ui/Attachments';
+import RequestDetailsModal from '../components/RequestDetailsModal';
 import {
   TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty,
 } from '../components/ui/DataTable';
@@ -51,6 +52,8 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
   const [aviso, setAviso] = useState('');
   // Força a galeria e a thread a relerem o cache depois de uma resposta.
   const [versao, setVersao] = useState(0);
+  const [itensCopiados, setItensCopiados] = useState(false);
+  const [mostrarDetalhes, setMostrarDetalhes] = useState(false);
 
   useEffect(() => {
     localDb.setPageCache('solicitacoes_todas', { tipo, status, criticidade, setor, busca });
@@ -133,6 +136,19 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
       setAviso(`${baixados} anexo(s) baixado(s). Falharam: ${falhas.join(', ')}.`);
     } else {
       setAviso(`${baixados} anexo(s) baixado(s).`);
+    }
+  };
+
+  const handleCopiarItens = async () => {
+    const texto = itens
+      .map(it => `${it.sap_code || 'Sem código'} — ${it.description} — ${it.quantity} ${it.unit}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(texto);
+      setItensCopiados(true);
+      setTimeout(() => setItensCopiados(false), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar itens:', err);
     }
   };
 
@@ -320,14 +336,24 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
                     {rotuloTipo(aberta.type)} · {rotuloStatus(aberta)} · {rotuloCriticidade(aberta.criticality)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAbertaId(null)}
-                  className="text-xs font-semibold cursor-pointer"
-                  style={{ color: 'var(--ink-muted)' }}
-                >
-                  Fechar
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarDetalhes(true)}
+                    className="flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                    style={{ color: 'var(--brand)' }}
+                  >
+                    <Info className="h-3.5 w-3.5" /> Ver detalhes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbertaId(null)}
+                    className="text-xs font-semibold cursor-pointer"
+                    style={{ color: 'var(--ink-muted)' }}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
 
               <div className="text-xs space-y-1">
@@ -344,13 +370,28 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
 
               {itens.length > 0 && (
                 <div className="space-y-1">
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                    Itens ({itens.length})
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                      Itens ({itens.length})
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={handleCopiarItens}
+                      className="flex items-center gap-1 text-[10px] font-semibold cursor-pointer"
+                      style={{ color: itensCopiados ? 'var(--brand)' : 'var(--ink-muted)' }}
+                      title="Copiar todos os itens"
+                    >
+                      {itensCopiados ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {itensCopiados ? 'Copiado!' : 'Copiar itens'}
+                    </button>
+                  </div>
                   <ul className="space-y-1 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                     {itens.map(it => (
                       <li key={it.id}>
-                        {it.description} — {it.quantity} {it.unit}
+                        <span className="font-mono font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                          {it.sap_code || 'Sem código'}
+                        </span>
+                        {' — '}{it.description} — {it.quantity} {it.unit}
                       </li>
                     ))}
                   </ul>
@@ -445,6 +486,15 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
           )}
         </div>
       </div>
+
+      {mostrarDetalhes && aberta && (
+        <RequestDetailsModal
+          request={aberta}
+          items={itens}
+          sectors={sectors}
+          onClose={() => setMostrarDetalhes(false)}
+        />
+      )}
     </div>
   );
 }

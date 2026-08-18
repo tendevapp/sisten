@@ -1027,3 +1027,295 @@ export interface EstoqueGiro {
   /** Saldo que atravessou a parada sem nenhuma movimentação desde a reabertura. */
   legado_intocado: boolean;
 }
+
+// =====================================================================
+// Módulo de Análise e Mapa de Cotações
+// =====================================================================
+
+/**
+ * Contrato com a Edge Function `extrair-cotacao`. Tudo `string | null` de
+ * propósito: converter texto em número/data é regra determinística e
+ * testável (src/lib/cotacoes.ts), não algo que se pede a um LLM estocástico.
+ */
+export interface ItemPropostaExtraido {
+  Item_Numero: string | null;
+  Codigo_Produto: string | null;
+  Descricao_Produto: string | null;
+  Marca_Fabricante: string | null;
+  Unidade_Medida: string | null;
+  NCM: string | null;
+  CST: string | null;
+  CFOP: string | null;
+  Quantidade: string | null;
+  Preco_Unitario: string | null;
+  Preco_Total_Item: string | null;
+  Aliquota_ICMS_Pct: string | null;
+  Aliquota_PIS_Pct: string | null;
+  Aliquota_COFINS_Pct: string | null;
+  Aliquota_IPI_pct: string | null;
+}
+
+export interface PropostaExtraida {
+  Arquivo_Origem: string | null;
+  Numero_Proposta: string | null;
+  Data_Emissao: string | null;
+  Validade_Proposta: string | null;
+  Fornecedor_Razao_Social: string | null;
+  Fornecedor_CNPJ: string | null;
+  Fornecedor_Inscricao_Estadual: string | null;
+  Fornecedor_Cidade_UF: string | null;
+  Fornecedor_Telefone: string | null;
+  Vendedor_Nome: string | null;
+  Vendedor_Email: string | null;
+  Vendedor_Telefone: string | null;
+  Cliente_Razao_Social: string | null;
+  Cliente_CNPJ: string | null;
+  Cliente_Inscricao_Estadual: string | null;
+  Cliente_Cidade_UF: string | null;
+  Condicao_Pagamento: string | null;
+  Forma_Pagamento: string | null;
+  Prazo_Entrega: string | null;
+  Frete_Modalidade: string | null;
+  Transportadora_Indicada: string | null;
+  Faturamento_Minimo: string | null;
+  Dados_Bancarios_PIX: string | null;
+  Valor_Total_Orcamento: string | null;
+  Observacoes_Gerais: string | null;
+  itens: ItemPropostaExtraido[];
+}
+
+export type ExtracaoErroCodigo =
+  | 'NAO_AUTENTICADO' | 'SEM_PERMISSAO' | 'ENTRADA_VAZIA' | 'ENTRADA_GRANDE'
+  | 'CONFIG_AUSENTE' | 'PROVEDOR_LIMITE' | 'PROVEDOR_INDISPONIVEL'
+  | 'PROVEDOR_TIMEOUT' | 'RESPOSTA_VAZIA' | 'RESPOSTA_TRUNCADA'
+  | 'JSON_INVALIDO' | 'ERRO_INTERNO';
+
+export interface ExtracaoUso {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface ExtracaoResposta {
+  propostas: PropostaExtraida[];
+  uso: ExtracaoUso | null;
+  modelo: string;
+  truncado: boolean;
+  extracao_id: string;
+  duracao_ms: number;
+}
+
+// ---------- Modelo persistido ----------
+
+export type CotacaoProcessoStatus = 'aberto' | 'em_analise' | 'concluido' | 'cancelado';
+export type FornecedorMatch = 'cnpj' | 'manual' | 'nao_encontrado';
+export type VinculoOrigem = 'manual' | 'sugerido' | 'aprendido';
+
+export interface CotacaoProcesso {
+  id: string;
+  numero: string;
+  titulo: string | null;
+  status: CotacaoProcessoStatus;
+  observacoes: string | null;
+  criado_por: string | null;
+  criado_por_nome: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CotacaoProcessoItem {
+  id: string;
+  processo_id: string;
+  ri: string;
+  rm: string | null;
+  item_reqc: string | null;
+  material_code: string | null;
+  texto_breve: string | null;
+  qtd_solicitada: number | null;
+  unidade_medida: string | null;
+  centro: string | null;
+  deposito: string | null;
+  created_at: string;
+}
+
+/** Item de RM antes de virar `CotacaoProcessoItem` — o que a Central de Compras junta para a seleção. */
+export interface CotacaoProcessoItemDraft {
+  ri: string;
+  rm: string | null;
+  item_reqc: string | null;
+  material_code: string | null;
+  texto_breve: string | null;
+  qtd_solicitada: number | null;
+  unidade_medida: string | null;
+  centro: string | null;
+  deposito: string | null;
+}
+
+export interface CotacaoProposta {
+  id: string;
+  processo_id: string;
+  arquivo_origem: string | null;
+  numero_proposta: string | null;
+  data_emissao: string | null;
+  validade_data: string | null;
+  validade_texto: string | null;
+  fornecedor_razao_social: string | null;
+  fornecedor_cnpj: string | null;
+  fornecedor_inscricao_estadual: string | null;
+  fornecedor_cidade: string | null;
+  fornecedor_uf: string | null;
+  fornecedor_telefone: string | null;
+  cod_vendor: string | null;
+  contato_id: string | null;
+  fornecedor_match: FornecedorMatch;
+  vendedor_nome: string | null;
+  vendedor_email: string | null;
+  vendedor_telefone: string | null;
+  cliente_razao_social: string | null;
+  cliente_cnpj: string | null;
+  cliente_inscricao_estadual: string | null;
+  cliente_cidade: string | null;
+  cliente_uf: string | null;
+  condicao_pagamento: string | null;
+  forma_pagamento: string | null;
+  prazo_entrega_texto: string | null;
+  prazo_entrega_dias: number | null;
+  frete_modalidade: 'CIF' | 'FOB' | 'OUTRO' | null;
+  transportadora_indicada: string | null;
+  faturamento_minimo: number | null;
+  dados_bancarios_pix: string | null;
+  valor_total_orcamento: number | null;
+  observacoes_gerais: string | null;
+  campos_faltantes: string[];
+  revisado: boolean;
+  extracao_id: string | null;
+  extraido_raw: PropostaExtraida | null;
+  criado_por: string | null;
+  criado_por_nome: string;
+  created_at: string;
+  updated_at: string;
+  itens?: CotacaoPropostaItem[];
+}
+
+export interface CotacaoPropostaItem {
+  id: string;
+  proposta_id: string;
+  processo_item_id: string | null;
+  fora_escopo: boolean;
+  vinculo_origem: VinculoOrigem;
+  vinculo_score: number | null;
+  ri: string | null;
+  material_code: string | null;
+  item_numero: number | null;
+  codigo_produto: string | null;
+  descricao_produto: string;
+  marca_fabricante: string | null;
+  unidade_medida: string | null;
+  ncm: string | null;
+  cst: string | null;
+  cfop: string | null;
+  quantidade: number | null;
+  preco_unitario: number | null;
+  preco_total_item: number | null;
+  aliquota_icms_pct: number | null;
+  aliquota_pis_pct: number | null;
+  aliquota_cofins_pct: number | null;
+  aliquota_ipi_pct: number | null;
+  campos_faltantes: string[];
+  extraido_raw: ItemPropostaExtraido | null;
+  created_at: string;
+}
+
+// ---------- Estado de edição (só front) ----------
+
+export interface CotacaoPropostaItemDraft {
+  _key: string;
+  processo_item_id: string | null;
+  fora_escopo: boolean;
+  vinculo_origem: VinculoOrigem;
+  vinculo_score: number | null;
+  ri: string | null;
+  material_code: string | null;
+  item_numero: number | null;
+  codigo_produto: string | null;
+  descricao_produto: string;
+  marca_fabricante: string | null;
+  unidade_medida: string | null;
+  ncm: string | null;
+  cst: string | null;
+  cfop: string | null;
+  quantidade: number | null;
+  preco_unitario: number | null;
+  preco_total_item: number | null;
+  aliquota_icms_pct: number | null;
+  aliquota_pis_pct: number | null;
+  aliquota_cofins_pct: number | null;
+  aliquota_ipi_pct: number | null;
+  extraido_raw: ItemPropostaExtraido;
+}
+
+export interface CotacaoPropostaDraft {
+  _key: string;
+  _salvo: boolean;
+  arquivo_origem: string | null;
+  numero_proposta: string | null;
+  data_emissao: string | null;
+  validade_data: string | null;
+  validade_texto: string | null;
+  fornecedor_razao_social: string | null;
+  fornecedor_cnpj: string | null;
+  fornecedor_inscricao_estadual: string | null;
+  fornecedor_cidade: string | null;
+  fornecedor_uf: string | null;
+  fornecedor_telefone: string | null;
+  cod_vendor: string | null;
+  contato_id: string | null;
+  fornecedor_match: FornecedorMatch;
+  vendedor_nome: string | null;
+  vendedor_email: string | null;
+  vendedor_telefone: string | null;
+  cliente_razao_social: string | null;
+  cliente_cnpj: string | null;
+  cliente_inscricao_estadual: string | null;
+  cliente_cidade: string | null;
+  cliente_uf: string | null;
+  condicao_pagamento: string | null;
+  forma_pagamento: string | null;
+  prazo_entrega_texto: string | null;
+  prazo_entrega_dias: number | null;
+  frete_modalidade: 'CIF' | 'FOB' | 'OUTRO' | null;
+  transportadora_indicada: string | null;
+  faturamento_minimo: number | null;
+  dados_bancarios_pix: string | null;
+  valor_total_orcamento: number | null;
+  observacoes_gerais: string | null;
+  campos_faltantes: string[];
+  revisado: boolean;
+  extracao_id: string | null;
+  extraido_raw: PropostaExtraida;
+  itens: CotacaoPropostaItemDraft[];
+}
+
+export interface CampoFaltante {
+  campo: string;
+  rotulo: string;
+  nivel: 'bloqueio' | 'aviso';
+}
+
+export interface ValidacaoProposta {
+  bloqueios: CampoFaltante[];
+  avisos: CampoFaltante[];
+  preenchidos: number;
+  total: number;
+  divergenciaTotalPct: number | null;
+}
+
+export interface SugestaoVinculo {
+  idx: number;
+  processo_item_id: string;
+  ri: string;
+  texto_breve: string | null;
+  material_code: string | null;
+  score: number;
+  origem: 'aprendido' | 'trigrama';
+}

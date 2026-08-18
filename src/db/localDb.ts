@@ -15,7 +15,7 @@ import {
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
-import { limparCacheBusca } from '../lib/materiais';
+import { limparCacheBusca, sanitizeTechnicalText } from '../lib/materiais';
 import { canAccessPage } from '../lib/pages';
 import { NOME_SETOR_JURIDICO } from '../lib/juridico';
 import { formatDateTimeBR } from '../lib/format';
@@ -1656,7 +1656,7 @@ class LocalDatabase {
             id: prev?.id || ('m_' + Math.random().toString(36).substr(2, 9)),
             material_code: m.material_code,
             description: m.description,
-            technical_text: m.technical_text || prev?.technical_text || null,
+            technical_text: sanitizeTechnicalText(m.technical_text || prev?.technical_text) || null,
             category: m.category || getAutoCategory(m.description),
             company: m.company || 'TEN2',
             unit: m.unit || 'UN',
@@ -1800,7 +1800,7 @@ class LocalDatabase {
     const dedupedMap = new Map<string, { material_code: string; technical_text: string }>();
     items.forEach(it => {
       const code = String(it.material_code || '').trim();
-      const tech = String(it.technical_text || '').trim();
+      const tech = sanitizeTechnicalText(it.technical_text);
       if (!code) return;
       if (!dedupedMap.has(code) || tech) {
         dedupedMap.set(code, { material_code: code, technical_text: tech });

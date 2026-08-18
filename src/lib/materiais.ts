@@ -194,7 +194,7 @@ export async function buscarMateriais(
   const linhas: MaterialResultado[] = (data ?? []).map((l: Record<string, unknown>) => ({
     materialCode: l.material_code as string,
     description: l.description as string,
-    technicalText: (l.technical_text as string) ?? null,
+    technicalText: l.technical_text ? sanitizeTechnicalText(l.technical_text as string) : null,
     unit: (l.unit as string) ?? 'UN',
     qtdEstoque: (l.qtd_estoque as number) ?? null,
     depositos: (l.depositos as string[]) ?? null,
@@ -216,6 +216,31 @@ export async function buscarMateriais(
   cache.set(chave, linhas);
 
   return linhas;
+}
+
+/**
+ * Sanitiza textos técnicos vindos do SAP.
+ * Substitui artefatos de codificação/truncamento do SAP ALV (ex: '旰掳籷' ou ideogramas) por '...'.
+ */
+export function sanitizeTechnicalText(text?: string | null): string {
+  if (!text) return '';
+  let cleaned = String(text);
+
+  // 1. Substitui sequências explícitas conhecidas de mojibake de truncamento SAP ALV
+  cleaned = cleaned.replace(/旰掳籷/g, '...');
+
+  // 2. Substitui quaisquer caracteres CJK / ideográficos asiáticos (artefato de codificação SAP GUI)
+  cleaned = cleaned.replace(/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]+/g, '...');
+
+  // 3. Normaliza reticências excessivas (ex: "....." ou "... ...") para "..."
+  cleaned = cleaned.replace(/(\s*\.{3,}\s*)+/g, (match, _p1, offset, string) => {
+    if (offset + match.length >= string.length) {
+      return '...';
+    }
+    return ' ... ';
+  });
+
+  return cleaned.trim();
 }
 
 /**

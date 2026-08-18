@@ -8,6 +8,7 @@ import { X, Copy, Check, ExternalLink, Calendar, User, Package, FileText, Phone,
 import { EnrichedSAPRecord, FornecedorMaterialRow, ItemStatus } from '../types';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
+import { sanitizeTechnicalText } from '../lib/materiais';
 import { useToast } from './ui/Toast';
 
 interface SapDetailModalProps {
@@ -73,7 +74,7 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
       .maybeSingle()
       .then(({ data, error }) => {
         if (data?.technical_text) {
-          setTechText(data.technical_text);
+          setTechText(sanitizeTechnicalText(data.technical_text));
         }
       })
       .catch(err => console.warn('Erro ao buscar texto técnico no Supabase:', err))

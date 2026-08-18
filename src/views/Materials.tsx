@@ -9,6 +9,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
 import { formatDateTimeBR } from '../lib/format';
+import { sanitizeTechnicalText } from '../lib/materiais';
 import { TableShell } from '../components/ui/DataTable';
 
 interface MaterialsProps {
@@ -41,7 +42,7 @@ const rowToMaterial = (r: any): Material => {
     id: r.id,
     material_code: r.material_code,
     description: r.description,
-    technical_text: r.technical_text,
+    technical_text: r.technical_text ? sanitizeTechnicalText(r.technical_text) : undefined,
     category: r.category,
     company: r.company,
     unit: r.unit,
