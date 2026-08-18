@@ -7019,6 +7019,22 @@ class LocalDatabase {
   }
 
   /**
+   * Anexos já enviados para o mesmo código SAP, em qualquer solicitação —
+   * base para um futuro banco de imagens: ao digitar o código na Nova
+   * Solicitação, sugerir a foto de uma solicitação anterior para o mesmo
+   * material em vez do usuário precisar tirar/anexar de novo.
+   *
+   * Mais recente primeiro. Não filtra por tipo de arquivo (PDF entra junto);
+   * quem consome decide se quer só imagem via `mime_type`.
+   */
+  public getAttachmentsByMaterialCode(materialCode: string): RequestAttachment[] {
+    if (!materialCode) return [];
+    return this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, [])
+      .filter(a => a.material_code === materialCode)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  /**
    * Sobe os anexos já comprimidos para o Storage e grava a metadata.
    *
    * Uma falha isolada não aborta as demais: neste ponto a solicitação já foi
@@ -7049,6 +7065,9 @@ class LocalDatabase {
 
     const user = this.getCurrentUser();
     const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+    // Base para o material_code do anexo: os itens já foram gravados neste
+    // ponto (uploadAttachments roda depois de submitRequest/saveRequestEdit).
+    const itensDaSolicitacao = this.getRequestItems(reqId);
 
     for (const { prepared, requestItemId } of entries) {
       try {
@@ -7062,10 +7081,13 @@ class LocalDatabase {
           .upload(path, prepared.blob, { contentType: prepared.mimeType, upsert: false });
         if (upErr) throw upErr;
 
+        const materialCode = itensDaSolicitacao.find(i => i.id === requestItemId)?.sap_code || undefined;
+
         const row: RequestAttachment = {
           id: 'att_' + gerarUUID(),
           request_id: reqId,
           request_item_id: requestItemId,
+          material_code: materialCode,
           name: prepared.name,
           url: path,
           storage_path: path,
@@ -7090,6 +7112,68 @@ class LocalDatabase {
     this.setStorageItem(this.attachmentsKey, list);
     this.notifyListeners();
     return { uploaded, failed };
+  }
+
+  /**
+   * Vincula à solicitação um anexo que já existe no Storage (foto do banco de
+   * imagens, achada por `getAttachmentsByMaterialCode`) — sem reenviar bytes.
+   * Cria uma linha nova em `request_attachments` apontando para o mesmo
+   * `storage_path` do anexo de origem, então o mesmo arquivo passa a ser
+   * referenciado por mais de uma solicitação/item.
+   *
+   * `deleteAttachment` sabe checar essa duplicidade antes de apagar o objeto
+   * do Storage — ver ali.
+   */
+  public async linkExistingAttachments(
+    reqId: string,
+    entries: { attachment: RequestAttachment; requestItemId?: string }[]
+  ): Promise<{ linked: number; failed: string[] }> {
+    const failed: string[] = [];
+    let linked = 0;
+
+    if (entries.length === 0) return { linked, failed };
+    if (!supabase) return { linked, failed: entries.map(e => e.attachment.name) };
+
+    const parente = this.getRequests().find(r => r.id === reqId);
+    if (!parente || !(await this.publishRequest(parente))) {
+      console.error(`Anexos não vinculados: a solicitação ${reqId} não pôde ser publicada no Supabase.`);
+      return { linked, failed: entries.map(e => e.attachment.name) };
+    }
+
+    const user = this.getCurrentUser();
+    const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+
+    for (const { attachment: origem, requestItemId } of entries) {
+      try {
+        const row: RequestAttachment = {
+          id: 'att_' + gerarUUID(),
+          request_id: reqId,
+          request_item_id: requestItemId,
+          material_code: origem.material_code,
+          name: origem.name,
+          url: origem.url,
+          storage_path: origem.storage_path || origem.url,
+          mime_type: origem.mime_type,
+          size: origem.size,
+          size_original: origem.size_original,
+          uploaded_by: user?.id,
+          created_at: new Date().toISOString()
+        };
+
+        const { error: dbErr } = await supabase.from('request_attachments').insert(row);
+        if (dbErr) throw dbErr;
+
+        list.push(row);
+        linked++;
+      } catch (err) {
+        console.error(`Falha ao vincular o anexo "${origem.name}".`, err);
+        failed.push(origem.name);
+      }
+    }
+
+    this.setStorageItem(this.attachmentsKey, list);
+    this.notifyListeners();
+    return { linked, failed };
   }
 
   /**
@@ -7121,12 +7205,18 @@ class LocalDatabase {
     }
 
     const caminho = anexo.storage_path || anexo.url;
+    // `linkExistingAttachments` faz mais de uma linha apontar para o mesmo
+    // arquivo (foto reaproveitada do banco de imagens em outro item/solicitação).
+    // Apagar o objeto do Storage aqui quebraria a miniatura de quem mais o usa.
+    const compartilhadoComOutraLinha = lista.some(a => a.id !== anexoId && (a.storage_path || a.url) === caminho);
 
     try {
-      // Falha aqui não interrompe: o registro precisa sair de qualquer forma,
-      // senão a tela continuaria mostrando um anexo que o usuário mandou apagar.
-      const { error: storageErr } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([caminho]);
-      if (storageErr) console.error(`Falha ao remover o arquivo "${caminho}" do Storage.`, storageErr);
+      if (!compartilhadoComOutraLinha) {
+        // Falha aqui não interrompe: o registro precisa sair de qualquer forma,
+        // senão a tela continuaria mostrando um anexo que o usuário mandou apagar.
+        const { error: storageErr } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([caminho]);
+        if (storageErr) console.error(`Falha ao remover o arquivo "${caminho}" do Storage.`, storageErr);
+      }
 
       const { error: dbErr } = await supabase.from('request_attachments').delete().eq('id', anexoId);
       if (dbErr) throw dbErr;

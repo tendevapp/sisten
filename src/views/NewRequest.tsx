@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
-import { Profile, RequestItem, RequestType, RequestStatus } from '../types';
+import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
 import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
@@ -146,6 +146,8 @@ interface PurchaseItemState {
    * sobrevive a `JSON.stringify` — ver `saveDraft`.
    */
   attachments?: PreparedAttachment[];
+  /** Anexos reaproveitados do banco de imagens (já existem no Storage — ver Attachments.tsx). */
+  reusedAttachments?: RequestAttachment[];
 }
 
 /* --------------------------------------------------------------------- */
@@ -809,6 +811,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           )
         : sapAttachments.map(prepared => ({ prepared }));
 
+      // Fotos reaproveitadas do banco de imagens (já existem no Storage —
+      // ver "Buscar imagem" no AttachmentPicker): vinculam sem reenviar bytes.
+      const anexosReaproveitados = () => activeTab === 'compra'
+        ? items.flatMap(item =>
+            (item.reusedAttachments || []).map(attachment => ({ attachment, requestItemId: item.id }))
+          )
+        : [];
+
       let reqId: string;
       let reqNumero: string;
 
@@ -833,13 +843,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
 
       const { failed } = await localDb.uploadAttachments(reqId, anexosDeItens());
+      const { failed: falhasReaproveitadas } = await localDb.linkExistingAttachments(reqId, anexosReaproveitados());
+      const todasAsFalhas = [...failed, ...falhasReaproveitadas];
 
-      if (failed.length > 0) {
+      if (todasAsFalhas.length > 0) {
         // A solicitação já foi gravada; perder um anexo não pode desfazê-la — o
         // usuário reenviar o arquivo em Minhas Solicitações é o caminho.
         alert(
-          `A solicitação #${reqNumero} foi ${editandoId ? 'atualizada' : 'criada'}, mas ${failed.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
-          `${failed.join(', ')}. Você pode reenviá-${failed.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
+          `A solicitação #${reqNumero} foi ${editandoId ? 'atualizada' : 'criada'}, mas ${todasAsFalhas.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
+          `${todasAsFalhas.join(', ')}. Você pode reenviá-${todasAsFalhas.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
         );
       }
 
@@ -1409,6 +1421,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       <AttachmentPicker
                         value={it.attachments || []}
                         onChange={(anexos) => handleItemChange(index, 'attachments', anexos)}
+                        reusedValue={it.reusedAttachments || []}
+                        onReusedChange={(anexos) => handleItemChange(index, 'reusedAttachments', anexos)}
+                        materialCode={it.sap_code.trim().length === 7 ? it.sap_code.trim() : undefined}
                         label="Anexar foto ou PDF"
                       />
                     </div>

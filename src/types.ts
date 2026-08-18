@@ -167,6 +167,11 @@ export interface RequestAttachment {
   // Preenchido nos anexos de item de compra; nulo no Cadastro SAP, que não tem
   // itens. Ver documentos/superpowers/specs/2026-07-28-anexos-imagens-design.md
   request_item_id?: string;
+  // Código SAP do item vinculado (RequestItem.sap_code), copiado no upload.
+  // Direto aqui — sem depender de join com request_items — para permitir
+  // consultar "anexos já enviados para este material" de forma barata,
+  // como base de um futuro banco de imagens por material_code.
+  material_code?: string;
   name: string;
   url: string; // caminho no bucket (mesmo valor de storage_path)
   storage_path?: string;

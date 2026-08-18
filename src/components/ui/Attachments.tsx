@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2 } from 'lucide-react';
+import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2, Search, Check } from 'lucide-react';
 import {
   prepareAttachment,
   AnexoInvalidoError,
@@ -29,14 +29,169 @@ import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
 
 const ehPdf = (mime?: string) => mime === 'application/pdf';
+const ehImagem = (mime?: string) => !!mime && mime.startsWith('image/');
+
+/* --------------------------------------------------------------------- */
+/* Banco de imagens — reaproveitar anexo já enviado para o mesmo material */
+/* --------------------------------------------------------------------- */
+
+interface ImageBankModalProps {
+  materialCode: string;
+  /** ids já vinculados neste item, para não oferecer de novo. */
+  jaAdicionados: Set<string>;
+  onSelect: (anexo: RequestAttachment) => void;
+  onClose: () => void;
+}
+
+function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: ImageBankModalProps) {
+  const [candidatos] = useState<RequestAttachment[]>(
+    () => localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type))
+  );
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const resolvidas: Record<string, string> = {};
+      for (const a of candidatos) {
+        const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+        if (url) resolvidas[a.id] = url;
+      }
+      if (!cancelado) {
+        setUrls(resolvidas);
+        setCarregando(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [candidatos]);
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      onClick={handleOverlayClick}
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-md max-h-[80vh] rounded-xl border shadow-2xl flex flex-col overflow-hidden"
+        style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+      >
+        <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--hairline)' }}>
+          <div>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>Imagens já enviadas</h3>
+            <p className="text-[11px] font-mono" style={{ color: 'var(--ink-muted)' }}>Material {materialCode}</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 rounded cursor-pointer" style={{ color: 'var(--ink-muted)' }} aria-label="Fechar">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto">
+          {carregando ? (
+            <p className="text-xs text-center py-6" style={{ color: 'var(--ink-muted)' }}>
+              <Loader2 className="h-4 w-4 animate-spin inline mr-1" /> Buscando imagens...
+            </p>
+          ) : candidatos.length === 0 ? (
+            <p className="text-xs text-center py-6" style={{ color: 'var(--ink-muted)' }}>
+              Nenhuma imagem encontrada para este material ainda.
+            </p>
+          ) : (
+            <ul className="grid grid-cols-3 gap-2.5">
+              {candidatos.map(a => {
+                const jaTem = jaAdicionados.has(a.id);
+                return (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      disabled={jaTem}
+                      onClick={() => onSelect(a)}
+                      title={jaTem ? 'Já adicionada a este item' : `Usar "${a.name}"`}
+                      className="relative w-full aspect-square rounded-lg border overflow-hidden cursor-pointer transition-opacity disabled:cursor-default group"
+                      style={{ borderColor: 'var(--hairline)' }}
+                    >
+                      {urls[a.id] ? (
+                        <img src={urls[a.id]} alt={a.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center" style={{ color: 'var(--ink-muted)' }}>
+                          <ImageIcon className="h-5 w-5 opacity-40" />
+                        </span>
+                      )}
+                      <span
+                        className="absolute inset-0 flex items-center justify-center transition-opacity"
+                        style={{
+                          background: jaTem ? 'rgb(0 0 0 / 0.45)' : 'rgb(0 0 0 / 0)',
+                          opacity: jaTem ? 1 : undefined,
+                        }}
+                      >
+                        {jaTem && <Check className="h-5 w-5 text-white" />}
+                        {!jaTem && (
+                          <span className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-full w-full text-[10px] font-bold text-white transition-opacity" style={{ background: 'rgb(0 0 0 / 0.45)' }}>
+                            Usar esta
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* --------------------------------------------------------------------- */
 /* Seleção                                                                */
 /* --------------------------------------------------------------------- */
 
+/** Miniatura de um anexo já existente (reaproveitado do banco de imagens) — resolve sua própria URL assinada. */
+function ReusedThumb({ anexo }: { anexo: RequestAttachment }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    localDb.getAttachmentUrl(anexo.storage_path || anexo.url).then(u => { if (!cancelado) setUrl(u); });
+    return () => { cancelado = true; };
+  }, [anexo.id]);
+
+  if (ehPdf(anexo.mime_type)) {
+    return (
+      <span
+        className="flex h-9 w-9 items-center justify-center rounded"
+        style={{ background: 'var(--brand-wash)', color: 'var(--brand-strong)' }}
+      >
+        <FileText className="h-4 w-4" />
+      </span>
+    );
+  }
+  return url ? (
+    <img src={url} alt="" className="h-9 w-9 rounded object-cover" />
+  ) : (
+    <span className="flex h-9 w-9 items-center justify-center rounded" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
+      <ImageIcon className="h-4 w-4 opacity-40" />
+    </span>
+  );
+}
+
 interface AttachmentPickerProps {
   value: PreparedAttachment[];
   onChange: (anexos: PreparedAttachment[]) => void;
+  /** Anexos já existentes no Storage, vinculados sem reenvio (banco de imagens). */
+  reusedValue?: RequestAttachment[];
+  onReusedChange?: (anexos: RequestAttachment[]) => void;
+  /**
+   * Código SAP do item. Presente e completo, habilita o botão "Buscar
+   * imagem" para reaproveitar uma foto já enviada em outra solicitação para
+   * o mesmo material.
+   */
+  materialCode?: string;
   max?: number;
   disabled?: boolean;
   /** Texto do botão. Muda entre "foto do item" e "imagem ou documento". */
@@ -46,6 +201,9 @@ interface AttachmentPickerProps {
 export function AttachmentPicker({
   value,
   onChange,
+  reusedValue = [],
+  onReusedChange,
+  materialCode,
   max = MAX_ANEXOS,
   disabled = false,
   label = 'Anexar imagem ou PDF',
@@ -53,8 +211,10 @@ export function AttachmentPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const [erro, setErro] = useState('');
   const [processando, setProcessando] = useState(false);
+  const [bancoAberto, setBancoAberto] = useState(false);
 
-  const cheio = value.length >= max;
+  const total = value.length + reusedValue.length;
+  const cheio = total >= max;
 
   const handleSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const escolhidos = Array.from(e.target.files || []);
@@ -68,8 +228,9 @@ export function AttachmentPicker({
 
     const aceitos: PreparedAttachment[] = [];
     const recusados: string[] = [];
+    const vagas = max - total;
 
-    for (const file of escolhidos.slice(0, max - value.length)) {
+    for (const file of escolhidos.slice(0, vagas)) {
       try {
         aceitos.push(await prepareAttachment(file));
       } catch (err) {
@@ -79,7 +240,7 @@ export function AttachmentPicker({
       }
     }
 
-    if (escolhidos.length > max - value.length) {
+    if (escolhidos.length > vagas) {
       recusados.push(`Limite de ${max} anexos; os excedentes foram ignorados.`);
     }
 
@@ -94,6 +255,15 @@ export function AttachmentPicker({
     setErro('');
   };
 
+  const removerReusado = (idx: number) => {
+    onReusedChange?.(reusedValue.filter((_, i) => i !== idx));
+    setErro('');
+  };
+
+  const selecionarDoBanco = (anexo: RequestAttachment) => {
+    onReusedChange?.([...reusedValue, anexo]);
+  };
+
   return (
     <div className="space-y-2">
       <input
@@ -105,19 +275,72 @@ export function AttachmentPicker({
         onChange={handleSelect}
       />
 
-      <button
-        type="button"
-        disabled={disabled || cheio || processando}
-        onClick={() => inputRef.current?.click()}
-        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-        style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
-      >
-        <Paperclip className="h-3.5 w-3.5" />
-        {processando ? 'Comprimindo…' : cheio ? `Limite de ${max} anexos` : label}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={disabled || cheio || processando}
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+        >
+          <Paperclip className="h-3.5 w-3.5" />
+          {processando ? 'Comprimindo…' : cheio ? `Limite de ${max} anexos` : label}
+        </button>
 
-      {value.length > 0 && (
+        {materialCode && onReusedChange && (
+          <button
+            type="button"
+            disabled={disabled || cheio}
+            onClick={() => setBancoAberto(true)}
+            title="Buscar imagem já enviada para este material"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--brand)', background: 'var(--surface-card)' }}
+          >
+            <Search className="h-3.5 w-3.5" />
+            Buscar imagem
+          </button>
+        )}
+      </div>
+
+      {bancoAberto && materialCode && (
+        <ImageBankModal
+          materialCode={materialCode}
+          jaAdicionados={new Set(reusedValue.map(a => a.id))}
+          onSelect={selecionarDoBanco}
+          onClose={() => setBancoAberto(false)}
+        />
+      )}
+
+      {(value.length > 0 || reusedValue.length > 0) && (
         <ul className="flex flex-wrap gap-2">
+          {reusedValue.map((a, idx) => (
+            <li
+              key={a.id}
+              className="flex items-center gap-2 rounded-lg border p-1.5 pr-2"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+            >
+              <ReusedThumb anexo={a} />
+
+              <div className="min-w-0">
+                <p className="max-w-[140px] truncate text-[11px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                  {a.name}
+                </p>
+                <p className="text-[10px] font-semibold" style={{ color: 'var(--brand)' }}>
+                  Do banco de imagens
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removerReusado(idx)}
+                aria-label={`Remover ${a.name}`}
+                className="ml-1 cursor-pointer rounded p-0.5 transition-colors hover:opacity-70"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
           {value.map((a, idx) => (
             <li
               key={a.previewUrl}
