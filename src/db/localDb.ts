@@ -25,6 +25,7 @@ import { generateSAPSeedData } from '../data/sapData';
 import { supabase, supabaseAdmin } from './supabaseClient';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
+import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
@@ -2777,7 +2778,7 @@ class LocalDatabase {
    */
   private sanitizeRequestRow(request: Request): Record<string, unknown> {
     const row: Record<string, unknown> = { ...request };
-    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at']) {
+    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo']) {
       if (row[campo] === '') row[campo] = null;
     }
 
@@ -2979,20 +2980,29 @@ class LocalDatabase {
     }
   }
 
-  public updateLinkedRM(reqId: string, rmNumber: string): void {
+  public async updateLinkedRM(reqId: string, rmNumber: string | null): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
-    if (idx !== -1) {
-      requests[idx].linked_rm_number = rmNumber;
-      requests[idx].updated_at = new Date().toISOString();
-      this.setStorageItem(this.requestsKey, requests);
+    if (idx === -1) return false;
 
-      const user = this.getCurrentUser();
-      this.logActivity(user?.id || 'admin', 'Suprimentos', 'Vincular RM', `Vinculou a RM #${rmNumber} à solicitação #${requests[idx].number}.`);
+    const valorLimpo = rmNumber?.trim() || null;
+    requests[idx] = {
+      ...requests[idx],
+      linked_rm_number: valorLimpo || undefined,
+      updated_at: new Date().toISOString(),
+    };
+    this.setStorageItem(this.requestsKey, requests);
 
-      // Create system comment
-      this.addRequestComment(reqId, `Nº da RM SAP vinculada: ${rmNumber} pelo comprador.`, false);
+    const user = this.getCurrentUser();
+    if (valorLimpo) {
+      this.logActivity(user?.id || 'admin', 'Suprimentos', 'Vincular RM', `Vinculou a RM #${valorLimpo} à solicitação #${requests[idx].number}.`);
+    } else {
+      this.logActivity(user?.id || 'admin', 'Suprimentos', 'Desvincular RM', `Removeu o vínculo de RM da solicitação #${requests[idx].number}.`);
     }
+
+    const published = await this.publishRequestRow(requests[idx]);
+    this.notifyListeners();
+    return published;
   }
 
   // SAP ME5A/ZL0132 Operational methods
@@ -5954,6 +5964,107 @@ class LocalDatabase {
     }
   }
 
+  // ZL0170 (Reconciliação Pedido x MIGO x MIRO): assim como FBL1N/ZL0024, é uma
+  // "foto" pontual do estado das faturas recebidas por pedido — não um
+  // histórico incremental. Cada carga substitui integralmente o conteúdo
+  // anterior. É essa tabela que permite achar a qual Pedido (PO) uma fatura
+  // MIRO/nota fiscal se refere (join por `doc_miro` ou `numero_doc_contabil`).
+  public async importZL0170MiroRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, ZL0170_COLUMNS);
+
+    if (!mappedFields.includes('numero_pedido') || !mappedFields.includes('item')) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do SAP ("Nº Pedido" e "Itm") não encontradas.');
+    }
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const { record, camposExtras } = mapZl0170Row(headers, mappedFields, row);
+
+      if (!record.numero_pedido || !record.item) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: record.numero_pedido || 'N/A',
+          reason: 'Nº Pedido ou Itm vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        ...record,
+        campos_extras: Object.keys(camposExtras).length ? camposExtras : null,
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const { count: previousCount } = await supabase
+        .from('zl0170_miro')
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from('zl0170_miro').delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from('zl0170_miro').insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ZL0170',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('import_logs').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('zl0170_miro', dbRows.length);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Reconciliação PO x MIGO x MIRO', `Importou ZL0170 (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de reconciliação Pedido x MIGO x MIRO (ZL0170) no Supabase:', e);
+      throw e;
+    }
+  }
+
   /**
    * Importação da transação SAP MB51 (Movimentações de Estoque).
    * @param rawRows Linhas cruas da planilha (matriz com headers na linha 0).
@@ -7317,6 +7428,55 @@ class LocalDatabase {
       console.error('Falha ao registrar o reporte.', dbErr);
       return false;
     }
+
+    // Notifica todos os administradores ativos sobre o novo reporte
+    try {
+      let adminIds = this.getProfiles()
+        .filter(p => p.roles.includes('admin') && p.status === 'ativo')
+        .map(p => p.id);
+
+      if (adminIds.length === 0 && supabase) {
+        const { data: dbAdmins } = await supabase
+          .from('profiles')
+          .select('id')
+          .contains('roles', ['admin'])
+          .eq('status', 'ativo');
+        if (dbAdmins && dbAdmins.length > 0) {
+          adminIds = dbAdmins.map(a => a.id);
+        }
+      }
+
+      if (adminIds.length > 0) {
+        const typeLabel = input.type === 'bug' ? 'Bug Reportado' : 'Nova Sugestão';
+        const title = `Novo Reporte: ${typeLabel}`;
+        const preview = input.description.length > 90 ? input.description.slice(0, 90) + '…' : input.description;
+        const desc = `${user.name} (${input.pagePath}): ${preview}`;
+        const contextKey = `feedback:${id}`;
+        const notifType = input.type === 'bug' ? 'alert' : 'info';
+
+        await this.insertNotifications(adminIds, title, desc, notifType, contextKey);
+
+        if (adminIds.includes(user.id)) {
+          const notifications = this.getStorageItem<Notification[]>(this.notificationsKey, []);
+          const localNotif: Notification = {
+            id: 'n_' + Math.random().toString(36).substr(2, 9),
+            user_id: user.id,
+            title,
+            description: desc,
+            type: notifType,
+            is_read: false,
+            context_key: contextKey,
+            created_at: new Date().toISOString(),
+          };
+          notifications.unshift(localNotif);
+          this.setStorageItem(this.notificationsKey, notifications.slice(0, 100));
+          this.notifyListeners();
+        }
+      }
+    } catch (notifErr) {
+      console.error('Falha ao gerar notificações de reporte para admins:', notifErr);
+    }
+
     return true;
   }
 

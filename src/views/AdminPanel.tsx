@@ -141,7 +141,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '#/';
-      const path = hash.slice(1).split('?')[0];
+      const [path, queryString] = hash.slice(1).split('?');
       if (path === '/admin/usuarios') setActiveTab('usuarios');
       else if (path === '/admin/setores') setActiveTab('setores');
       else if (path === '/admin/permissoes') setActiveTab('permissoes');
@@ -150,7 +150,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       else if (path === '/suprimentos/importar/log') setActiveTab('importar_sap_log');
       else if (path === '/suprimentos/grupos-comprador') setActiveTab('grupos_comprador');
       else if (path === '/admin/helpdesk') setActiveTab('helpdesk_config');
-      else if (path === '/admin/feedback') setActiveTab('feedback');
+      else if (path === '/admin/feedback') {
+        setActiveTab('feedback');
+        if (queryString) {
+          const params = new URLSearchParams(queryString);
+          const feedbackId = params.get('id');
+          if (feedbackId) {
+            setSelectedFeedbackId(feedbackId);
+            setFeedbackFilterType('all');
+            setFeedbackFilterStatus('all');
+          }
+        }
+      }
       else if (path === '/admin/diretrizes') setActiveTab('diretrizes');
     };
     handleHashChange();
@@ -2458,6 +2469,71 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
               </div>
 
+              {/* ZL0170 Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-teal-500" /> ZL0170 (Reconciliação Pedido x MIGO x MIRO)
+                </h4>
+                <p className="text-[10px] text-slate-400">Substitui integralmente os dados anteriores — a última carga é sempre a mais atual. Permite identificar a qual Pedido (PO) cada fatura MIRO se refere.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setSapProgress(0);
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+
+                            localDb.importZL0170MiroRaw(rawRows, file.name, setSapProgress).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogStatus('error');
+                          }
+                        };
+
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0170</p>
+                </div>
+              </div>
+
               {/* Tabela de Frete Upload Card */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
@@ -2835,6 +2911,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-cyan-100 text-cyan-800'
                                   : log.type === 'MB51'
                                   ? 'bg-orange-100 text-orange-800'
+                                  : log.type === 'ZL0170'
+                                  ? 'bg-teal-100 text-teal-800'
                                   : 'bg-purple-100 text-purple-800'
                               }`}>
                                 {log.type}

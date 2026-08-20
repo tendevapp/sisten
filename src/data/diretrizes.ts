@@ -39,6 +39,18 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-19',
+    resumo: 'Nova importação SAP ZL0170 (Reconciliação Pedido x MIGO x MIRO): tabela `zl0170_miro`, módulo de parsing `src/lib/zl0170Miro.ts`, card de upload em AdminPanel e log tipo "ZL0170". Permite identificar a qual Pedido (PO) uma fatura/nota fiscal MIRO se refere — o FBL1N sozinho não tem essa informação (campo "Documento de compras" vem sempre vazio na extração usada).'
+  },
+  {
+    data: '2026-08-19',
+    resumo: 'Reportes de feedback (bugs e sugestões): disparo automático de notificações (in-app e Supabase) para todos os administradores ativos ao criar novo reporte, com deep link direto via context_key para a aba Reportes do AdminPanel (`/admin/feedback?id=...`).'
+  },
+  {
+    data: '2026-08-19',
+    resumo: 'Solicitações (fila coletiva): adição de campo para digitação e persistência do Número da RM SAP (`linked_rm_number`) no painel lateral de atendimento com sincronização no Supabase, indicador visual de RM na tabela e ampliação horizontal do modal de detalhes da solicitação (`RequestDetailsModal`) com grid responsivo multi-colunas.'
+  },
+  {
     data: '2026-08-16',
     resumo: 'Higienização e sanitização automática de textos técnicos SAP (materials): remoção de artefatos de truncamento/codificação do SAP ALV (ex: "旰掳籷" e ideogramas asiáticos decorrentes de estouro do limite de 255 caracteres) substituindo por "..." na ingestão (AdminPanel/ZL0169/ZL0162/localDb), na busca e em todas as telas de cotação/catálogo (SuppliersNoPO, SapDetailModal, Materials).'
   },
@@ -196,7 +208,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'Padrões de carga: upsert incremental vs. substituição total',
             itens: [
               'Upsert incremental (compara com o que já existe, decide insert/update por chave, sem apagar o resto): ME5A (`onConflict: ri`), ZL0132/PedidosForn (`onConflict: ri,doc_compra`), Contatos (`onConflict: cod_vendor`), CidadeForn (`onConflict: forn_codigo`), ME3N/ME3M (`onConflict: documento_compras,item`), Materiais ZL0169 (`onConflict: material_code`).',
-              'Substituição total (DELETE de tudo + INSERT do arquivo inteiro — usado quando a planilha é uma "foto" pontual, não incremental): ZL0024 (Estoque), FBL1N (Contas a Pagar), Tabela de Frete.',
+              'Substituição total (DELETE de tudo + INSERT do arquivo inteiro — usado quando a planilha é uma "foto" pontual, não incremental): ZL0024 (Estoque), FBL1N (Contas a Pagar), Tabela de Frete, ZL0170 (Reconciliação Pedido x MIGO x MIRO).',
               'Toda importação grava um registro em `import_logs` com tipo, usuário, arquivo, contagens (lidos/inseridos/atualizados/eliminados), colunas ausentes/novas detectadas, e o detalhe das linhas ignoradas.'
             ]
           },
@@ -783,12 +795,14 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Recorte por papel: admin vê tudo; um usuário que é SÓ `gestor` (sem também ser requisitante/comprador/coordenador) vê só as solicitações do próprio setor; os demais papéis da fila veem tudo — regra espelha a mesma usada em Aprovações, deliberadamente, "para não criar duas verdades sobre o que um gestor enxerga".',
               '"Em aberto" = tudo que não está em fechado, cancelada, rejeitada ou rascunho.',
               'Ordenação: mais crítica primeiro; empatando, a mais antiga primeiro.',
-              'Só `comprador`, `coordenador_suprimentos`, `atendente` ou `admin` podem marcar uma resposta como "nota interna" (não visível ao solicitante).'
+              'Só `comprador`, `coordenador_suprimentos`, `atendente` ou `admin` podem marcar uma resposta como "nota interna" (não visível ao solicitante).',
+              'Vínculo de RM SAP: o atendente/comprador pode informar e salvar o Nº da RM (`linked_rm_number`) diretamente no painel lateral de atendimento, persistindo no Supabase para correlação com ME5A e Central de Compras.',
+              'A janela de detalhes suspensa (`RequestDetailsModal`) possui largura ampliada (`max-w-4xl`/`max-w-5xl`) e layout de grid responsivo multi-colunas para identificação, dados de compra e itens.'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`requests`, `request_items`, `request_comments`, `request_attachments`, `sectors`.']
+            itens: ['`requests` (inclui `linked_rm_number`), `request_items`, `request_comments`, `request_attachments`, `sectors`.']
           }
         ]
       },
@@ -898,7 +912,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
     id: 'financeiro',
     nome: 'Financeiro',
     icone: 'Wallet',
-    resumo: 'Consulta e análise gerencial das contas a pagar (relatório SAP FBL1N).',
+    resumo: 'Consulta e análise gerencial das contas a pagar (relatório SAP FBL1N). Tabela `zl0170_miro` (ZL0170) importada à parte guarda a reconciliação Pedido x MIGO x MIRO — ainda sem tela própria, mas já é a fonte para ligar uma fatura FBL1N ao Pedido (PO) de origem.',
     paginas: [
       {
         id: 'contas-pagar',
@@ -920,7 +934,10 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`vw_fbl1n_c_pagar_analise` (única fonte, paginada em blocos de 1000).']
+            itens: [
+              '`vw_fbl1n_c_pagar_analise` (única fonte, paginada em blocos de 1000).',
+              'A coluna `documento_compras` do FBL1N (mapeada para o Pedido de compra) vem sempre vazia na extração usada — não dá pra ligar fatura a PO só com FBL1N. Para isso, cruzar com `zl0170_miro` por `numero_doc_contabil` (= `numero_documento` do FBL1N) ou `doc_miro`, que traz `numero_pedido` (ver import-zl0170 em Rotinas de Importação SAP).'
+            ]
           }
         ]
       },
@@ -1053,12 +1070,13 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'Regras de negócio',
             itens: [
               'Consome `feedback_reports`: qualquer usuário autenticado pode INSERIR um reporte, mas só quem tem role `admin` pode LER (RLS) — tanto a tabela quanto os prints no bucket `feedback-screenshots`, porque os screenshots podem conter dados sensíveis (ex.: valores de compra atrás do flag `rastreio_valores`).',
+              'Ao cadastrar um reporte novo (bug ou sugestão), o sistema dispara automaticamente uma notificação (`notifications`) para todos os administradores ativos com context_key no formato `feedback:<id>`. O clique na notificação abre diretamente os detalhes do reporte correspondente no AdminPanel.',
               'Admin pode mudar `status` (novo/em_analise/resolvido/arquivado) e escrever nota interna.'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`feedback_reports`; bucket `feedback-screenshots`.']
+            itens: ['`feedback_reports`; `notifications`; bucket `feedback-screenshots`.']
           }
         ]
       },
@@ -1292,6 +1310,23 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Colunas obrigatórias: "Nº documento" e "Empresa". Também "foto" pontual: DELETE total + INSERT do arquivo inteiro em `fbl1n_c_pagar` (lotes de 500).',
               'Datas via `excelSerialToISO` (aceita serial Excel, ISO, ou BR dd/mm/yyyy). Números via `parseFbl1nNumber` (formato BR, sinal negativo do SAP antes OU depois do número).',
               'Log tipo "FBL1N"; `records_eliminated` = contagem anterior da tabela.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'import-zl0170',
+        nome: 'ZL0170 — Reconciliação Pedido x MIGO x MIRO',
+        arquivo: 'localDb.importZL0170MiroRaw, src/lib/zl0170Miro.ts',
+        secoes: [
+          {
+            titulo: 'Formato, chave e tabela',
+            itens: [
+              'Colunas obrigatórias: "Nº Pedido" e "Itm". "Foto" pontual: DELETE total + INSERT do arquivo inteiro em `zl0170_miro` (lotes de 500).',
+              'Planilha tem 45 colunas com cabeçalhos repetidos ("Moeda" 3x, "UMP" 2x, "Ano" 2x) — `ZL0170_COLUMNS` declara a ordem exata do export SAP para que `reconcileSchema` case cada ocorrência pela posição certa (ex.: a 1ª "Moeda" é `moeda_preco`, a 2ª é `moeda_valor_liquido`, a 3ª é `moeda_migo`).',
+              'Uma linha por combinação Pedido/Item x Doc. MIRO — um mesmo item de pedido pode aparecer em várias linhas (uma por fatura recebida contra ele).',
+              'É a única fonte que liga PO a fatura: FBL1N tem a coluna "Documento de compras" mapeada mas ela vem sempre vazia na extração usada. Para achar o Pedido de uma fatura FBL1N, junta por `numero_doc_contabil` (= `numero_documento` do FBL1N) ou por `doc_miro`.',
+              'Log tipo "ZL0170"; `records_eliminated` = contagem anterior da tabela.'
             ]
           }
         ]
