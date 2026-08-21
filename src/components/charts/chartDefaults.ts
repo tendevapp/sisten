@@ -36,6 +36,18 @@ export interface ChartConfig {
   stackGap: number;
 }
 
+/**
+ * Largura mínima de plotagem para gráficos de categoria (séries temporais,
+ * rankings) com contagem de categorias variável. Usada com `ChartCard`'s
+ * `minPlotWidth`: abaixo dela o gráfico ganha um trilho com rolagem
+ * horizontal em vez de espremer barras e rótulos até ficarem ilegíveis —
+ * squeeze automático do Recharts quebra números/rótulos sobrepostos assim
+ * que o período filtrado cresce (ex.: uma série semanal com 30+ pontos).
+ */
+export function estimateCategoryChartWidth(categoryCount: number, pxPerCategory = 44, min = 420): number {
+  return Math.max(min, categoryCount * pxPerCategory);
+}
+
 export function useChartConfig(): ChartConfig {
   const tokens = useChartTokens();
   const reduced = useReducedMotion();

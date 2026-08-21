@@ -11,7 +11,7 @@ import { TrendingUp } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
 import { demandaColor, Granularidade, bucketDate, resolveDataCorte, classifyCriticidadeNatureza } from '../../lib/demandas';
 import { formatInt } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -128,6 +128,12 @@ export default function RequisitadoVsPedidoChart({ records, granularidade, title
       icon={TrendingUp}
       description={subtitle}
       height={320}
+      // Três barras por categoria (requisitado empilhado, pedido, aberto)
+      // mais os rótulos numéricos no topo de cada uma: abaixo de ~64px por
+      // categoria os números começam a se sobrepor. Uma série semanal de um
+      // período longo passa fácil de 30 categorias — melhor rolar do que
+      // espremer até ilegível.
+      minPlotWidth={estimateCategoryChartWidth(data.length, 64, 480)}
       loading={loading}
       empty={data.length === 0}
       emptyMessage="Nenhuma demanda no período/filtro selecionado."

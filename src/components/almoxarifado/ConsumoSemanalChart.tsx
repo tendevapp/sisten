@@ -21,7 +21,7 @@ import { CalendarDays } from 'lucide-react';
 import { PontoSemanal, rotuloSemana, intervaloSemana } from '../../lib/consumoSemanal';
 import { formatQtd } from '../../lib/almoxarifado';
 import { formatInt } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -75,6 +75,11 @@ export default function ConsumoSemanalChart({
       icon={CalendarDays}
       description={descricao || 'Consumo e entrada por semana. Semanas sem movimento aparecem como zero.'}
       height={320}
+      // Duas barras por semana; um material com longo histórico passa
+      // fácil de 30-40 semanas — o intervalo salteado (acima) já reduz a
+      // poluição do eixo, mas rolar continua melhor do que barras finas
+      // demais para clicar/ler.
+      minPlotWidth={estimateCategoryChartWidth(formatados.length, 40, 480)}
       loading={loading}
       empty={dados.length === 0}
       emptyMessage="Selecione um material na lista para ver o perfil semanal."

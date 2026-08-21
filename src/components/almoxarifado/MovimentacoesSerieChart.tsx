@@ -9,7 +9,7 @@ import { CalendarRange } from 'lucide-react';
 import { SeriePeriodo } from '../../lib/movimentacoes';
 import { formatBRL, formatBRLCompacto } from '../../lib/almoxarifado';
 import { formatInt } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -51,6 +51,10 @@ export default function MovimentacoesSerieChart({ dados, loading }: Movimentacoe
       icon={CalendarRange}
       description="Valor movimentado (moeda interna) por mês de lançamento, separado por entrada e saída."
       height={300}
+      // Duas barras por mês, sem rótulo numérico sobre elas: o período
+      // filtrado pode se estender por muitos meses, então ~40px por
+      // categoria basta antes de precisar rolar.
+      minPlotWidth={estimateCategoryChartWidth(dadosFormatados.length, 40, 420)}
       loading={loading}
       empty={dados.length === 0}
       emptyMessage="Nenhuma movimentação no filtro selecionado."

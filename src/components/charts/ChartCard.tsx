@@ -22,6 +22,13 @@ interface ChartCardProps {
   /** Altura da área de plotagem. Reservada também no skeleton, para o
    *  conteúdo não empurrar a página ao chegar. */
   height?: number;
+  /** Largura mínima da área de plotagem, em px (ver `estimateCategoryChartWidth`
+   *  em chartDefaults.ts). Quando definida, o gráfico ganha um trilho com
+   *  rolagem horizontal própria em vez de espremer todas as categorias no
+   *  espaço disponível — melhor ler com o dedo do que apertar barras e
+   *  rótulos até sobrepor. Sem espaço sobrando (card mais largo que o
+   *  mínimo) o trilho não aparece, o gráfico só preenche a largura normal. */
+  minPlotWidth?: number;
   loading?: boolean;
   /** Quando verdadeiro, mostra `emptyMessage` no lugar do gráfico. */
   empty?: boolean;
@@ -38,6 +45,7 @@ export default function ChartCard({
   icon: Icon,
   actions,
   height = 300,
+  minPlotWidth,
   loading = false,
   empty = false,
   emptyMessage = 'Nenhum dado no filtro selecionado.',
@@ -80,6 +88,10 @@ export default function ChartCard({
           style={{ height, color: 'var(--ink-muted)' }}
         >
           {emptyMessage}
+        </div>
+      ) : minPlotWidth ? (
+        <div className="overflow-x-auto no-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6">
+          <div style={{ minWidth: minPlotWidth }}>{children}</div>
         </div>
       ) : (
         children

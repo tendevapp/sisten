@@ -17,7 +17,7 @@ import {
 import { LucideIcon } from 'lucide-react';
 import { FatiaValor } from '../../lib/historicoAnalytics';
 import { formatInt, formatPct, formatBRLCompacto } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -79,6 +79,12 @@ export default function ParetoValorChart({
       icon={icon}
       description={description}
       height={height}
+      // Uma barra por categoria, mas o rótulo do eixo vem rotacionado a -35°
+      // — precisa de espaço diagonal para não se sobrepor ao vizinho. `top`
+      // controla quantas fatias entram (a curva acumulada usa a série
+      // inteira), e pode ser configurado maior que o padrão de 12 por quem
+      // consome o componente.
+      minPlotWidth={estimateCategoryChartWidth(data.length, 56, 480)}
       empty={data.length === 0 || total <= 0}
       emptyMessage={`Nenhum ${unidade} com valor no filtro selecionado.`}
     >

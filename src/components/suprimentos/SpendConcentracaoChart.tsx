@@ -20,7 +20,7 @@ import {
 import { PieChart } from 'lucide-react';
 import { LinhaFornecedor } from '../../lib/suprimentos';
 import { formatInt, formatPct, formatBRLCompacto } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -84,6 +84,10 @@ export default function SpendConcentracaoChart({ linhas, top = 12, loading, onSe
           : 'Participação de cada fornecedor no gasto e curva acumulada.'
       }
       height={320}
+      // Top N fornecedores (padrão 12) com rótulo rotacionado a -35°: rótulos
+      // longos precisam de mais espaço horizontal por categoria do que uma
+      // barra simples, e `top` pode crescer via prop.
+      minPlotWidth={estimateCategoryChartWidth(data.length, 56, 480)}
       loading={loading}
       empty={data.length === 0}
       emptyMessage="Nenhum pedido com valor no filtro selecionado."

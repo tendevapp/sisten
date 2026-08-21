@@ -9,7 +9,7 @@ import { UserCheck } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
 import { demandaColor, CompradorInfo, resolveComprador } from '../../lib/demandas';
 import { formatInt, formatPctInt } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -63,6 +63,10 @@ export default function CompradorPerformanceChart({ records, compradores, loadin
       icon={UserCheck}
       description="RM atribuídas repartidas entre pedidos já colocados e o que segue em aberto. A altura total da barra é a carga do comprador."
       height={320}
+      // Uma barra empilhada por comprador (pedidos + aberto) mais o rótulo do
+      // total no topo — a lista não é cortada em Top N, então cresce com o
+      // número de compradores distintos no filtro.
+      minPlotWidth={estimateCategoryChartWidth(data.length, 56, 480)}
       loading={loading}
       empty={data.length === 0}
       emptyMessage="Nenhuma demanda no período/filtro selecionado."
