@@ -349,60 +349,65 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
 
       {!loading && !error && rows.length > 0 && (
         <>
-          {/* Linha de Filtros */}
+          {/* Linha de Filtros: no mobile vira uma trilha com rolagem
+              horizontal (evita empurrar os gráficos para muito longe do
+              topo). O overflow fica num wrapper interno para não colidir
+              com o position:sticky do container externo. */}
           <div
-            className="rounded-xl border p-4 flex flex-wrap items-center gap-2 sticky top-2 z-10 backdrop-blur-sm"
+            className="rounded-xl border p-4 sticky top-2 z-10 backdrop-blur-sm"
             style={{
               borderColor: 'var(--hairline)',
               background: 'color-mix(in srgb, var(--surface-card) 92%, transparent)',
               boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
             }}
           >
-            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-              <Filter className="h-3 w-3" /> Filtros
-            </span>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+              <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                <Filter className="h-3 w-3" /> Filtros
+              </span>
 
-            <select value={depositoFiltro} onChange={e => setDepositoFiltro(e.target.value)} className={selectClass}>
-              <option value="Todos">Depósito: Todos</option>
-              {opcoes.depositos.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+              <select value={depositoFiltro} onChange={e => setDepositoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
+                <option value="Todos">Depósito: Todos</option>
+                {opcoes.depositos.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
 
-            <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={selectClass}>
-              <option value="Todos">Tipo: Todos</option>
-              {opcoes.tipos.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+              <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
+                <option value="Todos">Tipo: Todos</option>
+                {opcoes.tipos.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
 
-            <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} className={selectClass}>
-              <option value="Todos">Class. Item: Todos</option>
-              {opcoes.classes.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+              <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
+                <option value="Todos">Class. Item: Todos</option>
+                {opcoes.classes.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
 
-            <select value={abcFiltro} onChange={e => setAbcFiltro(e.target.value as 'Todos' | ClasseAbc)} className={selectClass}>
-              <option value="Todos">Curva ABC: Todas</option>
-              <option value="A">Classe A</option>
-              <option value="B">Classe B</option>
-              <option value="C">Classe C</option>
-            </select>
+              <select value={abcFiltro} onChange={e => setAbcFiltro(e.target.value as 'Todos' | ClasseAbc)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
+                <option value="Todos">Curva ABC: Todas</option>
+                <option value="A">Classe A</option>
+                <option value="B">Classe B</option>
+                <option value="C">Classe C</option>
+              </select>
 
-            <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={selectClass}>
-              <option value="Todos">Grupo: Todos</option>
-              {opcoes.grupos.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
+              <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[160px] lg:w-auto truncate`}>
+                <option value="Todos">Grupo: Todos</option>
+                {opcoes.grupos.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
 
-            <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={selectClass}>
-              <option value="Todos">Item: Todos</option>
-              <option value="projeto">Projeto (100000...)</option>
-              <option value="consumo">Consumo</option>
-            </select>
+              <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
+                <option value="Todos">Item: Todos</option>
+                <option value="projeto">Projeto (100000...)</option>
+                <option value="consumo">Consumo</option>
+              </select>
 
-            {filtroAtivo && (
-              <button
-                onClick={limparFiltros}
-                className="text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 underline ml-auto cursor-pointer"
-              >
-                Limpar Filtros
-              </button>
-            )}
+              {filtroAtivo && (
+                <button
+                  onClick={limparFiltros}
+                  className="shrink-0 text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 underline lg:ml-auto cursor-pointer whitespace-nowrap"
+                >
+                  Limpar Filtros
+                </button>
+              )}
+            </div>
           </div>
 
           {/* KPIs Principais */}

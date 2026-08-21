@@ -1007,11 +1007,11 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300"
+              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300 shrink-0 w-[160px] sm:w-auto truncate"
             >
               <option value="Todos">Todos status</option>
               <option value="Com PO">Processados (Com PO)</option>
@@ -1021,7 +1021,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
             <select
               value={alertFilter}
               onChange={(e) => setAlertFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300"
+              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300 shrink-0 w-[150px] sm:w-auto truncate"
             >
               <option value="Todos">Todos alertas</option>
               <option value="⚠️ ESCALAR IMEDIATAMENTE">Escalar Imediatamente</option>
@@ -1034,7 +1034,7 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
             <select
               value={buyerGroupFilter}
               onChange={(e) => setBuyerGroupFilter(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300"
+              className="rounded-lg border border-slate-200 bg-white py-1.5 px-3 text-xs text-slate-600 focus:outline-none focus:border-slate-300 shrink-0 w-[160px] sm:w-auto truncate"
             >
               <option value="Todos">Todos compradores</option>
               {getBuyerGroupList().map(g => (
@@ -1042,9 +1042,9 @@ export default function SapPanel({ user, onNavigate }: SapPanelProps) {
               ))}
             </select>
 
-            <button 
+            <button
               onClick={handleClearFilters}
-              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors shrink-0 whitespace-nowrap"
             >
               <X className="h-3.5 w-3.5" />
               <span>Limpar</span>

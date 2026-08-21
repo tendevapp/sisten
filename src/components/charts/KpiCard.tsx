@@ -60,7 +60,7 @@ export default function KpiCard({
     <Element
       onClick={onClick}
       type={onClick ? 'button' : undefined}
-      className={`relative overflow-hidden rounded-xl border p-4 text-left w-full transition-[box-shadow,transform] duration-200
+      className={`relative overflow-hidden rounded-xl border p-3.5 lg:p-4 text-left w-full min-w-0 transition-[box-shadow,transform] duration-200
         ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2' : ''}`}
       style={{
         background: 'var(--surface-card)',
@@ -83,22 +83,23 @@ export default function KpiCard({
       </div>
 
       <span
-        className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+        className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 min-w-0"
         style={{ color: 'var(--ink-muted)' }}
       >
-        {Icon && <Icon className="h-3 w-3" aria-hidden="true" />}
-        {label}
+        {Icon && <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />}
+        <span className="truncate">{label}</span>
       </span>
 
       <p
-        className="text-xl font-black mt-2 leading-tight tabular"
+        className="text-lg lg:text-xl font-black mt-1.5 lg:mt-2 leading-tight tabular truncate"
         style={{ color: emphasize ? accent : 'var(--ink-primary)' }}
+        title={texto}
       >
         {texto}
       </p>
 
       {detail && (
-        <p className="text-[10px] mt-1 leading-snug" style={{ color: 'var(--ink-muted)' }}>
+        <p className="text-[10px] mt-1 leading-snug truncate" style={{ color: 'var(--ink-muted)' }} title={detail}>
           {detail}
         </p>
       )}

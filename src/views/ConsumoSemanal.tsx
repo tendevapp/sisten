@@ -199,58 +199,62 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
 
       {(loading || (!error && base.materiais.length > 0)) && (
         <>
-          {/* Uma linha de filtros acima de tudo que ela recorta. */}
+          {/* Uma linha de filtros acima de tudo que ela recorta. No mobile
+              vira uma trilha com rolagem horizontal para não empurrar a
+              lista de materiais para muito longe do topo. */}
           <div
-            className="rounded-xl border p-4 flex flex-wrap items-center gap-2"
+            className="rounded-xl border p-4"
             style={{
               borderColor: 'var(--hairline)',
               background: 'var(--surface-card)',
               boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
             }}
           >
-            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-              <Filter className="h-3 w-3" /> Filtros
-            </span>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+              <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                <Filter className="h-3 w-3" /> Filtros
+              </span>
 
-            <select value={tipoItem} onChange={e => setTipoItem(e.target.value as any)} className={selectClass}>
-              <option value="Todos">Item: Todos</option>
-              <option value="projeto">Projeto (100000…)</option>
-              <option value="consumo">Consumo</option>
-            </select>
+              <select value={tipoItem} onChange={e => setTipoItem(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
+                <option value="Todos">Item: Todos</option>
+                <option value="projeto">Projeto (100000…)</option>
+                <option value="consumo">Consumo</option>
+              </select>
 
-            <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={selectClass}>
-              <option value="Todos">Grupo de mercadorias: Todos</option>
-              {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
+              <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`}>
+                <option value="Todos">Grupo de mercadorias: Todos</option>
+                {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
 
-            <select value={ordem} onChange={e => setOrdem(e.target.value as OrdemLista)} className={selectClass}>
-              <option value="consumo">Ordenar: maior consumo</option>
-              <option value="regularidade">Ordenar: mais regular</option>
-              <option value="recente">Ordenar: consumo mais recente</option>
-            </select>
+              <select value={ordem} onChange={e => setOrdem(e.target.value as OrdemLista)} className={`${selectClass} shrink-0 w-[190px] lg:w-auto truncate`}>
+                <option value="consumo">Ordenar: maior consumo</option>
+                <option value="regularidade">Ordenar: mais regular</option>
+                <option value="recente">Ordenar: consumo mais recente</option>
+              </select>
 
-            <label
-              className="flex items-center gap-2 text-xs font-bold cursor-pointer rounded-lg border py-2 px-3"
-              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
-            >
-              <input
-                type="checkbox"
-                checked={somenteRegulares}
-                onChange={e => setSomenteRegulares(e.target.checked)}
-                className="cursor-pointer"
+              <label
+                className="shrink-0 flex items-center gap-2 text-xs font-bold cursor-pointer rounded-lg border py-2 px-3 whitespace-nowrap"
+                style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={somenteRegulares}
+                  onChange={e => setSomenteRegulares(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                Só com série (5+ semanas)
+              </label>
+
+              <MaterialSearchInput
+                valor={busca}
+                onChange={setBusca}
+                materiais={universoBusca}
+                materialSelecionado={materialSel}
+                onSelecionarMaterial={setMaterialSel}
+                placeholder="Filtrar a lista por código ou descrição..."
+                className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
               />
-              Só com série (5+ semanas)
-            </label>
-
-            <MaterialSearchInput
-              valor={busca}
-              onChange={setBusca}
-              materiais={universoBusca}
-              materialSelecionado={materialSel}
-              onSelecionarMaterial={setMaterialSel}
-              placeholder="Filtrar a lista por código ou descrição..."
-              className="flex-1 min-w-[220px] max-w-sm"
-            />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">

@@ -10,7 +10,7 @@ import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { formatBRL, formatBRLCompacto, formatDateBR, formatDateTimeBR, formatPct } from '../lib/format';
 import { useChartTokens, seriesColor } from '../lib/chartTokens';
-import { useChartConfig } from '../components/charts/chartDefaults';
+import { useChartConfig, estimateCategoryChartWidth } from '../components/charts/chartDefaults';
 import ChartCard from '../components/charts/ChartCard';
 import ChartTooltip from '../components/charts/ChartTooltip';
 import KpiCard from '../components/charts/KpiCard';
@@ -659,11 +659,11 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap">
         <select
           value={empresaFilter}
           onChange={e => setEmpresaFilter(e.target.value)}
-          className="px-3 py-2 border rounded-lg text-xs h-9"
+          className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
           style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
         >
           <option value="Todas">Todas empresas</option>
@@ -672,7 +672,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         <select
           value={tipoDocFilter}
           onChange={e => setTipoDocFilter(e.target.value)}
-          className="px-3 py-2 border rounded-lg text-xs h-9 max-w-[240px] truncate"
+          className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[170px] lg:w-auto lg:max-w-[240px] truncate"
           style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           title="Filtrar por Tipo de Documento - Descrição"
         >
@@ -681,7 +681,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <option key={opt.key} value={opt.key}>{opt.label}</option>
           ))}
         </select>
-        <div className="flex items-center gap-1.5 border rounded-lg px-3 py-1 text-xs h-9" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
+        <div className="flex items-center gap-1.5 border rounded-lg px-3 py-1 text-xs h-9 shrink-0 whitespace-nowrap" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
           <span className="text-slate-500 font-semibold text-[11px] shrink-0">Período:</span>
           <input
             type="date"
@@ -699,7 +699,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             title="Período Final"
           />
         </div>
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-[11px] font-semibold">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-[11px] font-semibold shrink-0 whitespace-nowrap">
           <button
             onClick={() => { setPeriodoDe('2026-01-01'); setPeriodoAte('2026-12-31'); }}
             className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
@@ -761,6 +761,12 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         icon={CalendarClock}
         description={`Comparativo do valor total pago e valor em aberto agrupados ${periodoVisao === 'mes' ? 'por mês' : 'por semana'} com base na data de pagamento. (Clique na barra para detalhar)`}
         height={410}
+        // Duas barras por período (pago, aberto) mais o rótulo de valor no
+        // topo de cada uma — período "Por Semana" num intervalo de um ano
+        // inteiro passa fácil de 50 categorias. "Por Mês" cabe folgado no
+        // mínimo; a rolagem só aparece quando a granularidade é semanal ou o
+        // período filtrado é longo.
+        minPlotWidth={estimateCategoryChartWidth(temporalChartData.length, 60, 480)}
         actions={temporalActions}
         loading={loading}
         empty={!loading && temporalChartData.length === 0}

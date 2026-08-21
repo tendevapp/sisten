@@ -347,22 +347,22 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap">
+          <div className="relative shrink-0 w-56 lg:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Fornecedor ou nº documento..."
-              className="pl-8 pr-3 py-2 border rounded-lg text-xs h-9 w-56"
+              className="pl-8 pr-3 py-2 border rounded-lg text-xs h-9 w-full"
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             />
           </div>
           <select
             value={empresaFilter}
             onChange={e => setEmpresaFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9"
+            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <option value="Todas">Todas empresas</option>
@@ -371,7 +371,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
           <select
             value={tipoDocFilter}
             onChange={e => setTipoDocFilter(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9 max-w-[240px] truncate"
+            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[170px] lg:w-auto lg:max-w-[240px] truncate"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             title="Filtrar por Tipo de Documento - Descrição"
           >
@@ -383,7 +383,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
-            className="px-3 py-2 border rounded-lg text-xs h-9"
+            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <option value="Todos">Todos status</option>
@@ -393,7 +393,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
           </select>
           <button
             onClick={() => setStatusFilter(prev => prev === 'Vencido' ? 'Todos' : 'Vencido')}
-            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-bold transition-all cursor-pointer h-9 shrink-0 ${
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-bold transition-all cursor-pointer h-9 shrink-0 whitespace-nowrap ${
               statusFilter === 'Vencido'
                 ? 'bg-red-600 text-white border-red-600 shadow-sm'
                 : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/60'
@@ -407,7 +407,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
             type="date"
             value={vencimentoDe}
             onChange={e => setVencimentoDe(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9"
+            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             title="Vencimento a partir de"
           />
@@ -415,7 +415,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
             type="date"
             value={vencimentoAte}
             onChange={e => setVencimentoAte(e.target.value)}
-            className="px-3 py-2 border rounded-lg text-xs h-9"
+            className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             title="Vencimento até"
           />

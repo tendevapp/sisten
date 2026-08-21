@@ -585,8 +585,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
           </div>
 
           {/* Linha secundária: Filtros Específicos/Selects compactos */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[110px]">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+            <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
               <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={ufInput}
@@ -597,7 +597,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 {ufOptions.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
-            <div className="relative flex-1 min-w-[130px]">
+            <div className="relative shrink-0 w-[150px] lg:w-auto lg:flex-1 lg:min-w-[130px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={classInput}
@@ -608,7 +608,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            <div className="relative flex-1 min-w-[100px]">
+            <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[100px]">
               <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={yearInput}
@@ -619,7 +619,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div className="relative flex-[1.5] min-w-[140px]">
+            <div className="relative shrink-0 w-[160px] lg:w-auto lg:flex-[1.5] lg:min-w-[140px]">
               <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={grupoInput}
@@ -630,7 +630,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
-            <div className="relative flex-1 min-w-[110px]">
+            <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
               <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={tipoItemInput}
@@ -740,21 +740,24 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
               >
                 {visibleRows.map((r, idx) => (
-                  <div key={`m-${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="p-4 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{r.material}</p>
-                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{r.txt_breve}</p>
-                      </div>
+                  <div key={`m-${r.material}-${r.doc_compra}-${r.cod_forn}-${idx}`} className="p-4 space-y-2.5 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="font-mono text-[11px] font-bold truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
+                      {r.doc_compra !== '—' && <p className="font-mono text-[11px] truncate" style={{ color: 'var(--ink-muted)' }}>· PO {r.doc_compra}</p>}
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold leading-snug line-clamp-2 min-w-0" style={{ color: 'var(--ink-primary)' }}>{r.txt_breve}</p>
                       {r.valor_total !== undefined && (
-                        <span className="shrink-0 text-sm font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>
+                        <span className="shrink-0 text-sm font-bold whitespace-nowrap tabular text-emerald-600 dark:text-emerald-450">{formatPreco(r.valor_total)}</span>
                       )}
                     </div>
-                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{r.fornecedor}</p>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      {r.qtd !== undefined && <span>Qtd: <strong className="text-slate-700 dark:text-slate-300">{r.qtd.toLocaleString('pt-BR')}</strong></span>}
-                      {r.preco_unit !== undefined && <span>Unit: <strong className="text-slate-700 dark:text-slate-300">{formatPreco(r.preco_unit)}</strong></span>}
-                      {r.doc_compra !== '—' && <span className="font-mono">PO {r.doc_compra}</span>}
+                    <p className="text-xs font-semibold truncate" style={{ color: 'var(--ink-secondary)' }}>{r.fornecedor}</p>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] pt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                      {(r.cidade || r.regiao_uf) && (
+                        <span>{[r.cidade, r.regiao_uf].filter(v => v && v !== '—').join(' / ') || '—'}</span>
+                      )}
+                      {r.qtd !== undefined && <span>Qtd: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{r.qtd.toLocaleString('pt-BR')}</strong></span>}
+                      {r.preco_unit !== undefined && <span>Unit: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatPreco(r.preco_unit)}</strong></span>}
                       {r.data_doc && <span>{formatDateBR(r.data_doc)}</span>}
                       {r.pedido_parcial && (
                         <span

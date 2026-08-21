@@ -431,47 +431,47 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
             />
           </div>
-          <div data-tour="rastreio-filtros" className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[160px]">
+          <div data-tour="rastreio-filtros" className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+            <div className="relative shrink-0 w-[172px] lg:w-auto lg:min-w-[160px]">
               <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={tipoFilter}
                 onChange={(e) => setTipoFilter(e.target.value as TipoItemFilter)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="consumo">Consumíveis</option>
                 <option value="projeto">Itens de Projeto</option>
                 <option value="todos">Tipo: Todos</option>
               </select>
             </div>
-            <div className="relative min-w-[160px]">
+            <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[160px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Status: Todos</option>
                 {statusOpts.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[150px]">
+            <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]">
               <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={setorFilter}
                 onChange={(e) => setSetorFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Setor: Todos</option>
                 {setorOpts.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div className="relative min-w-[120px]">
+            <div className="relative shrink-0 w-[120px] lg:w-auto lg:min-w-[120px]">
               <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
                 value={anoFilter}
                 onChange={(e) => setAnoFilter(e.target.value)}
-                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Ano: Todos</option>
                 {anoOpts.map(y => <option key={y} value={y}>{y}</option>)}

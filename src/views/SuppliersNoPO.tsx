@@ -1680,7 +1680,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             initialValue={searchQuery}
             onSearch={handleSearch}
           />
-          <div className="flex flex-wrap items-center gap-2">
+          {/* No mobile vira uma trilha com rolagem horizontal, como a barra
+              de filtros principal do cabeçalho (linha 1511) — evita que os
+              seis filtros empilhem em linhas cheias e empurrem a lista. */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
             <MultiSelectFilter
               label="RM"
               icon={FileText}
@@ -1688,6 +1691,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               options={rmOptions}
               selected={rmFilter}
               onChange={setRmFilter}
+              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
             />
             <MultiSelectFilter
               label="Comprador"
@@ -1696,7 +1700,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               selected={buyerFilter}
               onChange={setBuyerFilter}
               renderOption={g => `Grupo ${g}`}
-              className="min-w-[140px]"
+              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
             />
             <MultiSelectFilter
               label="Status"
@@ -1704,7 +1708,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               options={statusOptions}
               selected={statusFilter}
               onChange={setStatusFilter}
-              className="min-w-[140px]"
+              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
             />
             <MultiSelectFilter
               label="Alertas"
@@ -1712,7 +1716,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               options={alertOptions}
               selected={alertFilter}
               onChange={setAlertFilter}
-              className="min-w-[140px]"
+              className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
             />
             <MultiSelectFilter
               label="Grupo de materiais"
@@ -1720,7 +1724,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               options={grupoMercOptions}
               selected={grupoMercFilter}
               onChange={setGrupoMercFilter}
-              className="min-w-[160px]"
+              className="shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]"
             />
             <MultiSelectFilter
               label="Prioridade"
@@ -1731,6 +1735,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               onChange={setPrioridadeFilter}
               renderOption={n => (n === 'Nenhuma' ? 'Sem solicitação' : `Grau ${n}`)}
               searchable={false}
+              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
             />
           </div>
         </div>

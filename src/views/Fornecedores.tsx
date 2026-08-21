@@ -1553,8 +1553,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         {subTab === 'cadastrados' && (
           <>
             {/* Barra de filtros */}
-            <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <div className="relative flex-1 min-w-[220px]">
+            <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
@@ -1570,12 +1570,13 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 )}
               </div>
 
-              <div className="relative">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:gap-3">
+              <div className="relative shrink-0 w-[168px] lg:w-auto">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <select
                   value={classificacaoFilter}
                   onChange={e => setClassificacaoFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
                 >
                   <option value="">Todas classificações</option>
                   {classificacaoOpts.map(c => (
@@ -1586,12 +1587,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
 
-              <div className="relative">
+              <div className="relative shrink-0 w-[150px] lg:w-auto">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <select
                   value={statusFilter}
                   onChange={e => setStatusFilter(e.target.value)}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
                 >
                   {STATUS_FILTER_OPTS.map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -1601,12 +1602,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
               </div>
 
               {/* Filtro UF */}
-              <div className="relative">
+              <div className="relative shrink-0 w-[150px] lg:w-auto">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <select
                   value={ufFilter}
                   onChange={e => { setUfFilter(e.target.value); setCidadeFilter(''); setPage(0); }}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
                 >
                   <option value="">Todos os estados (UF)</option>
                   {ufOpts.map(uf => (
@@ -1617,12 +1618,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
               </div>
 
               {/* Filtro Cidade */}
-              <div className="relative">
+              <div className="relative shrink-0 w-[180px] lg:w-auto">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                 <select
                   value={cidadeFilter}
                   onChange={e => { setCidadeFilter(e.target.value); setPage(0); }}
-                  className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer max-w-[200px] truncate"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer lg:max-w-[200px] truncate"
                 >
                   <option value="">Todas as cidades</option>
                   {cidadeOpts.map(c => (
@@ -1632,13 +1633,13 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />
                 <Phone className="h-3.5 w-3.5" />
                 Com telefone
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 <input type="checkbox" checked={hasEmail} onChange={e => setHasEmail(e.target.checked)} className="accent-blue-500" />
                 <Mail className="h-3.5 w-3.5" />
                 Com e-mail
@@ -1647,12 +1648,13 @@ export default function Fornecedores({ user }: FornecedoresProps) {
               {hasFilters && (
                 <button
                   onClick={clearFilters}
-                  className="flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                  className="shrink-0 whitespace-nowrap flex items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
                 >
                   <X className="h-3.5 w-3.5" />
                   Limpar filtros
                 </button>
               )}
+              </div>
             </div>
 
             {/* Tabela de Cadastrados */}
@@ -1696,7 +1698,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                     <button
                       key={row.id}
                       onClick={() => setSelectedSupplier(row)}
-                      className="w-full text-left p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                      className="w-full text-left p-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/60 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2 mb-1.5">
                         <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-0 truncate">
