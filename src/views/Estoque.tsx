@@ -365,26 +365,26 @@ export default function Estoque({ user }: EstoqueProps) {
 
       {/* KPIs */}
       {!loading && !error && rows.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 lg:gap-3.5">
+          <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Layers className="h-3 w-3" /> Itens em Estoque</span>
-            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens.toLocaleString('pt-BR')}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><Layers className="h-3 w-3 shrink-0" /> <span className="truncate">Itens em Estoque</span></span>
+            <p className="tabular text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1 leading-tight truncate" title={kpis.itens.toLocaleString('pt-BR')}>{kpis.itens.toLocaleString('pt-BR')}</p>
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+          <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><Package className="h-3 w-3" /> Materiais</span>
-            <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.materiais.toLocaleString('pt-BR')}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><Package className="h-3 w-3 shrink-0" /> <span className="truncate">Materiais</span></span>
+            <p className="tabular text-xl lg:text-3xl font-black text-slate-800 dark:text-slate-100 mt-1 leading-tight truncate" title={kpis.materiais.toLocaleString('pt-BR')}>{kpis.materiais.toLocaleString('pt-BR')}</p>
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+          <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-violet-500 dark:bg-violet-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><PackageCheck className="h-3 w-3" /> Quantidade Total</span>
-            <p className="text-xl font-black text-slate-800 dark:text-slate-100 mt-2 leading-tight">{formatQtd(kpis.quantidade)}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><PackageCheck className="h-3 w-3 shrink-0" /> <span className="truncate">Quantidade Total</span></span>
+            <p className="tabular text-base sm:text-lg lg:text-xl font-black text-slate-800 dark:text-slate-100 mt-1.5 lg:mt-2 leading-tight truncate" title={formatQtd(kpis.quantidade)}>{formatQtd(kpis.quantidade)}</p>
           </div>
-          <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
+          <div className="min-w-0 rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-3.5 lg:p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1"><DollarSign className="h-3 w-3" /> Valor Total</span>
-            <p className="text-xl font-black text-emerald-600 dark:text-emerald-500 mt-2 leading-tight">{formatPreco(kpis.valor)}</p>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1 truncate"><DollarSign className="h-3 w-3 shrink-0" /> <span className="truncate">Valor Total</span></span>
+            <p className="tabular text-base sm:text-lg lg:text-xl font-black text-emerald-600 dark:text-emerald-500 mt-1.5 lg:mt-2 leading-tight truncate" title={formatPreco(kpis.valor)}>{formatPreco(kpis.valor)}</p>
           </div>
         </div>
       )}
@@ -430,77 +430,81 @@ export default function Estoque({ user }: EstoqueProps) {
           )}
         </div>
 
-        {/* Filtros de categoria: linha própria abaixo da busca, sempre. */}
-        <div className="flex flex-wrap items-center gap-2 pt-3.5 border-t border-slate-100 dark:border-slate-800">
-          <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1 shrink-0">
+        {/* Filtros de categoria: no mobile viram uma trilha com rolagem
+            horizontal (evita empurrar a lista para muito longe do topo);
+            a partir de `lg` quebram em linha normalmente. */}
+        <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800">
+          <span className="hidden lg:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
             <Filter className="h-3 w-3" /> Filtros
           </span>
-          <div className="relative min-w-[140px]">
-            <Warehouse className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
-            <select
-              value={depositoFilter}
-              onChange={(e) => setDepositoFilter(e.target.value)}
-              className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
-            >
-              <option value="Todos">Depósito: Todos</option>
-              {depositoOptions.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+            <div className="relative shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]">
+              <Warehouse className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
+              <select
+                value={depositoFilter}
+                onChange={(e) => setDepositoFilter(e.target.value)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Depósito: Todos</option>
+                {depositoOptions.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={tipoFilter}
+                onChange={(e) => setTipoFilter(e.target.value)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Tipo: Todos</option>
+                {tipoOptions.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Class. Item: Todos</option>
+                {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[152px] lg:w-auto lg:min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={abcFilter}
+                onChange={(e) => setAbcFilter(e.target.value as 'Todos' | ClasseAbc)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Curva ABC: Todas</option>
+                <option value="A">Classe A</option>
+                <option value="B">Classe B</option>
+                <option value="C">Classe C</option>
+              </select>
+            </div>
+            <div className="relative shrink-0 w-[152px] lg:w-auto lg:min-w-[160px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={grupoFilter}
+                onChange={(e) => setGrupoFilter(e.target.value)}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Grupo: Todos</option>
+                {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <label className="h-9 shrink-0 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none whitespace-nowrap">
+              <input
+                type="checkbox"
+                checked={apenasComSaldo}
+                onChange={(e) => setApenasComSaldo(e.target.checked)}
+                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+              />
+              Apenas com saldo
+            </label>
           </div>
-          <div className="relative min-w-[140px]">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
-            <select
-              value={tipoFilter}
-              onChange={(e) => setTipoFilter(e.target.value)}
-              className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
-            >
-              <option value="Todos">Tipo: Todos</option>
-              {tipoOptions.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="relative min-w-[140px]">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
-            <select
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-              className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
-            >
-              <option value="Todos">Class. Item: Todos</option>
-              {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="relative min-w-[140px]">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-            <select
-              value={abcFilter}
-              onChange={(e) => setAbcFilter(e.target.value as 'Todos' | ClasseAbc)}
-              className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
-            >
-              <option value="Todos">Curva ABC: Todas</option>
-              <option value="A">Classe A</option>
-              <option value="B">Classe B</option>
-              <option value="C">Classe C</option>
-            </select>
-          </div>
-          <div className="relative min-w-[160px]">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-            <select
-              value={grupoFilter}
-              onChange={(e) => setGrupoFilter(e.target.value)}
-              className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none"
-            >
-              <option value="Todos">Grupo: Todos</option>
-              {grupoOptions.map(g => <option key={g} value={g}>{g}</option>)}
-            </select>
-          </div>
-          <label className="h-9 flex items-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none whitespace-nowrap">
-            <input
-              type="checkbox"
-              checked={apenasComSaldo}
-              onChange={(e) => setApenasComSaldo(e.target.checked)}
-              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
-            />
-            Apenas com saldo
-          </label>
         </div>
       </div>
 
@@ -598,26 +602,49 @@ export default function Estoque({ user }: EstoqueProps) {
                 className="lg:hidden rounded-xl border overflow-hidden divide-y"
                 style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
               >
-                {visibleRows.map((r, idx) => (
-                  <div key={`m-${r.id}-${idx}`} className="p-4 space-y-2" style={{ borderColor: 'var(--hairline)' }}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{r.material || '—'}</p>
-                        <p className="text-xs line-clamp-2" style={{ color: 'var(--ink-secondary)' }}>{r.txt_breve_material || '—'}</p>
-                      </div>
-                      {r.valor_total !== undefined && (
-                        <span className="shrink-0 text-sm font-bold whitespace-nowrap tabular" style={{ color: 'var(--ink-primary)' }}>
-                          {formatPreco(r.valor_total)}
+                {visibleRows.map((r, idx) => {
+                  const classe = mapaAbc.get(normalizeCode(r.material)) || 'C';
+                  return (
+                    <div
+                      key={`m-${r.id}-${idx}`}
+                      className="p-4 space-y-2.5 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors"
+                      style={{ borderColor: 'var(--hairline)' }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="shrink-0 inline-flex items-center justify-center rounded border w-4 h-4 text-[9px] font-black leading-none"
+                          style={{ borderColor: CLASSE_ABC_COR[classe], color: 'var(--ink-primary)' }}
+                          title={`Classe ${classe} da curva ABC`}
+                        >
+                          {classe}
                         </span>
-                      )}
+                        <p className="font-mono text-[11px] font-bold truncate" style={{ color: 'var(--ink-muted)' }}>{r.material || '—'}</p>
+                      </div>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold leading-snug line-clamp-2 min-w-0" style={{ color: 'var(--ink-primary)' }}>
+                          {r.txt_breve_material || '—'}
+                        </p>
+                        {r.valor_total !== undefined && (
+                          <span className="shrink-0 text-sm font-bold whitespace-nowrap tabular" style={{ color: 'var(--ink-primary)' }}>
+                            {formatPreco(r.valor_total)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] pt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                        <span>Qtd <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatQtd(r.quantidade)}</strong> {r.umb || ''}</span>
+                        {r.preco_medio !== undefined && <span>PMM <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatPreco(r.preco_medio)}</strong></span>}
+                        {r.deposito && (
+                          <span
+                            className="font-mono font-semibold px-1.5 py-0.5 rounded"
+                            style={{ background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
+                          >
+                            Dep {r.deposito}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                      <span>Qtd: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatQtd(r.quantidade)}</strong> {r.umb || ''}</span>
-                      {r.preco_medio !== undefined && <span>PMM: <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatPreco(r.preco_medio)}</strong></span>}
-                      {r.deposito && <span className="font-mono">Dep {r.deposito}</span>}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Desktop: tabela com cabeçalho fixo — a lista chega a milhares

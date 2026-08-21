@@ -253,6 +253,18 @@ html, body, #root {
   animation: sisten-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Trilha com scroll horizontal sem barra visível — usada nas fileiras de
+   filtros/chips no mobile, onde a barra de rolagem do sistema quebraria o
+   visual de "pílulas". O scroll continua funcional (touch/wheel), só a
+   barra some. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ */
 /* Pagina de Login — animacoes e transicoes                            */
 /* ------------------------------------------------------------------ */

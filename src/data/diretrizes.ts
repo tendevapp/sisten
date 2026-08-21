@@ -39,6 +39,14 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-20',
+    resumo: 'Rastreio de Compras: aumento e fixação de larguras mínimas em pixels nas colunas da tabela e remoção do truncamento indevido nos números de RM, PO, datas e valores, garantindo visualização integral dos dados tanto no mobile quanto no desktop.'
+  },
+  {
+    data: '2026-08-20',
+    resumo: 'Fornecedores: habilitação de pesquisa pelo campo Nome Fantasia (`nome_fantasia`) no campo de busca textual da listagem de fornecedores cadastrados.'
+  },
+  {
     data: '2026-08-19',
     resumo: 'Nova importação SAP ZL0170 (Reconciliação Pedido x MIGO x MIRO): tabela `zl0170_miro`, módulo de parsing `src/lib/zl0170Miro.ts`, card de upload em AdminPanel e log tipo "ZL0170". Permite identificar a qual Pedido (PO) uma fatura/nota fiscal MIRO se refere — o FBL1N sozinho não tem essa informação (campo "Documento de compras" vem sempre vazio na extração usada).'
   },

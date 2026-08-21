@@ -25,19 +25,19 @@ export interface ColumnOption {
 }
 
 export const RASTREIO_COLUMNS: ColumnOption[] = [
-  { id: 'rm', label: 'RM', sortable: true, width: 'w-[9%]' },
-  { id: 'po', label: 'PO', sortable: true, width: 'w-[9%]' },
-  { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[20%]' },
-  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[13%]' },
-  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[10%]' },
-  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[7%]' },
-  { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[9%]' },
-  { id: 'valorTotal', label: 'Valor total', align: 'right', sortable: true, width: 'w-[10%]' },
-  { id: 'dataCriacao', label: 'RM Data', sortable: true, width: 'w-[8%]' },
-  { id: 'dataPo', label: 'PO Data', sortable: true, width: 'w-[8%]' },
-  { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[9%]' },
-  { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[9%]' },
-  { id: 'status', label: 'Status', sortable: true, width: 'w-[12%]' },
+  { id: 'rm', label: 'RM', sortable: true, width: 'w-[110px] min-w-[110px]' },
+  { id: 'po', label: 'PO', sortable: true, width: 'w-[110px] min-w-[110px]' },
+  { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[320px] min-w-[320px]' },
+  { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[200px] min-w-[200px]' },
+  { id: 'setor', label: 'Setor', sortable: true, width: 'w-[120px] min-w-[120px]' },
+  { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[80px] min-w-[80px]' },
+  { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[115px] min-w-[115px]' },
+  { id: 'valorTotal', label: 'Valor total', align: 'right', sortable: true, width: 'w-[125px] min-w-[125px]' },
+  { id: 'dataCriacao', label: 'RM Data', sortable: true, width: 'w-[105px] min-w-[105px]' },
+  { id: 'dataPo', label: 'PO Data', sortable: true, width: 'w-[105px] min-w-[105px]' },
+  { id: 'dataPrevista', label: 'Prev.', sortable: true, width: 'w-[115px] min-w-[115px]' },
+  { id: 'dataEntrega', label: 'Entrega', sortable: true, width: 'w-[105px] min-w-[105px]' },
+  { id: 'status', label: 'Status', sortable: true, width: 'w-[170px] min-w-[170px]' },
 ];
 
 // IDs das colunas que expõem valores de compra — visíveis apenas para quem
@@ -78,16 +78,16 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
   const cols = getRastreioColumns(canSeeValores).filter(c => visibleColumns[c.id]);
   return (
     <TableShell>
-      {/* min-width força a rolagem horizontal em vez de espremer 12 colunas;
-          table-fixed mantém as larguras estáveis entre uma página e outra. */}
-      <table className="w-full min-w-[1300px] table-fixed text-[11px]">
+      {/* min-w-full e larguras explícitas em pixels por coluna garantem que nenhuma coluna
+          fique espremida no mobile nem corte números de RM/PO e descrições. */}
+      <table className="w-full min-w-full table-fixed text-[11px]">
         <TableHeadRow>
           {cols.map(col => (
             col.sortable
               ? <SortableTh key={col.id} col={col.id} label={col.label} align={col.align} width={col.width} sortColumn={sortColumn} sortDir={sortDir} onSort={onSort} />
               : <Th key={col.id} label={col.label} align={col.align} width={col.width} />
           ))}
-          <Th label="" width="w-[44px]" />
+          <Th label="" width="w-[48px] min-w-[48px]" />
         </TableHeadRow>
         <TableBody>
           {rows.map((r, idx) => {
@@ -95,9 +95,9 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
             const unread = unreadRis.has(r.ri);
             return (
               <Tr key={`${r.ri}-${idx}`} onClick={() => onOpenRow(r)}>
-                {visibleColumns.rm && <Td mono strong truncate className="py-1.5 px-2">{r.rm}</Td>}
+                {visibleColumns.rm && <Td mono strong className="py-1.5 px-2 whitespace-nowrap">{r.rm}</Td>}
                 {visibleColumns.po && (
-                  <Td mono truncate className="py-1.5 px-2">
+                  <Td mono className="py-1.5 px-2 whitespace-nowrap">
                     {r.po !== '—'
                       ? r.po
                       : (
@@ -110,7 +110,7 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                 {visibleColumns.descricao && (
                   <Td className="py-1.5 px-2">
                     <div className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</div>
-                    <div className="truncate" title={r.descricao}>{r.descricao}</div>
+                    <div className="break-words leading-tight" title={r.descricao}>{r.descricao}</div>
                   </Td>
                 )}
                 {visibleColumns.fornecedor && (
@@ -120,28 +120,28 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                   <Td truncate title={r.setor} className="py-1.5 px-2">{r.setor}</Td>
                 )}
                 {visibleColumns.qtd && (
-                  <Td align="right" numeric truncate className="py-1.5 px-2">
+                  <Td align="right" numeric className="py-1.5 px-2 whitespace-nowrap">
                     {r.qtd !== undefined ? formatInt(r.qtd) : '—'}
                   </Td>
                 )}
                 {visibleColumns.precoUnitario && (
-                  <Td align="right" numeric truncate className="py-1.5 px-2" title={r.precoUnitario !== undefined ? formatBRL(r.precoUnitario) : undefined}>
+                  <Td align="right" numeric className="py-1.5 px-2 whitespace-nowrap" title={r.precoUnitario !== undefined ? formatBRL(r.precoUnitario) : undefined}>
                     {formatBRL(r.precoUnitario)}
                   </Td>
                 )}
                 {visibleColumns.valorTotal && (
-                  <Td align="right" numeric strong truncate className="py-1.5 px-2" title={r.valorTotal !== undefined ? formatBRL(r.valorTotal) : undefined}>
+                  <Td align="right" numeric strong className="py-1.5 px-2 whitespace-nowrap" title={r.valorTotal !== undefined ? formatBRL(r.valorTotal) : undefined}>
                     {formatBRL(r.valorTotal)}
                   </Td>
                 )}
                 {visibleColumns.dataCriacao && (
-                  <Td numeric truncate className="py-1.5 px-2">{formatDateBR(r.dataCriacao)}</Td>
+                  <Td numeric className="py-1.5 px-2 whitespace-nowrap">{formatDateBR(r.dataCriacao)}</Td>
                 )}
                 {visibleColumns.dataPo && (
-                  <Td numeric truncate className="py-1.5 px-2">{formatDateBR(r.dataPo)}</Td>
+                  <Td numeric className="py-1.5 px-2 whitespace-nowrap">{formatDateBR(r.dataPo)}</Td>
                 )}
                 {visibleColumns.dataPrevista && (
-                  <Td truncate className="py-1.5 px-2">
+                  <Td className="py-1.5 px-2 whitespace-nowrap">
                     {/* O ponto colorido é o alerta de prazo; a data ao lado é o
                         dado. Cor sozinha não carrega o status — o título do
                         ponto nomeia a situação. */}
@@ -155,7 +155,7 @@ export default function RastreioTable({ rows, hoje, visibleColumns, sortColumn, 
                   </Td>
                 )}
                 {visibleColumns.dataEntrega && (
-                  <Td numeric truncate className="py-1.5 px-2 font-medium">{formatDateBR(r.dataEntrega)}</Td>
+                  <Td numeric className="py-1.5 px-2 font-medium whitespace-nowrap">{formatDateBR(r.dataEntrega)}</Td>
                 )}
                 {visibleColumns.status && (
                   <Td className="py-1.5 px-2">
