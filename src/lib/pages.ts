@@ -94,6 +94,15 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Ver valores de compra (Rastreio Compras)',
     defaultRoles: ['comprador', 'coordenador_suprimentos', 'gestor', 'admin'],
   },
+  // Sem role padrão: não existe um papel "almoxarifado" no sistema — o
+  // acesso é concedido usuário a usuário pelo admin (Módulos de Acesso),
+  // igual ao padrão já usado em `juridico_notificar` abaixo.
+  {
+    id: 'rastreio_almoxarifado',
+    group: 'DADOS SENSÍVEIS',
+    label: 'Marcar chegada no almoxarifado (Rastreio Compras)',
+    defaultRoles: [],
+  },
   // Sem role padrão: quem recebe notificação de chamado jurídico é decidido
   // usuário a usuário pelo admin (aqui mesmo, em Módulos de Acesso), não por
   // papel — o time jurídico não necessariamente tem um setor/role próprio.

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
-  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb,
+  CalendarRange, Package, Truck, CheckCircle2, AlertTriangle, MessageCircle, HelpCircle, Bug, Lightbulb, PackageCheck, CalendarClock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -15,8 +15,9 @@ import { Profile } from '../types';
 import { canAccessPage } from '../lib/pages';
 import {
   RastreioRow, DeliveryScope, TipoItemFilter, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
-  statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort,
+  statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort, itensSemMigo,
 } from '../lib/rastreio';
+import { AlmoxarifadoChegada } from '../types';
 import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
@@ -100,6 +101,8 @@ interface RastreioComprasProps {
 
 type Tab = 'tabela' | 'cronograma';
 
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
 const STORAGE_COLS_KEY = 'sisten_rastreio_visible_columns';
 const PAGE_SIZE = 50;
 
@@ -110,6 +113,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RastreioRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [chegadasMap, setChegadasMap] = useState<Map<string, AlmoxarifadoChegada>>(new Map());
 
   const [tab, setTab] = useState<Tab>('tabela');
 
@@ -151,6 +155,66 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const hoje = useMemo(() => new Date(), []);
 
   const canSeeValores = useMemo(() => canAccessPage(user, 'rastreio_valores'), [user]);
+  const canAlmoxarifado = useMemo(() => canAccessPage(user, 'rastreio_almoxarifado'), [user]);
+  const refreshChegadas = useCallback(() => setChegadasMap(localDb.getAlmoxarifadoChegadasMap()), []);
+
+  // Seleção em lote para marcar chegada no almoxarifado direto na Tabela
+  // (só relevante para quem tem a permissão `rastreio_almoxarifado`).
+  const [selectedRis, setSelectedRis] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState(todayISO());
+  const [savingRi, setSavingRi] = useState<string | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const toggleSelectRi = useCallback((ri: string) => {
+    setSelectedRis(prev => {
+      const next = new Set(prev);
+      if (next.has(ri)) next.delete(ri); else next.add(ri);
+      return next;
+    });
+  }, []);
+
+  const marcarChegada = useCallback(async (ri: string) => {
+    setSavingRi(ri);
+    try {
+      await localDb.setAlmoxarifadoChegada([ri], todayISO());
+      refreshChegadas();
+    } catch (e: any) {
+      console.error('Falha ao marcar chegada no almoxarifado:', e);
+      toast.error('Não foi possível salvar a chegada. Tente novamente.');
+    } finally {
+      setSavingRi(null);
+    }
+  }, [refreshChegadas, toast]);
+
+  const desfazerChegada = useCallback(async (ri: string) => {
+    setSavingRi(ri);
+    try {
+      await localDb.removeAlmoxarifadoChegada(ri);
+      refreshChegadas();
+    } catch (e: any) {
+      console.error('Falha ao desfazer chegada no almoxarifado:', e);
+      toast.error('Não foi possível desfazer. Tente novamente.');
+    } finally {
+      setSavingRi(null);
+    }
+  }, [refreshChegadas, toast]);
+
+  const marcarSelecionados = useCallback(async () => {
+    if (selectedRis.size === 0) return;
+    setBulkSaving(true);
+    try {
+      const ris = Array.from(selectedRis);
+      await localDb.setAlmoxarifadoChegada(ris, bulkDate);
+      setSelectedRis(new Set());
+      refreshChegadas();
+      toast.success(`Chegada registrada para ${ris.length} item(ns).`);
+    } catch (e: any) {
+      console.error('Falha ao marcar chegada em lote:', e);
+      toast.error('Não foi possível salvar a chegada em lote. Tente novamente.');
+    } finally {
+      setBulkSaving(false);
+    }
+  }, [selectedRis, bulkDate, refreshChegadas, toast]);
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -169,6 +233,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       }
       const records = localDb.getEnrichedSAPRequisicoes();
       setRows(buildRastreioRows(records));
+      setChegadasMap(localDb.getAlmoxarifadoChegadasMap());
       setLastUpdated(localDb.getDatasetUpdatedAt('requisicoes'));
     } catch (e: any) {
       console.error('Erro ao montar rastreio de compras:', e);
@@ -227,7 +292,19 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
+  // Itens com PO emitida e ainda sem MIGO, dentro do que está visível na
+  // tabela — candidatos a seleção em lote para marcar chegada no almoxarifado.
+  const almoxarifadoCandidateRis = useMemo(() => itensSemMigo(visibleRows).map(r => r.ri), [visibleRows]);
+
+  const toggleSelectAllRis = useCallback(() => {
+    setSelectedRis(prev => {
+      const allSelected = almoxarifadoCandidateRis.length > 0 && almoxarifadoCandidateRis.every(ri => prev.has(ri));
+      return allSelected ? new Set() : new Set(almoxarifadoCandidateRis);
+    });
+  }, [almoxarifadoCandidateRis]);
+
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir]);
+  useEffect(() => { setSelectedRis(new Set()); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, tab]);
 
   // Deep-link: notificação de mensagem abre a conversa do item (#/rastreio?ri=...).
   useEffect(() => {
@@ -420,8 +497,14 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs">
-        <div className="flex flex-col xl:flex-row gap-3">
-          <div data-tour="rastreio-search" className="relative flex-1">
+        {/* Busca sempre em sua própria linha, sem disputar espaço com os
+            filtros: um <div> flex-1 ao lado de uma trilha overflow-x-auto na
+            mesma linha (flex-row) faz um dos dois encolher de forma
+            imprevisível — ora a busca vira um quadrado só com o ícone, ora a
+            trilha de filtros some inteira — dependendo da largura exata da
+            tela. Mesmo padrão já usado em Estoque.tsx. */}
+        <div className="space-y-3">
+          <div data-tour="rastreio-search" className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
@@ -560,6 +643,34 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 </div>
               ) : (
                 <>
+                  {canAlmoxarifado && selectedRis.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20">
+                      <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">{selectedRis.size} selecionado(s)</span>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        <CalendarClock className="h-3.5 w-3.5" /> Data de chegada
+                        <input
+                          type="date"
+                          value={bulkDate}
+                          onChange={e => setBulkDate(e.target.value)}
+                          max={todayISO()}
+                          className="ml-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none"
+                        />
+                      </label>
+                      <button
+                        onClick={marcarSelecionados}
+                        disabled={bulkSaving}
+                        className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                      >
+                        <PackageCheck className="h-3.5 w-3.5" /> Chegou — marcar {selectedRis.size} item(ns)
+                      </button>
+                      <button
+                        onClick={() => setSelectedRis(new Set())}
+                        className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      >
+                        Limpar seleção
+                      </button>
+                    </div>
+                  )}
                   <div data-tour="rastreio-tabela">
                     <RastreioTable
                       rows={visibleRows}
@@ -571,6 +682,14 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                       onOpenRow={setSelectedRow}
                       unreadRis={unreadRis}
                       canSeeValores={canSeeValores}
+                      canAlmoxarifado={canAlmoxarifado}
+                      chegadasMap={chegadasMap}
+                      selectedRis={selectedRis}
+                      onToggleSelect={toggleSelectRi}
+                      onToggleSelectAll={toggleSelectAllRis}
+                      savingRi={savingRi}
+                      onMarcarChegada={marcarChegada}
+                      onDesfazerChegada={desfazerChegada}
                     />
                   </div>
                   {visibleCount < sortedRows.length && (
@@ -588,7 +707,19 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             </div>
           )}
 
-          {tab === 'cronograma' && <RastreioCronograma rows={filteredRows} hoje={hoje} onOpenRow={setSelectedRow} unreadRis={unreadRis} />}
+          {tab === 'cronograma' && (
+            <RastreioCronograma
+              rows={filteredRows}
+              hoje={hoje}
+              onOpenRow={setSelectedRow}
+              unreadRis={unreadRis}
+              canAlmoxarifado={canAlmoxarifado}
+              chegadasMap={chegadasMap}
+              savingRi={savingRi}
+              onMarcarChegada={marcarChegada}
+              onDesfazerChegada={desfazerChegada}
+            />
+          )}
         </>
       )}
 

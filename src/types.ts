@@ -297,6 +297,18 @@ export interface RastreioPrioridade {
   created_at: string;
 }
 
+// Chegada física no almoxarifado de um item com PO emitida mas ainda sem
+// MIGO lançado no SAP. Ver db/sql/tables/almoxarifado_chegadas.sql.
+export interface AlmoxarifadoChegada {
+  ri: string;
+  rm?: string;
+  data_chegada: string; // yyyy-MM-dd
+  registrado_por_id: string;
+  registrado_por_nome: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ItemStatus =
   | 'Aguardando Cotação'
   | 'Cotação enviada'

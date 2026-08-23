@@ -9,7 +9,7 @@ import {
   SAPPedido, SAPObsHistory, SAPImportLog, UserBuyerGroup, RequestStatus, Role, RequestType,
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
-  RastreioMensagem, RastreioPrioridade, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
+  RastreioMensagem, RastreioPrioridade, AlmoxarifadoChegada, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
   ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry,
   MB51MovEstoque, MB51ImportMode, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao
 } from '../types';
@@ -80,6 +80,7 @@ class LocalDatabase {
   private buyerGroupsKey = 'sisten_buyer_groups';
   private compradoresKey = 'sisten_compradores';
   private prioridadesKey = 'sisten_rastreio_prioridades';
+  private chegadasAlmoxarifadoKey = 'sisten_almoxarifado_chegadas';
   private logsKey = 'sisten_activity_logs';
   private favoritesKey = 'sisten_favorites';
   private sequencesKey = 'sisten_sequences';
@@ -258,6 +259,7 @@ class LocalDatabase {
           ['buyer_groups', () => this.syncBuyerGroups()],
           ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
           ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
+          ['almoxarifado_chegadas', () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri')],
           ['tabela_frete', () => this.syncSimpleTable('tabela_frete', this.tabelaFreteKey, true, undefined, 'id')],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
@@ -1474,6 +1476,16 @@ class LocalDatabase {
     return this.getStorageItem<RastreioPrioridade[]>(this.prioridadesKey, []);
   }
 
+  // Chegadas físicas registradas pelo almoxarifado para itens sem MIGO
+  // (ver db/sql/tables/almoxarifado_chegadas.sql). Uma linha por `ri`.
+  public getAlmoxarifadoChegadas(): AlmoxarifadoChegada[] {
+    return this.getStorageItem<AlmoxarifadoChegada[]>(this.chegadasAlmoxarifadoKey, []);
+  }
+
+  public getAlmoxarifadoChegadasMap(): Map<string, AlmoxarifadoChegada> {
+    return new Map(this.getAlmoxarifadoChegadas().map(c => [c.ri, c]));
+  }
+
   public getBuyerGroupsForUser(userId: string): UserBuyerGroup[] {
     return this.getBuyerGroups().filter(bg => bg.user_id === userId);
   }
@@ -2293,6 +2305,66 @@ class LocalDatabase {
     }
 
     return row;
+  }
+
+  // Marca em lote a chegada física no almoxarifado de 1+ itens (mesma data
+  // para todos). Upsert por `ri`: marcar de novo um item já chegado apenas
+  // atualiza a data. Ver db/sql/tables/almoxarifado_chegadas.sql.
+  public async setAlmoxarifadoChegada(ris: string[], dataChegada: string): Promise<void> {
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    if (ris.length === 0) return;
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Usuário não autenticado.');
+
+    const rmByRi = new Map(this.getEnrichedSAPRequisicoes().map(r => [r.ri, r.requisicao_de_compra]));
+    const now = new Date().toISOString();
+    const rows: AlmoxarifadoChegada[] = ris.map(ri => ({
+      ri,
+      rm: rmByRi.get(ri),
+      data_chegada: dataChegada,
+      registrado_por_id: user.id,
+      registrado_por_nome: user.name,
+      created_at: now,
+      updated_at: now,
+    }));
+
+    const { error } = await supabase.from('almoxarifado_chegadas').upsert(
+      rows.map(r => ({
+        ri: r.ri, rm: r.rm ?? null, data_chegada: r.data_chegada,
+        registrado_por_id: r.registrado_por_id, registrado_por_nome: r.registrado_por_nome,
+        updated_at: r.updated_at,
+      })),
+      { onConflict: 'ri' }
+    );
+    if (error) throw error;
+
+    // Atualiza o cache local imediatamente, sem esperar o próximo sync.
+    const cached = this.getAlmoxarifadoChegadas();
+    const byRi = new Map(cached.map(c => [c.ri, c]));
+    rows.forEach(r => byRi.set(r.ri, { ...byRi.get(r.ri), ...r, created_at: byRi.get(r.ri)?.created_at ?? r.created_at }));
+    this.setStorageItem(this.chegadasAlmoxarifadoKey, Array.from(byRi.values()));
+
+    this.logActivity(
+      user.id, 'Rastreio Compras', 'Marcar Chegada Almoxarifado',
+      `${user.name} marcou chegada em ${dataChegada} para ${ris.length} item(ns): ${ris.join(', ')}.`
+    );
+  }
+
+  // Desfaz a marcação de chegada de um item (ex.: marcado por engano).
+  public async removeAlmoxarifadoChegada(ri: string): Promise<void> {
+    if (!supabase) throw new Error('Sem conexão com o servidor.');
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Usuário não autenticado.');
+    const { error } = await supabase.from('almoxarifado_chegadas').delete().eq('ri', ri);
+    if (error) throw error;
+
+    const cached = this.getAlmoxarifadoChegadas().filter(c => c.ri !== ri);
+    this.setStorageItem(this.chegadasAlmoxarifadoKey, cached);
+
+    this.logActivity(
+      user.id, 'Rastreio Compras', 'Desfazer Chegada Almoxarifado',
+      `${user.name} desfez a chegada no almoxarifado do item ${ri}.`
+    );
   }
 
   // Conjunto de `ri` com mensagens não lidas para o usuário (a partir das

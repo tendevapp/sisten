@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes, Sparkles
+  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -409,6 +409,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   // Decodificação do grupo de mercadoria do SAP para a descrição exibida ao
   // lado do item. Cadastro estático, então o índice é montado uma vez.
   const grupoMercMap = useMemo(() => grupoMercadoriaDesc(localDb.getGruposMercadoria()), []);
+
+  // Chegadas físicas registradas pelo almoxarifado (aba Almoxarifado em
+  // Rastreio Compras) para itens sem MIGO — mostradas aqui como selo de
+  // auditoria: o item pode já estar fisicamente recebido mesmo "pendente".
+  const chegadasMap = useMemo(() => localDb.getAlmoxarifadoChegadasMap(), [rawRmGroups]);
   const grupoMercDe = useCallback(
     (r: EnrichedSAPRecord): string => grupoMercMap.get(r.grupo_de_mercadorias || '') || '',
     [grupoMercMap]
@@ -1357,6 +1362,15 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               Sem MIGO
             </span>
           )}
+          {!dataMigo && chegadasMap.has(r.ri) && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/50"
+              title={`Registrado por ${chegadasMap.get(r.ri)!.registrado_por_nome}`}
+            >
+              <PackageCheck className="h-3 w-3 shrink-0" />
+              Chegou no almoxarifado {formatDateBR(chegadasMap.get(r.ri)!.data_chegada)}
+            </span>
+          )}
         </div>
       );
     }
@@ -1675,15 +1689,31 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
       )}
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
-        <div className="flex flex-col xl:flex-row gap-3">
+        {/* Busca sempre em sua própria linha, sem disputar espaço com os
+            filtros: um <div> flex-1 ao lado de uma trilha overflow-x-auto na
+            mesma linha (flex-row) faz um dos dois encolher de forma
+            imprevisível — ora a busca vira um quadrado só com o ícone, ora a
+            trilha de filtros some inteira — dependendo da largura exata da
+            tela. Mesmo padrão já usado em Estoque.tsx. */}
+        <div className="space-y-3">
           <SearchInput
             initialValue={searchQuery}
             onSearch={handleSearch}
           />
           {/* No mobile vira uma trilha com rolagem horizontal, como a barra
               de filtros principal do cabeçalho (linha 1511) — evita que os
-              seis filtros empilhem em linhas cheias e empurrem a lista. */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+              seis filtros empilhem em linhas cheias e empurrem a lista.
+              lg:overflow-visible: overflow-x-auto sem overflow-y explícito faz
+              o navegador tratar as DUAS direções como "auto" (regra do
+              CSS2.1 p/ combinar visible com não-visible) — isso recorta
+              verticalmente qualquer painel de MultiSelectFilter aberto (que é
+              position:absolute mas filho desta trilha) à altura de uma única
+              linha, sobrando só a caixa "Buscar..." do topo do painel e
+              escondendo a lista de opções inteira. A partir de `lg` os
+              filtros já quebram em linha (lg:flex-wrap) e não precisam mais
+              rolar na horizontal, então dá pra voltar a overflow:visible e
+              deixar os painéis abrirem por cima do resto da tela. */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
             <MultiSelectFilter
               label="RM"
               icon={FileText}

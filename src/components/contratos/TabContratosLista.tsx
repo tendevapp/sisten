@@ -398,8 +398,14 @@ export default function TabContratosLista() {
 
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
-        <div className="flex flex-col xl:flex-row gap-3">
-          <div className="relative flex-1">
+        {/* Busca sempre em sua própria linha, sem disputar espaço com os
+            filtros: um <div> flex-1 ao lado de uma trilha overflow-x-auto na
+            mesma linha (flex-row) faz um dos dois encolher de forma
+            imprevisível — ora a busca vira um quadrado só com o ícone, ora a
+            trilha de filtros some inteira — dependendo da largura exata da
+            tela. Mesmo padrão já usado em Estoque.tsx. */}
+        <div className="space-y-3">
+          <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"

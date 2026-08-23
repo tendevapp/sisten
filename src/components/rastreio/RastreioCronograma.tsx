@@ -4,13 +4,14 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Package, Truck, CalendarClock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Package, Truck, CalendarClock, PackageCheck, Undo2 } from 'lucide-react';
 import { addDays, addMonths, format, isSameDay, isSameMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus,
-  schedulableRows, entriesForDay, weekDays, monthMatrix,
+  schedulableRows, entriesForDay, weekDays, monthMatrix, isAlmoxarifadoCandidate, formatDateBR,
 } from '../../lib/rastreio';
+import { AlmoxarifadoChegada } from '../../types';
 
 type Mode = 'diario' | 'semanal' | 'mensal';
 
@@ -19,13 +20,27 @@ interface RastreioCronogramaProps {
   hoje: Date;
   onOpenRow?: (row: RastreioRow) => void;
   unreadRis?: Set<string>;
+  /** Permissão `rastreio_almoxarifado`: mostra marcação de chegada nos cartões. */
+  canAlmoxarifado?: boolean;
+  chegadasMap?: Map<string, AlmoxarifadoChegada>;
+  savingRi?: string | null;
+  onMarcarChegada?: (ri: string) => void;
+  onDesfazerChegada?: (ri: string) => void;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // Cartão de uma entrega no cronograma: item, qtd, PO e fornecedor.
-function EntryCard({ row, delivery, compact, onOpen, unread }: { row: RastreioRow; delivery: DeliveryStatus; compact?: boolean; onOpen?: (row: RastreioRow) => void; unread?: boolean }) {
+function EntryCard({
+  row, delivery, compact, onOpen, unread,
+  canAlmoxarifado, chegada, saving, onMarcarChegada, onDesfazerChegada,
+}: {
+  row: RastreioRow; delivery: DeliveryStatus; compact?: boolean; onOpen?: (row: RastreioRow) => void; unread?: boolean;
+  canAlmoxarifado?: boolean; chegada?: AlmoxarifadoChegada; saving?: boolean;
+  onMarcarChegada?: (ri: string) => void; onDesfazerChegada?: (ri: string) => void;
+}) {
   const meta = DELIVERY_STATUS_META[delivery];
+  const showAlmoxarifado = canAlmoxarifado && (chegada || isAlmoxarifadoCandidate(row));
   return (
     <div
       onClick={onOpen ? () => onOpen(row) : undefined}
@@ -51,6 +66,33 @@ function EntryCard({ row, delivery, compact, onOpen, unread }: { row: RastreioRo
               <Truck className="h-2.5 w-2.5 shrink-0" />{row.fornecedor}
             </p>
           )}
+          {showAlmoxarifado && (
+            <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+              {chegada ? (
+                <>
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold" style={{ color: 'var(--status-success, #059669)' }} title={`Registrado por ${chegada.registrado_por_nome}`}>
+                    <PackageCheck className="h-3 w-3" /> Chegou {formatDateBR(chegada.data_chegada)}
+                  </span>
+                  <button
+                    onClick={() => onDesfazerChegada?.(row.ri)}
+                    disabled={saving}
+                    title="Desfazer chegada"
+                    className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
+                  >
+                    <Undo2 className="h-3 w-3" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => onMarcarChegada?.(row.ri)}
+                  disabled={saving}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[9px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
+                >
+                  <PackageCheck className="h-3 w-3" /> Marcar chegada
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -71,7 +113,9 @@ function Legend() {
   );
 }
 
-export default function RastreioCronograma({ rows, hoje, onOpenRow, unreadRis }: RastreioCronogramaProps) {
+export default function RastreioCronograma({
+  rows, hoje, onOpenRow, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada,
+}: RastreioCronogramaProps) {
   const [mode, setMode] = useState<Mode>('semanal');
   const [refDate, setRefDate] = useState<Date>(hoje);
 
@@ -136,8 +180,20 @@ export default function RastreioCronograma({ rows, hoje, onOpenRow, unreadRis }:
         )}
       </div>
 
-      {mode === 'diario' && <DailyView rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis} />}
-      {mode === 'semanal' && <WeeklyView rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis} />}
+      {mode === 'diario' && (
+        <DailyView
+          rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis}
+          canAlmoxarifado={canAlmoxarifado} chegadasMap={chegadasMap} savingRi={savingRi}
+          onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+        />
+      )}
+      {mode === 'semanal' && (
+        <WeeklyView
+          rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis}
+          canAlmoxarifado={canAlmoxarifado} chegadasMap={chegadasMap} savingRi={savingRi}
+          onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+        />
+      )}
       {mode === 'mensal' && (
         <MonthlyView
           rows={agendaRows}
@@ -146,6 +202,11 @@ export default function RastreioCronograma({ rows, hoje, onOpenRow, unreadRis }:
           onSelectDay={(d) => { setRefDate(d); setMode('diario'); }}
           onOpen={onOpenRow}
           unreadRis={unreadRis}
+          canAlmoxarifado={canAlmoxarifado}
+          chegadasMap={chegadasMap}
+          savingRi={savingRi}
+          onMarcarChegada={onMarcarChegada}
+          onDesfazerChegada={onDesfazerChegada}
         />
       )}
     </div>
@@ -162,19 +223,33 @@ function EmptyDay({ label }: { label: string }) {
   );
 }
 
-type ViewExtras = { onOpen?: (row: RastreioRow) => void; unreadRis?: Set<string> };
+type ViewExtras = {
+  onOpen?: (row: RastreioRow) => void;
+  unreadRis?: Set<string>;
+  canAlmoxarifado?: boolean;
+  chegadasMap?: Map<string, AlmoxarifadoChegada>;
+  savingRi?: string | null;
+  onMarcarChegada?: (ri: string) => void;
+  onDesfazerChegada?: (ri: string) => void;
+};
 
-function DailyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
+function DailyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const entries = useMemo(() => entriesForDay(rows, refDate), [rows, refDate]);
   if (entries.length === 0) return <EmptyDay label="para este dia" />;
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {entries.map((r, i) => <EntryCard key={`${r.ri}-${i}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
+      {entries.map((r, i) => (
+        <EntryCard
+          key={`${r.ri}-${i}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)}
+          canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
+          onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+        />
+      ))}
     </div>
   );
 }
 
-function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
+function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const days = useMemo(() => weekDays(refDate), [refDate]);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
@@ -190,7 +265,13 @@ function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: Rastreio
             <div className="space-y-1.5">
               {entries.length === 0
                 ? <p className="px-0.5 py-2 text-[10px] text-slate-300 dark:text-slate-600">—</p>
-                : entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
+                : entries.map((r, j) => (
+                  <EntryCard
+                    key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact onOpen={onOpen} unread={unreadRis?.has(r.ri)}
+                    canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
+                    onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+                  />
+                ))}
             </div>
           </div>
         );
@@ -199,7 +280,7 @@ function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis }: { rows: Rastreio
   );
 }
 
-function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void } & ViewExtras) {
+function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void } & ViewExtras) {
   const weeks = useMemo(() => monthMatrix(refDate), [refDate]);
   const weekdayHeaders = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
@@ -268,7 +349,13 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis }: { 
                     <span className="text-slate-400 dark:text-slate-500 font-semibold">· {entries.length}</span>
                   </div>
                   <div className="space-y-1.5">
-                    {entries.map((r, j) => <EntryCard key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)} />)}
+                    {entries.map((r, j) => (
+                      <EntryCard
+                        key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)}
+                        canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
+                        onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+                      />
+                    ))}
                   </div>
                 </div>
               );

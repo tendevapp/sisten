@@ -250,6 +250,21 @@ export function defaultSort(rows: RastreioRow[]): RastreioRow[] {
   });
 }
 
+// Item elegível para marcar chegada física no almoxarifado: PO emitida,
+// ainda sem MIGO (fluxo: chega no almoxarifado -> dá entrada -> envia NF
+// para lançamento -> MIGO aparece no SAP). Mesma regra usada no filtro
+// "Sem MIGO" da Central de Compras, reaproveitada na Tabela e no Cronograma
+// de Rastreio Compras.
+export function isAlmoxarifadoCandidate(r: RastreioRow): boolean {
+  return hasValue(r.po) && !hasValue(r.dataEntrega);
+}
+
+// Itens com PO emitida mas ainda sem MIGO — candidatos a chegada física no
+// almoxarifado.
+export function itensSemMigo(rows: RastreioRow[]): RastreioRow[] {
+  return rows.filter(isAlmoxarifadoCandidate);
+}
+
 // Opções de filtro derivadas dos dados carregados.
 export function statusOptions(rows: RastreioRow[]): string[] {
   return Array.from(new Set(rows.map(r => r.status).filter(s => hasValue(s)))).sort();
