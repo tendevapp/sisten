@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
-  FileSpreadsheet,
+  FileSpreadsheet, Cpu, ClipboardPlus,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -34,6 +34,7 @@ export interface PageDef {
 
 export const PAGES: PageDef[] = [
   { id: 'inicio', group: 'GERAL', label: 'Início', path: '/', icon: Home, defaultRoles: '*' },
+  { id: 'formularios', group: 'GERAL', label: 'Formulários', path: '/formularios', icon: ClipboardPlus, defaultRoles: '*' },
   { id: 'materiais_busca', group: 'GERAL', label: 'Catálogo SAP', path: '/materiais/busca', icon: Search, defaultRoles: '*' },
   { id: 'rastreio', group: 'GERAL', label: 'Rastreio Compras', path: '/rastreio', icon: Route, defaultRoles: '*' },
   { id: 'relatorios', group: 'GERAL', label: 'Relatórios', path: '/relatorios', icon: BarChart3, defaultRoles: '*' },
@@ -82,6 +83,7 @@ export const PAGES: PageDef[] = [
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_feedback', group: 'ADMINISTRAÇÃO', label: 'Reportes', path: '/admin/feedback', icon: Flag, defaultRoles: ['admin'], alwaysAdmin: true },
+  { id: 'admin_apis', group: 'ADMINISTRAÇÃO', label: 'Gestão de APIs & IA', path: '/admin/apis', icon: Cpu, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_diretrizes', group: 'ADMINISTRAÇÃO', label: 'Diretrizes', path: '/admin/diretrizes', icon: BookOpen, defaultRoles: ['admin'], alwaysAdmin: true },
 ];
 

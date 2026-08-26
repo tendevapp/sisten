@@ -43,6 +43,8 @@ const Movimentacoes = lazy(() => import('./views/Movimentacoes'));
 const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
+const Formularios = lazy(() => import('./views/Formularios'));
+const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
@@ -65,7 +67,8 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/dashboards',
   '/suprimentos/demandas',
   '/suprimentos/fornecedores-sem-po',
-  // Mantém o markdown colado, a grade em revisão e o processo aberto —
+  // Mantém a fila de importação (arquivos em memória, resultados já
+  // convertidos), o markdown colado, a grade em revisão e o processo aberto —
   // remontar a cada sincronização em segundo plano jogaria fora a extração.
   '/suprimentos/cotacoes',
   '/suprimentos/historico',
@@ -103,6 +106,10 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   // A página Sobre é só leitura, mas remontá-la a cada sincronização em segundo
   // plano reiniciaria as animações de entrada no meio da leitura.
   '/sobre',
+  '/formularios',
+  // Formulário longo, preenchido ao longo do dia: remontar a cada sync em
+  // segundo plano jogaria fora os campos digitados e ainda não salvos.
+  '/formularios/logistica-expedicao',
 ]);
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -429,6 +436,22 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      // Formulários: acesso universal (todos os perfis) por padrão, mas ainda
+      // pode ser restringido explicitamente via page_access.
+      case '/formularios':
+        if (canAccessPage(user, 'formularios')) {
+          return <Formularios onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Os formulários vivem sob /formularios/*, mas compartilham o gate da
+      // página que os reúne — quem enxerga o hub opera os formulários.
+      case '/formularios/logistica-expedicao':
+        if (canAccessPage(user, 'formularios')) {
+          return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/solicitacoes/nova':
         if (canAccessPage(user, 'sol_nova')) {
           return <NewRequest user={user} onNavigate={handleNavigate} />;
@@ -622,6 +645,7 @@ export default function App() {
       case '/suprimentos/grupos-comprador':
       case '/admin/helpdesk':
       case '/admin/feedback':
+      case '/admin/apis':
       case '/admin/diretrizes':
         if (canAccessPage(user, pageIdForPath(currentPath) as string)) {
           return <AdminPanel user={user} />;

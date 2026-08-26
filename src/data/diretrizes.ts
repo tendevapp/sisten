@@ -39,6 +39,22 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-26',
+    resumo: 'Formulários > Logística - Expedição: novo módulo para registro de carregamento de tramos com dados do veículo (cavalo, carreta, dolly), motorista, três marcações de tempo (chegada portaria, entrada pátio, expedição) preenchidas em momentos diferentes ao longo do dia, fotos comprimidas em cada etapa, observações livres por horário e envio de aviso parcial via e-mail assim que o caminhão encosta (portaria). Mobile-first: tramos recolhíveis, campos de placa maiores, câmera integrada no celular (capture="environment") + galeria. Tabelas: `expedicao_carregamentos`, `expedicao_tramos`, `expedicao_fotos` + bucket privado `expedicao-fotos`. Link assinado (90d) no e-mail (formato preservado: Segue dados para carregamento do T1 e T4...).'
+  },
+  {
+    data: '2026-08-24',
+    resumo: 'Gestão de APIs & IA: adicionada coluna "Usuário" na tabela de chamadas recentes de IA e no histórico de conversões markdown, permitindo auditar exatamente qual usuário/sessão realizou cada requisição às APIs (Gemini, OCR, Extrator).'
+  },
+  {
+    data: '2026-08-24',
+    resumo: 'Conversor Markdown: novo fluxo em duas etapas (carregar arquivos primeiro → conferir pré-visualização de qualquer documento na lista → botão "Converter tudo" para iniciar). Inclui leitor integrado de PDF/imagem lado a lado e reaproveitamento inteligente de cotações já convertidas no Supabase.'
+  },
+  {
+    data: '2026-08-24',
+    resumo: 'Gestão de APIs & IA: nova Edge Function `gemini-generate` no Supabase com proxy seguro para Google Gemini AI Studio (chaves AQ...). Nova aba "Gestão de APIs & IA" no Painel Administrativo com visão de endpoints, métricas de latência, playground de testes em tempo real e guia de segredos Supabase CLI.'
+  },
+  {
     data: '2026-08-23',
     resumo: 'Almoxarifado & Chegadas Físicas: nova tabela `almoxarifado_chegadas` no Supabase para registro de chegada física de itens com PO emitida antes do lançamento da MIGO no SAP. Nova aba "Almoxarifado" no Rastreio de Compras com marcação individual e em lote por data de chegada, e selo de auditoria "Chegou no almoxarifado" na Central de Compras (Sem MIGO).'
   },

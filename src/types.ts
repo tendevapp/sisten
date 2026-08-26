@@ -1274,6 +1274,8 @@ export interface CotacaoPropostaItemDraft {
 export interface CotacaoPropostaDraft {
   _key: string;
   _salvo: boolean;
+  /** Quando a IA extraiu esta proposta — `created_at` para as já salvas, timestamp local no momento da extração para as ainda em rascunho. Usado para ordenar (mais recente primeiro) e exibir na tela. */
+  _extraido_em: string | null;
   arquivo_origem: string | null;
   numero_proposta: string | null;
   data_emissao: string | null;
@@ -1335,4 +1337,105 @@ export interface SugestaoVinculo {
   material_code: string | null;
   score: number;
   origem: 'aprendido' | 'trigrama';
+}
+
+// ---------- Conversor Markdown: log de conversões ----------
+
+/** Uma linha do histórico consultável de conversões — planilha/JSON/XML (via 'local', sem IA) ou PDF/imagem (via 'ia', ver converter-markdown-ia). */
+export interface ConversaoMarkdownLog {
+  id: string;
+  user_id: string | null;
+  user_name: string | null;
+  nome_arquivo: string;
+  formato: string;
+  tamanho_bytes: number | null;
+  via: 'local' | 'ia';
+  modelo: string | null;
+  caracteres: number | null;
+  tokens: number | null;
+  tokens_reais: boolean;
+  custo_usd: number | null;
+  duracao_ms: number | null;
+  sucesso: boolean;
+  erro_mensagem: string | null;
+  markdown: string | null;
+  created_at: string;
+}
+
+/** Linha de listagem do histórico — sem `markdown` (pode ser grande; a lista busca até centenas de linhas). Ver `ConversaoMarkdownLog` para o registro completo, buscado sob demanda ao abrir um item. */
+export type ConversaoMarkdownResumo = Omit<ConversaoMarkdownLog, 'markdown'>;
+
+// ---------- Formulário: Logística - Expedição ----------
+
+/** Tramos da torre eólica que podem ser expedidos em um carregamento. */
+export const TRAMOS = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
+export type Tramo = typeof TRAMOS[number];
+
+/**
+ * As três marcações de tempo de um tramo, na ordem em que acontecem. O
+ * formulário é preenchido aos poucos: portaria de manhã, pátio no meio do dia,
+ * expedição à tarde — cada etapa aceita fotos próprias.
+ */
+export type EtapaExpedicao = 'chegada_portaria' | 'entrada_patio' | 'expedicao';
+
+export interface ExpedicaoFoto {
+  id: string;
+  carregamento_id: string;
+  tramo_id: string;
+  etapa: EtapaExpedicao;
+  storage_path: string;
+  nome_arquivo: string | null;
+  criado_por: string | null;
+  created_at: string;
+}
+
+export interface ExpedicaoTramo {
+  id: string;
+  carregamento_id: string;
+  ordem: number;
+  tramo: Tramo;
+  motorista: string;
+  cavalo_placa: string;
+  cavalo_uf: string | null;
+  carreta_placa: string;
+  carreta_uf: string | null;
+  dolly_placa: string;
+  dolly_uf: string | null;
+  /** ISO `YYYY-MM-DD` (coluna `date`), ou null enquanto não informada. */
+  data: string | null;
+  /** 'HH:MM' — null enquanto a etapa não aconteceu. */
+  hora_chegada_portaria: string | null;
+  hora_entrada_patio: string | null;
+  hora_expedicao: string | null;
+  /** Observação livre da etapa — o que explica o horário. */
+  obs_chegada_portaria: string | null;
+  obs_entrada_patio: string | null;
+  obs_expedicao: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpedicaoCarregamento {
+  id: string;
+  numero: string;
+  empresa: string;
+  observacoes: string | null;
+  status: 'aberto' | 'enviado';
+  enviado_em: string | null;
+  criado_por: string;
+  criado_por_nome: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Carregamento com seus tramos e fotos já reunidos — o que a tela de edição manipula. */
+export interface ExpedicaoCarregamentoCompleto extends ExpedicaoCarregamento {
+  tramos: ExpedicaoTramo[];
+  fotos: ExpedicaoFoto[];
+}
+
+/** Linha da listagem: o carregamento + o resumo de progresso, sem carregar as fotos. */
+export interface ExpedicaoCarregamentoResumo extends ExpedicaoCarregamento {
+  tramos: Pick<ExpedicaoTramo, 'id' | 'tramo' | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'>[];
+  total_fotos: number;
 }
