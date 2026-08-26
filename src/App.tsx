@@ -212,12 +212,20 @@ export default function App() {
                            window.location.search.includes('type=recovery') ||
                            window.location.search.includes('code=');
 
+        if (isRecovery) {
+          setCurrentPath('/reset-password');
+          localDb.setCurrentUser(null);
+          setUser(null);
+        }
+
         // Obter sessão inicial
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
           if (isRecovery) {
-            // Em fluxo de recuperação de senha, NÃO desloga e direciona para a tela de reset
+            // Em fluxo de recuperação de senha, NÃO busca profile nem marca usuário como logado
             setCurrentPath('/reset-password');
+            localDb.setCurrentUser(null);
+            setUser(null);
           } else {
             // Buscar profile atualizado
             const { data: profile } = await supabase
@@ -242,22 +250,31 @@ export default function App() {
             }
           }
         } else {
-          localDb.setCurrentUser(null);
-          setUser(null);
+          if (!isRecovery) {
+            localDb.setCurrentUser(null);
+            setUser(null);
+          }
         }
 
         // Ouvir mudanças de auth
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           console.log(`Auth event: ${event}`);
-          if (event === 'PASSWORD_RECOVERY') {
+          const inRecovery = isRecovery || 
+                             window.location.hash.includes('type=recovery') || 
+                             window.location.hash.includes('recovery') || 
+                             window.location.search.includes('type=recovery');
+
+          if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && inRecovery)) {
+            console.log('Detectado evento de recuperação de senha — forçando rota /reset-password');
             setCurrentPath('/reset-password');
+            setUser(null);
             return;
           } else if (session && session.user) {
             if (sessionStorage.getItem('is_signing_up') === 'true') {
               console.log('Ignorando login automático durante cadastro');
               return;
             }
-            if (window.location.hash.includes('type=recovery') || window.location.hash.includes('recovery')) {
+            if (inRecovery) {
               console.log('Ignorando busca de profile durante recuperação de senha');
               return;
             }
@@ -413,13 +430,15 @@ export default function App() {
     );
   }
 
+  // Redefinição de senha tem prioridade máxima de exibição
+  if (currentPath === '/reset-password') {
+    return <ResetPassword onNavigate={handleNavigate} />;
+  }
+
   // Auth gate
   if (!user) {
     if (currentPath === '/cadastro') {
       return <Signup onNavigate={handleNavigate} />;
-    }
-    if (currentPath === '/reset-password') {
-      return <ResetPassword onNavigate={handleNavigate} />;
     }
     return <Login onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
   }
