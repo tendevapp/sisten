@@ -71,9 +71,12 @@ export default function ResetPassword({ onNavigate }: ResetPasswordProps) {
 
       setLoading(false);
       if (resetError) {
-        if (resetError.message.toLowerCase().includes('expired') || resetError.message.toLowerCase().includes('jwt')) {
+        const msg = resetError.message.toLowerCase();
+        if (msg.includes('expired') || msg.includes('jwt') || msg.includes('auth session missing')) {
           setIsLinkExpired(true);
-          setError('Sua sessão de recuperação expirou. Por favor, solicite um novo e-mail.');
+          setError('A sessão de recuperação expirou ou é inválida. Por favor, solicite um novo link no e-mail.');
+        } else if (msg.includes('same_password') || msg.includes('same password')) {
+          setError('A nova senha deve ser diferente da senha anterior.');
         } else {
           setError(resetError.message);
         }

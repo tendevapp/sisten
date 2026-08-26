@@ -207,29 +207,39 @@ export default function App() {
       await localDb.ready;
 
       if (supabase) {
+        const isRecovery = window.location.hash.includes('type=recovery') || 
+                           window.location.hash.includes('recovery') || 
+                           window.location.search.includes('type=recovery') ||
+                           window.location.search.includes('code=');
+
         // Obter sessão inicial
         const { data: { session } } = await supabase.auth.getSession();
         if (session && session.user) {
-          // Buscar profile atualizado
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-          if (profile && profile.status === 'ativo') {
-            const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
-            localDb.setCurrentUser(mapped);
-            setUser(mapped);
-            trackLogin(mapped);
-            // Sincroniza logo de início se estiver com sessão ativa
-            localDb.syncFromSupabase().catch(err => {
-              console.error("Falha ao sincronizar cache local com o Supabase:", err);
-            });
+          if (isRecovery) {
+            // Em fluxo de recuperação de senha, NÃO desloga e direciona para a tela de reset
+            setCurrentPath('/reset-password');
           } else {
-            await supabase.auth.signOut();
-            localDb.setCurrentUser(null);
-            setUser(null);
+            // Buscar profile atualizado
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .maybeSingle();
+
+            if (profile && profile.status === 'ativo') {
+              const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
+              localDb.setCurrentUser(mapped);
+              setUser(mapped);
+              trackLogin(mapped);
+              // Sincroniza logo de início se estiver com sessão ativa
+              localDb.syncFromSupabase().catch(err => {
+                console.error("Falha ao sincronizar cache local com o Supabase:", err);
+              });
+            } else {
+              await supabase.auth.signOut();
+              localDb.setCurrentUser(null);
+              setUser(null);
+            }
           }
         } else {
           localDb.setCurrentUser(null);
@@ -240,10 +250,15 @@ export default function App() {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
           console.log(`Auth event: ${event}`);
           if (event === 'PASSWORD_RECOVERY') {
-            handleNavigate('/reset-password');
+            setCurrentPath('/reset-password');
+            return;
           } else if (session && session.user) {
             if (sessionStorage.getItem('is_signing_up') === 'true') {
               console.log('Ignorando login automático durante cadastro');
+              return;
+            }
+            if (window.location.hash.includes('type=recovery') || window.location.hash.includes('recovery')) {
+              console.log('Ignorando busca de profile durante recuperação de senha');
               return;
             }
             const { data: profile } = await supabase
@@ -285,7 +300,7 @@ export default function App() {
       const hash = window.location.hash || '#/';
       if (hash.includes('type=recovery') || hash.includes('recovery')) {
         setCurrentPath('/reset-password');
-        window.location.hash = '/reset-password';
+        // Não sobrescreve window.location.hash para não apagar o token de autenticação
         return;
       }
       if (hash.includes('error_description') || hash.includes('error_code') || hash.includes('error=')) {
