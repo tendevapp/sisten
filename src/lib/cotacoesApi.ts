@@ -82,9 +82,13 @@ export async function criarProcessoCotacao(params: {
     .single();
   if (erroProcesso) throw new Error(`Falha ao criar processo de cotação: ${erroProcesso.message}`);
 
-  const itensPayload = params.itens.map(i => ({ ...i, processo_id: processo.id }));
-  const { error: erroItens } = await supabase.from('cotacao_processo_itens').insert(itensPayload);
-  if (erroItens) throw new Error(`Processo criado, mas falhou ao gravar os itens do escopo: ${erroItens.message}`);
+  // Cotação avulsa (criada sem passar pela Central de Compras) não tem item
+  // nenhum — insert com array vazio é só custo de round-trip à toa.
+  if (params.itens.length > 0) {
+    const itensPayload = params.itens.map(i => ({ ...i, processo_id: processo.id }));
+    const { error: erroItens } = await supabase.from('cotacao_processo_itens').insert(itensPayload);
+    if (erroItens) throw new Error(`Processo criado, mas falhou ao gravar os itens do escopo: ${erroItens.message}`);
+  }
 
   return processo as CotacaoProcesso;
 }
@@ -123,6 +127,38 @@ export async function buscarProcessoCotacao(processoId: string): Promise<{
 export async function atualizarStatusProcesso(processoId: string, status: CotacaoProcessoStatus): Promise<void> {
   const { error } = await supabase.from('cotacao_processos').update({ status, updated_at: new Date().toISOString() }).eq('id', processoId);
   if (error) throw new Error(`Falha ao atualizar status do processo: ${error.message}`);
+}
+
+export interface PropostaJaExtraida {
+  id: string;
+  arquivo_origem: string | null;
+  fornecedor_razao_social: string | null;
+  created_at: string;
+}
+
+/**
+ * Verifica se algum dos arquivos já tem proposta salva neste processo —
+ * mesma ideia do que `buscarUltimaConversaoPorArquivo` faz para a etapa de
+ * conversão, aplicada à extração: evita gastar IA e criar linha duplicada em
+ * `cotacao_propostas` para um arquivo que alguém (ou a própria sessão, antes
+ * de recarregar a página) já extraiu e salvou neste mesmo processo.
+ */
+export async function buscarPropostasPorArquivo(processoId: string, arquivosOrigem: string[]): Promise<PropostaJaExtraida[]> {
+  const nomes = Array.from(new Set(arquivosOrigem.map(n => n.trim()).filter(Boolean)));
+  if (nomes.length === 0) return [];
+  const { data, error } = await supabase
+    .from('cotacao_propostas')
+    .select('id, arquivo_origem, fornecedor_razao_social, created_at')
+    .eq('processo_id', processoId)
+    .in('arquivo_origem', nomes);
+  if (error) throw new Error(`Falha ao verificar propostas já extraídas: ${error.message}`);
+  return (data ?? []) as PropostaJaExtraida[];
+}
+
+/** Exclui uma proposta salva (e seus itens, via ON DELETE CASCADE em `cotacao_proposta_itens`). */
+export async function excluirPropostaCotacao(propostaId: string): Promise<void> {
+  const { error } = await supabase.from('cotacao_propostas').delete().eq('id', propostaId);
+  if (error) throw new Error(`Falha ao excluir a proposta: ${error.message}`);
 }
 
 // =====================================================================

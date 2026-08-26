@@ -402,7 +402,7 @@ Diretrizes de resposta:
 
   // 1. Tenta Gemini Key 1 primeiro
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY_1}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY_1}`;
     const formattedPrompt = `${systemPrompt}\n\nHistórico:\n${history.map(h => `${h.role.toUpperCase()}: ${h.content}`).join('\n')}`;
 
     const res = await fetch(geminiUrl, {
@@ -421,7 +421,7 @@ Diretrizes de resposta:
       const data = await res.json();
       const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (content) {
-        return { text: content, model: 'Gemini 2.0 Flash' };
+        return { text: content, model: 'Gemini 3.6 Flash' };
       }
     } else {
       const errData = await res.json().catch(() => ({}));
@@ -433,7 +433,7 @@ Diretrizes de resposta:
 
   // 2. Fallback: Gemini Key 2
   try {
-    const geminiUrl2 = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY_2}`;
+    const geminiUrl2 = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY_2}`;
     const formattedPrompt = `${systemPrompt}\n\nHistórico:\n${history.map(h => `${h.role.toUpperCase()}: ${h.content}`).join('\n')}`;
 
     const res = await fetch(geminiUrl2, {
@@ -452,7 +452,7 @@ Diretrizes de resposta:
       const data = await res.json();
       const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (content) {
-        return { text: content, model: 'Gemini 2.0 Flash (Backup)' };
+        return { text: content, model: 'Gemini 3.6 Flash (Backup)' };
       }
     } else {
       const errData = await res.json().catch(() => ({}));

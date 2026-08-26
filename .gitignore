@@ -19,3 +19,6 @@ graphify-out/
 
 # Scripts de rascunho / testes temporarios
 scratch/
+
+# Supabase CLI temp files
+supabase/.temp/

@@ -9,8 +9,8 @@
  * todos os itens do escopo + "fora do escopo" para sempre permitir override.
  */
 
-import React, { useState } from 'react';
-import { ChevronDown, LinkIcon } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown, LinkIcon, Search } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td } from '../ui/DataTable';
 import type { CotacaoProcessoItem, CotacaoPropostaItemDraft } from '../../types';
 
@@ -61,7 +61,18 @@ function VinculoCell({ item, escopo, onResolver }: {
   onResolver: (patch: Partial<CotacaoPropostaItemDraft>) => void;
 }) {
   const [aberto, setAberto] = useState(false);
+  const [filtro, setFiltro] = useState('');
   const escopoItem = item.processo_item_id ? escopo.find(e => e.id === item.processo_item_id) : null;
+
+  const escopoFiltrado = useMemo(() => {
+    const termo = filtro.trim().toLowerCase();
+    if (!termo) return escopo;
+    return escopo.filter(e =>
+      (e.texto_breve ?? '').toLowerCase().includes(termo) ||
+      (e.ri ?? '').toLowerCase().includes(termo) ||
+      (e.material_code ?? '').toLowerCase().includes(termo)
+    );
+  }, [escopo, filtro]);
 
   const resolvido = escopoItem || item.fora_escopo;
   const scoreClasses = item.vinculo_origem === 'aprendido'
@@ -69,6 +80,8 @@ function VinculoCell({ item, escopo, onResolver }: {
     : item.vinculo_origem === 'sugerido'
       ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
       : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+
+  const fechar = () => { setAberto(false); setFiltro(''); };
 
   return (
     <div className="relative">
@@ -92,21 +105,39 @@ function VinculoCell({ item, escopo, onResolver }: {
       </button>
 
       {aberto && (
-        <div className="absolute z-20 mt-1 max-h-56 w-72 overflow-auto rounded-lg border border-slate-200 bg-white text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900">
-          {escopo.map(e => (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => { onResolver({ processo_item_id: e.id, ri: e.ri, material_code: e.material_code, fora_escopo: false, vinculo_origem: 'manual', vinculo_score: null }); setAberto(false); }}
-              className={`block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800 ${e.id === item.processo_item_id ? 'bg-indigo-50 dark:bg-indigo-950/30' : ''}`}
-            >
-              <div className="font-medium text-slate-800 dark:text-slate-100">{e.texto_breve || '—'}</div>
-              <div className="text-slate-400">{e.ri} · {e.material_code || 'sem código'}</div>
-            </button>
-          ))}
+        <div className="absolute z-20 mt-1 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          {escopo.length > 6 && (
+            <div className="flex items-center gap-1.5 border-b border-slate-100 px-2.5 py-1.5 dark:border-slate-800">
+              <Search className="h-3 w-3 shrink-0 text-slate-400" />
+              <input
+                autoFocus
+                value={filtro}
+                onChange={e => setFiltro(e.target.value)}
+                placeholder="Buscar por RI, código ou descrição..."
+                className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
+              />
+            </div>
+          )}
+          <div className="max-h-56 overflow-auto">
+            {escopoFiltrado.length === 0 ? (
+              <p className="px-3 py-2 text-slate-400">Nenhum item do escopo bate com "{filtro}".</p>
+            ) : (
+              escopoFiltrado.map(e => (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => { onResolver({ processo_item_id: e.id, ri: e.ri, material_code: e.material_code, fora_escopo: false, vinculo_origem: 'manual', vinculo_score: null }); fechar(); }}
+                  className={`block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-800 ${e.id === item.processo_item_id ? 'bg-indigo-50 dark:bg-indigo-950/30' : ''}`}
+                >
+                  <div className="font-medium text-slate-800 dark:text-slate-100">{e.texto_breve || '—'}</div>
+                  <div className="text-slate-400">{e.ri} · {e.material_code || 'sem código'}</div>
+                </button>
+              ))
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => { onResolver({ processo_item_id: null, ri: null, material_code: null, fora_escopo: true, vinculo_origem: 'manual', vinculo_score: null }); setAberto(false); }}
+            onClick={() => { onResolver({ processo_item_id: null, ri: null, material_code: null, fora_escopo: true, vinculo_origem: 'manual', vinculo_score: null }); fechar(); }}
             className="block w-full border-t border-slate-100 px-3 py-1.5 text-left text-slate-500 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             Fora do escopo (não cotado nesta RM)
@@ -128,7 +159,7 @@ export default function PropostaItensGrid({ itens, escopo, camposFaltantesPorIte
       <table className="w-full text-xs">
         <TableHeadRow>
           <Th label="#" width="w-10" />
-          <Th label="Vínculo (ri)" width="w-64" />
+          <Th label="Vínculo (ri)" width="w-64" stickyLeft />
           <Th label="Código" />
           <Th label="Descrição" width="w-72" />
           <Th label="Marca" />

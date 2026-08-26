@@ -121,3 +121,40 @@ export function formatFileSize(bytes?: number | null): string {
   if (kb < 1024) return `${inteiro.format(kb)} KB`;
   return `${decimal1.format(kb / 1024)} MB`;
 }
+
+/* Duração e custo de IA — acompanhamento de execução (Conversor Markdown) - */
+
+/**
+ * Duração legível para acompanhar execução em tempo real ("340ms", "12,3s",
+ * "1m 05s"). Casas decimais só abaixo de 1 minuto — acima disso, segundos
+ * exatos já bastam e ficam mais fáceis de ler num relógio que tica.
+ */
+export function formatDuration(ms?: number | null): string {
+  if (!isNum(ms) || ms < 0) return EMPTY;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${decimal1.format(ms / 1000)}s`;
+  const min = Math.floor(ms / 60_000);
+  const seg = Math.round((ms % 60_000) / 1000);
+  return `${min}m ${String(seg).padStart(2, '0')}s`;
+}
+
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+/** Custo de chamada de IA em USD ("US$0,0032"). `null`/`undefined` vira "—" — modelo fora da tabela de preço, nunca mostra um valor inventado. */
+export function formatUsd(v?: number | null): string {
+  if (!isNum(v)) return EMPTY;
+  return usd.format(v);
+}
+
+const PROVEDOR_LABEL: Record<string, string> = {
+  gemini: 'Gemini', openai: 'OpenAI', openrouter: 'OpenRouter',
+};
+
+/** "gemini:gemini-2.0-flash" (formato `provedor:modelo` usado pelas Edge Functions de IA) → "Gemini · gemini-2.0-flash", legível para acompanhamento em tela. */
+export function formatModelo(modelo?: string | null): string {
+  if (!modelo) return EMPTY;
+  const [provedor, ...resto] = modelo.split(':');
+  const nomeModelo = resto.join(':');
+  const label = PROVEDOR_LABEL[provedor] ?? provedor;
+  return nomeModelo ? `${label} · ${nomeModelo}` : label;
+}

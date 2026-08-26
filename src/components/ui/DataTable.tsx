@@ -147,14 +147,17 @@ interface ThProps {
   className?: string;
   /** Conteúdo próprio no lugar do rótulo — caixa de seleção, botão. */
   children?: React.ReactNode;
+  /** Fixa a coluna à esquerda durante a rolagem horizontal, além do cabeçalho fixo no topo — para a coluna mais consultada de uma grade muito larga (ver `Td` — precisa do mesmo `stickyLeft` na célula do corpo). */
+  stickyLeft?: boolean;
 }
 
-export function Th({ label, align = 'left', width = '', className = '', children }: ThProps) {
+export function Th({ label, align = 'left', width = '', className = '', children, stickyLeft = false }: ThProps) {
   const alinhamento = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+  const style: React.CSSProperties = stickyLeft ? { ...thBase, left: 0, zIndex: 2 } : thBase;
   return (
     <th
       className={`px-3 py-2.5 font-bold whitespace-nowrap ${alinhamento} ${width} ${className}`}
-      style={thBase}
+      style={style}
       scope="col"
     >
       {children ?? label}
@@ -255,11 +258,13 @@ interface TdProps {
   mono?: boolean;
   className?: string;
   colSpan?: number;
+  /** Fixa a coluna à esquerda durante a rolagem horizontal — ver `Th`. Fundo opaco, senão as colunas por trás apareceriam por baixo ao rolar. */
+  stickyLeft?: boolean;
 }
 
 export function Td({
   children, align = 'left', numeric = false, truncate = false,
-  title, strong = false, mono = false, className = '', colSpan,
+  title, strong = false, mono = false, className = '', colSpan, stickyLeft = false,
 }: TdProps) {
   return (
     <td
@@ -268,7 +273,10 @@ export function Td({
       className={`px-3 py-2 ${align === 'right' ? 'text-right' : 'text-left'}
         ${numeric ? 'tabular' : ''} ${truncate ? 'max-w-[240px] truncate' : ''}
         ${mono ? 'font-mono' : ''} ${strong ? 'font-bold' : ''} ${className}`}
-      style={{ color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+      style={{
+        color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+        ...(stickyLeft ? { position: 'sticky', left: 0, zIndex: 1, background: 'var(--surface-card)' } : null),
+      }}
     >
       {children}
     </td>

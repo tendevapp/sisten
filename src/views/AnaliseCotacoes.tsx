@@ -16,12 +16,12 @@ import { localDb } from '../db/localDb';
 import { useToast } from '../components/ui/Toast';
 import ProcessosList from '../components/cotacoes/ProcessosList';
 import NovoProcessoPanel from '../components/cotacoes/NovoProcessoPanel';
-import ColarMarkdownPanel from '../components/cotacoes/ColarMarkdownPanel';
+import ImportarPropostasPanel from '../components/cotacoes/ImportarPropostasPanel';
 import PropostaCard from '../components/cotacoes/PropostaCard';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao } from '../lib/cotacoes';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
-  extrairCotacao, sugerirVinculos, salvarProcessoCotacao,
+  extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
 } from '../lib/cotacoesApi';
 import type {
   Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
@@ -40,6 +40,7 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
   return {
     _key: p.id,
     _salvo: true,
+    _extraido_em: p.created_at,
     arquivo_origem: p.arquivo_origem, numero_proposta: p.numero_proposta, data_emissao: p.data_emissao,
     validade_data: p.validade_data, validade_texto: p.validade_texto,
     fornecedor_razao_social: p.fornecedor_razao_social, fornecedor_cnpj: p.fornecedor_cnpj,
@@ -96,11 +97,24 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const [escopo, setEscopo] = useState<CotacaoProcessoItem[]>([]);
   const [propostas, setPropostas] = useState<CotacaoPropostaDraft[]>([]);
   const [carregandoProcesso, setCarregandoProcesso] = useState(false);
+  // Arquivos originais (PDF/imagem) por nome, só para "ver arquivo original" no
+  // card — dura só a sessão do navegador, o File não sobrevive a um F5.
+  const [arquivosOriginais, setArquivosOriginais] = useState<Map<string, File>>(new Map());
 
   const [extraindo, setExtraindo] = useState(false);
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
   const [usoExtracao, setUsoExtracao] = useState<ExtracaoUso | null>(null);
+  const [modeloExtracao, setModeloExtracao] = useState<string | null>(null);
   const [salvandoKey, setSalvandoKey] = useState<string | null>(null);
+  // Exclusão de proposta salva é otimista + com janela de "Desfazer" (toast):
+  // esconde na hora, só chama o Supabase de verdade se o usuário não desfizer
+  // a tempo. `processoIdAtualRef` existe porque o timeout/callback do toast
+  // roda bem depois do clique — precisa saber se o usuário já trocou de
+  // processo nesse meio-tempo antes de mexer no `propostas` (senão injeta a
+  // proposta de volta na tela errada).
+  const pendentesExclusaoRef = useRef<Map<string, { timeoutId: number; draft: CotacaoPropostaDraft; processoId: string }>>(new Map());
+  const processoIdAtualRef = useRef<string | null>(null);
+  useEffect(() => { processoIdAtualRef.current = processo?.id ?? null; }, [processo]);
 
   // Grava em localStorage as propostas ainda não salvas a cada mudança, para
   // não perder uma extração de IA (paga) por causa de recarregar a página ou
@@ -194,14 +208,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
-  const handleProcessarMarkdown = async (markdown: string, arquivoOrigem: string | null) => {
-    if (!processo) return;
+  /** Retorna se a extração deu certo — quem chama (upload ou colagem manual) só deve descartar o markdown de origem em caso de sucesso, senão o usuário perde um arquivo já convertido (às vezes com custo de IA) por uma falha na etapa seguinte. */
+  const handleProcessarMarkdown = async (markdown: string, arquivoOrigem: string | null): Promise<boolean> => {
+    if (!processo) return false;
     setExtraindo(true);
     setErroExtracao(null);
     setUsoExtracao(null);
+    setModeloExtracao(null);
     try {
       const resposta = await extrairCotacao({ markdown, arquivoOrigem: arquivoOrigem ?? undefined, processoId: processo.id });
       setUsoExtracao(resposta.uso);
+      setModeloExtracao(resposta.modelo);
       if (resposta.truncado) {
         toast.warning('A resposta da IA foi cortada por estourar o limite de tokens — mostrando o que veio completo.');
       }
@@ -229,8 +246,10 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       }
 
       setPropostas(prev => [...prev, ...novasDrafts]);
+      return true;
     } catch (err) {
       setErroExtracao((err as Error).message);
+      return false;
     } finally {
       setExtraindo(false);
     }
@@ -289,6 +308,61 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
+  const handleExcluirProposta = (key: string) => {
+    const draft = propostas.find(p => p._key === key);
+    if (!draft || !draft._salvo || !processo) return;
+    const processoId = processo.id;
+
+    // Otimista: some da tela na hora. A exclusão de verdade no Supabase só
+    // acontece se a janela de "Desfazer" (toast) expirar sem clique.
+    setPropostas(prev => prev.filter(p => p._key !== key));
+
+    const timeoutId = window.setTimeout(async () => {
+      pendentesExclusaoRef.current.delete(key);
+      try {
+        await excluirPropostaCotacao(key);
+      } catch (err) {
+        console.error('Falha ao excluir proposta:', err);
+        if (processoIdAtualRef.current === processoId) {
+          setPropostas(prev => (prev.some(p => p._key === key) ? prev : [...prev, draft]));
+          toast.error(`Falha ao excluir a proposta de "${draft.fornecedor_razao_social || 'fornecedor'}": ${(err as Error).message}`);
+        }
+      }
+    }, 6000);
+    pendentesExclusaoRef.current.set(key, { timeoutId, draft, processoId });
+
+    toast.action(
+      `Proposta de "${draft.fornecedor_razao_social || 'fornecedor não identificado'}" excluída.`,
+      'Desfazer',
+      () => {
+        const pendente = pendentesExclusaoRef.current.get(key);
+        if (!pendente) return; // janela já expirou, a exclusão já foi commitada no banco
+        window.clearTimeout(pendente.timeoutId);
+        pendentesExclusaoRef.current.delete(key);
+        if (processoIdAtualRef.current === pendente.processoId) {
+          setPropostas(prev => (prev.some(p => p._key === key) ? prev : [...prev, pendente.draft]));
+        }
+      },
+      6000,
+    );
+  };
+
+  const handleArquivosEnviados = (arquivos: { nome: string; file: File | null }[]) => {
+    setArquivosOriginais(prev => {
+      const next = new Map(prev);
+      let mudou = false;
+      for (const { nome, file } of arquivos) {
+        if (file) { next.set(nome, file); mudou = true; }
+      }
+      return mudou ? next : prev;
+    });
+  };
+
+  const propostasOrdenadas = useMemo(
+    () => [...propostas].sort((a, b) => (b._extraido_em ?? '').localeCompare(a._extraido_em ?? '')),
+    [propostas]
+  );
+
   const voltarParaLista = () => {
     setProcesso(null);
     setEscopo([]);
@@ -315,7 +389,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">{tituloFase}</h1>
         </div>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Cole as propostas dos fornecedores em markdown, revise os campos extraídos pela IA e vincule aos itens da RM antes de salvar.
+          Envie os arquivos das propostas dos fornecedores, revise os campos extraídos pela IA e vincule aos itens da RM antes de salvar.
         </p>
       </div>
 
@@ -325,6 +399,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           carregando={carregandoLista}
           onAbrir={abrirProcesso}
           onNovoProcesso={() => onNavigate('/suprimentos/fornecedores-sem-po')}
+          onCriarSemVinculo={() => { setEscopoRascunho([]); setFase('escopo'); }}
         />
       )}
 
@@ -349,14 +424,18 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
               {escopo.length} {escopo.length === 1 ? 'item' : 'itens'} no escopo · {propostas.length} {propostas.length === 1 ? 'proposta' : 'propostas'}
             </div>
 
-            <ColarMarkdownPanel
+            <ImportarPropostasPanel
+              user={user}
+              processoId={processo.id}
               processando={extraindo}
               erro={erroExtracao}
               uso={usoExtracao}
+              modelo={modeloExtracao}
               onProcessar={handleProcessarMarkdown}
+              onArquivosEnviados={handleArquivosEnviados}
             />
 
-            {propostas.map(p => (
+            {propostasOrdenadas.map(p => (
               <PropostaCard
                 key={p._key}
                 proposta={p}
@@ -366,6 +445,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 onRemover={() => handleRemoverProposta(p._key)}
                 onSalvar={() => handleSalvarProposta(p._key)}
                 salvando={salvandoKey === p._key}
+                onExcluirSalva={() => handleExcluirProposta(p._key)}
+                arquivoOriginal={p.arquivo_origem ? arquivosOriginais.get(p.arquivo_origem) : undefined}
               />
             ))}
           </div>

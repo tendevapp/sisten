@@ -254,7 +254,7 @@ function itemDraft(overrides: Partial<CotacaoPropostaItemDraft> = {}): CotacaoPr
 
 function propostaDraft(overrides: Partial<CotacaoPropostaDraft> = {}): CotacaoPropostaDraft {
   return {
-    _key: 'p1', _salvo: false,
+    _key: 'p1', _salvo: false, _extraido_em: '2026-08-16T12:00:00.000Z',
     arquivo_origem: null, numero_proposta: '123', data_emissao: '2026-08-16',
     validade_data: null, validade_texto: '30 dias',
     fornecedor_razao_social: 'Fornecedor X', fornecedor_cnpj: '12345678000190',

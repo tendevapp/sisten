@@ -1352,7 +1352,10 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
           >
             <Check className="h-3 w-3 shrink-0" />
-            PO {r.documento_compra || '—'}{r.data_pedido ? ` • ${formatDateBR(r.data_pedido)}` : ''}
+            <span className="flex flex-col leading-tight">
+              <span>PO {r.documento_compra || '—'}</span>
+              {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
+            </span>
           </span>
           {!dataMigo && (
             <span
@@ -1952,6 +1955,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                         <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
                         <span>•</span>
                         <span>Natureza: {r.natureza}</span>
+                        <span>•</span>
+                        <span>Requisitante: {r.requisitante_name || '—'}</span>
                         {r.status_requisicao !== 'Processado' && (
                           <>
                             <span>•</span>
@@ -2352,6 +2357,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                                 <span className="text-slate-700 dark:text-slate-300">{grupoMercDe(r)}</span>
                               </>
                             )}
+                            <span>•</span>
+                            <span>Requisitante: {r.requisitante_name || '—'}</span>
                             {r.status_requisicao !== 'Processado' && r.alerta && (
                               <>
                                 <span>•</span>

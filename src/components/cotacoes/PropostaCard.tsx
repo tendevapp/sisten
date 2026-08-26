@@ -9,12 +9,15 @@
  * casamento por CNPJ, cobertura do escopo e a grade de itens.
  */
 
-import React, { useMemo, useState } from 'react';
-import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch } from 'lucide-react';
 import PropostaItensGrid from './PropostaItensGrid';
 import FornecedorMatchBadge from './FornecedorMatchBadge';
 import CoberturaEscopoPanel from './CoberturaEscopoPanel';
+import VerArquivoOriginalModal from './VerArquivoOriginalModal';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import { validarProposta, conferirTotais, podeSalvar } from '../../lib/cotacoes';
+import { formatDateTimeBR } from '../../lib/format';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, FornecedorMatch } from '../../types';
 
 interface CampoDef {
@@ -55,6 +58,31 @@ const CAMPOS: CampoDef[] = [
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Campo de valor monetário: digita livre (aceita vírgula), formata com separador de milhar ao perder o foco — mesmo padrão de "digita e resolve no blur" já usado em PropostaItensGrid. */
+function CampoMoeda({ valor, onChange, faltando }: { valor: number | null; onChange: (v: number | null) => void; faltando?: boolean }) {
+  const [texto, setTexto] = useState(valor != null ? brl(valor) : '');
+  useEffect(() => { setTexto(valor != null ? brl(valor) : ''); }, [valor]);
+
+  return (
+    <div className={`mt-0.5 flex items-center gap-1 rounded border px-1.5 focus-within:border-indigo-500 ${faltando ? 'border-rose-300 dark:border-rose-800' : 'border-slate-200 dark:border-slate-700'}`}>
+      <span className="text-xs text-slate-400">R$</span>
+      <input
+        inputMode="decimal"
+        value={texto}
+        onChange={e => setTexto(e.target.value)}
+        onFocus={e => e.target.select()}
+        onBlur={() => {
+          const limpo = texto.trim().replace(/\./g, '').replace(',', '.');
+          const n = limpo === '' ? null : Number(limpo);
+          onChange(n != null && Number.isFinite(n) ? n : null);
+        }}
+        placeholder="0,00"
+        className="w-full bg-transparent py-1 text-sm outline-none"
+      />
+    </div>
+  );
+}
+
 interface PropostaCardProps {
   proposta: CotacaoPropostaDraft;
   escopo: CotacaoProcessoItem[];
@@ -63,10 +91,20 @@ interface PropostaCardProps {
   onRemover: () => void;
   onSalvar: () => void;
   salvando: boolean;
+  /** Exclui do Supabase — só se aplica a uma proposta já salva (`_salvo: true`). Otimista + com janela de "Desfazer" no chamador; aqui é só disparar. */
+  onExcluirSalva: () => void;
+  /** Arquivo original (PDF/imagem) por trás desta proposta, se ainda estiver na memória da sessão — ver VerArquivoOriginalModal. */
+  arquivoOriginal?: File | null;
 }
 
-export default function PropostaCard({ proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando }: PropostaCardProps) {
+export default function PropostaCard({
+  proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando, onExcluirSalva, arquivoOriginal,
+}: PropostaCardProps) {
   const [soFaltando, setSoFaltando] = useState(false);
+  const [previewArquivoAberto, setPreviewArquivoAberto] = useState(false);
+  const [confirmSalvarAberto, setConfirmSalvarAberto] = useState(false);
+  const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false);
+  const [confirmRemoverAberto, setConfirmRemoverAberto] = useState(false);
 
   const validacao = useMemo(() => validarProposta(proposta), [proposta]);
   const totais = useMemo(() => conferirTotais(proposta), [proposta]);
@@ -88,13 +126,15 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
 
   const handleClicarSalvar = () => {
     if (!semPendencias) {
-      const ok = window.confirm(
-        `Esta proposta tem ${validacao.bloqueios.length} pendência(s) (campos obrigatórios ou itens sem vínculo). Salvar mesmo assim?`,
-      );
-      if (!ok) return;
+      setConfirmSalvarAberto(true);
+      return;
     }
     onSalvar();
   };
+
+  const handleClicarExcluir = () => setConfirmExcluirAberto(true);
+
+  const handleClicarRemover = () => setConfirmRemoverAberto(true);
 
   const camposFaltantesPorItem = (item: CotacaoPropostaDraft['itens'][number]) => {
     const s = new Set<string>();
@@ -118,6 +158,23 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
         {proposta._salvo && (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Salva</span>
         )}
+        {proposta._extraido_em && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-slate-400" title="Quando esta proposta foi extraída pela IA">
+            <Clock className="h-3 w-3" />
+            {formatDateTimeBR(proposta._extraido_em)}
+          </span>
+        )}
+        {arquivoOriginal && (
+          <button
+            type="button"
+            onClick={() => setPreviewArquivoAberto(true)}
+            title="Ver o arquivo original (PDF/imagem) desta proposta"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+          >
+            <FileSearch className="h-3.5 w-3.5" />
+            Ver arquivo original
+          </button>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           <button
@@ -135,7 +192,17 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
             <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{validacao.preenchidos}/{validacao.total}</span>
           </div>
           {!proposta._salvo && (
-            <button type="button" onClick={onRemover} title="Remover esta proposta da revisão" className="text-slate-300 hover:text-rose-500">
+            <button type="button" onClick={handleClicarRemover} title="Remover esta proposta da revisão" className="text-slate-300 hover:text-rose-500">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+          {proposta._salvo && (
+            <button
+              type="button"
+              onClick={handleClicarExcluir}
+              title="Excluir esta proposta salva"
+              className="text-slate-300 hover:text-rose-500"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           )}
@@ -166,6 +233,7 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
         {camposVisiveis.map(c => {
           const faltando = camposFaltantesCabecalho.has(c.key as string) || (soFaltando && !proposta[c.key]);
           const valor = proposta[c.key];
+          const ehMoeda = c.key === 'valor_total_orcamento' || c.key === 'faturamento_minimo';
           return (
             <div key={c.key} className="min-w-0">
               <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{c.label}</dt>
@@ -178,17 +246,17 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
                   <option value="">—</option>
                   {c.opcoes!.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
+              ) : ehMoeda ? (
+                <CampoMoeda
+                  valor={valor as number | null}
+                  onChange={v => onChange({ [c.key]: v } as Partial<CotacaoPropostaDraft>)}
+                  faltando={faltando}
+                />
               ) : (
                 <input
-                  type={c.tipo === 'date' ? 'date' : c.key === 'valor_total_orcamento' || c.key === 'faturamento_minimo' ? 'number' : 'text'}
+                  type={c.tipo === 'date' ? 'date' : 'text'}
                   value={(valor as string | number) ?? ''}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    const v = c.key === 'valor_total_orcamento' || c.key === 'faturamento_minimo'
-                      ? (raw === '' ? null : Number(raw))
-                      : (raw || null);
-                    onChange({ [c.key]: v } as Partial<CotacaoPropostaDraft>);
-                  }}
+                  onChange={e => onChange({ [c.key]: e.target.value || null } as Partial<CotacaoPropostaDraft>)}
                   className={`mt-0.5 w-full rounded border bg-transparent px-1.5 py-1 text-sm outline-none focus:border-indigo-500 ${faltando ? 'border-rose-300 dark:border-rose-800' : 'border-slate-200 dark:border-slate-700'}`}
                 />
               )}
@@ -239,6 +307,46 @@ export default function PropostaCard({ proposta, escopo, onChange, onChangeItem,
             {salvando ? 'Salvando...' : 'Salvar proposta'}
           </button>
         </div>
+      )}
+
+      {previewArquivoAberto && arquivoOriginal && (
+        <VerArquivoOriginalModal
+          nome={proposta.arquivo_origem ?? arquivoOriginal.name}
+          file={arquivoOriginal}
+          onClose={() => setPreviewArquivoAberto(false)}
+        />
+      )}
+
+      {confirmSalvarAberto && (
+        <ConfirmDialog
+          titulo="Salvar com pendências?"
+          mensagem={`Esta proposta tem ${validacao.bloqueios.length} pendência(s) (campos obrigatórios ou itens sem vínculo).`}
+          confirmarLabel="Salvar mesmo assim"
+          onConfirmar={() => { setConfirmSalvarAberto(false); onSalvar(); }}
+          onCancelar={() => setConfirmSalvarAberto(false)}
+        />
+      )}
+
+      {confirmExcluirAberto && (
+        <ConfirmDialog
+          titulo="Excluir proposta salva?"
+          mensagem={`A proposta de "${proposta.fornecedor_razao_social || 'fornecedor não identificado'}" será removida. Você tem alguns segundos para desfazer logo em seguida.`}
+          confirmarLabel="Excluir"
+          variante="perigo"
+          onConfirmar={() => { setConfirmExcluirAberto(false); onExcluirSalva(); }}
+          onCancelar={() => setConfirmExcluirAberto(false)}
+        />
+      )}
+
+      {confirmRemoverAberto && (
+        <ConfirmDialog
+          titulo="Remover proposta da revisão?"
+          mensagem={`Os campos extraídos e ajustes feitos na proposta de "${proposta.fornecedor_razao_social || 'fornecedor não identificado'}" serão descartados — ela ainda não foi salva.`}
+          confirmarLabel="Remover"
+          variante="perigo"
+          onConfirmar={() => { setConfirmRemoverAberto(false); onRemover(); }}
+          onCancelar={() => setConfirmRemoverAberto(false)}
+        />
       )}
     </div>
   );

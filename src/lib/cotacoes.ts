@@ -222,6 +222,7 @@ export function normalizarProposta(bruta: PropostaExtraida, ctx: { arquivoOrigem
   return {
     _key: proximaChave('proposta'),
     _salvo: false,
+    _extraido_em: new Date().toISOString(),
 
     arquivo_origem: bruta.Arquivo_Origem ?? ctx.arquivoOrigem ?? null,
     numero_proposta: bruta.Numero_Proposta ?? null,

@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Diretrizes from '../components/admin/Diretrizes';
+import { ApiManagement } from '../components/admin/ApiManagement';
 import {
   Users, Map as MapIcon, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus,
-  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen
+  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -19,7 +21,6 @@ import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
-import Diretrizes from '../components/admin/Diretrizes';
 
 interface AdminPanelProps {
   user: Profile;
@@ -28,7 +29,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
-    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback' | 'diretrizes'
+    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback' | 'diretrizes' | 'apis'
   >('usuarios');
   
   // Users Management State
@@ -163,6 +164,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         }
       }
       else if (path === '/admin/diretrizes') setActiveTab('diretrizes');
+      else if (path === '/admin/apis') setActiveTab('apis');
     };
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
@@ -1033,6 +1035,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             {novosFeedbackCount > 0 && (
               <span className="ml-1.5 rounded-full bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5">{novosFeedbackCount}</span>
             )}
+          </button>
+        )}
+        {user.roles.includes('admin') && (
+          <button
+            onClick={() => { setActiveTab('apis'); window.location.hash = '/admin/apis'; }}
+            className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'apis' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            <Cpu className="h-4 w-4 mr-1.5 text-amber-600" />
+            Gestão de APIs & IA
           </button>
         )}
         {user.roles.includes('admin') && (
@@ -3567,6 +3578,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       )}
 
       {activeTab === 'diretrizes' && <Diretrizes />}
+
+      {activeTab === 'apis' && <ApiManagement />}
 
       {pageAccessProfileId && (() => {
         const target = profiles.find(p => p.id === pageAccessProfileId);

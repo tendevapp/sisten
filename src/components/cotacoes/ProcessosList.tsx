@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { FileSpreadsheet, ChevronRight, PackageSearch } from 'lucide-react';
+import { FileSpreadsheet, ChevronRight, PackageSearch, PlusCircle } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty } from '../ui/DataTable';
 import type { CotacaoProcesso, CotacaoProcessoStatus } from '../../types';
 
@@ -31,60 +31,80 @@ interface ProcessosListProps {
   carregando: boolean;
   onAbrir: (id: string) => void;
   onNovoProcesso: () => void;
+  /** Cria um processo direto, sem passar pela Central de Compras — para cotações avulsas, sem RM vinculada. */
+  onCriarSemVinculo: () => void;
 }
 
-export default function ProcessosList({ processos, carregando, onAbrir, onNovoProcesso }: ProcessosListProps) {
-  if (!carregando && processos.length === 0) {
+export default function ProcessosList({ processos, carregando, onAbrir, onNovoProcesso, onCriarSemVinculo }: ProcessosListProps) {
+  const semProcessos = !carregando && processos.length === 0;
+
+  const acoes = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={onNovoProcesso}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+      >
+        <PackageSearch className="h-3.5 w-3.5" />
+        Ir para a Central de Compras
+      </button>
+      <button
+        type="button"
+        onClick={onCriarSemVinculo}
+        title="Criar um processo de cotação sem vincular itens de RM"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+      >
+        <PlusCircle className="h-3.5 w-3.5" />
+        Criar nova
+      </button>
+    </div>
+  );
+
+  if (semProcessos) {
     return (
       <TableEmpty
         icon={FileSpreadsheet}
         title="Nenhum processo de cotação ainda"
-        hint="Um processo nasce da seleção de itens na Central de Compras. Marque os itens que quer cotar e clique em 'Criar processo de cotação'."
-        action={
-          <button
-            type="button"
-            onClick={onNovoProcesso}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-          >
-            <PackageSearch className="h-3.5 w-3.5" />
-            Ir para a Central de Compras
-          </button>
-        }
+        hint="Um processo normalmente nasce da seleção de itens na Central de Compras, mas também dá para criar uma cotação avulsa, sem RM vinculada."
+        action={acoes}
       />
     );
   }
 
   return (
-    <TableShell maxHeight="70vh">
-      <table className="w-full text-xs">
-        <TableHeadRow>
-          <Th label="Número" />
-          <Th label="Título" />
-          <Th label="Status" />
-          <Th label="Criado por" />
-          <Th label="Criado em" />
-        </TableHeadRow>
-        <TableBody>
-          {processos.map(p => (
-            <Tr key={p.id} onClick={() => onAbrir(p.id)}>
-              <Td strong>{p.numero}</Td>
-              <Td>{p.titulo || <span className="text-slate-400">—</span>}</Td>
-              <Td>
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_CLASSES[p.status]}`}>
-                  {STATUS_LABEL[p.status]}
-                </span>
-              </Td>
-              <Td>{p.criado_por_nome}</Td>
-              <Td>
-                <span className="inline-flex items-center gap-1">
-                  {new Date(p.created_at).toLocaleDateString('pt-BR')}
-                  <ChevronRight className="h-3 w-3 text-slate-400" />
-                </span>
-              </Td>
-            </Tr>
-          ))}
-        </TableBody>
-      </table>
-    </TableShell>
+    <div className="space-y-3">
+      <div className="flex justify-end">{acoes}</div>
+      <TableShell maxHeight="70vh">
+        <table className="w-full text-xs">
+          <TableHeadRow>
+            <Th label="Número" />
+            <Th label="Título" />
+            <Th label="Status" />
+            <Th label="Criado por" />
+            <Th label="Criado em" />
+          </TableHeadRow>
+          <TableBody>
+            {processos.map(p => (
+              <Tr key={p.id} onClick={() => onAbrir(p.id)}>
+                <Td strong>{p.numero}</Td>
+                <Td>{p.titulo || <span className="text-slate-400">—</span>}</Td>
+                <Td>
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_CLASSES[p.status]}`}>
+                    {STATUS_LABEL[p.status]}
+                  </span>
+                </Td>
+                <Td>{p.criado_por_nome}</Td>
+                <Td>
+                  <span className="inline-flex items-center gap-1">
+                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                    <ChevronRight className="h-3 w-3 text-slate-400" />
+                  </span>
+                </Td>
+              </Tr>
+            ))}
+          </TableBody>
+        </table>
+      </TableShell>
+    </div>
   );
 }

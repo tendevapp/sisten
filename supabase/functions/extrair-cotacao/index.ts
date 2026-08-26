@@ -5,10 +5,12 @@
  * OpenRouter direto do browser com VITE_OPENROUTER_API_KEY, o que embute uma
  * chave paga em todo bundle publicado.
  *
- * Provedor primário: OpenAI (OPENAI_API_KEY / OPENAI_MODEL). Se a OpenAI
- * falhar por qualquer motivo (rede, timeout, HTTP de erro, resposta vazia
- * ou JSON inválido), cai automaticamente para a OpenRouter
- * (OPENROUTER_API_KEY / OPENROUTER_MODEL) como fallback.
+ * Ordem de provedores: Gemini (GEMINI_API_KEY, com GEMINI_API_KEY_2 como
+ * segunda tentativa) é o primário — mesmas chaves já usadas por
+ * estruturar-cotacao/converter-markdown-ia neste projeto. Falhando as duas
+ * chaves do Gemini, cai para OpenRouter (OPENROUTER_API_KEY /
+ * OPENROUTER_MODEL) e, por último, para OpenAI (OPENAI_API_KEY /
+ * OPENAI_MODEL).
  *
  * Auth: verifica o JWT do chamador e reusa public.pode_gerir_cotacoes() — a
  * MESMA função usada nas policies de RLS das tabelas de cotação — para que
@@ -19,6 +21,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { GoogleGenerativeAI } from 'npm:@google/generative-ai';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -27,9 +30,26 @@ const cors = {
 
 const MAX_CHARS = 200_000;
 const TIMEOUT_MS = 150_000;
+const TIMEOUT_GEMINI_MS = 45_000;
+const MAX_TOKENS_RESPOSTA = 32_000;
 
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-3.6-flash';
 const OPENAI_MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 const OPENROUTER_MODEL = Deno.env.get('OPENROUTER_MODEL') || 'deepseek/deepseek-v4-flash';
+
+/** Preço por 1M de tokens (USD) — estimativa para telemetria, não é fonte oficial de cobrança. Mesmo padrão usado em converter-markdown-ia. */
+const PRECO_GEMINI_POR_1M_TOKENS: Record<string, { entrada: number; saida: number }> = {
+  'gemini-2.0-flash': { entrada: 0.10, saida: 0.40 },
+  'gemini-flash-latest': { entrada: 0.10, saida: 0.40 },
+  'gemini-1.5-flash': { entrada: 0.075, saida: 0.30 },
+};
+
+function estimarCustoGeminiUsd(promptTokens: number, completionTokens: number): number | null {
+  const preco = PRECO_GEMINI_POR_1M_TOKENS[GEMINI_MODEL]
+    ?? (GEMINI_MODEL.includes('flash') ? PRECO_GEMINI_POR_1M_TOKENS['gemini-2.0-flash'] : undefined);
+  if (!preco) return null;
+  return (promptTokens / 1_000_000) * preco.entrada + (completionTokens / 1_000_000) * preco.saida;
+}
 
 type ErroCodigo =
   | 'NAO_AUTENTICADO' | 'SEM_PERMISSAO' | 'ENTRADA_VAZIA' | 'ENTRADA_GRANDE'
@@ -176,6 +196,64 @@ interface ResultadoProvedor {
   modelo: string;
 }
 
+function comTimeout<T>(promise: Promise<T>, ms: number, rotulo: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ErroExtracao('PROVEDOR_TIMEOUT', `${rotulo} demorou mais que ${ms / 1000}s para responder.`, 504)), ms);
+    promise.then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
+/**
+ * Provedor primário. Mesmas chaves/SDK já usados por
+ * estruturar-cotacao/converter-markdown-ia neste projeto — `responseMimeType:
+ * 'application/json'` faz o Gemini devolver JSON puro, sem cercas de código.
+ */
+async function chamarGemini(markdown: string, apiKey: string, rotulo: string): Promise<ResultadoProvedor> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: SYSTEM_PROMPT });
+
+  let resultado;
+  try {
+    resultado = await comTimeout(
+      model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: markdown }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: MAX_TOKENS_RESPOSTA },
+      }),
+      TIMEOUT_GEMINI_MS,
+      rotulo,
+    );
+  } catch (err) {
+    if (err instanceof ErroExtracao) throw err;
+    throw new ErroExtracao('PROVEDOR_INDISPONIVEL', `Falha ao chamar o Gemini (${rotulo}): ${(err as Error)?.message ?? err}`, 502);
+  }
+
+  const truncado = resultado.response.candidates?.[0]?.finishReason === 'MAX_TOKENS';
+  const content = resultado.response.text();
+  if (!content?.trim()) {
+    throw new ErroExtracao(
+      'RESPOSTA_VAZIA',
+      truncado
+        ? `O Gemini (${rotulo}) gastou todo o limite de tokens antes de escrever a resposta. Tente colar um trecho menor.`
+        : `O Gemini (${rotulo}) não retornou conteúdo utilizável.`,
+      502,
+    );
+  }
+
+  const uso = resultado.response.usageMetadata;
+  const promptTokens = uso?.promptTokenCount ?? 0;
+  const completionTokens = uso?.candidatesTokenCount ?? 0;
+  return {
+    content,
+    truncado,
+    uso: uso ? { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: uso.totalTokenCount ?? 0 } : null,
+    custoUsd: uso ? estimarCustoGeminiUsd(promptTokens, completionTokens) : null,
+    modelo: `gemini:${GEMINI_MODEL}`,
+  };
+}
+
 async function chamarChatCompletions(params: {
   url: string;
   apiKey: string;
@@ -232,11 +310,12 @@ async function chamarChatCompletions(params: {
 }
 
 /**
- * Provedor primário. Modelo configurável via OPENAI_MODEL (default
- * "gpt-5.6-luna") — nome definido pelo usuário; não validamos a existência
- * do modelo aqui, um HTTP de erro da OpenAI já dispara o fallback abaixo.
- * Usa `max_completion_tokens` (não `max_tokens`) e omite `temperature`,
- * como esperado pelos modelos mais recentes da OpenAI.
+ * Segundo fallback (depois do Gemini). Modelo configurável via
+ * OPENAI_MODEL (default "gpt-5.6-luna") — nome definido pelo usuário; não
+ * validamos a existência do modelo aqui, um HTTP de erro da OpenAI já
+ * dispara o próximo fallback. Usa `max_completion_tokens` (não
+ * `max_tokens`) e omite `temperature`, como esperado pelos modelos mais
+ * recentes da OpenAI.
  */
 async function chamarOpenAI(markdown: string, apiKey: string): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
@@ -250,7 +329,7 @@ async function chamarOpenAI(markdown: string, apiKey: string): Promise<Resultado
         { role: 'user', content: markdown },
       ],
       response_format: { type: 'json_object' },
-      max_completion_tokens: 32000,
+      max_completion_tokens: MAX_TOKENS_RESPOSTA,
     },
   });
 
@@ -269,7 +348,7 @@ async function chamarOpenAI(markdown: string, apiKey: string): Promise<Resultado
   };
 }
 
-/** Fallback quando a OpenAI não está configurada ou falha. */
+/** Primeiro fallback, entre o Gemini e a OpenAI. */
 async function chamarOpenRouter(markdown: string, apiKey: string): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://openrouter.ai/api/v1/chat/completions',
@@ -286,7 +365,7 @@ async function chamarOpenRouter(markdown: string, apiKey: string): Promise<Resul
         { role: 'user', content: markdown },
       ],
       temperature: 0,
-      max_tokens: 32000,
+      max_tokens: MAX_TOKENS_RESPOSTA,
       response_format: { type: 'json_object' },
       // Modelos de raciocínio gastam parte do max_tokens "pensando" antes
       // de escrever a resposta final — em entradas grandes isso já
@@ -311,17 +390,33 @@ async function chamarOpenRouter(markdown: string, apiKey: string): Promise<Resul
   };
 }
 
-/** OpenAI é o provedor primário; cai para OpenRouter em qualquer falha da OpenAI. */
-async function extrairComFallback(markdown: string, openaiKey: string | undefined, openrouterKey: string | undefined): Promise<ResultadoProvedor> {
+/** Gemini é o provedor primário (duas chaves); falhando as duas, cai para OpenRouter e, por último, para OpenAI. */
+async function extrairComFallback(
+  markdown: string,
+  geminiKey1: string | undefined,
+  geminiKey2: string | undefined,
+  openrouterKey: string | undefined,
+  openaiKey: string | undefined,
+): Promise<ResultadoProvedor> {
   const erros: string[] = [];
 
-  if (openaiKey) {
+  if (geminiKey1) {
     try {
-      return await chamarOpenAI(markdown, openaiKey);
+      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1');
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
-      erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
-      console.error('OpenAI falhou, tentando OpenRouter:', erro.message);
+      erros.push(`Gemini Key 1 (${erro.codigo}): ${erro.message}`);
+      console.error('Gemini Key 1 falhou, tentando Gemini Key 2:', erro.message);
+    }
+  }
+
+  if (geminiKey2) {
+    try {
+      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2');
+    } catch (e) {
+      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+      erros.push(`Gemini Key 2 (${erro.codigo}): ${erro.message}`);
+      console.error('Gemini Key 2 falhou, tentando OpenRouter:', erro.message);
     }
   }
 
@@ -331,6 +426,16 @@ async function extrairComFallback(markdown: string, openaiKey: string | undefine
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
+      console.error('OpenRouter falhou, tentando OpenAI:', erro.message);
+    }
+  }
+
+  if (openaiKey) {
+    try {
+      return await chamarOpenAI(markdown, openaiKey);
+    } catch (e) {
+      const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
+      erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
     }
   }
 
@@ -348,6 +453,8 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const geminiKey1 = Deno.env.get('GEMINI_API_KEY') || undefined;
+  const geminiKey2 = Deno.env.get('GEMINI_API_KEY_2') || undefined;
   const openaiKey = Deno.env.get('OPENAI_API_KEY') || undefined;
   const openrouterKey = Deno.env.get('OPENROUTER_API_KEY') || undefined;
 
@@ -389,7 +496,7 @@ Deno.serve(async (req) => {
     const { data: pode, error: erroPode } = await supabaseUser.rpc('pode_gerir_cotacoes');
     if (erroPode || pode !== true) throw new ErroExtracao('SEM_PERMISSAO', 'Seu perfil não pode extrair cotações.', 403);
 
-    if (!openaiKey && !openrouterKey) throw new ErroExtracao('CONFIG_AUSENTE', 'IA não configurada neste ambiente.', 500);
+    if (!geminiKey1 && !geminiKey2 && !openrouterKey && !openaiKey) throw new ErroExtracao('CONFIG_AUSENTE', 'IA não configurada neste ambiente.', 500);
 
     const body = await req.json().catch(() => ({}));
     const markdown = typeof body?.markdown === 'string' ? body.markdown : '';
@@ -402,7 +509,7 @@ Deno.serve(async (req) => {
       throw new ErroExtracao('ENTRADA_GRANDE', `Cole um documento por vez (máximo de ${(MAX_CHARS / 1000).toFixed(0)} mil caracteres).`, 413);
     }
 
-    const resultado = await extrairComFallback(markdown, openaiKey, openrouterKey);
+    const resultado = await extrairComFallback(markdown, geminiKey1, geminiKey2, openrouterKey, openaiKey);
 
     const propostas = extrairJson(resultado.content, resultado.truncado).map((p: any) => ({ ...p, Arquivo_Origem: p?.Arquivo_Origem ?? arquivoOrigem }));
     const totalItens = propostas.reduce((acc: number, p: any) => acc + (Array.isArray(p.itens) ? p.itens.length : 0), 0);
