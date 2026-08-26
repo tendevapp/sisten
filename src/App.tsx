@@ -288,6 +288,10 @@ export default function App() {
         window.location.hash = '/reset-password';
         return;
       }
+      if (hash.includes('error_description') || hash.includes('error_code') || hash.includes('error=')) {
+        setCurrentPath('/reset-password');
+        return;
+      }
       const pathWithParams = hash.slice(1); // remove '#'
       const pathOnly = pathWithParams.split('?')[0] || '/';
       

@@ -1175,8 +1175,11 @@ class LocalDatabase {
   public async resetPasswordForEmail(email: string): Promise<string> {
     if (!supabase) return 'Supabase não inicializado';
     try {
+      // O GoTrue/Supabase Auth rejeita redirectTo contendo fragmentos com hash (#).
+      // Usamos a origem base; o Supabase anexa automaticamente os tokens no hash (#access_token=...&type=recovery).
+      const redirectTo = `${window.location.origin}/`;
       const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
-        redirectTo: `${window.location.origin}/#/reset-password`
+        redirectTo
       });
       if (error) {
         return error.message;

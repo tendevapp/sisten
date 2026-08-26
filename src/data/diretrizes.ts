@@ -1119,8 +1119,8 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Login via Supabase Auth; se o profile ainda não existir (trigger falhou), cria um default com `roles: ["visualizador"]`, `status: "ativo"` — é fallback defensivo, não o caminho normal.',
               'Gate de status no login: `pendente` → força logout com "Aguarde a autorização do administrador"; `inativo` → força logout com "Conta inativa. Procure o administrador". Só `ativo` completa o login.',
               'Signup chama `supabase.auth.signUp` e, em seguida, força `signOut()` imediatamente para impedir login automático — o usuário precisa aguardar aprovação.',
-              '⚠️ Discrepância conhecida: a tela de sucesso do Signup afirma "Seu acesso já está liberado... Nível de Acesso: Visualizador", mas o comportamento real do login bloqueia contas `pendente` até aprovação do admin. O status inicial do registro em `profiles` é definido por trigger no lado do Supabase (não versionado neste repositório) — vale confirmar com quem administra o projeto e corrigir o texto da tela.',
-              'Redefinição de senha usa `supabase.auth.updateUser` diretamente (usuário já autenticado pelo token do link de e-mail) — não pede a senha atual.'
+              'Redefinição de senha usa `supabase.auth.updateUser` diretamente (usuário já autenticado pelo token do link de e-mail) — não pede a senha atual.',
+              'Fluxo de redefinição de senha: `redirectTo` aponta para `window.location.origin/` (sem fragmentos de hash como `/#/reset-password`, evitando que o GoTrue do Supabase invalide o parâmetro e faça fallback para localhost). O App e o ResetPassword tratam eventos de recuperação de sessão e estados de erro/expiração de OTP diretamente.'
             ]
           },
           {
