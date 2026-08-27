@@ -39,6 +39,22 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-27',
+    resumo: 'Admin > Módulos de Acesso & Subpermissões de Formulários: criação de sistema de subpermissões granulares para os grupos de formulários em `PageAccessModal.tsx` e `pages.ts`. Permite ao administrador selecionar quais grupos operacionais exibir para cada usuário (Portaria & Segurança Patrimonial, Logística & Expedição, RH & Departamento Pessoal e Almoxarifado). Ao selecionar o módulo geral "Formulários", todos os grupos são liberados por padrão ("se selecionar formulários, mostrar todos"), permitindo restrição pontual e independente por usuário com proteção de rotas e visualização personalizada no Hub `/formularios`.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'Logística - Expedição & UX no Pátio: 1. Inversão e pareamento dos botões nos campos de horário e data (Hoje ao lado de Data, Agora ao lado de Hora); 2. Diálogo de confirmação para alteração ou limpeza de horários/datas pré-existentes, prevenindo toques acidentais em dispositivos móveis; 3. Botão "Enviar chegada por e-mail" com animação pulsante (`animate-pulse`) e destaque visual imediato após preenchimento da chegada.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'Logística - Expedição & Auto-Save: 1. Auto-save / salvamento contínuo em segundo plano (debounce 800ms) a cada campo alterado, com indicador visual de status ("Salvando rascunho...", "Rascunho salvo") para garantir que nenhum dado seja perdido caso a página seja recarregada ou fechada; 2. Validação para habilitar o botão "Salvar e enviar e-mail" apenas quando todos os tramos possuírem o horário de expedição preenchido; 3. Adição de campos de data individuais para cada etapa (Portaria, Pátio, Expedição) na tabela `expedicao_tramos` do Supabase e na interface com botões rápidos "Hoje" e "Agora"; 4. Reorganização visual dos links de fotos anexadas em seção dedicada com marcadores no corpo do e-mail Outlook.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'Admin > Cadastros Gerais & Gestão de E-mails (Outlook): nova aba "Destinatários de E-mail (Outlook)" em `/admin/cadastros` integrada à tabela `config_envio_emails` no Supabase e módulo `emailConfigApi.ts`. Permite ao administrador cadastrar, editar, excluir, ativar/inativar e testar no Outlook os destinatários (Para), cópias (CC, BCC) e assuntos padrão utilizados em todos os fluxos de envio do SISTEN (Cadastro SAP, Aviso de Chegada de Expedição, Relatório de Carregamento de Tramos, Relatório de Portaria e Chamados do Jurídico).'
+  },
+  {
     data: '2026-08-26',
     resumo: 'Admin > Cadastros Gerais & Vigilantes: nova página `/admin/cadastros` para centralização e gestão de tabelas mestres e listas suspensas do SISTEN. Inclui cadastro completo de Vigilantes da Portaria (tabela `port_vigilantes`), controle de status ativo/inativo em tempo real, matrícula, turnos e empresas prestadoras, com integração automática em todos os formulários da Portaria através do seletor inteligente `VigilanteSelect`.'
   },

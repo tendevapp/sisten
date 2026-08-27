@@ -118,17 +118,76 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Chamados Jurídicos (receber notificações)',
     defaultRoles: [],
   },
-  // Sem role padrão: o formulário só fica visível para quem o admin conceder
-  // acesso individualmente em "Módulos de acesso" (tipicamente os gestores de
-  // turno). Sem `path` de propósito — não é item de menu na Sidebar, só um
-  // card em /formularios (igual ao padrão de Logística - Expedição) mais essa
-  // gate própria, já que aqui (ao contrário daquele formulário) o acesso não
-  // pode ser "todo mundo que acessa /formularios".
+  // Sub-permissões de grupos de formulários
+  {
+    id: 'form_portaria',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: Portaria & Segurança',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_logistica',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: Logística & Expedição',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_rh',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: RH & Dep. Pessoal (ASE)',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_almoxarifado',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: Almoxarifado',
+    defaultRoles: '*',
+  },
+  // Compatibilidade legada para rh_ase_hora_extra
   {
     id: 'rh_ase_hora_extra',
     group: 'RH',
-    label: 'Formulário ASE - Hora Extra',
-    defaultRoles: [],
+    label: 'Formulário ASE - Hora Extra (Legado)',
+    defaultRoles: '*',
+  },
+];
+
+export interface FormularioSubpermissaoDef {
+  id: string;
+  grupoId: string;
+  label: string;
+  descricao: string;
+  defaultRoles: Role[] | '*';
+}
+
+export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
+  {
+    id: 'form_portaria',
+    grupoId: 'portaria',
+    label: 'Portaria & Segurança Patrimonial',
+    descricao: 'Equipamentos, Transportes, Carretas, Relatório de Portaria e Briefing',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_logistica',
+    grupoId: 'logistica',
+    label: 'Logística & Expedição',
+    descricao: 'Carregamento de tramos, horários e fotos de expedição',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_rh',
+    grupoId: 'rh',
+    label: 'RH & Departamento Pessoal',
+    descricao: 'Autorização de Serviços Extraordinários (ASE - Hora Extra)',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_almoxarifado',
+    grupoId: 'almoxarifado',
+    label: 'Almoxarifado',
+    descricao: 'Formulários operacionais do almoxarifado (em breve)',
+    defaultRoles: '*',
   },
 ];
 
@@ -148,6 +207,30 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   return def.defaultRoles.some(r => user.roles.includes(r));
 }
 
+/**
+ * Avalia se o usuário pode ver/acessar um grupo específico de formulários.
+ * Regra: se o módulo "Formulários" está selecionado/habilitado, todos os grupos
+ * são exibidos por padrão, a menos que uma subpermissão tenha sido desmarcada
+ * individualmente pelo administrador em Módulos de Acesso.
+ */
+export function canAccessFormGroup(user: Profile, grupoId: string): boolean {
+  if (user.roles.includes('admin')) return true;
+  if (!canAccessPage(user, 'formularios')) return false;
+
+  const sub = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === grupoId);
+  if (!sub) return true;
+
+  const override = user.page_access?.[sub.id];
+  if (override !== undefined) return override;
+
+  // Compatibilidade com flag legada rh_ase_hora_extra se existir
+  if (grupoId === 'rh' && user.page_access?.['rh_ase_hora_extra'] !== undefined) {
+    return user.page_access['rh_ase_hora_extra'];
+  }
+
+  return true;
+}
+
 export function pageIdForPath(path: string): string | undefined {
   return PAGES.find(p => p.path === path)?.id;
 }
@@ -161,3 +244,4 @@ export function getPageGroups(): { group: string; pages: PageDef[] }[] {
   }
   return groups;
 }
+

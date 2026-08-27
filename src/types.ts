@@ -1403,6 +1403,10 @@ export interface ExpedicaoTramo {
   dolly_uf: string | null;
   /** ISO `YYYY-MM-DD` (coluna `date`), ou null enquanto não informada. */
   data: string | null;
+  /** Datas de cada etapa (ISO `YYYY-MM-DD`), ou null caso não informadas. */
+  data_chegada_portaria?: string | null;
+  data_entrada_patio?: string | null;
+  data_expedicao?: string | null;
   /** 'HH:MM' — null enquanto a etapa não aconteceu. */
   hora_chegada_portaria: string | null;
   hora_entrada_patio: string | null;
@@ -1688,6 +1692,25 @@ export interface PortVigilante {
   turno_preferencial: string | null;
   ativo: boolean;
   observacoes: string | null;
+  criado_por?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 7. Gestão de Envios de E-mails (Outlook / mailto)
+export type EmailModulo = 'SUPRIMENTOS' | 'LOGISTICA' | 'PORTARIA' | 'RH' | 'HELPDESK' | 'GERAL';
+
+export interface ConfigEnvioEmail {
+  id: string;
+  chave: string;
+  nome: string;
+  modulo: EmailModulo;
+  descricao?: string | null;
+  destinatarios: string; // E-mails separados por vírgula ou ponto e vírgula
+  copia?: string | null; // CC
+  copia_oculta?: string | null; // BCC
+  assunto_padrao?: string | null;
+  ativo: boolean;
   criado_por?: string | null;
   created_at?: string;
   updated_at?: string;

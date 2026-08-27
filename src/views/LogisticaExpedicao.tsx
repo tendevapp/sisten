@@ -15,9 +15,9 @@
  * abre o Outlook — ver `expedicaoEmail.ts`.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, ChevronRight, Loader2, Mail, Plus, Save, Trash2, Truck, AlertCircle,
+  ArrowLeft, ChevronRight, Loader2, Mail, Plus, Save, Trash2, Truck, AlertCircle, Check,
 } from 'lucide-react';
 import type {
   EtapaExpedicao, ExpedicaoCarregamentoCompleto, ExpedicaoCarregamentoResumo,
@@ -31,6 +31,7 @@ import {
 } from '../lib/expedicaoEmail';
 import type { FotoComUrl } from '../lib/expedicaoEmail';
 import { formatDateBR } from '../lib/format';
+import { obterConfigEmail } from '../lib/emailConfigApi';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import TramoCard from '../components/expedicao/TramoCard';
@@ -200,6 +201,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [erro, setErro] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [statusAutoSave, setStatusAutoSave] = useState<'ocioso' | 'salvando' | 'salvo' | 'erro'>('ocioso');
   const [abertos, setAbertos] = useState<Record<string, boolean>>({});
   const [confirmacao, setConfirmacao] = useState<
     | { tipo: 'sair' }
@@ -209,6 +211,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   >(null);
   const [excluindo, setExcluindo] = useState(false);
 
+  const timerAutoSaveRef = useRef<NodeJS.Timeout | null>(null);
+  const dadosRef = useRef<ExpedicaoCarregamentoCompleto | null>(dados);
+
+  useEffect(() => {
+    dadosRef.current = dados;
+  }, [dados]);
+
   useEffect(() => {
     let ativo = true;
     api.obterCarregamento(id)
@@ -216,6 +225,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         if (!ativo) return;
         if (!c) { setErro('Carregamento não encontrado.'); return; }
         setDados(c);
+        dadosRef.current = c;
         // Um tramo só abre sozinho; com vários, todos começam recolhidos para
         // a tela caber na mão.
         setAbertos(c.tramos.length === 1 ? { [c.tramos[0].id]: true } : {});
@@ -233,26 +243,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     return () => window.removeEventListener('beforeunload', handler);
   }, [sujo]);
 
-  const alterarCarregamento = (patch: Partial<ExpedicaoCarregamentoCompleto>) => {
-    setDados(d => (d ? { ...d, ...patch } : d));
-    setSujo(true);
-  };
-
-  const alterarTramo = (tramoId: string, patch: Partial<ExpedicaoTramo>) => {
-    setDados(d => (d ? { ...d, tramos: d.tramos.map(t => (t.id === tramoId ? { ...t, ...patch } : t)) } : d));
-    setSujo(true);
-  };
-
-  /** Persiste cabeçalho e tramos. Devolve `false` (já avisando) quando falha. */
-  const salvar = useCallback(async (silencioso = false): Promise<boolean> => {
-    if (!dados) return false;
-    setSalvando(true);
+  const executarPersistencia = useCallback(async (dadosParaSalvar: ExpedicaoCarregamentoCompleto): Promise<boolean> => {
     try {
-      await api.salvarCarregamento(dados.id, {
-        empresa: dados.empresa,
-        observacoes: dados.observacoes,
+      await api.salvarCarregamento(dadosParaSalvar.id, {
+        empresa: dadosParaSalvar.empresa,
+        observacoes: dadosParaSalvar.observacoes,
       });
-      await Promise.all(dados.tramos.map(t => api.salvarTramo(t.id, {
+      await Promise.all(dadosParaSalvar.tramos.map(t => api.salvarTramo(t.id, {
         tramo: t.tramo,
         motorista: t.motorista,
         cavalo_placa: t.cavalo_placa,
@@ -262,6 +259,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         dolly_placa: t.dolly_placa,
         dolly_uf: t.dolly_uf,
         data: t.data,
+        data_chegada_portaria: t.data_chegada_portaria,
+        data_entrada_patio: t.data_entrada_patio,
+        data_expedicao: t.data_expedicao,
         hora_chegada_portaria: t.hora_chegada_portaria,
         hora_entrada_patio: t.hora_entrada_patio,
         hora_expedicao: t.hora_expedicao,
@@ -270,16 +270,83 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         obs_expedicao: t.obs_expedicao,
         ordem: t.ordem,
       })));
-      setSujo(false);
-      if (!silencioso) toast.success('Carregamento salvo.');
       return true;
     } catch (e) {
-      toast.error(`Falha ao salvar: ${(e as Error).message}`);
+      console.error('Falha ao persistir carregamento:', e);
       return false;
+    }
+  }, []);
+
+  const dispararAutoSave = useCallback((novosDados: ExpedicaoCarregamentoCompleto) => {
+    setStatusAutoSave('salvando');
+    setSujo(true);
+    if (timerAutoSaveRef.current) {
+      clearTimeout(timerAutoSaveRef.current);
+    }
+    timerAutoSaveRef.current = setTimeout(async () => {
+      const ok = await executarPersistencia(novosDados);
+      if (ok) {
+        setStatusAutoSave('salvo');
+        setSujo(false);
+      } else {
+        setStatusAutoSave('erro');
+      }
+    }, 800);
+  }, [executarPersistencia]);
+
+  useEffect(() => {
+    return () => {
+      if (timerAutoSaveRef.current) {
+        clearTimeout(timerAutoSaveRef.current);
+      }
+    };
+  }, []);
+
+  const alterarCarregamento = (patch: Partial<ExpedicaoCarregamentoCompleto>) => {
+    setDados(d => {
+      if (!d) return d;
+      const atualizado = { ...d, ...patch };
+      dispararAutoSave(atualizado);
+      return atualizado;
+    });
+  };
+
+  const alterarTramo = (tramoId: string, patch: Partial<ExpedicaoTramo>) => {
+    setDados(d => {
+      if (!d) return d;
+      const atualizado = {
+        ...d,
+        tramos: d.tramos.map(t => (t.id === tramoId ? { ...t, ...patch } : t)),
+      };
+      dispararAutoSave(atualizado);
+      return atualizado;
+    });
+  };
+
+  /** Persiste cabeçalho e tramos imediatamente. */
+  const salvar = useCallback(async (silencioso = false): Promise<boolean> => {
+    if (!dados) return false;
+    if (timerAutoSaveRef.current) {
+      clearTimeout(timerAutoSaveRef.current);
+    }
+    setSalvando(true);
+    setStatusAutoSave('salvando');
+    try {
+      const ok = await executarPersistencia(dados);
+      if (ok) {
+        setSujo(false);
+        setStatusAutoSave('salvo');
+        if (!silencioso) toast.success('Carregamento salvo.');
+        return true;
+      } else {
+        setStatusAutoSave('erro');
+        toast.error('Falha ao salvar o carregamento.');
+        return false;
+      }
     } finally {
       setSalvando(false);
     }
-  }, [dados, toast]);
+  }, [dados, executarPersistencia, toast]);
 
   const adicionarTramo = async () => {
     if (!dados) return;
@@ -344,6 +411,19 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
+  const [destinatarioTramos, setDestinatarioTramos] = useState<string>(DESTINATARIO_PADRAO);
+  const [assuntoTramos, setAssuntoTramos] = useState<string>(ASSUNTO_PADRAO);
+
+  useEffect(() => {
+    let ativo = true;
+    obterConfigEmail('expedicao_tramos').then((cfg) => {
+      if (!ativo || !cfg) return;
+      if (cfg.destinatarios) setDestinatarioTramos(cfg.destinatarios);
+      if (cfg.assunto_padrao) setAssuntoTramos(cfg.assunto_padrao);
+    });
+    return () => { ativo = false; };
+  }, []);
+
   /** Assina as URLs das fotos com validade longa — só valem se abrirem dias depois, no e-mail. */
   const assinarFotos = useCallback(async (fotos: ExpedicaoFoto[]): Promise<FotoComUrl[]> => (
     Promise.all(fotos.map(async f => ({ ...f, url: await api.urlFoto(f.storage_path, api.TTL_EMAIL_SEGUNDOS) })))
@@ -354,14 +434,30 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
    * Windows o corpo chegaria truncado sem aviso — nesse caso o texto íntegro
    * vai pela área de transferência e o e-mail abre só com o endereçamento.
    */
-  const abrirOutlook = useCallback(async (assunto: string, corpo: string) => {
-    const mailto = montarMailto({ assunto, corpo });
+  const abrirOutlook = useCallback(async (
+    assunto: string,
+    corpo: string,
+    opcoes?: { destinatario?: string; copia?: string; copiaOculta?: string }
+  ) => {
+    const mailto = montarMailto({
+      assunto,
+      corpo,
+      destinatario: opcoes?.destinatario,
+      copia: opcoes?.copia,
+      copiaOculta: opcoes?.copiaOculta,
+    });
     if (cabeNoMailto(mailto)) {
       window.location.href = mailto;
       return;
     }
     await navigator.clipboard.writeText(corpo).catch(() => null);
-    window.location.href = montarMailto({ assunto, corpo: '' });
+    window.location.href = montarMailto({
+      assunto,
+      corpo: '',
+      destinatario: opcoes?.destinatario,
+      copia: opcoes?.copia,
+      copiaOculta: opcoes?.copiaOculta,
+    });
     toast.warning('E-mail longo demais para preenchimento automático: o conteúdo foi copiado — cole no Outlook com Ctrl+V.');
   }, [toast]);
 
@@ -378,12 +474,21 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     if (!tramo) return;
 
     try {
+      const configChegada = await obterConfigEmail('expedicao_chegada');
       const corpo = montarCorpoEmailChegada({
         empresa: dados.empresa,
         tramo,
         fotos: await assinarFotos(dados.fotos.filter(f => f.tramo_id === tramoId)),
       });
-      await abrirOutlook(assuntoChegada(dados.empresa, tramo.tramo), corpo);
+      const assunto = configChegada?.assunto_padrao
+        ? `${configChegada.assunto_padrao} - ${tramo.tramo}${dados.empresa ? ` ${dados.empresa.trim()}` : ''}`
+        : assuntoChegada(dados.empresa, tramo.tramo);
+
+      await abrirOutlook(assunto, corpo, {
+        destinatario: configChegada?.destinatarios,
+        copia: configChegada?.copia || undefined,
+        copiaOculta: configChegada?.copia_oculta || undefined,
+      });
     } catch (e) {
       toast.error(`Falha ao gerar o aviso de chegada: ${(e as Error).message}`);
     }
@@ -403,6 +508,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
     setSalvando(true);
     try {
+      const configTramos = await obterConfigEmail('expedicao_tramos');
       const corpo = montarCorpoEmail({
         empresa: dados.empresa,
         observacoes: dados.observacoes,
@@ -410,7 +516,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         fotos: await assinarFotos(dados.fotos),
       });
 
-      await abrirOutlook(ASSUNTO_PADRAO, corpo);
+      const assunto = configTramos?.assunto_padrao || ASSUNTO_PADRAO;
+
+      await abrirOutlook(assunto, corpo, {
+        destinatario: configTramos?.destinatarios,
+        copia: configTramos?.copia || undefined,
+        copiaOculta: configTramos?.copia_oculta || undefined,
+      });
 
       await api.salvarCarregamento(dados.id, { status: 'enviado', enviado_em: new Date().toISOString() });
       setDados(d => (d ? { ...d, status: 'enviado' } : d));
@@ -430,6 +542,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     () => (dados ? dados.tramos.map(t => t.tramo).join(', ') : ''),
     [dados],
   );
+
+  const temTramos = Boolean(dados && dados.tramos.length > 0);
+  const todosTramosComExpedicao = useMemo(() => {
+    if (!dados || dados.tramos.length === 0) return false;
+    return dados.tramos.every(t => Boolean(t.hora_expedicao && t.hora_expedicao.trim().length > 0));
+  }, [dados]);
+  const podeEnviar = temTramos && todosTramosComExpedicao;
 
   if (erro) {
     return (
@@ -475,6 +594,25 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             }`}>
               {dados.status === 'enviado' ? 'Enviado' : 'Aberto'}
             </span>
+
+            {statusAutoSave === 'salvando' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Salvando rascunho...
+              </span>
+            )}
+            {statusAutoSave === 'salvo' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <Check className="h-3 w-3" />
+                Rascunho salvo
+              </span>
+            )}
+            {statusAutoSave === 'erro' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+                <AlertCircle className="h-3 w-3" />
+                Erro ao salvar
+              </span>
+            )}
           </div>
           <p className="mt-0.5 font-mono text-[11px] text-slate-400">
             {dados.numero}{resumoTramos && ` · ${resumoTramos}`}
@@ -561,28 +699,66 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         de "abri só para marcar a hora da portaria".
       */}
       <div className="sticky bottom-0 -mx-3 mt-5 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-4xl flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={() => salvar()}
-            disabled={salvando || !sujo}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {sujo ? 'Salvar' : 'Salvo'}
-          </button>
-          <button
-            type="button"
-            onClick={salvarEEnviar}
-            disabled={salvando}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
-          >
-            <Mail className="h-4 w-4" />
-            Salvar e enviar e-mail
-          </button>
+        <div className="mx-auto flex max-w-4xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            {statusAutoSave === 'salvando' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Salvando rascunho automaticamente...
+              </span>
+            )}
+            {statusAutoSave === 'salvo' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check className="h-3.5 w-3.5" />
+                Rascunho salvo automaticamente
+              </span>
+            )}
+            {statusAutoSave === 'erro' && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
+                <AlertCircle className="h-3.5 w-3.5" />
+                Falha ao salvar rascunho
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <button
+              type="button"
+              onClick={() => salvar()}
+              disabled={salvando}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {statusAutoSave === 'salvo' && !sujo ? 'Salvo' : 'Salvar agora'}
+            </button>
+
+            <div className="flex flex-col items-stretch sm:items-end">
+              <button
+                type="button"
+                onClick={salvarEEnviar}
+                disabled={salvando || !podeEnviar}
+                title={
+                  !temTramos
+                    ? 'Adicione ao menos um tramo'
+                    : !todosTramosComExpedicao
+                    ? 'Preencha o horário de expedição de todos os tramos para habilitar o envio'
+                    : 'Salvar e abrir Outlook'
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:opacity-60 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+              >
+                <Mail className="h-4 w-4" />
+                Salvar e enviar e-mail
+              </button>
+              {!todosTramosComExpedicao && temTramos && (
+                <span className="mt-1 text-center text-[11px] font-medium text-amber-600 dark:text-amber-400 sm:text-right">
+                  Informe o horário de expedição para liberar o envio
+                </span>
+              )}
+            </div>
+          </div>
         </div>
         <p className="mt-1.5 text-center text-[11px] text-slate-400 sm:text-right">
-          O e-mail abre no Outlook para {DESTINATARIO_PADRAO} · assunto "{ASSUNTO_PADRAO}"
+          O e-mail abre no Outlook para {destinatarioTramos} · assunto "{assuntoTramos}"
         </p>
       </div>
 

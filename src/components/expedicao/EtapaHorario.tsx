@@ -16,18 +16,22 @@ import React, { useRef, useState } from 'react';
 import { Camera, Check, ImagePlus, Loader2, Mail, MessageSquarePlus, Trash2, X } from 'lucide-react';
 import type { EtapaExpedicao, ExpedicaoFoto } from '../../types';
 import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
+import { formatDateBR } from '../../lib/format';
 import Modal from '../ui/Modal';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import FotoMiniatura from './FotoMiniatura';
 
 interface EtapaHorarioProps {
   etapa: EtapaExpedicao;
   rotulo: string;
+  data: string | null;
   hora: string | null;
   obs: string | null;
   fotos: ExpedicaoFoto[];
   /** Última etapa da trilha — não desenha o trecho de linha que desce. */
   ultima?: boolean;
   desabilitado?: boolean;
+  onDataChange: (data: string | null) => void;
   onHoraChange: (hora: string | null) => void;
   onObsChange: (obs: string | null) => void;
   onAnexar: (arquivos: FileList) => Promise<void>;
@@ -40,14 +44,19 @@ interface EtapaHorarioProps {
   onEnviarEmail?: () => Promise<void>;
 }
 
+function hojeISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function horaAgora(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 export default function EtapaHorario({
-  etapa, rotulo, hora, obs, fotos, ultima, desabilitado,
-  onHoraChange, onObsChange, onAnexar, onExcluirFoto, onEnviarEmail,
+  etapa, rotulo, data, hora, obs, fotos, ultima, desabilitado,
+  onDataChange, onHoraChange, onObsChange, onAnexar, onExcluirFoto, onEnviarEmail,
 }: EtapaHorarioProps) {
   const arquivoRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -61,8 +70,94 @@ export default function EtapaHorario({
   // encher a trilha de campos que quase sempre ficam em branco.
   const [obsAberta, setObsAberta] = useState(Boolean(obs));
   const [enviandoEmail, setEnviandoEmail] = useState(false);
+  const [dialogoConfirmacao, setDialogoConfirmacao] = useState<{
+    titulo: string;
+    mensagem: string;
+    onConfirmar: () => void;
+  } | null>(null);
 
-  const preenchida = Boolean(hora);
+  const preenchida = Boolean(hora || data);
+
+  const confirmarSeNecessario = (
+    temValorAnterior: boolean,
+    executar: () => void,
+    descricaoNovoValor: string,
+  ) => {
+    if (!temValorAnterior) {
+      executar();
+      return;
+    }
+    setDialogoConfirmacao({
+      titulo: 'Confirmar alteração de horário/data?',
+      mensagem: `A etapa "${rotulo}" já possui registro anterior. Deseja realmente substituir por ${descricaoNovoValor}?`,
+      onConfirmar: () => {
+        executar();
+        setDialogoConfirmacao(null);
+      },
+    });
+  };
+
+  const handleHoje = () => {
+    const novo = hojeISO();
+    if (data === novo) return;
+    confirmarSeNecessario(
+      Boolean(data),
+      () => onDataChange(novo),
+      `a data de hoje (${formatDateBR(novo)})`,
+    );
+  };
+
+  const handleAgora = () => {
+    const novaData = hojeISO();
+    const novaHora = horaAgora();
+    confirmarSeNecessario(
+      Boolean(data || hora),
+      () => {
+        onDataChange(novaData);
+        onHoraChange(novaHora);
+      },
+      `a data e horário atuais (${formatDateBR(novaData)} às ${novaHora})`,
+    );
+  };
+
+  const handleDataInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novo = e.target.value || null;
+    if (novo === data) return;
+    if (!data) {
+      onDataChange(novo);
+      return;
+    }
+    confirmarSeNecessario(
+      true,
+      () => onDataChange(novo),
+      novo ? `a data ${formatDateBR(novo)}` : 'data vazia',
+    );
+  };
+
+  const handleHoraInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novo = e.target.value || null;
+    if (novo === hora) return;
+    if (!hora) {
+      onHoraChange(novo);
+      return;
+    }
+    confirmarSeNecessario(
+      true,
+      () => onHoraChange(novo),
+      novo ? `o horário ${novo}` : 'horário vazio',
+    );
+  };
+
+  const handleLimpar = () => {
+    confirmarSeNecessario(
+      Boolean(data || hora),
+      () => {
+        onHoraChange(null);
+        onDataChange(null);
+      },
+      'remover a data e o horário preenchidos',
+    );
+  };
 
   const handleArquivos = async (e: React.ChangeEvent<HTMLInputElement>, origem: 'camera' | 'arquivo') => {
     const alvo = e.target;
@@ -110,25 +205,53 @@ export default function EtapaHorario({
           {rotulo}
         </label>
 
+        {/* Linha com ordem dos campos: Data -> Hoje -> Hora -> Agora -> Obs -> Limpar */}
         <div className="mt-2 flex flex-wrap items-center gap-2">
+          {/* 1. Input de Data */}
+          <input
+            id={`data-${etapa}`}
+            type="date"
+            value={data || ''}
+            disabled={desabilitado}
+            onChange={handleDataInput}
+            className="h-11 w-36 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            title="Data da etapa"
+          />
+
+          {/* 2. Botão Hoje (ao lado da data) */}
+          <button
+            type="button"
+            onClick={handleHoje}
+            disabled={desabilitado}
+            className="h-11 rounded-xl border border-slate-300 px-3 text-xs font-bold uppercase tracking-wide text-slate-600 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
+            title="Preenche apenas a data de hoje"
+          >
+            Hoje
+          </button>
+
+          {/* 3. Input de Hora */}
           <input
             id={`hora-${etapa}`}
             type="time"
             value={hora || ''}
             disabled={desabilitado}
-            onChange={e => onHoraChange(e.target.value || null)}
+            onChange={handleHoraInput}
             className="h-11 w-32 rounded-xl border border-slate-300 bg-white px-3 text-base font-semibold tabular-nums text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            title="Horário da etapa"
           />
 
+          {/* 4. Botão Agora (ao lado da hora) */}
           <button
             type="button"
-            onClick={() => onHoraChange(horaAgora())}
+            onClick={handleAgora}
             disabled={desabilitado}
             className="h-11 rounded-xl border border-slate-300 px-3 text-xs font-bold uppercase tracking-wide text-slate-600 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
+            title="Preenche hoje e agora"
           >
             Agora
           </button>
 
+          {/* 5. Botão Obs */}
           {!desabilitado && (
             <button
               type="button"
@@ -145,12 +268,14 @@ export default function EtapaHorario({
             </button>
           )}
 
-          {hora && !desabilitado && (
+          {/* 6. Botão Limpar */}
+          {(hora || data) && !desabilitado && (
             <button
               type="button"
-              onClick={() => onHoraChange(null)}
+              onClick={handleLimpar}
               aria-label={`Limpar ${rotulo}`}
               className="flex h-11 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:text-rose-500"
+              title="Limpar data e hora"
             >
               <X className="h-4 w-4" />
             </button>
@@ -245,19 +370,23 @@ export default function EtapaHorario({
 
         {/*
           Aviso parcial: sai assim que o caminhão encosta, sem esperar o pátio
-          e a expedição. Fica desabilitado sem horário porque é justamente o
-          horário de chegada que a mensagem existe para comunicar.
+          e a expedição. Quando habilitado, fica piscando (animate-pulse) com
+          brilho azul para chamar a atenção imediata de envio.
         */}
         {onEnviarEmail && !desabilitado && (
           <button
             type="button"
             disabled={!preenchida || enviandoEmail}
-            title={preenchida ? undefined : 'Informe o horário de chegada primeiro'}
+            title={preenchida ? 'Clique para abrir o Outlook com o aviso de chegada' : 'Informe o horário de chegada primeiro'}
             onClick={async () => {
               setEnviandoEmail(true);
               try { await onEnviarEmail(); } finally { setEnviandoEmail(false); }
             }}
-            className="mt-2.5 inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-950/70"
+            className={`mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold uppercase tracking-wide transition-all ${
+              preenchida
+                ? 'animate-pulse bg-blue-600 text-white shadow-lg shadow-blue-500/40 ring-4 ring-blue-400/50 hover:bg-blue-700 hover:ring-blue-500/60 dark:bg-blue-600 dark:text-white dark:ring-blue-400/40'
+                : 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-40 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500'
+            }`}
           >
             {enviandoEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
             Enviar chegada por e-mail
@@ -294,6 +423,18 @@ export default function EtapaHorario({
             )}
           </div>
         </Modal>
+      )}
+
+      {dialogoConfirmacao && (
+        <ConfirmDialog
+          titulo={dialogoConfirmacao.titulo}
+          mensagem={dialogoConfirmacao.mensagem}
+          confirmarLabel="Sim, alterar"
+          cancelarLabel="Cancelar"
+          variante="aviso"
+          onConfirmar={dialogoConfirmacao.onConfirmar}
+          onCancelar={() => setDialogoConfirmacao(null)}
+        />
       )}
     </div>
   );

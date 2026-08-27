@@ -22,10 +22,16 @@ const UFS = [
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
 ];
 
-const ETAPAS: { etapa: EtapaExpedicao; rotulo: string; campo: keyof ExpedicaoTramo; campoObs: keyof ExpedicaoTramo }[] = [
-  { etapa: 'chegada_portaria', rotulo: 'Chegada na portaria', campo: 'hora_chegada_portaria', campoObs: 'obs_chegada_portaria' },
-  { etapa: 'entrada_patio', rotulo: 'Entrada no pátio', campo: 'hora_entrada_patio', campoObs: 'obs_entrada_patio' },
-  { etapa: 'expedicao', rotulo: 'Expedição', campo: 'hora_expedicao', campoObs: 'obs_expedicao' },
+const ETAPAS: {
+  etapa: EtapaExpedicao;
+  rotulo: string;
+  campoData: keyof ExpedicaoTramo;
+  campo: keyof ExpedicaoTramo;
+  campoObs: keyof ExpedicaoTramo;
+}[] = [
+  { etapa: 'chegada_portaria', rotulo: 'Chegada na portaria', campoData: 'data_chegada_portaria', campo: 'hora_chegada_portaria', campoObs: 'obs_chegada_portaria' },
+  { etapa: 'entrada_patio', rotulo: 'Entrada no pátio', campoData: 'data_entrada_patio', campo: 'hora_entrada_patio', campoObs: 'obs_entrada_patio' },
+  { etapa: 'expedicao', rotulo: 'Expedição', campoData: 'data_expedicao', campo: 'hora_expedicao', campoObs: 'obs_expedicao' },
 ];
 
 /**
@@ -201,11 +207,13 @@ export default function TramoCard({
                 key={e.etapa}
                 etapa={e.etapa}
                 rotulo={e.rotulo}
+                data={tramo[e.campoData] as string | null}
                 hora={tramo[e.campo] as string | null}
                 obs={tramo[e.campoObs] as string | null}
                 fotos={fotos.filter(f => f.etapa === e.etapa)}
                 ultima={i === ETAPAS.length - 1}
                 desabilitado={somenteLeitura}
+                onDataChange={data => onChange({ [e.campoData]: data } as Partial<ExpedicaoTramo>)}
                 onHoraChange={hora => onChange({ [e.campo]: hora } as Partial<ExpedicaoTramo>)}
                 onObsChange={obs => onChange({ [e.campoObs]: obs } as Partial<ExpedicaoTramo>)}
                 onAnexar={arquivos => onAnexarFoto(e.etapa, arquivos)}

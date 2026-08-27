@@ -95,7 +95,7 @@ describe('montarCorpoEmail', () => {
     expect(corpo).toContain('Horário de expedição: —');
   });
 
-  it('anexa o link da foto na etapa correspondente, e numera quando há mais de uma', () => {
+  it('anexa a seção de fotos na etapa correspondente, e numera quando há mais de uma', () => {
     const corpo = montarCorpoEmail({
       empresa: 'X',
       observacoes: null,
@@ -107,8 +107,10 @@ describe('montarCorpoEmail', () => {
       ],
     });
 
-    expect(corpo).toContain('Horário de chegada portaria: 09:05 (foto: https://s/a.jpg)');
-    expect(corpo).toContain('Horário de expedição: 14:00 (foto 1: https://s/b.jpg | foto 2: https://s/c.jpg)');
+    expect(corpo).toContain('Fotos anexadas:');
+    expect(corpo).toContain('• Horário de chegada portaria: https://s/a.jpg');
+    expect(corpo).toContain('• Horário de expedição (foto 1): https://s/b.jpg');
+    expect(corpo).toContain('• Horário de expedição (foto 2): https://s/c.jpg');
   });
 
   it('não vaza a foto de um tramo no bloco de outro', () => {
@@ -126,7 +128,24 @@ describe('montarCorpoEmail', () => {
       fotos: [foto({ id: 'f1', tramo_id: 't1', etapa: 'chegada_portaria', url: null })],
     });
     expect(corpo).toContain('Horário de chegada portaria: 09:05');
-    expect(corpo).not.toContain('(foto');
+    expect(corpo).not.toContain('Fotos anexadas:');
+  });
+
+  it('exibe data e hora combinadas quando a etapa possui data específica', () => {
+    const corpo = montarCorpoEmail({
+      empresa: 'X',
+      observacoes: null,
+      tramos: [tramo({
+        id: 't1',
+        data_chegada_portaria: '2026-08-27',
+        hora_chegada_portaria: '08:30',
+        data_expedicao: '2026-08-28',
+        hora_expedicao: '16:00',
+      })],
+      fotos: [],
+    });
+    expect(corpo).toContain('Horário de chegada portaria: 27/08/2026 às 08:30');
+    expect(corpo).toContain('Horário de expedição: 28/08/2026 às 16:00');
   });
 });
 
@@ -195,7 +214,7 @@ describe('montarCorpoEmailChegada', () => {
         foto({ id: 'f2', tramo_id: 't1', etapa: 'expedicao', url: 'https://s/saida.jpg' }),
       ],
     });
-    expect(corpo).toContain('(foto: https://s/chegada.jpg)');
+    expect(corpo).toContain('• Horário de chegada portaria: https://s/chegada.jpg');
     expect(corpo).not.toContain('saida.jpg');
     expect(corpo).toContain('   Obs.: Portão 2');
   });

@@ -57,19 +57,63 @@ export interface FotoComUrl extends ExpedicaoFoto {
  * existe, desce indentada na linha seguinte, para não competir com o horário.
  */
 function linhasEtapa(
-  etapa: EtapaExpedicao, hora: string | null, fotos: FotoComUrl[], obs: string | null,
+  etapa: EtapaExpedicao,
+  hora: string | null,
+  obs: string | null,
+  data?: string | null,
 ): string[] {
   const rotulo = ROTULO_ETAPA[etapa];
-  const horaTexto = (hora || '').trim() || '—';
+  const horaTexto = (hora || '').trim();
+  const dataFormatada = data ? formatDateBR(data) : null;
 
-  const links = fotos.map(f => f.url).filter((u): u is string => Boolean(u));
-  const sufixo = links.length === 0 ? ''
-    : links.length === 1 ? ` (foto: ${links[0]})`
-    : ` (${links.map((u, i) => `foto ${i + 1}: ${u}`).join(' | ')})`;
+  let valorExibicao = '—';
+  if (horaTexto && dataFormatada) {
+    valorExibicao = `${dataFormatada} às ${horaTexto}`;
+  } else if (horaTexto) {
+    valorExibicao = horaTexto;
+  } else if (dataFormatada) {
+    valorExibicao = dataFormatada;
+  }
 
-  const linhas = [`${rotulo}: ${horaTexto}${sufixo}`];
+  const linhas = [`${rotulo}: ${valorExibicao}`];
   const texto = (obs || '').trim();
   if (texto) linhas.push(`   Obs.: ${texto}`);
+  return linhas;
+}
+
+/**
+ * Seção de fotos anexadas do tramo, organizada em lista limpa e legível
+ * sem quebrar nem poluir a visualização dos horários das etapas.
+ */
+function blocoFotos(fotos: FotoComUrl[]): string[] {
+  const fotosValidas = fotos.filter((f): f is FotoComUrl & { url: string } => Boolean(f.url));
+  if (fotosValidas.length === 0) return [];
+
+  const linhas: string[] = ['', 'Fotos anexadas:'];
+
+  const porEtapa: Record<EtapaExpedicao, (FotoComUrl & { url: string })[]> = {
+    chegada_portaria: [],
+    entrada_patio: [],
+    expedicao: [],
+  };
+
+  for (const f of fotosValidas) {
+    if (porEtapa[f.etapa]) {
+      porEtapa[f.etapa].push(f);
+    }
+  }
+
+  for (const etapa of ORDEM_ETAPAS) {
+    const lista = porEtapa[etapa];
+    if (lista.length === 1) {
+      linhas.push(`• ${ROTULO_ETAPA[etapa]}: ${lista[0].url}`);
+    } else if (lista.length > 1) {
+      lista.forEach((f, idx) => {
+        linhas.push(`• ${ROTULO_ETAPA[etapa]} (foto ${idx + 1}): ${f.url}`);
+      });
+    }
+  }
+
   return linhas;
 }
 
@@ -113,10 +157,18 @@ export function montarCorpoEmail(params: {
       const hora = etapa === 'chegada_portaria' ? t.hora_chegada_portaria
         : etapa === 'entrada_patio' ? t.hora_entrada_patio
         : t.hora_expedicao;
+      const dataEtapa = etapa === 'chegada_portaria' ? t.data_chegada_portaria
+        : etapa === 'entrada_patio' ? t.data_entrada_patio
+        : t.data_expedicao;
       const obs = etapa === 'chegada_portaria' ? t.obs_chegada_portaria
         : etapa === 'entrada_patio' ? t.obs_entrada_patio
         : t.obs_expedicao;
-      linhas.push(...linhasEtapa(etapa, hora, fotosDoTramo.filter(f => f.etapa === etapa), obs));
+      linhas.push(...linhasEtapa(etapa, hora, obs, dataEtapa));
+    }
+
+    const fotosLinhas = blocoFotos(fotosDoTramo);
+    if (fotosLinhas.length > 0) {
+      linhas.push(...fotosLinhas);
     }
 
     // Respiro entre tramos, mas não sobra no fim do último.
@@ -151,9 +203,15 @@ export function montarCorpoEmailChegada(params: {
   linhas.push(...linhasEtapa(
     'chegada_portaria',
     t.hora_chegada_portaria,
-    params.fotos.filter(f => f.tramo_id === t.id && f.etapa === 'chegada_portaria'),
     t.obs_chegada_portaria,
+    t.data_chegada_portaria,
   ));
+
+  const fotosChegada = params.fotos.filter(f => f.tramo_id === t.id && f.etapa === 'chegada_portaria');
+  const fotosLinhas = blocoFotos(fotosChegada);
+  if (fotosLinhas.length > 0) {
+    linhas.push(...fotosLinhas);
+  }
 
   return linhas.join('\n');
 }
@@ -167,13 +225,26 @@ export function assuntoChegada(empresa: string, tramo: string): string {
 /** URL `mailto:` completa, com quebras de linha em CRLF (o que o Outlook espera). */
 export function montarMailto(params: {
   destinatario?: string;
+  copia?: string;
+  copiaOculta?: string;
   assunto?: string;
   corpo: string;
 }): string {
   const para = encodeURIComponent(params.destinatario ?? DESTINATARIO_PADRAO);
   const assunto = encodeURIComponent(params.assunto ?? ASSUNTO_PADRAO);
   const corpo = encodeURIComponent(params.corpo.replace(/\n/g, '\r\n'));
-  return `mailto:${para}?subject=${assunto}&body=${corpo}`;
+
+  const queryParams: string[] = [];
+  if (params.copia) {
+    queryParams.push(`cc=${encodeURIComponent(params.copia)}`);
+  }
+  if (params.copiaOculta) {
+    queryParams.push(`bcc=${encodeURIComponent(params.copiaOculta)}`);
+  }
+  queryParams.push(`subject=${assunto}`);
+  queryParams.push(`body=${corpo}`);
+
+  return `mailto:${para}?${queryParams.join('&')}`;
 }
 
 /** `true` quando o corpo cabe no `mailto:` sem risco de truncar no Outlook. */

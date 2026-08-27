@@ -26,6 +26,7 @@ import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import { useToast } from '../components/ui/Toast';
+import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -676,8 +677,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
 
-  const CADASTRO_SAP_EMAIL_DESTINO = 'jefferson.santana@ten.ind.br';
-
   // Monta o corpo do e-mail de aviso ao Suprimentos com o conteúdo preenchido no
   // formulário. Um mailto: não consegue anexar arquivos (restrição de segurança
   // do navegador/SO) — por isso os anexos entram como lista + link para a
@@ -856,9 +855,19 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
 
       if (activeTab === 'cadastro_sap') {
-        const subject = `Cadastro SAP #${reqNumero}`;
+        const configEmail = await obterConfigEmail('cadastro_sap');
+        const subject = configEmail?.assunto_padrao
+          ? `${configEmail.assunto_padrao} #${reqNumero}`
+          : `Cadastro SAP #${reqNumero}`;
         const body = buildCadastroSapEmailBody(reqId, reqNumero);
-        window.location.href = `mailto:${CADASTRO_SAP_EMAIL_DESTINO}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        const mailtoUrl = montarMailtoComConfig({
+          destinatarios: configEmail?.destinatarios || 'jefferson.santana@ten.ind.br',
+          copia: configEmail?.copia,
+          copiaOculta: configEmail?.copia_oculta,
+          assunto: subject,
+          corpo: body,
+        });
+        window.location.href = mailtoUrl;
         if (sapAttachments.length > 0) {
           toast.info('E-mail aberto no Outlook. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
         }

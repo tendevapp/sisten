@@ -162,6 +162,7 @@ export async function criarTramo(params: {
 type TramoEditavel = Pick<ExpedicaoTramo,
   'tramo' | 'motorista' | 'cavalo_placa' | 'cavalo_uf' | 'carreta_placa' | 'carreta_uf'
   | 'dolly_placa' | 'dolly_uf' | 'data' | 'ordem'
+  | 'data_chegada_portaria' | 'data_entrada_patio' | 'data_expedicao'
   | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'
   | 'obs_chegada_portaria' | 'obs_entrada_patio' | 'obs_expedicao'>;
 

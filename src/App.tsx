@@ -3,7 +3,7 @@ import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
-import { canAccessPage, pageIdForPath } from './lib/pages';
+import { canAccessPage, canAccessFormGroup, pageIdForPath } from './lib/pages';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -499,56 +499,51 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      // Os formulários vivem sob /formularios/*, mas compartilham o gate da
-      // página que os reúne — quem enxerga o hub opera os formulários.
+      // Os formulários vivem sob /formularios/* e respeitam as subpermissões por grupo:
       case '/formularios/portaria':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaHub user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-equipamentos':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaEquipamentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-transportes':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaTransportes user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-carretas':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaCarretas user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-relatorio':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaRelatorio user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-briefing':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaBriefing user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/logistica-expedicao':
-        if (canAccessPage(user, 'formularios')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
           return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      // Exceção ao padrão acima: este formulário não é "quem enxerga o hub
-      // opera" — só deve abrir para quem o admin conceder a feature flag
-      // `rh_ase_hora_extra` (tipicamente os gestores de turno), já que não há
-      // workflow de aprovação e preencher o formulário já autoriza a hora extra.
       case '/formularios/rh-ase-hora-extra':
-        if (canAccessPage(user, 'formularios') && canAccessPage(user, 'rh_ase_hora_extra')) {
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'rh')) {
           return <RhAseHoraExtra user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
