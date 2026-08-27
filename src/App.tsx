@@ -45,7 +45,15 @@ const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards
 const Sobre = lazy(() => import('./views/Sobre'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
+const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
+const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
+const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
+const PortariaTransportes = lazy(() => import('./views/portaria/PortariaTransportes'));
+const PortariaCarretas = lazy(() => import('./views/portaria/PortariaCarretas'));
+const PortariaRelatorio = lazy(() => import('./views/portaria/PortariaRelatorio'));
+const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'));
+const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -82,6 +90,7 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/helpdesk/relatorios',
   '/perfil',
   '/admin/usuarios',
+  '/admin/cadastros',
   '/admin/setores',
   '/admin/permissoes',
   '/admin/importacao-materiais',
@@ -110,6 +119,14 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   // Formulário longo, preenchido ao longo do dia: remontar a cada sync em
   // segundo plano jogaria fora os campos digitados e ainda não salvos.
   '/formularios/logistica-expedicao',
+  '/formularios/rh-ase-hora-extra',
+  '/formularios/portaria',
+  '/formularios/portaria-equipamentos',
+  '/formularios/portaria-transportes',
+  '/formularios/portaria-carretas',
+  '/formularios/portaria-relatorio',
+  '/formularios/portaria-briefing',
+  '/admin/importacao-rh',
 ]);
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -478,15 +495,61 @@ export default function App() {
       // pode ser restringido explicitamente via page_access.
       case '/formularios':
         if (canAccessPage(user, 'formularios')) {
-          return <Formularios onNavigate={handleNavigate} />;
+          return <Formularios user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       // Os formulários vivem sob /formularios/*, mas compartilham o gate da
       // página que os reúne — quem enxerga o hub opera os formulários.
+      case '/formularios/portaria':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaHub user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/portaria-equipamentos':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaEquipamentos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/portaria-transportes':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaTransportes user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/portaria-carretas':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaCarretas user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/portaria-relatorio':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaRelatorio user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/portaria-briefing':
+        if (canAccessPage(user, 'formularios')) {
+          return <PortariaBriefing user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/logistica-expedicao':
         if (canAccessPage(user, 'formularios')) {
           return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Exceção ao padrão acima: este formulário não é "quem enxerga o hub
+      // opera" — só deve abrir para quem o admin conceder a feature flag
+      // `rh_ase_hora_extra` (tipicamente os gestores de turno), já que não há
+      // workflow de aprovação e preencher o formulário já autoriza a hora extra.
+      case '/formularios/rh-ase-hora-extra':
+        if (canAccessPage(user, 'formularios') && canAccessPage(user, 'rh_ase_hora_extra')) {
+          return <RhAseHoraExtra user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -671,6 +734,12 @@ export default function App() {
       case '/admin/uso':
         if (canAccessPage(user, 'admin_uso')) {
           return <UsageDashboard />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin/cadastros':
+        if (canAccessPage(user, 'admin_cadastros')) {
+          return <CadastrosAdmin user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

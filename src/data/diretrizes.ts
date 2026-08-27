@@ -40,6 +40,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-26',
+    resumo: 'Admin > Cadastros Gerais & Vigilantes: nova página `/admin/cadastros` para centralização e gestão de tabelas mestres e listas suspensas do SISTEN. Inclui cadastro completo de Vigilantes da Portaria (tabela `port_vigilantes`), controle de status ativo/inativo em tempo real, matrícula, turnos e empresas prestadoras, com integração automática em todos os formulários da Portaria através do seletor inteligente `VigilanteSelect`.'
+  },
+  {
+    data: '2026-08-26',
+    resumo: 'Módulo Portaria & Segurança Patrimonial: digitalização completa dos 5 formulários operacionais da portaria TEN: 1. Controle de Entrada de Equipamentos e Ferramentas de Terceiros (FRM.SGP-0011, tabela `port_controle_equipamentos`); 2. Registro de Chegada de Transportes (FRM.SGP-0009, tabela `port_registro_transportes`); 3. Controle de Chegada e Saída de Carretas de Chapas (FRM.SGP-0020, tabela `port_controle_carretas`); 4. Relatório de Portaria & Ocorrências (FRM.SGP-0010, tabelas `port_relatorio_portaria` e `port_relatorio_ocorrencias`); 5. Lista de Presença — Briefing de Segurança (FRM.SGP-0013, tabelas `port_briefing_sessoes` e `port_briefing_participantes`). Inclui coleta de assinatura digital touch/canvas, gerador de relatórios e comprovantes oficiais em PDF padrão TEN, validador instantâneo de CPF de integração, contadores de pátio ao vivo e hub integrado em Formulários.'
+  },
+  {
+    data: '2026-08-26',
     resumo: 'Formulários > Logística - Expedição: novo módulo para registro de carregamento de tramos com dados do veículo (cavalo, carreta, dolly), motorista, três marcações de tempo (chegada portaria, entrada pátio, expedição) preenchidas em momentos diferentes ao longo do dia, fotos comprimidas em cada etapa, observações livres por horário e envio de aviso parcial via e-mail assim que o caminhão encosta (portaria). Mobile-first: tramos recolhíveis, campos de placa maiores, câmera integrada no celular (capture="environment") + galeria. Tabelas: `expedicao_carregamentos`, `expedicao_tramos`, `expedicao_fotos` + bucket privado `expedicao-fotos`. Link assinado (90d) no e-mail (formato preservado: Segue dados para carregamento do T1 e T4...).'
   },
   {
@@ -204,7 +212,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'Páginas com alwaysAdmin: true',
             itens: [
               'Não podem ser habilitadas via override de `page_access` para não-admins (o checkbox fica desabilitado no modal "Módulos de acesso") — mesmo assim, um role incluído no `defaultRoles` dessa página continua vendo-a normalmente; `alwaysAdmin` só bloqueia a customização por usuário, não restringe além do `defaultRoles`.',
-              'Exemplos: `sup_importar` (Importar SAP) e todas as páginas do grupo Administração.'
+              'Exemplos: todas as páginas do grupo Administração, como `admin_importacao_materiais` (Importação de Planilhas).'
             ]
           },
           {

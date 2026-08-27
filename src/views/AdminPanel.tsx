@@ -9,8 +9,8 @@ import { ApiManagement } from '../components/admin/ApiManagement';
 import {
   Users, Map as MapIcon, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
-  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles, UserPlus,
-  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu
+  FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles,
+  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -21,6 +21,7 @@ import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
+import { importarRhPessoas, importarRhSetores, importarRhHoraExtra } from '../lib/rhApi';
 
 interface AdminPanelProps {
   user: Profile;
@@ -29,7 +30,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ user }: AdminPanelProps) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
-    'usuarios' | 'setores' | 'permissoes' | 'importar' | 'importar_sap' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback' | 'diretrizes' | 'apis'
+    'usuarios' | 'setores' | 'permissoes' | 'importar_planilhas' | 'importar_sap_log' | 'grupos_comprador' | 'helpdesk_config' | 'feedback' | 'diretrizes' | 'apis'
   >('usuarios');
   
   // Users Management State
@@ -146,8 +147,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       if (path === '/admin/usuarios') setActiveTab('usuarios');
       else if (path === '/admin/setores') setActiveTab('setores');
       else if (path === '/admin/permissoes') setActiveTab('permissoes');
-      else if (path === '/admin/importacao-materiais') setActiveTab('importar');
-      else if (path === '/suprimentos/importar') setActiveTab('importar_sap');
+      else if (path === '/admin/importacao-materiais' || path === '/suprimentos/importar' || path === '/admin/importacao-rh') setActiveTab('importar_planilhas');
       else if (path === '/suprimentos/importar/log') setActiveTab('importar_sap_log');
       else if (path === '/suprimentos/grupos-comprador') setActiveTab('grupos_comprador');
       else if (path === '/admin/helpdesk') setActiveTab('helpdesk_config');
@@ -185,7 +185,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'importar') {
+    if (activeTab === 'importar_planilhas') {
       loadCatalogStats();
     }
   }, [activeTab]);
@@ -985,21 +985,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           Permissões (Matrix)
         </button>
         <button
-          onClick={() => { setActiveTab('importar'); window.location.hash = '/admin/importacao-materiais'; }}
-          className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'importar' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          onClick={() => { setActiveTab('importar_planilhas'); window.location.hash = '/admin/importacao-materiais'; }}
+          className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'importar_planilhas' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           <Upload className="h-4 w-4 mr-1.5" />
-          Importação Catálogo
+          Importação de Planilhas
         </button>
         {(user.roles.includes('admin') || user.roles.includes('coordenador_suprimentos')) && (
           <>
-            <button
-              onClick={() => { setActiveTab('importar_sap'); window.location.hash = '/suprimentos/importar'; }}
-              className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'importar_sap' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-1.5 text-emerald-600" />
-              Importar SAP
-            </button>
             <button
               onClick={() => { setActiveTab('importar_sap_log'); window.location.hash = '/suprimentos/importar/log'; }}
               className={`pb-3 px-3 border-b-2 transition-all cursor-pointer flex items-center ${activeTab === 'importar_sap_log' ? 'border-emerald-600 text-emerald-800' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
@@ -1364,9 +1357,28 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
-      {/* Tab 4: Materials import (cadastro SAP) */}
-      {activeTab === 'importar' && (
-        <div className="space-y-6">
+      {/*
+        Aba "Importação de Planilhas": todos os módulos empilhados numa única
+        página (Suprimentos, Almoxarifado, Financeiro, RH), igual ao padrão já
+        usado em Formulários (áreas com cards) — sem sub-abas para trocar de
+        módulo.
+      */}
+      {activeTab === 'importar_planilhas' && (
+        <div className="space-y-8">
+
+        {/* Módulo: Suprimentos */}
+        <section className="flex flex-col rounded-2xl border border-slate-200 bg-white px-5 py-6 sm:px-8 sm:py-7">
+          <div className="mb-5 flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+              <FileSpreadsheet className="h-5 w-5" />
+            </span>
+            <h2 className="text-lg font-bold text-slate-900">Suprimentos</h2>
+          </div>
+        {/* Carga de Dados do SAP e Fornecedores exibida primeiro (order-1) — o
+            bloco de Catálogo (ZL0169/ZL0162) continua logo abaixo (order-2)
+            no código; só a posição visual mudou, via `order` do flexbox, para
+            não arriscar mover ~1400 linhas de JSX self-contido. */}
+        <div className="order-2 mt-6 space-y-6">
           {/* Painel de Referência de Códigos para Próxima Exportação no SAP */}
           <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/50 via-white to-slate-50 p-5 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-100/80 pb-3">
@@ -1860,165 +1872,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             </div>
           )}
         </div>
-      )}
 
-      {/* Tab 5: Importar SAP (ME5A, ZL0132, PedidosForn & Contatos) */}
-      {activeTab === 'importar_sap' && (
-        <div className="space-y-6">
+        <div className="order-1 space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-emerald-700" /> Carga de Dados do SAP e Fornecedores
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              O sistema sincroniza a fila de solicitações e ordens de compra cruzando as requisições abertas (ME5A), posição de estoque (ZL0024), histórico de compras por fornecedor (PedidosForn) e contatos.
-              Você pode carregar arquivos nos formatos XLSX, XLS ou CSV, ou simular cargas integradas demonstrativas.
+              O sistema sincroniza a fila de solicitações e ordens de compra cruzando as requisições abertas (ME5A), posição de estoque (ZL0024), histórico de compras por fornecedor (ZL0132) e contatos.
+              Você pode carregar arquivos nos formatos XLSX, XLS ou CSV.
             </p>
-
-            {/* Quick Demo Simulator Buttons */}
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-150 space-y-3.5">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                <RefreshCw className="h-4 w-4 text-emerald-600 shrink-0" /> Simulador de Cargas do SAP e Fornecedores
-              </h4>
-              <p className="text-[11px] text-slate-500">
-                Pressione os botões abaixo para preencher o banco de dados com registros demonstrativos válidos de requisições, ordens, históricos e contatos.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => {
-                    setSapLogStatus('saving');
-                    setLastUploadLog(null);
-                    setTimeout(() => {
-                      try {
-                        const headers = ['Tipo de documento', 'Requisição de compra', 'Item ReqC', 'Data da solicitação', 'Requisitante', 'Material', 'Texto breve', 'Qtd.solicitada', 'Unidade de medida', 'Grupo de compradores'];
-                        const data = [
-                          ['ZR01', '1000000123', '00010', new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Guilherme Silva', '10000123', 'Cabo de Cobre Flexível 4mm', 150, 'M', '314'],
-                          ['ZR02', '1000000123', '00020', new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Guilherme Silva', '10000456', 'Disjuntor Termomagnético 50A', 12, 'UN', '314'],
-                          ['ZR03', '1000000124', '00010', new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString().split('T')[0], 'Roberto Souza', '10000789', 'Placa de Aço Laminado 2000x1000x10mm', 5, 'UN', '358']
-                        ];
-                        const rawRows = [headers, ...data];
-                        localDb.importME5ARaw(rawRows, 'sap_export_me5a_simulado.xlsx').then(log => {
-                          setLastUploadLog(log);
-                          setSapLogStatus('success');
-                          setSapLogError('');
-                          loadData();
-                        }).catch(err => {
-                          setSapLogError(err.message || 'Erro ao simular ME5A.');
-                          setSapLogStatus('error');
-                        });
-                      } catch (err: any) {
-                        setSapLogError(err.message || 'Erro ao simular ME5A.');
-                        setSapLogStatus('error');
-                      }
-                    }, 800);
-                  }}
-                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Fila SAP (ME5A)
-                </button>
-
-                <button
-                  onClick={() => {
-                    setSapLogStatus('saving');
-                    setLastUploadLog(null);
-                    setTimeout(() => {
-                      try {
-                        const headers = ['ReqC', 'Itm', 'Material', 'TxtBreve', 'Fornecedor', 'Nº ID fiscal 1', 'Nome 1', 'Rg', 'Data doc.', 'Valor líquido'];
-                        const data = [
-                          ['1100320195', '00020', '10000123', 'Cabo de Cobre Flexível 4mm', '1000015507', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-06-01', 500],
-                          ['1100320250', '00030', '10000123', 'Cabo de Cobre Flexível 4mm', 'F800555', '98.765.432/0001-00', 'Alcoa Alumínio Brasil', 'RJ', '2026-07-01', 1200],
-                          ['1100320250', '00040', '10000456', 'Disjuntor Termomagnético 50A', '1000015507', '12.345.678/0001-99', 'Metalúrgica Gerdau S.A.', 'SP', '2026-05-15', 300],
-                          ['1100327694', '00010', '10000789', 'Placa de Aço Laminado 2000x1000x10mm', 'F700333', '11.222.333/0001-44', 'Usiminas S.A.', 'MG', '2026-06-20', 4500]
-                        ];
-                        const rawRows = [headers, ...data];
-                        localDb.importPedidosForn(rawRows, 'historico_pedidos_simulado.xlsx', (progress, message) => {
-                          setSapProgress(progress);
-                          if (message) setSapLogMessage(message);
-                        }).then(log => {
-                          setLastUploadLog(log);
-                          setSapLogStatus('success');
-                          setSapLogError('');
-                          loadData();
-                        }).catch(err => {
-                          setSapLogError(err.message || 'Erro ao simular Histórico de Pedidos.');
-                          setSapLogStatus('error');
-                        });
-                      } catch (err: any) {
-                        setSapLogError(err.message || 'Erro ao simular Histórico de Pedidos.');
-                        setSapLogStatus('error');
-                      }
-                    }, 800);
-                  }}
-                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Histórico (PedidosForn)
-                </button>
-
-                <button
-                  onClick={() => {
-                    setSapLogStatus('saving');
-                    setLastUploadLog(null);
-                    setTimeout(() => {
-                      try {
-                        const headers = ['N° VENDOR', 'FORNECEDORES', 'Contato', 'NOME FANTASIA', 'TELEFONE', 'E-MAIL', 'CLASSIFICAÇÃO'];
-                        const data = [
-                          ['F900213', 'Metalúrgica Gerdau S.A.', 'Carlos Silva', 'Gerdau', '(11) 98888-7777', 'vendas@gerdau.com.br', 'Parceiro Estratégico'],
-                          ['F800555', 'Alcoa Alumínio Brasil', 'Ana Souza', 'Alcoa', '(21) 2555-1234', 'comercial@alcoa.com', 'Homologado'],
-                          ['F700333', 'Usiminas S.A.', 'João Pereira', 'Usiminas', '(31) 3499-8000', 'atendimento@usiminas.com', 'Preferencial']
-                        ];
-                        const rawRows = [headers, ...data];
-                        localDb.importContatos(rawRows, 'contatos_fornecedores_simulado.xlsx').then(log => {
-                          setLastUploadLog(log);
-                          setSapLogStatus('success');
-                          setSapLogError('');
-                          loadData();
-                        }).catch(err => {
-                          setSapLogError(err.message || 'Erro ao simular Contatos.');
-                          setSapLogStatus('error');
-                        });
-                      } catch (err: any) {
-                        setSapLogError(err.message || 'Erro ao simular Contatos.');
-                        setSapLogStatus('error');
-                      }
-                    }, 800);
-                  }}
-                  className="rounded bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Contatos (Contatos)
-                </button>
-                <button
-                  onClick={() => {
-                    setSapLogStatus('saving');
-                    setLastUploadLog(null);
-                    setTimeout(() => {
-                      try {
-                        const headers = ['Fornecedor', 'Nome do fornecedor', 'Rua', 'País', 'Código postal', 'Local'];
-                        const data = [
-                          ['1000000084', 'Agcomex Comercial Exportadora, Lda', 'R. Dr. Geraldo Campos Moreira, 375', 'BR', '04571-020', 'SÃO PAULO'],
-                          ['1000000106', 'Aguiar & Silva, Lda', 'Rua Juvenal F. Pestana, 10', 'PT', '9350-219', 'Ribeira Brava'],
-                          ['1000000113', 'Air Liquide Soldadura, Lda', 'Rua Dr. Loureiro Borges 4-2º', 'PT', '1495-131', 'Algés']
-                        ];
-                        const rawRows = [headers, ...data];
-                        localDb.importCidadeForn(rawRows, 'cidadeforn_simulado.xlsx').then(log => {
-                          setLastUploadLog(log);
-                          setSapLogStatus('success');
-                          setSapLogError('');
-                          loadData();
-                        }).catch(err => {
-                          setSapLogError(err.message || 'Erro ao simular Cidades Fornecedores.');
-                          setSapLogStatus('error');
-                        });
-                      } catch (err: any) {
-                        setSapLogError(err.message || 'Erro ao simular Cidades Fornecedores.');
-                        setSapLogStatus('error');
-                      }
-                    }, 800);
-                  }}
-                  className="rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs py-2 px-4 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Alimentar Endereços/Cidades (CidadeForn)
-                </button>
-              </div>
-            </div>
 
             {/* Custom file parser */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-5 pt-1">
@@ -2153,10 +2016,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
               </div>
 
-              {/* PedidosForn Upload Card */}
+              {/* PedidosForn Upload Card (renomeado para ZL0132) */}
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Histórico de Pedidos (PedidosForn)
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Transação ZL0132 (Histórico de Pedidos)
                 </h4>
                 <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar o histórico de fornecedores por material.</p>
                 <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
@@ -2218,17 +2081,51 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV PedidosForn</p>
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ZL0132</p>
                 </div>
               </div>
 
-              {/* Contatos Upload Card */}
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Cadastro de Contatos (Contatos)
-                </h4>
-                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar os contatos de fornecedores.</p>
-                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+              {/* MB51 Upload Card (trocado de lugar com Contatos) */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-white shadow-xs">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-orange-500" /> Transação MB51 (Mov. Estoque)
+                  </h4>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Importa entradas, saídas, baixas de projeto (PEP) e transferências de estoque.
+                </p>
+
+                {/* Seletor de Modo de Importação */}
+                <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80 space-y-1.5">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Modo de Carga</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMb51ImportMode('upsert')}
+                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
+                        mb51ImportMode === 'upsert'
+                          ? 'bg-orange-500 text-white shadow-xs font-bold'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      ➕ Apenas Novos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMb51ImportMode('replace')}
+                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
+                        mb51ImportMode === 'replace'
+                          ? 'bg-red-600 text-white shadow-xs font-bold'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      🔄 Substituir Tudo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-5 text-center cursor-pointer relative transition-colors">
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls"
@@ -2237,10 +2134,11 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
+                        setSapProgress(0);
                         setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
-                        
+
                         r.onload = (ev) => {
                           try {
                             let rawRows: any[][] = [];
@@ -2257,21 +2155,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               const worksheet = workbook.Sheets[sheetName];
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
-                            
-                            localDb.importContatos(rawRows, file.name).then(log => {
+
+                            localDb.importMB51Raw(rawRows, file.name, mb51ImportMode, setSapProgress).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
                             }).catch(err => {
-                              setSapLogError(err.message || 'Falha ao processar planilha.');
+                              setSapLogError(err.message || 'Falha ao processar planilha MB51.');
                               setSapLogStatus('error');
                             });
                           } catch (err: any) {
-                            setSapLogError(err.message || 'Falha ao processar planilha.');
+                            setSapLogError(err.message || 'Falha ao processar planilha MB51.');
                             setSapLogStatus('error');
                           }
                         };
-                        
+
                         if (fileExtension === 'csv') {
                           r.readAsText(file);
                         } else {
@@ -2282,7 +2180,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV MB51</p>
+                  <span className="text-[9px] text-slate-400 mt-0.5 block">
+                    {mb51ImportMode === 'upsert' ? 'Modo: Upsert de novos registros' : 'Modo: Substituição completa da tabela'}
+                  </span>
                 </div>
               </div>
 
@@ -2412,71 +2313,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV ME3N</p>
-                </div>
-              </div>
-
-              {/* FBL1N Upload Card */}
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-cyan-500" /> Transação FBL1N (Contas a Pagar)
-                </h4>
-                <p className="text-[10px] text-slate-400">Substitui integralmente as partidas de contas a pagar anteriores — a última carga é sempre a mais atual.</p>
-                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => {
-                      if (e.target.files?.length) {
-                        const file = e.target.files[0];
-                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
-                        setSapLogStatus('saving');
-                        setSapProgress(0);
-                        setLastUploadLog(null);
-                        setSapLogError('');
-                        const r = new FileReader();
-
-                        r.onload = (ev) => {
-                          try {
-                            let rawRows: any[][] = [];
-                            if (fileExtension === 'csv') {
-                              const text = ev.target?.result as string;
-                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
-                                return l.split(';').map(c => c.replace(/"/g, '').trim());
-                              });
-                            } else {
-                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-                              const workbook = XLSX.read(data, { type: 'array' });
-                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
-                              const sheetName = workbook.SheetNames[0];
-                              const worksheet = workbook.Sheets[sheetName];
-                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
-                            }
-
-                            localDb.importFBL1NRaw(rawRows, file.name, setSapProgress).then(log => {
-                              setLastUploadLog(log);
-                              setSapLogStatus('success');
-                              loadData();
-                            }).catch(err => {
-                              setSapLogError(err.message || 'Falha ao processar planilha.');
-                              setSapLogStatus('error');
-                            });
-                          } catch (err: any) {
-                            setSapLogError(err.message || 'Falha ao processar planilha.');
-                            setSapLogStatus('error');
-                          }
-                        };
-
-                        if (fileExtension === 'csv') {
-                          r.readAsText(file);
-                        } else {
-                          r.readAsArrayBuffer(file);
-                        }
-                      }
-                    }}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV FBL1N</p>
                 </div>
               </div>
 
@@ -2613,47 +2449,13 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </div>
               </div>
 
-              {/* MB51 Upload Card */}
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3 bg-white shadow-xs">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-orange-500" /> Transação MB51 (Mov. Estoque)
-                  </h4>
-                </div>
-                <p className="text-[10px] text-slate-400">
-                  Importa entradas, saídas, baixas de projeto (PEP) e transferências de estoque.
-                </p>
-
-                {/* Seletor de Modo de Importação */}
-                <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80 space-y-1.5">
-                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Modo de Carga</span>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setMb51ImportMode('upsert')}
-                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
-                        mb51ImportMode === 'upsert'
-                          ? 'bg-orange-500 text-white shadow-xs font-bold'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      ➕ Apenas Novos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMb51ImportMode('replace')}
-                      className={`text-[10px] font-semibold py-1 px-2 rounded transition-all cursor-pointer text-center ${
-                        mb51ImportMode === 'replace'
-                          ? 'bg-red-600 text-white shadow-xs font-bold'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      🔄 Substituir Tudo
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-5 text-center cursor-pointer relative transition-colors">
+              {/* Contatos Upload Card (trocado de lugar com MB51) */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Cadastro de Contatos (Contatos)
+                </h4>
+                <p className="text-[10px] text-slate-400">Arraste ou cole o arquivo para atualizar os contatos de fornecedores.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls"
@@ -2662,7 +2464,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         const file = e.target.files[0];
                         const fileExtension = file.name.split('.').pop()?.toLowerCase();
                         setSapLogStatus('saving');
-                        setSapProgress(0);
                         setLastUploadLog(null);
                         setSapLogError('');
                         const r = new FileReader();
@@ -2684,16 +2485,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                             }
 
-                            localDb.importMB51Raw(rawRows, file.name, mb51ImportMode, setSapProgress).then(log => {
+                            localDb.importContatos(rawRows, file.name).then(log => {
                               setLastUploadLog(log);
                               setSapLogStatus('success');
                               loadData();
                             }).catch(err => {
-                              setSapLogError(err.message || 'Falha ao processar planilha MB51.');
+                              setSapLogError(err.message || 'Falha ao processar planilha.');
                               setSapLogStatus('error');
                             });
                           } catch (err: any) {
-                            setSapLogError(err.message || 'Falha ao processar planilha MB51.');
+                            setSapLogError(err.message || 'Falha ao processar planilha.');
                             setSapLogStatus('error');
                           }
                         };
@@ -2708,10 +2509,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
-                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV MB51</p>
-                  <span className="text-[9px] text-slate-400 mt-0.5 block">
-                    {mb51ImportMode === 'upsert' ? 'Modo: Upsert de novos registros' : 'Modo: Substituição completa da tabela'}
-                  </span>
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
                 </div>
               </div>
             </div>
@@ -2830,9 +2628,323 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             )}
           </div>
         </div>
+      </section>
+
+      {/* Módulo: Almoxarifado */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-6 sm:px-8 sm:py-7">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+            <Boxes className="h-5 w-5" />
+          </span>
+          <h2 className="text-lg font-bold text-slate-900">Almoxarifado</h2>
+        </div>
+        <div className="rounded-xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500">
+          Nenhum importador ainda.
+        </div>
+      </section>
+
+      {/* Módulo: Financeiro */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-6 sm:px-8 sm:py-7">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+            <Receipt className="h-5 w-5" />
+          </span>
+          <h2 className="text-lg font-bold text-slate-900">Financeiro</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* FBL1N Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-cyan-500" /> Transação FBL1N (Contas a Pagar)
+            </h4>
+            <p className="text-[10px] text-slate-400">Substitui integralmente as partidas de contas a pagar anteriores — a última carga é sempre a mais atual.</p>
+            <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    const file = e.target.files[0];
+                    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                    setSapLogStatus('saving');
+                    setSapProgress(0);
+                    setLastUploadLog(null);
+                    setSapLogError('');
+                    const r = new FileReader();
+
+                    r.onload = (ev) => {
+                      try {
+                        let rawRows: any[][] = [];
+                        if (fileExtension === 'csv') {
+                          const text = ev.target?.result as string;
+                          rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                            return l.split(';').map(c => c.replace(/"/g, '').trim());
+                          });
+                        } else {
+                          const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                          const workbook = XLSX.read(data, { type: 'array' });
+                          if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                          const sheetName = workbook.SheetNames[0];
+                          const worksheet = workbook.Sheets[sheetName];
+                          rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                        }
+
+                        localDb.importFBL1NRaw(rawRows, file.name, setSapProgress).then(log => {
+                          setLastUploadLog(log);
+                          setSapLogStatus('success');
+                          loadData();
+                        }).catch(err => {
+                          setSapLogError(err.message || 'Falha ao processar planilha.');
+                          setSapLogStatus('error');
+                        });
+                      } catch (err: any) {
+                        setSapLogError(err.message || 'Falha ao processar planilha.');
+                        setSapLogStatus('error');
+                      }
+                    };
+
+                    if (fileExtension === 'csv') {
+                      r.readAsText(file);
+                    } else {
+                      r.readAsArrayBuffer(file);
+                    }
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV FBL1N</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Módulo: RH */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-5 py-6 sm:px-8 sm:py-7">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+            <Users2 className="h-5 w-5" />
+          </span>
+          <h2 className="text-lg font-bold text-slate-900">RH</h2>
+        </div>
+        <p className="mb-4 text-xs text-slate-500 leading-relaxed">
+          Cadastros usados pelo formulário ASE - Hora Extra (Formulários › RH). Turno (ADM, 2º Turno, 3º Turno) já vem
+          pré-cadastrado e não tem importação própria.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Colaboradores Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Colaboradores (rh_pessoas)
+            </h4>
+            <p className="text-[10px] text-slate-400">REGISTRO, NOME DO EMPREGADO, DESCRIÇÃO DO CARGO. Linhas existentes (mesmo REGISTRO) são atualizadas.</p>
+            <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    const file = e.target.files[0];
+                    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                    const r = new FileReader();
+
+                    r.onload = (ev) => {
+                      try {
+                        let rawRows: any[][] = [];
+                        if (fileExtension === 'csv') {
+                          const text = ev.target?.result as string;
+                          rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                            return l.split(';').map(c => c.replace(/"/g, '').trim());
+                          });
+                        } else {
+                          const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                          const workbook = XLSX.read(data, { type: 'array' });
+                          if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                          const sheetName = workbook.SheetNames[0];
+                          const worksheet = workbook.Sheets[sheetName];
+                          rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                        }
+
+                        if (rawRows.length < 2) throw new Error('Planilha vazia ou sem linhas de dados.');
+                        const headers = rawRows[0].map(sanitizeSAPHeader);
+                        const registroIdx = headers.findIndex(h => h === 'registro' || h === 'matricula');
+                        const nomeIdx = headers.findIndex(h => h === 'nomedoempregado' || h === 'nome' || h === 'funcionario' || h === 'empregado');
+                        const cargoIdx = headers.findIndex(h => h === 'descricaodocargo' || h === 'cargo' || h === 'funcao' || h === 'descricaocargo');
+                        if (registroIdx === -1 || nomeIdx === -1) {
+                          throw new Error('Colunas obrigatórias não encontradas. Esperado: "REGISTRO" e "NOME DO EMPREGADO" (a coluna "DESCRIÇÃO DO CARGO" é opcional).');
+                        }
+                        const itens = rawRows.slice(1)
+                          .map(row => ({
+                            registro: String(row[registroIdx] ?? '').trim(),
+                            nome: String(row[nomeIdx] ?? '').trim(),
+                            cargo: cargoIdx !== -1 ? String(row[cargoIdx] ?? '').trim() : undefined,
+                          }))
+                          .filter(it => it.registro && it.nome);
+                        if (itens.length === 0) throw new Error('Nenhuma linha válida encontrada na planilha.');
+
+                        importarRhPessoas(itens).then(result => {
+                          toast.success(`Colaboradores: ${result.inseridos} novo(s), ${result.atualizados} atualizado(s).`);
+                        }).catch(err => {
+                          toast.error(err.message || 'Falha ao salvar no Supabase.');
+                        });
+                      } catch (err: any) {
+                        toast.error(err.message || 'Falha ao processar a planilha.');
+                      }
+                    };
+
+                    if (fileExtension === 'csv') {
+                      r.readAsText(file);
+                    } else {
+                      r.readAsArrayBuffer(file);
+                    }
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Colaboradores</p>
+            </div>
+          </div>
+
+          {/* Setores Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-blue-500" /> Setores (rh_setores)
+            </h4>
+            <p className="text-[10px] text-slate-400">Coluna única de setores (com ou sem cabeçalho "SETOR").</p>
+            <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    const file = e.target.files[0];
+                    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                    const r = new FileReader();
+
+                    r.onload = (ev) => {
+                      try {
+                        let rawRows: any[][] = [];
+                        if (fileExtension === 'csv') {
+                          const text = ev.target?.result as string;
+                          rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                            return l.split(';').map(c => c.replace(/"/g, '').trim());
+                          });
+                        } else {
+                          const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                          const workbook = XLSX.read(data, { type: 'array' });
+                          if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                          const sheetName = workbook.SheetNames[0];
+                          const worksheet = workbook.Sheets[sheetName];
+                          rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                        }
+
+                        if (rawRows.length < 1) throw new Error('Planilha vazia.');
+                        // Coluna única: aceita com ou sem cabeçalho — se a primeira
+                        // linha não parecer um cabeçalho ("setor"), ela também
+                        // entra como dado.
+                        const headers = rawRows[0].map(sanitizeSAPHeader);
+                        const temCabecalho = headers[0] === 'setor' || headers[0] === 'setores' || headers[0] === 'nome';
+                        const linhas = temCabecalho ? rawRows.slice(1) : rawRows;
+                        const nomes = linhas.map(row => String(row[0] ?? '').trim()).filter(Boolean);
+                        if (nomes.length === 0) throw new Error('Nenhuma linha válida encontrada na planilha.');
+
+                        importarRhSetores(nomes).then(result => {
+                          toast.success(`Setores: ${result.inseridos} novo(s), ${result.atualizados} atualizado(s).`);
+                        }).catch(err => {
+                          toast.error(err.message || 'Falha ao salvar no Supabase.');
+                        });
+                      } catch (err: any) {
+                        toast.error(err.message || 'Falha ao processar a planilha.');
+                      }
+                    };
+
+                    if (fileExtension === 'csv') {
+                      r.readAsText(file);
+                    } else {
+                      r.readAsArrayBuffer(file);
+                    }
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Setores</p>
+            </div>
+          </div>
+
+          {/* Horário (%HE) Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-purple-500" /> Horário (rh_hora_extra)
+            </h4>
+            <p className="text-[10px] text-slate-400">DIA, %HEX — calendário de percentual de hora extra por dia.</p>
+            <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    const file = e.target.files[0];
+                    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                    const r = new FileReader();
+
+                    r.onload = (ev) => {
+                      try {
+                        let rawRows: any[][] = [];
+                        if (fileExtension === 'csv') {
+                          const text = ev.target?.result as string;
+                          rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                            return l.split(';').map(c => c.replace(/"/g, '').trim());
+                          });
+                        } else {
+                          const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                          const workbook = XLSX.read(data, { type: 'array' });
+                          if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                          const sheetName = workbook.SheetNames[0];
+                          const worksheet = workbook.Sheets[sheetName];
+                          rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                        }
+
+                        if (rawRows.length < 2) throw new Error('Planilha vazia ou sem linhas de dados.');
+                        const headers = rawRows[0].map(sanitizeSAPHeader);
+                        const diaIdx = headers.findIndex(h => h === 'dia' || h === 'data');
+                        const percentualIdx = headers.findIndex(h => h === 'hex' || h === 'percentualhe' || h.includes('he'));
+                        if (diaIdx === -1 || percentualIdx === -1) {
+                          throw new Error('Colunas obrigatórias não encontradas. Esperado: "DIA" e "%HEX".');
+                        }
+                        const itens = rawRows.slice(1)
+                          .map(row => ({ dia: parseSAPDate(row[diaIdx]), percentual_he: Number(String(row[percentualIdx] ?? '').replace(',', '.').replace('%', '')) }))
+                          .filter((it): it is { dia: string; percentual_he: number } => Boolean(it.dia) && !isNaN(it.percentual_he));
+                        if (itens.length === 0) throw new Error('Nenhuma linha válida encontrada na planilha.');
+
+                        importarRhHoraExtra(itens).then(result => {
+                          toast.success(`Horário (%HE): ${result.inseridos} novo(s), ${result.atualizados} atualizado(s).`);
+                        }).catch(err => {
+                          toast.error(err.message || 'Falha ao salvar no Supabase.');
+                        });
+                      } catch (err: any) {
+                        toast.error(err.message || 'Falha ao processar a planilha.');
+                      }
+                    };
+
+                    if (fileExtension === 'csv') {
+                      r.readAsText(file);
+                    } else {
+                      r.readAsArrayBuffer(file);
+                    }
+                  }
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Upload className="mx-auto h-6 w-6 text-slate-400" />
+              <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Horário</p>
+            </div>
+          </div>
+        </div>
+      </section>
+        </div>
       )}
-
-
 
       {/* Tab 6: Logs SAP */}
       {activeTab === 'importar_sap_log' && (

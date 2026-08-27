@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye, Menu } from 'lucide-react';
+import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye, Menu, Upload } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 
@@ -170,6 +170,18 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
 
       {/* Right side Controls */}
       <div className="flex items-center space-x-2 sm:space-x-4 shrink-0">
+        {/* Atalho de Importação de Planilhas — só admin, é onde ele mais precisa chegar rápido. */}
+        {user.roles.includes('admin') && (
+          <button
+            onClick={() => onNavigate('/admin/importacao-materiais')}
+            aria-label="Importação de Planilhas"
+            title="Importação de Planilhas"
+            className="rounded-full p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
+          >
+            <Upload className="h-5.5 w-5.5" />
+          </button>
+        )}
+
         {/* Notifications */}
         <div className="relative">
           <button

@@ -61,7 +61,6 @@ export const PAGES: PageDef[] = [
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
-  { id: 'sup_importar', group: 'SUPRIMENTOS', label: 'Importar SAP', path: '/suprimentos/importar', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
 
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -76,9 +75,14 @@ export const PAGES: PageDef[] = [
 
   { id: 'admin_uso', group: 'ADMINISTRAÇÃO', label: 'Uso do App', path: '/admin/uso', icon: Activity, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_usuarios', group: 'ADMINISTRAÇÃO', label: 'Usuários', path: '/admin/usuarios', icon: Users, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
+  { id: 'admin_cadastros', group: 'ADMINISTRAÇÃO', label: 'Cadastros Gerais', path: '/admin/cadastros', icon: Database, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_setores', group: 'ADMINISTRAÇÃO', label: 'Setores', path: '/admin/setores', icon: Map, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_permissoes', group: 'ADMINISTRAÇÃO', label: 'Permissões', path: '/admin/permissoes', icon: Shield, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
-  { id: 'admin_importacao_materiais', group: 'ADMINISTRAÇÃO', label: 'Import. Materiais', path: '/admin/importacao-materiais', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
+  // Um só item de menu para a aba "Importação de Planilhas" — Suprimentos
+  // (Catálogo + SAP), Almoxarifado, Financeiro e RH vivem todos empilhados
+  // nessa mesma página agora (sem sub-abas), então três links de menu
+  // apontando pro mesmo lugar (como havia antes) seria redundante.
+  { id: 'admin_importacao_materiais', group: 'ADMINISTRAÇÃO', label: 'Importação de Planilhas', path: '/admin/importacao-materiais', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_importar_sap_log', group: 'ADMINISTRAÇÃO', label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
@@ -112,6 +116,18 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'juridico_notificar',
     group: 'HELPDESK',
     label: 'Chamados Jurídicos (receber notificações)',
+    defaultRoles: [],
+  },
+  // Sem role padrão: o formulário só fica visível para quem o admin conceder
+  // acesso individualmente em "Módulos de acesso" (tipicamente os gestores de
+  // turno). Sem `path` de propósito — não é item de menu na Sidebar, só um
+  // card em /formularios (igual ao padrão de Logística - Expedição) mais essa
+  // gate própria, já que aqui (ao contrário daquele formulário) o acesso não
+  // pode ser "todo mundo que acessa /formularios".
+  {
+    id: 'rh_ase_hora_extra',
+    group: 'RH',
+    label: 'Formulário ASE - Hora Extra',
     defaultRoles: [],
   },
 ];

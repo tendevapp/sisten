@@ -1439,3 +1439,257 @@ export interface ExpedicaoCarregamentoResumo extends ExpedicaoCarregamento {
   tramos: Pick<ExpedicaoTramo, 'id' | 'tramo' | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'>[];
   total_fotos: number;
 }
+
+// ---------- Módulo RH ----------
+
+export interface RhSetor {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  created_at: string;
+}
+
+export interface RhTurno {
+  id: string;
+  nome: string;
+  created_at: string;
+}
+
+export interface RhPessoa {
+  id: string;
+  registro: string;
+  nome: string;
+  cargo: string | null;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Calendário de percentual de hora extra por dia (`06/01/2023` = 60%, etc.), importado de planilha. */
+export interface RhHoraExtra {
+  id: string;
+  /** ISO `YYYY-MM-DD`. */
+  dia: string;
+  percentual_he: number;
+  created_at: string;
+}
+
+// ---------- Formulário: ASE - Hora Extra (FRM.RHU-0007) ----------
+
+/**
+ * Sem workflow de aprovação: o formulário só é visível para quem o admin
+ * conceder acesso (`page_access['rh_ase_hora_extra']`), então preencher e
+ * enviar já é a autorização. `RASCUNHO` permite continuar editando;
+ * `ENVIADO` é o registro final (ainda pode virar `CANCELADO`).
+ */
+export type AseHoraExtraStatus = 'RASCUNHO' | 'ENVIADO' | 'CANCELADO';
+
+export interface AseHoraExtraSolicitacao {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  solicitante_id: string | null;
+  setor_id: string | null;
+  turno_id: string | null;
+  /** ISO `YYYY-MM-DD` — a "DATA" do formulário físico. */
+  data_execucao: string;
+  justificativa: string | null;
+  status: AseHoraExtraStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AseHoraExtraItem {
+  id: string;
+  solicitacao_id: string;
+  pessoa_id: string | null;
+  registro: string;
+  nome: string;
+  cargo: string | null;
+  transporte: boolean;
+  refeicao: boolean;
+  /** 'HH:MM'. */
+  hora_entrada: string;
+  hora_saida: string;
+  intervalo_minutos: number;
+  percentual_he: number | null;
+  total_horas: number | null;
+  observacao: string | null;
+  created_at: string;
+}
+
+/** Solicitação + colaboradores + os cadastros já resolvidos (setor/turno por extenso) — o que a tela de edição manipula. */
+export interface AseHoraExtraCompleta extends AseHoraExtraSolicitacao {
+  itens: AseHoraExtraItem[];
+  setor_nome: string | null;
+  turno_nome: string | null;
+  solicitante_nome: string | null;
+}
+
+// =====================================================================
+// ---------- MÓDULO PORTARIA (FRM.SGP-0008/0011, 0009, 0020, 0010, 0013) ----------
+// =====================================================================
+
+export type PortTurno = 'MANHA' | 'TARDE' | 'NOITE' | 'TURNO_A' | 'TURNO_B' | 'TURNO_C';
+
+// 1. Controle de Equipamento e Ferramentas de Terceiros (FRM.SGP-0011)
+export type PortEquipamentoStatus = 'NO_PATIO' | 'DEVOLVIDO' | 'RETIDO' | 'CANCELADO';
+
+export interface PortControleEquipamento {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  data_entrada: string;
+  data_saida: string | null;
+  hora_entrada: string | null;
+  hora_saida: string | null;
+  nome_empresa: string;
+  funcionario: string;
+  descricao_materiais: string;
+  responsavel: string | null;
+  vigilante_entrada: string;
+  vigilante_saida: string | null;
+  status: PortEquipamentoStatus;
+  observacoes: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 2. Registro de Chegada de Transportes (FRM.SGP-0009)
+export type PortTransporteStatus = 'NO_PATIO' | 'FINALIZADO' | 'CANCELADO';
+
+export interface PortRegistroTransporte {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  data: string;
+  turno: PortTurno;
+  vigilante: string;
+  veiculo: string;
+  placa: string;
+  empresa: string;
+  hora_chegada: string;
+  hora_saida: string | null;
+  motorista: string;
+  ocupacao: string | null;
+  observacoes: string | null;
+  status: PortTransporteStatus;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 3. Controle de Chegada e Saída de Carretas de Chapas (FRM.SGP-0020)
+export type PortCarretaStatus = 'NO_PATIO' | 'DESCARREGANDO' | 'LIBERADO' | 'FINALIZADO' | 'CANCELADO';
+
+export interface PortControleCarreta {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  empresa: string;
+  placa_cavalo: string;
+  placa_carreta: string;
+  data_entrada: string;
+  hora_entrada: string;
+  nome_motorista: string;
+  cpf_motorista: string | null;
+  data_saida: string | null;
+  hora_saida: string | null;
+  ass_motorista: string | null;
+  vigilante_entrada: string;
+  vigilante_saida: string | null;
+  numero_nf: string | null;
+  peso_bruto: number | null;
+  status: PortCarretaStatus;
+  observacoes: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 4. Relatório de Portaria (FRM.SGP-0010)
+export type PortRelatorioStatus = 'EM_ANDAMENTO' | 'CONCLUIDO' | 'PASSADO' | 'CANCELADO';
+export type PortLocalSetor = 'PORTARIA' | 'RONDA_01' | 'RONDA_02' | 'PATIO_CHAPAS' | 'PATIO_TRAMOS' | 'FABRICA' | 'OUTRO';
+export type PortSeveridade = 'INFO' | 'ALERTA' | 'GRAVE';
+
+export interface PortRelatorioOcorrencia {
+  id: string;
+  relatorio_id: string;
+  horario: string;
+  local_setor: PortLocalSetor;
+  descricao: string;
+  severidade: PortSeveridade;
+  vigilante: string;
+  created_at: string;
+}
+
+export interface PortRelatorioPortaria {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  data: string;
+  turno: PortTurno;
+  horario_inicio: string;
+  horario_fim: string;
+  vigilante_principal: string;
+  vigilante_ronda01: string | null;
+  vigilante_ronda02: string | null;
+  status: PortRelatorioStatus;
+  observacoes_gerais: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+  ocorrencias?: PortRelatorioOcorrencia[];
+}
+
+// 5. Lista de Presença - Briefing de Segurança (FRM.SGP-0013)
+export type PortBriefingTipo = 'INTERNO' | 'EXTERNO';
+export type PortBriefingStatus = 'ABERTA' | 'CONCLUIDA' | 'CANCELADA';
+
+export interface PortBriefingParticipante {
+  id: string;
+  sessao_id: string;
+  data: string;
+  empresa: string;
+  nome: string;
+  cpf: string;
+  funcao: string;
+  assinatura_digital: string | null;
+  validade_dias: number;
+  created_at: string;
+}
+
+export interface PortBriefingSessao {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo: string;
+  tema_treinamento: string;
+  tipo: PortBriefingTipo;
+  data: string;
+  instrutor_responsavel: string;
+  conteudo_programatico: string;
+  termo_responsabilidade: string;
+  status: PortBriefingStatus;
+  observacoes: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+  participantes?: PortBriefingParticipante[];
+}
+
+// 6. Cadastro de Vigilantes (Portaria)
+export interface PortVigilante {
+  id: string;
+  nome: string;
+  matricula: string | null;
+  empresa: string;
+  funcao: string;
+  turno_preferencial: string | null;
+  ativo: boolean;
+  observacoes: string | null;
+  criado_por?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+

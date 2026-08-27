@@ -15,10 +15,16 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { DoorOpen, Boxes, UserCheck, PackageCheck, Truck, Clock, ArrowRight } from 'lucide-react';
+import {
+  DoorOpen, Boxes, UserCheck, PackageCheck, Truck, Clock, ArrowRight,
+  Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck
+} from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
+import { canAccessPage } from '../lib/pages';
+import { Profile } from '../types';
 
 interface FormulariosProps {
+  user: Profile;
   onNavigate: (path: string) => void;
 }
 
@@ -29,6 +35,13 @@ interface FormularioItem {
   desc: string;
   /** Ausente enquanto o formulário não existe — o card fica em modo "em breve". */
   path?: string;
+  /**
+   * Chave em `pages.ts` que precisa liberar o item para o usuário atual —
+   * usado só quando o acesso é mais restrito que o do hub (concedido pelo
+   * admin usuário a usuário, ex.: ASE - Hora Extra). Ausente = todo mundo que
+   * já está vendo /formularios enxerga o card.
+   */
+  gateId?: string;
 }
 
 interface AreaFormularios {
@@ -45,21 +58,44 @@ const AREAS: AreaFormularios[] = [
     icon: DoorOpen,
     itens: [
       {
-        id: 'portaria_entrada_visitantes',
-        label: 'Entrada de Visitantes',
-        icon: UserCheck,
-        desc: 'Registro de visitantes na entrada da obra ou unidade.',
+        id: 'portaria_equipamentos',
+        label: 'Equipamentos de Terceiros (FRM.SGP-0011)',
+        icon: Wrench,
+        desc: 'Controle de entrada e devolução de ferramentas e instrumentos de terceirizados.',
+        path: '/formularios/portaria-equipamentos',
       },
       {
-        id: 'portaria_entrada_materiais',
-        label: 'Entrada de Materiais',
-        icon: PackageCheck,
-        desc: 'Conferência e registro de materiais recebidos na portaria.',
+        id: 'portaria_transportes',
+        label: 'Chegada de Transportes (FRM.SGP-0009)',
+        icon: Bus,
+        desc: 'Registro diário de movimentação de veículos, vans, carros e ônibus por turno.',
+        path: '/formularios/portaria-transportes',
+      },
+      {
+        id: 'portaria_carretas',
+        label: 'Carretas de Chapas (FRM.SGP-0020)',
+        icon: Truck,
+        desc: 'Controle de chegada, descarregamento de aço e liberação de carretas de chapas.',
+        path: '/formularios/portaria-carretas',
+      },
+      {
+        id: 'portaria_relatorio',
+        label: 'Relatório de Portaria (FRM.SGP-0010)',
+        icon: ClipboardList,
+        desc: 'Livro de plantão digital, registro de rondas e histórico de ocorrências do turno.',
+        path: '/formularios/portaria-relatorio',
+      },
+      {
+        id: 'portaria_briefing',
+        label: 'Briefing de Segurança (FRM.SGP-0013)',
+        icon: ShieldCheck,
+        desc: 'Lista de presença com assinatura digital e verificação de validade de CPF.',
+        path: '/formularios/portaria-briefing',
       },
       {
         id: 'portaria_logistica_expedicao',
         label: 'Logística - Expedição',
-        icon: Truck,
+        icon: PackageCheck,
         desc: 'Carregamento de tramos: veículo, motorista, os três horários e as fotos de cada etapa.',
         path: '/formularios/logistica-expedicao',
       },
@@ -71,15 +107,41 @@ const AREAS: AreaFormularios[] = [
     icon: Boxes,
     itens: [],
   },
+  {
+    id: 'rh',
+    label: 'RH',
+    icon: Users2,
+    itens: [
+      {
+        id: 'rh_ase_hora_extra',
+        label: 'ASE - Hora Extra',
+        icon: Timer,
+        desc: 'Autorização de Serviços Extraordinários (FRM.RHU-0007): setor, turno, colaboradores e horários.',
+        path: '/formularios/rh-ase-hora-extra',
+        gateId: 'rh_ase_hora_extra',
+      },
+    ],
+  },
 ];
 
-export default function Formularios({ onNavigate }: FormulariosProps) {
+export default function Formularios({ user, onNavigate }: FormulariosProps) {
   const toast = useToast();
 
   const handleAbrir = (item: FormularioItem) => {
     if (item.path) { onNavigate(item.path); return; }
     toast.info(`${item.label}: formulário em desenvolvimento. Em breve disponível.`);
   };
+
+  // Áreas com todos os itens filtrados por `gateId` (ex.: RH, para quem o
+  // admin não liberou nada nela) somem por completo — só ficam visíveis
+  // "vazias" as áreas que já nasceram sem nenhum formulário (placeholder
+  // "em breve", ex.: Almoxarifado).
+  const areasVisiveis = AREAS
+    .map(area => ({
+      ...area,
+      itens: area.itens.filter(item => !item.gateId || canAccessPage(user, item.gateId)),
+    }))
+    .filter(area => area.itens.length > 0 || AREAS.find(a => a.id === area.id)!.itens.length === 0);
 
   return (
     <div className="space-y-6">
@@ -92,7 +154,7 @@ export default function Formularios({ onNavigate }: FormulariosProps) {
       </header>
 
       <div className="space-y-6">
-        {AREAS.map(area => {
+        {areasVisiveis.map(area => {
           const AreaIcon = area.icon;
           return (
             <section

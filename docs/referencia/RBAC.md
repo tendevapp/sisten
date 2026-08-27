@@ -74,7 +74,6 @@ graph TD
 | | `/suprimentos/contratos` | `sup_contratos` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/dashboards` | `sup_dashboards` | ✅ | ✅ | ⚙️ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/frete` | `sup_estimador_frete` | ✅ | ⚙️ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
-| | `/suprimentos/importar` | `sup_importar` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **ALMOXARIFADO**| `/almoxarifado/estoque` | `almox_estoque` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/almoxarifado/dashboards` | `almox_dashboards` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | **FINANCEIRO** | `/financeiro/contas-pagar` | `fin_contas_pagar` | ✅ | ⚙️ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -85,8 +84,8 @@ graph TD
 | | `/admin/usuarios` | `admin_usuarios` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | | `/admin/setores` | `admin_setores` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | | `/admin/permissoes` | `admin_permissoes` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| | `/admin/importacao-materiais` | `admin_importacao_materiais` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| | `/admin/importar/log` | `admin_importar_sap_log` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| | `/admin/importacao-materiais` (Importação de Planilhas: Suprimentos, Almoxarifado, Financeiro e RH empilhados numa página só) | `admin_importacao_materiais` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| | `/suprimentos/importar/log` | `admin_importar_sap_log` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/grupos-comprador` | `admin_grupos_comprador` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | | `/admin/helpdesk` | `admin_helpdesk_config` | 🔒 | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | | `/admin/teste` | `admin_teste` | 🔒 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
