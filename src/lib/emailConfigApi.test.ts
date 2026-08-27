@@ -68,6 +68,7 @@ describe('emailConfigApi', () => {
       expect(chaves).toContain('expedicao_chegada');
       expect(chaves).toContain('expedicao_tramos');
       expect(chaves).toContain('portaria_relatorio');
+      expect(chaves).toContain('rh_ase_hora_extra');
     });
   });
 });

@@ -13,32 +13,36 @@ export const MARGIN = 48;
 
 const LOGO_HEIGHT = 56; // pt — a largura é derivada da proporção real do PNG, nunca esticada
 
-// Buscado uma vez por sessão e reaproveitado entre exportações — é o mesmo
-// arquivo estático em public/logo.png. `undefined` = ainda não tentou buscar;
-// `null` = tentou e falhou (não trava a exportação por causa da logo).
-let cachedLogoBytes: ArrayBuffer | null | undefined;
+// Buscado uma vez por sessao e reaproveitado entre exportacoes — arquivo estatico
+// em public/logo-adm.png. `undefined` = ainda nao tentou buscar; `null` = falhou.
+const logoCache = new Map<string, ArrayBuffer | null>();
 
-async function getLogoBytes(): Promise<ArrayBuffer | null> {
-  if (cachedLogoBytes !== undefined) return cachedLogoBytes;
+async function getLogoBytes(logoPath = '/logo-adm.png'): Promise<ArrayBuffer | null> {
+  if (logoCache.has(logoPath)) return logoCache.get(logoPath)!;
   try {
-    const response = await fetch('/logo-ten.png');
+    const response = await fetch(logoPath);
     if (!response.ok) throw new Error(`Falha ao buscar logo (${response.status})`);
-    cachedLogoBytes = await response.arrayBuffer();
+    const bytes = await response.arrayBuffer();
+    logoCache.set(logoPath, bytes);
+    return bytes;
   } catch (e) {
-    console.error('Falha ao carregar logo do Sisten para o PDF:', e);
-    cachedLogoBytes = null;
+    console.error(`Falha ao carregar logo (${logoPath}) para o PDF:`, e);
+    logoCache.set(logoPath, null);
+    return null;
   }
-  return cachedLogoBytes;
 }
 
-function sanitizeText(text: string): string {
-  // WinAnsi (fonte padrão do pdf-lib) não cobre todo Unicode — troca caracteres
-  // fora do intervalo básico (emojis etc.) por "?" em vez de deixar o pdf-lib
-  // lançar erro de encoding no meio da exportação.
-  return text.replace(/[^\x00-\xFF]/g, '?');
+export function sanitizeText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[–—]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[•·]/g, '-')
+    .replace(/[^\x00-\xFF]/g, '?');
 }
 
-function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
+export function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
   const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
     const words = paragraph.split(' ');
@@ -78,7 +82,35 @@ export class PdfTextWriter {
     }
   }
 
-  private ensureSpace(needed: number) {
+  getPage(): PDFPage {
+    return this.page;
+  }
+
+  getY(): number {
+    return this.y;
+  }
+
+  setY(newY: number) {
+    this.y = newY;
+  }
+
+  getDoc(): PDFDocument {
+    return this.doc;
+  }
+
+  getFont(): PDFFont {
+    return this.font;
+  }
+
+  getFontBold(): PDFFont {
+    return this.fontBold;
+  }
+
+  getContentWidth(): number {
+    return this.contentWidth;
+  }
+
+  ensureSpace(needed: number) {
     if (this.y - needed < MARGIN) {
       this.page = this.doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
       this.y = PAGE_HEIGHT - MARGIN;
@@ -127,12 +159,12 @@ export class PdfTextWriter {
   }
 }
 
-export async function createDoc(): Promise<{ doc: PDFDocument; font: PDFFont; fontBold: PDFFont; logo: PDFImage | null }> {
+export async function createDoc(logoPath = '/logo-adm.png'): Promise<{ doc: PDFDocument; font: PDFFont; fontBold: PDFFont; logo: PDFImage | null }> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const logoBytes = await getLogoBytes();
+  const logoBytes = await getLogoBytes(logoPath);
   const logo = logoBytes ? await doc.embedPng(logoBytes) : null;
 
   return { doc, font, fontBold, logo };

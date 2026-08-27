@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   canAccessPage,
   canAccessFormGroup,
+  canViewAllAse,
   FORMULARIO_SUBPERMISSOES,
   getPageGroups,
 } from './pages';
@@ -126,6 +127,36 @@ describe('pages.ts - Controle de Acesso', () => {
     });
   });
 
+  describe('canViewAllAse - Visibilidade de ASEs', () => {
+    it('deve liberar visão total para admin, gestor e coordenador_suprimentos por padrão', () => {
+      const admin = mockUser({ roles: ['admin'] });
+      const gestor = mockUser({ roles: ['gestor'] });
+      const coord = mockUser({ roles: ['coordenador_suprimentos'] });
+      expect(canViewAllAse(admin)).toBe(true);
+      expect(canViewAllAse(gestor)).toBe(true);
+      expect(canViewAllAse(coord)).toBe(true);
+    });
+
+    it('usuário comum (requisitante) deve ver apenas as próprias por padrão', () => {
+      const requisitante = mockUser({ roles: ['requisitante'] });
+      expect(canViewAllAse(requisitante)).toBe(false);
+    });
+
+    it('deve respeitar override explícito em page_access', () => {
+      const requisitanteLiberado = mockUser({
+        roles: ['requisitante'],
+        page_access: { rh_ase_ver_todas: true },
+      });
+      expect(canViewAllAse(requisitanteLiberado)).toBe(true);
+
+      const gestorRestrito = mockUser({
+        roles: ['gestor'],
+        page_access: { rh_ase_ver_todas: false },
+      });
+      expect(canViewAllAse(gestorRestrito)).toBe(false);
+    });
+  });
+
   describe('FORMULARIO_SUBPERMISSOES & getPageGroups', () => {
     it('deve definir os 4 grupos essenciais de formulários', () => {
       const grupos = FORMULARIO_SUBPERMISSOES.map(s => s.grupoId);
@@ -141,6 +172,8 @@ describe('pages.ts - Controle de Acesso', () => {
       const geral = groups.find(g => g.group === 'GERAL');
       expect(geral).toBeDefined();
       expect(geral?.pages.some(p => p.id === 'formularios')).toBe(true);
+      // O grupo RH legado isolado não deve mais existir em getPageGroups
+      expect(groups.some(g => g.group === 'RH')).toBe(false);
     });
   });
 });

@@ -13,11 +13,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Building2, Calendar, User, FileText, DollarSign, Check, Loader2, AlertTriangle,
-  Paperclip, X, ImageIcon, Package,
+  Paperclip, X, ImageIcon, Package, Camera,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { ContratoAnexo, ContratoDetalhes, ContratoStatus } from '../../types';
 import { ContratoComDetalhes } from '../../lib/contratos';
+import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatBRL, formatDateBR, formatFileSize } from '../../lib/format';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
@@ -238,6 +239,8 @@ const ehPdf = (mime?: string) => mime === 'application/pdf';
 function AnexosContrato({ documentoCompras }: { documentoCompras: string }) {
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const ehTouch = usePonteiroGrosso();
   const [anexos, setAnexos] = useState<ContratoAnexo[]>(() => localDb.getContratoAnexos(documentoCompras));
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -298,16 +301,35 @@ function AnexosContrato({ documentoCompras }: { documentoCompras: string }) {
   return (
     <div className="space-y-3">
       <input ref={inputRef} type="file" accept={ACCEPT_ANEXO} multiple className="hidden" onChange={handleSelect} />
-      <button
-        type="button"
-        disabled={cheio || uploading}
-        onClick={() => inputRef.current?.click()}
-        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-        style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
-      >
-        <Paperclip className="h-3.5 w-3.5" />
-        {uploading ? 'Enviando…' : cheio ? `Limite de ${MAX_ANEXOS} anexos` : 'Anexar imagem ou PDF'}
-      </button>
+      {/* Input separado só para a câmera (capture é fixo no elemento). Só aparece
+          em aparelho tocado — ver usePonteiroGrosso. */}
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleSelect} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={cheio || uploading}
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+        >
+          <Paperclip className="h-3.5 w-3.5" />
+          {uploading ? 'Enviando…' : cheio ? `Limite de ${MAX_ANEXOS} anexos` : 'Anexar imagem ou PDF'}
+        </button>
+
+        {ehTouch && (
+          <button
+            type="button"
+            disabled={cheio || uploading}
+            onClick={() => cameraRef.current?.click()}
+            title="Tirar foto agora"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+          >
+            <Camera className="h-3.5 w-3.5" />
+            Tirar foto
+          </button>
+        )}
+      </div>
 
       {anexos.length > 0 && (
         <ul className="flex flex-wrap gap-2">

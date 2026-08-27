@@ -19,6 +19,7 @@ import { calcularProximoCodigoMaterial, sanitizeTechnicalText } from '../lib/mat
 import { Profile, Sector, Material, FeedbackReport } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
+import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
 import { importarRhPessoas, importarRhSetores, importarRhHoraExtra } from '../lib/rhApi';
@@ -37,6 +38,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [bulkAccessModalOpen, setBulkAccessModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
@@ -1095,31 +1098,94 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
           {/* Active profiles list */}
           <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-800">Perfis Ativos ({activeUsers.length})</h3>
-              <button
-                onClick={async () => {
-                  setSyncing(true);
-                  try {
-                    await localDb.syncFromSupabase(true);
-                  } catch (err) {
-                    console.error('Falha de sincronização explícita no painel admin:', err);
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing}
-                className="flex items-center gap-1.5 rounded bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-bold text-[11px] py-1.5 px-3 cursor-pointer transition-colors border border-slate-200"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                Sincronizar com o Supabase
-              </button>
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-800">Perfis Ativos ({activeUsers.length})</h3>
+                {selectedUserIds.length > 0 && (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                    {selectedUserIds.length} selecionado(s)
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedUserIds.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setBulkAccessModalOpen(true)}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] py-1.5 px-3 cursor-pointer shadow-sm transition-colors"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Editar Acessos em Massa ({selectedUserIds.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUserIds([])}
+                      className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] py-1.5 px-2.5 cursor-pointer transition-colors"
+                    >
+                      Desmarcar todos
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={async () => {
+                    setSyncing(true);
+                    try {
+                      await localDb.syncFromSupabase(true);
+                    } catch (err) {
+                      console.error('Falha de sincronização explícita no painel admin:', err);
+                    } finally {
+                      setSyncing(false);
+                    }
+                  }}
+                  disabled={syncing}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-bold text-[11px] py-1.5 px-3 cursor-pointer transition-colors border border-slate-200"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                  Sincronizar com o Supabase
+                </button>
+              </div>
             </div>
+
+            {selectedUserIds.length > 0 && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80 px-3.5 py-2 text-xs">
+                <div className="flex items-center gap-2 text-emerald-900 font-medium">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                    {selectedUserIds.length}
+                  </span>
+                  <span>
+                    {selectedUserIds.length} {selectedUserIds.length === 1 ? 'usuário selecionado' : 'usuários selecionados'} para alteração em lote.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBulkAccessModalOpen(true)}
+                  className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                >
+                  Configurar módulos de acesso agora &rarr;
+                </button>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                    <th className="py-2.5 px-2 w-8 text-center">
+                      <input
+                        type="checkbox"
+                        checked={activeUsers.length > 0 && activeUsers.every(u => selectedUserIds.includes(u.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedUserIds(activeUsers.map(u => u.id));
+                          } else {
+                            setSelectedUserIds([]);
+                          }
+                        }}
+                        title="Selecionar / Desmarcar todos os usuários ativos"
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
+                      />
+                    </th>
                     <th className="py-2.5">Nome</th>
                     <th className="py-2.5">E-mail</th>
                     <th className="py-2.5">Cargo / Setor</th>
@@ -1131,7 +1197,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {activeUsers.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/50">
+                    <tr key={p.id} className={`hover:bg-slate-50/50 ${selectedUserIds.includes(p.id) ? 'bg-emerald-50/30' : ''}`}>
+                      <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(p.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedUserIds(prev => [...prev, p.id]);
+                            } else {
+                              setSelectedUserIds(prev => prev.filter(id => id !== p.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 font-semibold text-slate-800 flex items-center gap-2 flex-wrap">
                         <span className={p.status === 'inativo' ? 'line-through text-slate-400' : ''}>{p.name}</span>
                         {p.status === 'pendente' && (
@@ -3704,6 +3784,17 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           />
         );
       })()}
+
+      {bulkAccessModalOpen && selectedUserIds.length > 0 && (
+        <BulkPageAccessModal
+          users={profiles.filter(p => selectedUserIds.includes(p.id))}
+          onClose={() => setBulkAccessModalOpen(false)}
+          onChanged={() => {
+            setSelectedUserIds([]);
+            loadData();
+          }}
+        />
+      )}
 
       {/* Botão flutuante e janela de chatbot para o usuário Admin */}
       <AdminChatbot user={user} />

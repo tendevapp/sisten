@@ -60,10 +60,6 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
         next[sub.id] = false;
       }
     }
-    delete next['rh_ase_hora_extra'];
-    if (!habilitar) {
-      next['rh_ase_hora_extra'] = false;
-    }
     setPageAccess(next);
     try {
       for (const sub of FORMULARIO_SUBPERMISSOES) {
@@ -179,31 +175,88 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                 const subChecked = pageAccess[sub.id] !== undefined ? pageAccess[sub.id] : true;
 
                                 return (
-                                  <div key={sub.id} className="flex items-center justify-between gap-2 py-0.5">
-                                    <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
-                                      <input
-                                        type="checkbox"
-                                        checked={subChecked}
-                                        onChange={(e) => handleToggle(sub.id, e.target.checked)}
-                                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
-                                      />
-                                      <span className="font-semibold text-slate-800 dark:text-slate-200">{sub.label}</span>
-                                      <span className="text-[10px] text-slate-400 truncate hidden sm:inline">({sub.descricao})</span>
-                                      {!subHasOverride && (
-                                        <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 shrink-0">(todos)</span>
+                                  <React.Fragment key={sub.id}>
+                                    <div className="flex items-center justify-between gap-2 py-0.5">
+                                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
+                                        <input
+                                          type="checkbox"
+                                          checked={subChecked}
+                                          onChange={(e) => handleToggle(sub.id, e.target.checked)}
+                                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
+                                        />
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200">{sub.label}</span>
+                                        <span className="text-[10px] text-slate-400 truncate hidden sm:inline">({sub.descricao})</span>
+                                        {!subHasOverride && (
+                                          <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 shrink-0">(todos)</span>
+                                        )}
+                                      </label>
+                                      {subHasOverride && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReset(sub.id)}
+                                          title="Restaurar padrão liberado"
+                                          className="text-slate-400 hover:text-emerald-700 shrink-0"
+                                        >
+                                          <RotateCcw className="h-3 w-3" />
+                                        </button>
                                       )}
-                                    </label>
-                                    {subHasOverride && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleReset(sub.id)}
-                                        title="Restaurar padrão liberado"
-                                        className="text-slate-400 hover:text-emerald-700 shrink-0"
-                                      >
-                                        <RotateCcw className="h-3 w-3" />
-                                      </button>
+                                    </div>
+
+                                    {/* Opções de visualização para o formulário ASE de Horas Extras */}
+                                    {sub.id === 'form_rh' && subChecked && (
+                                      <div className="ml-6 my-1.5 rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/60 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            Visibilidade no formulário ASE:
+                                          </span>
+                                          {pageAccess['rh_ase_ver_todas'] !== undefined && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleReset('rh_ase_ver_todas')}
+                                              title="Restaurar padrão do perfil"
+                                              className="text-[10px] font-semibold text-slate-400 hover:text-emerald-700 inline-flex items-center gap-1"
+                                            >
+                                              <RotateCcw className="h-2.5 w-2.5" /> Padrão
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                            <input
+                                              type="radio"
+                                              name={`rh_ase_scope_${user.id}`}
+                                              checked={
+                                                pageAccess['rh_ase_ver_todas'] === false ||
+                                                (pageAccess['rh_ase_ver_todas'] === undefined && !['gestor', 'coordenador_suprimentos', 'admin'].some(r => user.roles.includes(r as any)))
+                                              }
+                                              onChange={() => handleToggle('rh_ase_ver_todas', false)}
+                                              className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                            />
+                                            <div>
+                                              <span className="font-semibold text-slate-800 dark:text-slate-200">Apenas as próprias ASEs</span>
+                                              <p className="text-[10px] text-slate-500 dark:text-slate-400">Só mostra nesta tela as solicitações abertas pelo usuário logado.</p>
+                                            </div>
+                                          </label>
+                                          <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                            <input
+                                              type="radio"
+                                              name={`rh_ase_scope_${user.id}`}
+                                              checked={
+                                                pageAccess['rh_ase_ver_todas'] === true ||
+                                                (pageAccess['rh_ase_ver_todas'] === undefined && ['gestor', 'coordenador_suprimentos', 'admin'].some(r => user.roles.includes(r as any)))
+                                              }
+                                              onChange={() => handleToggle('rh_ase_ver_todas', true)}
+                                              className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                            />
+                                            <div>
+                                              <span className="font-semibold text-slate-800 dark:text-slate-200">Ver todas as ASEs</span>
+                                              <p className="text-[10px] text-slate-500 dark:text-slate-400">Permite visualizar todas as ASEs abertas por todos os usuários e setores.</p>
+                                            </div>
+                                          </label>
+                                        </div>
+                                      </div>
                                     )}
-                                  </div>
+                                  </React.Fragment>
                                 );
                               })}
                             </div>

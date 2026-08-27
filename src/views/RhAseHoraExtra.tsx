@@ -21,14 +21,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
-  AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search,
+  AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
+  Calendar, User, Filter, Users,
 } from 'lucide-react';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
 } from '../types';
 import * as api from '../lib/rhApi';
 import { calcularHorasASE, diaDaSemana } from '../lib/rhApi';
-import { exportAseHoraExtraPdf } from '../lib/pdfExport/exportAseHoraExtraPdf';
+import {
+  exportAseHoraExtraPdf,
+  exportAseConsolidadoDiaPdf,
+  exportAseConsolidadoDiaExcel,
+} from '../lib/pdfExport/exportAseHoraExtraPdf';
+import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
+import { canViewAllAse } from '../lib/pages';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -43,6 +50,93 @@ const ANTECEDENCIA_MINIMA_HORAS = 24;
 function hojeISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatDataBR(iso?: string | null): string {
+  if (!iso) return '-';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function buildAseHoraExtraEmail(params: {
+  solicitacao: AseHoraExtraCompleta;
+  setorNome: string;
+  turnoNome: string;
+  solicitanteNome: string;
+}): { assunto: string; corpo: string } {
+  const { solicitacao, setorNome, turnoNome, solicitanteNome } = params;
+  const totalHoras = solicitacao.itens.reduce((acc, it) => acc + (it.total_horas || 0), 0);
+  const dataFormatada = formatDataBR(solicitacao.data_execucao);
+  const diaSemanaStr = diaDaSemana(solicitacao.data_execucao);
+
+  const assunto = `ASE - Autorização de Horas Extras - ${solicitacao.numero_protocolo} - ${setorNome} (${dataFormatada})`;
+
+  const colabTransporte = solicitacao.itens.filter(it => it.transporte);
+  const colabRefeicao = solicitacao.itens.filter(it => it.refeicao);
+
+  const linhasColaboradores = solicitacao.itens.map((it, idx) => {
+    const horarioStr = (it.hora_entrada && it.hora_saida)
+      ? `${it.hora_entrada} às ${it.hora_saida}`
+      : 'Horário a definir';
+    const intervStr = it.intervalo_minutos ? ` (Intervalo: ${it.intervalo_minutos}min)` : ' (Sem intervalo)';
+    const heStr = it.percentual_he != null ? ` | %HE: ${it.percentual_he}%` : '';
+    const totalStr = it.total_horas != null ? ` | Total: ${it.total_horas.toFixed(2)}h` : '';
+    const transpStr = it.transporte ? 'Sim' : 'Não';
+    const refStr = it.refeicao ? 'Sim' : 'Não';
+
+    let linha = `${idx + 1}. ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}\r\n`
+      + `   Horário: ${horarioStr}${intervStr}${heStr}${totalStr}\r\n`
+      + `   Transporte: ${transpStr} | Refeição: ${refStr}`;
+    if (it.observacao?.trim()) {
+      linha += `\r\n   Obs: ${it.observacao.trim()}`;
+    }
+    return linha;
+  }).join('\r\n\r\n');
+
+  const listaTransporte = colabTransporte.length > 0
+    ? colabTransporte.map(it => `- ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}`).join('\r\n')
+    : '(Nenhum colaborador necessita de transporte)';
+
+  const listaRefeicao = colabRefeicao.length > 0
+    ? colabRefeicao.map(it => `- ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}`).join('\r\n')
+    : '(Nenhum colaborador necessita de refeição)';
+
+  const corpo = `Prezados,
+
+Segue autorização de serviços extraordinários (ASE - Hora Extra) registrada no SISTEN:
+
+==================================================
+DADOS DA SOLICITAÇÃO (FRM.RHU-0007)
+==================================================
+Protocolo: ${solicitacao.numero_protocolo}
+Status: ${solicitacao.status}
+Setor: ${setorNome}
+Turno: ${turnoNome}
+Data de Execução: ${dataFormatada} (${diaSemanaStr})
+Solicitante: ${solicitanteNome}
+Total de Colaboradores: ${solicitacao.itens.length}
+Total Geral de Horas: ${totalHoras.toFixed(2)}h
+${solicitacao.justificativa?.trim() ? `Justificativa: ${solicitacao.justificativa.trim()}\r\n` : ''}
+==================================================
+LISTA GERAL DE COLABORADORES
+==================================================
+${linhasColaboradores || 'Nenhum colaborador adicionado.'}
+
+==================================================
+TRANSPORTE (SOLICITADOS: ${colabTransporte.length})
+==================================================
+${listaTransporte}
+
+==================================================
+REFEIÇÃO (SOLICITADAS: ${colabRefeicao.length})
+==================================================
+${listaRefeicao}
+
+--------------------------------------------------
+Enviado através do SISTEN - Sistema Integrado TEN`;
+
+  return { assunto, corpo };
 }
 
 export default function RhAseHoraExtra({ user, onNavigate }: Props) {
@@ -66,8 +160,14 @@ const STATUS_CLASSES: Record<string, string> = {
 
 function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
   const toast = useToast();
+  const podeVerTodas = canViewAllAse(user);
+
   const [itens, setItens] = useState<AseHoraExtraCompleta[] | null>(null);
   const [criando, setCriando] = useState(false);
+  const [exportandoData, setExportandoData] = useState<string | null>(null);
+  const [escopoFiltro, setEscopoFiltro] = useState<'todas' | 'minhas'>(podeVerTodas ? 'todas' : 'minhas');
+  const [termoBusca, setTermoBusca] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
 
   const recarregar = useCallback(async () => {
     try {
@@ -79,6 +179,29 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
   }, [toast]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
+
+  const exportarConsolidadoPdf = async (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
+    setExportandoData(`pdf-${dataExecucao}`);
+    try {
+      await exportAseConsolidadoDiaPdf(solicitacoes, dataExecucao);
+      toast.success(`PDF consolidado de ${formatDataBR(dataExecucao)} gerado com sucesso!`);
+    } catch (e) {
+      console.error('Falha ao gerar PDF consolidado:', e);
+      toast.error(`Erro ao gerar PDF consolidado: ${(e as Error).message}`);
+    } finally {
+      setExportandoData(null);
+    }
+  };
+
+  const exportarConsolidadoExcel = (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
+    try {
+      exportAseConsolidadoDiaExcel(solicitacoes, dataExecucao);
+      toast.success(`Planilha consolidada de ${formatDataBR(dataExecucao)} exportada com sucesso!`);
+    } catch (e) {
+      console.error('Falha ao exportar Excel consolidado:', e);
+      toast.error(`Erro ao exportar Excel: ${(e as Error).message}`);
+    }
+  };
 
   const novo = async () => {
     setCriando(true);
@@ -94,9 +217,87 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
     }
   };
 
+  // 1. Filtragem por permissão (escopo), status e busca textual
+  const itensFiltrados = useMemo(() => {
+    if (!itens) return [];
+
+    return itens.filter(s => {
+      // Se não tem permissão para ver todas ou selecionou aba 'minhas'
+      if (!podeVerTodas || escopoFiltro === 'minhas') {
+        if (s.solicitante_id !== user.id) return false;
+      }
+
+      // Filtro de status
+      if (filtroStatus !== 'TODOS' && s.status !== filtroStatus) {
+        return false;
+      }
+
+      // Termo de busca
+      if (termoBusca.trim()) {
+        const termo = termoBusca.toLowerCase().trim();
+        const noProtocolo = (s.numero_protocolo || '').toLowerCase().includes(termo);
+        const noSetor = (s.setor_nome || '').toLowerCase().includes(termo);
+        const noTurno = (s.turno_nome || '').toLowerCase().includes(termo);
+        const noSolicitante = (s.solicitante_nome || '').toLowerCase().includes(termo);
+        const naData = formatDataBR(s.data_execucao).includes(termo);
+        const noColab = s.itens.some(it =>
+          (it.nome || '').toLowerCase().includes(termo) ||
+          (it.registro || '').toLowerCase().includes(termo) ||
+          (it.cargo || '').toLowerCase().includes(termo)
+        );
+        if (!noProtocolo && !noSetor && !noTurno && !noSolicitante && !naData && !noColab) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [itens, podeVerTodas, escopoFiltro, filtroStatus, termoBusca, user.id]);
+
+  // 2. Agrupamento por data de execução (ordem decrescente)
+  const gruposPorData = useMemo(() => {
+    const mapa = new Map<string, {
+      dataExecucao: string;
+      dataFormatada: string;
+      diaSemana: string;
+      totalHoras: number;
+      totalColaboradores: number;
+      solicitacoes: AseHoraExtraCompleta[];
+    }>();
+
+    itensFiltrados.forEach(s => {
+      const dataKey = s.data_execucao || 'sem-data';
+      if (!mapa.has(dataKey)) {
+        mapa.set(dataKey, {
+          dataExecucao: dataKey,
+          dataFormatada: formatDataBR(dataKey),
+          diaSemana: diaDaSemana(dataKey),
+          totalHoras: 0,
+          totalColaboradores: 0,
+          solicitacoes: [],
+        });
+      }
+      const grupo = mapa.get(dataKey)!;
+      grupo.solicitacoes.push(s);
+      grupo.totalColaboradores += s.itens.length;
+      grupo.totalHoras += s.itens.reduce((acc, it) => acc + (it.total_horas || 0), 0);
+    });
+
+    // Ordenação decrescente pelas datas (mais recentes primeiro)
+    return Array.from(mapa.values()).sort((a, b) => b.dataExecucao.localeCompare(a.dataExecucao));
+  }, [itensFiltrados]);
+
+  // Contagens para abas e filtros
+  const contagemMinhas = useMemo(() => {
+    return (itens || []).filter(s => s.solicitante_id === user.id).length;
+  }, [itens, user.id]);
+
+  const contagemTodas = itens?.length || 0;
+
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-5xl space-y-6">
+      {/* Cabeçalho */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <button
             type="button"
@@ -106,11 +307,22 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             <ArrowLeft className="h-3.5 w-3.5" />
             Formulários
           </button>
-          <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-            ASE - Hora Extra
-          </h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+              ASE - Hora Extra
+            </h1>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              FRM.RHU-0007
+            </span>
+            {!podeVerTodas && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                <User className="h-3 w-3" />
+                Minhas ASEs
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Autorização para Serviços Extraordinários (FRM.RHU-0007): setor, turno, colaboradores e horários.
+            Autorização para Serviços Extraordinários: autorização de horas extras, transporte e alimentação por turno.
           </p>
         </div>
 
@@ -125,54 +337,260 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
         </button>
       </div>
 
+      {/* Barra de Filtros & Abas */}
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Abas de Escopo (quando usuário pode ver todas) */}
+          {podeVerTodas ? (
+            <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setEscopoFiltro('todas')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  escopoFiltro === 'todas'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-50'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Todas as ASEs ({contagemTodas})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEscopoFiltro('minhas')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  escopoFiltro === 'minhas'
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-50'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                Minhas ASEs ({contagemMinhas})
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Exibindo apenas as suas solicitações ({contagemMinhas})
+            </div>
+          )}
+
+          {/* Filtros de Status */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {['TODOS', 'RASCUNHO', 'ENVIADO', 'CANCELADO'].map(st => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setFiltroStatus(st)}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  filtroStatus === st
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                }`}
+              >
+                {st === 'TODOS' ? 'Todos' : STATUS_LABEL[st]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Campo de Busca */}
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={termoBusca}
+            onChange={e => setTermoBusca(e.target.value)}
+            placeholder="Buscar por protocolo, setor, turno, solicitante, colaborador, matrícula ou data..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-10 pr-9 text-xs text-slate-900 placeholder-slate-400 transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700/80 dark:bg-slate-950/50 dark:text-slate-100 dark:focus:bg-slate-900"
+          />
+          {termoBusca && (
+            <button
+              type="button"
+              onClick={() => setTermoBusca('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Conteúdo da Lista */}
       {itens === null ? (
         <div className="flex justify-center py-16 text-slate-400">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <Loader2 className="h-7 w-7 animate-spin" />
         </div>
-      ) : itens.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-14 text-center dark:border-slate-700">
+      ) : gruposPorData.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-white/50 px-6 py-14 text-center dark:border-slate-800 dark:bg-slate-900/30">
           <Timer className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600" />
-          <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Nenhuma ASE registrada</p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Crie uma nova para autorizar hora extra de um turno.
+          <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {termoBusca || filtroStatus !== 'TODOS'
+              ? 'Nenhuma ASE encontrada para os filtros selecionados'
+              : 'Nenhuma ASE registrada'}
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {termoBusca || filtroStatus !== 'TODOS'
+              ? 'Tente ajustar o termo de pesquisa ou os filtros de status.'
+              : 'Crie uma nova solicitação para autorizar horas extras do seu turno.'}
           </p>
         </div>
       ) : (
-        <ul className="space-y-3">
-          {itens.map(s => {
-            const totalHoras = s.itens.reduce((acc, it) => acc + (it.total_horas || 0), 0);
-            return (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => onAbrir(s.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[11px] font-semibold text-slate-400">{s.numero_protocolo}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_CLASSES[s.status]}`}>
-                        {STATUS_LABEL[s.status]}
-                      </span>
+        <div className="space-y-6">
+          {gruposPorData.map(grupo => (
+            <section key={grupo.dataExecucao} className="space-y-3">
+              {/* Cabeçalho da Data de Execução com Totais e Ações de Exportação Consolidada */}
+              {(() => {
+                const totalTranspDia = grupo.solicitacoes.reduce((acc, s) => acc + s.itens.filter(it => it.transporte).length, 0);
+                const totalRefDia = grupo.solicitacoes.reduce((acc, s) => acc + s.itens.filter(it => it.refeicao).length, 0);
+                const isExportingPdf = exportandoData === `pdf-${grupo.dataExecucao}`;
+
+                return (
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl bg-slate-50/80 p-3 border border-slate-200/80 dark:bg-slate-900/60 dark:border-slate-800">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 shrink-0">
+                        <Calendar className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            {grupo.dataFormatada}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 capitalize">
+                            {grupo.diaSemana}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                          <span>{grupo.solicitacoes.length} {grupo.solicitacoes.length === 1 ? 'ASE' : 'ASEs'}</span>
+                          <span>·</span>
+                          <span>{grupo.totalColaboradores} {grupo.totalColaboradores === 1 ? 'colaborador' : 'colaboradores'}</span>
+                          {grupo.totalHoras > 0 && (
+                            <>
+                              <span>·</span>
+                              <strong className="text-blue-700 dark:text-blue-300">{grupo.totalHoras.toFixed(2)}h extras</strong>
+                            </>
+                          )}
+                          {totalTranspDia > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="rounded bg-sky-100 text-sky-800 px-1.5 py-0.2 text-[10px] font-bold dark:bg-sky-950/60 dark:text-sky-300">
+                                {totalTranspDia} Transp.
+                              </span>
+                            </>
+                          )}
+                          {totalRefDia > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="rounded bg-emerald-100 text-emerald-800 px-1.5 py-0.2 text-[10px] font-bold dark:bg-emerald-950/60 dark:text-emerald-300">
+                                {totalRefDia} Ref.
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    <p className="mt-1 truncate text-base font-bold text-slate-900 dark:text-slate-50">
-                      {s.setor_nome || 'Setor não informado'} · {s.turno_nome || 'Turno não informado'}
-                    </p>
+                    {/* Botões de Exportação Consolidada do Dia */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => exportarConsolidadoPdf(grupo.solicitacoes, grupo.dataExecucao)}
+                        disabled={isExportingPdf}
+                        title={`Exportar PDF consolidado com resumo, tabelas de transporte e refeição de ${grupo.dataFormatada}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-blue-600 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-blue-400 cursor-pointer"
+                      >
+                        {isExportingPdf ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                        ) : (
+                          <FileDown className="h-3.5 w-3.5 text-rose-500" />
+                        )}
+                        <span>PDF Consolidado</span>
+                      </button>
 
-                    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
-                      {s.data_execucao.split('-').reverse().join('/')} ({diaDaSemana(s.data_execucao)})
-                      {' · '}{s.itens.length} colaborador{s.itens.length !== 1 ? 'es' : ''}
-                      {totalHoras > 0 && ` · ${totalHoras.toFixed(2)}h`}
-                    </p>
+                      <button
+                        type="button"
+                        onClick={() => exportarConsolidadoExcel(grupo.solicitacoes, grupo.dataExecucao)}
+                        title={`Exportar planilha Excel (.xlsx) com abas de Resumo, Colaboradores, Transporte e Refeição de ${grupo.dataFormatada}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:text-emerald-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:hover:text-emerald-400 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Excel Consolidado</span>
+                      </button>
+                    </div>
                   </div>
+                );
+              })()}
 
-                  <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+              {/* Cards das ASEs nesta data */}
+              <div className="grid grid-cols-1 gap-3">
+                {grupo.solicitacoes.map(s => {
+                  const totalHoras = s.itens.reduce((acc, it) => acc + (it.total_horas || 0), 0);
+                  const totalTransporte = s.itens.filter(it => it.transporte).length;
+                  const totalRefeicao = s.itens.filter(it => it.refeicao).length;
+
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onAbrir(s.id)}
+                      className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                            {s.numero_protocolo}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_CLASSES[s.status]}`}>
+                            {STATUS_LABEL[s.status]}
+                          </span>
+                          {podeVerTodas && s.solicitante_nome && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              <User className="h-3 w-3" />
+                              {s.solicitante_nome}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-baseline gap-2">
+                          <p className="text-base font-bold text-slate-900 dark:text-slate-50">
+                            {s.setor_nome || 'Setor não informado'}
+                          </p>
+                          <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                            · {s.turno_nome || 'Turno não informado'}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                          <span>
+                            {s.itens.length} {s.itens.length === 1 ? 'colaborador' : 'colaboradores'}
+                          </span>
+                          {totalHoras > 0 && (
+                            <span>· <strong className="text-slate-700 dark:text-slate-200">{totalHoras.toFixed(2)}h</strong></span>
+                          )}
+                          {totalTransporte > 0 && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              Transp: {totalTransporte}
+                            </span>
+                          )}
+                          {totalRefeicao > 0 && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              Refeição: {totalRefeicao}
+                            </span>
+                          )}
+                        </div>
+
+                        {s.justificativa?.trim() && (
+                          <p className="truncate text-xs text-slate-400 dark:text-slate-500 italic">
+                            Justificativa: {s.justificativa.trim()}
+                          </p>
+                        )}
+                      </div>
+
+                      <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-slate-600" />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -201,7 +619,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   >(null);
   const [processando, setProcessando] = useState(false);
 
-  const somenteLeitura = dados?.status !== 'RASCUNHO';
+  const [modoEdicao, setModoEdicao] = useState(false);
+  const somenteLeitura = dados?.status === 'CANCELADO' || (dados?.status === 'ENVIADO' && !modoEdicao);
 
   useEffect(() => {
     let ativo = true;
@@ -226,7 +645,18 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   }, [sujo]);
 
   const alterarCabecalho = (patch: Partial<AseHoraExtraCompleta>) => {
-    setDados(d => (d ? { ...d, ...patch } : d));
+    setDados(d => {
+      if (!d) return d;
+      const merged = { ...d, ...patch };
+
+      // Se a ASE ainda estiver em rascunho, sincroniza o protocolo com a data e setor selecionados
+      if (merged.status === 'RASCUNHO' && ('setor_id' in patch || 'data_execucao' in patch)) {
+        const setorNome = setores.find(s => s.id === (patch.setor_id ?? merged.setor_id))?.nome;
+        merged.numero_protocolo = api.gerarProtocoloAse(merged.data_execucao, setorNome);
+      }
+
+      return merged;
+    });
     setSujo(true);
   };
 
@@ -252,6 +682,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     setSalvando(true);
     try {
       await api.salvarSolicitacaoASE(dados.id, {
+        numero_protocolo: dados.numero_protocolo,
         setor_id: dados.setor_id,
         turno_id: dados.turno_id,
         data_execucao: dados.data_execucao,
@@ -268,7 +699,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         observacao: it.observacao,
       })));
       setSujo(false);
-      if (!silencioso) toast.success('ASE salva.');
+      if (!silencioso) toast.success('ASE salva com sucesso.');
       return true;
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
@@ -349,9 +780,36 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
     if (!(await salvar(true))) return;
     try {
-      await api.salvarSolicitacaoASE(dados.id, { status: 'ENVIADO' });
-      setDados(d => (d ? { ...d, status: 'ENVIADO' } : d));
-      toast.success(`ASE ${dados.numero_protocolo} enviada.`);
+      if (dados.status !== 'ENVIADO') {
+        await api.salvarSolicitacaoASE(dados.id, { status: 'ENVIADO' });
+        setDados(d => (d ? { ...d, status: 'ENVIADO' } : d));
+      }
+      setModoEdicao(false);
+
+      const setorNome = setores.find(s => s.id === dados.setor_id)?.nome ?? dados.setor_nome ?? '-';
+      const turnoNome = turnos.find(t => t.id === dados.turno_id)?.nome ?? dados.turno_nome ?? '-';
+      const solicitanteNome = dados.solicitante_nome || user.name;
+
+      const emailConfig = await obterConfigEmail('rh_ase_hora_extra');
+      const emailContent = buildAseHoraExtraEmail({
+        solicitacao: dados,
+        setorNome,
+        turnoNome,
+        solicitanteNome,
+      });
+
+      const mailtoUrl = montarMailtoComConfig({
+        destinatarios: emailConfig?.destinatarios || 'ase@ten.ind.br',
+        copia: emailConfig?.copia,
+        copiaOculta: emailConfig?.copia_oculta,
+        assunto: emailConfig?.assunto_padrao
+          ? `${emailConfig.assunto_padrao} - ${dados.numero_protocolo} - ${setorNome} (${formatDataBR(dados.data_execucao)})`
+          : emailContent.assunto,
+        corpo: emailContent.corpo,
+      });
+
+      window.location.href = mailtoUrl;
+      toast.success(`ASE ${dados.numero_protocolo} salva. Abrindo e-mail no Outlook...`);
     } catch (e) {
       toast.error(`Falha ao enviar: ${(e as Error).message}`);
     }
@@ -362,6 +820,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     try {
       await api.salvarSolicitacaoASE(dados.id, { status: 'RASCUNHO' });
       setDados(d => (d ? { ...d, status: 'RASCUNHO' } : d));
+      setModoEdicao(true);
       toast.info('ASE reaberta para edição.');
     } catch (e) {
       toast.error(`Falha ao reabrir: ${(e as Error).message}`);
@@ -379,6 +838,23 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       toast.error(`Falha ao gerar o PDF: ${(e as Error).message}`);
     } finally {
       setProcessando(false);
+    }
+  };
+
+  const exportarExcel = () => {
+    if (!dados) return;
+    try {
+      const setorNome = setores.find(s => s.id === dados.setor_id)?.nome ?? dados.setor_nome ?? '-';
+      const turnoNome = turnos.find(t => t.id === dados.turno_id)?.nome ?? dados.turno_nome ?? '-';
+      exportAseConsolidadoDiaExcel([{
+        ...dados,
+        setor_nome: setorNome,
+        turno_nome: turnoNome,
+        solicitante_nome: dados.solicitante_nome || user.name,
+      }], dados.data_execucao);
+      toast.success(`Planilha da ASE ${dados.numero_protocolo} exportada!`);
+    } catch (e) {
+      toast.error(`Falha ao exportar Excel: ${(e as Error).message}`);
     }
   };
 
@@ -468,20 +944,38 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_CLASSES[dados.status]}`}>
               {STATUS_LABEL[dados.status]}
             </span>
+            {modoEdicao && (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                Edição Ativa
+              </span>
+            )}
           </div>
           <p className="mt-0.5 font-mono text-[11px] text-slate-400">{dados.numero_protocolo}</p>
         </div>
 
-        {dados.status === 'RASCUNHO' && (
-          <button
-            type="button"
-            onClick={() => setConfirmacao({ tipo: 'excluir' })}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Excluir
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {dados.status === 'ENVIADO' && !modoEdicao && (
+            <button
+              type="button"
+              onClick={() => setModoEdicao(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50"
+            >
+              <Edit3 className="h-3.5 w-3.5" />
+              Editar Solicitação
+            </button>
+          )}
+
+          {dados.status === 'RASCUNHO' && (
+            <button
+              type="button"
+              onClick={() => setConfirmacao({ tipo: 'excluir' })}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Excluir
+            </button>
+          )}
+        </div>
       </div>
 
       {antecedenciaInsuficiente && dados.status === 'RASCUNHO' && (
@@ -644,24 +1138,55 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </button>
           <button
             type="button"
+            onClick={exportarExcel}
+            disabled={dados.itens.length === 0}
+            title="Exportar planilha Excel (.xlsx) formatada com resumo, transporte e refeição"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-emerald-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            Excel
+          </button>
+          <button
+            type="button"
             onClick={exportarPdf}
             disabled={processando}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            title="Exportar PDF com logo oficial e tabelas estruturadas"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-rose-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-rose-400 cursor-pointer"
           >
-            <FileDown className="h-4 w-4" />
+            <FileDown className="h-4 w-4 text-rose-500" />
             PDF
           </button>
           {somenteLeitura ? (
-            <button
-              type="button"
-              onClick={reabrir}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Reabrir para edição
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setModoEdicao(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-300 bg-blue-50/50 px-4 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50"
+              >
+                <Edit3 className="h-4 w-4" />
+                Editar Solicitação
+              </button>
+              <button
+                type="button"
+                onClick={enviar}
+                disabled={salvando}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
+              >
+                <Mail className="h-4 w-4" />
+                Reenviar E-mail
+              </button>
+            </>
           ) : (
             <>
+              {modoEdicao && (
+                <button
+                  type="button"
+                  onClick={() => setModoEdicao(false)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  Concluir Edição
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => salvar()}
@@ -678,7 +1203,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
               >
                 <Send className="h-4 w-4" />
-                Enviar
+                {dados.status === 'ENVIADO' ? 'Salvar e Enviar E-mail' : 'Enviar'}
               </button>
             </>
           )}

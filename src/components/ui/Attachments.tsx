@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2, Search, Check } from 'lucide-react';
+import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2, Search, Check, Camera } from 'lucide-react';
 import {
   prepareAttachment,
   AnexoInvalidoError,
@@ -24,6 +24,7 @@ import {
   ACCEPT_ANEXO,
   MAX_ANEXOS,
 } from '../../lib/imageCompression';
+import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatFileSize } from '../../lib/format';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
@@ -209,6 +210,8 @@ export function AttachmentPicker({
   label = 'Anexar imagem ou PDF',
 }: AttachmentPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const ehTouch = usePonteiroGrosso();
   const [erro, setErro] = useState('');
   const [processando, setProcessando] = useState(false);
   const [bancoAberto, setBancoAberto] = useState(false);
@@ -274,6 +277,20 @@ export function AttachmentPicker({
         className="hidden"
         onChange={handleSelect}
       />
+      {/*
+        Input separado para a câmera: `capture` é atributo do elemento e não dá
+        para alterná-lo no clique. Sem `multiple` — a captura devolve uma foto
+        por vez. Só faz sentido em aparelho tocado (ver usePonteiroGrosso); no
+        desktop o botão abriria o mesmo seletor de arquivos.
+      */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleSelect}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -286,6 +303,20 @@ export function AttachmentPicker({
           <Paperclip className="h-3.5 w-3.5" />
           {processando ? 'Comprimindo…' : cheio ? `Limite de ${max} anexos` : label}
         </button>
+
+        {ehTouch && (
+          <button
+            type="button"
+            disabled={disabled || cheio || processando}
+            onClick={() => cameraRef.current?.click()}
+            title="Tirar foto agora"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+          >
+            <Camera className="h-3.5 w-3.5" />
+            Tirar foto
+          </button>
+        )}
 
         {materialCode && onReusedChange && (
           <button

@@ -1469,6 +1469,18 @@ export interface RhPessoa {
   updated_at: string;
 }
 
+export interface RhRota {
+  id: string;
+  funcionario: string;
+  ponto_embarque: string;
+  horario: string;
+  contato: string | null;
+  rota: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Calendário de percentual de hora extra por dia (`06/01/2023` = 60%, etc.), importado de planilha. */
 export interface RhHoraExtra {
   id: string;

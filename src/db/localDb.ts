@@ -1326,6 +1326,51 @@ class LocalDatabase {
     if (error) throw error;
   }
 
+  /**
+   * Atualiza os overrides de módulos de acesso para múltiplos usuários simultaneamente.
+   * `updates` contém as páginas e seus respectivos estados (`true`, `false`, ou `null` para restaurar padrão).
+   */
+  public async updateBulkPageAccess(userIds: string[], updates: Record<string, boolean | null>): Promise<void> {
+    if (userIds.length === 0 || Object.keys(updates).length === 0) return;
+
+    const users = this.getStorageItem<Profile[]>(this.profilesKey, []);
+    const actingUser = this.getCurrentUser();
+
+    for (const userId of userIds) {
+      const idx = users.findIndex(u => u.id === userId);
+      if (idx === -1) continue;
+
+      const current = { ...(users[idx].page_access || {}) };
+      for (const [pageId, allowed] of Object.entries(updates)) {
+        if (allowed === null) {
+          delete current[pageId];
+        } else {
+          current[pageId] = allowed;
+        }
+      }
+      users[idx].page_access = current;
+
+      if (actingUser && actingUser.id === userId) {
+        this.setStorageItem(this.currentUserKey, users[idx]);
+      }
+
+      if (supabase) {
+        await supabase
+          .from('core_perfis')
+          .update({ page_access: current })
+          .eq('id', userId);
+      }
+    }
+
+    this.setStorageItem(this.profilesKey, users);
+    this.logActivity(
+      actingUser?.id || 'admin',
+      'Administração',
+      'Edição em Massa de Módulos de Acesso',
+      `Módulos de acesso atualizados em lote para ${userIds.length} usuário(s).`
+    );
+  }
+
   public hasPermission(user: Profile, module: string, action: string): boolean {
     if (user.roles.includes('admin')) return true;
 

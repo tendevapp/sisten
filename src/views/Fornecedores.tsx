@@ -37,16 +37,6 @@ function formatCNPJ(cnpj?: string | null): string {
 
 const STATUS_OPTS = ['Atualizado', 'Em Atualização', 'Pendente', 'Sem SAP', 'Inativo'];
 
-const STATUS_FILTER_OPTS = [
-  { value: '', label: 'Todos os status' },
-  { value: 'Atualizado', label: 'Atualizado' },
-  { value: 'Em Atualização', label: 'Em Atualização' },
-  { value: 'Pendente', label: 'Pendente' },
-  { value: 'Sem SAP', label: 'Sem SAP' },
-  { value: 'Inativo', label: 'Inativo' },
-  { value: '__vazio__', label: 'Sem status' },
-];
-
 const statusStyle: Record<string, { badge: string; dot: string }> = {
   'Atualizado': {
     badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300/50 dark:border-emerald-700/50',
@@ -1610,7 +1600,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 label="Classificação"
                 icon={Filter}
                 allLabel="Todas"
-                options={[...classificacaoOpts, VAZIO]}
+                options={[...classificacaoOpts.filter(Boolean), VAZIO]}
                 selected={classificacaoSel}
                 onChange={setClassificacaoSel}
                 renderOption={o => (o === VAZIO ? 'Sem classificação' : o)}

@@ -85,6 +85,20 @@ export const CONFIGS_EMAIL_PADRAO: ConfigEnvioEmail[] = [
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
+  {
+    id: 'padrao-rh-ase-hora-extra',
+    chave: 'rh_ase_hora_extra',
+    nome: 'Autorização para Serviços Extraordinários (ASE - Hora Extra)',
+    modulo: 'RH',
+    descricao: 'Disparado ao enviar a autorização de horas extras (FRM.RHU-0007) com listagem detalhada de transporte e refeição.',
+    destinatarios: 'ase@ten.ind.br',
+    copia: null,
+    copia_oculta: null,
+    assunto_padrao: 'ASE - Autorização de Horas Extras',
+    ativo: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
 ];
 
 // Cache em memória para consultas rápidas nos formulários

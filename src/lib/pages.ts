@@ -143,12 +143,11 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Formulários: Almoxarifado',
     defaultRoles: '*',
   },
-  // Compatibilidade legada para rh_ase_hora_extra
   {
-    id: 'rh_ase_hora_extra',
-    group: 'RH',
-    label: 'Formulário ASE - Hora Extra (Legado)',
-    defaultRoles: '*',
+    id: 'rh_ase_ver_todas',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'ASE: Ver todas as solicitações (se desmarcado, vê apenas as próprias)',
+    defaultRoles: ['admin', 'gestor', 'coordenador_suprimentos'],
   },
 ];
 
@@ -229,6 +228,19 @@ export function canAccessFormGroup(user: Profile, grupoId: string): boolean {
   }
 
   return true;
+}
+
+/**
+ * Determina se o usuário pode visualizar todas as solicitações de ASE na lista ou apenas as que ele mesmo criou.
+ * - Admin, gestor e coordenador_suprimentos veem todas por padrão.
+ * - Usuários comuns (requisitante, etc.) veem apenas as próprias por padrão.
+ * - Override em `user.page_access['rh_ase_ver_todas']` tem precedência absoluta.
+ */
+export function canViewAllAse(user: Profile): boolean {
+  if (user.roles.includes('admin')) return true;
+  const override = user.page_access?.['rh_ase_ver_todas'];
+  if (override !== undefined) return override;
+  return user.roles.some(r => ['gestor', 'coordenador_suprimentos'].includes(r));
 }
 
 export function pageIdForPath(path: string): string | undefined {

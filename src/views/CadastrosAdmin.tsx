@@ -34,6 +34,7 @@ const SUGESTOES_GATILHOS = [
   { chave: 'expedicao_tramos', nome: 'Relatório de Carregamento de Tramos', modulo: 'LOGISTICA' as EmailModulo, assunto: 'Carregamento Tramos' },
   { chave: 'portaria_relatorio', nome: 'Relatório de Turno e Ocorrências', modulo: 'PORTARIA' as EmailModulo, assunto: 'Relatório de Turno - Portaria TEN' },
   { chave: 'helpdesk_juridico', nome: 'Avisos de Chamados do Jurídico', modulo: 'HELPDESK' as EmailModulo, assunto: 'Chamado Jurídico - SISTEN' },
+  { chave: 'rh_ase_hora_extra', nome: 'ASE - Hora Extra (FRM.RHU-0007)', modulo: 'RH' as EmailModulo, assunto: 'ASE - Autorização de Horas Extras' },
 ];
 
 export default function CadastrosAdmin({ user, onNavigate }: Props) {

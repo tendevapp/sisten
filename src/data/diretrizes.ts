@@ -40,6 +40,38 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-27',
+    resumo: 'RH > Transporte (Tabela `rh_rotas` & Cadastro de Pontos de Embarque): 1. Criação e migração da tabela `rh_rotas` no Supabase com suporte a RLS e indexação de colaboradores e rotas; 2. Carga inicial de 156 registros mapeando funcionários, pontos de embarque, horários, contatos e rotas ("Rota 01", "Rota 02", "Rota 03", "Rota 04" e "Rota Turno"); 3. Tipagem TypeScript `RhRota` em `types.ts` e métodos de API (`listarRhRotas`, `buscarRotaPorFuncionario`, `criarRhRota`, `atualizarRhRota`, `excluirRhRota`, `importarRhRotas`) em `rhApi.ts`.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH > ASE - Hora Extra (Novo Padrão de Protocolo Inteligente ASE-DDMMAA-SETOR): 1. Criação das funções `gerarProtocoloAse`, `extrairSiglaSetor` e `formatarDataDDMMAA` em `rhApi.ts`; 2. Formato padronizado e intuitivo: prefixo `ASE-`, data no formato `DDMMAA` (ex: `270826`) e sigla limpa do setor (ex: `SUPR`, `ALMOX`, `MANUT`, `RH`, `PROD`, `PORT`, `SEG`), com sufixo sequencial automático (`-01`, `-02`) apenas se houver mais de uma ASE no mesmo dia para o mesmo setor; 3. Sincronização dinâmica no formulário durante o preenchimento/edição do rascunho conforme o setor e a data são selecionados.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH > ASE - Hora Extra (Exportação Consolidada do Dia em PDF e Excel): 1. Implementação de exportação consolidada em PDF (`exportAseConsolidadoDiaPdf`) e Excel (.xlsx via `exportAseConsolidadoDiaExcel`) com todas as informações e ASEs de uma data de execução; 2. Relatórios estruturados com 4 seções/abas completas: Resumo Geral das Solicitações com Totais, Programação de Transporte do Dia (apenas colaboradores com transporte solicitado), Programação de Refeição do Dia (apenas colaboradores com refeição solicitada) e Relação Geral de Colaboradores; 3. Botões de ação direta "PDF Consolidado" e "Excel Consolidado" incorporados nos cabeçalhos de cada grupo de data na listagem principal e na barra de ação da tela de edição.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'Admin > Usuários (Edição em Massa de Módulos de Acesso): 1. Implementação de seleção múltipla por checkboxes na tabela de perfis ativos em `/admin/usuarios`; 2. Barra de ações em massa com contador de selecionados, botão "Editar Acessos em Massa" e "Desmarcar todos"; 3. Novo componente `BulkPageAccessModal.tsx` permitindo aplicar regras granulares de acesso (Manter inalterado, Liberar, Bloquear ou Restaurar Padrão) para múltiplos usuários de uma só vez, com suporte a todas as páginas, subpermissões de formulários e controle de escopo ASE; 4. Método transacional `updateBulkPageAccess` em `localDb.ts` com sincronização automática no Supabase e auditoria de atividades.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH > ASE - Hora Extra (Agrupamento por Datas & Permissão de Visibilidade): 1. Lista de solicitações de ASE reestruturada com agrupamento por datas de execução em ordem decrescente, exibindo cabeçalhos com dia da semana, total de solicitações, colaboradores e horas por data; 2. Campo de busca em tempo real com filtros por status e alternador de escopo; 3. Controle de permissão de visibilidade em Módulos de Acesso (`PageAccessModal.tsx`): administradores podem definir se o usuário visualiza apenas as próprias solicitações criadas ou tem permissão de visão global para todas as ASEs (`rh_ase_ver_todas`); 4. Remoção do item isolado e legado "Formulário ASE - Hora Extra (Legado)" da seção de RH no modal de módulos de acesso.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH > ASE - Hora Extra & Disparo de E-mail (Outlook): 1. Integração do botão "Enviar" com disparo automático de e-mail formatado para `ase@ten.ind.br` (configurado dinamicamente na aba Destinatários de E-mail em `/admin/cadastros`) contendo resumo da ASE, listagem geral e seções exclusivas destacando os colaboradores selecionados para Transporte e Refeição; 2. Habilitação de modo de edição pós-envio ("Editar Solicitação") permitindo atualizar colaboradores, horários e observações mesmo após a ASE ter sido enviada; 3. Limpeza visual das colunas de Transporte e Refeição na tabela PDF com marcadores neutros.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'Relatórios & Exportação PDF: padronização da logo corporativa nos cabeçalhos de todos os relatórios e formulários exportados em PDF (ASE - Hora Extra, Portaria, Cadastro SAP e Solicitações de Compra) utilizando a identidade visual oficial `logo-adm.png` com cache e dimensionamento proporcional automático.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH & Calendário de Horas Extras (`rh_hora_extra`): carga e configuração da tabela de percentuais por dia no Supabase cobrindo os anos de 2025, 2026 e 2027 com as regras padrão da empresa (Segunda a Sexta: 60%, Sábado: 80%, Domingo e Feriados Nacionais: 100%). Inclusão de fallback automático por dia da semana no método `buscarPercentualHE` para preenchimento ágil no formulário ASE - Hora Extra (FRM.RHU-0007).'
+  },
+  {
+    data: '2026-08-27',
     resumo: 'Admin > Módulos de Acesso & Subpermissões de Formulários: criação de sistema de subpermissões granulares para os grupos de formulários em `PageAccessModal.tsx` e `pages.ts`. Permite ao administrador selecionar quais grupos operacionais exibir para cada usuário (Portaria & Segurança Patrimonial, Logística & Expedição, RH & Departamento Pessoal e Almoxarifado). Ao selecionar o módulo geral "Formulários", todos os grupos são liberados por padrão ("se selecionar formulários, mostrar todos"), permitindo restrição pontual e independente por usuário com proteção de rotas e visualização personalizada no Hub `/formularios`.'
   },
   {

@@ -16,7 +16,7 @@
 import { supabase } from '../db/supabaseClient';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, AseHoraExtraSolicitacao, AseHoraExtraStatus,
-  RhHoraExtra, RhPessoa, RhSetor, RhTurno,
+  RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTurno,
 } from '../types';
 
 export interface RhImportSummary {
@@ -34,6 +34,8 @@ export interface RhImportSummary {
 function normalizarItem(raw: any): AseHoraExtraItem {
   return {
     ...raw,
+    hora_entrada: raw.hora_entrada ? String(raw.hora_entrada).slice(0, 5) : '',
+    hora_saida: raw.hora_saida ? String(raw.hora_saida).slice(0, 5) : '',
     percentual_he: raw.percentual_he == null ? null : Number(raw.percentual_he),
     total_horas: raw.total_horas == null ? null : Number(raw.total_horas),
   };
@@ -68,11 +70,84 @@ export async function listarRhHoraExtra(): Promise<RhHoraExtra[]> {
   return (data || []).map((row: any) => ({ ...row, percentual_he: Number(row.percentual_he) })) as RhHoraExtra[];
 }
 
-/** Busca o %HE cadastrado para uma data (`YYYY-MM-DD`); usado para pré-preencher os itens do ASE. */
+/** Busca o %HE cadastrado para uma data (`YYYY-MM-DD`); se nao houver registro no banco, aplica o percentual padrao por dia da semana (Domingo: 100%, Sabado: 80%, Seg-Sex: 60%). */
 export async function buscarPercentualHE(dia: string): Promise<number | null> {
   const { data, error } = await supabase.from('rh_hora_extra').select('percentual_he').eq('dia', dia).maybeSingle();
   if (error) throw new Error(error.message);
-  return data ? Number((data as any).percentual_he) : null;
+  if (data?.percentual_he != null) {
+    return Number((data as any).percentual_he);
+  }
+  // Fallback por dia da semana quando nao houver registro especifico
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+    const [y, m, d] = dia.split('-').map(Number);
+    const dayOfWeek = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    if (dayOfWeek === 0) return 100; // Domingo
+    if (dayOfWeek === 6) return 80;  // Sabado
+    return 60;                      // Segunda a Sexta
+  }
+  return null;
+}
+
+export async function listarRhRotas(filtroRota?: string): Promise<RhRota[]> {
+  let query = supabase.from('rh_rotas').select('*').order('rota').order('horario');
+  if (filtroRota) {
+    query = query.eq('rota', filtroRota);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []) as RhRota[];
+}
+
+export async function buscarRotaPorFuncionario(nomeFuncionario: string): Promise<RhRota | null> {
+  if (!nomeFuncionario || !nomeFuncionario.trim()) return null;
+  const { data, error } = await supabase
+    .from('rh_rotas')
+    .select('*')
+    .ilike('funcionario', `%${nomeFuncionario.trim()}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return (data as RhRota) || null;
+}
+
+export async function criarRhRota(dados: {
+  funcionario: string;
+  ponto_embarque: string;
+  horario: string;
+  contato?: string | null;
+  rota: string;
+}): Promise<RhRota> {
+  const { data, error } = await supabase
+    .from('rh_rotas')
+    .insert({
+      funcionario: dados.funcionario.trim(),
+      ponto_embarque: dados.ponto_embarque.trim(),
+      horario: dados.horario.trim(),
+      contato: dados.contato?.trim() || null,
+      rota: dados.rota.trim(),
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as RhRota;
+}
+
+export async function atualizarRhRota(
+  id: string,
+  patch: Partial<Pick<RhRota, 'funcionario' | 'ponto_embarque' | 'horario' | 'contato' | 'rota' | 'ativo'>>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('rh_rotas')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function excluirRhRota(id: string): Promise<void> {
+  const { error } = await supabase.from('rh_rotas').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 const BATCH_SIZE = 500;
@@ -149,6 +224,37 @@ export async function importarRhHoraExtra(
     dedupedMap.set(it.dia, { dia: it.dia, percentual_he: it.percentual_he });
   });
   return upsertEmLotes('rh_hora_extra', Array.from(dedupedMap.values()), 'dia', l => l.dia, onProgress);
+}
+
+export async function importarRhRotas(
+  itens: { funcionario: string; ponto_embarque: string; horario: string; contato?: string | null; rota: string }[],
+  onProgress?: (percent: number, message?: string) => void,
+): Promise<RhImportSummary> {
+  const dedupedMap = new Map<string, {
+    funcionario: string;
+    ponto_embarque: string;
+    horario: string;
+    contato: string | null;
+    rota: string;
+    ativo: boolean;
+    updated_at: string;
+  }>();
+
+  itens.forEach(it => {
+    if (!it.funcionario?.trim()) return;
+    const chave = `${it.funcionario.trim().toUpperCase()}|${it.rota.trim()}`;
+    dedupedMap.set(chave, {
+      funcionario: it.funcionario.trim(),
+      ponto_embarque: it.ponto_embarque.trim(),
+      horario: it.horario.trim(),
+      contato: it.contato?.trim() || null,
+      rota: it.rota.trim(),
+      ativo: true,
+      updated_at: new Date().toISOString(),
+    });
+  });
+
+  return upsertEmLotes('rh_rotas', Array.from(dedupedMap.values()), 'funcionario,rota', l => `${l.funcionario}|${l.rota}`, onProgress);
 }
 
 // =====================================================================
@@ -232,11 +338,67 @@ export function diaDaSemana(dataISO: string): string {
 // ASE - Hora Extra: solicitações e itens
 // =====================================================================
 
-function gerarProtocoloBase(): string {
-  const agora = new Date();
-  const ym = `${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}`;
-  const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `ASE-${ym}-${sufixo}`;
+/**
+ * Normaliza o nome do setor para uma sigla/código amigável e legível.
+ * Exemplos: "SUPRIMENTOS / COMPRAS" -> "SUPR", "ALMOXARIFADO" -> "ALMOX", "RECURSOS HUMANOS" -> "RH".
+ */
+export function extrairSiglaSetor(nomeSetor?: string | null): string {
+  if (!nomeSetor || !nomeSetor.trim()) return 'GERAL';
+  const limpo = nomeSetor
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  // Mapeamentos conhecidos para siglas elegantes
+  if (limpo.includes('SUPRIMENT') || limpo.includes('COMPRA')) return 'SUPR';
+  if (limpo.includes('ALMOXARIF')) return 'ALMOX';
+  if (limpo.includes('RECURSOS HUMAN') || limpo === 'RH') return 'RH';
+  if (limpo.includes('MANUTEN')) return 'MANUT';
+  if (limpo.includes('PRODUC') || limpo.includes('FABRIC')) return 'PROD';
+  if (limpo.includes('PORTARIA') || limpo.includes('VIGILAN')) return 'PORT';
+  if (limpo.includes('QUALIDADE')) return 'QUAL';
+  if (limpo.includes('SEGURANC') || limpo.includes('SESMT')) return 'SEG';
+  if (limpo.includes('EXPEDIC') || limpo.includes('LOGIST')) return 'LOG';
+  if (limpo.includes('ENGENHAR')) return 'ENG';
+  if (limpo.includes('FINANCEIR') || limpo.includes('CONTABIL')) return 'FIN';
+  if (limpo.includes('ADMINISTR')) return 'ADM';
+  if (limpo.includes('TECNOLOGIA') || limpo === 'TI' || limpo.includes('INFORMAT')) return 'TI';
+  if (limpo.includes('JURIDIC')) return 'JUR';
+  if (limpo.includes('COMERCIAL') || limpo.includes('VENDAS')) return 'COM';
+  if (limpo.includes('PLANEJ')) return 'PLAN';
+
+  // Fallback: primeira palavra limpa com até 6 caracteres alfanuméricos
+  const primeiraPalavra = limpo.split(/[\s/_-]+/)[0].replace(/[^A-Z0-9]/g, '');
+  return primeiraPalavra.slice(0, 6) || 'GERAL';
+}
+
+/**
+ * Converte data ISO (YYYY-MM-DD) para formato DDMMAA (ex: "2026-08-27" -> "270826").
+ */
+export function formatarDataDDMMAA(dataISO?: string | null): string {
+  if (!dataISO || !/^\d{4}-\d{2}-\d{2}$/.test(dataISO)) {
+    const agora = new Date();
+    const d = String(agora.getDate()).padStart(2, '0');
+    const m = String(agora.getMonth() + 1).padStart(2, '0');
+    const a = String(agora.getFullYear()).slice(-2);
+    return `${d}${m}${a}`;
+  }
+  const [y, m, d] = dataISO.split('-');
+  return `${d}${m}${y.slice(-2)}`;
+}
+
+/**
+ * Gera protocolo de ASE no padrão ASE-DDMMAA-SETOR (ou com sequencial se houver duplicidade no mesmo dia/setor).
+ * Ex: "ASE-270826-SUPR", "ASE-270826-ALMOX-01"
+ */
+export function gerarProtocoloAse(dataISO?: string | null, nomeSetor?: string | null, sequencial?: number | string | null): string {
+  const ddmmaa = formatarDataDDMMAA(dataISO);
+  const sigla = extrairSiglaSetor(nomeSetor);
+  const base = `ASE-${ddmmaa}-${sigla}`;
+  if (sequencial === null || sequencial === undefined || sequencial === '') return base;
+  const seqStr = typeof sequencial === 'number' ? String(sequencial).padStart(2, '0') : String(sequencial);
+  return `${base}-${seqStr}`;
 }
 
 export async function listarSolicitacoesASE(): Promise<AseHoraExtraCompleta[]> {
@@ -289,18 +451,22 @@ export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompl
   } as AseHoraExtraCompleta;
 }
 
-/** Cria o cabeçalho já no banco (rascunho vazio) para que os itens possam ser adicionados a seguir. Retenta uma vez em colisão de protocolo. */
+/** Cria o cabeçalho já no banco com o novo padrão ASE-DDMMAA-SETOR. Retenta com sufixo sequencial (-01, -02) se houver colisão. */
 export async function criarSolicitacaoASE(params: {
   solicitanteId: string;
   setorId: string | null;
   turnoId: string | null;
   dataExecucao: string;
+  setorNome?: string | null;
 }): Promise<AseHoraExtraSolicitacao> {
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
+  for (let tentativa = 0; tentativa < 15; tentativa++) {
+    const seq = tentativa === 0 ? null : tentativa;
+    const protocolo = gerarProtocoloAse(params.dataExecucao, params.setorNome, seq);
+
     const { data, error } = await supabase
       .from('rh_ase_solicitacoes')
       .insert({
-        numero_protocolo: gerarProtocoloBase(),
+        numero_protocolo: protocolo,
         solicitante_id: params.solicitanteId,
         setor_id: params.setorId,
         turno_id: params.turnoId,
@@ -312,14 +478,14 @@ export async function criarSolicitacaoASE(params: {
 
     if (!error) return data as AseHoraExtraSolicitacao;
     if (!error.message.includes('numero_protocolo')) throw new Error(error.message);
-    // colisão de sufixo aleatório: tenta de novo com um novo protocolo
+    // colisão de protocolo: tenta com o próximo número sequencial (-01, -02, etc.)
   }
   throw new Error('Não foi possível gerar um número de protocolo único. Tente novamente.');
 }
 
 export async function salvarSolicitacaoASE(
   id: string,
-  patch: Partial<Pick<AseHoraExtraSolicitacao, 'setor_id' | 'turno_id' | 'data_execucao' | 'justificativa' | 'status'>>,
+  patch: Partial<Pick<AseHoraExtraSolicitacao, 'numero_protocolo' | 'setor_id' | 'turno_id' | 'data_execucao' | 'justificativa' | 'status'>>,
 ): Promise<void> {
   const { error } = await supabase
     .from('rh_ase_solicitacoes')
@@ -337,10 +503,21 @@ type ItemEditavel = Pick<AseHoraExtraItem,
   'pessoa_id' | 'registro' | 'nome' | 'cargo' | 'transporte' | 'refeicao'
   | 'hora_entrada' | 'hora_saida' | 'intervalo_minutos' | 'percentual_he' | 'total_horas' | 'observacao'>;
 
+function limparItemParaDb(item: Partial<ItemEditavel>) {
+  const limpo: any = { ...item };
+  if ('hora_entrada' in item) {
+    limpo.hora_entrada = item.hora_entrada ? item.hora_entrada : null;
+  }
+  if ('hora_saida' in item) {
+    limpo.hora_saida = item.hora_saida ? item.hora_saida : null;
+  }
+  return limpo;
+}
+
 export async function adicionarItemASE(solicitacaoId: string, item: ItemEditavel): Promise<AseHoraExtraItem> {
   const { data, error } = await supabase
     .from('rh_ase_itens')
-    .insert({ solicitacao_id: solicitacaoId, ...item })
+    .insert({ solicitacao_id: solicitacaoId, ...limparItemParaDb(item) })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -348,7 +525,7 @@ export async function adicionarItemASE(solicitacaoId: string, item: ItemEditavel
 }
 
 export async function atualizarItemASE(id: string, patch: Partial<ItemEditavel>): Promise<void> {
-  const { error } = await supabase.from('rh_ase_itens').update(patch).eq('id', id);
+  const { error } = await supabase.from('rh_ase_itens').update(limparItemParaDb(patch)).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
