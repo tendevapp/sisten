@@ -666,8 +666,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   rows={4}
                   placeholder="Descreva o que foi observado, status da ronda, pessoas envolvidas ou ações tomadas."
                   value={formOcorrencia.descricao}
-                  onChange={(e) => setFormOcorrencia({ ...formOcorrencia, descricao: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormOcorrencia({ ...formOcorrencia, descricao: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
@@ -723,8 +723,8 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   rows={3}
                   placeholder="Ex: Turno passado para a equipe da noite sem pendências no pátio."
                   value={obsEncerramento}
-                  onChange={(e) => setObsEncerramento(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setObsEncerramento(e.target.value.toUpperCase())}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 

@@ -161,8 +161,8 @@ export default function TramoCard({
                 disabled={somenteLeitura}
                 placeholder="Nome completo"
                 autoCapitalize="characters"
-                onChange={e => onChange({ motorista: e.target.value })}
-                className={`${campoClasse} mt-1.5`}
+                onChange={e => onChange({ motorista: e.target.value.toUpperCase() })}
+                className={`${campoClasse} uppercase mt-1.5`}
               />
             </div>
 

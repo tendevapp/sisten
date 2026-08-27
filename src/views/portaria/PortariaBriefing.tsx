@@ -541,8 +541,8 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                   type="text"
                   placeholder="Ex: Turma da empresa terceirizada de manutenção"
                   value={formSessao.observacoes}
-                  onChange={(e) => setFormSessao({ ...formSessao, observacoes: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormSessao({ ...formSessao, observacoes: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
@@ -595,8 +595,8 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                   required
                   placeholder="Nome do participante"
                   value={formParticipante.nome}
-                  onChange={(e) => setFormParticipante({ ...formParticipante, nome: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormParticipante({ ...formParticipante, nome: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
@@ -623,8 +623,8 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                     required
                     placeholder="Ex: Andrade Gutierrez"
                     value={formParticipante.empresa}
-                    onChange={(e) => setFormParticipante({ ...formParticipante, empresa: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormParticipante({ ...formParticipante, empresa: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -637,8 +637,8 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                   type="text"
                   placeholder="Ex: Técnico de Montagem / Eletricista"
                   value={formParticipante.funcao}
-                  onChange={(e) => setFormParticipante({ ...formParticipante, funcao: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormParticipante({ ...formParticipante, funcao: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 

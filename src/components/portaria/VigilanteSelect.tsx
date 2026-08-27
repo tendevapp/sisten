@@ -86,8 +86,8 @@ export default function VigilanteSelect({
             required={required}
             placeholder={placeholder}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            onChange={(e) => onChange(e.target.value.toUpperCase())}
+            className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           />
         </div>
       ) : (

@@ -16,6 +16,7 @@ import { ContatoFornecedor, CidadeForn, Profile } from '../types';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import Pagination from '../components/ui/Pagination';
 import { TableShell } from '../components/ui/DataTable';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 
 interface FornecedoresProps {
   user: Profile;
@@ -72,6 +73,27 @@ const statusStyle: Record<string, { badge: string; dot: string }> = {
 // Caracteres com significado especial na sintaxe de filtro do PostgREST
 const SPECIAL_FILTER_CHARS = /[,()."%*\\]/g;
 const sanitizeFilterTerm = (term: string) => term.replace(SPECIAL_FILTER_CHARS, '').trim();
+
+// Sentinela usada em filtros de seleção múltipla para "campo vazio / sem valor".
+const VAZIO = '__vazio__';
+
+/**
+ * Monta a expressão `or(...)` do PostgREST para "coluna IN (valores)", com
+ * suporte ao sentinela __vazio__ (null ou string vazia). Cada valor vai entre
+ * aspas duplas para não colidir com vírgulas/pontos presentes no próprio texto
+ * (ex.: "Material de Construção, Siderurgia e Premoldados").
+ */
+function buildOrEqList(col: string, values: string[]): string | null {
+  const parts: string[] = [];
+  for (const v of values) {
+    if (v === VAZIO) {
+      parts.push(`${col}.is.null`, `${col}.eq.`);
+    } else {
+      parts.push(`${col}.eq."${v.replace(/["\\]/g, '')}"`);
+    }
+  }
+  return parts.length ? parts.join(',') : null;
+}
 
 function splitMultiValues(raw?: string | null): string[] {
   if (!raw) return [];
@@ -1045,10 +1067,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   // Carrega do cache
   const pageCache = localDb.getPageCache('fornecedores', {
     searchRaw: '',
-    classificacaoFilter: '',
-    statusFilter: '',
-    ufFilter: '',
-    cidadeFilter: '',
+    classificacaoSel: [] as string[],
+    statusSel: [] as string[],
+    ufSel: [] as string[],
+    cidadeSel: [] as string[],
     hasPhone: false,
     hasEmail: false,
     page: 0,
@@ -1056,15 +1078,21 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     sortDir: 'asc' as SortDir
   });
 
-  // Filtros
+  // Filtros — seleção múltipla: conjunto vazio = "todos" (sem restrição).
   const [searchRaw, setSearchRaw] = useState(pageCache.searchRaw);
-  const [classificacaoFilter, setClassificacaoFilter] = useState(pageCache.classificacaoFilter);
-  const [statusFilter, setStatusFilter] = useState(pageCache.statusFilter || '');
-  const [ufFilter, setUfFilter] = useState(pageCache.ufFilter || '');
-  const [cidadeFilter, setCidadeFilter] = useState(pageCache.cidadeFilter || '');
+  const [classificacaoSel, setClassificacaoSel] = useState<Set<string>>(() => new Set(pageCache.classificacaoSel || []));
+  const [statusSel, setStatusSel] = useState<Set<string>>(() => new Set(pageCache.statusSel || []));
+  const [ufSel, setUfSel] = useState<Set<string>>(() => new Set(pageCache.ufSel || []));
+  const [cidadeSel, setCidadeSel] = useState<Set<string>>(() => new Set(pageCache.cidadeSel || []));
   const [hasPhone, setHasPhone] = useState(pageCache.hasPhone);
   const [hasEmail, setHasEmail] = useState(pageCache.hasEmail);
   const search = useDebounce(searchRaw, 350);
+
+  // Chaves estáveis para dependências de efeitos/memos (Set muda de identidade a cada toggle).
+  const classificacaoKey = useMemo(() => Array.from(classificacaoSel).sort().join('|'), [classificacaoSel]);
+  const statusKey = useMemo(() => Array.from(statusSel).sort().join('|'), [statusSel]);
+  const ufKey = useMemo(() => Array.from(ufSel).sort().join('|'), [ufSel]);
+  const cidadeKey = useMemo(() => Array.from(cidadeSel).sort().join('|'), [cidadeSel]);
 
   // Lista única de UFs a partir do mapa de cidades e contatos
   const ufOpts = useMemo(() => {
@@ -1081,25 +1109,23 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [cidadeFornList, rows, getSupplierLocation]);
 
-  // Lista única de Cidades (opcionalmente filtrada por UF selecionada)
+  // Lista única de Cidades (restrita às UFs selecionadas, quando houver)
   const cidadeOpts = useMemo(() => {
+    const ufAtivo = (uf: string) => ufSel.size === 0 || ufSel.has(uf.toUpperCase());
     const set = new Set<string>();
     cidadeFornList.forEach(cf => {
       const uf = cf.estado_uf ? cf.estado_uf.trim().toUpperCase() : '';
-      if (!ufFilter || uf === ufFilter.toUpperCase()) {
-        if (cf.localidade && cf.localidade.trim()) {
-          set.add(cf.localidade.trim());
-        }
+      if (ufAtivo(uf) && cf.localidade && cf.localidade.trim()) {
+        set.add(cf.localidade.trim());
       }
     });
     rows.forEach(r => {
       const loc = getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf);
-      if (!ufFilter || loc.uf.toUpperCase() === ufFilter.toUpperCase()) {
-        if (loc.cidade && loc.cidade !== '—') set.add(loc.cidade);
-      }
+      if (ufAtivo(loc.uf) && loc.cidade && loc.cidade !== '—') set.add(loc.cidade);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [cidadeFornList, rows, ufFilter, getSupplierLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cidadeFornList, rows, ufKey, getSupplierLocation]);
 
   // Lista dinâmica de classificações extraídas dos dados reais da tabela contatos
   const [classificacaoOpts, setClassificacaoOpts] = useState<string[]>([]);
@@ -1157,17 +1183,18 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   useEffect(() => {
     localDb.setPageCache('fornecedores', {
       searchRaw,
-      classificacaoFilter,
-      statusFilter,
-      ufFilter,
-      cidadeFilter,
+      classificacaoSel: Array.from(classificacaoSel),
+      statusSel: Array.from(statusSel),
+      ufSel: Array.from(ufSel),
+      cidadeSel: Array.from(cidadeSel),
       hasPhone,
       hasEmail,
       page,
       sortField,
       sortDir
     });
-  }, [searchRaw, classificacaoFilter, statusFilter, ufFilter, cidadeFilter, hasPhone, hasEmail, page, sortField, sortDir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchRaw, classificacaoKey, statusKey, ufKey, cidadeKey, hasPhone, hasEmail, page, sortField, sortDir]);
 
   const loadData = useCallback(async () => {
     if (!supabase) { setError('Supabase não configurado.'); setLoading(false); return; }
@@ -1181,17 +1208,11 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         q = q.or(`cod_vendor.ilike.%${term}%,cnpj.ilike.%${term}%,fornecedor.ilike.%${term}%,nome_fantasia.ilike.%${term}%,email.ilike.%${term}%`);
       }
 
-      if (classificacaoFilter === '__vazio__') {
-        q = q.or('classificacao.is.null,classificacao.eq.');
-      } else if (classificacaoFilter) {
-        q = q.eq('classificacao', classificacaoFilter);
-      }
+      const classificacaoOr = buildOrEqList('classificacao', Array.from(classificacaoSel));
+      if (classificacaoOr) q = q.or(classificacaoOr);
 
-      if (statusFilter === '__vazio__') {
-        q = q.or('status.is.null,status.eq.');
-      } else if (statusFilter) {
-        q = q.eq('status', statusFilter);
-      }
+      const statusOr = buildOrEqList('status', Array.from(statusSel));
+      if (statusOr) q = q.or(statusOr);
 
       if (hasPhone) q = q.not('telefone', 'is', null).neq('telefone', '');
       if (hasEmail) q = q.not('email', 'is', null).neq('email', '');
@@ -1208,7 +1229,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     } finally {
       setLoading(false);
     }
-  }, [search, classificacaoFilter, statusFilter, hasPhone, hasEmail, sortField, sortDir, page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, classificacaoKey, statusKey, hasPhone, hasEmail, sortField, sortDir, page]);
 
   // Carrega fornecedores da pedidosforn que não existem na contatos
   const loadNaoCadastradosData = useCallback(async () => {
@@ -1318,6 +1340,14 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     loadNaoCadastradosData();
   }, [loadNaoCadastradosData]);
 
+  // Conjuntos normalizados (minúsculo) para comparação case-insensitive de cidade.
+  const cidadeSelLower = useMemo(
+    () => new Set(Array.from(cidadeSel).map(c => c.toLowerCase())),
+    [cidadeKey], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const matchUf = useCallback((uf: string) => ufSel.size === 0 || ufSel.has(uf.toUpperCase()), [ufKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const matchCidade = useCallback((cidade: string) => cidadeSelLower.size === 0 || cidadeSelLower.has(cidade.toLowerCase()), [cidadeSelLower]);
+
   const filteredNaoCadastrados = useMemo(() => {
     let list = naoCadastradosList;
     if (naoCadastradosSearch.trim()) {
@@ -1328,25 +1358,25 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         item.fornecedor.toLowerCase().includes(q)
       );
     }
-    if (ufFilter) {
-      list = list.filter(item => getSupplierLocation(item.cod_forn).uf.toUpperCase() === ufFilter.toUpperCase());
+    if (ufSel.size > 0) {
+      list = list.filter(item => matchUf(getSupplierLocation(item.cod_forn).uf));
     }
-    if (cidadeFilter) {
-      list = list.filter(item => getSupplierLocation(item.cod_forn).cidade.toLowerCase() === cidadeFilter.toLowerCase());
+    if (cidadeSelLower.size > 0) {
+      list = list.filter(item => matchCidade(getSupplierLocation(item.cod_forn).cidade));
     }
     return list;
-  }, [naoCadastradosList, naoCadastradosSearch, ufFilter, cidadeFilter, getSupplierLocation]);
+  }, [naoCadastradosList, naoCadastradosSearch, ufKey, cidadeSelLower, matchUf, matchCidade, getSupplierLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredRows = useMemo(() => {
     let list = rows;
-    if (ufFilter) {
-      list = list.filter(r => getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).uf.toUpperCase() === ufFilter.toUpperCase());
+    if (ufSel.size > 0) {
+      list = list.filter(r => matchUf(getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).uf));
     }
-    if (cidadeFilter) {
-      list = list.filter(r => getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).cidade.toLowerCase() === cidadeFilter.toLowerCase());
+    if (cidadeSelLower.size > 0) {
+      list = list.filter(r => matchCidade(getSupplierLocation(r.cod_vendor, r.cidade, r.estado_uf).cidade));
     }
     return list;
-  }, [rows, ufFilter, cidadeFilter, getSupplierLocation]);
+  }, [rows, ufKey, cidadeSelLower, matchUf, matchCidade, getSupplierLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const naoCadastradosTotalPages = Math.ceil(filteredNaoCadastrados.length / PAGE_SIZE);
   const paginatedNaoCadastrados = useMemo(() => {
@@ -1393,7 +1423,8 @@ export default function Fornecedores({ user }: FornecedoresProps) {
       return;
     }
     setPage(0);
-  }, [search, classificacaoFilter, statusFilter, ufFilter, cidadeFilter, hasPhone, hasEmail, sortField, sortDir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, classificacaoKey, statusKey, ufKey, cidadeKey, hasPhone, hasEmail, sortField, sortDir]);
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleSort = (field: SortField) => {
@@ -1413,14 +1444,14 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const hasFilters = !!search.trim() || !!classificacaoFilter || !!statusFilter || !!ufFilter || !!cidadeFilter || hasPhone || hasEmail;
+  const hasFilters = !!search.trim() || classificacaoSel.size > 0 || statusSel.size > 0 || ufSel.size > 0 || cidadeSel.size > 0 || hasPhone || hasEmail;
 
   const clearFilters = () => {
     setSearchRaw('');
-    setClassificacaoFilter('');
-    setStatusFilter('');
-    setUfFilter('');
-    setCidadeFilter('');
+    setClassificacaoSel(new Set());
+    setStatusSel(new Set());
+    setUfSel(new Set());
+    setCidadeSel(new Set());
     setHasPhone(false);
     setHasEmail(false);
     setPage(0);
@@ -1570,68 +1601,55 @@ export default function Fornecedores({ user }: FornecedoresProps) {
                 )}
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:gap-3">
-              <div className="relative shrink-0 w-[168px] lg:w-auto">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <select
-                  value={classificacaoFilter}
-                  onChange={e => setClassificacaoFilter(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
-                >
-                  <option value="">Todas classificações</option>
-                  {classificacaoOpts.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  <option value="__vazio__">Sem classificação</option>
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              </div>
+              {/* lg:overflow-visible: em telas pequenas a trilha rola na horizontal
+                  (overflow-x-auto), o que também recorta verticalmente os painéis
+                  abertos dos MultiSelectFilter; a partir de lg os filtros quebram
+                  em linha e o painel pode abrir por cima do resto. */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:gap-3 lg:overflow-visible">
+              <MultiSelectFilter
+                label="Classificação"
+                icon={Filter}
+                allLabel="Todas"
+                options={[...classificacaoOpts, VAZIO]}
+                selected={classificacaoSel}
+                onChange={setClassificacaoSel}
+                renderOption={o => (o === VAZIO ? 'Sem classificação' : o)}
+                className="shrink-0 w-[168px] lg:w-auto lg:min-w-[168px]"
+                panelClassName="w-72 sm:w-80"
+              />
 
-              <div className="relative shrink-0 w-[150px] lg:w-auto">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
-                >
-                  {STATUS_FILTER_OPTS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              </div>
+              <MultiSelectFilter
+                label="Status"
+                icon={Filter}
+                allLabel="Todos"
+                options={[...STATUS_OPTS, VAZIO]}
+                selected={statusSel}
+                onChange={setStatusSel}
+                renderOption={o => (o === VAZIO ? 'Sem status' : o)}
+                className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
+              />
 
-              {/* Filtro UF */}
-              <div className="relative shrink-0 w-[150px] lg:w-auto">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <select
-                  value={ufFilter}
-                  onChange={e => { setUfFilter(e.target.value); setCidadeFilter(''); setPage(0); }}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer truncate"
-                >
-                  <option value="">Todos os estados (UF)</option>
-                  {ufOpts.map(uf => (
-                    <option key={uf} value={uf}>{uf}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              </div>
+              <MultiSelectFilter
+                label="UF"
+                icon={MapPin}
+                allLabel="Todos"
+                options={ufOpts}
+                selected={ufSel}
+                onChange={next => { setUfSel(next); setCidadeSel(new Set()); }}
+                className="shrink-0 w-[150px] lg:w-auto lg:min-w-[130px]"
+              />
 
-              {/* Filtro Cidade */}
-              <div className="relative shrink-0 w-[180px] lg:w-auto">
-                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <select
-                  value={cidadeFilter}
-                  onChange={e => { setCidadeFilter(e.target.value); setPage(0); }}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-8 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer lg:max-w-[200px] truncate"
-                >
-                  <option value="">Todas as cidades</option>
-                  {cidadeOpts.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-              </div>
+              <MultiSelectFilter
+                label="Cidade"
+                icon={MapPin}
+                allLabel="Todas"
+                searchable
+                options={cidadeOpts}
+                selected={cidadeSel}
+                onChange={setCidadeSel}
+                className="shrink-0 w-[180px] lg:w-auto lg:min-w-[180px]"
+                panelClassName="w-72 sm:w-80"
+              />
 
               <label className="shrink-0 whitespace-nowrap flex items-center gap-2 cursor-pointer select-none rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                 <input type="checkbox" checked={hasPhone} onChange={e => setHasPhone(e.target.checked)} className="accent-blue-500" />

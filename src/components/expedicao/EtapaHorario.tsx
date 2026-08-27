@@ -289,8 +289,8 @@ export default function EtapaHorario({
             disabled={desabilitado}
             placeholder={`Observação — ${rotulo.toLowerCase()}`}
             aria-label={`Observação — ${rotulo}`}
-            onChange={e => onObsChange(e.target.value || null)}
-            className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            onChange={e => onObsChange(e.target.value ? e.target.value.toUpperCase() : null)}
+            className="mt-2 w-full uppercase resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
           />
         )}
 

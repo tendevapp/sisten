@@ -349,8 +349,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     required
                     placeholder="Ex: Eletrotécnica Andrade & Silva"
                     value={formEntrada.nome_empresa}
-                    onChange={(e) => setFormEntrada({ ...formEntrada, nome_empresa: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormEntrada({ ...formEntrada, nome_empresa: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -362,8 +362,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     required
                     placeholder="Nome completo do responsável pelas ferramentas"
                     value={formEntrada.funcionario}
-                    onChange={(e) => setFormEntrada({ ...formEntrada, funcionario: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormEntrada({ ...formEntrada, funcionario: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -380,8 +380,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
 1x Caixa de ferramentas de metal com chaves diversas;
 1x Multímetro digital Fluke 107."
                   value={formEntrada.descricao_materiais}
-                  onChange={(e) => setFormEntrada({ ...formEntrada, descricao_materiais: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormEntrada({ ...formEntrada, descricao_materiais: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
@@ -427,8 +427,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     type="text"
                     placeholder="Nome do colaborador TEN que acompanha"
                     value={formEntrada.responsavel}
-                    onChange={(e) => setFormEntrada({ ...formEntrada, responsavel: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormEntrada({ ...formEntrada, responsavel: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -439,8 +439,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     type="text"
                     placeholder="Ex: Autorizado pelo setor de manutenção"
                     value={formEntrada.observacoes}
-                    onChange={(e) => setFormEntrada({ ...formEntrada, observacoes: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormEntrada({ ...formEntrada, observacoes: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -536,8 +536,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   type="text"
                   placeholder="Ex: Conferido e liberado sem pendências"
                   value={formSaida.observacoes}
-                  onChange={(e) => setFormSaida({ ...formSaida, observacoes: e.target.value })}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  onChange={(e) => setFormSaida({ ...formSaida, observacoes: e.target.value.toUpperCase() })}
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 

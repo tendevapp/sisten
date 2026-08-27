@@ -630,8 +630,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               disabled={salvando}
               placeholder="Ex.: TRANSMAQUINAS"
               autoCapitalize="characters"
-              onChange={e => alterarCarregamento({ empresa: e.target.value })}
-              className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-base font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              onChange={e => alterarCarregamento({ empresa: e.target.value.toUpperCase() })}
+              className="mt-1.5 h-11 w-full uppercase rounded-xl border border-slate-300 bg-white px-3 text-base font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
           </div>
           <div>
@@ -644,8 +644,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               value={dados.observacoes || ''}
               disabled={salvando}
               placeholder="Ex.: Motoristas com escolta – SERIDÓ"
-              onChange={e => alterarCarregamento({ observacoes: e.target.value || null })}
-              className="mt-1.5 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              onChange={e => alterarCarregamento({ observacoes: e.target.value ? e.target.value.toUpperCase() : null })}
+              className="mt-1.5 w-full uppercase resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
           </div>
         </div>

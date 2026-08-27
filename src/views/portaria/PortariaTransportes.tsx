@@ -234,8 +234,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               type="text"
               placeholder="Placa, empresa ou motorista..."
               value={termoBusca}
-              onChange={(e) => setTermoBusca(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-100"
+              onChange={(e) => setTermoBusca(e.target.value.toUpperCase())}
+              className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50/50 pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-100"
             />
           </div>
         </div>
@@ -399,8 +399,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     required
                     placeholder="Ex: Transportes São Geraldo"
                     value={formNovo.empresa}
-                    onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -412,8 +412,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     required
                     placeholder="Nome completo do motorista"
                     value={formNovo.motorista}
-                    onChange={(e) => setFormNovo({ ...formNovo, motorista: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormNovo({ ...formNovo, motorista: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -466,8 +466,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     type="text"
                     placeholder="Ex: Entrega de suprimentos / 4 passageiros"
                     value={formNovo.ocupacao}
-                    onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
