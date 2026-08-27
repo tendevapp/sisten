@@ -70,7 +70,7 @@ export async function criarProcessoCotacao(params: {
   usuarioNome: string;
 }): Promise<CotacaoProcesso> {
   const { data: processo, error: erroProcesso } = await supabase
-    .from('cotacao_processos')
+    .from('sup_cotacao_processos')
     .insert({
       numero: gerarNumeroProcesso(),
       titulo: params.titulo,
@@ -86,7 +86,7 @@ export async function criarProcessoCotacao(params: {
   // nenhum — insert com array vazio é só custo de round-trip à toa.
   if (params.itens.length > 0) {
     const itensPayload = params.itens.map(i => ({ ...i, processo_id: processo.id }));
-    const { error: erroItens } = await supabase.from('cotacao_processo_itens').insert(itensPayload);
+    const { error: erroItens } = await supabase.from('sup_cotacao_processo_itens').insert(itensPayload);
     if (erroItens) throw new Error(`Processo criado, mas falhou ao gravar os itens do escopo: ${erroItens.message}`);
   }
 
@@ -95,7 +95,7 @@ export async function criarProcessoCotacao(params: {
 
 export async function listarProcessosCotacao(): Promise<CotacaoProcesso[]> {
   const { data, error } = await supabase
-    .from('cotacao_processos')
+    .from('sup_cotacao_processos')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(100);
@@ -109,9 +109,9 @@ export async function buscarProcessoCotacao(processoId: string): Promise<{
   propostas: CotacaoProposta[];
 }> {
   const [{ data: processo, error: e1 }, { data: itens, error: e2 }, { data: propostas, error: e3 }] = await Promise.all([
-    supabase.from('cotacao_processos').select('*').eq('id', processoId).single(),
-    supabase.from('cotacao_processo_itens').select('*').eq('processo_id', processoId).order('ri'),
-    supabase.from('cotacao_propostas').select('*, itens:cotacao_proposta_itens(*)').eq('processo_id', processoId).order('created_at'),
+    supabase.from('sup_cotacao_processos').select('*').eq('id', processoId).single(),
+    supabase.from('sup_cotacao_processo_itens').select('*').eq('processo_id', processoId).order('ri'),
+    supabase.from('sup_cotacao_propostas').select('*, itens:sup_cotacao_proposta_itens(*)').eq('processo_id', processoId).order('created_at'),
   ]);
   if (e1) throw new Error(`Falha ao carregar processo: ${e1.message}`);
   if (e2) throw new Error(`Falha ao carregar escopo do processo: ${e2.message}`);
@@ -125,7 +125,7 @@ export async function buscarProcessoCotacao(processoId: string): Promise<{
 }
 
 export async function atualizarStatusProcesso(processoId: string, status: CotacaoProcessoStatus): Promise<void> {
-  const { error } = await supabase.from('cotacao_processos').update({ status, updated_at: new Date().toISOString() }).eq('id', processoId);
+  const { error } = await supabase.from('sup_cotacao_processos').update({ status, updated_at: new Date().toISOString() }).eq('id', processoId);
   if (error) throw new Error(`Falha ao atualizar status do processo: ${error.message}`);
 }
 
@@ -147,7 +147,7 @@ export async function buscarPropostasPorArquivo(processoId: string, arquivosOrig
   const nomes = Array.from(new Set(arquivosOrigem.map(n => n.trim()).filter(Boolean)));
   if (nomes.length === 0) return [];
   const { data, error } = await supabase
-    .from('cotacao_propostas')
+    .from('sup_cotacao_propostas')
     .select('id, arquivo_origem, fornecedor_razao_social, created_at')
     .eq('processo_id', processoId)
     .in('arquivo_origem', nomes);
@@ -157,7 +157,7 @@ export async function buscarPropostasPorArquivo(processoId: string, arquivosOrig
 
 /** Exclui uma proposta salva (e seus itens, via ON DELETE CASCADE em `cotacao_proposta_itens`). */
 export async function excluirPropostaCotacao(propostaId: string): Promise<void> {
-  const { error } = await supabase.from('cotacao_propostas').delete().eq('id', propostaId);
+  const { error } = await supabase.from('sup_cotacao_propostas').delete().eq('id', propostaId);
   if (error) throw new Error(`Falha ao excluir a proposta: ${error.message}`);
 }
 
@@ -217,7 +217,7 @@ export async function acharFornecedorPorCnpj(cnpjBruto: string | null): Promise<
   if (!digitos) return null;
 
   const { data, error } = await supabase
-    .from('contatos')
+    .from('sup_fornecedores_contatos')
     .select('id, cod_vendor, fornecedor, nome_fantasia, cnpj, email')
     .in('cnpj', [digitos, formatarCnpj(digitos)])
     .limit(1);
@@ -229,7 +229,7 @@ export async function buscarFornecedoresPorNome(termo: string): Promise<Forneced
   const t = termo.trim();
   if (t.length < 2) return [];
   const { data, error } = await supabase
-    .from('contatos')
+    .from('sup_fornecedores_contatos')
     .select('id, cod_vendor, fornecedor, nome_fantasia, cnpj, email')
     .or(`fornecedor.ilike.%${t}%,nome_fantasia.ilike.%${t}%`)
     .limit(10);

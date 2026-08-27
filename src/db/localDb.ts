@@ -257,30 +257,30 @@ class LocalDatabase {
           ['sectors', () => this.syncSectors()],
           ['profiles', () => this.syncProfiles()],
           ['buyer_groups', () => this.syncBuyerGroups()],
-          ['compradores', () => this.syncSimpleTable('compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
-          ['rastreio_prioridades', () => this.syncSimpleTable('rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
+          ['sup_compradores', () => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
+          ['sup_rastreio_prioridades', () => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
           ['almoxarifado_chegadas', () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri')],
-          ['tabela_frete', () => this.syncSimpleTable('tabela_frete', this.tabelaFreteKey, true, undefined, 'id')],
+          ['sup_fretes', () => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id')],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
           // era o maior consumidor de egress do projeto.
-          ['view_enriched_requisicoes', gated('requisicoes', () => this.syncSimpleTable('view_enriched_requisicoes', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri'))],
-          ['view_enriched_pedidos', gated('pedidos', () => this.syncSimpleTable('view_enriched_pedidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
+          ['vw_sap_requisicoes_enriquecidas', gated('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri'))],
+          ['vw_sap_pedidos_enriquecidos', gated('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
           // Estas três fazem merge em vez de substituir: o motor de solicitações
           // ainda é local-first (só a criação sobe; status, atendente e
           // comentários seguem locais). Com `syncSimpleTable`, a primeira linha
           // inserida no servidor faria o download apagar tudo que existe só no
           // cache do usuário — inclusive as mutações que ainda não migraram.
-          ['requests', () => this.syncMergedTable('requests', this.requestsKey)],
-          ['request_items', () => this.syncMergedTable('request_items', this.requestItemsKey)],
-          ['request_attachments', () => this.syncMergedTable('request_attachments', this.attachmentsKey)],
+          ['requests', () => this.syncMergedTable('core_solicitacoes', this.requestsKey)],
+          ['request_items', () => this.syncMergedTable('core_solicitacoes_itens', this.requestItemsKey)],
+          ['request_attachments', () => this.syncMergedTable('core_solicitacoes_anexos', this.attachmentsKey)],
           // Também por merge, pelo mesmo motivo das demais tabelas de
           // solicitação: substituir o array local apagaria comentários e
           // transições que ainda não conseguiram subir.
-          ['request_comments', () => this.syncMergedTable('request_comments', this.commentsKey)],
-          ['request_status_history', () => this.syncMergedTable('request_status_history', this.historyKey)],
-          ['notifications', () => this.syncSimpleTable('notifications', this.notificationsKey, false, undefined, 'id')],
+          ['request_comments', () => this.syncMergedTable('core_solicitacoes_comentarios', this.commentsKey)],
+          ['request_status_history', () => this.syncMergedTable('core_solicitacoes_historico_status', this.historyKey)],
+          ['notifications', () => this.syncSimpleTable('core_notificacoes', this.notificationsKey, false, undefined, 'id')],
           // import_logs tem uma coluna pesada (ignored_rows, jsonb) que sozinha já
           // passou de 12 MB no banco; baixá-la inteira em todo sync (a cada troca de
           // rota / foco / polling) é o maior consumidor de egress medido no projeto.
@@ -289,15 +289,15 @@ class LocalDatabase {
           // fetchImportLogDetail), quando o usuário expande um log no AdminPanel.
           ['import_logs', () => this.syncImportLogs()],
           ['obs_historico', () => this.syncObsHistory()],
-          ['activity_logs', () => this.syncSimpleTable('activity_logs', this.logsKey, false, undefined, 'id')],
+          ['activity_logs', () => this.syncSimpleTable('core_logs_atividade', this.logsKey, false, undefined, 'id')],
           ['sequences', () => this.syncSequences()],
-          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
+          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
           // vw_historico_pedidos não tem coluna única (é uma view agregada); não dá
           // para forçar um ORDER BY seguro aqui sem arriscar um nome de coluna
           // inválido. Ver P5 no plano de egress.
           ['vw_historico_pedidos', gated('historico_pedidos', () => this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true))],
-          ['contatos', gated('contatos', () => this.syncSimpleTable('contatos', this.contatosKey, true, undefined, 'id'))],
-          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true, undefined, 'id'))],
+          ['contatos', gated('contatos', () => this.syncSimpleTable('sup_fornecedores_contatos', this.contatosKey, true, undefined, 'id'))],
+          ['cidadeforn', gated('cidadeforn', () => this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true, undefined, 'id'))],
           // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
           // o grupo de mercadoria do SAP para a descrição exibida na Central
           // Compras. Resolvido no cliente porque acrescentar a coluna em
@@ -325,18 +325,18 @@ class LocalDatabase {
   }
 
   private async syncSectors(): Promise<void> {
-    const { data: sectors, error } = await supabase.from('sectors').select('*');
+    const { data: sectors, error } = await supabase.from('core_setores').select('*');
     if (error) throw error;
     if (sectors && sectors.length > 0) {
       this.setStorageItem(this.sectorsKey, sectors);
     } else {
-      await supabase.from('sectors').upsert(INITIAL_SECTORS);
+      await supabase.from('core_setores').upsert(INITIAL_SECTORS);
       this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
     }
   }
 
   private async syncProfiles(): Promise<void> {
-    const { data: profiles, error } = await supabase.from('profiles').select('*');
+    const { data: profiles, error } = await supabase.from('core_perfis').select('*');
     if (error) throw error;
     if (profiles && profiles.length > 0) {
       const mappedProfiles = profiles.map(p => ({
@@ -349,7 +349,7 @@ class LocalDatabase {
   }
 
   private async syncBuyerGroups(): Promise<void> {
-    const { data: buyerGroups, error } = await supabase.from('buyer_groups').select('*');
+    const { data: buyerGroups, error } = await supabase.from('core_grupos_compradores').select('*');
     if (error) throw error;
     if (buyerGroups && buyerGroups.length > 0) {
       this.setStorageItem(this.buyerGroupsKey, buyerGroups);
@@ -360,13 +360,13 @@ class LocalDatabase {
     // O gate de versão (syncFromSupabase) já decide quando este download pesado
     // do catálogo (~180k linhas) deve ocorrer: apenas na primeira vez ou quando
     // a versão do dataset 'materials' muda após uma importação.
-    const materials = await this.fetchAllFromTable<any>('materials', '*', 1000, undefined, 'id');
+    const materials = await this.fetchAllFromTable<any>('sap_zl0169_162_catalogo', '*', 1000, undefined, 'id');
     if (materials && materials.length > 0) {
       this.setStorageItem(this.materialsKey, materials);
     } else {
       const generated = generateMaterials();
       for (let i = 0; i < generated.length; i += 50) {
-        await supabase.from('materials').upsert(generated.slice(i, i + 50));
+        await supabase.from('sap_zl0169_162_catalogo').upsert(generated.slice(i, i + 50));
       }
       this.setStorageItem(this.materialsKey, generated);
     }
@@ -406,7 +406,7 @@ class LocalDatabase {
   }
 
   private async syncObsHistory(): Promise<void> {
-    const dbObsHistory = await this.fetchAllFromTable<any>('obs_historico', '*', 1000, undefined, 'id');
+    const dbObsHistory = await this.fetchAllFromTable<any>('sap_requisicoes_observacoes', '*', 1000, undefined, 'id');
     if (dbObsHistory && dbObsHistory.length > 0) {
       const mappedObsHist = dbObsHistory.map(oh => {
         let comment = '';
@@ -510,7 +510,7 @@ class LocalDatabase {
       return this.markersCache.data;
     }
     try {
-      const { data, error } = await supabase.from('dataset_versions').select('dataset, version, updated_at');
+      const { data, error } = await supabase.from('ops_dataset_versoes').select('dataset, version, updated_at');
       if (error) throw error;
       const map = new Map<string, { version: number; updatedAt: string | null }>();
       (data || []).forEach((r: any) => map.set(r.dataset, { version: Number(r.version), updatedAt: r.updated_at ?? null }));
@@ -1041,7 +1041,7 @@ class LocalDatabase {
 
       // Buscar perfil correspondente na tabela profiles
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
+        .from('core_perfis')
         .select('*')
         .eq('id', data.user.id)
         .maybeSingle();
@@ -1068,7 +1068,7 @@ class LocalDatabase {
         };
 
         const { error: insertError } = await supabase
-          .from('profiles')
+          .from('core_perfis')
           .insert(newProfile);
 
         if (insertError) {
@@ -1288,7 +1288,7 @@ class LocalDatabase {
 
     if (!supabase) throw new Error('Sem conexão com o servidor.');
     const { error } = await supabase
-      .from('profiles')
+      .from('core_perfis')
       .update({ page_access: current })
       .eq('id', userId);
     if (error) throw error;
@@ -1320,7 +1320,7 @@ class LocalDatabase {
 
     if (!supabase) throw new Error('Sem conexão com o servidor.');
     const { error } = await supabase
-      .from('profiles')
+      .from('core_perfis')
       .update({ page_access: {} })
       .eq('id', userId);
     if (error) throw error;
@@ -1642,7 +1642,7 @@ class LocalDatabase {
         let existingMap = new Map<string, any>();
         if (client) {
           const { data: existingRows } = await client
-            .from('materials')
+            .from('sap_zl0169_162_catalogo')
             .select('id, material_code, technical_text, created_at')
             .in('material_code', codes);
 
@@ -1707,7 +1707,7 @@ class LocalDatabase {
 
         if (client) {
           const { error: upsertErr } = await client
-            .from('materials')
+            .from('sap_zl0169_162_catalogo')
             .upsert(batch, { onConflict: 'material_code' });
 
           if (upsertErr) throw upsertErr;
@@ -1772,7 +1772,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       if (client) {
-        await client.from('import_logs').insert(logObj);
+        await client.from('ops_importacoes').insert(logObj);
       }
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
@@ -1907,7 +1907,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       if (supabase) {
-        await supabase.from('import_logs').insert(logObj);
+        await supabase.from('ops_importacoes').insert(logObj);
       }
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
       logs.unshift(logObj as any);
@@ -1970,7 +1970,7 @@ class LocalDatabase {
     try {
       const [standardRes, longRes, countRes] = await Promise.all([
         supabase
-          .from('materials')
+          .from('sap_zl0169_162_catalogo')
           .select('material_code')
           .gte('material_code', '1000000')
           .lt('material_code', '2000000')
@@ -1978,7 +1978,7 @@ class LocalDatabase {
           .limit(1)
           .maybeSingle(),
         supabase
-          .from('materials')
+          .from('sap_zl0169_162_catalogo')
           .select('material_code')
           .gte('material_code', '100000000000000000')
           .like('material_code', '100000%')
@@ -1986,7 +1986,7 @@ class LocalDatabase {
           .limit(1)
           .maybeSingle(),
         supabase
-          .from('materials')
+          .from('sap_zl0169_162_catalogo')
           .select('id', { count: 'exact', head: true }),
       ]);
 
@@ -2058,7 +2058,7 @@ class LocalDatabase {
     this.setStorageItem(this.notificationsKey, notifications.slice(0, 100)); // Cap to 100
 
     if (supabase) {
-      supabase.from('notifications').insert([{
+      supabase.from('core_notificacoes').insert([{
         id: newNotif.id,
         user_id: newNotif.user_id,
         title: newNotif.title,
@@ -2088,7 +2088,7 @@ class LocalDatabase {
       // então sem isso o "lido" voltaria a "não lido" na próxima sincronização.
       const nid = notifications[idx].id;
       (async () => {
-        try { if (supabase) await supabase.from('notifications').update({ is_read: true }).eq('id', nid); }
+        try { if (supabase) await supabase.from('core_notificacoes').update({ is_read: true }).eq('id', nid); }
         catch (e) { console.error('Falha ao marcar notificação como lida no Supabase:', e); }
       })();
     }
@@ -2111,7 +2111,7 @@ class LocalDatabase {
       const user = this.getCurrentUser();
       if (!user) return;
       const { data } = await supabase
-        .from('notifications')
+        .from('core_notificacoes')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -2125,7 +2125,7 @@ class LocalDatabase {
   public async fetchRastreioMensagens(ri: string): Promise<RastreioMensagem[]> {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from('rastreio_mensagens')
+      .from('sup_rastreio_mensagens')
       .select('*')
       .eq('ri', ri)
       .order('created_at', { ascending: true });
@@ -2160,7 +2160,7 @@ class LocalDatabase {
       request_number: reqNo ?? null,
       created_at: new Date().toISOString(),
     }));
-    const { error } = await supabase.from('notifications').insert(rows);
+    const { error } = await supabase.from('core_notificacoes').insert(rows);
     if (error) console.error('Falha ao inserir notificações de mensagem (Rastreio Compras):', error);
   }
 
@@ -2245,7 +2245,7 @@ class LocalDatabase {
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('rastreio_mensagens').insert({
+    const { error } = await supabase.from('sup_rastreio_mensagens').insert({
       id: row.id, ri: row.ri, rm: row.rm ?? null,
       autor_id: row.autor_id, autor_nome: row.autor_nome, autor_role: row.autor_role ?? null,
       mensagem: row.mensagem, created_at: row.created_at,
@@ -2284,7 +2284,7 @@ class LocalDatabase {
       created_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase.from('rastreio_prioridades').insert({
+    const { error } = await supabase.from('sup_rastreio_prioridades').insert({
       id: row.id, ri: row.ri, rm: row.rm ?? null, nivel: row.nivel,
       solicitante_id: row.solicitante_id, solicitante_nome: row.solicitante_nome,
       created_at: row.created_at,
@@ -2396,7 +2396,7 @@ class LocalDatabase {
     if (changed) this.setStorageItem(this.notificationsKey, notifs);
     if (affected.length > 0) {
       (async () => {
-        try { if (supabase) await supabase.from('notifications').update({ is_read: true }).in('id', affected); }
+        try { if (supabase) await supabase.from('core_notificacoes').update({ is_read: true }).in('id', affected); }
         catch (e) { console.warn('Falha ao marcar thread como lida no Supabase:', e); }
       })();
     }
@@ -2463,7 +2463,7 @@ class LocalDatabase {
     comments.push(newComment);
     this.setStorageItem(this.commentsKey, comments);
 
-    await this.publishChildRow('request_comments', newComment);
+    await this.publishChildRow('core_solicitacoes_comentarios', newComment);
 
     // If it's helpdesk and in "aguardando_solicitante", receiving a comment from the solicitante re-activates it
     const requests = this.getRequests();
@@ -2818,12 +2818,12 @@ class LocalDatabase {
 
       if (supabase) {
         try {
-          await supabase.from('request_attachments')
+          await supabase.from('core_solicitacoes_anexos')
             .update({ request_item_id: null })
             .in('request_item_id', [...idsRemovidos]);
           // `publishRequest` só faz upsert; sem este delete o item removido
           // continuaria vivo no servidor e voltaria no próximo sync.
-          await supabase.from('request_items').delete().in('id', [...idsRemovidos]);
+          await supabase.from('core_solicitacoes_itens').delete().in('id', [...idsRemovidos]);
         } catch (err) {
           console.error('Falha ao remover itens da solicitação no Supabase.', err);
         }
@@ -2832,7 +2832,7 @@ class LocalDatabase {
 
     if (supabase && finais.length > 0) {
       try {
-        const { error } = await supabase.from('request_items').upsert(finais, { onConflict: 'id' });
+        const { error } = await supabase.from('core_solicitacoes_itens').upsert(finais, { onConflict: 'id' });
         if (error) throw error;
       } catch (err) {
         console.error('Falha ao publicar os itens da solicitação no Supabase.', err);
@@ -2875,7 +2875,7 @@ class LocalDatabase {
     if (!supabase) return false;
 
     try {
-      const { error } = await supabase.from('requests').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
+      const { error } = await supabase.from('core_solicitacoes').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
       if (error) throw error;
       return true;
     } catch (err: any) {
@@ -2893,7 +2893,7 @@ class LocalDatabase {
           const idx = requests.findIndex(r => r.id === request.id);
           if (idx !== -1) { requests[idx].number = novoNumero; this.setStorageItem(this.requestsKey, requests); }
 
-          const { error: retryErr } = await supabase.from('requests').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
+          const { error: retryErr } = await supabase.from('core_solicitacoes').upsert(this.sanitizeRequestRow(request), { onConflict: 'id' });
           if (retryErr) throw retryErr;
           this.notifyListeners();
           return true;
@@ -2919,7 +2919,7 @@ class LocalDatabase {
 
       if (itens.length > 0) {
         const { error: itensErr } = await supabase
-          .from('request_items')
+          .from('core_solicitacoes_itens')
           .upsert(itens, { onConflict: 'id' });
         if (itensErr) throw itensErr;
       }
@@ -3013,7 +3013,7 @@ class LocalDatabase {
     history.push(registro);
     this.setStorageItem(this.historyKey, history);
 
-    await this.publishChildRow('request_status_history', registro);
+    await this.publishChildRow('core_solicitacoes_historico_status', registro);
   }
 
   /**
@@ -3024,7 +3024,7 @@ class LocalDatabase {
    * desfaz a escrita local: o sync por merge preserva a linha no cache.
    */
   private async publishChildRow(
-    tabela: 'request_status_history' | 'request_comments',
+    tabela: 'core_solicitacoes_historico_status' | 'core_solicitacoes_comentarios',
     row: RequestStatusHistory | RequestComment
   ): Promise<void> {
     if (!supabase) return;
@@ -3229,7 +3229,7 @@ class LocalDatabase {
       return this.getEstoque();
     }
     try {
-      const rows = await this.fetchAllFromTable<EstoqueItem>('estoque', '*', 1000, undefined, 'id');
+      const rows = await this.fetchAllFromTable<EstoqueItem>('sap_zl0024_stk', '*', 1000, undefined, 'id');
       this.setStorageItem(this.estoqueKey, rows);
       return rows;
     } catch (err) {
@@ -3368,7 +3368,7 @@ class LocalDatabase {
     try {
       let rows: ContratoME3N[];
       try {
-        rows = await this.fetchAllFromTable<ContratoME3N>('me3n_contratos', '*', 1000, undefined, 'id');
+        rows = await this.fetchAllFromTable<ContratoME3N>('sap_me3n_contrato', '*', 1000, undefined, 'id');
       } catch (err: any) {
         const msg = String(err?.message || '').toLowerCase();
         if (err?.code === '42P01' || msg.includes('does not exist') || msg.includes('not find')) {
@@ -3649,7 +3649,7 @@ class LocalDatabase {
   public async syncContatos(): Promise<void> {
     if (!supabase) return;
     try {
-      await this.syncSimpleTable('contatos', this.contatosKey, true);
+      await this.syncSimpleTable('sup_fornecedores_contatos', this.contatosKey, true);
       await this.bumpDatasetVersion('contatos', this.getContatosForn().length);
       this.notifyListeners();
     } catch (err) {
@@ -3974,11 +3974,11 @@ class LocalDatabase {
             updatePayload.item_status_updated_by = userName;
           }
 
-          const { error: updateErr } = await supabase.from('requisicoes').update(updatePayload).eq('ri', ri);
+          const { error: updateErr } = await supabase.from('sap_me5a_rc').update(updatePayload).eq('ri', ri);
           if (updateErr) throw updateErr;
 
           // Registra histórico detalhado
-          await supabase.from('obs_historico').insert({
+          await supabase.from('sap_requisicoes_observacoes').insert({
             id: ohId,
             ri,
             campo_alterado: statusChanged ? 'item_status' : 'obs_comprador_e_data_entrega',
@@ -3992,7 +3992,7 @@ class LocalDatabase {
           // cache local pelo 'ri' — uma edição pontual não justifica reler toda a
           // base de requisições em aberto.
           const { data: updatedRow } = await supabase
-            .from('view_enriched_requisicoes')
+            .from('vw_sap_requisicoes_enriquecidas')
             .select('*')
             .eq('ri', ri)
             .maybeSingle();
@@ -4064,7 +4064,7 @@ class LocalDatabase {
         obs_updated_at: string | null;
         obs_updated_by: string | null;
       }>(
-        'requisicoes',
+        'sap_me5a_rc',
         'ri,item_status,item_status_updated_at,item_status_updated_by,obs_comprador,data_entrega_prevista,obs_updated_at,obs_updated_by',
         1000,
         q => q.gte('data_da_solicitacao', '2026-01-01'),
@@ -4125,7 +4125,7 @@ class LocalDatabase {
 
     (async () => {
       try {
-        const { error } = await supabase.from('cotacao_historico').insert(rows);
+        const { error } = await supabase.from('sup_cotacao_historico').insert(rows);
         if (error) throw error;
       } catch (e) {
         console.error('Erro ao gravar histórico de cotação enviada no Supabase:', e);
@@ -4450,7 +4450,7 @@ class LocalDatabase {
     // atualizada.
     let current = this.getRequisicoes();
     try {
-      const remoteReqs = await this.fetchAllFromTable<any>('requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const remoteReqs = await this.fetchAllFromTable<any>('sap_me5a_rc', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
       if (remoteReqs.length > 0) current = remoteReqs.map(r => this.normalizeRequisicaoRow(r));
     } catch (err) {
       console.warn('Não foi possível buscar as requisições atuais do Supabase antes da importação; usando cache local.', err);
@@ -4661,7 +4661,7 @@ class LocalDatabase {
 
       const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        const { error } = await supabase.from('requisicoes').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri' });
+        const { error } = await supabase.from('sap_me5a_rc').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri' });
         if (error) throw error;
         const batchIndex = Math.floor(i / 50) + 1;
         onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
@@ -4687,10 +4687,10 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       await this.refreshMaterialSinais();
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
           ...ur,
@@ -4750,7 +4750,7 @@ class LocalDatabase {
     // também sejam atualizados no banco quando excluídos/modificados no SAP.
     let current = this.getPedidos();
     try {
-      const remotePeds = await this.fetchAllFromTable<any>('pedidosforn', '*', 1000, undefined, 'id');
+      const remotePeds = await this.fetchAllFromTable<any>('sap_zl0132_po', '*', 1000, undefined, 'id');
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
       console.warn('Não foi possível buscar os pedidos atuais (pedidosforn) do Supabase antes da importação; usando cache local.', err);
@@ -5024,7 +5024,7 @@ class LocalDatabase {
 
       const totalBatches = Math.ceil(dbRows.length / 50) || 1;
       for (let i = 0; i < dbRows.length; i += 50) {
-        const { error } = await supabase.from('pedidosforn').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri,doc_compra' });
+        const { error } = await supabase.from('sap_zl0132_po').upsert(dbRows.slice(i, i + 50), { onConflict: 'ri,doc_compra' });
         if (error) throw error;
         const batchIndex = Math.floor(i / 50) + 1;
         onProgress?.(10 + Math.round((batchIndex / totalBatches) * 75));
@@ -5054,7 +5054,7 @@ class LocalDatabase {
           // novos registros - um fornecedor sem linha na cidadeforn tera o
           // estado lido via regiao_uf da propria view pelo dashboard.
           await supabase
-            .from('cidadeforn')
+            .from('sup_fornecedores_cidades')
             .upsert(cidadeUfRows.slice(i, i + 100), { onConflict: 'forn_codigo' })
             .catch(() => { /* nao bloqueia importacao se cidadeforn nao tiver o fornecedor */ });
         }
@@ -5079,16 +5079,16 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
       await this.refreshMaterialSinais();
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(90);
 
       // Sincroniza a tabela local de pedidosforn e vw_historico_pedidos
-      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
-      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -5230,7 +5230,7 @@ class LocalDatabase {
           const group = allBatches.slice(i, i + concurrency);
           const promises = group.map(batch =>
             supabase
-              .from('pedidosforn')
+              .from('sap_zl0132_po')
               .select('id, ri, doc_compra, campos_extras, qtd_pedido')
               .in('ri', batch)
           );
@@ -5486,7 +5486,7 @@ class LocalDatabase {
           `Enviando lotes para o banco: salvando registros ${i + 1} a ${nextBatchLimit} de ${dbRowsToUpsert.length}...`
         );
         const { error } = await supabase
-          .from('pedidosforn')
+          .from('sap_zl0132_po')
           .upsert(dbRowsToUpsert.slice(i, i + 300), { onConflict: 'ri,doc_compra' });
         if (error) throw error;
       }
@@ -5512,11 +5512,11 @@ class LocalDatabase {
         ignored_rows: ignoredRows
       };
 
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       
       // Sincroniza a tabela local e recalcula a materialized view do Histórico de Pedidos
       onProgress?.(95, 'Sincronizando cache local...');
-      await this.syncSimpleTable('pedidosforn', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
+      await this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'));
       await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
@@ -5525,8 +5525,8 @@ class LocalDatabase {
       // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
       // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
       onProgress?.(96, 'Atualizando requisições e pedidos com os novos POs...');
-      const updatedReqs = await this.fetchAllFromTable<any>('view_enriched_requisicoes', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
-      const updatedPeds = await this.fetchAllFromTable<any>('view_enriched_pedidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
+      const updatedReqs = await this.fetchAllFromTable<any>('vw_sap_requisicoes_enriquecidas', '*', 1000, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri');
+      const updatedPeds = await this.fetchAllFromTable<any>('vw_sap_pedidos_enriquecidos', '*', 1000, q => q.gte('data_rc', '2026-01-01'), 'ri');
 
       if (updatedReqs) {
         const mappedReqs = updatedReqs.map(ur => ({
@@ -5633,7 +5633,7 @@ class LocalDatabase {
 
     try {
       for (let i = 0; i < finalDbRows.length; i += 50) {
-        const { error } = await supabase.from('contatos').upsert(finalDbRows.slice(i, i + 50), { onConflict: 'cod_vendor' });
+        const { error } = await supabase.from('sup_fornecedores_contatos').upsert(finalDbRows.slice(i, i + 50), { onConflict: 'cod_vendor' });
         if (error) throw error;
       }
 
@@ -5658,8 +5658,8 @@ class LocalDatabase {
         ignored_rows: ignoredRows
       };
 
-      await supabase.from('import_logs').insert(logObj);
-      await this.syncSimpleTable('contatos', this.contatosKey, true);
+      await supabase.from('ops_importacoes').insert(logObj);
+      await this.syncSimpleTable('sup_fornecedores_contatos', this.contatosKey, true);
       await this.bumpDatasetVersion('contatos', this.getContatosForn().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -5751,10 +5751,10 @@ class LocalDatabase {
     try {
       for (let i = 0; i < finalDbRows.length; i += 50) {
         const batch = finalDbRows.slice(i, i + 50);
-        let { error } = await supabase.from('cidadeforn').upsert(batch, { onConflict: 'forn_codigo' });
+        let { error } = await supabase.from('sup_fornecedores_cidades').upsert(batch, { onConflict: 'forn_codigo' });
         if (error) {
           // Se falhar o upsert por causa do onConflict ou RLS/permissão do upsert, tenta o insert direto
-          const { error: insertErr } = await supabase.from('cidadeforn').insert(batch);
+          const { error: insertErr } = await supabase.from('sup_fornecedores_cidades').insert(batch);
           if (insertErr) {
             console.error('Erro no Supabase ao salvar cidadeforn:', insertErr);
             throw new Error(`Erro no Supabase: ${insertErr.message || 'Falha de permissão RLS ou chave única na tabela cidadeforn'}`);
@@ -5786,8 +5786,8 @@ class LocalDatabase {
         ignored_rows: ignoredRows
       };
 
-      await supabase.from('import_logs').insert(logObj);
-      await this.syncSimpleTable('cidadeforn', this.cidadeFornKey, true);
+      await supabase.from('ops_importacoes').insert(logObj);
+      await this.syncSimpleTable('sup_fornecedores_cidades', this.cidadeFornKey, true);
       await this.bumpDatasetVersion('cidadeforn', this.getCidadeForn().length);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -5886,16 +5886,16 @@ class LocalDatabase {
 
     try {
       const { count: previousCount } = await supabase
-        .from('estoque')
+        .from('sap_zl0024_stk')
         .select('id', { count: 'exact', head: true });
 
-      const { error: deleteError } = await supabase.from('estoque').delete().gte('id', 0);
+      const { error: deleteError } = await supabase.from('sap_zl0024_stk').delete().gte('id', 0);
       if (deleteError) throw deleteError;
       onProgress?.(20);
 
       const totalBatches = Math.ceil(dbRows.length / 500) || 1;
       for (let i = 0; i < dbRows.length; i += 500) {
-        const { error } = await supabase.from('estoque').insert(dbRows.slice(i, i + 500));
+        const { error } = await supabase.from('sap_zl0024_stk').insert(dbRows.slice(i, i + 500));
         if (error) throw error;
         const batchIndex = Math.floor(i / 500) + 1;
         onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
@@ -5921,7 +5921,7 @@ class LocalDatabase {
       };
 
       await this.refreshMaterialSinais();
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -5986,16 +5986,16 @@ class LocalDatabase {
 
     try {
       const { count: previousCount } = await supabase
-        .from('fbl1n_c_pagar')
+        .from('sap_fbl1n_pagar')
         .select('id', { count: 'exact', head: true });
 
-      const { error: deleteError } = await supabase.from('fbl1n_c_pagar').delete().gte('id', 0);
+      const { error: deleteError } = await supabase.from('sap_fbl1n_pagar').delete().gte('id', 0);
       if (deleteError) throw deleteError;
       onProgress?.(20);
 
       const totalBatches = Math.ceil(dbRows.length / 500) || 1;
       for (let i = 0; i < dbRows.length; i += 500) {
-        const { error } = await supabase.from('fbl1n_c_pagar').insert(dbRows.slice(i, i + 500));
+        const { error } = await supabase.from('sap_fbl1n_pagar').insert(dbRows.slice(i, i + 500));
         if (error) throw error;
         const batchIndex = Math.floor(i / 500) + 1;
         onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
@@ -6020,7 +6020,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -6087,16 +6087,16 @@ class LocalDatabase {
 
     try {
       const { count: previousCount } = await supabase
-        .from('zl0170_miro')
+        .from('sap_zl0170_miro')
         .select('id', { count: 'exact', head: true });
 
-      const { error: deleteError } = await supabase.from('zl0170_miro').delete().gte('id', 0);
+      const { error: deleteError } = await supabase.from('sap_zl0170_miro').delete().gte('id', 0);
       if (deleteError) throw deleteError;
       onProgress?.(20);
 
       const totalBatches = Math.ceil(dbRows.length / 500) || 1;
       for (let i = 0; i < dbRows.length; i += 500) {
-        const { error } = await supabase.from('zl0170_miro').insert(dbRows.slice(i, i + 500));
+        const { error } = await supabase.from('sap_zl0170_miro').insert(dbRows.slice(i, i + 500));
         if (error) throw error;
         const batchIndex = Math.floor(i / 500) + 1;
         onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
@@ -6121,7 +6121,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -6232,10 +6232,10 @@ class LocalDatabase {
       if (mode === 'replace') {
         // Modo Substituição Total: Delete de tudo + Upsert em lotes
         const { count: previousCount } = await supabase
-          .from('mb51_mov_estoque')
+          .from('sap_mb51_mov')
           .select('id', { count: 'exact', head: true });
 
-        const { error: deleteError } = await supabase.from('mb51_mov_estoque').delete().gte('id', 0);
+        const { error: deleteError } = await supabase.from('sap_mb51_mov').delete().gte('id', 0);
         if (deleteError) throw deleteError;
         recordsEliminated = previousCount || 0;
         onProgress?.(20);
@@ -6244,7 +6244,7 @@ class LocalDatabase {
         for (let i = 0; i < dbRows.length; i += 500) {
           const batch = dbRows.slice(i, i + 500);
           const { error } = await supabase
-            .from('mb51_mov_estoque')
+            .from('sap_mb51_mov')
             .upsert(batch, { onConflict: 'chave_unica' });
           if (error) throw error;
           recordsInserted += batch.length;
@@ -6256,14 +6256,14 @@ class LocalDatabase {
         onProgress?.(15);
 
         const { count: countBefore } = await supabase
-          .from('mb51_mov_estoque')
+          .from('sap_mb51_mov')
           .select('id', { count: 'exact', head: true });
 
         const totalBatches = Math.ceil(dbRows.length / 500) || 1;
         for (let i = 0; i < dbRows.length; i += 500) {
           const batch = dbRows.slice(i, i + 500);
           const { error } = await supabase
-            .from('mb51_mov_estoque')
+            .from('sap_mb51_mov')
             .upsert(batch, { onConflict: 'chave_unica' });
           if (error) throw error;
           const batchIndex = Math.floor(i / 500) + 1;
@@ -6271,7 +6271,7 @@ class LocalDatabase {
         }
 
         const { count: countAfter } = await supabase
-          .from('mb51_mov_estoque')
+          .from('sap_mb51_mov')
           .select('id', { count: 'exact', head: true });
 
         recordsInserted = Math.max(0, (countAfter || 0) - (countBefore || 0));
@@ -6297,7 +6297,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -6485,7 +6485,7 @@ class LocalDatabase {
 
     try {
       // Tenta a nova tabela me3n_contratos com fallback transparente para me3m_contratos se necessário
-      let targetTable = 'me3n_contratos';
+      let targetTable = 'sap_me3n_contrato';
 
       // Chaves já existentes (documento_compras + item), para diferenciar
       // inserção de atualização e apontar o que saiu do arquivo — sem apagar
@@ -6517,7 +6517,7 @@ class LocalDatabase {
         const batch = dbRows.slice(i, i + 500);
         const { error } = await supabase.from(targetTable).upsert(batch, { onConflict: 'documento_compras,item' });
         if (error) {
-          if (isTableMissingError(error) && targetTable === 'me3n_contratos') {
+          if (isTableMissingError(error) && targetTable === 'sap_me3n_contrato') {
             targetTable = 'me3m_contratos';
             const retryUpsert = await supabase.from(targetTable).upsert(batch, { onConflict: 'documento_compras,item' });
             if (retryUpsert.error) throw retryUpsert.error;
@@ -6548,7 +6548,7 @@ class LocalDatabase {
         created_at: new Date().toISOString()
       };
 
-      await supabase.from('import_logs').insert(logObj);
+      await supabase.from('ops_importacoes').insert(logObj);
       onProgress?.(95);
 
       const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
@@ -6744,13 +6744,13 @@ class LocalDatabase {
 
     try {
       if (supabase) {
-        const { error: deleteError } = await supabase.from('tabela_frete').delete().neq('origem', '___INVALID_KEY___');
+        const { error: deleteError } = await supabase.from('sup_fretes').delete().neq('origem', '___INVALID_KEY___');
         if (deleteError) console.warn('Aviso ao limpar tabela_frete anterior:', deleteError.message);
 
         for (let i = 0; i < dbRows.length; i += 50) {
           const pct = Math.floor(30 + ((i / dbRows.length) * 60));
           onProgress?.(pct, `Salvando lote ${Math.floor(i / 50) + 1}...`);
-          const { error } = await supabase.from('tabela_frete').insert(dbRows.slice(i, i + 50));
+          const { error } = await supabase.from('sup_fretes').insert(dbRows.slice(i, i + 50));
           if (error) throw error;
         }
       }
@@ -6775,7 +6775,7 @@ class LocalDatabase {
       };
 
       if (supabase) {
-        await supabase.from('import_logs').insert(logObj);
+        await supabase.from('ops_importacoes').insert(logObj);
       }
 
       this.setStorageItem(this.tabelaFreteKey, dbRows);
@@ -6829,7 +6829,7 @@ class LocalDatabase {
   private async syncImportLogs(): Promise<void> {
     if (!supabase) return;
     const { data, error } = await supabase
-      .from('import_logs')
+      .from('ops_importacoes')
       .select('id,type,filename,user_name,created_at,records_read,records_inserted,records_updated,records_unchanged,records_eliminated,columns_new,columns_missing,quantity_changes,ignored_rows_count,missing_ris_count')
       .order('created_at', { ascending: false })
       .limit(50);
@@ -6843,7 +6843,7 @@ class LocalDatabase {
   public async fetchImportLogDetail(id: string): Promise<{ ignored_rows: SAPImportLog['ignored_rows']; missing_ris: string[]; new_ris: SAPImportLog['new_ris'] } | null> {
     if (!supabase) return null;
     const { data, error } = await supabase
-      .from('import_logs')
+      .from('ops_importacoes')
       .select('ignored_rows, missing_ris, new_ris')
       .eq('id', id)
       .maybeSingle();
@@ -6868,7 +6868,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({
           status: status,
           roles: users[idx].roles
@@ -6909,7 +6909,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({
           roles: [role],
           status: users[idx].status
@@ -6946,7 +6946,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({ grupo_compras: value })
         .eq('id', userId);
 
@@ -6980,7 +6980,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({ aprovador_setores: sectorIds })
         .eq('id', userId);
 
@@ -7014,7 +7014,7 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({ aprovador_cadastro_sap: value })
         .eq('id', userId);
 
@@ -7060,7 +7060,7 @@ class LocalDatabase {
     if (supabase) {
       try {
         const { error } = await supabase
-          .from('profiles')
+          .from('core_perfis')
           .update({ tours_seen: currentTours })
           .eq('id', user.id);
 
@@ -7188,7 +7188,7 @@ class LocalDatabase {
     comments.push(novo);
     this.setStorageItem(this.commentsKey, comments);
 
-    await this.publishChildRow('request_comments', novo);
+    await this.publishChildRow('core_solicitacoes_comentarios', novo);
   }
 
   /* Anexos ---------------------------------------------------------------- */
@@ -7284,7 +7284,7 @@ class LocalDatabase {
           created_at: new Date().toISOString()
         };
 
-        const { error: dbErr } = await supabase.from('request_attachments').insert(row);
+        const { error: dbErr } = await supabase.from('core_solicitacoes_anexos').insert(row);
         if (dbErr) throw dbErr;
 
         list.push(row);
@@ -7346,7 +7346,7 @@ class LocalDatabase {
           created_at: new Date().toISOString()
         };
 
-        const { error: dbErr } = await supabase.from('request_attachments').insert(row);
+        const { error: dbErr } = await supabase.from('core_solicitacoes_anexos').insert(row);
         if (dbErr) throw dbErr;
 
         list.push(row);
@@ -7404,7 +7404,7 @@ class LocalDatabase {
         if (storageErr) console.error(`Falha ao remover o arquivo "${caminho}" do Storage.`, storageErr);
       }
 
-      const { error: dbErr } = await supabase.from('request_attachments').delete().eq('id', anexoId);
+      const { error: dbErr } = await supabase.from('core_solicitacoes_anexos').delete().eq('id', anexoId);
       if (dbErr) throw dbErr;
     } catch (err) {
       console.error('Falha ao excluir o anexo.', err);
@@ -7498,7 +7498,7 @@ class LocalDatabase {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: dbErr } = await supabase.from('feedback_reports').insert(row);
+    const { error: dbErr } = await supabase.from('ops_feedback').insert(row);
     if (dbErr) {
       console.error('Falha ao registrar o reporte.', dbErr);
       return false;
@@ -7512,7 +7512,7 @@ class LocalDatabase {
 
       if (adminIds.length === 0 && supabase) {
         const { data: dbAdmins } = await supabase
-          .from('profiles')
+          .from('core_perfis')
           .select('id')
           .contains('roles', ['admin'])
           .eq('status', 'ativo');
@@ -7559,7 +7559,7 @@ class LocalDatabase {
   public async getFeedbackReports(): Promise<FeedbackReport[]> {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from('feedback_reports')
+      .from('ops_feedback')
       .select('*')
       .order('created_at', { ascending: false });
     if (error) {
@@ -7572,7 +7572,7 @@ class LocalDatabase {
   public async updateFeedbackReport(id: string, patch: { status?: FeedbackReport['status']; admin_notes?: string }): Promise<boolean> {
     if (!supabase) return false;
     const { error } = await supabase
-      .from('feedback_reports')
+      .from('ops_feedback')
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq('id', id);
     if (error) {
@@ -7627,7 +7627,7 @@ class LocalDatabase {
     }
 
     if (supabase) {
-      const { error } = await supabase.from('profiles')
+      const { error } = await supabase.from('core_perfis')
         .update({ name, cargo })
         .eq('id', userId);
 

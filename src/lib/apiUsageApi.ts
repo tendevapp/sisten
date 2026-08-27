@@ -43,7 +43,7 @@ export async function listarUsoApis(periodo: PeriodoUso = '7d'): Promise<ApiUsoR
 
   const consultaExtracoes = (() => {
     let q = supabase
-      .from('cotacao_extracoes')
+      .from('sup_cotacao_extracoes')
       .select('modelo, total_tokens, custo_usd, duracao_ms, sucesso, user_name, created_at')
       .order('created_at', { ascending: false })
       .limit(1000);
@@ -53,7 +53,7 @@ export async function listarUsoApis(periodo: PeriodoUso = '7d'): Promise<ApiUsoR
 
   const consultaConversoes = (() => {
     let q = supabase
-      .from('conversoes_markdown')
+      .from('ops_conversoes_markdown')
       .select('modelo, tokens, custo_usd, duracao_ms, sucesso, user_name, created_at, via')
       .eq('via', 'ia')
       .order('created_at', { ascending: false })
@@ -64,7 +64,7 @@ export async function listarUsoApis(periodo: PeriodoUso = '7d'): Promise<ApiUsoR
 
   const consultaGemini = (() => {
     let q = supabase
-      .from('api_uso_logs')
+      .from('ops_api_uso')
       .select('api_id, modelo, total_tokens, custo_usd, duracao_ms, sucesso, user_name, created_at')
       .order('created_at', { ascending: false })
       .limit(1000);

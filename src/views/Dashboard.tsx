@@ -25,7 +25,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   useEffect(() => {
     if (!user.roles.includes('admin') || !supabase) return;
     supabase
-      .from('materials')
+      .from('sap_zl0169_162_catalogo')
       .select('*', { count: 'exact', head: true })
       .eq('is_active', true)
       .then(({ count }) => setMaterialsCount(count || 0));

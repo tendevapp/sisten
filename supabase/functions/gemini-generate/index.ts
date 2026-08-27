@@ -88,7 +88,7 @@ async function registrarUso(params: {
     const completionTokens = params.usageMetadata?.candidatesTokenCount ?? null;
     const totalTokens = params.usageMetadata?.totalTokenCount ?? null;
 
-    await supabaseService.from('api_uso_logs').insert({
+    await supabaseService.from('ops_api_uso').insert({
       api_id: 'gemini-generate',
       modelo: params.modelo,
       user_id: params.userId,

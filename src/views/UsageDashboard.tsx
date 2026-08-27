@@ -258,7 +258,7 @@ export default function UsageDashboard() {
       setUserHistoryLoading(prev => new Set(prev).add(userId));
 
       supabase
-        .from('usage_events')
+        .from('ops_eventos_uso')
         .select('id, event_type, path, page_label, session_id, created_at')
         .eq('user_id', userId)
         .gte('created_at', fromISO)

@@ -1421,7 +1421,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: '⚠️ Nota sobre a RPC não usada',
             itens: [
-              'Existe a função SQL `db/sql/functions/importar_materiais_zl0169.sql` (RPC `importar_materiais_zl0169`), mas ela NÃO é chamada em lugar nenhum do frontend atual. O fluxo real (`localDb.importMaterials`) faz upsert direto via `supabase.from("materials").upsert(...)`, sem passar pela RPC — provavelmente resquício de versão anterior ou reservada para script externo.'
+              'Existe a função SQL `db/sql/functions/importar_materiais_zl0169.sql` (RPC `importar_materiais_zl0169`), mas ela NÃO é chamada em lugar nenhum do frontend atual. O fluxo real (`localDb.importMaterials`) faz upsert direto via `supabase.from("sap_zl0169_162_catalogo").upsert(...)`, sem passar pela RPC — provavelmente resquício de versão anterior ou reservada para script externo.'
             ]
           },
           {

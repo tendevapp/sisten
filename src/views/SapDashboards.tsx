@@ -93,7 +93,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
   const loadCompradores = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase.from('compradores').select('grupo_compras, nome_comprador, usuario_sistema');
+    const { data } = await supabase.from('sup_compradores').select('grupo_compras, nome_comprador, usuario_sistema');
     if (data) setCompradores(data as CompradorInfo[]);
   }, []);
 

@@ -725,7 +725,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           const techMap = new Map<string, string>();
           for (let i = 0; i < codesArr.length; i += 500) {
             const { data, error } = await supabase
-              .from('materials')
+              .from('sap_zl0169_162_catalogo')
               .select('material_code, technical_text')
               .in('material_code', codesArr.slice(i, i + 500));
             if (error) throw error;
@@ -749,7 +749,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           const historyMap = new Map<string, CotacaoHistoricoEntry[]>();
           for (let i = 0; i < risForHistory.length; i += 200) {
             const { data, error } = await supabase
-              .from('cotacao_historico')
+              .from('sup_cotacao_historico')
               .select('id, ri, rm, cod_forn, fornecedor_nome, user_name, created_at')
               .in('ri', risForHistory.slice(i, i + 200));
             if (error) throw error;
@@ -796,7 +796,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           const codesArr = Array.from(codeVariants);
           for (let i = 0; i < codesArr.length; i += 200) {
             const { data, error } = await supabase
-              .from('pedidosforn')
+              .from('sap_zl0132_po')
               .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, por, data_migo')
               .ilike('crf', 'x')
               .in('material', codesArr.slice(i, i + 200));

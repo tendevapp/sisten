@@ -202,7 +202,7 @@ function CadastroModal({ initialValues, classificacaoOpts, onClose, onSaved }: C
         updated_at: new Date().toISOString(),
       };
 
-      const { error: insErr } = await supabase.from('contatos').insert(payload);
+      const { error: insErr } = await supabase.from('sup_fornecedores_contatos').insert(payload);
       if (insErr) throw insErr;
 
       // Rebaixa apenas os contatos (leve) e incrementa a versão do dataset,
@@ -641,7 +641,7 @@ function EdicaoModal({ supplier, canEdit, classificacaoOpts, onClose, onSaved }:
         .join('; ');
 
       const { error: upErr } = await supabase
-        .from('contatos')
+        .from('sup_fornecedores_contatos')
         .update({
           cod_vendor: codVendor.trim() || null,
           cnpj: cnpj.trim() || null,
@@ -1123,7 +1123,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     if (supabase) {
       try {
         const { data } = await supabase
-          .from('contatos')
+          .from('sup_fornecedores_contatos')
           .select('classificacao')
           .not('classificacao', 'is', null)
           .neq('classificacao', '');
@@ -1174,7 +1174,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     setLoading(true);
     setError('');
     try {
-      let q = supabase.from('contatos').select('*', { count: 'exact' });
+      let q = supabase.from('sup_fornecedores_contatos').select('*', { count: 'exact' });
 
       const term = sanitizeFilterTerm(search);
       if (term) {
@@ -1223,7 +1223,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         let hasMore = true;
         while (hasMore) {
           const { data, error: cErr } = await supabase
-            .from('contatos')
+            .from('sup_fornecedores_contatos')
             .select('cod_vendor, cnpj')
             .range(pageIndex * 1000, (pageIndex + 1) * 1000 - 1);
 
@@ -1253,7 +1253,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         let hasMore = true;
         while (hasMore) {
           const { data, error: pErr } = await supabase
-            .from('pedidosforn')
+            .from('sap_zl0132_po')
             .select('fornecedor_codigo, cod_forn, cnpj_fornecedor, cnpj, fornecedor_nome, fornecedor')
             .range(pageIndex * 1000, (pageIndex + 1) * 1000 - 1);
 
@@ -1376,7 +1376,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     if (!canEdit || !supabase) return;
     try {
       const { error: upErr } = await supabase
-        .from('contatos')
+        .from('sup_fornecedores_contatos')
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', supplierId);
       if (upErr) throw upErr;

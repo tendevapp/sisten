@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
     const formato = mimeType === 'application/pdf' ? 'pdf' : 'imagem';
 
     try {
-      await supabaseService.from('conversoes_markdown').insert({
+      await supabaseService.from('ops_conversoes_markdown').insert({
         user_id: userId,
         user_name: userName,
         nome_arquivo: nomeArquivo,
@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
     // linha de histórico — não houve tentativa real de converter nada.
     if (!['NAO_AUTENTICADO', 'SEM_PERMISSAO', 'ENTRADA_INVALIDA'].includes(erro.codigo)) {
       try {
-        await supabaseService.from('conversoes_markdown').insert({
+        await supabaseService.from('ops_conversoes_markdown').insert({
           user_id: userId,
           user_name: userName,
           nome_arquivo: nomeArquivo,

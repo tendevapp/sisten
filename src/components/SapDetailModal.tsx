@@ -68,7 +68,7 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
 
     setIsLoadingTechText(true);
     supabase
-      .from('materials')
+      .from('sap_zl0169_162_catalogo')
       .select('technical_text')
       .eq('material_code', record.material_code)
       .maybeSingle()

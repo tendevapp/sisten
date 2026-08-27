@@ -361,7 +361,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // apontando para um profile válido (usado nos painéis "Minhas Solicitações" do comprador).
   const [compradoresList, setCompradoresList] = useState<{ grupo_compras: string; nome_comprador: string }[]>([]);
   useEffect(() => {
-    supabase.from('compradores').select('*').order('nome_comprador').then(({ data, error }) => {
+    supabase.from('sup_compradores').select('*').order('nome_comprador').then(({ data, error }) => {
       if (error || !data || data.length === 0) {
         setCompradoresList(localDb.getCompradores());
         return;

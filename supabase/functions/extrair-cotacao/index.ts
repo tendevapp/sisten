@@ -474,7 +474,7 @@ Deno.serve(async (req) => {
 
   const registrarExtracao = async (dados: Record<string, unknown>) => {
     try {
-      await supabaseService.from('cotacao_extracoes').insert({
+      await supabaseService.from('sup_cotacao_extracoes').insert({
         processo_id: processoId,
         user_id: userId,
         user_name: userName,
@@ -517,7 +517,7 @@ Deno.serve(async (req) => {
     let extracaoId: string | null = null;
     try {
       const { data: inserido } = await supabaseService
-        .from('cotacao_extracoes')
+        .from('sup_cotacao_extracoes')
         .insert({
           processo_id: processoId,
           user_id: userId,

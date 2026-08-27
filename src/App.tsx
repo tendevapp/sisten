@@ -246,7 +246,7 @@ export default function App() {
           } else {
             // Buscar profile atualizado
             const { data: profile } = await supabase
-              .from('profiles')
+              .from('core_perfis')
               .select('*')
               .eq('id', session.user.id)
               .maybeSingle();
@@ -296,7 +296,7 @@ export default function App() {
               return;
             }
             const { data: profile } = await supabase
-              .from('profiles')
+              .from('core_perfis')
               .select('*')
               .eq('id', session.user.id)
               .maybeSingle();

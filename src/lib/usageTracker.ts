@@ -72,7 +72,7 @@ function getOrCreateSessionId(): { id: string; isNew: boolean } {
 async function insertEvent(row: Record<string, unknown>): Promise<void> {
   if (!supabase) return;
   try {
-    await supabase.from('usage_events').insert(row);
+    await supabase.from('ops_eventos_uso').insert(row);
   } catch (err) {
     // Telemetria nunca deve interromper a experiência do usuário.
     console.debug('usageTracker: falha ao registrar evento (ignorado)', err);

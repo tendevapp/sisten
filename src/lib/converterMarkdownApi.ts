@@ -91,7 +91,7 @@ export async function registrarConversaoLocal(params: {
   erroMensagem?: string;
 }): Promise<void> {
   try {
-    const { error } = await supabase.from('conversoes_markdown').insert({
+    const { error } = await supabase.from('ops_conversoes_markdown').insert({
       user_id: params.userId,
       user_name: params.userName,
       nome_arquivo: params.nomeArquivo,
@@ -117,7 +117,7 @@ export async function registrarConversaoLocal(params: {
 /** Histórico consultável de conversões (local + IA), mais recentes primeiro. Sem o markdown de cada linha — ver `buscarConversaoMarkdown` para o conteúdo completo de um item. */
 export async function listarConversoesMarkdown(limit = 200): Promise<ConversaoMarkdownResumo[]> {
   const { data, error } = await supabase
-    .from('conversoes_markdown')
+    .from('ops_conversoes_markdown')
     .select('id, user_id, user_name, nome_arquivo, formato, tamanho_bytes, via, modelo, caracteres, tokens, tokens_reais, custo_usd, duracao_ms, sucesso, erro_mensagem, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -127,7 +127,7 @@ export async function listarConversoesMarkdown(limit = 200): Promise<ConversaoMa
 
 /** Registro completo (com markdown) de um item do histórico, buscado sob demanda ao abrir/copiar. */
 export async function buscarConversaoMarkdown(id: string): Promise<ConversaoMarkdownLog> {
-  const { data, error } = await supabase.from('conversoes_markdown').select('*').eq('id', id).single();
+  const { data, error } = await supabase.from('ops_conversoes_markdown').select('*').eq('id', id).single();
   if (error) throw new Error(`Falha ao carregar a conversão: ${error.message}`);
   return data as ConversaoMarkdownLog;
 }
@@ -140,7 +140,7 @@ export async function buscarConversaoMarkdown(id: string): Promise<ConversaoMark
 export async function buscarUltimaConversaoPorArquivo(nomeArquivo: string, _tamanhoBytes?: number): Promise<ConversaoMarkdownLog | null> {
   try {
     const { data, error } = await supabase
-      .from('conversoes_markdown')
+      .from('ops_conversoes_markdown')
       .select('*')
       .ilike('nome_arquivo', nomeArquivo.trim())
       .eq('sucesso', true)

@@ -35,7 +35,7 @@ export default function Reports({ user }: ReportsProps) {
     setRequests(localDb.getRequests());
 
     supabase
-      ?.from('vw_materials_stats')
+      ?.from('vw_sap_materiais_estatisticas')
       .select('company, category, total')
       .then(({ data, error }) => {
         if (error || !data) {
@@ -119,7 +119,7 @@ export default function Reports({ user }: ReportsProps) {
 
     while (hasMore) {
       const { data, error } = await supabase
-        .from('materials')
+        .from('sap_zl0169_162_catalogo')
         .select('material_code, description, category, company, unit')
         .eq('is_active', true)
         .order('material_code')
