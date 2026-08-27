@@ -26,12 +26,11 @@ import type {
 import { TRAMOS } from '../types';
 import * as api from '../lib/expedicaoApi';
 import {
-  ASSUNTO_PADRAO, DESTINATARIO_PADRAO, assuntoChegada, cabeNoMailto,
+  assuntoChegada, cabeNoMailto,
   montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
 } from '../lib/expedicaoEmail';
 import type { FotoComUrl } from '../lib/expedicaoEmail';
 import { formatDateBR } from '../lib/format';
-import { obterConfigEmail } from '../lib/emailConfigApi';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import TramoCard from '../components/expedicao/TramoCard';
@@ -411,18 +410,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
-  const [destinatarioTramos, setDestinatarioTramos] = useState<string>(DESTINATARIO_PADRAO);
-  const [assuntoTramos, setAssuntoTramos] = useState<string>(ASSUNTO_PADRAO);
-
-  useEffect(() => {
-    let ativo = true;
-    obterConfigEmail('expedicao_tramos').then((cfg) => {
-      if (!ativo || !cfg) return;
-      if (cfg.destinatarios) setDestinatarioTramos(cfg.destinatarios);
-      if (cfg.assunto_padrao) setAssuntoTramos(cfg.assunto_padrao);
-    });
-    return () => { ativo = false; };
-  }, []);
 
   /** Assina as URLs das fotos com validade longa — só valem se abrirem dias depois, no e-mail. */
   const assinarFotos = useCallback(async (fotos: ExpedicaoFoto[]): Promise<FotoComUrl[]> => (
@@ -757,9 +744,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             </div>
           </div>
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-slate-400 sm:text-right">
-          O e-mail abre no Outlook para {destinatarioTramos} · assunto "{assuntoTramos}"
-        </p>
       </div>
 
       {confirmacao?.tipo === 'sair' && (
