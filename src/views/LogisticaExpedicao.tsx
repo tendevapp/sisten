@@ -32,6 +32,7 @@ import {
 import type { FotoComUrl } from '../lib/expedicaoEmail';
 import { formatDateBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
+import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import TramoCard from '../components/expedicao/TramoCard';
 
@@ -203,7 +204,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [statusAutoSave, setStatusAutoSave] = useState<'ocioso' | 'salvando' | 'salvo' | 'erro'>('ocioso');
   const [abertos, setAbertos] = useState<Record<string, boolean>>({});
   const [confirmacao, setConfirmacao] = useState<
-    | { tipo: 'sair' }
+    | { tipo: 'voltar' }
     | { tipo: 'excluir-tramo'; tramoId: string; rotulo: string }
     | { tipo: 'excluir-carregamento' }
     | null
@@ -521,8 +522,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   };
 
   const voltar = () => {
-    if (sujo) { setConfirmacao({ tipo: 'sair' }); return; }
-    onVoltar();
+    setConfirmacao({ tipo: 'voltar' });
   };
 
   const resumoTramos = useMemo(
@@ -565,10 +565,10 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           <button
             type="button"
             onClick={voltar}
-            className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+            className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:text-blue-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Carregamentos
+            Voltar para lista
           </button>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">
@@ -680,32 +680,28 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </button>
       </div>
 
-      {/*
-        Barra de ação fixa no rodapé: no celular o formulário é longo e o botão
-        de salvar não pode depender de rolar até o fim — especialmente no fluxo
-        de "abri só para marcar a hora da portaria".
-      */}
-      <div className="sticky bottom-0 -mx-3 mt-5 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-4xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+      {/* Barra de ações inferior fixa com botão Voltar e Salvar */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-xs sm:px-6 dark:border-slate-800 dark:bg-slate-900/95">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {statusAutoSave === 'salvando' && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Salvando rascunho automaticamente...
-              </span>
-            )}
-            {statusAutoSave === 'salvo' && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                <Check className="h-3.5 w-3.5" />
-                Rascunho salvo automaticamente
-              </span>
-            )}
-            {statusAutoSave === 'erro' && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Falha ao salvar rascunho
-              </span>
-            )}
+            <button
+              type="button"
+              onClick={voltar}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmacao({ tipo: 'excluir-carregamento' })}
+              disabled={salvando || excluindo}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400"
+              title="Excluir todo este carregamento"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Excluir</span>
+            </button>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -716,7 +712,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {statusAutoSave === 'salvo' && !sujo ? 'Salvo' : 'Salvar agora'}
+              {statusAutoSave === 'salvo' && !sujo ? 'Salvo' : 'Salvar rascunho'}
             </button>
 
             <div className="flex flex-col items-stretch sm:items-end">
@@ -746,16 +742,55 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </div>
       </div>
 
-      {confirmacao?.tipo === 'sair' && (
-        <ConfirmDialog
-          titulo="Sair sem salvar?"
-          mensagem="Há alterações não salvas neste carregamento. As fotos já enviadas ficam guardadas, mas os campos e horários digitados serão perdidos."
-          confirmarLabel="Sair sem salvar"
-          cancelarLabel="Continuar editando"
-          variante="perigo"
-          onConfirmar={onVoltar}
-          onCancelar={() => setConfirmacao(null)}
-        />
+      {confirmacao?.tipo === 'voltar' && (
+        <Modal onClose={() => setConfirmacao(null)} maxWidth="max-w-md" ariaLabel="Deseja salvar antes de voltar?">
+          <ModalBody className="p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                <Save className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1 pt-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
+                  Deseja salvar antes de voltar?
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Você está saindo deste carregamento. Deseja salvar as alterações realizadas antes de retornar para a lista?
+                </p>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmacao(null)}
+                className="rounded-xl px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Cancelar
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onVoltar}
+                  className="rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Sair sem salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await salvar(true);
+                    onVoltar();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Salvar e voltar
+                </button>
+              </div>
+            </div>
+          </ModalFooter>
+        </Modal>
       )}
 
       {confirmacao?.tipo === 'excluir-tramo' && (
