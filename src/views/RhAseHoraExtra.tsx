@@ -95,7 +95,13 @@ function buildAseHoraExtraEmail(params: {
   }).join('\r\n\r\n');
 
   const listaTransporte = colabTransporte.length > 0
-    ? colabTransporte.map(it => `- ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}`).join('\r\n')
+    ? colabTransporte.map(it => {
+        const rotaStr = it.rota_transporte ? ` [ROTA: ${it.rota_transporte}${it.horario_embarque_transporte ? ` - ${it.horario_embarque_transporte}` : ''}]` : '';
+        const pontoStr = it.ponto_embarque_transporte ? ` [PONTO: ${it.ponto_embarque_transporte}]` : '';
+        const contatoStr = it.contato_transporte ? ` [TEL: ${it.contato_transporte}]` : '';
+        const horStr = (it.hora_entrada && it.hora_saida) ? ` [HORÁRIO HE: ${it.hora_entrada} às ${it.hora_saida}]` : '';
+        return `- ${it.registro} - ${it.nome}${it.cargo ? ` (${it.cargo})` : ''}${rotaStr}${pontoStr}${contatoStr}${horStr}`;
+      }).join('\r\n')
     : '(Nenhum colaborador necessita de transporte)';
 
   const listaRefeicao = colabRefeicao.length > 0
@@ -141,6 +147,17 @@ Enviado através do SISTEN - Sistema Integrado TEN`;
 
 export default function RhAseHoraExtra({ user, onNavigate }: Props) {
   const [solicitacaoId, setSolicitacaoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    if (hash.includes('?')) {
+      const params = new URLSearchParams(hash.split('?')[1]);
+      const idParam = params.get('id');
+      if (idParam) {
+        setSolicitacaoId(idParam);
+      }
+    }
+  }, []);
 
   return solicitacaoId
     ? <Edicao user={user} id={solicitacaoId} onVoltar={() => setSolicitacaoId(null)} />
@@ -1068,36 +1085,52 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             Nenhum colaborador adicionado ainda.
           </div>
         ) : (
-          <div className="mt-4 -mx-4 overflow-x-auto sm:mx-0">
-            <table className="w-full min-w-[860px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                  <th className="px-2 py-2">Registro</th>
-                  <th className="px-2 py-2">Funcionário</th>
-                  <th className="px-2 py-2">Função</th>
-                  <th className="px-2 py-2 text-center">Transp.</th>
-                  <th className="px-2 py-2 text-center">Refeição</th>
-                  <th className="px-2 py-2">Entrada</th>
-                  <th className="px-2 py-2">Saída</th>
-                  <th className="px-2 py-2">Interv. (min)</th>
-                  <th className="px-2 py-2">% HE</th>
-                  <th className="px-2 py-2 text-right">Total</th>
-                  <th className="px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {dados.itens.map(it => (
-                  <LinhaColaborador
-                    key={it.id}
-                    item={it}
-                    somenteLeitura={somenteLeitura}
-                    onChange={patch => alterarItem(it.id, patch)}
-                    onRemover={() => setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome })}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Modo Mobile: Cards de Colaboradores (< md) */}
+            <div className="mt-4 space-y-3 md:hidden">
+              {dados.itens.map(it => (
+                <CardColaboradorMobile
+                  key={it.id}
+                  item={it}
+                  somenteLeitura={somenteLeitura}
+                  onChange={patch => alterarItem(it.id, patch)}
+                  onRemover={() => setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome })}
+                />
+              ))}
+            </div>
+
+            {/* Modo Desktop: Tabela Completa (>= md) */}
+            <div className="mt-4 hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[860px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    <th className="px-2 py-2">Registro</th>
+                    <th className="px-2 py-2">Funcionário</th>
+                    <th className="px-2 py-2">Função</th>
+                    <th className="px-2 py-2 text-center">Transp.</th>
+                    <th className="px-2 py-2 text-center">Refeição</th>
+                    <th className="px-2 py-2">Entrada</th>
+                    <th className="px-2 py-2">Saída</th>
+                    <th className="px-2 py-2">Interv. (min)</th>
+                    <th className="px-2 py-2">% HE</th>
+                    <th className="px-2 py-2 text-right">Total</th>
+                    <th className="px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {dados.itens.map(it => (
+                    <LinhaColaborador
+                      key={it.id}
+                      item={it}
+                      somenteLeitura={somenteLeitura}
+                      onChange={patch => alterarItem(it.id, patch)}
+                      onRemover={() => setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome })}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
@@ -1125,88 +1158,95 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       )}
 
       {/* Barra de ação fixa */}
-      <div className="sticky bottom-0 -mx-3 mt-5 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={exportarCsv}
-            disabled={dados.itens.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            CSV (ponto)
-          </button>
-          <button
-            type="button"
-            onClick={exportarExcel}
-            disabled={dados.itens.length === 0}
-            title="Exportar planilha Excel (.xlsx) formatada com resumo, transporte e refeição"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-emerald-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 cursor-pointer"
-          >
-            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={exportarPdf}
-            disabled={processando}
-            title="Exportar PDF com logo oficial e tabelas estruturadas"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-rose-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-rose-400 cursor-pointer"
-          >
-            <FileDown className="h-4 w-4 text-rose-500" />
-            PDF
-          </button>
-          {somenteLeitura ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setModoEdicao(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-300 bg-blue-50/50 px-4 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50"
-              >
-                <Edit3 className="h-4 w-4" />
-                Editar Solicitação
-              </button>
-              <button
-                type="button"
-                onClick={enviar}
-                disabled={salvando}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
-              >
-                <Mail className="h-4 w-4" />
-                Reenviar E-mail
-              </button>
-            </>
-          ) : (
-            <>
-              {modoEdicao && (
+      <div className="sticky bottom-0 -mx-3 mt-5 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95 z-10 shadow-lg">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
+          {/* Ações de Exportação */}
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={exportarCsv}
+              disabled={dados.itens.length === 0}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={exportarExcel}
+              disabled={dados.itens.length === 0}
+              title="Exportar planilha Excel (.xlsx) formatada com resumo, transporte e refeição"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-emerald-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+              Excel
+            </button>
+            <button
+              type="button"
+              onClick={exportarPdf}
+              disabled={processando}
+              title="Exportar PDF com logo oficial e tabelas estruturadas"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-rose-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-rose-400 cursor-pointer"
+            >
+              <FileDown className="h-3.5 w-3.5 text-rose-500" />
+              PDF
+            </button>
+          </div>
+
+          {/* Ações de Estado / Salvamento */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {somenteLeitura ? (
+              <>
                 <button
                   type="button"
-                  onClick={() => setModoEdicao(false)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  onClick={() => setModoEdicao(true)}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl border border-blue-300 bg-blue-50/50 px-4 py-2.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50 cursor-pointer"
                 >
-                  Concluir Edição
+                  <Edit3 className="h-4 w-4" />
+                  Editar Solicitação
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => salvar()}
-                disabled={salvando || !sujo}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {sujo ? 'Salvar' : 'Salvo'}
-              </button>
-              <button
-                type="button"
-                onClick={enviar}
-                disabled={salvando}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60"
-              >
-                <Send className="h-4 w-4" />
-                {dados.status === 'ENVIADO' ? 'Salvar e Enviar E-mail' : 'Enviar'}
-              </button>
-            </>
-          )}
+                <button
+                  type="button"
+                  onClick={enviar}
+                  disabled={salvando}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
+                >
+                  <Mail className="h-4 w-4" />
+                  Reenviar E-mail
+                </button>
+              </>
+            ) : (
+              <>
+                {modoEdicao && (
+                  <button
+                    type="button"
+                    onClick={() => setModoEdicao(false)}
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    Concluir Edição
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => salvar()}
+                  disabled={salvando || !sujo}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {sujo ? 'Salvar' : 'Salvo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={enviar}
+                  disabled={salvando}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
+                >
+                  <Send className="h-4 w-4" />
+                  {dados.status === 'ENVIADO' ? 'Salvar e Enviar' : 'Enviar'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1250,7 +1290,181 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 }
 
 // =====================================================================
-// Linha de colaborador
+// Card de colaborador (Mobile)
+// =====================================================================
+
+function CardColaboradorMobile({
+  item, somenteLeitura, onChange, onRemover,
+}: {
+  item: AseHoraExtraItem;
+  somenteLeitura: boolean;
+  onChange: (patch: Partial<AseHoraExtraItem>) => void;
+  onRemover: () => void;
+}) {
+  const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
+  const inputStyle = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
+
+  return (
+    <div className="relative rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-3 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm">
+      {/* Topo: Nome, Matrícula e Ações */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.nome}</span>
+            <span className="rounded bg-slate-200/80 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+              {item.registro}
+            </span>
+          </div>
+          {item.cargo && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.cargo}</p>
+          )}
+
+          {/* Rota / Ponto / Contato quando transporte marcado */}
+          {item.transporte && (item.rota_transporte || item.ponto_embarque_transporte) && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="inline-flex items-center gap-1 rounded bg-blue-100/70 px-2 py-0.5 font-medium text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                🚌 {item.rota_transporte || 'Rota'}: {item.ponto_embarque_transporte || 'Ponto não cadastrado'}
+                {item.horario_embarque_transporte && ` (${item.horario_embarque_transporte})`}
+              </span>
+              {item.contato_transporte && (
+                <span className="rounded bg-slate-200/60 px-1.5 py-0.5 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  📞 {item.contato_transporte}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {!somenteLeitura && (
+          <button
+            type="button"
+            onClick={onRemover}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+            title="Remover colaborador"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Opções: Transporte e Refeição */}
+      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/70 dark:border-slate-800">
+        <label className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold cursor-pointer transition-colors ${
+          item.transporte
+            ? 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-200'
+            : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+        }`}>
+          <input
+            type="checkbox"
+            checked={item.transporte}
+            disabled={somenteLeitura}
+            onChange={e => onChange({ transporte: e.target.checked })}
+            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>🚌 Transporte</span>
+        </label>
+
+        <label className={`flex items-center justify-center gap-2 rounded-lg border p-2 text-xs font-semibold cursor-pointer transition-colors ${
+          item.refeicao
+            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200'
+            : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+        }`}>
+          <input
+            type="checkbox"
+            checked={item.refeicao}
+            disabled={somenteLeitura}
+            onChange={e => onChange({ refeicao: e.target.checked })}
+            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          <span>🍽️ Refeição</span>
+        </label>
+      </div>
+
+      {/* Horários: Entrada e Saída */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            Entrada
+          </label>
+          <input
+            type="time"
+            value={item.hora_entrada}
+            disabled={somenteLeitura}
+            onChange={e => onChange({ hora_entrada: e.target.value })}
+            className={inputStyle}
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            Saída
+          </label>
+          <input
+            type="time"
+            value={item.hora_saida}
+            disabled={somenteLeitura}
+            onChange={e => onChange({ hora_saida: e.target.value })}
+            className={inputStyle}
+          />
+        </div>
+      </div>
+
+      {/* Intervalo, % HE e Total */}
+      <div className="grid grid-cols-3 gap-2 items-end">
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            Interv. (min)
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={5}
+            value={item.intervalo_minutos}
+            disabled={somenteLeitura}
+            onChange={e => onChange({ intervalo_minutos: Number(e.target.value) || 0 })}
+            className={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            % HE
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={999}
+            step={1}
+            value={item.percentual_he ?? ''}
+            disabled={somenteLeitura}
+            placeholder="%"
+            onChange={e => onChange({ percentual_he: e.target.value === '' ? null : Number(e.target.value) })}
+            className={inputStyle}
+          />
+        </div>
+
+        <div className="text-right">
+          <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+            Total Horas
+          </span>
+          <span
+            className={`inline-flex h-9 w-full items-center justify-end rounded-lg bg-slate-100 px-2 text-xs font-bold ${
+              excedeLimiteClt
+                ? 'text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                : 'text-blue-700 dark:bg-slate-800 dark:text-blue-300'
+            }`}
+            title={excedeLimiteClt ? `Acima de ${LIMITE_DIARIO_CLT_HORAS}h/dia (Art. 59 CLT)` : undefined}
+          >
+            {excedeLimiteClt && <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
+            {(item.total_horas ?? 0).toFixed(2)}h
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Linha de colaborador (Desktop)
 // =====================================================================
 
 function LinhaColaborador({
@@ -1267,7 +1481,20 @@ function LinhaColaborador({
   return (
     <tr className="border-b border-slate-100 align-middle dark:border-slate-800/70">
       <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{item.registro}</td>
-      <td className="px-2 py-2 text-xs font-semibold text-slate-900 dark:text-slate-50">{item.nome}</td>
+      <td className="px-2 py-2 text-xs text-slate-900 dark:text-slate-50">
+        <span className="font-semibold">{item.nome}</span>
+        {item.transporte && (item.rota_transporte || item.ponto_embarque_transporte) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+              🚌 {item.rota_transporte || 'Rota'}: {item.ponto_embarque_transporte || 'Ponto não cadastrado'}
+              {item.horario_embarque_transporte && ` (${item.horario_embarque_transporte})`}
+            </span>
+            {item.contato_transporte && (
+              <span className="text-slate-400 dark:text-slate-500">📞 {item.contato_transporte}</span>
+            )}
+          </div>
+        )}
+      </td>
       <td className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">{item.cargo || '-'}</td>
       <td className="px-2 py-2 text-center">
         <input type="checkbox" checked={item.transporte} disabled={somenteLeitura} onChange={e => onChange({ transporte: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />

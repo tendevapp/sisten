@@ -56,6 +56,21 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [actionError, setActionError] = useState('');
 
   useEffect(() => {
+    const hash = window.location.hash || '';
+    if (hash.includes('?')) {
+      const params = new URLSearchParams(hash.split('?')[1]);
+      const idParam = params.get('id');
+      if (idParam) {
+        const found = localDb.getRequests().find(r => r.id === idParam && r.type === 'cadastro_sap');
+        if (found) {
+          setViewTab('todos');
+          setSelectedReq(found);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     loadData();
   }, [viewTab, statusFilter, typeFilter]);
 

@@ -5,6 +5,7 @@ import {
   formatarDataDDMMAA,
   extrairSiglaSetor,
   gerarProtocoloAse,
+  normalizarItem,
 } from './rhApi';
 
 describe('calcularHorasASE', () => {
@@ -138,5 +139,38 @@ describe('Módulo RH: Rotas de Transporte', () => {
     const rota01 = rotasMock.filter(r => r.rota === 'Rota 01');
     expect(rota01.length).toBe(1);
     expect(rota01[0].funcionario).toBe('MATEUS PEREIRA SILVA');
+  });
+
+  it('normalizarItem vincula rota, ponto de embarque e contato pelo nome do colaborador', () => {
+    const mapaRotas = new Map();
+    mapaRotas.set('mateus pereira silva', {
+      id: '1',
+      funcionario: 'MATEUS PEREIRA SILVA',
+      ponto_embarque: 'Bananeira / No ponto do campo de futebol',
+      horario: '05:40',
+      contato: '71 98534-1151',
+      rota: 'Rota 01',
+      ativo: true,
+    });
+
+    const itemRaw = {
+      id: 'it-1',
+      nome: 'Mateus Pereira Silva',
+      registro: '1001',
+      transporte: true,
+      refeicao: false,
+      hora_entrada: '17:00:00',
+      hora_saida: '19:00:00',
+      percentual_he: '60.00',
+      total_horas: '2.00',
+    };
+
+    const normalizado = normalizarItem(itemRaw, mapaRotas);
+    expect(normalizado.rota_transporte).toBe('Rota 01');
+    expect(normalizado.ponto_embarque_transporte).toBe('Bananeira / No ponto do campo de futebol');
+    expect(normalizado.contato_transporte).toBe('71 98534-1151');
+    expect(normalizado.horario_embarque_transporte).toBe('05:40');
+    expect(normalizado.percentual_he).toBe(60);
+    expect(normalizado.total_horas).toBe(2);
   });
 });

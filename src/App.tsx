@@ -3,6 +3,7 @@ import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
+import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, pageIdForPath } from './lib/pages';
 
 // Components
@@ -54,6 +55,9 @@ const PortariaCarretas = lazy(() => import('./views/portaria/PortariaCarretas'))
 const PortariaRelatorio = lazy(() => import('./views/portaria/PortariaRelatorio'));
 const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'));
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
+const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
+const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
+const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
 // edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
@@ -127,6 +131,10 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/formularios/portaria-relatorio',
   '/formularios/portaria-briefing',
   '/admin/importacao-rh',
+  // Facilities: a tela de rotas mantém filtros, seleção múltipla e edição
+  // inline; remontar a cada sync em segundo plano jogaria fora esse recorte.
+  '/facilities',
+  '/facilities/rotas',
 ]);
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -409,6 +417,8 @@ export default function App() {
   useEffect(() => {
     if (user) {
       trackPageView(user, currentPath);
+      // Histórico local de navegação para a seção "Recentes" da tela Início.
+      recordRecentPage(currentPath);
     }
     // Depende de user?.id (não do objeto user) para não re-registrar a mesma
     // página quando o objeto de usuário é recriado (edição de perfil, sync).
@@ -723,6 +733,58 @@ export default function App() {
       case '/almoxarifado/dashboards':
         if (canAccessPage(user, 'almox_dashboards')) {
           return <AlmoxarifadoDashboards user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Telas iniciais (hubs) dos módulos — grade de cards para as subpáginas
+      // do módulo. O conteúdo vem de `lib/moduleHomes.ts`.
+      case '/solicitacoes':
+        if (canAccessPage(user, 'solicitacoes_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="solicitacoes" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos':
+        if (canAccessPage(user, 'suprimentos_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="suprimentos" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado':
+        if (canAccessPage(user, 'almoxarifado_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="almoxarifado" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro':
+        if (canAccessPage(user, 'financeiro_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="financeiro" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/helpdesk/inicio':
+        if (canAccessPage(user, 'helpdesk_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="helpdesk" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin':
+        if (canAccessPage(user, 'admin_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="admin" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Módulo Facilities — hub + relatórios/cadastros alimentados pelos
+      // formulários de Portaria e RH/ASE.
+      case '/facilities':
+        if (canAccessPage(user, 'facilities')) {
+          return <FacilitiesHome user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/facilities/rotas':
+        if (canAccessPage(user, 'facilities_rotas')) {
+          return <FacilitiesRotas user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

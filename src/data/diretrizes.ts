@@ -40,6 +40,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-27',
+    resumo: 'Notificações & Header (Roteamento Completo e Deep Links): 1. O clique nas notificações do Header agora redireciona com precisão para todas as telas correspondentes (`/admin/importacao-materiais`, `/admin/usuarios`, `/admin/feedback?id=...`, `/suprimentos/cadastros-sap?id=...`, `/solicitacoes/aprovacoes?id=...`, `/solicitacoes/minhas?id=...`, `/solicitacoes/todas?id=...`, `/rastreio?ri=...`, `/formularios/rh-ase-hora-extra?id=...`, `/formularios/logistica-expedicao?id=...`, etc.); 2. Implementado suporte a deep-link `?id=...` para abertura e seleção automática de solicitações e formulários.'
+  },
+  {
+    data: '2026-08-27',
+    resumo: 'RH > ASE - Hora Extra (Vínculo Automático com `rh_rotas` & Organização de Transporte): 1. Criação das Views `vw_rh_ase_itens` e `vw_rh_rotas_colaboradores` com junção inteligente e insensível a acentos pelo nome do colaborador; 2. Enriquecimento automático em tempo real de `rota_transporte`, `ponto_embarque_transporte`, `horario_embarque_transporte` e `contato_transporte` em `rhApi.ts`; 3. Relatório PDF Consolidado atualizado com colunas completas de transporte (Colaborador + Telefone/Contato, Rota + Ponto de Embarque, Setor/Turno, Horário HE e Protocolo); 4. Exportação Excel com colunas completas de transporte; 5. Envio de e-mail e interface web agora detalham ponto, rota e telefone de contato de cada passageiro.'
+  },
+  {
+    data: '2026-08-27',
     resumo: 'RH > Transporte (Tabela `rh_rotas` & Cadastro de Pontos de Embarque): 1. Criação e migração da tabela `rh_rotas` no Supabase com suporte a RLS e indexação de colaboradores e rotas; 2. Carga inicial de 156 registros mapeando funcionários, pontos de embarque, horários, contatos e rotas ("Rota 01", "Rota 02", "Rota 03", "Rota 04" e "Rota Turno"); 3. Tipagem TypeScript `RhRota` em `types.ts` e métodos de API (`listarRhRotas`, `buscarRotaPorFuncionario`, `criarRhRota`, `atualizarRhRota`, `excluirRhRota`, `importarRhRotas`) em `rhApi.ts`.'
   },
   {

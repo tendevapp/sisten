@@ -1531,6 +1531,10 @@ export interface AseHoraExtraItem {
   percentual_he: number | null;
   total_horas: number | null;
   observacao: string | null;
+  rota_transporte?: string | null;
+  ponto_embarque_transporte?: string | null;
+  horario_embarque_transporte?: string | null;
+  contato_transporte?: string | null;
   created_at: string;
 }
 

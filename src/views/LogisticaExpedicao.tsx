@@ -21,15 +21,15 @@ import {
 } from 'lucide-react';
 import type {
   EtapaExpedicao, ExpedicaoCarregamentoCompleto, ExpedicaoCarregamentoResumo,
-  ExpedicaoFoto, ExpedicaoTramo, Profile, Tramo,
+  ExpedicaoFoto, ExpedicaoTramo, Profile,
 } from '../types';
-import { TRAMOS } from '../types';
 import * as api from '../lib/expedicaoApi';
 import {
-  assuntoChegada, cabeNoMailto,
+  ASSUNTO_PADRAO, assuntoChegada, cabeNoMailto,
   montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
 } from '../lib/expedicaoEmail';
 import type { FotoComUrl } from '../lib/expedicaoEmail';
+import { obterConfigEmail } from '../lib/emailConfigApi';
 import { formatDateBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
@@ -43,6 +43,17 @@ interface Props {
 
 export default function LogisticaExpedicao({ user, onNavigate }: Props) {
   const [carregamentoId, setCarregamentoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    if (hash.includes('?')) {
+      const params = new URLSearchParams(hash.split('?')[1]);
+      const idParam = params.get('id');
+      if (idParam) {
+        setCarregamentoId(idParam);
+      }
+    }
+  }, []);
 
   return carregamentoId
     ? <Edicao user={user} id={carregamentoId} onVoltar={() => setCarregamentoId(null)} />
@@ -131,6 +142,10 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
               (n, t) => n + [t.hora_chegada_portaria, t.hora_entrada_patio, t.hora_expedicao].filter(Boolean).length, 0,
             );
             const etapasTotais = c.tramos.length * 3;
+            // O tramo é o que a equipe procura primeiro na lista, então vai no
+            // título, antes da transportadora. Carregamentos antigos podem ter
+            // mais de um; os novos, sempre exatamente um.
+            const rotuloTramos = c.tramos.map(t => t.tramo).join(' + ');
             return (
               <li key={c.id}>
                 <button
@@ -150,22 +165,19 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                       </span>
                     </div>
 
-                    <p className="mt-1 truncate text-base font-bold text-slate-900 dark:text-slate-50">
-                      {c.empresa?.trim() || 'Empresa não informada'}
+                    <p className="mt-1 flex items-baseline gap-1.5 text-base font-bold text-slate-900 dark:text-slate-50">
+                      {rotuloTramos && (
+                        <span className="shrink-0 text-blue-600 dark:text-blue-400">{rotuloTramos} -</span>
+                      )}
+                      <span className="truncate">{c.empresa?.trim() || 'Empresa não informada'}</span>
                     </p>
 
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      {c.tramos.length === 0 ? (
+                      {c.tramos.length === 0 && (
                         <span className="text-xs text-slate-400">Sem tramos</span>
-                      ) : (
-                        c.tramos.map(t => (
-                          <span key={t.id} className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-                            {t.tramo}
-                          </span>
-                        ))
                       )}
                       {etapasTotais > 0 && (
-                        <span className="ml-1 text-[11px] font-medium text-slate-400">
+                        <span className="text-[11px] font-medium text-slate-400">
                           {etapasPreenchidas}/{etapasTotais} horários
                         </span>
                       )}
@@ -221,14 +233,22 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   useEffect(() => {
     let ativo = true;
     api.obterCarregamento(id)
-      .then(c => {
+      .then(async c => {
         if (!ativo) return;
         if (!c) { setErro('Carregamento não encontrado.'); return; }
-        setDados(c);
-        dadosRef.current = c;
-        // Um tramo só abre sozinho; com vários, todos começam recolhidos para
-        // a tela caber na mão.
-        setAbertos(c.tramos.length === 1 ? { [c.tramos[0].id]: true } : {});
+        // Um carregamento é sempre um tramo só. O recém-criado nasce sem
+        // nenhum, então o primeiro é aberto aqui — nunca há botão de adicionar.
+        let carregamento = c;
+        if (carregamento.tramos.length === 0) {
+          const novo = await api.criarTramo({ carregamentoId: carregamento.id, tramo: 'T1', ordem: 0 });
+          if (!ativo) return;
+          carregamento = { ...carregamento, tramos: [novo] };
+        }
+        setDados(carregamento);
+        dadosRef.current = carregamento;
+        // Um tramo só abre sozinho; nos carregamentos antigos, com vários,
+        // todos começam recolhidos para a tela caber na mão.
+        setAbertos(carregamento.tramos.length === 1 ? { [carregamento.tramos[0].id]: true } : {});
       })
       .catch(e => { if (ativo) setErro((e as Error).message); });
     return () => { ativo = false; };
@@ -347,21 +367,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       setSalvando(false);
     }
   }, [dados, executarPersistencia, toast]);
-
-  const adicionarTramo = async () => {
-    if (!dados) return;
-    // Sugere o próximo tramo ainda não usado — no caso comum (T1, depois T2)
-    // isso já deixa o campo certo, sem toque extra.
-    const usados = new Set(dados.tramos.map(t => t.tramo));
-    const sugerido = (TRAMOS.find(t => !usados.has(t)) ?? 'T1') as Tramo;
-    try {
-      const novo = await api.criarTramo({ carregamentoId: dados.id, tramo: sugerido, ordem: dados.tramos.length });
-      setDados(d => (d ? { ...d, tramos: [...d.tramos, novo] } : d));
-      setAbertos(a => ({ ...a, [novo.id]: true }));
-    } catch (e) {
-      toast.error(`Não foi possível adicionar o tramo: ${(e as Error).message}`);
-    }
-  };
 
   const anexarFoto = async (tramoId: string, etapa: EtapaExpedicao, arquivos: FileList) => {
     if (!dados) return;
@@ -662,22 +667,14 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             somenteLeitura={salvando}
             onAlternar={() => setAbertos(a => ({ ...a, [t.id]: !a[t.id] }))}
             onChange={patch => alterarTramo(t.id, patch)}
-            onExcluir={() => setConfirmacao({ tipo: 'excluir-tramo', tramoId: t.id, rotulo: t.tramo })}
+            onExcluir={dados.tramos.length > 1
+              ? () => setConfirmacao({ tipo: 'excluir-tramo', tramoId: t.id, rotulo: t.tramo })
+              : undefined}
             onAnexarFoto={(etapa, arquivos) => anexarFoto(t.id, etapa, arquivos)}
             onExcluirFoto={excluirFoto}
             onEnviarChegada={() => enviarChegada(t.id)}
           />
         ))}
-
-        <button
-          type="button"
-          onClick={adicionarTramo}
-          disabled={salvando}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 py-4 text-sm font-semibold text-slate-500 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-400 dark:hover:border-blue-500"
-        >
-          <Plus className="h-4 w-4" />
-          Adicionar tramo
-        </button>
       </div>
 
       {/* Barra de ações inferior fixa com botão Voltar e Salvar */}

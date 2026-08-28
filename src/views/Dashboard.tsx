@@ -1,26 +1,104 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Tela Início — visão pessoal e sensível a permissões.
+ *
+ * O SISTEN cresceu para vários módulos e nem todo usuário enxerga os mesmos.
+ * Aqui nada é fixo: os indicadores, atalhos e módulos exibidos passam por
+ * `canAccessPage` / `hasPermission`, então cada pessoa vê só o que lhe cabe.
+ * A tela reúne notificações, o que a pessoa acessou recentemente, as páginas
+ * que ela fixou como favoritas e os módulos que pode abrir.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
-  FileEdit, ShoppingCart, Database, List, Users, CheckSquare,
-  Layers, ChevronRight, ArrowUpRight, AlertTriangle, Plus, Search, Radio, ShieldAlert
+  Bell, BellOff, FileCheck, List, FileEdit, Database, Users, ArrowRight,
+  Star, Clock, Info, CheckCircle2, AlertTriangle, ShieldAlert, Compass,
+  ChevronRight, Plus, CheckCheck, Sparkles,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
-import { Profile } from '../types';
+import type { Notification, Profile, Request } from '../types';
+import { PAGES, canAccessPage, pageIdForPath } from '../lib/pages';
+import { getRecentPages, getFavoritePages, toggleFavoritePage } from '../lib/homePrefs';
 
 interface DashboardProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
 
+/* ---------------------------------------------------------------- helpers */
+
+const CLOSED_STATUS = new Set(['rejeitada', 'resolvido', 'fechado', 'cancelada']);
+
+function saudacao(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+function tempoRelativo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
+  const s = Math.round((Date.now() - t) / 1000);
+  if (s < 60) return 'agora';
+  const m = Math.round(s / 60);
+  if (m < 60) return `há ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `há ${d} d`;
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
+
+const NOTIF_STYLE: Record<Notification['type'], { icon: LucideIcon; klass: string }> = {
+  info: { icon: Info, klass: 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' },
+  success: { icon: CheckCircle2, klass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400' },
+  alert: { icon: AlertTriangle, klass: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400' },
+  critical: { icon: ShieldAlert, klass: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400' },
+};
+
+const CHIP_TONE: Record<string, string> = {
+  blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400',
+  amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400',
+  indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400',
+  sky: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400',
+  rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400',
+  slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+};
+
+/** IDs de página (lib/pages.ts) que compõem o mapa de módulos da tela. */
+const MODULE_IDS = [
+  'solicitacoes_home', 'suprimentos_home', 'almoxarifado_home', 'facilities',
+  'financeiro_home', 'helpdesk_home', 'admin_home',
+  'formularios', 'materiais_busca', 'rastreio', 'relatorios',
+];
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 ${className}`}>
+      {children}
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------- component */
+
 export default function Dashboard({ user, onNavigate }: DashboardProps) {
-  const requests = localDb.getRequests();
-  // Contagem leve (head:true) em vez de baixar o catálogo inteiro (~172k linhas)
-  // só para exibir um número no KPI de admin.
+  const [notifs, setNotifs] = useState<Notification[]>(() => localDb.getNotifications(user.id));
+  const [favs, setFavs] = useState<string[]>(() => getFavoritePages(user.id));
+
+  useEffect(() => {
+    setFavs(getFavoritePages(user.id));
+  }, [user.id]);
+
+  useEffect(() => {
+    localDb.refreshNotificationsFromSupabase().then(() => setNotifs(localDb.getNotifications(user.id)));
+  }, [user.id]);
+
   const [materialsCount, setMaterialsCount] = useState(0);
   useEffect(() => {
     if (!user.roles.includes('admin') || !supabase) return;
@@ -30,341 +108,478 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
       .eq('is_active', true)
       .then(({ count }) => setMaterialsCount(count || 0));
   }, [user.roles]);
-  const profiles = localDb.getProfiles();
-  const sapEnriched = localDb.getEnrichedSAPRequisicoes();
 
+  const requests = localDb.getRequests();
   const sector = localDb.getSectors().find(s => s.id === user.sector_id);
 
-  // Counts for user
-  const myRequests = requests.filter(r => r.solicitante_id === user.id);
-  const myRecent = [...myRequests]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 5);
+  const myRequests = useMemo(
+    () => requests.filter(r => r.solicitante_id === user.id),
+    [requests, user.id],
+  );
+  const myRecent = useMemo(
+    () => [...myRequests].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at)).slice(0, 5),
+    [myRequests],
+  );
+  const myOpen = myRequests.filter(r => !CLOSED_STATUS.has(r.status)).length;
+  const myDrafts = myRequests.filter(r => r.status === 'rascunho').length;
 
-  // Pending Approvals count for current manager's sector
-  const pendingApprovals = requests.filter(r => 
-    r.type === 'compra' && 
-    r.status === 'pendente' && 
-    r.solicitante_sector_id === user.sector_id
+  const pendingApprovals = useMemo(
+    () => requests.filter(r =>
+      r.type === 'compra' && r.status === 'pendente' && r.solicitante_sector_id === user.sector_id,
+    ),
+    [requests, user.sector_id],
+  );
+  const highCritApprovals = pendingApprovals.filter(r => r.criticality >= 4).length;
+
+  const openSapCount = useMemo(
+    () => localDb.getEnrichedSAPRequisicoes().filter(s => s.status_requisicao === 'Sem PO').length,
+    [],
+  );
+  const pendingUsersCount = useMemo(
+    () => localDb.getProfiles().filter(p => p.status === 'pendente').length,
+    [],
   );
 
-  const highCriticalityPendingApprovals = pendingApprovals.filter(r => r.criticality >= 4);
+  const unread = notifs.filter(n => !n.is_read);
+  const notifList = useMemo(
+    () => [...notifs]
+      .sort((a, b) => Number(a.is_read) - Number(b.is_read) || +new Date(b.created_at) - +new Date(a.created_at))
+      .slice(0, 6),
+    [notifs],
+  );
 
-  // Compras aprovadas atribuídas (assigned to buyer or supervisor)
-  const approvedAssignedCount = requests.filter(r => 
-    r.type === 'compra' && 
-    r.status === 'aprovada' && 
-    (r.comprador_id === user.id || user.roles.includes('coordenador_suprimentos') || user.roles.includes('admin'))
-  ).length;
+  const canApprove = canAccessPage(user, 'sol_aprovacoes');
+  const canSapPanel = localDb.hasPermission(user, 'sap', 'visualizar_painel');
+  const canUsers = canAccessPage(user, 'admin_usuarios');
 
-  // Open SAP items
-  const openSapCount = sapEnriched.filter(s => s.status_requisicao === 'Sem PO').length;
+  /* ---------------------------------------------------- indicadores (chips) */
+  interface Chip {
+    id: string;
+    label: string;
+    value: number;
+    icon: LucideIcon;
+    tone: string;
+    show?: boolean;
+    hideWhenZero?: boolean;
+    hint?: string;
+    onClick?: () => void;
+  }
+  const chips: Chip[] = ([
+    { id: 'notif', label: 'Notificações', value: unread.length, icon: Bell, tone: 'blue', hideWhenZero: true },
+    { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes/aprovacoes'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
+    { id: 'minhas', label: 'Minhas em aberto', value: myOpen, icon: List, tone: 'indigo', onClick: () => onNavigate('/solicitacoes/minhas') },
+    { id: 'rasc', label: 'Rascunhos', value: myDrafts, icon: FileEdit, tone: 'slate', hideWhenZero: true, onClick: () => onNavigate('/solicitacoes/minhas') },
+    { id: 'sap', label: 'Painel SAP sem PO', value: openSapCount, icon: Database, tone: 'sky', show: canSapPanel, onClick: () => onNavigate('/suprimentos/painel') },
+    { id: 'usr', label: 'Usuários pendentes', value: pendingUsersCount, icon: Users, tone: 'rose', show: canUsers, hideWhenZero: true, onClick: () => onNavigate('/admin/usuarios') },
+  ] as Chip[]).filter(c => c.show !== false && !(c.hideWhenZero && !c.value));
 
-  // Admin stats
-  const pendingUsersCount = profiles.filter(p => p.status === 'pendente').length;
-  const activeUsersCount = profiles.filter(p => p.status === 'ativo').length;
-  const totalRequestsCount = requests.length;
+  /* ------------------------------------------------------ páginas / módulos */
+  const pageByPath = useMemo(() => {
+    const m = new Map<string, (typeof PAGES)[number]>();
+    for (const p of PAGES) if (p.path) m.set(p.path, p);
+    return m;
+  }, []);
 
-  const getCriticalityBadge = (level: number) => {
-    const colors: Record<number, string> = {
-      1: 'bg-gray-100 text-gray-800 border-gray-200',
-      2: 'bg-emerald-50 text-emerald-800 border-emerald-100',
-      3: 'bg-amber-50 text-amber-800 border-amber-100',
-      4: 'bg-orange-50 text-orange-800 border-orange-100',
-      5: 'bg-red-50 text-red-800 border-red-100'
-    };
-    return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${colors[level] || 'bg-gray-100'}`}>
-        CRIT. {level}
-      </span>
-    );
+  const resolvePage = (path: string) => {
+    const def = pageByPath.get(path);
+    if (!def) return null;
+    const id = pageIdForPath(path);
+    if (id && !canAccessPage(user, id)) return null;
+    return def;
   };
 
-  const getStatusBadge = (status: string) => {
-    const labels: Record<string, string> = {
-      rascunho: 'Rascunho',
-      pendente: 'Pendente',
-      aprovada: 'Aprovada',
-      rejeitada: 'Rejeitada',
-      em_revisao: 'Em Revisão',
-      aberto: 'Aberto',
-      em_atendimento: 'Em Atendimento',
-      aguardando_solicitante: 'Aguardando Solicitante',
-      resolvido: 'Resolvido',
-      fechado: 'Fechado',
-      reaberto: 'Reaberto',
-      cancelada: 'Cancelado'
-    };
-    const colors: Record<string, string> = {
-      rascunho: 'bg-gray-100 text-gray-500 border-gray-200',
-      pendente: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      aprovada: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      rejeitada: 'bg-red-100 text-red-800 border-red-200',
-      em_revisao: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      aberto: 'bg-blue-100 text-blue-800 border-blue-200',
-      em_atendimento: 'bg-sky-100 text-sky-800 border-sky-200',
-      aguardando_solicitante: 'bg-purple-100 text-purple-800 border-purple-200',
-      resolvido: 'bg-teal-100 text-teal-800 border-teal-200',
-      fechado: 'bg-slate-100 text-slate-800 border-slate-200',
-      reaberto: 'bg-orange-100 text-orange-800 border-orange-200',
-      cancelada: 'bg-rose-100 text-rose-800 border-rose-200'
-    };
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${colors[status] || 'bg-gray-100 text-gray-800'}`}>
-        {labels[status] || status}
-      </span>
-    );
+  const favPages = favs.map(resolvePage).filter(Boolean) as (typeof PAGES)[number][];
+  const recentPages = getRecentPages()
+    .map(r => resolvePage(r.path))
+    .filter((p): p is (typeof PAGES)[number] => Boolean(p) && !favs.includes(p!.path!))
+    .slice(0, 6);
+
+  const modules = MODULE_IDS
+    .map(id => PAGES.find(p => p.id === id))
+    .filter((p): p is (typeof PAGES)[number] => Boolean(p) && canAccessPage(user, p!.id));
+
+  const toggleFav = (path: string) => setFavs(toggleFavoritePage(user.id, path));
+
+  const handleNotif = (n: Notification) => {
+    localDb.markNotificationAsRead(n.id);
+    setNotifs(localDb.getNotifications(user.id));
+    if (n.context_key?.startsWith('rastreio:')) {
+      onNavigate(`/rastreio?ri=${encodeURIComponent(n.context_key.slice('rastreio:'.length))}`);
+    } else if (n.request_id) {
+      if (n.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
+        onNavigate('/solicitacoes/aprovacoes');
+      } else {
+        onNavigate(`/solicitacoes/minhas?id=${n.request_id}`);
+      }
+    }
   };
+
+  const markAllRead = () => {
+    unread.forEach(n => localDb.markNotificationAsRead(n.id));
+    setNotifs(localDb.getNotifications(user.id));
+  };
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, [string, string]> = {
+      rascunho: ['Rascunho', 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'],
+      pendente: ['Pendente', 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'],
+      aprovada: ['Aprovada', 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'],
+      rejeitada: ['Rejeitada', 'bg-rose-100 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300'],
+      em_revisao: ['Em revisão', 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300'],
+      aberto: ['Aberto', 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300'],
+      em_atendimento: ['Em atendimento', 'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-300'],
+      aguardando_solicitante: ['Aguardando você', 'bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-300'],
+      resolvido: ['Resolvido', 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-300'],
+      fechado: ['Fechado', 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'],
+      reaberto: ['Reaberto', 'bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300'],
+      cancelada: ['Cancelado', 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'],
+    };
+    const [label, klass] = map[status] || [status, 'bg-slate-100 text-slate-700'];
+    return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${klass}`}>{label}</span>;
+  };
+
+  const tituloSolicitacao = (r: Request) =>
+    r.titulo || r.justificativa ||
+    (r.type === 'compra' ? 'Solicitação de compra' : r.type === 'cadastro_sap' ? 'Cadastro SAP' : 'Chamado de helpdesk');
 
   return (
-    <div className="space-y-6 text-left">
-      {/* Salutation Bar */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Bom dia, {user.name}!</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Setor: <span className="font-semibold text-slate-800">{sector?.name || 'Sem Setor'}</span> • <span className="text-slate-600 font-medium">{user.cargo}</span>
+    <div className="mx-auto max-w-7xl space-y-6">
+      {/* Saudação */}
+      <header className="flex flex-col gap-1">
+        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+          {saudacao()}, {user.name.split(' ')[0]}.
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{sector?.name || 'Sem setor'}</span>
+          {user.cargo ? <> · {user.cargo}</> : null}
+          {' · '}
+          <span className="capitalize">
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </span>
         </p>
-      </div>
+      </header>
 
-      {/* Primary KPI Grid */}
-      <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {/* KPI 1 - Aguardando Aprovação (Only managers and admins can see sector counts, others see general reference) */}
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Aguardando Aprovação</span>
-            <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
-              <FileEdit className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline">
-            <span className="text-3xl font-extrabold text-slate-900">{pendingApprovals.length}</span>
-            <span className="ml-2 text-xs font-medium text-slate-400">no seu setor</span>
-          </div>
-          <p className="mt-2 text-[10px] font-bold text-amber-600">{highCriticalityPendingApprovals.length} com criticidade alta</p>
-        </div>
-
-        {/* KPI 2 - Compras Aprovadas */}
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Compras Aprovadas (Atribuídas)</span>
-            <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-              <ShoppingCart className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline">
-            <span className="text-3xl font-extrabold text-slate-900">{approvedAssignedCount}</span>
-            <span className="ml-2 text-xs font-medium text-slate-400">atribuições</span>
-          </div>
-          <p className="mt-2 text-[10px] text-slate-400">Para seu grupo de compras</p>
-        </div>
-
-        {/* KPI 3 - Painel SAP Em Aberto */}
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Painel SAP — Em Aberto</span>
-            <div className="rounded-lg bg-sky-50 p-2 text-sky-600">
-              <Database className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline">
-            <span className="text-3xl font-extrabold text-slate-900">{openSapCount}</span>
-            <span className="ml-2 text-xs font-medium text-slate-400">sem PO</span>
-          </div>
-          <p className="mt-2 text-[10px] text-slate-400">Pendente de atribuição de pedido</p>
-        </div>
-
-        {/* KPI 4 - Minhas Solicitações */}
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Minhas Solicitações</span>
-            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600">
-              <List className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline">
-            <span className="text-3xl font-extrabold text-slate-900">{myRequests.length}</span>
-            <span className="ml-2 text-xs font-medium text-slate-400">atendimentos</span>
-          </div>
-          <p className="mt-2 text-[10px] text-slate-400">Criadas e acompanhadas</p>
-        </div>
-      </div>
-
-      {/* Admin specific extra KPIs */}
-      {user.roles.includes('admin') && (
-        <div className="grid gap-5 grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/50 p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Usuários Pendentes</span>
-              <p className="text-2xl font-extrabold text-slate-800 mt-1">{pendingUsersCount}</p>
-            </div>
-            <Users className="h-6 w-6 text-yellow-500" />
-          </div>
-          <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/50 p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Usuários Ativos</span>
-              <p className="text-2xl font-extrabold text-slate-800 mt-1">{activeUsersCount}</p>
-            </div>
-            <CheckSquare className="h-6 w-6 text-emerald-500" />
-          </div>
-          <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/50 p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Materiais Cadastrados</span>
-              <p className="text-2xl font-extrabold text-slate-800 mt-1">{materialsCount}</p>
-            </div>
-            <Layers className="h-6 w-6 text-indigo-500" />
-          </div>
-          <div className="rounded-xl border border-dashed border-gray-200 bg-slate-50/50 p-4 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Solicitações (Total)</span>
-              <p className="text-2xl font-extrabold text-slate-800 mt-1">{totalRequestsCount}</p>
-            </div>
-            <ArrowUpRight className="h-6 w-6 text-sky-500" />
-          </div>
+      {/* Indicadores relevantes ao usuário */}
+      {chips.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {chips.map(c => {
+            const Icon = c.icon;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={c.onClick}
+                aria-disabled={!c.onClick}
+                className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 text-left dark:border-slate-800 dark:bg-slate-900 ${
+                  c.onClick
+                    ? 'transition-colors hover:border-slate-300 hover:bg-slate-50 dark:hover:border-slate-700 dark:hover:bg-slate-800/60'
+                    : 'cursor-default'
+                }`}
+              >
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${CHIP_TONE[c.tone]}`}>
+                  <Icon className="h-4.5 w-4.5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-lg font-bold leading-none text-slate-900 dark:text-slate-50">{c.value}</span>
+                  <span className="mt-1 block truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    {c.hint || c.label}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* High Criticality Pending Approvals Alert Banner */}
-      {user.roles.includes('gestor') && pendingApprovals.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-amber-100 bg-amber-50 p-4">
-          <div className="flex items-start">
-            <div className="rounded-lg bg-amber-100 p-1.5 text-amber-800 mr-3 mt-0.5 sm:mt-0">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
+      {/* Alerta de aprovações críticas */}
+      {canApprove && pendingApprovals.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+              <AlertTriangle className="h-4.5 w-4.5" />
+            </span>
             <div>
-              <p className="text-sm font-bold text-amber-900">
+              <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
                 {pendingApprovals.length} solicitação(ões) aguardando sua aprovação
               </p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Existem {highCriticalityPendingApprovals.length} compras com criticidade alta (Grau 4 ou 5) que demandam análise prioritária.
+              <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+                {highCritApprovals > 0
+                  ? `${highCritApprovals} com criticidade alta (grau 4 ou 5) para análise prioritária.`
+                  : 'Nenhuma com criticidade alta no momento.'}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={() => onNavigate('/solicitacoes/aprovacoes')}
-            className="rounded-lg bg-amber-800 px-4 py-2 text-xs font-bold text-white hover:bg-amber-900 transition-colors shrink-0 cursor-pointer"
+            className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-700"
           >
             Ir para aprovações
           </button>
         </div>
       )}
 
-      {/* Main split row layout */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-        {/* Left 2/3 Content: Recent My Requests */}
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-800">Minhas solicitações recentes</h3>
-            <button
-              onClick={() => onNavigate('/solicitacoes/minhas')}
-              className="text-xs font-bold text-emerald-600 hover:underline inline-flex items-center cursor-pointer"
-            >
-              Ver todas <ChevronRight className="ml-0.5 h-3 w-3" />
-            </button>
-          </div>
-
-          <div className="divide-y divide-gray-100">
-            {myRecent.length === 0 ? (
-              <div className="py-12 text-center text-sm text-slate-400">
-                Nenhuma solicitação aberta recentemente. Crie uma para começar!
-              </div>
-            ) : (
-              myRecent.map((r) => (
-                <div 
-                  key={r.id} 
-                  onClick={() => onNavigate(`/solicitacoes/minhas?id=${r.id}`)}
-                  className="group flex items-center justify-between py-3.5 hover:bg-slate-50/50 px-2 rounded-lg transition-colors cursor-pointer"
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Coluna principal */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Notificações */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+                <Bell className="h-4 w-4 text-slate-400" />
+                Notificações
+                {unread.length > 0 && (
+                  <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{unread.length}</span>
+                )}
+              </h2>
+              {unread.length > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-blue-600 dark:text-slate-400"
                 >
-                  <div className="flex items-center space-x-3.5 min-w-0">
-                    <span className="text-sm font-bold text-slate-500 group-hover:text-emerald-600 transition-colors">
-                      #{r.number}
-                    </span>
-                    <div className="flex flex-col min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate max-w-sm">
-                        {r.justificativa || (r.type === 'compra' ? 'Solicitação de Compra' : (r.type === 'cadastro_sap' ? 'Cadastro SAP' : 'Suporte Helpdesk'))}
-                      </p>
-                      <span className="text-[11px] text-slate-400 mt-0.5">
-                        {r.type === 'compra' ? 'Compra' : (r.type === 'cadastro_sap' ? 'Cadastro SAP' : 'Helpdesk')} • {new Date(r.created_at).toLocaleDateString('pt-BR')}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    {getCriticalityBadge(r.criticality)}
-                    {getStatusBadge(r.status)}
-                  </div>
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Marcar todas como lidas
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+              {notifList.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <BellOff className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Nenhuma notificação no momento</p>
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                notifList.map(n => {
+                  const { icon: NIcon, klass } = NOTIF_STYLE[n.type] || NOTIF_STYLE.info;
+                  const clickable = Boolean(n.context_key || n.request_id);
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => clickable && handleNotif(n)}
+                      className={`flex w-full items-start gap-3 py-3 text-left transition-colors ${
+                        clickable ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50' : 'cursor-default'
+                      }`}
+                    >
+                      <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${klass}`}>
+                        <NIcon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className={`truncate text-xs font-bold ${n.is_read ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                            {n.title}
+                          </span>
+                          {!n.is_read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />}
+                        </span>
+                        <span className="mt-0.5 block line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                          {n.description}
+                        </span>
+                        <span className="mt-1 block text-[10px] font-medium text-slate-400">{tempoRelativo(n.created_at)}</span>
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </Card>
+
+          {/* Minhas solicitações recentes */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+                <List className="h-4 w-4 text-slate-400" />
+                Minhas solicitações recentes
+              </h2>
+              <button
+                type="button"
+                onClick={() => onNavigate('/solicitacoes/minhas')}
+                className="inline-flex items-center gap-0.5 text-[11px] font-bold text-blue-600 hover:underline dark:text-blue-400"
+              >
+                Ver todas <ChevronRight className="h-3 w-3" />
+              </button>
+            </div>
+
+            <div className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+              {myRecent.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Você ainda não abriu solicitações.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('/solicitacoes/nova')}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Nova solicitação
+                  </button>
+                </div>
+              ) : (
+                myRecent.map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => onNavigate(`/solicitacoes/minhas?id=${r.id}`)}
+                    className="flex w-full items-center justify-between gap-3 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="font-mono text-xs font-bold text-slate-400">#{r.number}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                          {tituloSolicitacao(r)}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-slate-400">
+                          {new Date(r.created_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      </span>
+                    </span>
+                    {statusBadge(r.status)}
+                  </button>
+                ))
+              )}
+            </div>
+          </Card>
         </div>
 
-        {/* Right 1/3 Side Actions panel */}
-        <div className="space-y-5">
-          {/* Action Hub */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm space-y-3">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider text-left">Ações rápidas</h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => onNavigate('/solicitacoes/nova')}
-                className="flex w-full items-center justify-between rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2.5 px-4 transition-colors text-left cursor-pointer"
-              >
-                <span className="flex items-center"><Plus className="mr-2 h-4.5 w-4.5" /> Nova solicitação</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => onNavigate('/materiais/busca')}
-                className="flex w-full items-center justify-between rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2.5 px-4 transition-colors text-left border border-slate-200 cursor-pointer"
-              >
-                <span className="flex items-center"><Search className="mr-2 h-4.5 w-4.5 text-slate-400" /> Buscar material</span>
-                <ChevronRight className="h-4 w-4 text-slate-400" />
-              </button>
-              {user.roles.includes('gestor') && (
-                <button
-                  onClick={() => onNavigate('/solicitacoes/aprovacoes')}
-                  className="flex w-full items-center justify-between rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2.5 px-4 transition-colors text-left border border-slate-200 cursor-pointer"
-                >
-                  <span className="flex items-center"><CheckSquare className="mr-2 h-4.5 w-4.5 text-slate-400" /> Aprovações</span>
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                </button>
-              )}
-              {localDb.hasPermission(user, 'sap', 'visualizar_painel') && (
-                <button
-                  onClick={() => onNavigate('/suprimentos/painel')}
-                  className="flex w-full items-center justify-between rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2.5 px-4 transition-colors text-left border border-slate-200 cursor-pointer"
-                >
-                  <span className="flex items-center"><Database className="mr-2 h-4.5 w-4.5 text-slate-400" /> Painel SAP</span>
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                </button>
-              )}
-              {localDb.hasPermission(user, 'sap', 'dashboards') && (
-                <button
-                  onClick={() => onNavigate('/suprimentos/dashboards')}
-                  className="flex w-full items-center justify-between rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2.5 px-4 transition-colors text-left border border-slate-200 cursor-pointer"
-                >
-                  <span className="flex items-center"><Layers className="mr-2 h-4.5 w-4.5 text-slate-400" /> Dashboards SAP</span>
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                </button>
-              )}
-            </div>
-          </div>
+        {/* Coluna lateral */}
+        <div className="space-y-6">
+          {/* Acesso rápido: favoritos + recentes */}
+          <Card>
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+              <Star className="h-4 w-4 text-slate-400" />
+              Acesso rápido
+            </h2>
 
-          {/* Status SAP Database Carga card */}
-          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm text-left">
-            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Painel SAP</h4>
-            <div className="mt-3.5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-600">Base ME5A:</span>
-                <span className="text-xs font-semibold text-slate-800">há cerca de 13 horas</span>
+            <div className="mt-3 space-y-4">
+              <div>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">Favoritos</p>
+                {favPages.length === 0 ? (
+                  <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    Toque na estrela de uma página recente para fixá-la aqui.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {favPages.map(p => {
+                      const PIcon = p.icon;
+                      return (
+                        <li key={p.id} className="group flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(p.path!)}
+                            className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                          >
+                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-400" />}
+                            <span className="truncate">{p.label}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleFav(p.path!)}
+                            className="rounded-lg p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                            aria-label={`Desafixar ${p.label}`}
+                          >
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-600">Base ZL0132:</span>
-                <span className="text-xs font-semibold text-slate-800">há cerca de 13 horas</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full w-full bg-emerald-500"></div>
-              </div>
-              <p className="text-[10px] text-slate-400">Base consolidada e sincronizada com as extrações oficiais.</p>
+
+              {recentPages.length > 0 && (
+                <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    <Clock className="h-3 w-3" /> Recentes
+                  </p>
+                  <ul className="space-y-1">
+                    {recentPages.map(p => {
+                      const PIcon = p.icon;
+                      return (
+                        <li key={p.id} className="group flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(p.path!)}
+                            className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                          >
+                            {PIcon && <PIcon className="h-4 w-4 shrink-0 text-slate-400" />}
+                            <span className="truncate">{p.label}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleFav(p.path!)}
+                            className="rounded-lg p-1.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-amber-500 group-hover:opacity-100 dark:text-slate-600 dark:hover:bg-slate-800"
+                            aria-label={`Fixar ${p.label}`}
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {favPages.length === 0 && recentPages.length === 0 && (
+                <p className="text-[11px] text-slate-400">Sua navegação recente aparecerá aqui.</p>
+              )}
             </div>
-          </div>
+          </Card>
+
+          {/* Mapa de módulos liberados */}
+          <Card>
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+              <Compass className="h-4 w-4 text-slate-400" />
+              Explorar módulos
+            </h2>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {modules.map(p => {
+                const PIcon = p.icon;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onNavigate(p.path!)}
+                    className="group flex flex-col gap-2 rounded-xl border border-slate-200 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-sm dark:border-slate-800 dark:hover:border-blue-400/40"
+                  >
+                    <span className="flex items-center justify-between">
+                      {PIcon && <PIcon className="h-4.5 w-4.5 text-slate-500 dark:text-slate-400" />}
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500" />
+                    </span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{p.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          {user.roles.includes('admin') && (
+            <Card className="bg-slate-50/60 dark:bg-slate-900/60">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+                <Sparkles className="h-4 w-4 text-slate-400" />
+                Resumo administrativo
+              </h2>
+              <dl className="mt-3 grid grid-cols-2 gap-3 text-center">
+                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Usuários ativos</dt>
+                  <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {localDb.getProfiles().filter(p => p.status === 'ativo').length}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Solicitações</dt>
+                  <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">{requests.length}</dd>
+                </div>
+                <div className="col-span-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Materiais ativos no catálogo</dt>
+                  <dd className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {materialsCount ? materialsCount.toLocaleString('pt-BR') : '—'}
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          )}
         </div>
       </div>
     </div>

@@ -12,6 +12,23 @@ import SistenLogo from './SistenLogo';
 
 const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
 
+/**
+ * Grupos que são, na verdade, um módulo com tela inicial própria: o cabeçalho
+ * do grupo deixa de ser só um rótulo e vira um botão que navega para o hub do
+ * módulo (`path`), mantendo ao lado a seta para expandir/recolher as subpáginas.
+ * `base` é o prefixo de rota do módulo — usado só para acender o cabeçalho
+ * enquanto o usuário navega por qualquer subpágina.
+ */
+const GROUP_HOME: Record<string, { path: string; base: string }> = {
+  'SOLICITAÇÕES': { path: '/solicitacoes', base: '/solicitacoes' },
+  'SUPRIMENTOS': { path: '/suprimentos', base: '/suprimentos' },
+  'ALMOXARIFADO': { path: '/almoxarifado', base: '/almoxarifado' },
+  'FACILITIES': { path: '/facilities', base: '/facilities' },
+  'FINANCEIRO': { path: '/financeiro', base: '/financeiro' },
+  'HELPDESK': { path: '/helpdesk/inicio', base: '/helpdesk' },
+  'ADMINISTRAÇÃO': { path: '/admin', base: '/admin' },
+};
+
 function loadCollapsedGroups(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
@@ -47,7 +64,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     return localDb.getSectors().filter(s => s.helpdesk_enabled);
   };
 
-  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO'];
+  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO'];
   const navItems = groupOrder.map(group => ({
     group,
     items: PAGES.filter(p => p.group === group),
@@ -127,6 +144,27 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
 
           if (visibleItems.length === 0) return null;
 
+          // Módulo com hub próprio (ex.: Facilities, Suprimentos): o cabeçalho do
+          // grupo navega para a tela inicial e o item do hub sai da lista quando
+          // expandido, para não aparecer duplicado logo abaixo do nome do módulo.
+          const home = GROUP_HOME[group.group];
+          const homePath = home?.path;
+          const homeItem = homePath ? visibleItems.find(i => i.path === homePath) : undefined;
+          const listItems = homePath && !collapsed
+            ? visibleItems.filter(i => i.path !== homePath)
+            : visibleItems;
+
+          // Só mostra o cabeçalho do módulo quando há alguma subpágina real
+          // liberada para o usuário — o hub sozinho não abre um módulo vazio.
+          if (home && visibleItems.every(i => i.path === homePath)) return null;
+
+          const homeActive = !!home && (
+            currentPath === home.path
+            || currentPath === home.base
+            || currentPath.startsWith(`${home.base}/`)
+          );
+          const HomeIcon = homeItem?.icon;
+
           // Grupo que contém a rota ativa nunca deve renderizar recolhido,
           // senão o usuário perde de vista onde está ao navegar.
           const hasActiveItem = visibleItems.some(item => item.path === activePath);
@@ -134,7 +172,41 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
 
           return (
             <div key={groupIdx} className="mb-2">
-              {!collapsed && (
+              {!collapsed && homePath && (
+                <div
+                  className={`mx-3 flex items-center rounded-lg pr-1 transition-colors ${
+                    homeActive ? 'bg-slate-800' : 'hover:bg-slate-800/50'
+                  }`}
+                >
+                  <a
+                    href={`#${homePath}`}
+                    onClick={(e) => {
+                      if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+                      e.preventDefault();
+                      handleNavClick(homePath!);
+                    }}
+                    className={`flex flex-1 items-center gap-2.5 px-3 py-2 text-sm font-bold tracking-wide transition-colors ${
+                      homeActive ? 'text-emerald-400' : 'text-slate-200 hover:text-white'
+                    }`}
+                    title={`Abrir ${group.group}`}
+                  >
+                    {HomeIcon && <HomeIcon className="h-4 w-4 shrink-0" />}
+                    <span className="truncate">{group.group}</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.group)}
+                    className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-white transition-colors"
+                    aria-label={isGroupCollapsed ? `Expandir subpáginas de ${group.group}` : `Recolher subpáginas de ${group.group}`}
+                    aria-expanded={!isGroupCollapsed}
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform duration-200 ${isGroupCollapsed ? '-rotate-90' : ''}`}
+                    />
+                  </button>
+                </div>
+              )}
+              {!collapsed && !homePath && (
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.group)}
@@ -156,7 +228,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                 style={{ gridTemplateRows: isGroupCollapsed ? '0fr' : '1fr' }}
               >
                 <ul className="space-y-1 overflow-hidden mt-1">
-                {visibleItems.map((item, itemIdx) => {
+                {listItems.map((item, itemIdx) => {
                   const Icon = item.icon;
                   // If path is helpdesk or specific sub-path, check exact or partial matches
                   const isActive = item.path === activePath;

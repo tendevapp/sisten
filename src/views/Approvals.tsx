@@ -68,7 +68,20 @@ export default function Approvals({ user }: ApprovalsProps) {
 
     setRequests(filtered);
 
-    if (filtered.length > 0) {
+    // Deep link check
+    const hash = window.location.hash || '';
+    let targetId: string | null = null;
+    if (hash.includes('?')) {
+      const params = new URLSearchParams(hash.split('?')[1]);
+      const idParam = params.get('id');
+      if (idParam && filtered.some(r => r.id === idParam)) {
+        targetId = idParam;
+      }
+    }
+
+    if (targetId) {
+      setSelectedId(targetId);
+    } else if (filtered.length > 0) {
       setSelectedId(filtered[0].id);
     } else {
       setSelectedId(null);

@@ -48,16 +48,180 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     localDb.markNotificationAsRead(notif.id);
     setNotifications(localDb.getNotifications(user.id));
     setShowNotifications(false);
-    // Notificações de mensagens do Rastreio Compras: abrem a conversa do item.
-    // Usa context_key (sem FK) em vez de request_id (tem FK para requests).
-    if (notif.context_key?.startsWith('rastreio:')) {
-      const ri = notif.context_key.slice('rastreio:'.length);
+
+    const titleLower = notif.title.toLowerCase();
+    const descLower = (notif.description || '').toLowerCase();
+    const contextKey = notif.context_key || '';
+
+    // 1. Roteamento por context_key
+    if (contextKey.startsWith('rastreio:')) {
+      const ri = contextKey.slice('rastreio:'.length);
       onNavigate(`/rastreio?ri=${encodeURIComponent(ri)}`);
-    } else if (notif.request_id) {
-      if (notif.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
-        onNavigate('/solicitacoes/aprovacoes');
+      return;
+    }
+
+    if (contextKey.startsWith('feedback:')) {
+      const feedbackId = contextKey.slice('feedback:'.length);
+      onNavigate(`/admin/feedback?id=${encodeURIComponent(feedbackId)}`);
+      return;
+    }
+
+    if (contextKey.startsWith('expedicao:') || contextKey.startsWith('carregamento:')) {
+      const id = contextKey.split(':')[1];
+      onNavigate(`/formularios/logistica-expedicao?id=${encodeURIComponent(id)}`);
+      return;
+    }
+
+    if (contextKey.startsWith('ase:') || contextKey.startsWith('rh_ase:')) {
+      const id = contextKey.split(':')[1];
+      onNavigate(`/formularios/rh-ase-hora-extra?id=${encodeURIComponent(id)}`);
+      return;
+    }
+
+    if (contextKey.startsWith('portaria:')) {
+      const id = contextKey.split(':')[1];
+      onNavigate(`/formularios/portaria-relatorio?id=${encodeURIComponent(id)}`);
+      return;
+    }
+
+    if (contextKey.startsWith('importacao:') || contextKey.startsWith('exportacao:') || contextKey.startsWith('importar:')) {
+      onNavigate('/admin/importacao-materiais');
+      return;
+    }
+
+    if (contextKey.startsWith('/')) {
+      onNavigate(contextKey);
+      return;
+    }
+
+    // 2. Roteamento por request_id (solicitações vinculadas)
+    if (notif.request_id) {
+      const req = localDb.getRequests().find(r => r.id === notif.request_id);
+
+      if (req) {
+        if (req.type === 'cadastro_sap') {
+          if (
+            user.roles.includes('comprador') ||
+            user.roles.includes('coordenador_suprimentos') ||
+            user.roles.includes('admin') ||
+            user.aprovador_cadastro_sap
+          ) {
+            onNavigate(`/suprimentos/cadastros-sap?id=${req.id}`);
+          } else {
+            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
+          }
+          return;
+        }
+
+        if (req.type === 'compra') {
+          if (
+            req.status === 'pendente' &&
+            (user.roles.includes('gestor') ||
+              user.roles.includes('admin') ||
+              user.roles.includes('coordenador_suprimentos') ||
+              user.aprovador_setores?.includes(req.solicitante_sector_id))
+          ) {
+            onNavigate(`/solicitacoes/aprovacoes?id=${req.id}`);
+          } else if (
+            user.roles.includes('comprador') ||
+            user.roles.includes('coordenador_suprimentos')
+          ) {
+            onNavigate(`/solicitacoes/todas?id=${req.id}`);
+          } else {
+            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
+          }
+          return;
+        }
+
+        if (req.type === 'chamado') {
+          if (user.roles.includes('atendente') || user.roles.includes('admin')) {
+            onNavigate(`/solicitacoes/todas?id=${req.id}`);
+          } else {
+            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
+          }
+          return;
+        }
+      }
+
+      // Fallbacks com request_id
+      if (titleLower.includes('cadastro sap')) {
+        onNavigate(`/suprimentos/cadastros-sap?id=${notif.request_id}`);
+      } else if (titleLower.includes('aprovação') || (titleLower.includes('compra') && user.roles.includes('gestor'))) {
+        onNavigate(`/solicitacoes/aprovacoes?id=${notif.request_id}`);
       } else {
         onNavigate(`/solicitacoes/minhas?id=${notif.request_id}`);
+      }
+      return;
+    }
+
+    // 3. Roteamento por inferência de título/descrição (quando não há ID explícito)
+    if (titleLower.includes('novo cadastro') || titleLower.includes('aguarda aprovação')) {
+      if (user.roles.includes('admin')) {
+        onNavigate('/admin/usuarios');
+      } else {
+        onNavigate('/perfil');
+      }
+      return;
+    }
+
+    if (titleLower.includes('status do perfil') || titleLower.includes('acesso')) {
+      onNavigate('/perfil');
+      return;
+    }
+
+    if (titleLower.includes('feedback') || titleLower.includes('bug') || titleLower.includes('sugestão') || titleLower.includes('reporte')) {
+      if (user.roles.includes('admin')) {
+        onNavigate('/admin/feedback');
+      }
+      return;
+    }
+
+    if (titleLower.includes('cadastro sap')) {
+      onNavigate('/suprimentos/cadastros-sap');
+      return;
+    }
+
+    if (titleLower.includes('importação') || titleLower.includes('exportação') || titleLower.includes('planilha')) {
+      if (user.roles.includes('admin')) {
+        onNavigate('/admin/importacao-materiais');
+      } else {
+        onNavigate('/materiais/busca');
+      }
+      return;
+    }
+
+    if (titleLower.includes('expedição') || titleLower.includes('carregamento') || descLower.includes('expedição')) {
+      onNavigate('/formularios/logistica-expedicao');
+      return;
+    }
+
+    if (titleLower.includes('ase') || titleLower.includes('hora extra') || descLower.includes('hora extra')) {
+      onNavigate('/formularios/rh-ase-hora-extra');
+      return;
+    }
+
+    if (titleLower.includes('portaria')) {
+      onNavigate('/formularios/portaria');
+      return;
+    }
+
+    if (titleLower.includes('rastreio')) {
+      onNavigate('/rastreio');
+      return;
+    }
+
+    // Fallback padrão se houver número de solicitação mencionado na descrição (ex: #1234567)
+    const numMatch = (notif.title + ' ' + (notif.description || '')).match(/#(\d{7})/);
+    if (numMatch) {
+      const matchReq = localDb.getRequests().find(r => r.number === numMatch[1]);
+      if (matchReq) {
+        if (matchReq.type === 'cadastro_sap') {
+          onNavigate(`/suprimentos/cadastros-sap?id=${matchReq.id}`);
+        } else if (matchReq.type === 'compra' && user.roles.includes('gestor')) {
+          onNavigate(`/solicitacoes/aprovacoes?id=${matchReq.id}`);
+        } else {
+          onNavigate(`/solicitacoes/minhas?id=${matchReq.id}`);
+        }
       }
     }
   };

@@ -61,6 +61,15 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
 
   useEffect(() => {
     carregar();
+    const hash = window.location.hash || '';
+    if (hash.includes('?')) {
+      const params = new URLSearchParams(hash.split('?')[1]);
+      const idParam = params.get('id');
+      if (idParam) {
+        setAbertaId(idParam);
+        setMostrarDetalhes(true);
+      }
+    }
     return localDb.subscribe(carregar);
   }, []);
 
@@ -259,6 +268,77 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 items-start">
         {/* Lista */}
+        <div>
+        {/* Cartões — abaixo de sm a tabela não cabe na tela; cada linha vira um cartão empilhado */}
+        <div className="sm:hidden space-y-2">
+          {filtradas.length === 0 ? (
+            <TableEmpty
+              icon={ClipboardList}
+              title="Nenhuma solicitação encontrada"
+              hint="Ajuste os filtros para ampliar a busca."
+            />
+          ) : (
+            <>
+              <label className="flex items-center gap-2 px-1 py-1 text-[11px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+                <input
+                  type="checkbox"
+                  checked={todasMarcadas}
+                  onChange={alternarTodas}
+                  aria-label="Selecionar todas as solicitações filtradas"
+                  className="cursor-pointer"
+                  style={{ accentColor: 'var(--brand)' }}
+                />
+                Selecionar todas ({filtradas.length})
+              </label>
+              {filtradas.map(r => (
+                <div
+                  key={r.id}
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selecionadas.has(r.id)}
+                      onChange={() => alternar(r.id)}
+                      aria-label={`Selecionar solicitação ${r.number}`}
+                      className="mt-0.5 cursor-pointer"
+                      style={{ accentColor: 'var(--brand)' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAbertaId(r.id)}
+                      className="flex-1 min-w-0 text-left space-y-1.5 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono font-bold text-xs" style={{ color: 'var(--ink-primary)' }}>
+                          #{r.number}
+                        </span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide shrink-0" style={{ color: 'var(--ink-muted)' }}>
+                          {rotuloTipo(r.type)}
+                        </span>
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
+                        {r.solicitante_name}
+                        <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                          {nomeSetor(r.solicitante_sector_id)}
+                        </span>
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                        <span>{rotuloCriticidade(r.criticality)}</span>
+                        <span>{rotuloStatus(r)}</span>
+                        <span className="tabular">{formatDateBR(r.created_at)}</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Tabela — sm e acima */}
+        <div className="hidden sm:block">
         <TableShell>
           <table className="w-full text-left text-xs border-collapse">
             <TableHeadRow>
@@ -322,6 +402,8 @@ export default function Solicitacoes({ user }: SolicitacoesProps) {
             </TableBody>
           </table>
         </TableShell>
+        </div>
+        </div>
 
         {/* Detalhe e resposta */}
         <div>

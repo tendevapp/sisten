@@ -65,7 +65,8 @@ interface TramoCardProps {
   somenteLeitura?: boolean;
   onAlternar: () => void;
   onChange: (patch: Partial<ExpedicaoTramo>) => void;
-  onExcluir: () => void;
+  /** Ausente quando o tramo é o único do carregamento — remover deixaria o carregamento vazio. */
+  onExcluir?: () => void;
   onAnexarFoto: (etapa: EtapaExpedicao, arquivos: FileList) => Promise<void>;
   onExcluirFoto: (foto: ExpedicaoFoto) => Promise<void>;
   /** Aviso parcial de chegada — só a etapa da portaria o oferece. */
@@ -112,7 +113,7 @@ export default function TramoCard({
           />
         </button>
 
-        {!somenteLeitura && (
+        {!somenteLeitura && onExcluir && (
           <button
             type="button"
             onClick={onExcluir}

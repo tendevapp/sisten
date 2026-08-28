@@ -40,6 +40,10 @@ export const PAGES: PageDef[] = [
   { id: 'relatorios', group: 'GERAL', label: 'Relatórios', path: '/relatorios', icon: BarChart3, defaultRoles: '*' },
   { id: 'sobre', group: 'GERAL', label: 'Sobre o SISTEN', path: '/sobre', icon: Info, defaultRoles: '*' },
 
+  // Tela inicial do módulo — no Sidebar o nome do grupo "SOLICITAÇÕES" navega
+  // para cá (ver GROUP_HOME em Sidebar.tsx). O hub é montado a partir das
+  // subpáginas do próprio grupo que o usuário tem acesso.
+  { id: 'solicitacoes_home', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes', icon: ClipboardList, defaultRoles: '*' },
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
   { id: 'sol_minhas', group: 'SOLICITAÇÕES', label: 'Minhas Solicitações', path: '/solicitacoes/minhas', icon: List, defaultRoles: '*' },
   // Fila coletiva: quem opera a fila vê todas as solicitações em aberto,
@@ -50,6 +54,7 @@ export const PAGES: PageDef[] = [
   // engano (Sidebar nunca prometeu isso no menu). Padrão alinhado ao menu.
   { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin'] },
 
+  { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
   { id: 'sup_painel', group: 'SUPRIMENTOS', label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
@@ -62,17 +67,30 @@ export const PAGES: PageDef[] = [
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
 
+  { id: 'almoxarifado_home', group: 'ALMOXARIFADO', label: 'Almoxarifado', path: '/almoxarifado', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
+  // Módulo Facilities — tela inicial (hub) + páginas de cadastro e relatórios
+  // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
+  // nome do grupo "FACILITIES" vira o botão para a tela inicial (ver GROUP_HOME
+  // em Sidebar.tsx); os itens abaixo são as subpáginas expansíveis.
+  { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
+  { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
+
+  { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar_analise', group: 'FINANCEIRO', label: 'Análise', path: '/financeiro/contas-pagar/analise', icon: BarChart3, defaultRoles: ['admin'] },
 
+  // O hub não pode usar `/helpdesk` (já é a tela de Atendimento), então navega
+  // para `/helpdesk/inicio`.
+  { id: 'helpdesk_home', group: 'HELPDESK', label: 'Helpdesk', path: '/helpdesk/inicio', icon: Radio, defaultRoles: ['atendente', 'admin'] },
   { id: 'helpdesk_atendimento', group: 'HELPDESK', label: 'Atendimento', path: '/helpdesk', icon: Radio, defaultRoles: ['atendente', 'admin'] },
   { id: 'helpdesk_relatorios', group: 'HELPDESK', label: 'Relatórios Helpdesk', path: '/helpdesk/relatorios', icon: BarChart3, defaultRoles: ['atendente', 'admin'] },
 
+  { id: 'admin_home', group: 'ADMINISTRAÇÃO', label: 'Administração', path: '/admin', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_uso', group: 'ADMINISTRAÇÃO', label: 'Uso do App', path: '/admin/uso', icon: Activity, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_usuarios', group: 'ADMINISTRAÇÃO', label: 'Usuários', path: '/admin/usuarios', icon: Users, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_cadastros', group: 'ADMINISTRAÇÃO', label: 'Cadastros Gerais', path: '/admin/cadastros', icon: Database, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },

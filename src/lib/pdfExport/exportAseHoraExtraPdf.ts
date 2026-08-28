@@ -534,7 +534,17 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
 
   writer.spacer(14);
 
-  // Definição padronizada de colunas para Transporte e Refeição (50 + 150 + 86 + 50 + 81 + 82 = 499 pt)
+  // Definição padronizada de colunas exclusivas para Transporte (45 + 115 + 155 + 70 + 54 + 60 = 499 pt)
+  const COLS_TRANSP: ColumnDef[] = [
+    { key: 'registro', label: 'MATRÍCULA', width: 45, align: 'center' },
+    { key: 'colaborador_contato', label: 'COLABORADOR / CONTATO', width: 115, align: 'left' },
+    { key: 'rota_ponto', label: 'ROTA / PONTO DE EMBARQUE', width: 155, align: 'left' },
+    { key: 'setor_turno', label: 'SETOR / TURNO', width: 70, align: 'left' },
+    { key: 'horario', label: 'HORÁRIO HE', width: 54, align: 'center' },
+    { key: 'protocolo', label: 'ASE', width: 60, align: 'center' },
+  ];
+
+  // Definição padronizada de colunas para Refeição (50 + 150 + 86 + 50 + 81 + 82 = 499 pt)
   const COLS_SPEC: ColumnDef[] = [
     { key: 'registro', label: 'MATRÍCULA', width: 50, align: 'center' },
     { key: 'colaborador', label: 'COLABORADOR / FUNÇÃO', width: 150, align: 'left' },
@@ -553,7 +563,7 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
     writer.drawTableRow('Nenhum colaborador com solicitação de transporte para esta data.');
     writer.spacer(8);
   } else {
-    const drawSpecHeader = (titleBgColor = rgb(0.12, 0.32, 0.42)) => {
+    const drawTranspHeader = (titleBgColor = rgb(0.12, 0.32, 0.42)) => {
       const page = writer.getPage();
       const currentY = writer.getY();
       const headerHeight = 16;
@@ -567,7 +577,7 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
 
       let curX = MARGIN;
       const textY = currentY - headerHeight + 5;
-      COLS_SPEC.forEach(col => {
+      COLS_TRANSP.forEach(col => {
         const text = sanitizeText(col.label);
         const textWidth = fontBold.widthOfTextAtSize(text, 7);
         let textX = curX + 3;
@@ -580,15 +590,14 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
       writer.setY(currentY - headerHeight);
     };
 
-    drawSpecHeader(rgb(0.12, 0.32, 0.42));
+    drawTranspHeader(rgb(0.12, 0.32, 0.42));
 
     colabsTransporte.forEach((it, idx) => {
-      const hasCargo = Boolean(it.cargo?.trim());
-      const rowHeight = hasCargo ? 24 : 18;
+      const rowHeight = 25;
 
       if (writer.getY() - rowHeight < MARGIN + 25) {
         writer.ensureSpace(rowHeight + 35);
-        drawSpecHeader(rgb(0.12, 0.32, 0.42));
+        drawTranspHeader(rgb(0.12, 0.32, 0.42));
       }
 
       const page = writer.getPage();
@@ -607,7 +616,8 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
       });
 
       let curX = MARGIN;
-      COLS_SPEC.forEach(col => {
+      COLS_TRANSP.forEach(col => {
+        const pad = 3;
         if (col.key === 'registro') {
           const text = sanitizeText(it.registro);
           const textWidth = font.widthOfTextAtSize(text, 7.5);
@@ -618,7 +628,7 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
             font,
             color: rgb(0.2, 0.25, 0.35),
           });
-        } else if (col.key === 'colaborador') {
+        } else if (col.key === 'colaborador_contato') {
           let nomeStr = sanitizeText(it.nome);
           const maxW = col.width - 6;
           if (fontBold.widthOfTextAtSize(nomeStr, 7.5) > maxW) {
@@ -627,80 +637,118 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
             }
             nomeStr += '...';
           }
-          const startY = hasCargo ? rowY + rowHeight - 9 : rowY + (rowHeight / 2) - 3;
           page.drawText(nomeStr, {
-            x: curX + 3,
-            y: startY,
+            x: curX + pad,
+            y: rowY + rowHeight - 9.5,
             size: 7.5,
             font: fontBold,
             color: rgb(0.1, 0.12, 0.18),
           });
-          if (hasCargo) {
-            let cargoStr = sanitizeText(it.cargo || '');
-            if (font.widthOfTextAtSize(cargoStr, 6.5) > maxW) {
-              while (cargoStr.length > 3 && font.widthOfTextAtSize(cargoStr + '...', 6.5) > maxW) {
-                cargoStr = cargoStr.slice(0, -1);
-              }
-              cargoStr += '...';
+
+          let subStr = it.contato_transporte ? `Tel: ${it.contato_transporte}` : (it.cargo || '-');
+          subStr = sanitizeText(subStr);
+          if (font.widthOfTextAtSize(subStr, 6.5) > maxW) {
+            while (subStr.length > 3 && font.widthOfTextAtSize(subStr + '...', 6.5) > maxW) {
+              subStr = subStr.slice(0, -1);
             }
-            page.drawText(cargoStr, {
-              x: curX + 3,
-              y: startY - 8.5,
-              size: 6.5,
-              font,
-              color: rgb(0.42, 0.48, 0.55),
-            });
+            subStr += '...';
           }
-        } else if (col.key === 'setor') {
-          let text = sanitizeText(it.setor_nome);
-          const maxW = col.width - 6;
-          if (font.widthOfTextAtSize(text, 7.5) > maxW) {
-            while (text.length > 3 && font.widthOfTextAtSize(text + '...', 7.5) > maxW) {
-              text = text.slice(0, -1);
-            }
-            text += '...';
-          }
-          page.drawText(text, {
-            x: curX + 3,
-            y: rowY + (rowHeight / 2) - 3,
-            size: 7.5,
+          page.drawText(subStr, {
+            x: curX + pad,
+            y: rowY + 4.5,
+            size: 6.5,
             font,
+            color: it.contato_transporte ? rgb(0.1, 0.45, 0.35) : rgb(0.45, 0.5, 0.58),
+          });
+        } else if (col.key === 'rota_ponto') {
+          const maxW = col.width - 6;
+          let rotaTitulo = it.rota_transporte
+            ? `${it.rota_transporte}${it.horario_embarque_transporte ? ` (${it.horario_embarque_transporte})` : ''}`
+            : 'Rota não definida';
+          rotaTitulo = sanitizeText(rotaTitulo);
+          if (fontBold.widthOfTextAtSize(rotaTitulo, 7.5) > maxW) {
+            while (rotaTitulo.length > 3 && fontBold.widthOfTextAtSize(rotaTitulo + '...', 7.5) > maxW) {
+              rotaTitulo = rotaTitulo.slice(0, -1);
+            }
+            rotaTitulo += '...';
+          }
+          page.drawText(rotaTitulo, {
+            x: curX + pad,
+            y: rowY + rowHeight - 9.5,
+            size: 7.5,
+            font: fontBold,
+            color: it.rota_transporte ? rgb(0.08, 0.32, 0.55) : rgb(0.55, 0.4, 0.2),
+          });
+
+          let pontoStr = it.ponto_embarque_transporte ? sanitizeText(it.ponto_embarque_transporte) : 'Ponto não cadastrado';
+          if (font.widthOfTextAtSize(pontoStr, 6.5) > maxW) {
+            while (pontoStr.length > 3 && font.widthOfTextAtSize(pontoStr + '...', 6.5) > maxW) {
+              pontoStr = pontoStr.slice(0, -1);
+            }
+            pontoStr += '...';
+          }
+          page.drawText(pontoStr, {
+            x: curX + pad,
+            y: rowY + 4.5,
+            size: 6.5,
+            font,
+            color: rgb(0.3, 0.35, 0.42),
+          });
+        } else if (col.key === 'setor_turno') {
+          const maxW = col.width - 6;
+          let setorStr = sanitizeText(it.setor_nome);
+          if (fontBold.widthOfTextAtSize(setorStr, 7) > maxW) {
+            while (setorStr.length > 3 && fontBold.widthOfTextAtSize(setorStr + '...', 7) > maxW) {
+              setorStr = setorStr.slice(0, -1);
+            }
+            setorStr += '...';
+          }
+          page.drawText(setorStr, {
+            x: curX + pad,
+            y: rowY + rowHeight - 9.5,
+            size: 7,
+            font: fontBold,
             color: rgb(0.2, 0.25, 0.35),
           });
-        } else if (col.key === 'turno') {
-          const text = sanitizeText(it.turno_nome);
-          const textWidth = font.widthOfTextAtSize(text, 7.5);
-          page.drawText(text, {
-            x: Math.max(curX + 2, curX + (col.width - textWidth) / 2),
-            y: rowY + (rowHeight / 2) - 3,
-            size: 7.5,
+
+          let turnoStr = sanitizeText(it.turno_nome);
+          if (font.widthOfTextAtSize(turnoStr, 6.5) > maxW) {
+            while (turnoStr.length > 3 && font.widthOfTextAtSize(turnoStr + '...', 6.5) > maxW) {
+              turnoStr = turnoStr.slice(0, -1);
+            }
+            turnoStr += '...';
+          }
+          page.drawText(turnoStr, {
+            x: curX + pad,
+            y: rowY + 4.5,
+            size: 6.5,
             font,
-            color: rgb(0.2, 0.25, 0.35),
+            color: rgb(0.45, 0.5, 0.58),
           });
         } else if (col.key === 'horario') {
           const text = (it.hora_entrada && it.hora_saida) ? `${it.hora_entrada} - ${it.hora_saida}` : '-';
-          const textWidth = font.widthOfTextAtSize(text, 7.5);
+          const textWidth = font.widthOfTextAtSize(text, 7);
           page.drawText(text, {
             x: Math.max(curX + 2, curX + (col.width - textWidth) / 2),
             y: rowY + (rowHeight / 2) - 3,
-            size: 7.5,
+            size: 7,
             font,
             color: rgb(0.15, 0.2, 0.28),
           });
         } else if (col.key === 'protocolo') {
           let protoStr = sanitizeText(it.protocolo_ase);
-          const maxW = col.width - 6;
-          if (fontBold.widthOfTextAtSize(protoStr, 7) > maxW) {
-            while (protoStr.length > 3 && fontBold.widthOfTextAtSize(protoStr + '...', 7) > maxW) {
+          const maxW = col.width - 4;
+          if (fontBold.widthOfTextAtSize(protoStr, 6.5) > maxW) {
+            while (protoStr.length > 3 && fontBold.widthOfTextAtSize(protoStr + '...', 6.5) > maxW) {
               protoStr = protoStr.slice(0, -1);
             }
             protoStr += '...';
           }
-          const textWidth = fontBold.widthOfTextAtSize(protoStr, 7);
+          const textWidth = fontBold.widthOfTextAtSize(protoStr, 6.5);
           page.drawText(protoStr, {
             x: Math.max(curX + 2, curX + (col.width - textWidth) / 2),
             y: rowY + (rowHeight / 2) - 3,
-            size: 7,
+            size: 6.5,
             font: fontBold,
             color: rgb(0.1, 0.2, 0.4),
           });
@@ -1240,6 +1288,7 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
   // Aba 2: Colaboradores Geral
   const colabHeaders = [
     'Protocolo ASE', 'Setor', 'Turno', 'Solicitante', 'Matrícula', 'Colaborador', 'Cargo / Função',
+    'Rota', 'Ponto de Embarque', 'Contato / Tel',
     'Hora Entrada', 'Hora Saída', 'Intervalo (min)', '% Hora Extra', 'Total Horas (h)', 'Transporte', 'Refeição', 'Observação'
   ];
   const colabRows = [
@@ -1254,6 +1303,9 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
       it.registro,
       it.nome,
       it.cargo || '',
+      it.rota_transporte || '',
+      it.ponto_embarque_transporte || '',
+      it.contato_transporte || '',
       it.hora_entrada || '',
       it.hora_saida || '',
       it.intervalo_minutos ?? 0,
@@ -1266,15 +1318,16 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
     [],
     [
       'TOTAL GERAL', '', '', '', '', `${todosColaboradores.length} Colaboradores`, '',
-      '', '', '', '', Number(totalHorasGeral.toFixed(2)), `${colabsTransporte.length} Transp.`, `${colabsRefeicao.length} Ref.`, ''
+      '', '', '', '', '', '', '', Number(totalHorasGeral.toFixed(2)), `${colabsTransporte.length} Transp.`, `${colabsRefeicao.length} Ref.`, ''
     ]
   ];
 
   const wsColabs = XLSX.utils.aoa_to_sheet(colabRows);
   wsColabs['!cols'] = [
     { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 22 }, { wch: 14 },
-    { wch: 30 }, { wch: 24 }, { wch: 13 }, { wch: 13 }, { wch: 15 },
-    { wch: 14 }, { wch: 15 }, { wch: 13 }, { wch: 13 }, { wch: 30 }
+    { wch: 30 }, { wch: 24 }, { wch: 14 }, { wch: 30 }, { wch: 16 },
+    { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 14 }, { wch: 15 },
+    { wch: 13 }, { wch: 13 }, { wch: 30 }
   ];
   XLSX.utils.book_append_sheet(wb, wsColabs, 'Colaboradores Geral');
 
@@ -1283,10 +1336,14 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
     [`PROGRAMAÇÃO DE TRANSPORTE - ${dataFormatada} (${diaSem})`],
     [`TOTAL DE PASSAGEIROS / TRANSPORTES: ${colabsTransporte.length}`],
     [],
-    ['Matrícula', 'Colaborador', 'Cargo / Função', 'Setor', 'Turno', 'Horário HE', 'Protocolo ASE', 'Solicitante', 'Observação'],
+    ['Matrícula', 'Colaborador', 'Contato / Telefone', 'Rota', 'Ponto de Embarque', 'Horário Embarque Rota', 'Cargo / Função', 'Setor', 'Turno', 'Horário HE', 'Protocolo ASE', 'Solicitante', 'Observação'],
     ...colabsTransporte.map(it => [
       it.registro,
       it.nome,
+      it.contato_transporte || '-',
+      it.rota_transporte || '-',
+      it.ponto_embarque_transporte || '-',
+      it.horario_embarque_transporte || '-',
       it.cargo || '',
       it.setor_nome,
       it.turno_nome,
@@ -1296,12 +1353,12 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
       it.observacao || '',
     ]),
     [],
-    ['TOTAL', `${colabsTransporte.length} passageiro(s)`, '', '', '', '', '', '', '']
+    ['TOTAL', `${colabsTransporte.length} passageiro(s)`, '', '', '', '', '', '', '', '', '', '', '']
   ];
 
   const wsTransp = XLSX.utils.aoa_to_sheet(transpRows);
   wsTransp['!cols'] = [
-    { wch: 14 }, { wch: 30 }, { wch: 24 }, { wch: 20 }, { wch: 15 },
+    { wch: 14 }, { wch: 30 }, { wch: 18 }, { wch: 15 }, { wch: 35 }, { wch: 16 }, { wch: 24 }, { wch: 20 }, { wch: 15 },
     { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 30 }
   ];
   XLSX.utils.book_append_sheet(wb, wsTransp, 'Transporte');

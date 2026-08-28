@@ -25,19 +25,77 @@ export interface RhImportSummary {
   atualizados: number;
 }
 
+let cacheMapaRotas: Map<string, RhRota> | null = null;
+let cacheMapaRotasExpira = 0;
+
+/** Carrega mapa em memoria de rotas por funcionario normalizado para vinculacao rapida. */
+export async function carregarMapaRotas(forcar = false): Promise<Map<string, RhRota>> {
+  const agora = Date.now();
+  if (!forcar && cacheMapaRotas && agora < cacheMapaRotasExpira) {
+    return cacheMapaRotas;
+  }
+  try {
+    const rotas = await listarRhRotas();
+    const mapa = new Map<string, RhRota>();
+    rotas.forEach(r => {
+      if (!r.funcionario) return;
+      const chave = r.funcionario
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+      // Prioriza rotas regulares sobre 'Rota Turno' se houver duplicidade
+      if (!mapa.has(chave) || r.rota !== 'Rota Turno') {
+        mapa.set(chave, r);
+      }
+    });
+    cacheMapaRotas = mapa;
+    cacheMapaRotasExpira = agora + 60000;
+    return mapa;
+  } catch (err) {
+    console.warn('Erro ao carregar mapa de rotas:', err);
+    return cacheMapaRotas || new Map();
+  }
+}
+
 /**
  * PostgREST serializa colunas `numeric`/`decimal` como string (evita perda de
  * precisão em ponto flutuante) — sem essa normalização, `percentual_he` e
  * `total_horas` chegam como `"60.00"` e quebram `.toFixed()`/somas em cascata
  * na tela (`"0" + "60.00"` vira concatenação, não soma).
+ * Também resolve rota, ponto de embarque e contato do colaborador a partir do mapa ou da view.
  */
-function normalizarItem(raw: any): AseHoraExtraItem {
+export function normalizarItem(raw: any, rotasMap?: Map<string, RhRota>): AseHoraExtraItem {
+  let rota = raw.rota_transporte ?? null;
+  let ponto = raw.ponto_embarque_transporte ?? null;
+  let horario = raw.horario_embarque_transporte ?? null;
+  let contato = raw.contato_transporte ?? null;
+
+  if (raw.nome && rotasMap) {
+    const chave = String(raw.nome)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    const r = rotasMap.get(chave);
+    if (r) {
+      rota = rota || r.rota;
+      ponto = ponto || r.ponto_embarque;
+      horario = horario || r.horario;
+      contato = contato || r.contato;
+    }
+  }
+
   return {
     ...raw,
     hora_entrada: raw.hora_entrada ? String(raw.hora_entrada).slice(0, 5) : '',
     hora_saida: raw.hora_saida ? String(raw.hora_saida).slice(0, 5) : '',
     percentual_he: raw.percentual_he == null ? null : Number(raw.percentual_he),
     total_horas: raw.total_horas == null ? null : Number(raw.total_horas),
+    rota_transporte: rota,
+    ponto_embarque_transporte: ponto,
+    horario_embarque_transporte: horario,
+    contato_transporte: contato,
   };
 }
 
@@ -89,7 +147,7 @@ export async function buscarPercentualHE(dia: string): Promise<number | null> {
 }
 
 export async function listarRhRotas(filtroRota?: string): Promise<RhRota[]> {
-  let query = supabase.from('rh_rotas').select('*').order('rota').order('horario');
+  let query = (supabase as any).from('rh_rotas').select('*').order('rota').order('horario');
   if (filtroRota) {
     query = query.eq('rota', filtroRota);
   }
@@ -100,7 +158,7 @@ export async function listarRhRotas(filtroRota?: string): Promise<RhRota[]> {
 
 export async function buscarRotaPorFuncionario(nomeFuncionario: string): Promise<RhRota | null> {
   if (!nomeFuncionario || !nomeFuncionario.trim()) return null;
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('rh_rotas')
     .select('*')
     .ilike('funcionario', `%${nomeFuncionario.trim()}%`)
@@ -118,7 +176,7 @@ export async function criarRhRota(dados: {
   contato?: string | null;
   rota: string;
 }): Promise<RhRota> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('rh_rotas')
     .insert({
       funcionario: dados.funcionario.trim(),
@@ -138,7 +196,7 @@ export async function atualizarRhRota(
   id: string,
   patch: Partial<Pick<RhRota, 'funcionario' | 'ponto_embarque' | 'horario' | 'contato' | 'rota' | 'ativo'>>,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await (supabase as any)
     .from('rh_rotas')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id);
@@ -146,7 +204,7 @@ export async function atualizarRhRota(
 }
 
 export async function excluirRhRota(id: string): Promise<void> {
-  const { error } = await supabase.from('rh_rotas').delete().eq('id', id);
+  const { error } = await (supabase as any).from('rh_rotas').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -170,11 +228,11 @@ async function upsertEmLotes<T extends Record<string, any>>(
     const batchNum = Math.floor(i / BATCH_SIZE) + 1;
     onProgress?.(Math.round((i / linhas.length) * 90), `Importando ${tabela} (lote ${batchNum}/${totalBatches})...`);
 
-    const { data: existentes, error: selErr } = await supabase.from(tabela).select(onConflict).in(onConflict, chunkChaves);
+    const { data: existentes, error: selErr } = await (supabase as any).from(tabela).select(onConflict).in(onConflict, chunkChaves);
     if (selErr) throw new Error(selErr.message);
     const existentesSet = new Set((existentes || []).map((r: any) => r[onConflict]));
 
-    const { error: upErr } = await supabase.from(tabela).upsert(chunk, { onConflict });
+    const { error: upErr } = await (supabase as any).from(tabela).upsert(chunk, { onConflict });
     if (upErr) throw new Error(upErr.message);
 
     const novos = chunkChaves.filter(c => !existentesSet.has(c)).length;
@@ -402,6 +460,7 @@ export function gerarProtocoloAse(dataISO?: string | null, nomeSetor?: string | 
 }
 
 export async function listarSolicitacoesASE(): Promise<AseHoraExtraCompleta[]> {
+  const rotasMapPromise = carregarMapaRotas();
   const { data, error } = await supabase
     .from('rh_ase_solicitacoes')
     .select(`
@@ -415,17 +474,19 @@ export async function listarSolicitacoesASE(): Promise<AseHoraExtraCompleta[]> {
     .limit(300);
 
   if (error) throw new Error(error.message);
+  const rotasMap = await rotasMapPromise;
 
   return (data || []).map((row: any) => ({
     ...row,
     setor_nome: row.setor?.nome ?? null,
     turno_nome: row.turno?.nome ?? null,
     solicitante_nome: row.solicitante?.name ?? null,
-    itens: (row.itens || []).map(normalizarItem),
+    itens: (row.itens || []).map((it: any) => normalizarItem(it, rotasMap)),
   })) as AseHoraExtraCompleta[];
 }
 
 export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompleta | null> {
+  const rotasMapPromise = carregarMapaRotas();
   const { data, error } = await supabase
     .from('rh_ase_solicitacoes')
     .select(`
@@ -441,13 +502,14 @@ export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompl
   if (error) throw new Error(error.message);
   if (!data) return null;
 
+  const rotasMap = await rotasMapPromise;
   const row = data as any;
   return {
     ...row,
     setor_nome: row.setor?.nome ?? null,
     turno_nome: row.turno?.nome ?? null,
     solicitante_nome: row.solicitante?.name ?? null,
-    itens: (row.itens || []).map(normalizarItem),
+    itens: (row.itens || []).map((it: any) => normalizarItem(it, rotasMap)),
   } as AseHoraExtraCompleta;
 }
 
@@ -515,13 +577,15 @@ function limparItemParaDb(item: Partial<ItemEditavel>) {
 }
 
 export async function adicionarItemASE(solicitacaoId: string, item: ItemEditavel): Promise<AseHoraExtraItem> {
+  const rotasMapPromise = carregarMapaRotas();
   const { data, error } = await supabase
     .from('rh_ase_itens')
     .insert({ solicitacao_id: solicitacaoId, ...limparItemParaDb(item) })
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return normalizarItem(data);
+  const rotasMap = await rotasMapPromise;
+  return normalizarItem(data, rotasMap);
 }
 
 export async function atualizarItemASE(id: string, patch: Partial<ItemEditavel>): Promise<void> {
