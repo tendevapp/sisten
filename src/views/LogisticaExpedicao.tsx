@@ -25,8 +25,8 @@ import type {
 } from '../types';
 import * as api from '../lib/expedicaoApi';
 import {
-  ASSUNTO_PADRAO, assuntoChegada, cabeNoMailto,
-  montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
+  ASSUNTO_CHEGADA_PADRAO, ASSUNTO_PADRAO, cabeNoMailto,
+  montarAssuntoExpedicao, montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
 } from '../lib/expedicaoEmail';
 import type { FotoComUrl } from '../lib/expedicaoEmail';
 import { obterConfigEmail } from '../lib/emailConfigApi';
@@ -67,11 +67,18 @@ export default function LogisticaExpedicao({ user, onNavigate }: Props) {
 function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
   const toast = useToast();
   const [itens, setItens] = useState<ExpedicaoCarregamentoResumo[] | null>(null);
+  const [sequencias, setSequencias] = useState<Record<string, number>>({});
   const [criando, setCriando] = useState(false);
 
   const recarregar = useCallback(async () => {
     try {
-      setItens(await api.listarCarregamentos());
+      const [lista, seq] = await Promise.all([
+        api.listarCarregamentos(),
+        // A numeracao e acessoria: se falhar, a lista continua util sem ela.
+        api.listarSequenciasTramo().catch(() => ({} as Record<string, number>)),
+      ]);
+      setItens(lista);
+      setSequencias(seq);
     } catch (e) {
       toast.error(`Falha ao carregar a lista: ${(e as Error).message}`);
       setItens([]);
@@ -146,6 +153,10 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             // título, antes da transportadora. Carregamentos antigos podem ter
             // mais de um; os novos, sempre exatamente um.
             const rotuloTramos = c.tramos.map(t => t.tramo).join(' + ');
+            // Distingue os carregamentos que, sem ela, teriam título idêntico:
+            // "1º T4 - TRANSPES" e "2º T4 - TRANSPES".
+            const ordinal = sequencias[c.id];
+            const prefixo = [ordinal ? `${ordinal}º` : '', rotuloTramos].filter(Boolean).join(' ');
             return (
               <li key={c.id}>
                 <button
@@ -166,8 +177,8 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                     </div>
 
                     <p className="mt-1 flex items-baseline gap-1.5 text-base font-bold text-slate-900 dark:text-slate-50">
-                      {rotuloTramos && (
-                        <span className="shrink-0 text-blue-600 dark:text-blue-400">{rotuloTramos} -</span>
+                      {prefixo && (
+                        <span className="shrink-0 text-blue-600 dark:text-blue-400">{prefixo} -</span>
                       )}
                       <span className="truncate">{c.empresa?.trim() || 'Empresa não informada'}</span>
                     </p>
@@ -222,6 +233,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | null
   >(null);
   const [excluindo, setExcluindo] = useState(false);
+  /** Posição do carregamento na sequência do seu tramo — vai no assunto do e-mail. */
+  const [sequencia, setSequencia] = useState<number | null>(null);
 
   const timerAutoSaveRef = useRef<NodeJS.Timeout | null>(null);
   const dadosRef = useRef<ExpedicaoCarregamentoCompleto | null>(dados);
@@ -251,6 +264,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         setAbertos(carregamento.tramos.length === 1 ? { [carregamento.tramos[0].id]: true } : {});
       })
       .catch(e => { if (ativo) setErro((e as Error).message); });
+
+    // Acessória ao formulário: só compõe o assunto do e-mail, então uma falha
+    // aqui não pode impedir a tela de abrir.
+    api.listarSequenciasTramo()
+      .then(seq => { if (ativo) setSequencia(seq[id] ?? null); })
+      .catch(() => { /* assunto sai sem a sequência */ });
+
     return () => { ativo = false; };
   }, [id]);
 
@@ -473,9 +493,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         tramo,
         fotos: await assinarFotos(dados.fotos.filter(f => f.tramo_id === tramoId)),
       });
-      const assunto = configChegada?.assunto_padrao
-        ? `${configChegada.assunto_padrao} - ${tramo.tramo}${dados.empresa ? ` ${dados.empresa.trim()}` : ''}`
-        : assuntoChegada(dados.empresa, tramo.tramo);
+      const assunto = montarAssuntoExpedicao({
+        prefixo: configChegada?.assunto_padrao || ASSUNTO_CHEGADA_PADRAO,
+        sequencia,
+        tramo: tramo.tramo,
+        carretaPlaca: tramo.carreta_placa,
+      });
 
       await abrirOutlook(assunto, corpo, {
         destinatario: configChegada?.destinatarios,
@@ -509,7 +532,16 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         fotos: await assinarFotos(dados.fotos),
       });
 
-      const assunto = configTramos?.assunto_padrao || ASSUNTO_PADRAO;
+      // Nos carregamentos novos há um tramo só; nos antigos, os rótulos e as
+      // placas entram juntos para o assunto seguir identificando o caminhão.
+      const assunto = montarAssuntoExpedicao({
+        prefixo: configTramos?.assunto_padrao || ASSUNTO_PADRAO,
+        sequencia,
+        tramo: dados.tramos.map(t => t.tramo).join(' + '),
+        carretaPlaca: [...new Set(
+          dados.tramos.map(t => (t.carreta_placa || '').trim().toUpperCase()).filter(Boolean),
+        )].join(' + '),
+      });
 
       await abrirOutlook(assunto, corpo, {
         destinatario: configTramos?.destinatarios,

@@ -14,7 +14,9 @@ import { formatDateBR } from './format';
 import type { EtapaExpedicao, ExpedicaoFoto, ExpedicaoTramo } from '../types';
 
 export const DESTINATARIO_PADRAO = 'andre.araujo@ten.ind.br';
-export const ASSUNTO_PADRAO = 'Carregamento Tramos';
+export const ASSUNTO_PADRAO = 'Expedição Final';
+/** Prefixo do aviso parcial — distinto do final, para o destinatário não confundir os dois. */
+export const ASSUNTO_CHEGADA_PADRAO = 'Chegada Expedição';
 
 /**
  * Teto conservador para o `mailto:` já codificado. O protocolo não define
@@ -216,10 +218,28 @@ export function montarCorpoEmailChegada(params: {
   return linhas.join('\n');
 }
 
-/** Assunto do aviso parcial — distinto do final, para o destinatário não confundir os dois. */
-export function assuntoChegada(empresa: string, tramo: string): string {
-  const e = (empresa || '').trim();
-  return `Chegada na portaria - ${tramo}${e ? ` ${e}` : ''}`;
+/**
+ * Assunto dos dois e-mails da expedição, no formato que a equipe lê na caixa
+ * de entrada: `Chegada Expedição 2º T4 - ABC1D23`.
+ *
+ * O prefixo vem do cadastro de e-mails, então continua editável sem mexer no
+ * código; o resto identifica o caminhão — sequência, tramo e placa da carreta,
+ * na mesma leitura do card da lista. Cada parte some se faltar o dado, para o
+ * assunto nunca sair com hífen solto ou `undefined`.
+ */
+export function montarAssuntoExpedicao(params: {
+  prefixo: string;
+  sequencia?: number | null;
+  tramo?: string | null;
+  carretaPlaca?: string | null;
+}): string {
+  const identificacao = [
+    params.sequencia ? `${params.sequencia}º` : '',
+    (params.tramo || '').trim(),
+  ].filter(Boolean).join(' ');
+  const placa = (params.carretaPlaca || '').trim().toUpperCase();
+
+  return [`${params.prefixo.trim()} ${identificacao}`.trim(), placa].filter(Boolean).join(' - ');
 }
 
 /** URL `mailto:` completa, com quebras de linha em CRLF (o que o Outlook espera). */

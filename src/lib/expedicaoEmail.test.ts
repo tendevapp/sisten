@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  listarTramos, montarCorpoEmail, montarCorpoEmailChegada, assuntoChegada,
+  listarTramos, montarCorpoEmail, montarCorpoEmailChegada, montarAssuntoExpedicao,
   montarMailto, cabeNoMailto, LIMITE_MAILTO,
 } from './expedicaoEmail';
 import type { ExpedicaoTramo } from '../types';
@@ -220,8 +220,33 @@ describe('montarCorpoEmailChegada', () => {
   });
 
   it('usa assunto próprio, para o parcial não se confundir com o e-mail final', () => {
-    expect(assuntoChegada('TRANSMAQUINAS', 'T1')).toBe('Chegada na portaria - T1 TRANSMAQUINAS');
-    expect(assuntoChegada('', 'T4')).toBe('Chegada na portaria - T4');
+    expect(montarAssuntoExpedicao({
+      prefixo: 'Chegada Expedição', sequencia: 2, tramo: 'T4', carretaPlaca: 'ABC1D23',
+    })).toBe('Chegada Expedição 2º T4 - ABC1D23');
+  });
+});
+
+describe('montarAssuntoExpedicao', () => {
+  it('identifica o caminhão com sequência, tramo e placa', () => {
+    expect(montarAssuntoExpedicao({
+      prefixo: 'Expedição Final', sequencia: 1, tramo: 'T1', carretaPlaca: 'xyz9k88',
+    })).toBe('Expedição Final 1º T1 - XYZ9K88');
+  });
+
+  it('omite a sequência enquanto ela não é conhecida', () => {
+    expect(montarAssuntoExpedicao({
+      prefixo: 'Chegada Expedição', sequencia: null, tramo: 'T4', carretaPlaca: 'ABC1D23',
+    })).toBe('Chegada Expedição T4 - ABC1D23');
+  });
+
+  it('não deixa hífen solto quando a carreta ainda não tem placa', () => {
+    expect(montarAssuntoExpedicao({
+      prefixo: 'Chegada Expedição', sequencia: 3, tramo: 'T2', carretaPlaca: '  ',
+    })).toBe('Chegada Expedição 3º T2');
+  });
+
+  it('sobrevive a um carregamento sem tramo nem placa', () => {
+    expect(montarAssuntoExpedicao({ prefixo: 'Expedição Final' })).toBe('Expedição Final');
   });
 });
 
@@ -229,7 +254,7 @@ describe('montarMailto', () => {
   it('endereça o destinatário e o assunto padrão e usa CRLF no corpo', () => {
     const url = montarMailto({ corpo: 'linha 1\nlinha 2' });
     expect(url.startsWith('mailto:andre.araujo%40ten.ind.br')).toBe(true);
-    expect(url).toContain('subject=Carregamento%20Tramos');
+    expect(url).toContain('subject=Expedi%C3%A7%C3%A3o%20Final');
     expect(url).toContain('linha%201%0D%0Alinha%202');
   });
 

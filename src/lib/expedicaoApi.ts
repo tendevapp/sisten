@@ -68,6 +68,50 @@ export async function listarCarregamentos(): Promise<ExpedicaoCarregamentoResumo
   })) as ExpedicaoCarregamentoResumo[];
 }
 
+/**
+ * Numera cada carregamento dentro da sua sequencia historica de tramo +
+ * transportadora — o "1o T4 - TRANSPES", "2o T4 - TRANSPES" da lista.
+ *
+ * Vai numa consulta propria, enxuta, porque `listarCarregamentos` para nos 200
+ * mais recentes: a posicao de um carregamento depende de todos os que vieram
+ * antes dele, inclusive os que a lista nao mostra mais.
+ *
+ * A ordem e a data do tramo — o dado que a equipe controla — com o instante de
+ * criacao como desempate entre dois do mesmo dia.
+ */
+export async function listarSequenciasTramo(): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('expedicao_carregamentos')
+    .select(`
+      id, empresa, created_at,
+      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (tramo, ordem, data)
+    `);
+
+  if (error) throw new Error(error.message);
+
+  const linhas = (data || []).map((row: any) => {
+    const tramos = (row.tramos || []).slice().sort((a: any, b: any) => a.ordem - b.ordem);
+    return {
+      id: row.id as string,
+      // Os carregamentos antigos podem ter mais de um tramo; a chave usa o
+      // rotulo inteiro para bater com o que o titulo do card mostra.
+      chave: `${tramos.map((t: any) => t.tramo).join(' + ')}|${(row.empresa || '').trim().toUpperCase()}`,
+      data: (tramos[0]?.data as string | null) || row.created_at,
+      criadoEm: row.created_at as string,
+    };
+  });
+
+  linhas.sort((a, b) => (a.data === b.data ? a.criadoEm.localeCompare(b.criadoEm) : a.data.localeCompare(b.data)));
+
+  const contador: Record<string, number> = {};
+  const sequencias: Record<string, number> = {};
+  for (const linha of linhas) {
+    contador[linha.chave] = (contador[linha.chave] || 0) + 1;
+    sequencias[linha.id] = contador[linha.chave];
+  }
+  return sequencias;
+}
+
 export async function obterCarregamento(id: string): Promise<ExpedicaoCarregamentoCompleto | null> {
   const { data, error } = await supabase
     .from('expedicao_carregamentos')
