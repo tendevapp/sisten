@@ -1628,20 +1628,60 @@ export interface PortControleCarreta {
   updated_at: string;
 }
 
-// 4. Relatório de Portaria (FRM.SGP-0010)
+// 4. Relatório de Ocorrências da Portaria (FRM.SGP-0010)
 export type PortRelatorioStatus = 'EM_ANDAMENTO' | 'CONCLUIDO' | 'PASSADO' | 'CANCELADO';
 export type PortLocalSetor = 'PORTARIA' | 'RONDA_01' | 'RONDA_02' | 'PATIO_CHAPAS' | 'PATIO_TRAMOS' | 'FABRICA' | 'OUTRO';
 export type PortSeveridade = 'INFO' | 'ALERTA' | 'GRAVE';
+
+export type PortTipoRegistroOcorrencia =
+  | 'ENTRADA_VEICULO'      // Veículo / Fornecedor / Prestador (com saída pendente)
+  | 'ENTRADA_VISITANTE'    // Visitante / Terceiro a Pé (com saída pendente)
+  | 'SAIDA_COLABORADOR'    // Saída Temporária de Colaborador TEN (com retorno pendente)
+  | 'RONDA_PATRIMONIAL'    // Ronda Patrimonial (texto livre + foto)
+  | 'OCORRENCIA_GERAL'     // Ocorrência / Alerta / Evento (texto livre + foto)
+  | 'OUTRO_REGISTRO';      // Outro Registro Geral (texto livre + foto)
+
+export type PortStatusPermanencia = 'NO_PATIO' | 'FINALIZADO' | 'AGUARDANDO_RETORNO' | 'NAO_APLICA';
+
+export interface PortPessoaVeiculoHistorico {
+  id?: string;
+  nome: string;
+  empresa: string;
+  cpf?: string;
+  cnh?: string;
+  placa?: string;
+  placa_cavalo?: string;
+  placa_carreta?: string;
+  tipo_padrao?: PortTipoRegistroOcorrencia;
+  funcao?: string;
+  ultimo_acesso?: string;
+}
 
 export interface PortRelatorioOcorrencia {
   id: string;
   relatorio_id: string;
   horario: string;
+  hora_saida?: string | null;
+  vigilante_saida?: string | null;
+  tipo_registro?: PortTipoRegistroOcorrencia;
+  status_permanencia?: PortStatusPermanencia;
   local_setor: PortLocalSetor;
   descricao: string;
   severidade: PortSeveridade;
   vigilante: string;
+  foto_url?: string | null;
+  // Campos estruturados para reabertura e rastreio
+  empresa?: string;
+  nome_pessoa?: string;
+  documento_cpf?: string;
+  documento_cnh?: string;
+  placa?: string;
+  autorizado_por?: string;
+  fara_briefing?: boolean;
+  motivo_observacao?: string;
+  pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
   created_at: string;
+  updated_at?: string;
 }
 
 export interface PortRelatorioPortaria {
@@ -1676,6 +1716,8 @@ export interface PortBriefingParticipante {
   cpf: string;
   funcao: string;
   assinatura_digital: string | null;
+  hora_assinatura?: string | null;
+  status_assinatura?: 'PENDENTE' | 'ASSINADA';
   validade_dias: number;
   created_at: string;
 }
@@ -1698,6 +1740,58 @@ export interface PortBriefingSessao {
   participantes?: PortBriefingParticipante[];
 }
 
+// 6. Materiais de Segurança Patrimonial & Passagem de Plantão (FRM.SGP-0010)
+export type PortMaterialCategoria = 'ARMAMENTO' | 'PROTECAO' | 'COMUNICACAO' | 'MUNICAO' | 'EQUIPAMENTO';
+
+export interface PortMaterialSeguranca {
+  id: string;
+  nome: string;
+  quantidade_padrao: number;
+  unidade: string;
+  categoria: PortMaterialCategoria;
+  ativo: boolean;
+  ordem: number;
+  observacoes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortItemConferido {
+  material_id?: string;
+  nome: string;
+  quantidade_esperada: number;
+  unidade: string;
+  categoria?: PortMaterialCategoria;
+  conferido: boolean;
+  quantidade_conferida?: number;
+  observacao?: string;
+}
+
+export type PortPassagemPlantaoStatus = 'EM_ANDAMENTO' | 'CONCLUIDO';
+
+export interface PortPassagemPlantao {
+  id: string;
+  numero_protocolo: string;
+  codigo_formulario: string;
+  data: string;
+  turno: string;
+  horario_inicio: string;
+  horario_fim: string;
+  vigilante_preenchedor: string;
+  vigilante_portaria: string;
+  vigilante_ronda01: string | null;
+  vigilante_ronda02: string | null;
+  vigilante_anterior01: string | null;
+  vigilante_anterior02: string | null;
+  texto_declaracao: string | null;
+  itens_conferidos: PortItemConferido[];
+  status: PortPassagemPlantaoStatus;
+  observacoes: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // 6. Cadastro de Vigilantes (Portaria)
 export interface PortVigilante {
   id: string;
@@ -1706,6 +1800,8 @@ export interface PortVigilante {
   empresa: string;
   funcao: string;
   turno_preferencial: string | null;
+  data_admissao?: string | null;
+  data_nascimento?: string | null;
   ativo: boolean;
   observacoes: string | null;
   criado_por?: string | null;

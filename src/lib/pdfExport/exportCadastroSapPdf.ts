@@ -1,6 +1,8 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Exportação em PDF executivo de Solicitação de Cadastro SAP (FRM.CAD-0001).
  */
 
 import { Request, RequestAttachment } from '../../types';
@@ -10,12 +12,6 @@ export interface ExportCadastroSapPdfResult {
   failedAttachments: string[];
 }
 
-/**
- * Nome/Especificações de um cadastro tipo Item são compostos num único texto
- * em `justificativa` na criação (ver handleSubmit em NewRequest.tsx), porque
- * o Request não tem campos próprios pra eles — mesmo parse reverso usado lá
- * pro modo de edição.
- */
 function parseNomeEspecificacoes(request: Request): { nome: string; especificacoes: string } {
   const texto = request.justificativa || '';
   const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: [\s\S]*$/);
@@ -24,25 +20,77 @@ function parseNomeEspecificacoes(request: Request): { nome: string; especificaco
   const fornecedorMatch = texto.match(/^Nome: (.*?)\. Justificativa: [\s\S]*$/);
   if (fornecedorMatch) return { nome: fornecedorMatch[1], especificacoes: '-' };
 
-  // Dado antigo/fora do padrão esperado: melhor mostrar o texto bruto do que
-  // nada, já que não há como separar as partes.
   return { nome: texto || '-', especificacoes: '-' };
 }
 
-export async function exportCadastroSapPdf(request: Request, sectorName: string, attachments: RequestAttachment[]): Promise<ExportCadastroSapPdfResult> {
+export async function exportCadastroSapPdf(
+  request: Request,
+  sectorName: string,
+  attachments: RequestAttachment[]
+): Promise<ExportCadastroSapPdfResult> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
   const isFornecedor = request.registration_type === 'Fornecedor';
   const { nome, especificacoes } = parseNomeEspecificacoes(request);
 
-  writer.drawTitle(`Solicitação de Cadastro SAP #${request.number}`);
-  writer.drawField(isFornecedor ? 'Razão Social / Nome Fantasia' : 'Nome / Descrição Curta', nome);
-  writer.drawField(isFornecedor ? 'CNPJ / Site Corporativo' : 'Fabricante', request.brand || '-');
-  if (!isFornecedor) {
-    writer.drawField('Especificações Técnicas', especificacoes);
+  writer.drawDocumentHeader({
+    title: `Solicitação de Cadastro SAP #${request.number}`,
+    formCode: 'FRM.CAD-0001 (Rev. 01)',
+    protocol: `SAP-${request.number}`,
+    statusBadge: isFornecedor ? 'CADASTRO FORNECEDOR' : 'CADASTRO MATERIAL',
+    statusColor: 'blue',
+  });
+
+  writer.drawInfoGrid([
+    { label: 'Tipo de Cadastro', value: request.registration_type || 'Material' },
+    { label: 'Solicitante', value: request.solicitante_name },
+    { label: 'Setor Solicitante', value: sectorName },
+    { label: 'Data de Abertura', value: new Date(request.created_at).toLocaleString('pt-BR') },
+    { label: isFornecedor ? 'Razão Social / Nome Fantasia' : 'Nome / Descrição Curta', value: nome },
+    { label: isFornecedor ? 'CNPJ / Site Corporativo' : 'Fabricante / Marca', value: request.brand || '-' },
+  ], 2);
+
+  if (!isFornecedor && especificacoes && especificacoes !== '-') {
+    writer.drawSectionHeader('Especificações Técnicas');
+    writer.drawCallout('Detalhes do Material', especificacoes);
   }
 
-  const failedAttachments = await embedAttachments(doc, attachments);
+  if (request.justificativa) {
+    writer.drawSectionHeader('Justificativa da Solicitação');
+    writer.drawCallout('Justificativa', request.justificativa);
+  }
+
+  writer.drawSignatures([
+    { role: 'Solicitante', name: request.solicitante_name },
+    { role: 'Analista de Cadastro SAP' },
+  ]);
+
+  const failedAttachments: string[] = [];
+  const photoAttachments: { title: string; reference: string; source: string; description?: string }[] = [];
+  const pdfAttachments: RequestAttachment[] = [];
+
+  for (const att of attachments) {
+    if (att.mime_type?.startsWith('image/')) {
+      photoAttachments.push({
+        title: `Anexo de Cadastro SAP #${request.number}`,
+        reference: `Cadastro: ${nome} · ${isFornecedor ? 'Fornecedor' : 'Material'} · Solicitante: ${request.solicitante_name}`,
+        source: att.storage_path || att.url,
+        description: `Arquivo: ${att.name}`,
+      });
+    } else {
+      pdfAttachments.push(att);
+    }
+  }
+
+  if (photoAttachments.length > 0) {
+    await writer.drawPhotoAttachments(photoAttachments);
+  }
+
+  if (pdfAttachments.length > 0) {
+    failedAttachments.push(...(await embedAttachments(doc, pdfAttachments)));
+  }
+
+  writer.finalizeDoc('FRM.CAD-0001');
   await downloadPdf(doc, `cadastro-sap-${request.number}.pdf`);
 
   return { failedAttachments };

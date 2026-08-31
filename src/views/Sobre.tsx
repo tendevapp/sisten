@@ -86,11 +86,11 @@ const ETAPAS: (Modulo & { etapa: string })[] = [
   },
   {
     etapa: 'Comprar',
-    label: 'Painel SAP',
-    path: '/suprimentos/painel',
-    icon: Database,
-    desc: 'Suprimentos trata a requisição no painel, negocia com o fornecedor e emite o pedido de compra.',
-    acesso: { module: 'sap', action: 'visualizar_painel' },
+    label: 'Central Compras',
+    path: '/suprimentos/compras',
+    icon: PackageSearch,
+    desc: 'Suprimentos trata a requisição, cota com os fornecedores e acompanha até a emissão do pedido de compra.',
+    acesso: { module: 'sap', action: 'fornecedores' },
   },
   {
     etapa: 'Receber',
@@ -107,7 +107,7 @@ const MODULOS: { grupo: string; itens: Modulo[] }[] = [
     grupo: 'Suprimentos',
     itens: [
       {
-        label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch,
+        label: 'Central Compras', path: '/suprimentos/compras', icon: PackageSearch,
         desc: 'Requisições que ainda não viraram pedido, agrupadas por fornecedor.',
         acesso: { module: 'sap', action: 'fornecedores' },
       },

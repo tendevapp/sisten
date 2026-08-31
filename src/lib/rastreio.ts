@@ -238,16 +238,59 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
   });
 }
 
+// Compara dois números de PO (ordem numérica, tolerando prefixos/zeros à
+// esquerda). Item ainda sem PO vai sempre para o fim — a conferência física
+// gira em torno do pedido, então quem não tem pedido não disputa a ordem.
+export function comparePo(a: string, b: string): number {
+  const va = hasValue(a) ? a.trim() : '';
+  const vb = hasValue(b) ? b.trim() : '';
+  if (!va && !vb) return 0;
+  if (!va) return 1;
+  if (!vb) return -1;
+  return va.localeCompare(vb, 'pt-BR', { numeric: true });
+}
+
 // Ordenação padrão: registros sem entrega (sem MIGO) primeiro — são os que
 // precisam de acompanhamento —, seguidos dos já entregues; em cada grupo,
-// ordena por descrição crescente.
+// ordena por PO (itens do mesmo pedido ficam juntos, que é como a chegada
+// física é conferida) e, dentro do PO, por RM/item.
 export function defaultSort(rows: RastreioRow[]): RastreioRow[] {
   return [...rows].sort((a, b) => {
     const aEntregue = hasValue(a.dataEntrega);
     const bEntregue = hasValue(b.dataEntrega);
     if (aEntregue !== bEntregue) return aEntregue ? 1 : -1;
-    return a.descricao.localeCompare(b.descricao, 'pt-BR', { numeric: true });
+    const porPo = comparePo(a.po, b.po);
+    if (porPo !== 0) return porPo;
+    return `${a.rm} ${a.item}`.localeCompare(`${b.rm} ${b.item}`, 'pt-BR', { numeric: true });
   });
+}
+
+// Bloco de itens de um mesmo pedido, usado no cronograma para desenhar o
+// grupo e oferecer a confirmação de chegada do PO inteiro de uma vez.
+export interface PoGroup {
+  po: string;           // EMPTY ('—') quando o item ainda não tem pedido
+  fornecedor: string;   // fornecedor do pedido (primeiro item que o informa)
+  rows: RastreioRow[];
+}
+
+// Agrupa linhas por PO, na ordem do número do pedido; itens sem PO caem em um
+// último grupo com `po === EMPTY`. Dentro do grupo, ordena por RM/item.
+export function groupRowsByPo(rows: RastreioRow[]): PoGroup[] {
+  const mapa = new Map<string, RastreioRow[]>();
+  rows.forEach(r => {
+    const chave = hasValue(r.po) ? r.po.trim() : EMPTY;
+    const lista = mapa.get(chave);
+    if (lista) lista.push(r); else mapa.set(chave, [r]);
+  });
+  return Array.from(mapa.entries())
+    .map(([po, lista]) => ({
+      po,
+      fornecedor: lista.find(r => hasValue(r.fornecedor))?.fornecedor || EMPTY,
+      rows: [...lista].sort((a, b) =>
+        `${a.rm} ${a.item}`.localeCompare(`${b.rm} ${b.item}`, 'pt-BR', { numeric: true })
+      ),
+    }))
+    .sort((a, b) => comparePo(a.po, b.po));
 }
 
 // Item elegível para marcar chegada física no almoxarifado: PO emitida,

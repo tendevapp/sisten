@@ -398,7 +398,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           processos={processos}
           carregando={carregandoLista}
           onAbrir={abrirProcesso}
-          onNovoProcesso={() => onNavigate('/suprimentos/fornecedores-sem-po')}
+          onNovoProcesso={() => onNavigate('/suprimentos/compras')}
           onCriarSemVinculo={() => { setEscopoRascunho([]); setFase('escopo'); }}
         />
       )}

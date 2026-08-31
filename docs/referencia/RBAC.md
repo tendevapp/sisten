@@ -37,7 +37,7 @@ graph TD
 | :--- | :--- |
 | **`admin`** | **Administrador Global.** Acesso irrestrito a todas as telas, configurações do sistema, gestão de usuários, importação de planilhas SAP e modo de simulação de perfis. |
 | **`coordenador_suprimentos`** | **Coordenador de Suprimentos.** Acesso executivo e operacional a todos os módulos de compras, cadastros SAP, histórico, contratos, frete, dashboards e atribuição de compradores. |
-| **`comprador`** | **Comprador Operacional.** Acesso à Central de Compras (sem PO), Painel SAP, Histórico com Auditoria IPCA, Rastreio de Compras, Fornecedores e Estimador de Frete. |
+| **`comprador`** | **Comprador Operacional.** Acesso à Central Compras, Histórico com Auditoria IPCA, Rastreio de Compras, Fornecedores e Estimador de Frete. |
 | **`gestor`** | **Gestor de Área / Aprovador.** Responsável por aprovar solicitações de compra enviadas pelos setores sob sua alçada (`aprovador_setores`). |
 | **`requisitante`** | **Operador de Fila Coletiva.** Acompanha e responde solicitações de compra de múltiplos setores na fila coletiva (`/solicitacoes/todas`), além das próprias. |
 | **`solicitante`** | **Usuário Padrão (Solicitante).** Pode abrir solicitações de compra, pedir cadastros no SAP, abrir chamados de Helpdesk e acompanhar a aba "Minhas Solicitações". |
@@ -67,9 +67,8 @@ graph TD
 | | `/solicitacoes/todas` | `sol_todas` | ✅ | ✅ | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ |
 | | `/solicitacoes/aprovacoes` | `sol_aprovacoes` | ✅ | ⚙️ | ⚙️ | ✅* | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | **SUPRIMENTOS** | `/suprimentos/cadastros-sap` | `sup_cadastros_sap` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
-| | `/suprimentos/painel` | `sup_painel` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/fornecedores` | `sup_fornecedores` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
-| | `/suprimentos/fornecedores-sem-po` | `sup_central_compras` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
+| | `/suprimentos/compras` | `sup_central_compras` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/historico` | `sup_historico` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/contratos` | `sup_contratos` | ✅ | ✅ | ✅ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |
 | | `/suprimentos/dashboards` | `sup_dashboards` | ✅ | ✅ | ⚙️ | ⚙️ | ⚙️ | ❌ | ❌ | ❌ | ❌ |

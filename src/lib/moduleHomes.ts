@@ -76,9 +76,8 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     },
     cardDescriptions: {
       sup_cadastros_sap: 'Solicitações de cadastro de materiais e fornecedores no SAP.',
-      sup_painel: 'Visão operacional das requisições e pedidos SAP.',
       sup_fornecedores: 'Base de fornecedores homologados e seus contatos.',
-      sup_central_compras: 'Itens aprovados aguardando emissão de pedido de compra.',
+      sup_central_compras: 'Requisições em aberto, cotação de fornecedores e acompanhamento até a entrega.',
       sup_analise_cotacoes: 'Mapa comparativo de propostas e cotações.',
       sup_historico: 'Histórico de pedidos, preços praticados e fornecedores.',
       sup_contratos: 'Contratos vigentes, aditivos e demandas contratuais.',

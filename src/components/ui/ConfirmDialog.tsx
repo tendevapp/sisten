@@ -29,7 +29,7 @@ export default function ConfirmDialog({
   variante = 'padrao', confirmando = false, onConfirmar, onCancelar,
 }: ConfirmDialogProps) {
   return (
-    <Modal onClose={onCancelar} maxWidth="max-w-md" ariaLabel={titulo} zIndexClassName="z-[60]">
+    <Modal onClose={onCancelar} maxWidth="max-w-md" ariaLabel={titulo} zIndexClassName="z-[120]">
       <ModalBody className="p-5">
         <div className="flex items-start gap-3">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${

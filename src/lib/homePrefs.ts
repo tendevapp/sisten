@@ -37,6 +37,31 @@ function write(key: string, value: unknown): void {
 /** Rotas que não fazem sentido no histórico de "recentes". */
 const IGNORED = new Set(['/', '/login', '/cadastro', '/reset-password', '/perfil']);
 
+/**
+ * Rotas que mudaram de endereço. Recentes e favoritos ficam no `localStorage`
+ * do navegador, então sem esta tradução quem tinha a Central Compras fixada
+ * perderia o atalho na próxima visita — o caminho antigo simplesmente não
+ * resolve mais para nenhuma página. Traduzido na leitura (a gravação já usa o
+ * endereço novo), então some sozinho conforme o histórico gira.
+ */
+const RENAMED: Record<string, string> = {
+  '/suprimentos/painel': '/suprimentos/compras',
+  '/suprimentos/fornecedores-sem-po': '/suprimentos/compras',
+};
+
+const atual = (path: string): string => RENAMED[path] || path;
+
+/** Remove repetições preservando a ordem — a tradução acima pode fundir duas
+ *  entradas antigas (Painel SAP e Central Compras) no mesmo endereço. */
+function dedupe(paths: string[]): string[] {
+  const vistos = new Set<string>();
+  return paths.filter(p => {
+    if (vistos.has(p)) return false;
+    vistos.add(p);
+    return true;
+  });
+}
+
 export function recordRecentPage(path: string): void {
   if (!path || IGNORED.has(path)) return;
   const pathOnly = path.split('?')[0];
@@ -47,11 +72,19 @@ export function recordRecentPage(path: string): void {
 }
 
 export function getRecentPages(): RecentPage[] {
-  return read<RecentPage[]>(RECENT_KEY, []).filter(p => p && typeof p.path === 'string');
+  const lista = read<RecentPage[]>(RECENT_KEY, [])
+    .filter(p => p && typeof p.path === 'string')
+    .map(p => ({ ...p, path: atual(p.path) }));
+  const vistos = new Set<string>();
+  return lista.filter(p => {
+    if (vistos.has(p.path)) return false;
+    vistos.add(p.path);
+    return true;
+  });
 }
 
 export function getFavoritePages(userId: string): string[] {
-  return read<string[]>(`${FAV_PREFIX}${userId}`, []).filter(p => typeof p === 'string');
+  return dedupe(read<string[]>(`${FAV_PREFIX}${userId}`, []).filter(p => typeof p === 'string').map(atual));
 }
 
 export function isFavoritePage(userId: string, path: string): boolean {

@@ -142,11 +142,11 @@ export default function RastreioTable({
                       aria-label={`Selecionar ${r.rm}`}
                     />
                   )}
-                  {visibleColumns.rm && <span className="font-mono text-[11px] font-bold" style={{ color: 'var(--ink-primary)' }}>{r.rm}</span>}
+                  {visibleColumns.rm && <span className="font-mono text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>{r.rm}</span>}
                   {visibleColumns.po && (
                     r.po !== '—'
-                      ? <span className="font-mono text-[11px]" style={{ color: 'var(--ink-muted)' }}>PO {r.po}</span>
-                      : <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--status-warning)' }}>sem po</span>
+                      ? <span className="font-mono text-sm" style={{ color: 'var(--ink-muted)' }}>PO {r.po}</span>
+                      : <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--status-warning)' }}>sem po</span>
                   )}
                 </div>
                 <button
@@ -184,7 +184,7 @@ export default function RastreioTable({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] pt-0.5" style={{ color: 'var(--ink-muted)' }}>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs pt-0.5" style={{ color: 'var(--ink-muted)' }}>
                 {visibleColumns.setor && <span>{r.setor}</span>}
                 {visibleColumns.qtd && (
                   <span>Qtd <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{r.qtd !== undefined ? formatInt(r.qtd) : '—'}</strong></span>

@@ -54,7 +54,7 @@ const RASTREIO_TOUR_STEPS: TourStep[] = [
     target: 'rastreio-tabs',
     icon: TableIcon,
     title: 'Tabela ou Cronograma',
-    description: 'Alterne entre a lista detalhada em tabela e uma visão de cronograma das entregas programadas.',
+    description: 'Alterne entre a lista detalhada em tabela e uma visão de cronograma das entregas programadas. No cronograma, os itens de um mesmo pedido aparecem agrupados no bloco do PO, com um botão que confirma a chegada do pedido inteiro.',
   },
   {
     target: 'rastreio-colunas',
@@ -164,6 +164,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [bulkDate, setBulkDate] = useState(todayISO());
   const [savingRi, setSavingRi] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
+  // PO cuja chegada em grupo está sendo gravada (botão do bloco no Cronograma).
+  const [savingPo, setSavingPo] = useState<string | null>(null);
 
   const toggleSelectRi = useCallback((ri: string) => {
     setSelectedRis(prev => {
@@ -199,6 +201,24 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     }
   }, [refreshChegadas, toast]);
 
+  // Confirma de uma vez a chegada de todos os itens pendentes de um mesmo PO —
+  // a carga chega por pedido (uma nota, um caminhão), então conferir item a
+  // item no cronograma era trabalho repetido.
+  const marcarChegadaPo = useCallback(async (po: string, ris: string[]) => {
+    if (ris.length === 0) return;
+    setSavingPo(po);
+    try {
+      await localDb.setAlmoxarifadoChegada(ris, todayISO());
+      refreshChegadas();
+      toast.success(`Chegada registrada para ${ris.length} item(ns) do PO ${po}.`);
+    } catch (e: any) {
+      console.error('Falha ao marcar chegada do PO:', e);
+      toast.error('Não foi possível registrar a chegada do pedido. Tente novamente.');
+    } finally {
+      setSavingPo(null);
+    }
+  }, [refreshChegadas, toast]);
+
   const marcarSelecionados = useCallback(async () => {
     if (selectedRis.size === 0) return;
     setBulkSaving(true);
@@ -227,7 +247,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         // resolvia.
         // Requisições, pedidos e pedidosforn (o que esta tela usa)
         try { await localDb.syncFromSupabase(true, ['requisicoes', 'pedidos', 'pedidosforn']); } catch (e) { console.warn('Falha ao sincronizar dataset completo:', e); }
-        // Reflete edições de obs/status/previsão feitas no Painel SAP por outros
+        // Reflete edições de obs/status/previsão feitas na Central Compras por outros
         // usuários (que não disparam um sync completo do dataset).
         try { await localDb.refreshBuyerFieldsFromSupabase(); } catch (e) { console.warn('Falha ao atualizar campos do comprador:', e); }
       }
@@ -718,6 +738,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
               savingRi={savingRi}
               onMarcarChegada={marcarChegada}
               onDesfazerChegada={desfazerChegada}
+              onMarcarChegadaPo={marcarChegadaPo}
+              savingPo={savingPo}
             />
           )}
         </>

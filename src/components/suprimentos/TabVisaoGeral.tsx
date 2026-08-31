@@ -96,7 +96,7 @@ export default function TabVisaoGeral({
       searchPlaceholder: SEARCH_PLACEHOLDER_SUPRIMENTOS,
       itemKey: itemKeyEnrichedSAPRecord,
       onIrParaPainel: irParaPainel,
-      irParaPainelLabel: 'Ir p/ Painel',
+      irParaPainelLabel: 'Ir p/ Compras',
     });
   }, [onAbrirComposicao, compradores, colunas, filtros]);
 

@@ -410,13 +410,13 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
           <AlertCircle className="mx-auto h-12 w-12 text-amber-500" />
           <h3 className="text-base font-bold text-slate-800">Nenhuma rota de frete cadastrada</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
-            A tabela de frete ainda não possui registros importados no Supabase. Acesse o menu Administrador ou a tela de Gestão SAP para realizar o upload da planilha.
+            A tabela de frete ainda não possui registros importados no Supabase. Faça o upload da planilha em Administração → Importação de Planilhas.
           </p>
           <button
-            onClick={() => onNavigate('/suprimentos/painel')}
+            onClick={() => onNavigate('/admin/importacao-materiais')}
             className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-bold hover:bg-cyan-700 transition-all cursor-pointer"
           >
-            <span>Ir para Painel SAP / Importação</span>
+            <span>Ir para Importação de Planilhas</span>
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>

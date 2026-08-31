@@ -2027,6 +2027,8 @@ export type Database = {
           ativo: boolean
           created_at: string
           criado_por: string | null
+          data_admissao: string | null
+          data_nascimento: string | null
           empresa: string
           funcao: string
           id: string
@@ -2040,6 +2042,8 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
+          data_admissao?: string | null
+          data_nascimento?: string | null
           empresa?: string
           funcao?: string
           id?: string
@@ -2053,6 +2057,8 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
+          data_admissao?: string | null
+          data_nascimento?: string | null
           empresa?: string
           funcao?: string
           id?: string

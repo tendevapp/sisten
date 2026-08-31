@@ -14,7 +14,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Route, ArrowRight, Clock, DoorOpen, Timer, ClipboardList,
-  BusFront, BarChart3,
+  BusFront, BarChart3, Shield,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -64,6 +64,16 @@ const SECOES: Secao[] = [
         path: '/facilities/rotas',
         gateId: 'facilities_rotas',
         fonte: 'Base rh_rotas',
+      },
+      {
+        id: 'materiais_vigilancia',
+        label: 'Materiais da Vigilância',
+        icon: Shield,
+        desc: 'Controle dos armamentos, coletes, rádios e munições sob custódia da portaria para a checagem da passagem de plantão.',
+        cor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400',
+        path: '/facilities/materiais',
+        gateId: 'facilities_materiais',
+        fonte: 'Base port_materiais_seguranca',
       },
     ],
   },

@@ -100,7 +100,7 @@ entradas_pedido as (
 ),
 pedidos as (
   select distinct on (doc_compra, material) doc_compra, material, data_doc
-  from public.pedidosforn
+  from public.sap_zl0132_po
   where doc_compra is not null and data_doc is not null
   order by doc_compra, material, data_doc
 ),

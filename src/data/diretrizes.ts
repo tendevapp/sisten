@@ -39,6 +39,14 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-30',
+    resumo: 'Portaria > Livro de Ocorrências & Briefing de Segurança: 1. Integração da Saída de Colaboradores com `rh_pessoas` (busca inteligente por nome ou matrícula e preenchimento automático de cargo/empresa/matrícula); 2. Validação estrita de 30 dias de validade do Briefing de Segurança com cálculo de data de realização e dias restantes/expirados em tela; 3. Multi-seleção de sessões e exportação em PDF Consolidado com renderização real das assinaturas digitais colhidas; 4. Compressão automática de fotos de câmera/galeria com anexo dedicado nos PDFs dos formulários operacionais.'
+  },
+  {
+    data: '2026-08-30',
+    resumo: 'Portaria > Cadastro de Vigilantes (`port_vigilantes`): 1. Atualização completa da base de vigilantes com a equipe oficial (Cassio Bruno, Diego Alves, Douglas da Rocha, Edinei Rodrigues, Eduardo Inacio, Evandro Rocha, Osmario Cardoso, Rafael Messias, Ricardo Andre, Simone Pedreira); 2. Inclusão e suporte a colunas `data_admissao` e `data_nascimento` no banco e na interface administrativa (`/admin/cadastros`).'
+  },
+  {
     data: '2026-08-27',
     resumo: 'Notificações & Header (Roteamento Completo e Deep Links): 1. O clique nas notificações do Header agora redireciona com precisão para todas as telas correspondentes (`/admin/importacao-materiais`, `/admin/usuarios`, `/admin/feedback?id=...`, `/suprimentos/cadastros-sap?id=...`, `/solicitacoes/aprovacoes?id=...`, `/solicitacoes/minhas?id=...`, `/solicitacoes/todas?id=...`, `/rastreio?ri=...`, `/formularios/rh-ase-hora-extra?id=...`, `/formularios/logistica-expedicao?id=...`, etc.); 2. Implementado suporte a deep-link `?id=...` para abertura e seleção automática de solicitações e formulários.'
   },
@@ -144,7 +152,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   },
   {
     data: '2026-08-16',
-    resumo: 'Higienização e sanitização automática de textos técnicos SAP (materials): remoção de artefatos de truncamento/codificação do SAP ALV (ex: "旰掳籷" e ideogramas asiáticos decorrentes de estouro do limite de 255 caracteres) substituindo por "..." na ingestão (AdminPanel/ZL0169/ZL0162/localDb), na busca e em todas as telas de cotação/catálogo (SuppliersNoPO, SapDetailModal, Materials).'
+    resumo: 'Higienização e sanitização automática de textos técnicos SAP (materials): remoção de artefatos de truncamento/codificação do SAP ALV (ex: "旰掳籷" e ideogramas asiáticos decorrentes de estouro do limite de 255 caracteres) substituindo por "..." na ingestão (AdminPanel/ZL0169/ZL0162/localDb), na busca e em todas as telas de cotação/catálogo (Compras, SapDetailModal, Materials).'
   },
   {
     data: '2026-08-16',
@@ -259,7 +267,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: '⚠️ Dois sistemas de permissão coexistem (importante para manutenção)',
             itens: [
               '1) `canAccessPage(user, pageId)` em `src/lib/pages.ts` — o mecanismo "oficial"/mais novo. Cada página tem `defaultRoles: Role[] | "*"` e, opcionalmente, `alwaysAdmin: true`. Admin sempre passa; senão checa override em `profiles.page_access[pageId]`; senão cai no `defaultRoles`. Usado por `Sidebar.tsx` (menu) e `PageAccessModal.tsx` ("Módulos de acesso").',
-              '2) `hasPermission(user, module, action)` em `src/db/localDb.ts` — sistema RBAC mais antigo, matriz fixa por role (strings tipo `"materiais.visualizar"`, `"sap.visualizar_painel"`). NÃO considera `page_access` (overrides por usuário). Usado por `Sobre.tsx` e `Dashboard.tsx`.',
+              '2) `hasPermission(user, module, action)` em `src/db/localDb.ts` — sistema RBAC mais antigo, matriz fixa por role (strings tipo `"materiais.visualizar"`, `"sap.visualizar_painel"`). NÃO considera `page_access` (overrides por usuário). Usado por `Sobre.tsx` (a tela Início migrou para `canAccessPage`).',
               'Consequência prática: um admin que restringe manualmente o acesso de um usuário via "Módulos de acesso" (mexe em `page_access`) NÃO afeta o que `Sobre.tsx`/`Dashboard.tsx` mostram como liberado para esse usuário, porque essas duas telas consultam o sistema antigo. Ao dar manutenção em permissões, sempre checar as DUAS fontes.',
               'A aba "Permissões (Matrix)" do AdminPanel é uma TERCEIRA fonte — uma tabela estática/hardcoded só para exibição, não lida de nenhum dos dois sistemas acima. Pode ficar desatualizada; não é fonte de verdade operacional.'
             ]
@@ -292,7 +300,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Cada rotina de import declara uma lista fixa `{ header, field }[]` (ex.: `ME5A_COLUMNS`, `ZL0132_COLUMNS`, `FBL1N_COLUMNS`). `reconcileSchema` casa por IGUALDADE EXATA de string (minúsculas + trim) — não é fuzzy/aproximado.',
               'Suporta cabeçalhos duplicados na planilha (ex.: "Criado por" aparece 4x no ZL0132, "Item" 2x): o N-ésimo header repetido casa com o N-ésimo campo esperado com esse nome, na ordem declarada.',
               '`missingColumns`: headers esperados que não vieram na planilha (o campo fica `null`). `newColumns`: colunas da planilha sem correspondência conhecida — não são descartadas, viram `campos_extras[header]` (coluna JSONB "flex"), EXCETO em ZL0132/PedidosForn/ME3N, onde os autores optaram por não gravar `campos_extras` para não duplicar dado já mapeado em coluna própria.',
-              'Detecção de delimitador de CSV NÃO é automática dentro de `localDb.ts` — quem escolhe é a tela de upload (`AdminPanel.tsx`/`SapPanel.tsx`) antes de chamar a função de import: `.csv` é sempre tratado como separado por `;`; `.xlsx`/`.xls` é lido via `XLSX.utils.sheet_to_json`.',
+              'Detecção de delimitador de CSV NÃO é automática dentro de `localDb.ts` — quem escolhe é a tela de upload (`AdminPanel.tsx`) antes de chamar a função de import: `.csv` é sempre tratado como separado por `;`; `.xlsx`/`.xls` é lido via `XLSX.utils.sheet_to_json`.',
               'ME3N é a exceção: tem uma camada extra de tolerância por aliases textuais alternativos para nomes de coluna de data (ex.: aceita "fim da validade", "fim per.validade", "dt.fim validade" como sinônimos de `fim_validade`).'
             ]
           },
@@ -319,55 +327,15 @@ export const DIRETRIZES: DiretrizesDominio[] = [
   // ────────────────────────────────────────────────────────────────────────
   {
     id: 'sap-compras',
-    nome: 'Painéis SAP & Central de Compras',
+    nome: 'Central de Compras & Painéis SAP',
     icone: 'ShoppingCart',
     resumo:
       'Ferramentas operacionais do comprador: acompanhar RMs, cotar fornecedores, rastrear entregas e visualizar indicadores gerenciais do setor de Suprimentos.',
     paginas: [
       {
-        id: 'sap-panel',
-        nome: 'Painel SAP',
-        arquivo: 'src/views/SapPanel.tsx',
-        secoes: [
-          {
-            titulo: 'Visão geral',
-            itens: [
-              'Tela operacional do comprador: consolida ME5A (requisições), ZL0132 (pedidos/PO) e Tabela de Frete em abas, permitindo editar observação, status e data prevista de entrega de cada item, e importar/atualizar as bases.'
-            ]
-          },
-          {
-            titulo: 'Regras de negócio',
-            itens: [
-              'KPIs do topo: "Sem PO" = `status_requisicao==="Sem PO"`; "Processados" = `"Processado"`; "Críticos/Atrasados" = Sem PO com atraso>15 dias ou alerta ⚠️/⚡; "Atraso médio" = média de `atraso_comprador` só sobre os itens Sem PO.',
-              'Badge de status: Processado→verde; Sem PO com ⚠️→laranja; com ⚡→amarelo; caso contrário→azul (todos rotulados "Sem PO").',
-              'Ordenação por "Status" usa score de prioridade visual (Processado=0, ⚠️=3, ⚡=2, resto=1), não ordem alfabética.',
-              'Edição de observação/data/status salva otimisticamente com 2 tentativas de retry e toast de erro se falhar.'
-            ]
-          },
-          {
-            titulo: 'Regras de exibição',
-            itens: [
-              'Filtros: busca livre, Status (Todos/Com PO/Sem PO), Alerta (5 níveis), Grupo Comprador.',
-              '"Minhas RMs" (`onlyMine`) só se aplica a quem tem role `comprador` — restringe pelos grupos vinculados via `getBuyerGroupsForUser`.',
-              'Colunas de cada aba são personalizáveis, preferência persistida por página.',
-              'Deep-link via hash (`?status=`, `?alert=`, `?buyer=`) pré-popula filtros — usado por drill-down vindo dos Dashboards.'
-            ]
-          },
-          {
-            titulo: 'Tabelas do banco (Supabase)',
-            itens: [
-              '`view_enriched_requisicoes` (cache local `sisten_requisicoes`) — base ME5A já enriquecida no servidor.',
-              '`view_enriched_pedidos` / `pedidosforn` — base ZL0132, fonte autoritativa do PO e dados financeiros/entrega.',
-              '`tabela_frete` — custos de frete por faixa de peso/rota.',
-              'Histórico de edições do comprador via tabela local de auditoria de `obs_comprador`/`item_status`.'
-            ]
-          }
-        ]
-      },
-      {
         id: 'central-compras',
-        nome: 'Central de Compras ("Itens Sem PO")',
-        arquivo: 'src/views/SuppliersNoPO.tsx',
+        nome: 'Central Compras',
+        arquivo: 'src/views/Compras.tsx',
         secoes: [
           {
             titulo: 'Visão geral',
@@ -608,7 +576,9 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Busca cumulativa "AND" por chips: cada termo digitado vira um chip; a RPC `buscar_materiais_catalogo` filtra por materiais que casam com TODOS os chips.',
               'Status "Obsoleto": `status_sap==="Obsoleto"` OU `status_geral==="Z1"` OU `status_centro==="Z1"`; caso contrário "Ativo".',
               'Busca por texto técnico é opt-in (default desligado) — por padrão casa só na descrição breve.',
-              'Paginação de 50/página; exportação CSV refaz a busca em lotes de 200 até um teto de 20.000 linhas.'
+              'Paginação de 50/página; exportação CSV refaz a busca em lotes de 200 até um teto de 20.000 linhas.',
+              'Sinais ao lado do material (saldo, RM aberta, "pedido a caminho") vêm da matview `mv_material_sinais`. "Pedido a caminho" = linha da `sap_zl0132_po` com entrega pendente (`qtd_fornecida` < `qtd_pedido`), sem MIGO, não eliminada (`eflag_e` diferente de L) e com `data_rc >= 2026-01-01`. Havendo mais de um PO aberto para o material, mostra a PRÓXIMA chegada (menor `dt_remessa`).',
+              'O corte `data_rc >= 2026-01-01` não é arbitrário: é o mesmo horizonte que o cliente aplica a esse dataset no sync. Sem ele, o SAP devolve pedidos que nunca foram formalmente fechados — remessas chegando a 2015 — e o sinal viraria ruído. Ver `db/sql/views/material_sinais.sql`.'
             ]
           },
           {
@@ -621,7 +591,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['RPC `buscar_materiais_catalogo` (abstrai a tabela `materials`).']
+            itens: ['RPC `buscar_materiais_catalogo` (abstrai a tabela `materials`); matview `mv_material_sinais` (saldo/demanda/RM/PO por material), recalculada pela RPC `refresh_material_sinais` após cada importação SAP.']
           }
         ]
       },
@@ -1496,6 +1466,72 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Duplicado no arquivo com texto vazio NÃO apaga um texto já capturado de uma ocorrência anterior do mesmo material.',
               'Sanitiza automaticamente caracteres corrompidos de truncamento ALV antes de gravar.',
               'Usa a RPC `atualizar_textos_tecnicos_zl0162` (essa sim é chamada de fato).'
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'portaria',
+    nome: 'Portaria & Segurança Patrimonial',
+    icone: 'Shield',
+    resumo: 'Controle de acessos de veículos, visitantes, transportes, carretas de chapas, saída de colaboradores, rondas patrimoniais e listas de presença de briefing de segurança.',
+    paginas: [
+      {
+        id: 'portaria-relatorio',
+        nome: 'Relatório de Portaria e Ocorrências (FRM.SGP-0010)',
+        arquivo: 'src/views/portaria/PortariaRelatorio.tsx',
+        secoes: [
+          {
+            titulo: 'Regras de Lançamento e Tipos de Ocorrência',
+            itens: [
+              'Suporta 6 tipos de registro: Entrada de Veículo, Entrada de Visitante, Saída de Colaborador, Ronda Patrimonial, Ocorrência/Incidente e Outro Registro.',
+              'Conversão automática para maiúsculas em todos os campos de texto.',
+              'Seleção obrigatória do vigilante responsável a cada novo registro lançado.',
+              'Compressão automática de imagens anexadas (câmera ou galeria) antes do upload.'
+            ]
+          },
+          {
+            titulo: 'Saída de Colaboradores (Integração com rh_pessoas)',
+            itens: [
+              'Autocompletar inteligente por Nome ou Matrícula/Registro conectado à tabela `rh_pessoas`.',
+              'Preenchimento automático do nome, matrícula, cargo/função e vínculo com a empresa TEN.',
+              'Chips de clique rápido para motivos frequentes de saída (Consulta Médica, Serviço Externo, Almoço, etc.).',
+              'Campo obrigatório para responsável que autorizou a saída e registro de horário de retorno.'
+            ]
+          },
+          {
+            titulo: 'Validação de Briefing de Segurança (Validade: 30 dias)',
+            itens: [
+              'Validade estrita de 30 dias para treinamentos de integração/briefing.',
+              'Botão "Checar Briefing" individual por visitante e botão geral "Checar Validade de Todos".',
+              'Exibição visual da data do último treinamento e contagem de dias restantes ou expirados diretamente na interface.',
+              'Ativação automática e obrigatória de "Fará Briefing" se qualquer visitante estiver vencido (>30 dias) ou sem histórico.',
+              'Marcação opcional caso todos os visitantes estejam com o treinamento em dia.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'portaria-briefing',
+        nome: 'Briefing de Segurança & Lista de Presença (FRM.SGP-0013)',
+        arquivo: 'src/views/portaria/PortariaBriefing.tsx',
+        secoes: [
+          {
+            titulo: 'Coleta de Assinaturas e Finalização',
+            itens: [
+              'Geração automática de sessões de briefing a partir dos lançamentos de ocorrências com "Fará Briefing" ativo.',
+              'Modal de assinatura digital via canvas com registro de horário exato e finalização automática ao colher 100% das assinaturas.',
+              'Consulta rápida por CPF para validação de visitantes na guarita.'
+            ]
+          },
+          {
+            titulo: 'Exportação em PDF Individual e Consolidado',
+            itens: [
+              'Suporte à multi-seleção de sessões na listagem.',
+              'Exportação em PDF consolidado com cada turma em página A4 dedicada.',
+              'Renderização visual das assinaturas digitais colhidas dentro do quadro de presença do PDF oficial.'
             ]
           }
         ]

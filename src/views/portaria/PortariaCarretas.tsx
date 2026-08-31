@@ -18,6 +18,7 @@ import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import SignaturePadModal from '../../components/portaria/SignaturePadModal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 
 interface Props {
   user: Profile;
@@ -47,14 +48,14 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     hora_entrada: api.horaAgora(),
     nome_motorista: '',
     cpf_motorista: '',
-    vigilante_entrada: user.name || '',
+    vigilante_entrada: '',
     numero_nf: '',
     peso_bruto: '',
     observacoes: '',
   });
 
   const [formSaida, setFormSaida] = useState({
-    vigilante_saida: user.name || '',
+    vigilante_saida: '',
     data_saida: api.hojeISO(),
     hora_saida: api.horaAgora(),
     ass_motorista: '',
@@ -86,6 +87,10 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Empresa, Placa Cavalo e Nome do Motorista.');
       return;
     }
+    if (!formNovo.vigilante_entrada.trim()) {
+      toast.error('Selecione o vigilante da portaria.');
+      return;
+    }
 
     setSalvando(true);
     try {
@@ -104,7 +109,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         hora_entrada: api.horaAgora(),
         nome_motorista: '',
         cpf_motorista: '',
-        vigilante_entrada: user.name || '',
+        vigilante_entrada: '',
         numero_nf: '',
         peso_bruto: '',
         observacoes: '',
@@ -121,7 +126,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     e.preventDefault();
     if (!itemSelecionado) return;
     if (!formSaida.vigilante_saida.trim()) {
-      toast.error('Informe o vigilante de saída.');
+      toast.error('Selecione o vigilante de saída.');
       return;
     }
 
@@ -158,11 +163,11 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         <div>
           <button
             type="button"
-            onClick={() => onNavigate('/formularios')}
-            className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+            onClick={() => onNavigate('/formularios/portaria')}
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-cyan-500 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-300"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar para Formulários
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <span>Voltar para o Painel da Portaria</span>
           </button>
           <div className="flex items-center gap-2.5">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-400">
@@ -346,25 +351,18 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
 
       {/* Modal Nova Carreta */}
       {modalNovoAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Registrar Entrada de Carreta de Chapas
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0020</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalNovoAberto(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-4xl">
+          <ModalHeader onClose={() => setModalNovoAberto(false)}>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                Registrar Entrada de Carreta de Chapas
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0020</p>
             </div>
+          </ModalHeader>
 
-            <form onSubmit={handleSalvarEntrada} className="flex-1 overflow-y-auto p-6 space-y-4">
+          <form onSubmit={handleSalvarEntrada} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <ModalBody className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Empresa / Transportadora / Fornecedor de Aço *
@@ -375,11 +373,11 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   placeholder="Ex: Usiminas / ArcelorMittal / Transportadora Rodonaves"
                   value={formNovo.empresa}
                   onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value.toUpperCase() })}
-                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Placa Cavalo *
@@ -390,7 +388,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     placeholder="Ex: BRA2E19"
                     value={formNovo.placa_cavalo}
                     onChange={(e) => setFormNovo({ ...formNovo, placa_cavalo: e.target.value.toUpperCase() })}
-                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -402,12 +400,12 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     placeholder="Ex: XYZ9F88"
                     value={formNovo.placa_carreta}
                     onChange={(e) => setFormNovo({ ...formNovo, placa_carreta: e.target.value.toUpperCase() })}
-                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Nome do Motorista *
@@ -415,27 +413,27 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
-                    placeholder="Nome completo do motorista"
+                    placeholder="Ex: José Carlos da Silva"
                     value={formNovo.nome_motorista}
                     onChange={(e) => setFormNovo({ ...formNovo, nome_motorista: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    CPF do Motorista (Opcional)
+                    CNH do Motorista
                   </label>
                   <input
                     type="text"
-                    placeholder="000.000.000-00"
-                    value={formNovo.cpf_motorista}
-                    onChange={(e) => setFormNovo({ ...formNovo, cpf_motorista: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    placeholder="Ex: 01234567890"
+                    value={formNovo.cnh_motorista}
+                    onChange={(e) => setFormNovo({ ...formNovo, cnh_motorista: e.target.value })}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data de Entrada
@@ -444,7 +442,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="date"
                     value={formNovo.data_entrada}
                     onChange={(e) => setFormNovo({ ...formNovo, data_entrada: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -455,10 +453,10 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="time"
                     value={formNovo.hora_entrada}
                     onChange={(e) => setFormNovo({ ...formNovo, hora_entrada: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
-                <div>
+                <div className="sm:col-span-1">
                   <VigilanteSelect
                     label="Vigilante Portaria"
                     required
@@ -468,7 +466,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Número da Nota Fiscal (NF)
@@ -478,7 +476,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     placeholder="Ex: NF 104.938"
                     value={formNovo.numero_nf}
                     onChange={(e) => setFormNovo({ ...formNovo, numero_nf: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -490,57 +488,50 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     placeholder="Ex: 38500"
                     value={formNovo.peso_bruto}
                     onChange={(e) => setFormNovo({ ...formNovo, peso_bruto: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
+            </ModalBody>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setModalNovoAberto(false)}
-                  className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={salvando}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
-                >
-                  {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Salvar Entrada
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <ModalFooter>
+              <button
+                type="button"
+                onClick={() => setModalNovoAberto(false)}
+                className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvando}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
+              >
+                {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salvar Entrada
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
 
       {/* Modal Baixar Saída de Carreta */}
       {modalSaidaAberto && itemSelecionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-            <div className="border-b border-slate-100 px-6 py-4 dark:border-slate-800 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Liberar Saída de Carreta de Chapas
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-                  {itemSelecionado.empresa} · Cav: {itemSelecionado.placa_cavalo}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalSaidaAberto(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <Modal onClose={() => setModalSaidaAberto(false)} maxWidth="max-w-2xl">
+          <ModalHeader onClose={() => setModalSaidaAberto(false)}>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                Liberar Saída de Carreta de Chapas
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+                {itemSelecionado.empresa} · Cav: {itemSelecionado.placa_cavalo}
+              </p>
             </div>
+          </ModalHeader>
 
-            <form onSubmit={handleSalvarSaida} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSalvarSaida} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <ModalBody className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data de Saída
@@ -549,7 +540,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="date"
                     value={formSaida.data_saida}
                     onChange={(e) => setFormSaida({ ...formSaida, data_saida: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -560,7 +551,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="time"
                     value={formSaida.hora_saida}
                     onChange={(e) => setFormSaida({ ...formSaida, hora_saida: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -616,30 +607,30 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   placeholder="Ex: Descarregado e liberado pelo pátio de chapas"
                   value={formSaida.observacoes}
                   onChange={(e) => setFormSaida({ ...formSaida, observacoes: e.target.value.toUpperCase() })}
-                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
               </div>
+            </ModalBody>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setModalSaidaAberto(false)}
-                  className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={salvando}
-                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 dark:bg-emerald-500"
-                >
-                  {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Confirmar Saída
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <ModalFooter>
+              <button
+                type="button"
+                onClick={() => setModalSaidaAberto(false)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvando}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 dark:bg-emerald-500"
+              >
+                {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirmar Saída
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
 
       {/* Assinatura Canvas Modal */}

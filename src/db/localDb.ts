@@ -106,6 +106,14 @@ class LocalDatabase {
   // Mapa dataset lógico -> chave de armazenamento local, usado pelo gate de versão.
   // É um método (não campo) para não referenciar as chaves antes de sua
   // inicialização na ordem de declaração dos campos da classe.
+  //
+  // ATENÇÃO: estes rótulos ('requisicoes', 'pedidos', 'pedidosforn') são
+  // anteriores à reestruturação de nomenclatura do banco e NÃO são nomes de
+  // tabela — as fontes hoje são `vw_sap_requisicoes_enriquecidas`,
+  // `vw_sap_pedidos_enriquecidos` e `sap_zl0132_po`. Renomeá-los aqui não é
+  // cosmético: a RPC `bump_dataset_version` grava esta mesma string no
+  // servidor, então trocar um rótulo sem migrar as linhas de versão faria todo
+  // cliente ver um dataset desconhecido e rebaixar as bases inteiras de novo.
   private storageKeyFor(dataset: string): string {
     const map: Record<string, string> = {
       materials: this.materialsKey,
@@ -291,7 +299,7 @@ class LocalDatabase {
           ['obs_historico', () => this.syncObsHistory()],
           ['activity_logs', () => this.syncSimpleTable('core_logs_atividade', this.logsKey, false, undefined, 'id')],
           ['sequences', () => this.syncSequences()],
-          ['pedidosforn', gated('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
+          ['sap_zl0132_po', gated('pedidosforn', () => this.syncSimpleTable('sap_zl0132_po', this.pedidosFornKey, true, q => q.gte('data_rc', '2026-01-01'), 'id'))],
           // vw_historico_pedidos não tem coluna única (é uma view agregada); não dá
           // para forçar um ORDER BY seguro aqui sem arriscar um nome de coluna
           // inválido. Ver P5 no plano de egress.
@@ -301,7 +309,7 @@ class LocalDatabase {
           // Cadastro de referência pequeno (~1,4 mil linhas) e estático: decodifica
           // o grupo de mercadoria do SAP para a descrição exibida na Central
           // Compras. Resolvido no cliente porque acrescentar a coluna em
-          // `view_enriched_requisicoes` significaria reescrever uma definição de
+          // `vw_sap_requisicoes_enriquecidas` significaria reescrever uma definição de
           // 15 KB com 81 dependências.
           ['cadastro_grupo_mercadoria', () => this.syncSimpleTable('cadastro_grupo_mercadoria', this.gruposMercadoriaKey, true, undefined, 'codigo')],
         ];
@@ -3714,14 +3722,19 @@ class LocalDatabase {
 
   public getEnrichedSAPRequisicoes(): EnrichedSAPRecord[] {
     const reqs = this.getRequisicoes().filter(r => !r.codigo_de_eliminacao);
-    // pedidos (ZL0131) mantido apenas como fallback offline para dados de entrega
+    // Cache local 'pedidos', alimentado por `vw_sap_pedidos_enriquecidos` (ver
+    // a tarefa de sync homônima). Só é consultado no ramo offline/semente mais
+    // abaixo — online, quem manda é o que o servidor já computou.
+    // Não confundir com a tabela `pedidos` do Supabase, que é resquício da
+    // reestruturação de 27/08/2026 e não alimenta mais nada deste caminho.
     const peds = this.getPedidos();
     const pedsMap = new Map(peds.map(p => [p.ri, p]));
 
-    // pedidosForn (ZL0132) é a fonte autoritativa do número do PO.
-    // O servidor (view_enriched_requisicoes → mv_pedido_atual_por_ri) já faz o
-    // JOIN correto com pedidosforn. O cliente DEVE confiar em raw.documento_compra
-    // e NÃO sobrescrever com a tabela pedidos (ZL0131).
+    // O cache 'pedidosforn' (ZL0132, hoje `sap_zl0132_po`) é a fonte
+    // autoritativa do número do PO. O servidor
+    // (`vw_sap_requisicoes_enriquecidas` → mv_pedido_atual_por_ri) já faz o
+    // JOIN correto. O cliente DEVE confiar em raw.documento_compra e NÃO
+    // sobrescrever com o cache 'pedidos'.
     // Aqui apenas: (a) construir set de eliminados para verificação local de eflag_e='L'
     //              (b) manter mapa de pedidosForn ativo por RI para fallback offline e dados financeiros.
     const rawPedsForn = this.getStorageItem<any[]>(this.pedidosFornKey, []);
@@ -3748,7 +3761,7 @@ class LocalDatabase {
     const currentDate = new Date('2026-07-05T06:31:00-07:00'); // current mock time from metadata
 
     return reqs.map(r => {
-      // raw.documento_compra vem da view_enriched_requisicoes (JOIN com pedidosforn via mv_pedido_atual_por_ri).
+      // raw.documento_compra vem de `vw_sap_requisicoes_enriquecidas` (JOIN com sap_zl0132_po via mv_pedido_atual_por_ri).
       // É a fonte correta. Fallback para modo offline/semente: cache local da pedidosforn.
       const raw = r as any;
       const rawDocCompra = String(raw.documento_compra || '').trim();
@@ -3777,7 +3790,7 @@ class LocalDatabase {
         && docCompra !== 'undefined' && docCompra !== 'null'
         && !isDocEliminated;
 
-      // Dados financeiros da pedidosForn local (não vêm na view_enriched_requisicoes)
+      // Dados financeiros do cache 'pedidosforn' local (não vêm em `vw_sap_requisicoes_enriquecidas`)
       const activePf = hasPO ? localPf : undefined;
       const preco_unitario = activePf ? this.precoUnitarioDoPedido(this.normalizePedidoFornRow(activePf)) : undefined;
       const valor_total = activePf
@@ -3820,7 +3833,7 @@ class LocalDatabase {
       }
 
       // Modo offline/semente: raw.status_requisicao não veio do servidor.
-      // Recalcular localmente; pedidos (ZL0131) usado como fallback para dados de entrega.
+      // Recalcular localmente; o cache 'pedidos' entra como fallback de dados de entrega.
       const ped = pedsMap.get(r.ri);
       const p = (hasPO ? (ped || {}) : {}) as Partial<SAPPedido>;
 
@@ -4089,6 +4102,148 @@ class LocalDatabase {
       }
     }
     return false;
+  }
+
+  // Autoria usada quando quem preencheu o campo foi a automação, não o comprador.
+  public static readonly AUTO_FILL_AUTHOR = 'Sistema (Automático)';
+
+  /**
+   * Preenchimento automático dos campos do comprador (Central de Compras):
+   * item que já tem PO emitida entra como "Pedido Enviado" e, quando ainda sem
+   * promessa de entrega, recebe a data estimada pelo lead time de rota.
+   *
+   * Diferente de `updateBuyerFields`, grava apenas os campos informados e não
+   * refaz o SELECT da linha a cada item — aqui podem ser centenas de itens de
+   * uma vez. A autoria fica como AUTO_FILL_AUTHOR para separar, no histórico,
+   * o que foi automático do que o comprador digitou.
+   */
+  public async applyAutoBuyerFields(
+    entries: { ri: string; itemStatus?: ItemStatus; deliveryDate?: string }[]
+  ): Promise<{ ok: number; failed: string[] }> {
+    const pendentes = entries.filter(e => e.itemStatus || e.deliveryDate);
+    if (pendentes.length === 0) return { ok: 0, failed: [] };
+
+    const author = LocalDatabase.AUTO_FILL_AUTHOR;
+    const now = new Date().toISOString();
+    const reqs = this.getRequisicoes();
+    const idxByRi = new Map(reqs.map((r, i) => [r.ri, i]));
+    const hist = this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []);
+
+    // Estado anterior por item, para reverter o cache local do que falhar no Supabase.
+    const anteriores = new Map<string, { status?: ItemStatus; statusAt?: string; statusBy?: string; date?: string; obsAt?: string; obsBy?: string }>();
+    const aplicados: { entry: typeof pendentes[number]; histId: string }[] = [];
+
+    pendentes.forEach(entry => {
+      const idx = idxByRi.get(entry.ri);
+      if (idx === undefined) return;
+      const req = reqs[idx];
+      anteriores.set(entry.ri, {
+        status: req.item_status,
+        statusAt: req.item_status_updated_at,
+        statusBy: req.item_status_updated_by,
+        date: req.data_entrega_prevista,
+        obsAt: req.obs_updated_at,
+        obsBy: req.obs_updated_by
+      });
+
+      if (entry.itemStatus) {
+        req.item_status = entry.itemStatus;
+        req.item_status_updated_at = now;
+        req.item_status_updated_by = author;
+      }
+      if (entry.deliveryDate) {
+        req.data_entrega_prevista = entry.deliveryDate;
+        req.obs_updated_at = now;
+        req.obs_updated_by = author;
+      }
+
+      const histId = 'oh_' + Math.random().toString(36).substr(2, 9);
+      hist.push({
+        id: histId,
+        ri: entry.ri,
+        obs_comprador: req.obs_comprador || '',
+        data_entrega_prevista: req.data_entrega_prevista || '',
+        item_status: req.item_status,
+        user_name: author,
+        created_at: now
+      });
+      aplicados.push({ entry, histId });
+    });
+
+    if (aplicados.length === 0) return { ok: 0, failed: [] };
+    this.setStorageItem(this.requisicoesKey, reqs);
+    this.setStorageItem(this.obsHistoryKey, hist);
+
+    // Rede em blocos: uma linha por UPDATE (valores diferentes por item), mas
+    // no máximo BLOCO em voo para não estourar a conexão com o Supabase.
+    const BLOCO = 25;
+    const failed: string[] = [];
+    for (let i = 0; i < aplicados.length; i += BLOCO) {
+      const bloco = aplicados.slice(i, i + BLOCO);
+      const results = await Promise.all(bloco.map(async ({ entry }) => {
+        const payload: any = {};
+        if (entry.itemStatus) {
+          payload.item_status = entry.itemStatus;
+          payload.item_status_updated_at = now;
+          payload.item_status_updated_by = author;
+        }
+        if (entry.deliveryDate) {
+          payload.data_entrega_prevista = entry.deliveryDate;
+          payload.obs_updated_at = now;
+          payload.obs_updated_by = author;
+        }
+        const { error } = await supabase.from('sap_me5a_rc').update(payload).eq('ri', entry.ri);
+        return !error;
+      }));
+      bloco.forEach(({ entry }, j) => { if (!results[j]) failed.push(entry.ri); });
+    }
+
+    const gravados = aplicados.filter(a => !failed.includes(a.entry.ri));
+
+    // Histórico detalhado só do que realmente persistiu.
+    if (gravados.length > 0) {
+      try {
+        await supabase.from('sap_requisicoes_observacoes').insert(
+          gravados.map(({ entry, histId }) => ({
+            id: histId,
+            ri: entry.ri,
+            campo_alterado: 'preenchimento_automatico_po',
+            valor_anterior: JSON.stringify({
+              status: anteriores.get(entry.ri)?.status ?? null,
+              date: anteriores.get(entry.ri)?.date ?? null
+            }),
+            valor_novo: JSON.stringify({
+              status: entry.itemStatus ?? null,
+              date: entry.deliveryDate ?? null
+            }),
+            user_name: author,
+            created_at: now
+          }))
+        );
+      } catch (e) {
+        console.warn('Falha ao registrar histórico do preenchimento automático.', e);
+      }
+    }
+
+    // Reverte no cache local o que não foi aceito pelo Supabase, para a tela
+    // não mostrar como salvo algo que os outros usuários não enxergam.
+    if (failed.length > 0) {
+      const latest = this.getRequisicoes();
+      failed.forEach(ri => {
+        const idx = latest.findIndex(r => r.ri === ri);
+        const prev = anteriores.get(ri);
+        if (idx === -1 || !prev) return;
+        latest[idx].item_status = prev.status;
+        latest[idx].item_status_updated_at = prev.statusAt;
+        latest[idx].item_status_updated_by = prev.statusBy;
+        latest[idx].data_entrega_prevista = prev.date;
+        latest[idx].obs_updated_at = prev.obsAt;
+        latest[idx].obs_updated_by = prev.obsBy;
+      });
+      this.setStorageItem(this.requisicoesKey, latest);
+    }
+
+    return { ok: gravados.length, failed };
   }
 
   // Busca leve (poucas colunas) dos campos editáveis pelo comprador
@@ -4798,7 +4953,7 @@ class LocalDatabase {
       const remotePeds = await this.fetchAllFromTable<any>('sap_zl0132_po', '*', 1000, undefined, 'id');
       if (remotePeds.length > 0) current = remotePeds.map(p => this.normalizePedidoRow(p));
     } catch (err) {
-      console.warn('Não foi possível buscar os pedidos atuais (pedidosforn) do Supabase antes da importação; usando cache local.', err);
+      console.warn('Não foi possível buscar os pedidos atuais (sap_zl0132_po) do Supabase antes da importação; usando cache local.', err);
     }
     onProgress?.(10);
     const currentMap = new Map<string, any>();
@@ -5565,7 +5720,7 @@ class LocalDatabase {
       await this.refreshPedidosMatViews();
       await this.syncSimpleTable('vw_historico_pedidos', this.historicoPedidosKey, true);
 
-      // pedidosforn alimenta view_enriched_pedidos/view_enriched_requisicoes (status_requisicao,
+      // sap_zl0132_po alimenta vw_sap_pedidos_enriquecidos/vw_sap_requisicoes_enriquecidas (status_requisicao,
       // documento_compra, data_pedido, criado_por_pedido) — sem reidratar e bumpar 'requisicoes'/
       // 'pedidos' aqui, essa importação atualiza o PO no Supabase mas nenhum cliente (nem o que
       // importou) nota, porque o gate de sincronização só olha a versão de 'requisicoes'.
@@ -6841,6 +6996,10 @@ class LocalDatabase {
     }
   }
 
+  // Sem chamador de UI desde que o Painel SAP foi absorvido pela Central
+  // Compras. Não é perda: o upload de ZL0132 do AdminPanel (`importPedidosForn`)
+  // grava em `sap_zl0132_po`, que é a fonte autoritativa do PO e de onde o
+  // cache 'pedidos' também é reidratado.
   public importZL0132(rows: any[], filename: string): SAPImportLog {
     const headers = Object.keys(rows[0] || {});
     const rawRows = [headers, ...rows.map(r => headers.map(h => r[h]))];

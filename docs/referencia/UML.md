@@ -23,7 +23,7 @@ package "SISTEN System" {
     package "Presentation Layer (React 19 Views)" {
         [App Router (Hash)]
         [Views: Requests & Approvals]
-        [Views: Suprimentos & Painel SAP]
+        [Views: Suprimentos & Central Compras]
         [Views: Histórico & Auditoria IPCA]
         [Views: Almoxarifado & Financeiro]
         [Views: Helpdesk & Admin]

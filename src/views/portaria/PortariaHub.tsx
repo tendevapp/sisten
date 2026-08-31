@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   DoorOpen, Wrench, Bus, Truck, ClipboardList, ShieldCheck,
-  ArrowRight, Activity, Clock
+  ArrowRight, ArrowLeft, Activity, Clock
 } from 'lucide-react';
 import type { Profile } from '../../types';
 import * as api from '../../lib/portariaApi';
@@ -19,6 +19,7 @@ import PortariaTransportes from './PortariaTransportes';
 import PortariaCarretas from './PortariaCarretas';
 import PortariaRelatorio from './PortariaRelatorio';
 import PortariaBriefing from './PortariaBriefing';
+import PortariaPassagemPlantao from './PortariaPassagemPlantao';
 
 interface Props {
   user: Profile;
@@ -40,13 +41,22 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
 
   const FORMULARIOS_PORTARIA = [
     {
-      id: 'equipamentos',
-      codigo: 'FRM.SGP-0011',
-      title: 'Controle de Equipamento e Ferramentas de Terceiros',
-      desc: 'Entrada e devolução de máquinas, ferramentas e instrumentos de terceirizados e prestadores de serviço.',
-      icon: Wrench,
-      cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
-      badge: `${metricas?.equipamentosNoPatio || 0} no pátio`,
+      id: 'passagem',
+      codigo: 'FRM.SGP-0010',
+      title: 'Passagem de Plantão & Custódia de Segurança',
+      desc: 'Recebimento de posto, escala da vigilância, termo declaratório e conferência de materiais patrimoniais.',
+      icon: ShieldCheck,
+      cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
+      badge: `${metricas?.plantoesEmAberto || 0} em aberto`,
+    },
+    {
+      id: 'relatorio',
+      codigo: 'FRM.SGP-0010',
+      title: 'Relatório de Ocorrências',
+      desc: 'Livro digital de ocorrências: chegadas e saídas de veículos, visitantes, prestadores, colaboradores e rondas.',
+      icon: ClipboardList,
+      cor: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400',
+      badge: `${metricas?.relatoriosEmAberto || 0} aberto`,
     },
     {
       id: 'transportes',
@@ -58,6 +68,15 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
       badge: `${metricas?.transportesNoPatio || 0} no pátio`,
     },
     {
+      id: 'equipamentos',
+      codigo: 'FRM.SGP-0011',
+      title: 'Controle de Equipamento e Ferramentas de Terceiros',
+      desc: 'Entrada e devolução de máquinas, ferramentas e instrumentos de terceirizados e prestadores de serviço.',
+      icon: Wrench,
+      cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
+      badge: `${metricas?.equipamentosNoPatio || 0} no pátio`,
+    },
+    {
       id: 'carretas',
       codigo: 'FRM.SGP-0020',
       title: 'Controle de Chegada e Saída de Carretas de Chapas',
@@ -65,15 +84,6 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
       icon: Truck,
       cor: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-400',
       badge: `${metricas?.carretasNoPatio || 0} ativas`,
-    },
-    {
-      id: 'relatorio',
-      codigo: 'FRM.SGP-0010',
-      title: 'Relatório de Portaria & Ocorrências',
-      desc: 'Livro de plantão digital, registro de rondas patrimoniais, ocorrências e passagem de turno.',
-      icon: ClipboardList,
-      cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
-      badge: `${metricas?.relatoriosEmAberto || 0} aberto`,
     },
     {
       id: 'briefing',
@@ -86,20 +96,36 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
     },
   ];
 
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const handleChildNavigate = (path: string) => {
+    if (path === '/formularios/portaria') {
+      setActiveTab('visao_geral');
+      return;
+    }
+    setActiveTab('visao_geral');
+    onNavigate(path);
+  };
+
+  if (activeTab === 'passagem') {
+    return <PortariaPassagemPlantao user={user} onNavigate={handleChildNavigate} />;
+  }
   if (activeTab === 'equipamentos') {
-    return <PortariaEquipamentos user={user} onNavigate={onNavigate} />;
+    return <PortariaEquipamentos user={user} onNavigate={handleChildNavigate} />;
   }
   if (activeTab === 'transportes') {
-    return <PortariaTransportes user={user} onNavigate={onNavigate} />;
+    return <PortariaTransportes user={user} onNavigate={handleChildNavigate} />;
   }
   if (activeTab === 'carretas') {
-    return <PortariaCarretas user={user} onNavigate={onNavigate} />;
+    return <PortariaCarretas user={user} onNavigate={handleChildNavigate} />;
   }
   if (activeTab === 'relatorio') {
-    return <PortariaRelatorio user={user} onNavigate={onNavigate} />;
+    return <PortariaRelatorio user={user} onNavigate={handleChildNavigate} />;
   }
   if (activeTab === 'briefing') {
-    return <PortariaBriefing user={user} onNavigate={onNavigate} />;
+    return <PortariaBriefing user={user} onNavigate={handleChildNavigate} />;
   }
 
   return (
@@ -109,9 +135,10 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
         <button
           type="button"
           onClick={() => onNavigate('/formularios')}
-          className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+          className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
         >
-          ← Voltar para Todos os Formulários
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+          <span>Voltar para Módulos de Formulários</span>
         </button>
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm shadow-blue-500/20">

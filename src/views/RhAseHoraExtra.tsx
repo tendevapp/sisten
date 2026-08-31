@@ -319,10 +319,10 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
           <button
             type="button"
             onClick={() => onNavigate('/formularios')}
-            className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-violet-400 hover:bg-violet-50/50 hover:text-violet-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Formulários
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <span>Voltar para Módulos de Formulários</span>
           </button>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">

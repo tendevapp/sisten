@@ -9,6 +9,8 @@ create table if not exists public.port_vigilantes (
   empresa text not null default 'PROSEG / PATRIMONIAL',
   funcao text not null default 'Vigilante',
   turno_preferencial text default 'REVEZAMENTO',
+  data_admissao date,
+  data_nascimento date,
   ativo boolean not null default true,
   observacoes text,
   criado_por text references public.profiles(id),

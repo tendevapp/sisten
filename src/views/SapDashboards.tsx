@@ -220,7 +220,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
 
   const drilldown = useCallback((tipo: 'status' | 'alert' | 'buyer', valor: string) => {
     const chave = tipo === 'status' ? 'status' : tipo === 'alert' ? 'alert' : 'buyer';
-    onNavigate(`/suprimentos/painel?${chave}=${encodeURIComponent(valor)}`);
+    onNavigate(`/suprimentos/compras?${chave}=${encodeURIComponent(valor)}`);
   }, [onNavigate]);
 
   /** Abre o modal de composição a partir de um clique de gráfico, nas 4 abas

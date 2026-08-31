@@ -2,12 +2,13 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Geradores de PDF oficiais dos 5 formulários do módulo Portaria da TEN:
+ * Geradores de PDF oficiais dos formulários operacionais do módulo Portaria da TEN:
  * 1. FRM.SGP-0011 (Equipamentos e Ferramentas de Terceiros)
  * 2. FRM.SGP-0009 (Registro de Chegada de Transportes)
  * 3. FRM.SGP-0020 (Controle de Chegada e Saída de Carretas de Chapas)
  * 4. FRM.SGP-0010 (Relatório de Portaria e Ocorrências)
  * 5. FRM.SGP-0013 (Lista de Presença - Briefing de Segurança)
+ * 6. FRM.SGP-0010 (Passagem de Plantão da Portaria)
  */
 
 import { createDoc, PdfTextWriter, downloadPdf } from './core';
@@ -16,6 +17,7 @@ import type {
   PortRegistroTransporte,
   PortControleCarreta,
   PortRelatorioPortaria,
+  PortPassagemPlantao,
   PortBriefingSessao,
 } from '../../types';
 
@@ -26,38 +28,62 @@ function formatDataBR(iso?: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
+// =====================================================================
 // 1. FRM.SGP-0011: Equipamentos e Ferramentas de Terceiros
+// =====================================================================
 export async function exportEquipamentoPdf(item: PortControleEquipamento): Promise<void> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  writer.drawTitle('Controle de Entrada de Equipamento e Ferramentas de Terceiros');
-  writer.drawField('Código do Formulário', item.codigo_formulario || 'FRM.SGP-0011');
-  writer.drawField('Protocolo', item.numero_protocolo);
-  writer.drawField('Empresa Terceira', item.nome_empresa);
-  writer.drawField('Funcionário Responsável', item.funcionario);
-  writer.drawField('Data de Entrada', `${formatDataBR(item.data_entrada)} às ${item.hora_entrada || '-'}`);
-  writer.drawField('Data de Saída', item.data_saida ? `${formatDataBR(item.data_saida)} às ${item.hora_saida || '-'}` : 'Em Aberto (No Pátio)');
-  writer.drawField('Vigilante de Entrada', item.vigilante_entrada);
-  if (item.vigilante_saida) writer.drawField('Vigilante de Saída', item.vigilante_saida);
-  if (item.responsavel) writer.drawField('Responsável / Acompanhante', item.responsavel);
-  writer.drawField('Status', item.status);
+  const isBaixado = item.status === 'DEVOLVIDO_SAIU' || !!item.data_saida;
 
-  writer.spacer(6);
-  writer.drawSubtitle('Descrição dos Materiais e Ferramentas');
-  const linhas = item.descricao_materiais.split('\n');
-  linhas.forEach((l) => writer.drawTableRow(l));
+  writer.drawDocumentHeader({
+    title: 'Controle de Entrada de Equipamentos de Terceiros',
+    formCode: item.codigo_formulario || 'FRM.SGP-0011',
+    protocol: item.numero_protocolo,
+    statusBadge: isBaixado ? 'SAÍDA CONCLUÍDA' : 'NO PÁTIO',
+    statusColor: isBaixado ? 'green' : 'amber',
+  });
+
+  writer.drawInfoGrid([
+    { label: 'Empresa Terceirizada', value: item.nome_empresa },
+    { label: 'Funcionário Responsável', value: item.funcionario },
+    { label: 'Entrada Registrada', value: `${formatDataBR(item.data_entrada)} às ${item.hora_entrada || '-'}` },
+    {
+      label: 'Saída Registrada',
+      value: item.data_saida ? `${formatDataBR(item.data_saida)} às ${item.hora_saida || '-'}` : 'Em Aberto (Permanecendo no Pátio)',
+    },
+    { label: 'Vigilante de Entrada', value: item.vigilante_entrada },
+    { label: 'Vigilante de Saída', value: item.vigilante_saida || '-' },
+    { label: 'Acompanhante / Responsável TEN', value: item.responsavel || '-' },
+    {
+      label: 'Status Operacional',
+      value: item.status,
+      statusBadge: isBaixado ? 'CONCLUÍDO' : 'EM ABERTO',
+      statusColor: isBaixado ? 'green' : 'amber',
+    },
+  ], 2);
+
+  writer.drawSectionHeader('Descrição dos Materiais e Ferramentas');
+  writer.drawCallout('Relação de Equipamentos Declarados', item.descricao_materiais);
 
   if (item.observacoes) {
-    writer.spacer(6);
-    writer.drawSubtitle('Observações');
-    writer.drawTableRow(item.observacoes);
+    writer.drawSectionHeader('Observações e Apontamentos');
+    writer.drawCallout('Observações Gerais da Portaria', item.observacoes);
   }
 
+  writer.drawSignatures([
+    { role: 'Vigilante da Portaria', name: item.vigilante_entrada },
+    { role: 'Responsável / Terceiro', name: item.funcionario },
+  ]);
+
+  writer.finalizeDoc(item.codigo_formulario || 'FRM.SGP-0011');
   await downloadPdf(doc, `portaria-equipamentos-${item.numero_protocolo}.pdf`);
 }
 
+// =====================================================================
 // 2. FRM.SGP-0009: Registro de Chegada de Transportes
+// =====================================================================
 export async function exportTransportesPdf(
   data: string,
   turno: string,
@@ -66,117 +92,374 @@ export async function exportTransportesPdf(
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  writer.drawTitle('Registro de Chegada de Transportes');
-  writer.drawField('Código do Formulário', 'FRM.SGP-0009 (Rev. 00)');
-  writer.drawField('Data do Registro', formatDataBR(data));
-  writer.drawField('Turno', turno);
-  writer.drawField('Total de Transportes', String(transportes.length));
-
-  writer.spacer(6);
-  writer.drawSubtitle(`Movimentações (${transportes.length})`);
-  transportes.forEach((t, i) => {
-    writer.drawTableRow(`${i + 1}. [${t.veiculo}] Placa: ${t.placa} — ${t.empresa}`);
-    writer.drawTableRow(`   Motorista: ${t.motorista} · Ocupação/Função: ${t.ocupacao || '-'}`);
-    writer.drawTableRow(`   Chegada: ${t.hora_chegada} · Saída: ${t.hora_saida || 'No Pátio'} · Vigilante: ${t.vigilante}`);
-    if (t.observacoes) writer.drawTableRow(`   Obs: ${t.observacoes}`);
+  writer.drawDocumentHeader({
+    title: 'Registro de Chegada de Transportes',
+    formCode: 'FRM.SGP-0009 (Rev. 00)',
+    protocol: `TRP-${data.replace(/-/g, '')}-${turno}`,
   });
 
+  writer.drawInfoGrid([
+    { label: 'Data do Registro', value: formatDataBR(data) },
+    { label: 'Turno Operacional', value: turno },
+    { label: 'Total de Veículos Registrados', value: `${transportes.length} transporte(s)` },
+  ], 3);
+
+  writer.drawSectionHeader('Movimentações de Transporte Registradas', transportes.length);
+
+  const tableHeaders = [
+    { label: 'HORÁRIO', width: 85, align: 'center' as const },
+    { label: 'VEÍCULO / PLACA', width: 95, align: 'left' as const },
+    { label: 'EMPRESA', width: 110, align: 'left' as const },
+    { label: 'MOTORISTA / FUNÇÃO', width: 125, align: 'left' as const },
+    { label: 'VIGILANTE', width: 100, align: 'left' as const },
+  ];
+
+  const tableRows = transportes.map((t) => [
+    `${t.hora_chegada} às ${t.hora_saida || 'No Pátio'}`,
+    `[${t.veiculo}] ${t.placa}`,
+    t.empresa,
+    `${t.motorista}${t.ocupacao ? ` (${t.ocupacao})` : ''}`,
+    t.vigilante,
+  ]);
+
+  writer.drawTable(tableHeaders, tableRows);
+
+  writer.drawSignatures([
+    { role: 'Vigilante Responsável pelo Plantão' },
+    { role: 'Supervisor de Segurança Patrimonial' },
+  ]);
+
+  writer.finalizeDoc('FRM.SGP-0009');
   await downloadPdf(doc, `portaria-transportes-${data}-${turno}.pdf`);
 }
 
+// =====================================================================
 // 3. FRM.SGP-0020: Controle de Carretas de Chapas
+// =====================================================================
 export async function exportCarretasPdf(carretas: PortControleCarreta[], periodoStr?: string): Promise<void> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  writer.drawTitle('Controle de Chegada e Saída de Carretas de Chapas');
-  writer.drawField('Código do Formulário', 'FRM.SGP-0020 (Rev. 00)');
-  if (periodoStr) writer.drawField('Período / Referência', periodoStr);
-  writer.drawField('Total de Carretas Registradas', String(carretas.length));
-
-  writer.spacer(6);
-  writer.drawSubtitle(`Carretas Recebidas (${carretas.length})`);
-  carretas.forEach((c, i) => {
-    writer.drawTableRow(`${i + 1}. ${c.empresa} — Cavalo: ${c.placa_cavalo} / Carreta: ${c.placa_carreta}`);
-    writer.drawTableRow(`   Motorista: ${c.nome_motorista}${c.cpf_motorista ? ` (CPF: ${c.cpf_motorista})` : ''}`);
-    writer.drawTableRow(
-      `   Entrada: ${formatDataBR(c.data_entrada)} ${c.hora_entrada} · ` +
-      `Saída: ${c.data_saida ? `${formatDataBR(c.data_saida)} ${c.hora_saida}` : 'No Pátio'} · ` +
-      `Status: ${c.status}`
-    );
-    if (c.numero_nf || c.peso_bruto) {
-      writer.drawTableRow(`   NF: ${c.numero_nf || '-'} · Peso: ${c.peso_bruto ? `${c.peso_bruto} kg` : '-'}`);
-    }
-    if (c.observacoes) writer.drawTableRow(`   Obs: ${c.observacoes}`);
+  writer.drawDocumentHeader({
+    title: 'Controle de Chegada e Saída de Carretas de Chapas',
+    formCode: 'FRM.SGP-0020 (Rev. 00)',
+    protocol: `CRT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
   });
 
-  await downloadPdf(doc, `portaria-carretas-chapas.pdf`);
+  writer.drawInfoGrid([
+    { label: 'Período / Referência', value: periodoStr || 'Todos os Registros' },
+    { label: 'Total de Carretas', value: `${carretas.length} carreta(s)` },
+  ], 2);
+
+  writer.drawSectionHeader('Relação de Carretas de Chapas', carretas.length);
+
+  const tableHeaders = [
+    { label: 'ENTRADA / SAÍDA', width: 95, align: 'center' as const },
+    { label: 'EMPRESA / MOTORISTA', width: 130, align: 'left' as const },
+    { label: 'CAVALO / CARRETA', width: 100, align: 'left' as const },
+    { label: 'NF / PESO', width: 95, align: 'left' as const },
+    { label: 'STATUS', width: 95, align: 'center' as const },
+  ];
+
+  const tableRows = carretas.map((c) => [
+    `${formatDataBR(c.data_entrada)} ${c.hora_entrada}\n${c.data_saida ? `${formatDataBR(c.data_saida)} ${c.hora_saida}` : 'No Pátio'}`,
+    `${c.empresa}\n${c.nome_motorista}${c.cpf_motorista ? ` (${c.cpf_motorista})` : ''}`,
+    `Cav: ${c.placa_cavalo}\nCar: ${c.placa_carreta}`,
+    `NF: ${c.numero_nf || '-'}\n${c.peso_bruto ? `${c.peso_bruto} kg` : '-'}`,
+    c.status === 'DESCARREGADO_SAIU' ? 'LIBERADO' : 'NO PÁTIO',
+  ]);
+
+  writer.drawTable(tableHeaders, tableRows);
+
+  writer.drawSignatures([
+    { role: 'Vigilante Portaria TEN' },
+    { role: 'Inspetor de Logística / Recebimento' },
+  ]);
+
+  writer.finalizeDoc('FRM.SGP-0020');
+  await downloadPdf(doc, 'portaria-carretas-chapas.pdf');
 }
 
-// 4. FRM.SGP-0010: Relatório de Portaria & Ocorrências
+// =====================================================================
+// 4. FRM.SGP-0010: Relatório de Ocorrências da Portaria (Executivo)
+// =====================================================================
 export async function exportRelatorioPortariaPdf(relatorio: PortRelatorioPortaria): Promise<void> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  writer.drawTitle('Relatório de Portaria & Ocorrências');
-  writer.drawField('Código do Formulário', relatorio.codigo_formulario || 'FRM.SGP-0010');
-  writer.drawField('Protocolo', relatorio.numero_protocolo);
-  writer.drawField('Data do Plantão', formatDataBR(relatorio.data));
-  writer.drawField('Turno / Horário', `${relatorio.turno} (${relatorio.horario_inicio} às ${relatorio.horario_fim})`);
-  writer.drawField('Vigilante Portaria', relatorio.vigilante_principal);
-  if (relatorio.vigilante_ronda01) writer.drawField('Vigilante Ronda 01', relatorio.vigilante_ronda01);
-  if (relatorio.vigilante_ronda02) writer.drawField('Vigilante Ronda 02', relatorio.vigilante_ronda02);
-  writer.drawField('Status', relatorio.status);
+  const statusLabel = relatorio.status === 'CONCLUIDO' ? 'CONCLUÍDO' : 'EM ANDAMENTO';
+  const statusColor = relatorio.status === 'CONCLUIDO' ? 'green' : 'blue';
 
+  // Cabeçalho Executivo
+  writer.drawDocumentHeader({
+    title: 'Relatório de Ocorrências da Portaria',
+    formCode: relatorio.codigo_formulario || 'FRM.SGP-0010',
+    protocol: relatorio.numero_protocolo,
+    statusBadge: statusLabel,
+    statusColor: statusColor,
+  });
+
+  // Grid de Informações do Plantão
+  writer.drawInfoGrid([
+    { label: 'Data do Plantão', value: formatDataBR(relatorio.data) },
+    { label: 'Turno / Horário', value: `${relatorio.turno} (${relatorio.horario_inicio} às ${relatorio.horario_fim})` },
+    { label: 'Vigilante Portaria', value: relatorio.vigilante_principal },
+    { label: 'Vigilante Ronda 01', value: relatorio.vigilante_ronda01 || 'Não escalado' },
+    { label: 'Vigilante Ronda 02', value: relatorio.vigilante_ronda02 || 'Não escalado' },
+    {
+      label: 'Status do Livro',
+      value: relatorio.status,
+      statusBadge: statusLabel,
+      statusColor: statusColor,
+    },
+  ], 3);
+
+  // Lista de Ocorrências em Cartões Estruturados
   const ocorrencias = relatorio.ocorrencias || [];
-  writer.spacer(6);
-  writer.drawSubtitle(`Ocorrências e Rondas Registradas (${ocorrencias.length})`);
+  writer.drawSectionHeader('Ocorrências, Entradas, Saídas e Rondas Registradas', ocorrencias.length);
+
   if (ocorrencias.length === 0) {
-    writer.drawTableRow('Nenhuma alteração ou ocorrência registrada durante o plantão.');
+    writer.drawCallout('Sem Alterações', 'Nenhuma alteração ou ocorrência registrada durante o plantão.');
   } else {
     ocorrencias.forEach((oc, i) => {
-      writer.drawTableRow(`${i + 1}. [${oc.horario}] [${oc.local_setor}] (${oc.severidade}) — Vigilante: ${oc.vigilante}`);
-      writer.drawTableRow(`   ${oc.descricao}`);
+      writer.drawOccurrenceCard({
+        index: i + 1,
+        time: oc.horario,
+        sector: oc.local_setor,
+        severity: oc.severidade,
+        vigilante: oc.vigilante,
+        description: oc.descricao,
+      });
     });
   }
 
+  // Observações Gerais
   if (relatorio.observacoes_gerais) {
-    writer.spacer(6);
-    writer.drawSubtitle('Observações Gerais do Plantão');
-    writer.drawTableRow(relatorio.observacoes_gerais);
+    writer.drawSectionHeader('Observações Gerais do Plantão');
+    writer.drawCallout('Anotações do Vigilante', relatorio.observacoes_gerais);
   }
 
+  // Assinaturas Oficiais
+  writer.drawSignatures([
+    { role: 'Vigilante da Portaria', name: relatorio.vigilante_principal },
+    { role: 'Vigilante de Ronda', name: relatorio.vigilante_ronda01 || relatorio.vigilante_ronda02 || '' },
+    { role: 'Supervisor de Segurança Patrimonial' },
+  ]);
+
+  // Páginas de Anexos Fotográficos com Referência ao Lançamento
+  const fotosAnexas = ocorrencias
+    .filter((oc) => !!oc.foto_url)
+    .map((oc, idx) => ({
+      title: `Ocorrência #${idx + 1} — [${oc.horario}] [${oc.local_setor}]`,
+      reference: `Vigilante: ${oc.vigilante} · Severidade: ${oc.severidade || 'INFO'}`,
+      description: oc.descricao,
+      timestamp: `${formatDataBR(relatorio.data)} às ${oc.horario}`,
+      source: oc.foto_url as string,
+    }));
+
+  if (fotosAnexas.length > 0) {
+    await writer.drawPhotoAttachments(fotosAnexas);
+  }
+
+  writer.finalizeDoc(relatorio.codigo_formulario || 'FRM.SGP-0010');
   await downloadPdf(doc, `relatorio-portaria-${relatorio.numero_protocolo}.pdf`);
 }
 
-// 5. FRM.SGP-0013: Lista de Presença - Briefing de Segurança
+// =====================================================================
+// 5. FRM.SGP-0013: Lista de Presença - Briefing de Segurança (Individual)
+// =====================================================================
 export async function exportBriefingPdf(sessao: PortBriefingSessao): Promise<void> {
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
-  writer.drawTitle('Lista de Presença — Briefing de Segurança');
-  writer.drawField('Código do Formulário', sessao.codigo_formulario || 'FRM.SGP-0013 (Rev. 01)');
-  writer.drawField('Protocolo', sessao.numero_protocolo);
-  writer.drawField('Tema do Treinamento', sessao.tema_treinamento);
-  writer.drawField('Tipo', sessao.tipo);
-  writer.drawField('Data da Sessão', formatDataBR(sessao.data));
-  writer.drawField('Instrutor Responsável', sessao.instrutor_responsavel);
+  await renderSessaoBriefing(writer, sessao);
 
-  writer.spacer(6);
-  writer.drawSubtitle('Conteúdo Programático');
-  sessao.conteudo_programatico.split('\n').forEach((l) => writer.drawTableRow(l));
+  writer.finalizeDoc(sessao.codigo_formulario || 'FRM.SGP-0013');
+  await downloadPdf(doc, `briefing-seguranca-${sessao.numero_protocolo}.pdf`);
+}
 
-  writer.spacer(6);
-  writer.drawSubtitle('Termo de Responsabilidade');
-  writer.drawTableRow(sessao.termo_responsabilidade);
+// 5.1 FRM.SGP-0013: Relatório Consolidado de Múltiplas Sessões de Briefing
+export async function exportBriefingConsolidadoPdf(sessoes: PortBriefingSessao[]): Promise<void> {
+  if (sessoes.length === 0) return;
+  if (sessoes.length === 1) {
+    return exportBriefingPdf(sessoes[0]);
+  }
 
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  for (let i = 0; i < sessoes.length; i++) {
+    if (i > 0) {
+      writer.addNewPage();
+    }
+    await renderSessaoBriefing(writer, sessoes[i]);
+  }
+
+  writer.finalizeDoc('FRM.SGP-0013');
+  await downloadPdf(doc, `briefing-seguranca-consolidado-${sessoes.length}-sessoes.pdf`);
+}
+
+async function renderSessaoBriefing(writer: PdfTextWriter, sessao: PortBriefingSessao): Promise<void> {
   const participantes = sessao.participantes || [];
-  writer.spacer(6);
-  writer.drawSubtitle(`Participantes Presentes (${participantes.length})`);
-  participantes.forEach((p, i) => {
-    writer.drawTableRow(`${i + 1}. ${p.nome} — CPF: ${p.cpf} — ${p.empresa} (${p.funcao})`);
-    writer.drawTableRow(`   Data: ${formatDataBR(p.data)} · Validade: ${p.validade_dias} dias · Assinatura Digital Registrada: ${p.assinatura_digital ? 'SIM (Digital)' : 'SIM'}`);
+  const ass = participantes.filter((p) => !!p.assinatura_digital).length;
+  const concl = participantes.length > 0 && ass === participantes.length;
+
+  writer.drawDocumentHeader({
+    title: 'Lista de Presença — Briefing de Segurança',
+    formCode: sessao.codigo_formulario || 'FRM.SGP-0013 (Rev. 01)',
+    protocol: sessao.numero_protocolo,
+    statusBadge: concl ? 'FINALIZADA (100% ASSINADA)' : 'PENDENTE',
+    statusColor: concl ? 'green' : 'blue',
   });
 
-  await downloadPdf(doc, `briefing-seguranca-${sessao.numero_protocolo}.pdf`);
+  writer.drawInfoGrid([
+    { label: 'Tema do Treinamento', value: sessao.tema_treinamento },
+    { label: 'Tipo de Público', value: sessao.tipo === 'EXTERNO' ? 'Externo (Visitantes/Terceiros)' : 'Interno (Colaboradores)' },
+    { label: 'Data da Sessão', value: formatDataBR(sessao.data) },
+    { label: 'Instrutor / Responsável', value: sessao.instrutor_responsavel },
+  ], 2);
+
+  writer.drawSectionHeader('Conteúdo Programático & Diretrizes');
+  writer.drawCallout('Conteúdo Ministrado', sessao.conteudo_programatico);
+
+  writer.drawSectionHeader('Termo de Responsabilidade e Ciência');
+  writer.drawCallout('Declaração do Participante', sessao.termo_responsabilidade, true);
+
+  writer.drawSectionHeader('Relação de Participantes e Assinaturas Digitais', participantes.length);
+  await writer.drawAttendanceTableWithSignatures(participantes);
+
+  writer.drawSignatures([
+    { role: 'Instrutor / Responsável', name: sessao.instrutor_responsavel },
+    { role: 'Técnico em Segurança do Trabalho (SESMT)' },
+  ]);
+}
+
+// =====================================================================
+// 6. FRM.SGP-0010: Passagem de Plantão da Portaria
+// =====================================================================
+export async function exportPassagemPlantaoPdf(plantao: PortPassagemPlantao): Promise<void> {
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  const isConcluido = plantao.status === 'CONCLUIDO';
+
+  writer.drawDocumentHeader({
+    title: 'Passagem de Plantão da Portaria',
+    formCode: plantao.codigo_formulario || 'FRM.SGP-0010 (Rev. 00)',
+    protocol: plantao.numero_protocolo,
+    statusBadge: isConcluido ? 'CONCLUÍDO' : 'EM ANDAMENTO',
+    statusColor: isConcluido ? 'green' : 'blue',
+  });
+
+  writer.drawInfoGrid([
+    { label: 'Data do Plantão', value: formatDataBR(plantao.data) },
+    { label: 'Turno / Horário', value: `${plantao.turno} (${plantao.horario_inicio} às ${plantao.horario_fim})` },
+    { label: 'Vigilante Portaria', value: plantao.vigilante_portaria },
+    { label: 'Vigilante Ronda 01', value: plantao.vigilante_ronda01 || 'Não escalado' },
+    { label: 'Vigilante Ronda 02', value: plantao.vigilante_ronda02 || 'Não escalado' },
+    { label: 'Preenchido por', value: plantao.vigilante_preenchedor || plantao.vigilante_portaria },
+  ], 3);
+
+  if (plantao.texto_declaracao) {
+    writer.drawSectionHeader('Termo Declaratório de Recebimento do Posto');
+    writer.drawCallout('Declaração do Plantão', plantao.texto_declaracao, true);
+  }
+
+  const itens = plantao.itens_conferidos || [];
+  writer.drawSectionHeader('Conferência de Materiais de Segurança Patrimonial', itens.length);
+
+  const tableHeaders = [
+    { label: 'MATERIAL / EQUIPAMENTO', width: 220, align: 'left' as const },
+    { label: 'QUANTIDADE', width: 90, align: 'center' as const },
+    { label: 'CONFERÊNCIA', width: 85, align: 'center' as const },
+    { label: 'OBSERVAÇÃO', width: 120, align: 'left' as const },
+  ];
+
+  const tableRows = itens.map((it) => [
+    it.nome,
+    `${it.quantidade_conferida ?? it.quantidade_esperada} / ${it.quantidade_esperada} ${it.unidade || 'UN'}`,
+    it.conferido ? 'CONFORME [OK]' : 'DIVERGENTE',
+    it.observacao || '-',
+  ]);
+
+  writer.drawTable(tableHeaders, tableRows);
+
+  if (plantao.observacoes) {
+    writer.drawSectionHeader('Observações e Ocorrências do Plantão');
+    writer.drawCallout('Observações Gerais', plantao.observacoes);
+  }
+
+  writer.drawSignatures([
+    { role: 'Vigilante Entregador (Plantão Anterior)', name: plantao.vigilante_anterior_01 || '' },
+    { role: 'Vigilante Recebedor (Plantão Atual)', name: plantao.vigilante_portaria },
+  ]);
+
+  writer.finalizeDoc(plantao.codigo_formulario || 'FRM.SGP-0010');
+  await downloadPdf(doc, `passagem-plantao-${plantao.numero_protocolo}.pdf`);
+}
+
+// =====================================================================
+// 7. Relatório Consolidado de Múltiplos Plantões (FRM.SGP-0010)
+// =====================================================================
+export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassagemPlantao[]): Promise<void> {
+  if (plantoes.length === 0) return;
+  if (plantoes.length === 1) {
+    return exportPassagemPlantaoPdf(plantoes[0]);
+  }
+
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  const datas = plantoes.map((p) => p.data).sort();
+  const menorData = formatDataBR(datas[0]);
+  const maiorData = formatDataBR(datas[datas.length - 1]);
+
+  writer.drawDocumentHeader({
+    title: 'Relatório Consolidado de Passagem de Plantão',
+    formCode: 'FRM.SGP-0010 (Rev. 00)',
+    protocol: `CSL-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`,
+  });
+
+  writer.drawInfoGrid([
+    { label: 'Total de Plantões Consolidados', value: `${plantoes.length} plantões` },
+    { label: 'Período Abrangido', value: menorData === maiorData ? menorData : `${menorData} até ${maiorData}` },
+  ], 2);
+
+  plantoes.forEach((plantao, index) => {
+    writer.drawSectionHeader(`Plantão ${index + 1}: ${formatDataBR(plantao.data)} — Turno ${plantao.turno} (${plantao.numero_protocolo})`);
+
+    writer.drawInfoGrid([
+      { label: 'Vigilante Portaria', value: plantao.vigilante_portaria },
+      { label: 'Vigilante Ronda 01', value: plantao.vigilante_ronda01 || '-' },
+      { label: 'Vigilante Ronda 02', value: plantao.vigilante_ronda02 || '-' },
+      { label: 'Entregue por', value: plantao.vigilante_anterior_01 || '-' },
+    ], 2);
+
+    const itens = plantao.itens_conferidos || [];
+    if (itens.length > 0) {
+      const tableHeaders = [
+        { label: 'MATERIAL', width: 250, align: 'left' as const },
+        { label: 'QUANTIDADE', width: 110, align: 'center' as const },
+        { label: 'STATUS', width: 155, align: 'center' as const },
+      ];
+      const tableRows = itens.map((it) => [
+        it.nome,
+        `${it.quantidade_conferida ?? it.quantidade_esperada} / ${it.quantidade_esperada} ${it.unidade || 'UN'}`,
+        it.conferido ? 'CONFORME' : 'DIVERGENTE',
+      ]);
+      writer.drawTable(tableHeaders, tableRows);
+    }
+
+    if (plantao.observacoes) {
+      writer.drawCallout('Observações do Turno', plantao.observacoes);
+    }
+  });
+
+  writer.drawSignatures([
+    { role: 'Vigilante Responsável' },
+    { role: 'Supervisor de Segurança Patrimonial' },
+  ]);
+
+  writer.finalizeDoc('FRM.SGP-0010');
+  await downloadPdf(doc, `consolidado-passagens-plantao-${datas[0]}-${datas[datas.length - 1]}.pdf`);
 }

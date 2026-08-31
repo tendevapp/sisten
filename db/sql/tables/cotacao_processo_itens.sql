@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Escopo do processo de cotação: um SNAPSHOT da RM no momento da
--- criação. Sem FK para public.requisicoes de propósito — reimportar o
+-- criação. Sem FK para public.sap_me5a_rc de propósito — reimportar o
 -- ME5A pode remover uma linha, e isso não pode apagar um histórico de
 -- preço já recebido.
 -- =====================================================================

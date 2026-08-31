@@ -4,7 +4,7 @@
  *
  * Grade editável dos itens de uma proposta. Edição é um <input> puro dentro
  * da célula — sem framework de célula, no mesmo estilo de edição inline já
- * usado em SuppliersNoPO.tsx. Uma coluna própria (VinculoCell) resolve o
+ * usado em Compras.tsx. Uma coluna própria (VinculoCell) resolve o
  * vínculo com o item de RM: mostra a sugestão, o score, e um dropdown com
  * todos os itens do escopo + "fora do escopo" para sempre permitir override.
  */

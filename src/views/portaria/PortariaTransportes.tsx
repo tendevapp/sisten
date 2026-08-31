@@ -17,6 +17,7 @@ import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 
 interface Props {
   user: Profile;
@@ -42,7 +43,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [formNovo, setFormNovo] = useState({
     data: api.hojeISO(),
     turno: api.sugerirTurno(),
-    vigilante: user.name || '',
+    vigilante: '',
     veiculo: 'Van',
     placa: '',
     empresa: '',
@@ -79,6 +80,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Placa, Empresa e Motorista.');
       return;
     }
+    if (!formNovo.vigilante.trim()) {
+      toast.error('Selecione o vigilante da portaria.');
+      return;
+    }
 
     setSalvando(true);
     try {
@@ -91,7 +96,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       setFormNovo({
         data: api.hojeISO(),
         turno: api.sugerirTurno(),
-        vigilante: user.name || '',
+        vigilante: '',
         veiculo: 'Van',
         placa: '',
         empresa: '',
@@ -145,11 +150,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         <div>
           <button
             type="button"
-            onClick={() => onNavigate('/formularios')}
-            className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+            onClick={() => onNavigate('/formularios/portaria')}
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-600 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar para Formulários
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <span>Voltar para o Painel da Portaria</span>
           </button>
           <div className="flex items-center gap-2.5">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
@@ -340,26 +345,19 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
       {/* Modal Novo Lançamento */}
       {modalNovoAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Lançar Chegada de Transporte
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0009</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalNovoAberto(false)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-3xl">
+          <ModalHeader onClose={() => setModalNovoAberto(false)}>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                Lançar Chegada de Transporte
+              </h3>
+              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0009</p>
             </div>
+          </ModalHeader>
 
-            <form onSubmit={handleSalvar} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <ModalBody className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Tipo de Veículo *
@@ -367,7 +365,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   <select
                     value={formNovo.veiculo}
                     onChange={(e) => setFormNovo({ ...formNovo, veiculo: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   >
                     {TIPOS_VEICULO.map((t) => (
                       <option key={t} value={t}>{t}</option>
@@ -384,12 +382,12 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     placeholder="Ex: ABC1D23"
                     value={formNovo.placa}
                     onChange={(e) => setFormNovo({ ...formNovo, placa: e.target.value.toUpperCase() })}
-                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Empresa *
@@ -400,7 +398,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     placeholder="Ex: Transportes São Geraldo"
                     value={formNovo.empresa}
                     onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -413,12 +411,12 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     placeholder="Nome completo do motorista"
                     value={formNovo.motorista}
                     onChange={(e) => setFormNovo({ ...formNovo, motorista: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data
@@ -427,7 +425,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     type="date"
                     value={formNovo.data}
                     onChange={(e) => setFormNovo({ ...formNovo, data: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -438,7 +436,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     type="time"
                     value={formNovo.hora_chegada}
                     onChange={(e) => setFormNovo({ ...formNovo, hora_chegada: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -448,7 +446,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   <select
                     value={formNovo.turno}
                     onChange={(e) => setFormNovo({ ...formNovo, turno: e.target.value as any })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   >
                     <option value="MANHA">Manhã</option>
                     <option value="TARDE">Tarde</option>
@@ -457,7 +455,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Ocupação / Motivo (Opcional)
@@ -467,7 +465,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     placeholder="Ex: Entrega de suprimentos / 4 passageiros"
                     value={formNovo.ocupacao}
                     onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -479,27 +477,27 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                   />
                 </div>
               </div>
+            </ModalBody>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setModalNovoAberto(false)}
-                  className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={salvando}
-                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
-                >
-                  {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Salvar Chegada
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <ModalFooter>
+              <button
+                type="button"
+                onClick={() => setModalNovoAberto(false)}
+                className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvando}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
+              >
+                {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salvar Chegada
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
 
       {/* Confirm Dialog Excluir */}

@@ -37,6 +37,16 @@ const SUGESTOES_GATILHOS = [
   { chave: 'rh_ase_hora_extra', nome: 'ASE - Hora Extra (FRM.RHU-0007)', modulo: 'RH' as EmailModulo, assunto: 'ASE - Autorização de Horas Extras' },
 ];
 
+function formatarDataBR(dataStr?: string | null): string {
+  if (!dataStr) return '—';
+  // Se já for YYYY-MM-DD
+  const partes = dataStr.split('T')[0].split('-');
+  if (partes.length === 3) {
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
+  }
+  return dataStr;
+}
+
 export default function CadastrosAdmin({ user, onNavigate }: Props) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('portaria_vigilantes');
@@ -57,9 +67,11 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
   // Formulário do Vigilante
   const [formNome, setFormNome] = useState('');
   const [formMatricula, setFormMatricula] = useState('');
-  const [formEmpresa, setFormEmpresa] = useState('PATRIMONIAL TEN');
-  const [formFuncao, setFormFuncao] = useState('Vigilante Portaria');
+  const [formEmpresa, setFormEmpresa] = useState('PROSEG / PATRIMONIAL');
+  const [formFuncao, setFormFuncao] = useState('VIGILANTE');
   const [formTurno, setFormTurno] = useState('REVEZAMENTO');
+  const [formAdmissao, setFormAdmissao] = useState('');
+  const [formNascimento, setFormNascimento] = useState('');
   const [formAtivo, setFormAtivo] = useState(true);
   const [formObs, setFormObs] = useState('');
 
@@ -132,9 +144,11 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     setVigilanteEditando(null);
     setFormNome('');
     setFormMatricula('');
-    setFormEmpresa('PATRIMONIAL TEN');
-    setFormFuncao('Vigilante Portaria');
+    setFormEmpresa('PROSEG / PATRIMONIAL');
+    setFormFuncao('VIGILANTE');
     setFormTurno('REVEZAMENTO');
+    setFormAdmissao('');
+    setFormNascimento('');
     setFormAtivo(true);
     setFormObs('');
     setModalVigilanteOpen(true);
@@ -147,6 +161,8 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     setFormEmpresa(v.empresa);
     setFormFuncao(v.funcao);
     setFormTurno(v.turno_preferencial || 'REVEZAMENTO');
+    setFormAdmissao(v.data_admissao || '');
+    setFormNascimento(v.data_nascimento || '');
     setFormAtivo(v.ativo);
     setFormObs(v.observacoes || '');
     setModalVigilanteOpen(true);
@@ -168,6 +184,8 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
           empresa: formEmpresa.trim(),
           funcao: formFuncao.trim(),
           turno_preferencial: formTurno,
+          data_admissao: formAdmissao || null,
+          data_nascimento: formNascimento || null,
           ativo: formAtivo,
           observacoes: formObs.trim() || null,
         });
@@ -179,6 +197,8 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
           empresa: formEmpresa.trim(),
           funcao: formFuncao.trim(),
           turno_preferencial: formTurno,
+          data_admissao: formAdmissao || null,
+          data_nascimento: formNascimento || null,
           ativo: formAtivo,
           observacoes: formObs.trim() || null,
           criado_por: user.id,
@@ -603,10 +623,11 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 <thead className="border-b border-slate-200 bg-slate-50/80 font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
                     <th className="px-4 py-3.5">Nome do Vigilante</th>
-                    <th className="px-4 py-3.5">Matrícula</th>
-                    <th className="px-4 py-3.5">Empresa</th>
                     <th className="px-4 py-3.5">Função</th>
-                    <th className="px-4 py-3.5">Turno Preferencial</th>
+                    <th className="px-4 py-3.5">Data Admissão</th>
+                    <th className="px-4 py-3.5">Data Nascimento</th>
+                    <th className="px-4 py-3.5">Empresa</th>
+                    <th className="px-4 py-3.5">Turno</th>
                     <th className="px-4 py-3.5 text-center">Status</th>
                     <th className="px-4 py-3.5 text-right">Ações</th>
                   </tr>
@@ -614,7 +635,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {vigilantesFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                         {loadingVigilantes ? (
                           <div className="flex items-center justify-center gap-2">
                             <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
@@ -655,16 +676,19 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
-                          {v.matricula || '—'}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">
-                          {v.empresa}
-                        </td>
                         <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">
                           <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                             {v.funcao}
                           </span>
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
+                          {v.data_admissao ? formatarDataBR(v.data_admissao) : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
+                          {v.data_nascimento ? formatarDataBR(v.data_nascimento) : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">
+                          {v.empresa}
                         </td>
                         <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">
                           {v.turno_preferencial || 'REVEZAMENTO'}
@@ -1081,17 +1105,21 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                       Função
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      list="funcoesVigilanteList"
+                      placeholder="Ex: VIGILANTE"
                       value={formFuncao}
                       onChange={(e) => setFormFuncao(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                    >
-                      <option value="Vigilante Portaria">Vigilante Portaria</option>
-                      <option value="Vigilante Ronda">Vigilante Ronda</option>
-                      <option value="Líder de Vigilância">Líder de Vigilância</option>
-                      <option value="Supervisor Patrimonial">Supervisor Patrimonial</option>
-                      <option value="Porteiro">Porteiro</option>
-                    </select>
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                    <datalist id="funcoesVigilanteList">
+                      <option value="VIGILANTE" />
+                      <option value="VIGILANTE / FERISTA" />
+                      <option value="VIGILANTE LÍDER" />
+                      <option value="SUPERVISOR PATRIMONIAL" />
+                      <option value="PORTEIRO" />
+                    </datalist>
                   </div>
 
                   <div>
@@ -1111,6 +1139,32 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                       <option value="TURNO_C">Turno C</option>
                       <option value="REVEZAMENTO">Revezamento / 12x36</option>
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Data de Admissão
+                    </label>
+                    <input
+                      type="date"
+                      value={formAdmissao}
+                      onChange={(e) => setFormAdmissao(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Data de Nascimento
+                    </label>
+                    <input
+                      type="date"
+                      value={formNascimento}
+                      onChange={(e) => setFormNascimento(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    />
                   </div>
                 </div>
 

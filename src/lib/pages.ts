@@ -56,11 +56,13 @@ export const PAGES: PageDef[] = [
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
-  { id: 'sup_painel', group: 'SUPRIMENTOS', label: 'Painel SAP', path: '/suprimentos/painel', icon: Database, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
-  { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/fornecedores-sem-po', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // `id` é chave de `profiles.page_access` e não muda; só o endereço saiu de
+  // `/suprimentos/fornecedores-sem-po` (nome do recorte inicial) para
+  // `/suprimentos/compras`. O antigo é redirecionado em App.tsx.
+  { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/compras', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise de Cotações', path: '/suprimentos/cotacoes', icon: FileSpreadsheet, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -79,6 +81,7 @@ export const PAGES: PageDef[] = [
   // em Sidebar.tsx); os itens abaixo são as subpáginas expansíveis.
   { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
   { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
+  { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },

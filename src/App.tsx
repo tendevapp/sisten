@@ -23,7 +23,6 @@ const NewRequest = lazy(() => import('./views/NewRequest'));
 const MyRequests = lazy(() => import('./views/MyRequests'));
 const Solicitacoes = lazy(() => import('./views/Solicitacoes'));
 const Approvals = lazy(() => import('./views/Approvals'));
-const SapPanel = lazy(() => import('./views/SapPanel'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
@@ -31,7 +30,7 @@ const UsageDashboard = lazy(() => import('./views/UsageDashboard'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
-const SuppliersNoPO = lazy(() => import('./views/SuppliersNoPO'));
+const Compras = lazy(() => import('./views/Compras'));
 const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
@@ -49,6 +48,7 @@ const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
+const PortariaPassagemPlantao = lazy(() => import('./views/portaria/PortariaPassagemPlantao'));
 const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
 const PortariaTransportes = lazy(() => import('./views/portaria/PortariaTransportes'));
 const PortariaCarretas = lazy(() => import('./views/portaria/PortariaCarretas'));
@@ -57,6 +57,7 @@ const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'))
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
+const FacilitiesMateriais = lazy(() => import('./views/facilities/FacilitiesMateriais'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
 // Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
@@ -72,13 +73,12 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/todas',
   '/solicitacoes/aprovacoes',
   '/materiais/busca',
-  '/suprimentos/painel',
   // A página de Gestão de Suprimentos passou a manter filtros e aba ativa —
   // remontá-la a cada sincronização em segundo plano jogaria fora o recorte
   // que o usuário acabou de montar.
   '/suprimentos/dashboards',
   '/suprimentos/demandas',
-  '/suprimentos/fornecedores-sem-po',
+  '/suprimentos/compras',
   // Mantém a fila de importação (arquivos em memória, resultados já
   // convertidos), o markdown colado, a grade em revisão e o processo aberto —
   // remontar a cada sincronização em segundo plano jogaria fora a extração.
@@ -137,6 +137,23 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/facilities/rotas',
 ]);
 
+/**
+ * Endereços que deixaram de existir e para onde levam hoje. O Painel SAP foi
+ * absorvido pela Central Compras (que já carregava a mesma base de requisições
+ * e ainda edita status/previsão em massa), e a própria Central saiu de
+ * `/suprimentos/fornecedores-sem-po` — nome que só descrevia o recorte inicial
+ * da tela — para `/suprimentos/compras`.
+ *
+ * A reescrita preserva a query porque os drill-downs dos Dashboards chegam com
+ * `?status=`, `?alert=` ou `?buyer=`, e deixa o usuário com a URL canônica na
+ * barra de endereços (link salvo antigo continua funcionando e se corrige
+ * sozinho ao ser aberto).
+ */
+const LEGACY_PATH_REDIRECTS: Record<string, string> = {
+  '/suprimentos/painel': '/suprimentos/compras',
+  '/suprimentos/fornecedores-sem-po': '/suprimentos/compras',
+};
+
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
 // altura visível e rolam internamente, em vez de rolar com a página. Antes
 // simulavam isso com uma altura fixa em vh menos um "chute" de pixels para
@@ -153,7 +170,6 @@ const FULL_BLEED_PATHS = new Set<string>([
   '/solicitacoes/minhas',
   '/helpdesk',
   '/helpdesk/relatorios',
-  '/suprimentos/painel',
 ]);
 
 function ViewLoadingFallback() {
@@ -351,6 +367,14 @@ export default function App() {
       }
       const pathWithParams = hash.slice(1); // remove '#'
       const pathOnly = pathWithParams.split('?')[0] || '/';
+
+      const destinoLegado = LEGACY_PATH_REDIRECTS[pathOnly];
+      if (destinoLegado) {
+        // `replace` em vez de atribuir o hash: não deixa o endereço antigo no
+        // histórico, então o "voltar" do navegador não cai num laço.
+        window.location.replace(`#${destinoLegado}${pathWithParams.slice(pathOnly.length)}`);
+        return;
+      }
       
       // Limpa os caches de todas as páginas ao mudar de rota, exceto a do Catálogo SAP
       localDb.clearAllPageCachesExcept('materials');
@@ -516,6 +540,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/formularios/portaria-passagem-plantao':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+          return <PortariaPassagemPlantao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/portaria-equipamentos':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaEquipamentos user={user} onNavigate={handleNavigate} />;
@@ -582,12 +612,6 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/suprimentos/painel':
-        if (canAccessPage(user, 'sup_painel')) {
-          return <SapPanel user={user} onNavigate={handleNavigate} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
-
       case '/suprimentos/dashboards':
         if (canAccessPage(user, 'sup_dashboards')) {
           return <SapDashboards onNavigate={handleNavigate} />;
@@ -611,9 +635,9 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/suprimentos/fornecedores-sem-po':
+      case '/suprimentos/compras':
         if (canAccessPage(user, 'sup_central_compras')) {
-          return <SuppliersNoPO user={user} onNavigate={handleNavigate} />;
+          return <Compras user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -785,6 +809,12 @@ export default function App() {
       case '/facilities/rotas':
         if (canAccessPage(user, 'facilities_rotas')) {
           return <FacilitiesRotas user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/facilities/materiais':
+        if (canAccessPage(user, 'facilities_materiais')) {
+          return <FacilitiesMateriais user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

@@ -48,17 +48,27 @@ export default function PortariaMetricsBar({ metricas, onSelectTab, activeTab }:
       border: 'border-cyan-200/70 dark:border-cyan-800/40',
     },
     {
-      id: 'relatorios',
-      label: 'Livro de Plantão',
-      sub: 'Relatórios em andamento',
-      val: metricas.relatoriosEmAberto,
-      icon: ClipboardList,
+      id: 'passagem',
+      label: 'Passagem de Plantão',
+      sub: 'Plantões em andamento',
+      val: metricas.plantoesEmAberto || 0,
+      icon: ShieldCheck,
       color: 'text-indigo-600 dark:text-indigo-400',
       bg: 'bg-indigo-50 dark:bg-indigo-950/40',
       border: 'border-indigo-200/70 dark:border-indigo-800/40',
     },
     {
-      id: 'briefings',
+      id: 'relatorio',
+      label: 'Ocorrências & Rondas',
+      sub: 'Livro de ocorrências aberto',
+      val: metricas.relatoriosEmAberto,
+      icon: ClipboardList,
+      color: 'text-purple-600 dark:text-purple-400',
+      bg: 'bg-purple-50 dark:bg-purple-950/40',
+      border: 'border-purple-200/70 dark:border-purple-800/40',
+    },
+    {
+      id: 'briefing',
       label: 'Briefing Segurança',
       sub: 'Integrados hoje',
       val: metricas.briefingsHoje,
@@ -70,7 +80,7 @@ export default function PortariaMetricsBar({ metricas, onSelectTab, activeTab }:
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {cards.map((c) => {
         const Icon = c.icon;
         const isSelected = activeTab === c.id;

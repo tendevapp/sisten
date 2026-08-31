@@ -134,7 +134,7 @@ with compras as (
     sum(p.qtd_pedido)                            as qtd,
     sum(p.valor_em_brl)                          as valor,
     sum(p.valor_em_brl) / sum(p.qtd_pedido)      as preco_unit
-  from public.pedidosforn p
+  from public.sap_zl0132_po p
   -- Inclui entrega parcial (qtd_fornecida > 0), não só crf='x' — ver nota em
   -- criar_view_historico_pedidos.sql. O mesmo critério do lado 2026
   -- (vw_auditoria_compras), senão referência e compra usariam régua diferente.
@@ -215,7 +215,7 @@ with compras as (
     sum(coalesce(p.qtd_fornecida, 0))            as qtd_fornecida,
     sum(p.valor_em_brl)                          as valor,
     sum(p.valor_em_brl) / sum(p.qtd_pedido)      as preco_unit
-  from public.pedidosforn p
+  from public.sap_zl0132_po p
   where (lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0)
     and p.material is not null
     and p.data_doc >= date '2026-01-01'
@@ -281,7 +281,7 @@ left join public.cadastro_grupo_mercadoria gm on gm.codigo = c.grp_mercads;
 create or replace view public.vw_auditoria_historico_material as
 with mats_2026 as (
   select distinct p.material
-  from public.pedidosforn p
+  from public.sap_zl0132_po p
   where (lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0)
     and p.material is not null
     and p.data_doc >= date '2026-01-01'
@@ -296,7 +296,7 @@ h as (
     sum(p.qtd_pedido)                             as qtd,
     sum(p.valor_em_brl)                           as valor,
     sum(p.valor_em_brl) / sum(p.qtd_pedido)       as preco_unit
-  from public.pedidosforn p
+  from public.sap_zl0132_po p
   join mats_2026 m on m.material = p.material
   where (lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0)
     and p.data_doc is not null

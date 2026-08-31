@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
@@ -31,7 +31,7 @@ import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 
-interface SuppliersNoPOProps {
+interface ComprasProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
@@ -305,6 +305,20 @@ const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) =>
 });
 
 /**
+ * Níveis de alerta dos gráficos de Suprimentos → os valores de `alerta` que
+ * cada um agrupa. Espelha `NIVEIS` / `abrirModalNivel` em
+ * `src/components/suprimentos/TabVisaoGeral.tsx`: o nível "Crítico" soma dois
+ * alertas distintos, então o deep link precisa expandir a chave em vez de
+ * casá-la crua (era o que o antigo Painel SAP fazia, e por isso o drill-down
+ * de nível chegava lá sem trazer nada).
+ */
+const ALERTAS_POR_NIVEL: Record<string, string[]> = {
+  '⚠️ AÇÃO URGENTE': ['⚠️ ESCALAR IMEDIATAMENTE', '⚠️ AÇÃO URGENTE'],
+  '⚡ ACOMPANHAR': ['⚡ ACOMPANHAR'],
+  '✅ OK': ['✅ OK', '📋 MONITORAR'],
+};
+
+/**
  * Descarta valores marcados que saíram da lista de opções — acontece quando os
  * filtros são dependentes e outro filtro selecionado depois restringe o conjunto.
  * Sem isso a listagem ficaria vazia por causa de um valor invisível na UI.
@@ -322,7 +336,55 @@ function useSaneamento(
   }, [disponiveis, selecionados, setSelecionados]);
 }
 
-export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) {
+// Lead time médio da rota de entrega, em dias corridos. Aplicado sobre a data de
+// remessa do PO (dt_remessa, que chega ao registro enriquecido como
+// data_entrega_sap) para estimar a promessa de entrega ao solicitante.
+const LEAD_TIME_ROTA_DIAS = 8;
+
+// Status ainda anteriores à colocação do pedido: só estes são promovidos
+// automaticamente para "Pedido Enviado" quando o item passa a ter PO. Nunca
+// regride quem já está em coleta/rota/entregue, nem mexe em "Inativo" ou
+// "Aguardando Solicitante" (estados escolhidos deliberadamente pelo comprador).
+const STATUS_ANTES_DO_PEDIDO = new Set<string>([
+  '',
+  'Aguardando Cotação',
+  'Cotação enviada',
+  'Análise de Cotações',
+  'Aguardando Aprovação PO'
+]);
+
+// Promessa estimada = data de remessa do PO + lead time da rota. Retorna ''
+// quando o PO não trouxe data de remessa. Contas em UTC para a data não
+// escorregar um dia por fuso.
+const promessaAutomatica = (r: EnrichedSAPRecord): string => {
+  const base = (r.data_entrega_sap || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return '';
+  const [y, m, d] = base.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + LEAD_TIME_ROTA_DIAS)).toISOString().slice(0, 10);
+};
+
+// Origem do valor no campo Previsão de Entrega: 'auto' = estimativa do sistema
+// (amarelo), 'manual' = data confirmada/editada pelo comprador (verde). A
+// comparação com a data estimada é o que mantém a cor certa entre recargas,
+// sem depender de estado de sessão.
+const promessaOrigem = (r: EnrichedSAPRecord, valor: string): 'vazio' | 'auto' | 'manual' => {
+  if (!valor) return 'vazio';
+  return valor === promessaAutomatica(r) ? 'auto' : 'manual';
+};
+
+const PROMESSA_INPUT_CLASS: Record<'vazio' | 'auto' | 'manual', string> = {
+  vazio: 'border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
+  auto: 'border-amber-400 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300',
+  manual: 'border-emerald-400 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
+};
+
+const PROMESSA_TITLE: Record<'vazio' | 'auto' | 'manual', string> = {
+  vazio: 'Sem promessa de entrega registrada',
+  auto: `Estimativa automática: remessa do PO + ${LEAD_TIME_ROTA_DIAS} dias (lead time médio de rota). Edite para confirmar a data com o fornecedor.`,
+  manual: 'Promessa de entrega definida manualmente pelo comprador'
+};
+
+export default function Compras({ user, onNavigate }: ComprasProps) {
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
   // Texto técnico por código, buscado só para os materiais desta página (Sem PO),
@@ -337,6 +399,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
   const [showNovidades, setShowNovidades] = useState(false);
 
+  // Exportação: escolha se a planilha sai com o histórico de fornecedores
+  const [exportChoiceOpen, setExportChoiceOpen] = useState(false);
   // Envio de Cotação: escolha de escopo (apenas este item x todos do fornecedor) e texto gerado
   const [quoteChoicePending, setQuoteChoicePending] = useState<{ supplier: FornecedorMaterialRow; record: EnrichedSAPRecord; rm: string } | null>(null);
   // toSupplier: envio direto a um único fornecedor (campo "Para"). bccSuppliers:
@@ -405,6 +469,49 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
   const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
+
+  /**
+   * Recorte pedido por deep link — os cliques nos gráficos de Suprimentos
+   * navegam para cá com `?status=`, `?alert=` ou `?buyer=`. Lido uma única vez
+   * na montagem; a partir daí os filtros pertencem ao usuário.
+   */
+  const [deepLinkParams] = useState<URLSearchParams | null>(() => {
+    const hash = window.location.hash;
+    const qIndex = hash.indexOf('?');
+    return qIndex === -1 ? null : new URLSearchParams(hash.slice(qIndex + 1));
+  });
+  const deepLinkAplicado = useRef(false);
+
+  // Só aplica depois que os dados chegam: `useSaneamento` descarta valores que
+  // ainda não existem nas opções, e com a lista vazia ele zeraria o recorte
+  // antes de o usuário ver qualquer coisa.
+  useEffect(() => {
+    if (deepLinkAplicado.current || !deepLinkParams || rawRmGroups.length === 0) return;
+    deepLinkAplicado.current = true;
+
+    // "Sem PO" / "Com PO" do fluxo de conversão. O eixo equivalente aqui é o
+    // poFilter — o statusFilter desta tela é sobre `status_atualizado`, que é
+    // outra coisa. "Com PO" não tem botão próprio (Todos / Sem PO / Sem MIGO),
+    // então cai em "Sem MIGO", que é o recorte com PO que interessa ao
+    // comprador: pedido colocado e entrega ainda pendente.
+    const status = deepLinkParams.get('status');
+    if (status === 'Sem PO') setPoFilter('Sem PO');
+    else if (status === 'Com PO') setPoFilter('Sem MIGO');
+
+    const alerta = deepLinkParams.get('alert');
+    if (alerta) setAlertFilter(new Set(ALERTAS_POR_NIVEL[alerta] || [alerta]));
+
+    // Os Dashboards mandam o NOME do comprador (`resolveComprador`), não o
+    // código do grupo, que é o que esta tela filtra. Traduz pelo cadastro e,
+    // se não achar, trata o valor recebido como o próprio código.
+    const comprador = deepLinkParams.get('buyer');
+    if (comprador) {
+      const grupos = localDb.getCompradores()
+        .filter(c => c.nome_comprador === comprador && c.grupo_compras)
+        .map(c => String(c.grupo_compras));
+      setBuyerFilter(new Set(grupos.length > 0 ? grupos : [comprador]));
+    }
+  }, [deepLinkParams, rawRmGroups]);
 
   // Decodificação do grupo de mercadoria do SAP para a descrição exibida ao
   // lado do item. Cadastro estático, então o índice é montado uma vez.
@@ -686,6 +793,33 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
       const allRecords = localDb.getEnrichedSAPRequisicoes();
       const semPoRecords = allRecords;
+
+      // Automação de itens com PO emitida: o pedido já foi colocado, então o
+      // status vai para "Pedido Enviado" e a promessa de entrega, se ainda
+      // vazia, recebe a estimativa (remessa do PO + lead time de rota). Só
+      // preenche o que está em branco/atrás no fluxo — data digitada pelo
+      // comprador e status mais avançado nunca são sobrescritos.
+      const autoEntries: { ri: string; itemStatus?: ItemStatus; deliveryDate?: string }[] = [];
+      semPoRecords.forEach(r => {
+        if (r.status_requisicao !== 'Processado' && !r.documento_compra) return;
+        const novoStatus = STATUS_ANTES_DO_PEDIDO.has(r.item_status || '')
+          ? ('Pedido Enviado' as ItemStatus)
+          : undefined;
+        const novaData = r.data_entrega_prevista ? '' : promessaAutomatica(r);
+        if (!novoStatus && !novaData) return;
+        // Reflete já nos registros em memória: assim a tela não marca o item
+        // como "Pendente de salvar" por uma alteração que o próprio sistema fez.
+        if (novoStatus) r.item_status = novoStatus;
+        if (novaData) r.data_entrega_prevista = novaData;
+        autoEntries.push({ ri: r.ri, itemStatus: novoStatus, deliveryDate: novaData || undefined });
+      });
+      if (autoEntries.length > 0) {
+        localDb.applyAutoBuyerFields(autoEntries).then(({ failed }) => {
+          if (failed.length > 0) {
+            toast.error(`Falha ao gravar o preenchimento automático de ${failed.length} item(ns) com PO. Será tentado novamente no próximo carregamento.`);
+          }
+        });
+      }
 
       // Prioridades solicitadas pelos usuários no Rastreio Compras — nível
       // atual (mais recente) por item, para o comprador acompanhar aqui.
@@ -1229,8 +1363,11 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     setExpandedItems(nextItems);
   };
 
-  const handleExportExcel = () => {
+  // withSuppliers=false (padrão): uma linha por item, sem as colunas do histórico
+  // de fornecedores — evita a duplicação de itens cotados com vários fornecedores.
+  const handleExportExcel = (withSuppliers: boolean) => {
     if (filteredGroups.length === 0) return;
+    setExportChoiceOpen(false);
     const materialsByCode = techTextByCode;
     const dataToExport: any[] = [];
     filteredGroups.forEach(g => {
@@ -1270,6 +1407,8 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
             'Data MIGO': r.data_migo ? formatDateBR(r.data_migo) : 'Sem MIGO',
             'Comprador (PO)': r.criado_por_pedido || '—'
           });
+        } else if (!withSuppliers) {
+          dataToExport.push(base);
         } else if (!encontrado || fornecedores.length === 0) {
           dataToExport.push({
             ...base,
@@ -1294,9 +1433,9 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Itens Sem PO - Fornecedores');
+    XLSX.utils.book_append_sheet(wb, ws, withSuppliers ? 'Itens Sem PO - Fornecedores' : 'Itens Sem PO');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    XLSX.writeFile(wb, `itens_sem_po_comprador_${timestamp}.xlsx`);
+    XLSX.writeFile(wb, `itens_sem_po_comprador${withSuppliers ? '_com_fornecedores' : ''}_${timestamp}.xlsx`);
   };
 
   const alertLevel = (alerta: string): 'critico' | 'atencao' | 'monitorar' | 'ok' => {
@@ -1487,6 +1626,22 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
     'Aguardando Solicitante'
   ];
 
+  // Campo de promessa de entrega. Amarelo = estimativa automática do sistema;
+  // verde = data confirmada/editada manualmente pelo comprador.
+  const renderPromessaInput = (r: EnrichedSAPRecord, compact = false) => {
+    const valor = dateInputState[r.ri] || '';
+    const origem = promessaOrigem(r, valor);
+    return (
+      <input
+        type="date"
+        value={valor}
+        onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
+        title={PROMESSA_TITLE[origem]}
+        className={`text-xs rounded-xl border ${compact ? 'py-1 px-1.5' : 'w-full py-1.5 px-2.5'} focus:border-[#0056c6] focus:outline-none transition-all ${PROMESSA_INPUT_CLASS[origem]}`}
+      />
+    );
+  };
+
   // Helper para renderizar dropdown com todas as opções de status disponíveis
   const renderStatusSelect = (ri: string, currentStatus: ItemStatus) => {
     const normalizedVal = statusInputState[ri] !== undefined ? statusInputState[ri] : (currentStatus || '');
@@ -1586,7 +1741,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
           </button>
           {filteredItemCount > 0 && (
             <button
-              onClick={handleExportExcel}
+              onClick={() => setExportChoiceOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-sm h-9 cursor-pointer active:scale-95 active:translate-y-[1px]"
             >
               <FileSpreadsheet className="h-4 w-4" /> Exportar
@@ -2075,7 +2230,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                       )}
                     </div>
 
-                    {/* Card Actions (Painel SAP Inline - Renomeado para Atualizar Status) */}
+                    {/* Card Actions — edição inline de status/previsão/observação do item. */}
                     <div className="border-t border-slate-150 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 p-4 space-y-3">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div className="space-y-1">
@@ -2088,12 +2243,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
                           <label className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">
                             Previsão de Entrega
                           </label>
-                          <input
-                            type="date"
-                            value={dateInputState[r.ri] || ''}
-                            onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
-                          />
+                          {renderPromessaInput(r)}
                         </div>
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
@@ -2448,12 +2598,7 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
 
                         {/* Delivery Date */}
                         <td className="py-2.5 px-3">
-                          <input
-                            type="date"
-                            value={dateInputState[r.ri] || ''}
-                            onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-                            className="text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 px-1.5 focus:border-[#0056c6] focus:outline-none transition-all"
-                          />
+                          {renderPromessaInput(r, true)}
                         </td>
 
                         {/* Buyer Observation */}
@@ -2636,6 +2781,47 @@ export default function SuppliersNoPO({ user, onNavigate }: SuppliersNoPOProps) 
               >
                 Fechar janela
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Escolha do formato da exportação */}
+      {exportChoiceOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-805 rounded-2xl w-full max-w-sm shadow-xl overflow-hidden animate-scale-up">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileSpreadsheet className="h-4.5 w-4.5 text-[#0056c6] shrink-0" />
+                <h3 className="font-bold text-slate-850 dark:text-slate-50 text-sm">Exportar Planilha</h3>
+              </div>
+              <button
+                onClick={() => setExportChoiceOpen(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-650 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                aria-label="Fechar janela"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-slate-500 dark:text-slate-450">
+                Incluir os dados do histórico de fornecedores (CNPJ, contato, preço, última compra)?
+                Ao incluir, o mesmo item se repete uma vez para cada fornecedor.
+              </p>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  onClick={() => handleExportExcel(false)}
+                  className="w-full px-4 py-2.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  Sem fornecedores (uma linha por item)
+                </button>
+                <button
+                  onClick={() => handleExportExcel(true)}
+                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                >
+                  Com dados dos fornecedores
+                </button>
+              </div>
             </div>
           </div>
         </div>

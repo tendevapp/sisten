@@ -4,12 +4,13 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CalendarDays, Package, Truck, CalendarClock, PackageCheck, Undo2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, Package, Truck, CalendarClock, PackageCheck, Undo2, FileText, Check } from 'lucide-react';
 import { addDays, addMonths, format, isSameDay, isSameMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus,
   schedulableRows, entriesForDay, weekDays, monthMatrix, isAlmoxarifadoCandidate, formatDateBR,
+  groupRowsByPo, hasValue, PoGroup,
 } from '../../lib/rastreio';
 import { AlmoxarifadoChegada } from '../../types';
 
@@ -26,6 +27,9 @@ interface RastreioCronogramaProps {
   savingRi?: string | null;
   onMarcarChegada?: (ri: string) => void;
   onDesfazerChegada?: (ri: string) => void;
+  /** Confirma de uma vez a chegada de todos os itens pendentes de um mesmo PO. */
+  onMarcarChegadaPo?: (po: string, ris: string[]) => void;
+  savingPo?: string | null;
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -33,11 +37,13 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // Cartão de uma entrega no cronograma: item, qtd, PO e fornecedor.
 function EntryCard({
   row, delivery, compact, onOpen, unread,
-  canAlmoxarifado, chegada, saving, onMarcarChegada, onDesfazerChegada,
+  canAlmoxarifado, chegada, saving, onMarcarChegada, onDesfazerChegada, hidePo,
 }: {
   row: RastreioRow; delivery: DeliveryStatus; compact?: boolean; onOpen?: (row: RastreioRow) => void; unread?: boolean;
   canAlmoxarifado?: boolean; chegada?: AlmoxarifadoChegada; saving?: boolean;
   onMarcarChegada?: (ri: string) => void; onDesfazerChegada?: (ri: string) => void;
+  /** Dentro de um bloco de PO o número do pedido já está no cabeçalho do grupo. */
+  hidePo?: boolean;
 }) {
   const meta = DELIVERY_STATUS_META[delivery];
   const showAlmoxarifado = canAlmoxarifado && (chegada || isAlmoxarifadoCandidate(row));
@@ -53,13 +59,14 @@ function EntryCard({
         <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate">{row.descricao}</p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
             {row.qtd !== undefined && (
               <span className="inline-flex items-center gap-0.5 font-semibold">
                 <Package className="h-2.5 w-2.5" />{row.qtd.toLocaleString('pt-BR')}{row.unidade !== '—' ? ` ${row.unidade}` : ''}
               </span>
             )}
-            {row.po !== '—' && <span className="font-mono">PO {row.po}</span>}
+            {!hidePo && row.po !== '—' && <span className="font-mono">PO {row.po}</span>}
+            {hidePo && row.item !== '—' && <span className="font-mono" title={`RM ${row.rm} · item ${row.item}`}>{row.rm}/{row.item}</span>}
           </div>
           {!compact && row.fornecedor !== '—' && (
             <p className="mt-0.5 text-[10px] text-slate-600 dark:text-slate-300 truncate flex items-center gap-1">
@@ -99,6 +106,89 @@ function EntryCard({
   );
 }
 
+// Bloco de um pedido: circula visualmente todos os itens do mesmo PO que caem
+// no dia, com o número do pedido, o fornecedor, o progresso de chegada e o
+// botão que confirma o pedido inteiro de uma vez — a conferência física é
+// feita por pedido (uma carga, uma nota), não item a item.
+function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada, onMarcarChegadaPo, savingPo }: {
+  group: PoGroup; hoje: Date; compact?: boolean;
+} & ViewExtras) {
+  const cards = group.rows.map((r, j) => (
+    <EntryCard
+      key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact={compact} onOpen={onOpen}
+      unread={unreadRis?.has(r.ri)} hidePo={hasValue(group.po)}
+      canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
+      onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+    />
+  ));
+
+  // Itens ainda sem PO não formam pedido: aparecem soltos, sem moldura.
+  if (!hasValue(group.po)) return <div className="space-y-1.5">{cards}</div>;
+
+  const candidatos = group.rows.filter(isAlmoxarifadoCandidate);
+  const pendentes = candidatos.filter(r => !chegadasMap?.get(r.ri));
+  const chegaram = candidatos.length - pendentes.length;
+  const completo = candidatos.length > 0 && pendentes.length === 0;
+  const parcial = chegaram > 0 && pendentes.length > 0;
+  const salvando = savingPo === group.po;
+
+  const moldura = completo
+    ? 'border-emerald-300 dark:border-emerald-800/70 bg-emerald-50/50 dark:bg-emerald-950/20'
+    : parcial
+      ? 'border-amber-300 dark:border-amber-800/70 bg-amber-50/40 dark:bg-amber-950/15'
+      : 'border-slate-250 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40';
+
+  return (
+    <div className={`rounded-xl border ${moldura} ${compact ? 'p-1.5' : 'p-2'} shadow-xs`}>
+      <div className={`flex items-center justify-between gap-2 ${compact ? 'mb-1' : 'mb-1.5'} px-0.5`}>
+        <div className="min-w-0">
+          <p className={`flex items-center gap-1 font-mono font-black text-slate-700 dark:text-slate-200 ${compact ? 'text-xs' : 'text-sm'}`}>
+            <FileText className="h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
+            <span className="truncate">PO {group.po}</span>
+          </p>
+          <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+            {group.rows.length} {group.rows.length === 1 ? 'item' : 'itens'}
+            {hasValue(group.fornecedor) && !compact ? ` · ${group.fornecedor}` : ''}
+            {parcial ? ` · ${chegaram}/${candidatos.length} chegaram` : ''}
+          </p>
+        </div>
+        {canAlmoxarifado && candidatos.length > 0 && (
+          completo ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-400">
+              <Check className="h-3 w-3" />{compact ? '' : 'Pedido completo'}
+            </span>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onMarcarChegadaPo?.(group.po, pendentes.map(r => r.ri)); }}
+              disabled={salvando}
+              title={`Marcar chegada dos ${pendentes.length} item(ns) pendentes do PO ${group.po}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-50"
+            >
+              <PackageCheck className="h-3 w-3" />
+              {compact ? pendentes.length : `Marcar chegada · ${pendentes.length}`}
+            </button>
+          )
+        )}
+      </div>
+      <div className="space-y-1.5">{cards}</div>
+    </div>
+  );
+}
+
+// Lista de entregas de um dia já agrupada por pedido, na ordem do número do PO.
+function GroupedEntries({ entries, hoje, compact, className, ...extras }: {
+  entries: RastreioRow[]; hoje: Date; compact?: boolean; className?: string;
+} & ViewExtras) {
+  const groups = useMemo(() => groupRowsByPo(entries), [entries]);
+  return (
+    <div className={className ?? 'space-y-2'}>
+      {groups.map(g => (
+        <PoGroupBlock key={g.po} group={g} hoje={hoje} compact={compact} {...extras} />
+      ))}
+    </div>
+  );
+}
+
 function Legend() {
   // O cronograma só exibe itens ainda não entregues com data prevista, então
   // só "no prazo" e "atrasado" chegam a aparecer aqui.
@@ -115,6 +205,7 @@ function Legend() {
 
 export default function RastreioCronograma({
   rows, hoje, onOpenRow, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada,
+  onMarcarChegadaPo, savingPo,
 }: RastreioCronogramaProps) {
   const [mode, setMode] = useState<Mode>('semanal');
   const [refDate, setRefDate] = useState<Date>(hoje);
@@ -185,6 +276,7 @@ export default function RastreioCronograma({
           rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis}
           canAlmoxarifado={canAlmoxarifado} chegadasMap={chegadasMap} savingRi={savingRi}
           onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+          onMarcarChegadaPo={onMarcarChegadaPo} savingPo={savingPo}
         />
       )}
       {mode === 'semanal' && (
@@ -192,6 +284,7 @@ export default function RastreioCronograma({
           rows={agendaRows} refDate={refDate} hoje={hoje} onOpen={onOpenRow} unreadRis={unreadRis}
           canAlmoxarifado={canAlmoxarifado} chegadasMap={chegadasMap} savingRi={savingRi}
           onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
+          onMarcarChegadaPo={onMarcarChegadaPo} savingPo={savingPo}
         />
       )}
       {mode === 'mensal' && (
@@ -207,6 +300,8 @@ export default function RastreioCronograma({
           savingRi={savingRi}
           onMarcarChegada={onMarcarChegada}
           onDesfazerChegada={onDesfazerChegada}
+          onMarcarChegadaPo={onMarcarChegadaPo}
+          savingPo={savingPo}
         />
       )}
     </div>
@@ -231,25 +326,24 @@ type ViewExtras = {
   savingRi?: string | null;
   onMarcarChegada?: (ri: string) => void;
   onDesfazerChegada?: (ri: string) => void;
+  onMarcarChegadaPo?: (po: string, ris: string[]) => void;
+  savingPo?: string | null;
 };
 
-function DailyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
+function DailyView({ rows, refDate, hoje, ...extras }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const entries = useMemo(() => entriesForDay(rows, refDate), [rows, refDate]);
   if (entries.length === 0) return <EmptyDay label="para este dia" />;
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-      {entries.map((r, i) => (
-        <EntryCard
-          key={`${r.ri}-${i}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)}
-          canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
-          onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
-        />
-      ))}
-    </div>
+    <GroupedEntries
+      entries={entries}
+      hoje={hoje}
+      className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 lg:grid-cols-3"
+      {...extras}
+    />
   );
 }
 
-function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
+function WeeklyView({ rows, refDate, hoje, ...extras }: { rows: RastreioRow[]; refDate: Date; hoje: Date } & ViewExtras) {
   const days = useMemo(() => weekDays(refDate), [refDate]);
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-7">
@@ -262,17 +356,9 @@ function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, c
               <span className="text-[10px] font-black uppercase tracking-wider">{format(day, 'EEE', { locale: ptBR })}</span>
               <span className={`text-xs font-bold ${isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white' : ''}`}>{format(day, 'dd')}</span>
             </div>
-            <div className="space-y-1.5">
-              {entries.length === 0
-                ? <p className="px-0.5 py-2 text-[10px] text-slate-300 dark:text-slate-600">—</p>
-                : entries.map((r, j) => (
-                  <EntryCard
-                    key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact onOpen={onOpen} unread={unreadRis?.has(r.ri)}
-                    canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
-                    onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
-                  />
-                ))}
-            </div>
+            {entries.length === 0
+              ? <p className="px-0.5 py-2 text-[10px] text-slate-300 dark:text-slate-600">—</p>
+              : <GroupedEntries entries={entries} hoje={hoje} compact className="space-y-2" {...extras} />}
           </div>
         );
       })}
@@ -280,7 +366,7 @@ function WeeklyView({ rows, refDate, hoje, onOpen, unreadRis, canAlmoxarifado, c
   );
 }
 
-function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis, canAlmoxarifado, chegadasMap, savingRi, onMarcarChegada, onDesfazerChegada }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void } & ViewExtras) {
+function MonthlyView({ rows, refDate, hoje, onSelectDay, ...extras }: { rows: RastreioRow[]; refDate: Date; hoje: Date; onSelectDay: (d: Date) => void } & ViewExtras) {
   const weeks = useMemo(() => monthMatrix(refDate), [refDate]);
   const weekdayHeaders = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
@@ -302,6 +388,7 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis, canA
             <div key={wi} className="grid grid-cols-7 divide-x divide-slate-100 dark:divide-slate-800">
               {week.map((day, di) => {
                 const entries = entriesForDay(rows, day);
+                const gruposDoDia = groupRowsByPo(entries);
                 const inMonth = isSameMonth(day, refDate);
                 const isToday = isSameDay(day, hoje);
                 return (
@@ -312,19 +399,32 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis, canA
                   >
                     <div className="mb-1 flex items-center justify-between">
                       <span className={`text-[11px] font-bold ${isToday ? 'flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white' : inMonth ? 'text-slate-600 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600'}`}>{format(day, 'd')}</span>
-                      {entries.length > 0 && <span className="text-[9px] font-black text-slate-400 dark:text-slate-500">{entries.length}</span>}
+                      {entries.length > 0 && (
+                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-500" title={`${entries.length} item(ns) em ${gruposDoDia.length} pedido(s)`}>
+                          {entries.length}
+                        </span>
+                      )}
                     </div>
+                    {/* Previa por pedido: na celula do mes interessa saber quais POs
+                        chegam no dia, nao item a item. */}
                     <div className="space-y-0.5">
-                      {entries.slice(0, 3).map((r, i) => {
-                        const meta = DELIVERY_STATUS_META[deriveDeliveryStatus(r, hoje)];
+                      {gruposDoDia.slice(0, 3).map((g, i) => {
+                        const meta = DELIVERY_STATUS_META[deriveDeliveryStatus(g.rows[0], hoje)];
                         return (
                           <div key={i} className="flex items-center gap-1 truncate">
                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} />
-                            <span className="truncate text-[9px] text-slate-600 dark:text-slate-400">{r.descricao}</span>
+                            <span className="truncate font-mono text-[9px] text-slate-600 dark:text-slate-400">
+                              {hasValue(g.po) ? `PO ${g.po}` : 'Sem PO'}
+                            </span>
+                            <span className="ml-auto shrink-0 text-[9px] font-bold text-slate-400 dark:text-slate-500">{g.rows.length}</span>
                           </div>
                         );
                       })}
-                      {entries.length > 3 && <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-500">+{entries.length - 3} mais</span>}
+                      {gruposDoDia.length > 3 && (
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-500">
+                          +{gruposDoDia.length - 3} pedidos
+                        </span>
+                      )}
                     </div>
                   </button>
                 );
@@ -348,15 +448,7 @@ function MonthlyView({ rows, refDate, hoje, onSelectDay, onOpen, unreadRis, canA
                     {cap(format(day, "EEEE, dd 'de' MMMM", { locale: ptBR }))}
                     <span className="text-slate-400 dark:text-slate-500 font-semibold">· {entries.length}</span>
                   </div>
-                  <div className="space-y-1.5">
-                    {entries.map((r, j) => (
-                      <EntryCard
-                        key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} onOpen={onOpen} unread={unreadRis?.has(r.ri)}
-                        canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
-                        onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
-                      />
-                    ))}
-                  </div>
+                  <GroupedEntries entries={entries} hoje={hoje} {...extras} />
                 </div>
               );
             })}

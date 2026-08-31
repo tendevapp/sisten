@@ -149,7 +149,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   );
 
   const canApprove = canAccessPage(user, 'sol_aprovacoes');
-  const canSapPanel = localDb.hasPermission(user, 'sap', 'visualizar_painel');
+  const canCentralCompras = canAccessPage(user, 'sup_central_compras');
   const canUsers = canAccessPage(user, 'admin_usuarios');
 
   /* ---------------------------------------------------- indicadores (chips) */
@@ -169,7 +169,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
     { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes/aprovacoes'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
     { id: 'minhas', label: 'Minhas em aberto', value: myOpen, icon: List, tone: 'indigo', onClick: () => onNavigate('/solicitacoes/minhas') },
     { id: 'rasc', label: 'Rascunhos', value: myDrafts, icon: FileEdit, tone: 'slate', hideWhenZero: true, onClick: () => onNavigate('/solicitacoes/minhas') },
-    { id: 'sap', label: 'Painel SAP sem PO', value: openSapCount, icon: Database, tone: 'sky', show: canSapPanel, onClick: () => onNavigate('/suprimentos/painel') },
+    { id: 'sap', label: 'Requisições sem PO', value: openSapCount, icon: Database, tone: 'sky', show: canCentralCompras, onClick: () => onNavigate('/suprimentos/compras') },
     { id: 'usr', label: 'Usuários pendentes', value: pendingUsersCount, icon: Users, tone: 'rose', show: canUsers, hideWhenZero: true, onClick: () => onNavigate('/admin/usuarios') },
   ] as Chip[]).filter(c => c.show !== false && !(c.hideWhenZero && !c.value));
 

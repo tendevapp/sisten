@@ -72,7 +72,7 @@ select
   end                                                as preco_liquido_unit,
   (sum(coalesce(p.qtd_fornecida, 0)) > 0
     and sum(coalesce(p.qtd_fornecida, 0)) < sum(coalesce(p.qtd_pedido, 0))) as pedido_parcial
-from public.pedidosforn p
+from public.sap_zl0132_po p
 where lower(coalesce(p.crf, '')) = 'x' or coalesce(p.qtd_fornecida, 0) > 0
 group by
   p.material,
@@ -116,7 +116,7 @@ create or replace view public.vw_historico_pedidos as
       nullif(trim(gm.denominacao), '')
     ) as grp_mercads_desc
   from public.mv_historico_pedidos h
-  left join public.cidadeforn cf
+  left join public.sup_fornecedores_cidades cf
     on cf.forn_codigo = h.cod_forn
   left join public.cadastro_grupo_mercadoria gm
     on gm.codigo = h.grp_mercads;

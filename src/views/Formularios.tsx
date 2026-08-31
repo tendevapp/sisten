@@ -14,10 +14,12 @@
  * acrescentando um bloco em `AREAS`.
  */
 
+import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  DoorOpen, Boxes, UserCheck, PackageCheck, Truck, Clock, ArrowRight,
-  Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck
+  DoorOpen, Boxes, PackageCheck, Truck, Clock, ArrowRight,
+  Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck,
+  Building2, Sparkles, ChevronRight, FileText
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { canAccessPage, canAccessFormGroup } from '../lib/pages';
@@ -28,204 +30,217 @@ interface FormulariosProps {
   onNavigate: (path: string) => void;
 }
 
-interface FormularioItem {
+interface ModuloFormulario {
   id: string;
   label: string;
+  codigo?: string;
   icon: LucideIcon;
   desc: string;
-  /** Ausente enquanto o formulário não existe — o card fica em modo "em breve". */
   path?: string;
-  /**
-   * Chave em `pages.ts` que precisa liberar o item para o usuário atual.
-   * Ausente = todo mundo que tem acesso ao grupo enxerga o card.
-   */
-  gateId?: string;
+  badge?: string;
+  badgeCor?: string;
+  corIcone: string;
+  corBordaHover: string;
+  itensResumo: string[];
 }
 
-interface AreaFormularios {
-  id: string;
-  label: string;
-  icon: LucideIcon;
-  itens: FormularioItem[];
-}
-
-const AREAS: AreaFormularios[] = [
+const MODULOS: ModuloFormulario[] = [
   {
     id: 'portaria',
     label: 'Portaria & Segurança Patrimonial',
-    icon: DoorOpen,
-    itens: [
-      {
-        id: 'portaria_equipamentos',
-        label: 'Equipamentos de Terceiros (FRM.SGP-0011)',
-        icon: Wrench,
-        desc: 'Controle de entrada e devolução de ferramentas e instrumentos de terceirizados.',
-        path: '/formularios/portaria-equipamentos',
-      },
-      {
-        id: 'portaria_transportes',
-        label: 'Chegada de Transportes (FRM.SGP-0009)',
-        icon: Bus,
-        desc: 'Registro diário de movimentação de veículos, vans, carros e ônibus por turno.',
-        path: '/formularios/portaria-transportes',
-      },
-      {
-        id: 'portaria_carretas',
-        label: 'Carretas de Chapas (FRM.SGP-0020)',
-        icon: Truck,
-        desc: 'Controle de chegada, descarregamento de aço e liberação de carretas de chapas.',
-        path: '/formularios/portaria-carretas',
-      },
-      {
-        id: 'portaria_relatorio',
-        label: 'Relatório de Portaria (FRM.SGP-0010)',
-        icon: ClipboardList,
-        desc: 'Livro de plantão digital, registro de rondas e histórico de ocorrências do turno.',
-        path: '/formularios/portaria-relatorio',
-      },
-      {
-        id: 'portaria_briefing',
-        label: 'Briefing de Segurança (FRM.SGP-0013)',
-        icon: ShieldCheck,
-        desc: 'Lista de presença com assinatura digital e verificação de validade de CPF.',
-        path: '/formularios/portaria-briefing',
-      },
+    codigo: 'MÓDULO DE SEGURANÇA',
+    icon: ShieldCheck,
+    desc: 'Passagem de plantão, relatório de ocorrências, transportes de funcionários, carretas de chapas, controle de ferramentas de terceiros e briefings.',
+    path: '/formularios/portaria',
+    badge: '6 Formulários Ativos',
+    badgeCor: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300',
+    corIcone: 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-indigo-500/20 shadow-lg',
+    corBordaHover: 'hover:border-indigo-500/50 hover:shadow-indigo-500/10',
+    itensResumo: [
+      'Passagem de Plantão (FRM.SGP-0010)',
+      'Relatório de Ocorrências (FRM.SGP-0010)',
+      'Chegada de Transportes (FRM.SGP-0009)',
+      'Equipamentos Terceiros (FRM.SGP-0011)',
+      'Carretas de Chapas (FRM.SGP-0020)',
+      'Briefing de Segurança (FRM.SGP-0013)',
     ],
   },
   {
     id: 'logistica',
     label: 'Logística & Expedição',
+    codigo: 'MÓDULO DE EXPEDIÇÃO',
     icon: PackageCheck,
-    itens: [
-      {
-        id: 'portaria_logistica_expedicao',
-        label: 'Logística - Expedição',
-        icon: PackageCheck,
-        desc: 'Carregamento de tramos: veículo, motorista, os três horários e as fotos de cada etapa.',
-        path: '/formularios/logistica-expedicao',
-      },
+    desc: 'Controle operacional de expedição e carregamento de tramos, horários das etapas, fotos comprobatórias e relatórios de frete.',
+    path: '/formularios/logistica-expedicao',
+    badge: '1 Formulário Ativo',
+    badgeCor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
+    corIcone: 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-500/20 shadow-lg',
+    corBordaHover: 'hover:border-emerald-500/50 hover:shadow-emerald-500/10',
+    itensResumo: [
+      'Registro de Expedição de Tramos',
+      'Controle de 3 Horários & Fotos',
+      'Disparo de E-mail de Notificação',
     ],
   },
   {
     id: 'rh',
     label: 'RH & Departamento Pessoal',
+    codigo: 'MÓDULO DE RH',
     icon: Users2,
-    itens: [
-      {
-        id: 'rh_ase_hora_extra',
-        label: 'ASE - Hora Extra',
-        icon: Timer,
-        desc: 'Autorização de Serviços Extraordinários (FRM.RHU-0007): setor, turno, colaboradores e horários.',
-        path: '/formularios/rh-ase-hora-extra',
-      },
+    desc: 'Autorização de Serviços Extraordinários (ASE), justificativas operacionais, gestão de horas extras por setor e fluxo de aprovação.',
+    path: '/formularios/rh-ase-hora-extra',
+    badge: '1 Formulário Ativo',
+    badgeCor: 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-300',
+    corIcone: 'bg-gradient-to-br from-violet-500 to-purple-700 text-white shadow-violet-500/20 shadow-lg',
+    corBordaHover: 'hover:border-violet-500/50 hover:shadow-violet-500/10',
+    itensResumo: [
+      'ASE - Hora Extra (FRM.RHU-0007)',
+      'Controle por Setor e Turno',
+      'Exportação em PDF e Planilhas',
     ],
   },
   {
     id: 'almoxarifado',
-    label: 'Almoxarifado',
+    label: 'Almoxarifado & Estoque',
+    codigo: 'MÓDULO DE ESTOQUE',
     icon: Boxes,
-    itens: [],
+    desc: 'Formulários para conferência de recebimento físico de materiais, requisições internas de almoxarifado e inventário cíclico.',
+    badge: 'Em Breve',
+    badgeCor: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300',
+    corIcone: 'bg-gradient-to-br from-amber-500 to-amber-700 text-white shadow-amber-500/20 shadow-lg',
+    corBordaHover: 'hover:border-amber-500/50 hover:shadow-amber-500/10',
+    itensResumo: [
+      'Requisição Interna de Materiais',
+      'Recebimento Físico & Divergências',
+      'Controle de Inventário Cíclico',
+    ],
   },
 ];
 
 export default function Formularios({ user, onNavigate }: FormulariosProps) {
   const toast = useToast();
 
-  const handleAbrir = (item: FormularioItem) => {
-    if (item.path) { onNavigate(item.path); return; }
-    toast.info(`${item.label}: formulário em desenvolvimento. Em breve disponível.`);
+  const handleAcessarModulo = (mod: ModuloFormulario) => {
+    if (mod.path) {
+      onNavigate(mod.path);
+      return;
+    }
+    toast.info(`${mod.label}: módulo e formulários dedicados em desenvolvimento. Em breve disponível.`);
   };
 
-  // Filtra as áreas pelas subpermissões do usuário via canAccessFormGroup
-  const areasVisiveis = AREAS
-    .filter(area => canAccessFormGroup(user, area.id))
-    .map(area => ({
-      ...area,
-      itens: area.itens.filter(item => !item.gateId || canAccessPage(user, item.gateId)),
-    }))
-    .filter(area => area.itens.length > 0 || AREAS.find(a => a.id === area.id)!.itens.length === 0);
+  // Filtra os módulos pelas subpermissões do usuário
+  const modulosVisiveis = MODULOS.filter((mod) => canAccessFormGroup(user, mod.id));
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">Formulários</h1>
-        <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-400">
-          Ponto único de acesso aos formulários operacionais do SISTEN, organizados por área.
-          Novos formulários aparecem aqui conforme forem publicados.
-        </p>
-      </header>
-
-      <div className="space-y-6">
-        {areasVisiveis.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center dark:border-slate-800 dark:bg-slate-900">
-            <ClipboardList className="mx-auto h-9 w-9 text-slate-300 dark:text-slate-600" />
-            <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Nenhum grupo de formulários liberado para o seu usuário
-            </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Entre em contato com o administrador do sistema para solicitar acesso aos grupos de formulários desejados.
-            </p>
+    <div className="mx-auto max-w-7xl space-y-8 pb-12">
+      {/* Header Premium */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-6 dark:border-slate-800">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+              <FileText className="h-3.5 w-3.5" />
+              SISTEN Hub Operacional
+            </span>
           </div>
-        ) : (
-          areasVisiveis.map(area => {
-            const AreaIcon = area.icon;
-            return (
-              <section
-                key={area.id}
-                className="rounded-2xl border border-slate-200 bg-white px-5 py-6 sm:px-8 sm:py-7 dark:border-slate-800 dark:bg-slate-900"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    <AreaIcon className="h-5 w-5" />
-                  </span>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">{area.label}</h2>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+            Formulários Operacionais
+          </h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+            Selecione o módulo operacional desejado para acessar os formulários dedicados, livros de registro e emissões oficiais.
+          </p>
+        </div>
+      </div>
+
+      {/* Grid de Módulos de Formulários */}
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-2">
+        {modulosVisiveis.map((modulo) => {
+          const IconComponent = modulo.icon;
+          const disponivel = Boolean(modulo.path);
+
+          return (
+            <div
+              key={modulo.id}
+              onClick={() => handleAcessarModulo(modulo)}
+              className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900 ${
+                modulo.corBordaHover
+              }`}
+            >
+              <div className="space-y-4">
+                {/* Cabeçalho do Card */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3.5">
+                    <div
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-200 group-hover:scale-105 ${
+                        modulo.corIcone
+                      }`}
+                    >
+                      <IconComponent className="h-6 w-6" />
+                    </div>
+                    <div>
+                      {modulo.codigo && (
+                        <p className="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase">
+                          {modulo.codigo}
+                        </p>
+                      )}
+                      <h2 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors dark:text-slate-100 dark:group-hover:text-blue-400">
+                        {modulo.label}
+                      </h2>
+                    </div>
+                  </div>
+
+                  {modulo.badge && (
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${
+                        modulo.badgeCor || 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      {modulo.badge}
+                    </span>
+                  )}
                 </div>
 
-                {area.itens.length === 0 ? (
-                  <div className="mt-5 rounded-xl border border-dashed border-slate-200 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                    Nenhum formulário publicado ainda nesta área.
-                  </div>
-                ) : (
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {area.itens.map(item => {
-                      const ItemIcon = item.icon;
-                      const disponivel = Boolean(item.path);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => handleAbrir(item)}
-                          aria-disabled={!disponivel}
-                          className={`group relative flex flex-col items-start rounded-xl border p-4 text-left transition-all duration-200 ${
-                            disponivel
-                              ? 'cursor-pointer border-slate-200 hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:hover:border-blue-400/40'
-                              : 'border-dashed border-slate-200 opacity-80 hover:opacity-100 dark:border-slate-700'
-                          }`}
-                        >
-                          <div className="flex w-full items-start justify-between gap-2">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                              <ItemIcon className="h-4.5 w-4.5" />
-                            </span>
-                            {disponivel ? (
-                              <ArrowRight className="mt-1.5 h-4 w-4 shrink-0 text-slate-300 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-blue-500" />
-                            ) : (
-                              <span className="mt-1 inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                                <Clock className="h-3 w-3" />
-                                Em breve
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="mt-3 text-sm font-bold text-slate-900 dark:text-slate-50">{item.label}</h3>
-                          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{item.desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            );
-          })
-        )}
+                {/* Descrição */}
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed dark:text-slate-400">
+                  {modulo.desc}
+                </p>
+
+                {/* Resumo dos Formulários Contidos */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/50">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 dark:text-slate-400">
+                    Formulários & Registros Disponíveis:
+                  </p>
+                  <ul className="space-y-1.5">
+                    {modulo.itensResumo.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500/70 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Rodapé / Botão de Ação */}
+              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
+                <span className="text-xs font-semibold text-slate-500 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400 flex items-center gap-1">
+                  {disponivel ? 'Abrir formulários dedicados' : 'Em desenvolvimento'}
+                </span>
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-200 ${
+                    disponivel
+                      ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-950/80 dark:text-blue-400 dark:group-hover:bg-blue-600 dark:group-hover:text-white'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+                  }`}
+                >
+                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

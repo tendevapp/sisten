@@ -8,19 +8,19 @@ import { gerarProtocolo, hojeISO, horaAgora, sugerirTurno } from './portariaApi'
 
 describe('Módulo Portaria — Utilitários de API', () => {
   it('deve gerar protocolos únicos no formato esperado', () => {
-    const eqp = gerarProtocolo('EQP');
-    const trp = gerarProtocolo('TRP');
-    const crt = gerarProtocolo('CRT');
-    const rel = gerarProtocolo('REL');
-    const brf = gerarProtocolo('BRF');
+    const eqp = gerarProtocolo('EQP', '2026-08-30');
+    const trp = gerarProtocolo('TRP', '2026-08-30', 'PKS1234');
+    const crt = gerarProtocolo('CRT', '2026-08-30', 'PKB5678');
+    const rel = gerarProtocolo('REL', '2026-08-30', 'DIU');
+    const brf = gerarProtocolo('BRF', '2026-08-30');
+    const plt = gerarProtocolo('PLT', '2026-08-30', 'NOT');
 
-    const ano = new Date().getFullYear();
-
-    expect(eqp).toMatch(new RegExp(`^EQP-${ano}-[A-Z0-9]{5}$`));
-    expect(trp).toMatch(new RegExp(`^TRP-${ano}-[A-Z0-9]{5}$`));
-    expect(crt).toMatch(new RegExp(`^CRT-${ano}-[A-Z0-9]{5}$`));
-    expect(rel).toMatch(new RegExp(`^REL-${ano}-[A-Z0-9]{5}$`));
-    expect(brf).toMatch(new RegExp(`^BRF-${ano}-[A-Z0-9]{5}$`));
+    expect(eqp).toMatch(/^EQP-300826-[A-Z0-9]{4}$/);
+    expect(trp).toBe('TRP-300826-PKS1234');
+    expect(crt).toBe('CRT-300826-PKB5678');
+    expect(rel).toBe('REL-300826-DIU');
+    expect(brf).toMatch(/^BRF-300826-[A-Z0-9]{4}$/);
+    expect(plt).toBe('PLT-300826-NOT');
   });
 
   it('deve retornar data no padrão ISO YYYY-MM-DD', () => {

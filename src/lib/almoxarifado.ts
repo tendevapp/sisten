@@ -212,7 +212,7 @@ export interface CompraEvitavel {
  * Materiais que têm saldo em estoque e, ao mesmo tempo, requisição de compra
  * aberta. Cada linha é uma compra que talvez não precise acontecer.
  *
- * "Aberta" é `status_requisicao === 'Sem PO'`, o mesmo conceito que o Painel SAP
+ * "Aberta" é `status_requisicao === 'Sem PO'`, o mesmo conceito que a Central Compras
  * usa. As requisições vêm de `localDb.getEnrichedSAPRequisicoes()`, cujo cache
  * cobre 2026 em diante — o que é adequado, já que RM aberta é recente por
  * definição.
