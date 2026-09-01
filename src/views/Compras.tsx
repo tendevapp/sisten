@@ -363,25 +363,30 @@ const promessaAutomatica = (r: EnrichedSAPRecord): string => {
   return new Date(Date.UTC(y, m - 1, d + LEAD_TIME_ROTA_DIAS)).toISOString().slice(0, 10);
 };
 
-// Origem do valor no campo Previsão de Entrega: 'auto' = estimativa do sistema
-// (amarelo), 'manual' = data confirmada/editada pelo comprador (verde). A
-// comparação com a data estimada é o que mantém a cor certa entre recargas,
-// sem depender de estado de sessão.
-const promessaOrigem = (r: EnrichedSAPRecord, valor: string): 'vazio' | 'auto' | 'manual' => {
+// Estado do campo Previsão de Entrega:
+//  - 'vazio': sem data;
+//  - 'pendente' (amarelo): tem data (estimada pela remessa do PO ou digitada),
+//    mas ainda NÃO confirmada — não é levada para o Rastreio Compras;
+//  - 'confirmada' (verde): o comprador clicou em "Confirmar data"; é a data que
+//    o Rastreio Compras exibe (data_entrega_confirmada === valor de trabalho).
+// A comparação é com o valor persistido, então a cor se mantém entre recargas.
+type PromessaEstado = 'vazio' | 'pendente' | 'confirmada';
+
+const promessaEstado = (r: EnrichedSAPRecord, valor: string): PromessaEstado => {
   if (!valor) return 'vazio';
-  return valor === promessaAutomatica(r) ? 'auto' : 'manual';
+  return valor === (r.data_entrega_confirmada || '') ? 'confirmada' : 'pendente';
 };
 
-const PROMESSA_INPUT_CLASS: Record<'vazio' | 'auto' | 'manual', string> = {
+const PROMESSA_INPUT_CLASS: Record<PromessaEstado, string> = {
   vazio: 'border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
-  auto: 'border-amber-400 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300',
-  manual: 'border-emerald-400 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
+  pendente: 'border-amber-400 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300',
+  confirmada: 'border-emerald-400 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300'
 };
 
-const PROMESSA_TITLE: Record<'vazio' | 'auto' | 'manual', string> = {
+const PROMESSA_TITLE: Record<PromessaEstado, string> = {
   vazio: 'Sem promessa de entrega registrada',
-  auto: `Estimativa automática: remessa do PO + ${LEAD_TIME_ROTA_DIAS} dias (lead time médio de rota). Edite para confirmar a data com o fornecedor.`,
-  manual: 'Promessa de entrega definida manualmente pelo comprador'
+  pendente: `Data ainda não confirmada — não aparece no Rastreio Compras. Estimativa automática = remessa do PO + ${LEAD_TIME_ROTA_DIAS} dias (lead time médio de rota). Ajuste se preciso e clique em "Confirmar data".`,
+  confirmada: 'Data confirmada pelo comprador — visível no Rastreio Compras'
 };
 
 export default function Compras({ user, onNavigate }: ComprasProps) {
@@ -736,6 +741,8 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
   const [dateInputState, setDateInputState] = useState<Record<string, string>>({});
   const [statusInputState, setStatusInputState] = useState<Record<string, ItemStatus | ''>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
+  // RI sendo confirmado no momento (botão "Confirmar data" da previsão de entrega).
+  const [confirmingRi, setConfirmingRi] = useState<string | null>(null);
   // Preenchimento em massa: valores escolhidos na barra de seleção para aplicar
   // de uma vez a todos os itens marcados (ficam como edição pendente, iguais à
   // edição individual — o usuário ainda confirma com "Salvar tudo").
@@ -771,6 +778,13 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
     }));
     return list;
   }, [rawRmGroups, isModified]);
+
+  // Índice ri -> registro, para ações pontuais (ex.: confirmar a data de entrega).
+  const recordByRi = useMemo(() => {
+    const m = new Map<string, EnrichedSAPRecord>();
+    rawRmGroups.forEach(g => g.items.forEach(it => m.set(it.record.ri, it.record)));
+    return m;
+  }, [rawRmGroups]);
 
   // Data/hora da última atualização dos dados (última importação/refresh).
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -1059,6 +1073,37 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
       // Recarrega os dados locais para atualizar a tela
       buildSuppliersData();
     }, 1500);
+  };
+
+  // "Confirmar data": grava qualquer edição pendente da linha e então copia a
+  // previsão de entrega para o campo confirmado — a partir daí ela aparece no
+  // Rastreio Compras. Enquanto não confirmada, a data (estimada pela remessa do
+  // PO) fica só na Central de Compras.
+  const handleConfirmDate = async (ri: string) => {
+    if (confirmingRi) return;
+    const date = dateInputState[ri] || '';
+    if (!date) return;
+
+    setConfirmingRi(ri);
+    try {
+      const record = recordByRi.get(ri);
+      if (record && isModified(ri, record)) {
+        const saved = await localDb.updateBuyerFields(ri, obsInputState[ri] || '', date, statusInputState[ri]);
+        if (!saved) {
+          toast.error('Falha ao salvar a data antes de confirmar. Tente novamente.');
+          return;
+        }
+      }
+      const ok = await localDb.confirmDeliveryDate(ri);
+      if (!ok) {
+        toast.error('Falha ao confirmar a data no Supabase. Tente novamente.');
+        return;
+      }
+      toast.success('Data confirmada — agora aparece no Rastreio Compras.');
+      buildSuppliersData();
+    } finally {
+      setConfirmingRi(null);
+    }
   };
 
   // Salva de uma vez todos os itens com edições pendentes (obs, previsão e
@@ -1626,19 +1671,42 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
     'Aguardando Solicitante'
   ];
 
-  // Campo de promessa de entrega. Amarelo = estimativa automática do sistema;
-  // verde = data confirmada/editada manualmente pelo comprador.
+  // Campo de promessa de entrega + botão "Confirmar data". Amarelo = data ainda
+  // não confirmada (só na Central); verde = confirmada e visível no Rastreio.
+  // Só a data confirmada é levada para o Rastreio Compras.
   const renderPromessaInput = (r: EnrichedSAPRecord, compact = false) => {
     const valor = dateInputState[r.ri] || '';
-    const origem = promessaOrigem(r, valor);
+    const estado = promessaEstado(r, valor);
+    const confirmando = confirmingRi === r.ri;
     return (
-      <input
-        type="date"
-        value={valor}
-        onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
-        title={PROMESSA_TITLE[origem]}
-        className={`text-xs rounded-xl border ${compact ? 'py-1 px-1.5' : 'w-full py-1.5 px-2.5'} focus:border-[#0056c6] focus:outline-none transition-all ${PROMESSA_INPUT_CLASS[origem]}`}
-      />
+      <div className="flex flex-col gap-1">
+        <input
+          type="date"
+          value={valor}
+          onChange={(e) => setDateInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
+          title={PROMESSA_TITLE[estado]}
+          className={`text-xs rounded-xl border ${compact ? 'py-1 px-1.5' : 'w-full py-1.5 px-2.5'} focus:border-[#0056c6] focus:outline-none transition-all ${PROMESSA_INPUT_CLASS[estado]}`}
+        />
+        {estado === 'pendente' && (
+          <button
+            type="button"
+            onClick={() => handleConfirmDate(r.ri)}
+            disabled={confirmando}
+            title="Confirmar esta data e enviá-la ao Rastreio Compras"
+            className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 cursor-pointer active:scale-95 disabled:opacity-50 transition-all"
+          >
+            {confirmando
+              ? <RefreshCw className="h-3 w-3 animate-spin" />
+              : <PackageCheck className="h-3 w-3" />}
+            <span>{confirmando ? 'Confirmando…' : 'Confirmar data'}</span>
+          </button>
+        )}
+        {estado === 'confirmada' && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400" title="Data confirmada — visível no Rastreio Compras">
+            <Check className="h-3 w-3" /> No Rastreio Compras
+          </span>
+        )}
+      </div>
     );
   };
 

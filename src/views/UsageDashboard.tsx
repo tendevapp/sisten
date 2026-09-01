@@ -170,10 +170,10 @@ export default function UsageDashboard() {
       const firstErr = kpiRes.error || activeRes.error || pagesRes.error || hourRes.error;
       if (firstErr) throw firstErr;
 
-      setKpis(kpiRes.data as Kpis);
-      setActiveUsers((activeRes.data as ActivePoint[]) || []);
-      setPageRanking((pagesRes.data as PageRow[]) || []);
-      setByHour((hourRes.data as HourRow[]) || []);
+      setKpis(kpiRes.data as unknown as Kpis);
+      setActiveUsers((activeRes.data as unknown as ActivePoint[]) || []);
+      setPageRanking((pagesRes.data as unknown as PageRow[]) || []);
+      setByHour((hourRes.data as unknown as HourRow[]) || []);
 
       if (pUser) {
         const [sumRes, tlRes] = await Promise.all([
@@ -182,8 +182,8 @@ export default function UsageDashboard() {
         ]);
         if (sumRes.error) throw sumRes.error;
         if (tlRes.error) throw tlRes.error;
-        setUserSummary(sumRes.data as UserSummary);
-        setTimeline((tlRes.data as TimelineRow[]) || []);
+        setUserSummary(sumRes.data as unknown as UserSummary);
+        setTimeline((tlRes.data as unknown as TimelineRow[]) || []);
       } else {
         setUserSummary(null);
         setTimeline([]);
@@ -215,12 +215,12 @@ export default function UsageDashboard() {
   useEffect(() => {
     if (!supabase || !showActiveUsers || activeUserList !== null || activeListLoading) return;
     setActiveListLoading(true);
-    supabase.rpc('usage_active_user_list', { p_from: fromISO, p_to: toISO })
-      .then(({ data, error }) => {
+    (supabase.rpc('usage_active_user_list', { p_from: fromISO, p_to: toISO }) as Promise<any>)
+      .then(({ data, error }: { data: any; error: any }) => {
         if (error) throw error;
         setActiveUserList((data as ActiveUserRow[]) || []);
       })
-      .catch(err => {
+      .catch((err: any) => {
         console.error('Falha ao carregar usuários ativos:', err);
         setActiveUserList([]);
       })
@@ -296,7 +296,7 @@ export default function UsageDashboard() {
 
           setUserPageHistory(prev => new Map(prev).set(userId, visits));
         })
-        .catch(err => {
+        .catch((err: any) => {
           console.error('Falha ao carregar histórico de navegação do usuário:', err);
           setUserPageHistory(prev => new Map(prev).set(userId, []));
         })
@@ -315,8 +315,8 @@ export default function UsageDashboard() {
     expandedPaths.forEach(path => {
       if (pageUsers.has(path) || pageUsersLoading.has(path)) return;
       setPageUsersLoading(prev => new Set(prev).add(path));
-      supabase.rpc('usage_page_users', { p_path: path, p_from: fromISO, p_to: toISO })
-        .then(({ data, error }) => {
+      (supabase.rpc('usage_page_users', { p_path: path, p_from: fromISO, p_to: toISO }) as Promise<any>)
+        .then(({ data, error }: { data: any; error: any }) => {
           setPageUsers(prev => new Map(prev).set(path, error ? [] : (data as PageUserRow[]) || []));
         })
         .finally(() => {

@@ -129,15 +129,24 @@ export interface BaseSemanal {
   materiais: ResumoMaterial[];
   /** Índice para montar a série detalhada sem repassar a MB51 inteira. */
   agregado: Map<string, Map<string, Balde>>;
+  /** Primeira data de lançamento registrada na base. */
+  minData: string | null;
+  /** Última data de lançamento registrada na base (maior data dos dados). */
+  maxData: string | null;
 }
 
-export function construirBaseSemanal(movs: MB51Classificado[]): BaseSemanal {
+export function construirBaseSemanal(
+  movs: MB51Classificado[],
+  dataFim?: string
+): BaseSemanal {
   const { porMaterial, meta, minData, maxData } = agregar(movs);
   if (!minData || !maxData) {
-    return { semanas: [], materiais: [], agregado: porMaterial };
+    return { semanas: [], materiais: [], agregado: porMaterial, minData: null, maxData: null };
   }
 
-  const semanas = semanasDoPeriodo(minData, maxData);
+  // Estende o período até a semana informada em dataFim (ex: data atual) se posterior a maxData
+  const fimEfetivo = dataFim && dataFim > maxData ? dataFim : maxData;
+  const semanas = semanasDoPeriodo(minData, fimEfetivo);
 
   const materiais: ResumoMaterial[] = [];
   porMaterial.forEach((baldes, material) => {
@@ -178,7 +187,7 @@ export function construirBaseSemanal(movs: MB51Classificado[]): BaseSemanal {
   // Mais movimentado primeiro: é o material cuja série tem o que ler.
   materiais.sort((a, b) => b.consumoTotal - a.consumoTotal);
 
-  return { semanas, materiais, agregado: porMaterial };
+  return { semanas, materiais, agregado: porMaterial, minData, maxData };
 }
 
 /** Série detalhada de um material, alinhada às semanas do período. */
@@ -221,3 +230,9 @@ export function intervaloSemana(iso: string): string {
 export function mediaPorSemanaAtiva(r: ResumoMaterial): number {
   return r.semanasAtivas > 0 ? r.consumoTotal / r.semanasAtivas : 0;
 }
+
+/** Verifica se a data/semana corresponde a semana atual do calendario. */
+export function ehSemanaAtual(iso: string, hojeIso = format(new Date(), 'yyyy-MM-dd')): boolean {
+  return inicioDaSemana(iso) === inicioDaSemana(hojeIso);
+}
+

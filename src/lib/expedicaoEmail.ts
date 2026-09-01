@@ -119,7 +119,79 @@ function blocoFotos(fotos: FotoComUrl[]): string[] {
   return linhas;
 }
 
-/** Os campos fixos do tramo (motorista, placas, data), na ordem do e-mail. */
+/** Normaliza datas no formato ISO 'YYYY-MM-DD', corrigindo anos digitados com 2 dígitos (ex: 0026 -> 2026). */
+export function normalizarDataISO(valor: string | null | undefined): string | null {
+  if (!valor || !valor.trim()) return null;
+  const v = valor.trim();
+  const m = v.match(/^(\d{1,4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return v;
+  let ano = parseInt(m[1], 10);
+  const mes = m[2].padStart(2, '0');
+  const dia = m[3].padStart(2, '0');
+
+  if (ano < 100) {
+    ano = 2000 + ano;
+  } else if (ano >= 100 && ano < 1000) {
+    ano = 2000 + (ano % 100);
+  }
+  return `${String(ano).padStart(4, '0')}-${mes}-${dia}`;
+}
+
+export interface LeadTimesTramo {
+  portariaAtePatio: string | null;
+  patioAteExpedicao: string | null;
+  leadTimeTotal: string | null;
+  temposCalculados: boolean;
+}
+
+export function parseDataHora(data: string | null | undefined, hora: string | null | undefined): Date | null {
+  if (!hora || !hora.trim()) return null;
+  const [hStr, mStr] = hora.trim().split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return null;
+
+  const dataLimpa = normalizarDataISO(data);
+  if (dataLimpa && /^\d{4}-\d{2}-\d{2}$/.test(dataLimpa)) {
+    const [ano, mes, dia] = dataLimpa.split('-').map(Number);
+    return new Date(ano, mes - 1, dia, h, m, 0, 0);
+  }
+  return null;
+}
+
+export function formatarDuracao(inicio: Date, fim: Date): string {
+  const diffMs = fim.getTime() - inicio.getTime();
+  if (diffMs < 0) return 'Horário inconsistente';
+  const totalMin = Math.floor(diffMs / (1000 * 60));
+  const totalHoras = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  const dias = Math.floor(totalHoras / 24);
+  const horas = totalHoras % 24;
+
+  if (dias > 0) {
+    return `${dias} dia${dias > 1 ? 's' : ''}, ${horas}h ${min}min (${totalHoras}h ${min}min)`;
+  }
+  return `${horas}h ${min}min`;
+}
+
+export function calcularLeadTimesTramo(t: ExpedicaoTramo): LeadTimesTramo {
+  const dPortaria = parseDataHora(t.data_chegada_portaria || t.data, t.hora_chegada_portaria);
+  const dPatio = parseDataHora(t.data_entrada_patio || t.data, t.hora_entrada_patio);
+  const dExpedicao = parseDataHora(t.data_expedicao || t.data, t.hora_expedicao);
+
+  const portariaAtePatio = (dPortaria && dPatio) ? formatarDuracao(dPortaria, dPatio) : null;
+  const patioAteExpedicao = (dPatio && dExpedicao) ? formatarDuracao(dPatio, dExpedicao) : null;
+  const leadTimeTotal = (dPortaria && dExpedicao) ? formatarDuracao(dPortaria, dExpedicao) : null;
+
+  return {
+    portariaAtePatio,
+    patioAteExpedicao,
+    leadTimeTotal,
+    temposCalculados: Boolean(portariaAtePatio || patioAteExpedicao || leadTimeTotal),
+  };
+}
+
+/** Os campos fixos do tramo (motorista, placas, NF, data), na ordem do e-mail. */
 function blocoIdentificacao(t: ExpedicaoTramo): string[] {
   const linhas: string[] = [];
   linhas.push(`Motorista: ${(t.motorista || '').trim()}`, '');
@@ -131,7 +203,12 @@ function blocoIdentificacao(t: ExpedicaoTramo): string[] {
   const dolly = placaComUf(t.dolly_placa, t.dolly_uf);
   if (dolly) linhas.push(`Dolly:       ${dolly}`, '');
 
-  linhas.push(`Data:         ${t.data ? formatDateBR(t.data) : ''}`, '');
+  if (t.numero_nf && t.numero_nf.trim()) {
+    linhas.push(`Nota Fiscal: ${t.numero_nf.trim()}`, '');
+  }
+
+  const dataNormal = normalizarDataISO(t.data);
+  linhas.push(`Data:         ${dataNormal ? formatDateBR(dataNormal) : ''}`, '');
   return linhas;
 }
 
@@ -151,17 +228,19 @@ export function montarCorpoEmail(params: {
 
   params.tramos.forEach((t, i) => {
     const fotosDoTramo = params.fotos.filter(f => f.tramo_id === t.id);
+    const numTramo = (t.numero_tramo || '').trim();
+    const rotuloTramo = numTramo ? `${t.tramo} - ${numTramo}` : t.tramo;
 
-    linhas.push(`Tramo: ${t.tramo}`, '');
+    linhas.push(`Tramo: ${rotuloTramo}`, '');
     linhas.push(...blocoIdentificacao(t));
 
     for (const etapa of ORDEM_ETAPAS) {
       const hora = etapa === 'chegada_portaria' ? t.hora_chegada_portaria
         : etapa === 'entrada_patio' ? t.hora_entrada_patio
         : t.hora_expedicao;
-      const dataEtapa = etapa === 'chegada_portaria' ? t.data_chegada_portaria
-        : etapa === 'entrada_patio' ? t.data_entrada_patio
-        : t.data_expedicao;
+      const dataEtapa = etapa === 'chegada_portaria' ? normalizarDataISO(t.data_chegada_portaria)
+        : etapa === 'entrada_patio' ? normalizarDataISO(t.data_entrada_patio)
+        : normalizarDataISO(t.data_expedicao);
       const obs = etapa === 'chegada_portaria' ? t.obs_chegada_portaria
         : etapa === 'entrada_patio' ? t.obs_entrada_patio
         : t.obs_expedicao;
@@ -171,6 +250,21 @@ export function montarCorpoEmail(params: {
     const fotosLinhas = blocoFotos(fotosDoTramo);
     if (fotosLinhas.length > 0) {
       linhas.push(...fotosLinhas);
+    }
+
+    // Lead Time das etapas
+    const leadTimes = calcularLeadTimesTramo(t);
+    if (leadTimes.temposCalculados) {
+      linhas.push('', 'Cálculo de Tempos (Lead Time):');
+      if (leadTimes.portariaAtePatio) {
+        linhas.push(`• Chegada Portaria ➔ Entrada Pátio: ${leadTimes.portariaAtePatio}`);
+      }
+      if (leadTimes.patioAteExpedicao) {
+        linhas.push(`• Entrada Pátio ➔ Expedição:        ${leadTimes.patioAteExpedicao}`);
+      }
+      if (leadTimes.leadTimeTotal) {
+        linhas.push(`• Lead Time Total (Portaria ➔ Expedição): ${leadTimes.leadTimeTotal}`);
+      }
     }
 
     // Respiro entre tramos, mas não sobra no fim do último.
@@ -196,17 +290,19 @@ export function montarCorpoEmailChegada(params: {
 }): string {
   const empresa = (params.empresa || '').trim();
   const t = params.tramo;
+  const numTramo = (t.numero_tramo || '').trim();
+  const rotuloTramo = numTramo ? `${t.tramo} - ${numTramo}` : t.tramo;
   const linhas: string[] = [];
 
-  linhas.push(`Segue a chegada na portaria do ${t.tramo}${empresa ? ` ${empresa}` : ''}.`, '');
+  linhas.push(`Segue a chegada na portaria do ${rotuloTramo}${empresa ? ` ${empresa}` : ''}.`, '');
   linhas.push(`Empresa: ${empresa}`, '', '');
-  linhas.push(`Tramo: ${t.tramo}`, '');
+  linhas.push(`Tramo: ${rotuloTramo}`, '');
   linhas.push(...blocoIdentificacao(t));
   linhas.push(...linhasEtapa(
     'chegada_portaria',
     t.hora_chegada_portaria,
     t.obs_chegada_portaria,
-    t.data_chegada_portaria,
+    normalizarDataISO(t.data_chegada_portaria),
   ));
 
   const fotosChegada = params.fotos.filter(f => f.tramo_id === t.id && f.etapa === 'chegada_portaria');
@@ -219,27 +315,42 @@ export function montarCorpoEmailChegada(params: {
 }
 
 /**
- * Assunto dos dois e-mails da expedição, no formato que a equipe lê na caixa
- * de entrada: `Chegada Expedição 2º T4 - ABC1D23`.
- *
- * O prefixo vem do cadastro de e-mails, então continua editável sem mexer no
- * código; o resto identifica o caminhão — sequência, tramo e placa da carreta,
- * na mesma leitura do card da lista. Cada parte some se faltar o dado, para o
- * assunto nunca sair com hífen solto ou `undefined`.
+ * Assunto dos e-mails da expedição:
+ * Formato padrão: `[Prefixo] [Sequência]º [Tramo] - [Número Tramo] - [Número NF] - [Placa]`
  */
 export function montarAssuntoExpedicao(params: {
   prefixo: string;
   sequencia?: number | null;
   tramo?: string | null;
   carretaPlaca?: string | null;
+  numeroTramo?: string | null;
+  numeroNf?: string | null;
 }): string {
-  const identificacao = [
-    params.sequencia ? `${params.sequencia}º` : '',
-    (params.tramo || '').trim(),
-  ].filter(Boolean).join(' ');
+  const seq = params.sequencia ? `${params.sequencia}º` : '';
+  const rotuloTramo = (params.tramo || '').trim();
+  const identificacao = [seq, rotuloTramo].filter(Boolean).join(' ');
+  const numTramo = (params.numeroTramo || '').trim();
+  const nf = (params.numeroNf || '').trim();
   const placa = (params.carretaPlaca || '').trim().toUpperCase();
 
-  return [`${params.prefixo.trim()} ${identificacao}`.trim(), placa].filter(Boolean).join(' - ');
+  const partes: string[] = [];
+  if (identificacao) {
+    partes.push(`${params.prefixo.trim()} ${identificacao}`.trim());
+  } else {
+    partes.push(params.prefixo.trim());
+  }
+
+  if (numTramo) {
+    partes.push(numTramo);
+  }
+  if (nf) {
+    partes.push(`NF ${nf}`);
+  }
+  if (placa) {
+    partes.push(placa);
+  }
+
+  return partes.filter(Boolean).join(' - ');
 }
 
 /** URL `mailto:` completa, com quebras de linha em CRLF (o que o Outlook espera). */

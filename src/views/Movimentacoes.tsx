@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  ArrowLeftRight, RefreshCw, AlertCircle, Filter,
+  ArrowLeftRight, RefreshCw, AlertCircle, Filter, Warehouse,
   Activity, Gauge, Hourglass, Timer, PackageX, TrendingDown, Scale, ClipboardCheck, ShoppingCart,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
@@ -42,6 +42,7 @@ import MovimentacoesPorTipoChart from '../components/almoxarifado/MovimentacoesP
 import MovimentacoesSerieChart from '../components/almoxarifado/MovimentacoesSerieChart';
 import EstoqueLegadoBanner from '../components/almoxarifado/EstoqueLegadoBanner';
 import IdadeEstoqueChart from '../components/almoxarifado/IdadeEstoqueChart';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import CoberturaPanel from '../components/almoxarifado/CoberturaPanel';
 import PermanenciaPanel from '../components/almoxarifado/PermanenciaPanel';
 import KpiCard from '../components/charts/KpiCard';
@@ -83,9 +84,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
 
   /* Filtros compartilhados entre as abas -------------------------------- */
   const [centroFiltro, setCentroFiltro] = useState('Todos');
-  const [depositoFiltro, setDepositoFiltro] = useState('Todos');
+  // Depósito aceita seleção múltipla: vazio = todos.
+  const [depositoFiltro, setDepositoFiltro] = useState<Set<string>>(new Set());
   const [tipoFiltro, setTipoFiltro] = useState('Todos');
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
+  // Recorte por data de lançamento (YYYY-MM-DD). Só a aba Visão Geral opera por
+  // linha de movimento; as abas de análise têm janela própria fixada na view.
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   // Código escolhido numa sugestão. O campo de busca exibe a descrição, que é
   // ambígua entre materiais de nome parecido — o recorte usa o código.
@@ -237,9 +243,11 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     const q = searchQuery.trim().toLowerCase();
     return movs.filter(r => {
       if (centroFiltro !== 'Todos' && r.centro !== centroFiltro) return false;
-      if (depositoFiltro !== 'Todos' && r.deposito !== depositoFiltro) return false;
+      if (depositoFiltro.size > 0 && !depositoFiltro.has(r.deposito)) return false;
       if (tipoFiltro !== 'Todos' && r.tipo_movimento?.trim() !== tipoFiltro) return false;
       if (categoriaFiltro !== 'Todos' && r.categoria !== categoriaFiltro) return false;
+      if (dataInicio && (!r.data_lancamento || r.data_lancamento < dataInicio)) return false;
+      if (dataFim && (!r.data_lancamento || r.data_lancamento > dataFim)) return false;
       if (!passaTipoItem(r.material)) return false;
       if (!passaGrupo(r.material)) return false;
       if (!passaMaterialSel(r.material)) return false;
@@ -249,8 +257,8 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
       }
       return true;
     });
-  }, [movs, centroFiltro, depositoFiltro, tipoFiltro, categoriaFiltro, searchQuery,
-      passaTipoItem, passaGrupo, passaMaterialSel, materialSel]);
+  }, [movs, centroFiltro, depositoFiltro, tipoFiltro, categoriaFiltro, dataInicio, dataFim,
+      searchQuery, passaTipoItem, passaGrupo, passaMaterialSel, materialSel]);
 
   // As abas de análise operam por material, não por linha de movimento: os
   // filtros de centro/depósito/TMV não se aplicam a elas (uma view por
@@ -297,22 +305,24 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     [camadasFiltradas]
   );
 
-  const filtroAtivo = centroFiltro !== 'Todos' || depositoFiltro !== 'Todos'
-    || tipoFiltro !== 'Todos' || categoriaFiltro !== 'Todos' || searchQuery.trim() !== ''
+  const filtroAtivo = centroFiltro !== 'Todos' || depositoFiltro.size > 0
+    || tipoFiltro !== 'Todos' || categoriaFiltro !== 'Todos' || dataInicio !== '' || dataFim !== ''
+    || searchQuery.trim() !== ''
     || coberturaFiltro !== 'Todos' || faixaIdadeFiltro !== 'Todos' || classePermFiltro !== 'Todos'
     || tipoItemFiltro !== 'Todos' || recomendacaoFiltro !== 'Todos'
     || grupoFiltro !== 'Todos' || !!materialSel;
 
   const limparFiltros = useCallback(() => {
-    setCentroFiltro('Todos'); setDepositoFiltro('Todos'); setTipoFiltro('Todos');
-    setCategoriaFiltro('Todos'); setSearchQuery(''); setTipoItemFiltro('Todos');
+    setCentroFiltro('Todos'); setDepositoFiltro(new Set()); setTipoFiltro('Todos');
+    setCategoriaFiltro('Todos'); setDataInicio(''); setDataFim('');
+    setSearchQuery(''); setTipoItemFiltro('Todos');
     setCoberturaFiltro('Todos'); setFaixaIdadeFiltro('Todos'); setClassePermFiltro('Todos');
     setRecomendacaoFiltro('Todos'); setGrupoFiltro('Todos'); setMaterialSel(null);
     setPage(0);
   }, []);
 
   useEffect(() => { setPage(0); }, [
-    centroFiltro, depositoFiltro, tipoFiltro, categoriaFiltro, searchQuery,
+    centroFiltro, depositoFiltro, tipoFiltro, categoriaFiltro, dataInicio, dataFim, searchQuery,
     coberturaFiltro, faixaIdadeFiltro, classePermFiltro, tipoItemFiltro, recomendacaoFiltro,
     grupoFiltro, materialSel,
   ]);
@@ -544,7 +554,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
               boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
             }}
           >
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
               <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
                 <Filter className="h-3 w-3" /> Filtros
               </span>
@@ -555,10 +565,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                     <option value="Todos">Centro: Todos</option>
                     {opcoes.centros.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <select value={depositoFiltro} onChange={e => setDepositoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
-                    <option value="Todos">Depósito: Todos</option>
-                    {opcoes.depositos.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
+                  <MultiSelectFilter
+                    label="Depósito"
+                    icon={Warehouse}
+                    options={opcoes.depositos}
+                    selected={depositoFiltro}
+                    onChange={setDepositoFiltro}
+                    className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
+                  />
                   <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
                     <option value="Todos">Categoria: Todas</option>
                     {opcoes.categorias.map(c => (
@@ -569,6 +583,26 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                     <option value="Todos">TMV: Todos</option>
                     {opcoes.tipos.map(([tmv, desc]) => <option key={tmv} value={tmv}>{tmv} — {desc}</option>)}
                   </select>
+                  <label className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                    <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>De</span>
+                    <input
+                      type="date"
+                      value={dataInicio}
+                      max={dataFim || undefined}
+                      onChange={e => setDataInicio(e.target.value)}
+                      className={selectClass}
+                    />
+                  </label>
+                  <label className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
+                    <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Até</span>
+                    <input
+                      type="date"
+                      value={dataFim}
+                      min={dataInicio || undefined}
+                      onChange={e => setDataFim(e.target.value)}
+                      className={selectClass}
+                    />
+                  </label>
                 </>
               )}
 

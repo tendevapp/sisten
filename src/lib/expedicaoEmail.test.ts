@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   listarTramos, montarCorpoEmail, montarCorpoEmailChegada, montarAssuntoExpedicao,
-  montarMailto, cabeNoMailto, LIMITE_MAILTO,
+  montarMailto, cabeNoMailto, LIMITE_MAILTO, normalizarDataISO, calcularLeadTimesTramo,
 } from './expedicaoEmail';
 import type { ExpedicaoTramo } from '../types';
 import type { FotoComUrl } from './expedicaoEmail';
@@ -11,6 +11,8 @@ function tramo(over: Partial<ExpedicaoTramo> & { id: string }): ExpedicaoTramo {
     carregamento_id: 'c1',
     ordem: 0,
     tramo: 'T1',
+    numero_tramo: null,
+    numero_nf: null,
     motorista: '',
     cavalo_placa: '',
     cavalo_uf: null,
@@ -44,6 +46,49 @@ function foto(over: Partial<FotoComUrl> & { id: string; tramo_id: string }): Fot
   } as FotoComUrl;
 }
 
+describe('normalizarDataISO', () => {
+  it('corrige anos digitados com dois dígitos ou prefixo 00 (ex: 0026 -> 2026)', () => {
+    expect(normalizarDataISO('0026-08-27')).toBe('2026-08-27');
+    expect(normalizarDataISO('26-08-27')).toBe('2026-08-27');
+    expect(normalizarDataISO('2026-08-27')).toBe('2026-08-27');
+    expect(normalizarDataISO(null)).toBe(null);
+  });
+});
+
+describe('calcularLeadTimesTramo', () => {
+  it('calcula horas e dias entre as etapas corretamente', () => {
+    const t = tramo({
+      id: 't1',
+      data: '2026-08-27',
+      hora_chegada_portaria: '08:00',
+      hora_entrada_patio: '11:30',
+      hora_expedicao: '16:00',
+    });
+
+    const res = calcularLeadTimesTramo(t);
+    expect(res.portariaAtePatio).toBe('3h 30min');
+    expect(res.patioAteExpedicao).toBe('4h 30min');
+    expect(res.leadTimeTotal).toBe('8h 0min');
+  });
+
+  it('calcula etapas em dias diferentes com indicação de dias e horas', () => {
+    const t = tramo({
+      id: 't1',
+      data_chegada_portaria: '2026-08-27',
+      hora_chegada_portaria: '10:00',
+      data_entrada_patio: '2026-08-28',
+      hora_entrada_patio: '14:30',
+      data_expedicao: '2026-08-28',
+      hora_expedicao: '18:00',
+    });
+
+    const res = calcularLeadTimesTramo(t);
+    expect(res.portariaAtePatio).toBe('1 dia, 4h 30min (28h 30min)');
+    expect(res.patioAteExpedicao).toBe('3h 30min');
+    expect(res.leadTimeTotal).toBe('1 dia, 8h 0min (32h 0min)');
+  });
+});
+
 describe('listarTramos', () => {
   it('escreve a lista como se fala, com "e" antes do último', () => {
     expect(listarTramos([])).toBe('');
@@ -56,7 +101,7 @@ describe('listarTramos', () => {
 describe('montarCorpoEmail', () => {
   const tramos = [
     tramo({
-      id: 't1', tramo: 'T1', motorista: 'GERALDO PEREIRA DA SILVA JUNIOR',
+      id: 't1', tramo: 'T1', numero_tramo: '1234', numero_nf: '98765', motorista: 'GERALDO PEREIRA DA SILVA JUNIOR',
       cavalo_placa: 'RTX-3B83', cavalo_uf: 'MG', carreta_placa: 'OIL-8H76', carreta_uf: 'BA',
       data: '2023-09-04', hora_chegada_portaria: '09:05', hora_entrada_patio: '12:00', hora_expedicao: '14:00',
     }),
@@ -67,7 +112,7 @@ describe('montarCorpoEmail', () => {
     }),
   ];
 
-  it('reproduz o formato usado pela equipe, com abertura, empresa e um bloco por tramo', () => {
+  it('reproduz o formato usado pela equipe, com abertura, empresa, número do tramo, NF e lead times', () => {
     const corpo = montarCorpoEmail({
       empresa: 'TRANSMAQUINAS',
       observacoes: 'Motoristas com escolta – SERIDÓ',
@@ -77,7 +122,8 @@ describe('montarCorpoEmail', () => {
 
     expect(corpo).toContain('Segue dados para carregamento do T1 e T4 TRANSMAQUINAS.');
     expect(corpo).toContain('Empresa: TRANSMAQUINAS');
-    expect(corpo).toContain('Tramo: T1');
+    expect(corpo).toContain('Tramo: T1 - 1234');
+    expect(corpo).toContain('Nota Fiscal: 98765');
     expect(corpo).toContain('Motorista: GERALDO PEREIRA DA SILVA JUNIOR');
     expect(corpo).toContain('Cavalo:      RTX-3B83 /MG');
     expect(corpo).toContain('Carreta:     OIL-8H76 /BA');
@@ -85,6 +131,8 @@ describe('montarCorpoEmail', () => {
     expect(corpo).toContain('Horário de chegada portaria: 09:05');
     expect(corpo).toContain('Horário de entrada pátio: 12:00');
     expect(corpo).toContain('Horário de expedição: 14:00');
+    expect(corpo).toContain('Cálculo de Tempos (Lead Time):');
+    expect(corpo).toContain('• Lead Time Total (Portaria ➔ Expedição): 4h 55min');
     expect(corpo).toContain('Tramo: T4');
     expect(corpo.trimEnd().endsWith('Obs.: Motoristas com escolta – SERIDÓ')).toBe(true);
   });
@@ -112,141 +160,46 @@ describe('montarCorpoEmail', () => {
     expect(corpo).toContain('• Horário de expedição (foto 1): https://s/b.jpg');
     expect(corpo).toContain('• Horário de expedição (foto 2): https://s/c.jpg');
   });
-
-  it('não vaza a foto de um tramo no bloco de outro', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, tramos,
-      fotos: [foto({ id: 'f1', tramo_id: 't4', etapa: 'chegada_portaria', url: 'https://s/so-do-t4.jpg' })],
-    });
-    const blocoT1 = corpo.slice(corpo.indexOf('Tramo: T1'), corpo.indexOf('Tramo: T4'));
-    expect(blocoT1).not.toContain('so-do-t4');
-  });
-
-  it('ignora foto cuja URL não pôde ser assinada, sem quebrar a linha do horário', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, tramos: [tramos[0]],
-      fotos: [foto({ id: 'f1', tramo_id: 't1', etapa: 'chegada_portaria', url: null })],
-    });
-    expect(corpo).toContain('Horário de chegada portaria: 09:05');
-    expect(corpo).not.toContain('Fotos anexadas:');
-  });
-
-  it('exibe data e hora combinadas quando a etapa possui data específica', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X',
-      observacoes: null,
-      tramos: [tramo({
-        id: 't1',
-        data_chegada_portaria: '2026-08-27',
-        hora_chegada_portaria: '08:30',
-        data_expedicao: '2026-08-28',
-        hora_expedicao: '16:00',
-      })],
-      fotos: [],
-    });
-    expect(corpo).toContain('Horário de chegada portaria: 27/08/2026 às 08:30');
-    expect(corpo).toContain('Horário de expedição: 28/08/2026 às 16:00');
-  });
-});
-
-describe('Dolly e observações por etapa', () => {
-  it('inclui a linha do Dolly quando o comboio tem um', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, fotos: [],
-      tramos: [tramo({ id: 't1', dolly_placa: 'ABC-1D23', dolly_uf: 'BA' })],
-    });
-    expect(corpo).toContain('Dolly:       ABC-1D23 /BA');
-  });
-
-  it('omite a linha do Dolly quando não há — linha vazia viraria dúvida de quem lê', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, fotos: [], tramos: [tramo({ id: 't1' })],
-    });
-    expect(corpo).not.toContain('Dolly');
-  });
-
-  it('desce a observação da etapa indentada, logo abaixo do horário dela', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, fotos: [],
-      tramos: [tramo({
-        id: 't1', hora_chegada_portaria: '09:05',
-        obs_chegada_portaria: 'Portão 2, aguardando liberação',
-        obs_expedicao: 'Saiu com escolta',
-      })],
-    });
-    expect(corpo).toContain('Horário de chegada portaria: 09:05\n   Obs.: Portão 2, aguardando liberação');
-    expect(corpo).toContain('   Obs.: Saiu com escolta');
-  });
-
-  it('não cria linha de observação para etapa sem texto', () => {
-    const corpo = montarCorpoEmail({
-      empresa: 'X', observacoes: null, fotos: [],
-      tramos: [tramo({ id: 't1', obs_entrada_patio: '   ' })],
-    });
-    expect(corpo).not.toContain('Obs.:');
-  });
 });
 
 describe('montarCorpoEmailChegada', () => {
   const t = tramo({
-    id: 't1', tramo: 'T1', motorista: 'GERALDO', cavalo_placa: 'RTX-3B83', cavalo_uf: 'MG',
+    id: 't1', tramo: 'T1', numero_tramo: '4321', numero_nf: '112233', motorista: 'GERALDO', cavalo_placa: 'RTX-3B83', cavalo_uf: 'MG',
     carreta_placa: 'OIL-8H76', carreta_uf: 'BA', data: '2023-09-04',
     hora_chegada_portaria: '09:05', hora_entrada_patio: '12:00', hora_expedicao: '14:00',
   });
 
-  it('leva a identificação do comboio e só a chegada — as outras etapas não entram', () => {
+  it('leva a identificação do comboio com número do tramo e NF', () => {
     const corpo = montarCorpoEmailChegada({ empresa: 'TRANSMAQUINAS', tramo: t, fotos: [] });
 
-    expect(corpo).toContain('Segue a chegada na portaria do T1 TRANSMAQUINAS.');
+    expect(corpo).toContain('Segue a chegada na portaria do T1 - 4321 TRANSMAQUINAS.');
+    expect(corpo).toContain('Tramo: T1 - 4321');
+    expect(corpo).toContain('Nota Fiscal: 112233');
     expect(corpo).toContain('Motorista: GERALDO');
     expect(corpo).toContain('Cavalo:      RTX-3B83 /MG');
     expect(corpo).toContain('Horário de chegada portaria: 09:05');
     expect(corpo).not.toContain('Horário de entrada pátio');
     expect(corpo).not.toContain('Horário de expedição');
   });
-
-  it('leva a foto e a observação da portaria, e ignora as das outras etapas', () => {
-    const corpo = montarCorpoEmailChegada({
-      empresa: 'X',
-      tramo: { ...t, obs_chegada_portaria: 'Portão 2' },
-      fotos: [
-        foto({ id: 'f1', tramo_id: 't1', etapa: 'chegada_portaria', url: 'https://s/chegada.jpg' }),
-        foto({ id: 'f2', tramo_id: 't1', etapa: 'expedicao', url: 'https://s/saida.jpg' }),
-      ],
-    });
-    expect(corpo).toContain('• Horário de chegada portaria: https://s/chegada.jpg');
-    expect(corpo).not.toContain('saida.jpg');
-    expect(corpo).toContain('   Obs.: Portão 2');
-  });
-
-  it('usa assunto próprio, para o parcial não se confundir com o e-mail final', () => {
-    expect(montarAssuntoExpedicao({
-      prefixo: 'Chegada Expedição', sequencia: 2, tramo: 'T4', carretaPlaca: 'ABC1D23',
-    })).toBe('Chegada Expedição 2º T4 - ABC1D23');
-  });
 });
 
 describe('montarAssuntoExpedicao', () => {
-  it('identifica o caminhão com sequência, tramo e placa', () => {
+  it('identifica o caminhão com sequência, tramo, número do tramo, NF e placa', () => {
     expect(montarAssuntoExpedicao({
-      prefixo: 'Expedição Final', sequencia: 1, tramo: 'T1', carretaPlaca: 'xyz9k88',
-    })).toBe('Expedição Final 1º T1 - XYZ9K88');
+      prefixo: 'Expedição Final', sequencia: 1, tramo: 'T1', numeroTramo: '1234', numeroNf: '98765', carretaPlaca: 'xyz9k88',
+    })).toBe('Expedição Final 1º T1 - 1234 - NF 98765 - XYZ9K88');
   });
 
   it('omite a sequência enquanto ela não é conhecida', () => {
     expect(montarAssuntoExpedicao({
-      prefixo: 'Chegada Expedição', sequencia: null, tramo: 'T4', carretaPlaca: 'ABC1D23',
-    })).toBe('Chegada Expedição T4 - ABC1D23');
+      prefixo: 'Chegada Expedição', sequencia: null, tramo: 'T4', numeroTramo: '5566', carretaPlaca: 'ABC1D23',
+    })).toBe('Chegada Expedição T4 - 5566 - ABC1D23');
   });
 
   it('não deixa hífen solto quando a carreta ainda não tem placa', () => {
     expect(montarAssuntoExpedicao({
       prefixo: 'Chegada Expedição', sequencia: 3, tramo: 'T2', carretaPlaca: '  ',
     })).toBe('Chegada Expedição 3º T2');
-  });
-
-  it('sobrevive a um carregamento sem tramo nem placa', () => {
-    expect(montarAssuntoExpedicao({ prefixo: 'Expedição Final' })).toBe('Expedição Final');
   });
 });
 

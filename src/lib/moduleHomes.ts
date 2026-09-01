@@ -121,6 +121,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     cardDescriptions: {
       fin_contas_pagar: 'Títulos a pagar, vencimentos e baixas.',
       fin_contas_pagar_analise: 'Análise de contas a pagar por período e fornecedor.',
+      fin_reconciliacao_pedidos: 'Rastreamento de liquidação de pedidos (PO x MIRO x FBL1N).',
     },
   },
   {

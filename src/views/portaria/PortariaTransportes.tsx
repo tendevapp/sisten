@@ -17,6 +17,7 @@ import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 
 interface Props {
@@ -39,6 +40,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRegistroTransporte | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const podeVerExcluidos = user.roles.includes('admin');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   const [formNovo, setFormNovo] = useState({
     data: api.hojeISO(),
@@ -61,6 +64,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         turno: filtroTurno,
         status: filtroStatus,
         termoBusca,
+        incluirExcluidos: podeVerExcluidos && mostrarExcluidos,
       });
       setItens(data);
     } catch (e) {
@@ -68,7 +72,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [filtroData, filtroTurno, filtroStatus, termoBusca, toast]);
+  }, [filtroData, filtroTurno, filtroStatus, termoBusca, toast, podeVerExcluidos, mostrarExcluidos]);
 
   useEffect(() => {
     carregarDados();
@@ -126,12 +130,22 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const handleExcluir = async () => {
     if (!itemParaExcluir) return;
     try {
-      await api.excluirTransporte(itemParaExcluir.id);
-      toast.success('Registro de transporte excluído.');
+      await api.excluirTransporte(itemParaExcluir.id, user.id);
+      toast.success('Registro ocultado. Mantido no banco e restaurável por um administrador.');
       setItemParaExcluir(null);
       carregarDados();
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
+    }
+  };
+
+  const handleRestaurar = async (item: PortRegistroTransporte) => {
+    try {
+      await api.restaurarTransporte(item.id);
+      toast.success('Registro restaurado.');
+      carregarDados();
+    } catch (e) {
+      toast.error(`Erro ao restaurar: ${(e as Error).message}`);
     }
   };
 
@@ -244,6 +258,12 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
             />
           </div>
         </div>
+
+        {podeVerExcluidos && (
+          <div className="flex items-end">
+            <MostrarExcluidosToggle visivel={podeVerExcluidos} checked={mostrarExcluidos} onChange={setMostrarExcluidos} />
+          </div>
+        )}
       </div>
 
       {/* Table Content */}
@@ -276,7 +296,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                 {itens.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={item.id} className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors ${classeLinhaExcluida(item.excluido_em)}`}>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100">
@@ -285,6 +305,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                         <span className="text-xs text-slate-500 dark:text-slate-400">
                           {item.veiculo}
                         </span>
+                        {item.excluido_em && <BadgeExcluido em={item.excluido_em} />}
                       </div>
                     </td>
                     <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-slate-100">
@@ -314,6 +335,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     </td>
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {item.excluido_em ? (
+                          <RestaurarButton onClick={() => handleRestaurar(item)} />
+                        ) : (
+                        <>
                         {item.status === 'NO_PATIO' && (
                           <button
                             type="button"
@@ -333,6 +358,8 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        </>
+                        )}
                       </div>
                     </td>
                   </tr>

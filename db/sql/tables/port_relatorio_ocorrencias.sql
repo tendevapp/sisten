@@ -9,7 +9,9 @@ create table if not exists public.port_relatorio_ocorrencias (
   descricao text not null,
   severidade text not null default 'INFO' check (severidade in ('INFO', 'ALERTA', 'GRAVE')),
   vigilante text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists port_relatorio_ocorrencias_relatorio_idx on public.port_relatorio_ocorrencias (relatorio_id);

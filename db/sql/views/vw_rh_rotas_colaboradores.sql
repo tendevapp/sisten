@@ -1,5 +1,6 @@
 -- Módulo RH — View que vincula todas as pessoas cadastradas com suas rotas correspondentes
 -- Aplicado via Supabase MCP em 2026-08-27 (migration create_vw_rh_ase_itens_and_rotas).
+-- 2026-08-30: passa a ignorar rotas com exclusão lógica (excluido_em).
 
 create or replace view public.vw_rh_rotas_colaboradores as
 select
@@ -25,6 +26,7 @@ left join lateral (
     rot.ativo
   from public.rh_rotas rot
   where rot.ativo = true
+    and rot.excluido_em is null
     and translate(lower(trim(rot.funcionario)), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')
       = translate(lower(trim(p.nome)), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')
   order by

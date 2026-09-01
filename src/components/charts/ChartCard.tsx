@@ -29,6 +29,11 @@ interface ChartCardProps {
    *  rótulos até sobrepor. Sem espaço sobrando (card mais largo que o
    *  mínimo) o trilho não aparece, o gráfico só preenche a largura normal. */
   minPlotWidth?: number;
+  /** Com `minPlotWidth` ativo, começa o trilho rolado até o fim (categorias mais
+   *  recentes à direita já visíveis). Refaz a rolagem quando a largura muda —
+   *  novo filtro, nova granularidade —, mas não interfere se o usuário rolar
+   *  para trás e nada mudar. */
+  scrollToEnd?: boolean;
   loading?: boolean;
   /** Quando verdadeiro, mostra `emptyMessage` no lugar do gráfico. */
   empty?: boolean;
@@ -46,6 +51,7 @@ export default function ChartCard({
   actions,
   height = 300,
   minPlotWidth,
+  scrollToEnd = true,
   loading = false,
   empty = false,
   emptyMessage = 'Nenhum dado no filtro selecionado.',
@@ -53,6 +59,30 @@ export default function ChartCard({
   className = '',
   children,
 }: ChartCardProps) {
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!scrollToEnd || !minPlotWidth || loading || empty) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const doScrollRight = () => {
+      if (el) {
+        el.scrollLeft = el.scrollWidth;
+      }
+    };
+
+    doScrollRight();
+    const t1 = setTimeout(doScrollRight, 50);
+    const t2 = setTimeout(doScrollRight, 200);
+    const t3 = setTimeout(doScrollRight, 400);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [scrollToEnd, minPlotWidth, loading, empty, children]);
+
   return (
     <section
       className={`rounded-xl border p-5 sm:p-6 space-y-4 transition-shadow duration-200 ${className}`}
@@ -90,8 +120,8 @@ export default function ChartCard({
           {emptyMessage}
         </div>
       ) : minPlotWidth ? (
-        <div className="overflow-x-auto no-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6">
-          <div style={{ minWidth: minPlotWidth }}>{children}</div>
+        <div ref={scrollRef} className="overflow-x-auto custom-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6 pb-2.5 pt-1">
+          <div style={{ minWidth: minPlotWidth, width: '100%' }}>{children}</div>
         </div>
       ) : (
         children

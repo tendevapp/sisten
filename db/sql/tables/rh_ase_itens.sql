@@ -19,7 +19,9 @@ create table public.rh_ase_itens (
   percentual_he numeric(5, 2),
   total_horas numeric(5, 2),
   observacao text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index rh_ase_itens_solicitacao_idx on public.rh_ase_itens (solicitacao_id);

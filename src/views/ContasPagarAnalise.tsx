@@ -14,6 +14,7 @@ import { useChartConfig, estimateCategoryChartWidth } from '../components/charts
 import ChartCard from '../components/charts/ChartCard';
 import ChartTooltip from '../components/charts/ChartTooltip';
 import KpiCard from '../components/charts/KpiCard';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { TableShell, TableHeadRow, TableBody, Td } from '../components/ui/DataTable';
 
 interface ContasPagarAnaliseProps {
@@ -37,21 +38,45 @@ interface Fbl1nAnaliseLinha {
   tipo_documento: string | null;
 }
 
+// 'aberto' = todo o saldo em aberto (usado pelos gráficos de categoria/fornecedor/aging).
+// Na Evolução Temporal o saldo em aberto aparece empilhado como 'aVencer' + 'vencido'.
+type ModalMetric = 'pago' | 'aberto' | 'aVencer' | 'vencido';
+
 interface SelectedPeriodModalData {
   label: string;
   key: string;
-  metric: 'pago' | 'aberto';
+  metric: ModalMetric;
   items: Fbl1nAnaliseLinha[];
 }
 
+/** Rótulo e cor de cada série, compartilhados entre gráfico, legenda e modal. */
+const METRIC_META: Record<ModalMetric, { label: string; color: string }> = {
+  pago: { label: 'Valor Pago', color: '#10b981' },
+  aberto: { label: 'Valor em Aberto', color: '#f59e0b' },
+  aVencer: { label: 'A Vencer', color: '#f59e0b' },
+  vencido: { label: 'Vencido', color: '#dc2626' },
+};
+
 const PAGE_SIZE = 1000;
 
-function estaAberta(l: Fbl1nAnaliseLinha): boolean {
-  const isComp = Boolean(
+function estaCompensada(l: Fbl1nAnaliseLinha): boolean {
+  return Boolean(
     (l.doc_compensacao && l.doc_compensacao.trim() !== '' && l.doc_compensacao.trim() !== '—') ||
     l.data_compensacao
   );
-  return !isComp;
+}
+
+function estaAberta(l: Fbl1nAnaliseLinha): boolean {
+  return !estaCompensada(l);
+}
+
+/** Um lançamento pertence à série `metric` do gráfico/legenda? */
+function itemMatchesMetric(l: Fbl1nAnaliseLinha, metric: ModalMetric, hoje: string): boolean {
+  if (metric === 'pago') return estaCompensada(l) && (l.montante_moeda_doc || 0) > 0;
+  if (metric === 'aberto') return estaAberta(l);
+  if (!estaAberta(l)) return false;
+  const vencido = !!l.vencimento_liquido && l.vencimento_liquido < hoje;
+  return metric === 'vencido' ? vencido : !vencido; // 'aVencer' = em aberto ainda não vencido (inclui sem vencimento)
 }
 
 function formatTipoDocLabel(l: Fbl1nAnaliseLinha): string {
@@ -74,6 +99,14 @@ function getMonthKeyAndLabel(dateStr: string): { key: string; label: string } {
   const mIdx = parseInt(month, 10) - 1;
   const label = `${MONTH_NAMES[mIdx] || month}/${year.slice(2)}`;
   return { key: `${year}-${month}`, label };
+}
+
+/** Converte uma chave de mês "YYYY-MM" no intervalo de datas correspondente. */
+function mesParaPeriodo(ym: string): { de: string; ate: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const mStr = String(m).padStart(2, '0');
+  const ultimoDia = new Date(y, m, 0).getDate();
+  return { de: `${y}-${mStr}-01`, ate: `${y}-${mStr}-${String(ultimoDia).padStart(2, '0')}` };
 }
 
 function getISOWeekNumber(d: Date): number {
@@ -120,7 +153,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [linhas, setLinhas] = useState<Fbl1nAnaliseLinha[]>([]);
-  const [empresaFilter, setEmpresaFilter] = useState('Todas');
+  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<Set<string>>(new Set());
   const [tipoDocFilter, setTipoDocFilter] = useState('Todos');
   const [periodoDe, setPeriodoDe] = useState('2026-01-01');
   const [periodoAte, setPeriodoAte] = useState('2026-12-31');
@@ -171,11 +204,48 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
   useEffect(() => { load(); }, [load]);
 
-  const empresaOptions = useMemo(() => {
+  /** Meses presentes nos dados (chave YYYY-MM), pela mesma data usada nos filtros/gráfico. */
+  const mesesDisponiveis = useMemo(() => {
     const s = new Set<string>();
-    linhas.forEach(l => { if (l.empresa) s.add(l.empresa); });
+    linhas.forEach(l => {
+      const dateVal = l.data_pagamento || l.data_compensacao || l.vencimento_liquido || l.data_lancamento;
+      if (dateVal) s.add(dateVal.slice(0, 7));
+    });
     return Array.from(s).sort();
   }, [linhas]);
+
+  /** Mês ativo no seletor: só quando o período casa exatamente com os limites de um mês. */
+  const mesSelecionado = useMemo(() => {
+    if (!periodoDe || !periodoAte) return '';
+    const ym = periodoDe.slice(0, 7);
+    const { de, ate } = mesParaPeriodo(ym);
+    return periodoDe === de && periodoAte === ate ? ym : '';
+  }, [periodoDe, periodoAte]);
+
+  const fornecedorOptions = useMemo(() => {
+    const s = new Set<string>();
+    linhas.forEach(l => {
+      const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim();
+      if (nome) s.add(nome);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [linhas]);
+
+  const fornecedorCodigoMap = useMemo(() => {
+    const map = new Map<string, string>();
+    linhas.forEach(l => {
+      const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim();
+      if (nome && l.fornecedor && l.fornecedor !== nome) {
+        map.set(nome, l.fornecedor);
+      }
+    });
+    return map;
+  }, [linhas]);
+
+  const renderFornecedorOption = useCallback((name: string) => {
+    const cod = fornecedorCodigoMap.get(name);
+    return cod ? `${name} (${cod})` : name;
+  }, [fornecedorCodigoMap]);
 
   const tipoDocOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -195,10 +265,13 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
   const filtradas = useMemo(() => {
     return linhas.filter(l => {
-      if (empresaFilter !== 'Todas' && l.empresa !== empresaFilter) return false;
       if (tipoDocFilter !== 'Todos') {
         const itemKey = l.tipo_documento?.trim() || l.tipo_documento_descricao?.trim() || '';
         if (itemKey !== tipoDocFilter) return false;
+      }
+      if (fornecedoresSelecionados.size > 0) {
+        const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim() || '';
+        if (!fornecedoresSelecionados.has(nome)) return false;
       }
       if (periodoDe || periodoAte) {
         const dateVal = l.data_pagamento || l.data_compensacao || l.vencimento_liquido || l.data_lancamento;
@@ -207,7 +280,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       }
       return true;
     });
-  }, [linhas, empresaFilter, tipoDocFilter, periodoDe, periodoAte]);
+  }, [linhas, tipoDocFilter, fornecedoresSelecionados, periodoDe, periodoAte]);
 
   const abertas = useMemo(() => filtradas.filter(estaAberta), [filtradas]);
 
@@ -236,7 +309,8 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
   }, [abertas, hoje]);
 
   const temporalChartData = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; fullLabel?: string; pago: number; aberto: number }>();
+    // aberto = aVencer + vencido; guardado só para o total do tooltip.
+    const map = new Map<string, { key: string; label: string; fullLabel?: string; pago: number; aberto: number; aVencer: number; vencido: number }>();
 
     // Preenche todos os meses do período selecionado para garantir visualização contínua de Jan a Dez
     if (periodoVisao === 'mes' && periodoDe && periodoAte) {
@@ -249,7 +323,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           const mStr = String(curM).padStart(2, '0');
           const key = `${curY}-${mStr}`;
           const label = `${MONTH_NAMES[curM - 1] || mStr}/${String(curY).slice(2)}`;
-          map.set(key, { key, label, fullLabel: label, pago: 0, aberto: 0 });
+          map.set(key, { key, label, fullLabel: label, pago: 0, aberto: 0, aVencer: 0, vencido: 0 });
           curM++;
           if (curM > 12) { curM = 1; curY++; }
         }
@@ -266,29 +340,37 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
       let entry = map.get(key);
       if (!entry) {
-        entry = { key, label, fullLabel, pago: 0, aberto: 0 };
+        entry = { key, label, fullLabel, pago: 0, aberto: 0, aVencer: 0, vencido: 0 };
         map.set(key, entry);
       }
 
       const rawVal = l.montante_moeda_doc || 0;
-      const isComp = Boolean(
-        (l.doc_compensacao && l.doc_compensacao.trim() !== '' && l.doc_compensacao.trim() !== '—') ||
-        l.data_compensacao
-      );
 
-      if (isComp) {
+      if (estaCompensada(l)) {
         if (rawVal > 0) {
           entry.pago += rawVal;
         }
       } else {
-        entry.aberto += Math.abs(rawVal);
+        // Exposição com sinal, igual aos KPIs e aos demais gráficos: estornos de
+        // fornecedor e notas de crédito (montante positivo) abatem o saldo em
+        // aberto em vez de inflá-lo. Usar Math.abs aqui fazia a barra divergir
+        // do card "Total em Aberto".
+        const exp = exposicao(l);
+        entry.aberto += exp;
+        // O saldo em aberto entra empilhado: fatia já vencida x fatia a vencer
+        // (sem vencimento informado conta como a vencer). aVencer + vencido = aberto.
+        if (l.vencimento_liquido && l.vencimento_liquido < hoje) {
+          entry.vencido += exp;
+        } else {
+          entry.aVencer += exp;
+        }
       }
     });
 
     return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
-  }, [filtradas, periodoVisao, periodoDe, periodoAte]);
+  }, [filtradas, periodoVisao, periodoDe, periodoAte, hoje]);
 
-  const handleBarClick = (barData: any, metric: 'pago' | 'aberto') => {
+  const handleBarClick = (barData: any, metric: ModalMetric) => {
     if (!barData || !barData.key) return;
 
     const items = filtradas.filter(l => {
@@ -301,18 +383,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
 
       if (key !== barData.key) return false;
 
-      const isComp = Boolean(
-        (l.doc_compensacao && l.doc_compensacao.trim() !== '' && l.doc_compensacao.trim() !== '—') ||
-        l.data_compensacao
-      );
-
-      if (metric === 'pago') {
-        return isComp && (l.montante_moeda_doc || 0) > 0;
-      }
-      if (metric === 'aberto') {
-        return !isComp;
-      }
-      return true;
+      return itemMatchesMetric(l, metric, hoje);
     });
 
     const initialExpanded: Record<string, boolean> = {};
@@ -324,6 +395,37 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     setSelectedPeriodModal({
       label: barData.fullLabel || barData.label,
       key: barData.key,
+      metric,
+      items,
+    });
+    setModalExpandedSuppliers(initialExpanded);
+  };
+
+  /** Rótulo do recorte de período ativo, para o título do modal aberto pela legenda. */
+  const periodoLabel = useMemo(() => {
+    if (mesSelecionado) return getMonthKeyAndLabel(mesSelecionado).label;
+    if (periodoDe && periodoAte) return `${formatDateBR(periodoDe)} a ${formatDateBR(periodoAte)}`;
+    if (periodoDe) return `a partir de ${formatDateBR(periodoDe)}`;
+    if (periodoAte) return `até ${formatDateBR(periodoAte)}`;
+    return 'todas as datas';
+  }, [mesSelecionado, periodoDe, periodoAte]);
+
+  /** Clique na legenda: abre a tabela para a série inteira, somando todos os períodos visíveis. */
+  const handleLegendClick = (data: any) => {
+    const metric = (data?.dataKey ?? data?.payload?.dataKey) as ModalMetric | undefined;
+    if (metric !== 'pago' && metric !== 'aVencer' && metric !== 'vencido') return;
+
+    const items = filtradas.filter(l => itemMatchesMetric(l, metric, hoje));
+
+    const initialExpanded: Record<string, boolean> = {};
+    items.forEach(i => {
+      const name = i.razao_social_fornecedor || i.fornecedor || 'Sem fornecedor';
+      initialExpanded[name] = true;
+    });
+
+    setSelectedPeriodModal({
+      label: `${METRIC_META[metric].label} — ${periodoLabel}`,
+      key: `legend-${metric}`,
       metric,
       items,
     });
@@ -417,6 +519,8 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       items: Fbl1nAnaliseLinha[];
       totalValor: number;
       totalExposicaoAberto: number;
+      /** Soma dos módulos, só para calcular participação percentual numa lista com sinais mistos. */
+      grossValor: number;
       qtdLancamentos: number;
       qtdAbertos: number;
       qtdCompensados: number;
@@ -441,6 +545,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
               items: [],
               totalValor: 0,
               totalExposicaoAberto: 0,
+              grossValor: 0,
               qtdLancamentos: 0,
               qtdAbertos: 0,
               qtdCompensados: 0,
@@ -453,6 +558,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
           group.qtdLancamentos++;
           group.qtdCompensados++;
           group.totalValor += rawVal;
+          group.grossValor += Math.abs(rawVal);
         }
       } else {
         const name = item.razao_social_fornecedor || item.fornecedor || 'Sem fornecedor';
@@ -464,6 +570,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             items: [],
             totalValor: 0,
             totalExposicaoAberto: 0,
+            grossValor: 0,
             qtdLancamentos: 0,
             qtdAbertos: 0,
             qtdCompensados: 0,
@@ -475,9 +582,12 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         group.items.push(item);
         group.qtdLancamentos++;
         group.qtdAbertos++;
-        const exp = Math.abs(rawVal);
+        // Exposição com sinal (igual aos KPIs): o subtotal do fornecedor e o
+        // total do modal batem com a barra "Valor em Aberto" do gráfico.
+        const exp = exposicao(item);
         group.totalExposicaoAberto += exp;
         group.totalValor += exp;
+        group.grossValor += Math.abs(rawVal);
 
         if (item.vencimento_liquido && item.vencimento_liquido < hoje) {
           group.qtdVencidos++;
@@ -485,14 +595,22 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       }
     });
 
+    // Ordena pelo módulo: o maior movimentador aparece primeiro, com estorno ou não.
     return Array.from(map.values()).sort((a, b) => {
-      return modalSortDir === 'desc' ? b.totalValor - a.totalValor : a.totalValor - b.totalValor;
+      return modalSortDir === 'desc' ? b.grossValor - a.grossValor : a.grossValor - b.grossValor;
     });
   }, [selectedPeriodModal, hoje, modalSearchQuery, modalSortDir]);
 
   const modalTotalValor = useMemo(() => {
     if (!selectedPeriodModal) return 0;
     return modalSupplierGroups.reduce((acc, g) => acc + g.totalValor, 0);
+  }, [selectedPeriodModal, modalSupplierGroups]);
+
+  /** Base bruta (soma dos módulos) para as colunas "% do Total" — evita percentuais
+   *  distorcidos quando estornos quase zeram o total líquido. */
+  const modalGrossTotal = useMemo(() => {
+    if (!selectedPeriodModal) return 0;
+    return modalSupplierGroups.reduce((acc, g) => acc + g.grossValor, 0);
   }, [selectedPeriodModal, modalSupplierGroups]);
 
   const categoriaChartData = useMemo(() => {
@@ -550,15 +668,18 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     if (!active || !payload?.length) return null;
     const row = payload[0].payload;
     const displayTitle = row.fullLabel || row.label;
+    const totalAberto = (row.aVencer || 0) + (row.vencido || 0);
     const rows = [
-      { color: '#10b981', label: 'Valor Pago', value: formatBRL(row.pago) },
-      { color: '#f59e0b', label: 'Valor em Aberto', value: formatBRL(row.aberto) },
+      { color: METRIC_META.pago.color, label: 'Valor Pago', value: formatBRL(row.pago) },
+      { label: 'Total em Aberto', value: formatBRL(totalAberto) },
+      { color: METRIC_META.aVencer.color, label: 'A Vencer', value: formatBRL(row.aVencer), indent: true },
+      { color: METRIC_META.vencido.color, label: 'Vencido', value: formatBRL(row.vencido), indent: true },
     ];
     return (
       <div className="space-y-1">
         <ChartTooltip title={`Período: ${displayTitle}`} rows={rows} />
         <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 text-center">
-          💡 Clique na barra para abrir a tabela detalhada
+          💡 Clique na barra ou na legenda para abrir a tabela detalhada
         </p>
       </div>
     );
@@ -659,16 +780,19 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
         )}
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap">
-        <select
-          value={empresaFilter}
-          onChange={e => setEmpresaFilter(e.target.value)}
-          className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[150px] lg:w-auto truncate"
-          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
-        >
-          <option value="Todas">Todas empresas</option>
-          {empresaOptions.map(e => <option key={e} value={e}>{e}</option>)}
-        </select>
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
+        <MultiSelectFilter
+          label="Fornecedor"
+          icon={Building2}
+          allLabel="Todos"
+          searchable
+          options={fornecedorOptions}
+          selected={fornecedoresSelecionados}
+          onChange={setFornecedoresSelecionados}
+          renderOption={renderFornecedorOption}
+          className="shrink-0 w-64 lg:w-auto lg:min-w-[220px]"
+          panelClassName="w-80 sm:w-96 max-h-80"
+        />
         <select
           value={tipoDocFilter}
           onChange={e => setTipoDocFilter(e.target.value)}
@@ -699,6 +823,24 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             title="Período Final"
           />
         </div>
+        <select
+          value={mesSelecionado}
+          onChange={e => {
+            if (!e.target.value) return;
+            const { de, ate } = mesParaPeriodo(e.target.value);
+            setPeriodoDe(de);
+            setPeriodoAte(ate);
+          }}
+          className="px-3 py-2 border rounded-lg text-xs h-9 shrink-0 w-[130px] lg:w-auto truncate capitalize"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+          title="Selecionar um mês específico"
+          disabled={mesesDisponiveis.length === 0}
+        >
+          <option value="">Mês específico…</option>
+          {mesesDisponiveis.map(ym => (
+            <option key={ym} value={ym}>{getMonthKeyAndLabel(ym).label}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-0.5 rounded-lg text-[11px] font-semibold shrink-0 whitespace-nowrap">
           <button
             onClick={() => { setPeriodoDe('2026-01-01'); setPeriodoAte('2026-12-31'); }}
@@ -757,16 +899,15 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       </div>
 
       <ChartCard
-        title="Evolução Temporal: Valor Pago vs Valor em Aberto"
+        title="Evolução Temporal: Pago, A Vencer e Vencido"
         icon={CalendarClock}
-        description={`Comparativo do valor total pago e valor em aberto agrupados ${periodoVisao === 'mes' ? 'por mês' : 'por semana'} com base na data de pagamento. (Clique na barra para detalhar)`}
+        description={`Valor pago, a vencer e vencido agrupados ${periodoVisao === 'mes' ? 'por mês' : 'por semana'} pela data de pagamento (ou de vencimento, quando ainda em aberto). "A Vencer" + "Vencido" = total em aberto do período. Clique numa barra ou num item da legenda para abrir a tabela.`}
         height={410}
-        // Duas barras por período (pago, aberto) mais o rótulo de valor no
-        // topo de cada uma — período "Por Semana" num intervalo de um ano
-        // inteiro passa fácil de 50 categorias. "Por Mês" cabe folgado no
-        // mínimo; a rolagem só aparece quando a granularidade é semanal ou o
-        // período filtrado é longo.
-        minPlotWidth={estimateCategoryChartWidth(temporalChartData.length, 60, 480)}
+        // Três colunas por período (pago, a vencer, vencido) com rótulo de valor
+        // no topo — "Por Semana" num ano inteiro passa fácil de 50 categorias;
+        // "Por Mês" cabe folgado no mínimo e a rolagem só aparece quando a
+        // granularidade é semanal ou o período filtrado é longo.
+        minPlotWidth={estimateCategoryChartWidth(temporalChartData.length, periodoVisao === 'semana' ? 68 : 84, 480)}
         actions={temporalActions}
         loading={loading}
         empty={!loading && temporalChartData.length === 0}
@@ -778,21 +919,26 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <XAxis
               dataKey="label"
               {...c.xAxis}
-              interval={periodoVisao === 'semana' ? 1 : 0}
-              minTickGap={16}
+              interval={0}
+              minTickGap={8}
             />
             <YAxis tickFormatter={(v: number) => formatBRLCompacto(v)} {...c.yAxis} width={75} />
             <Tooltip content={<TemporalTooltip />} cursor={c.cursor} />
             <Legend
-              wrapperStyle={{ paddingTop: 12, fontSize: 12 }}
-              formatter={(value) => <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{value}</span>}
+              onClick={handleLegendClick}
+              wrapperStyle={{ paddingTop: 12, fontSize: 12, cursor: 'pointer' }}
+              formatter={(value) => (
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer hover:underline" title="Clique para abrir a tabela desta série">
+                  {value}
+                </span>
+              )}
             />
             <Bar
               dataKey="pago"
               name="Valor Pago"
-              fill="#10b981"
+              fill={METRIC_META.pago.color}
               radius={c.radius.top}
-              maxBarSize={periodoVisao === 'semana' ? 16 : 32}
+              maxBarSize={periodoVisao === 'semana' ? 12 : 24}
               className="cursor-pointer hover:opacity-80 transition-opacity"
               onClick={(entry) => handleBarClick(entry, 'pago')}
               {...c.animation}
@@ -800,16 +946,28 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
               <LabelList dataKey="pago" position="top" formatter={(v: number) => (v > 0 ? formatBRLCompacto(v) : '')} style={c.labelOnSurface} />
             </Bar>
             <Bar
-              dataKey="aberto"
-              name="Valor em Aberto"
-              fill="#f59e0b"
+              dataKey="aVencer"
+              name="A Vencer"
+              fill={METRIC_META.aVencer.color}
               radius={c.radius.top}
-              maxBarSize={periodoVisao === 'semana' ? 16 : 32}
+              maxBarSize={periodoVisao === 'semana' ? 12 : 24}
               className="cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={(entry) => handleBarClick(entry, 'aberto')}
+              onClick={(entry) => handleBarClick(entry, 'aVencer')}
               {...c.animation}
             >
-              <LabelList dataKey="aberto" position="top" formatter={(v: number) => (v > 0 ? formatBRLCompacto(v) : '')} style={c.labelOnSurface} />
+              <LabelList dataKey="aVencer" position="top" formatter={(v: number) => (Math.abs(v) >= 0.005 ? formatBRLCompacto(v) : '')} style={c.labelOnSurface} />
+            </Bar>
+            <Bar
+              dataKey="vencido"
+              name="Vencido"
+              fill={METRIC_META.vencido.color}
+              radius={c.radius.top}
+              maxBarSize={periodoVisao === 'semana' ? 12 : 24}
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={(entry) => handleBarClick(entry, 'vencido')}
+              {...c.animation}
+            >
+              <LabelList dataKey="vencido" position="top" formatter={(v: number) => (Math.abs(v) >= 0.005 ? formatBRLCompacto(v) : '')} style={c.labelOnSurface} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -921,17 +1079,17 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                 <div className="flex items-center gap-2">
                   <span
                     className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: selectedPeriodModal.metric === 'pago' ? '#10b981' : '#f59e0b' }}
+                    style={{ backgroundColor: METRIC_META[selectedPeriodModal.metric].color }}
                   />
                   <h3 className="text-lg font-bold text-slate-900 dark:text-slate-50">
                     Lançamentos — {selectedPeriodModal.label}
                   </h3>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    {selectedPeriodModal.metric === 'pago' ? 'Valor Pago' : 'Valor em Aberto'}
+                    {METRIC_META[selectedPeriodModal.metric].label}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Detalhamento por fornecedor dos lançamentos correspondentes a esta barra do gráfico.
+                  Detalhamento por fornecedor dos lançamentos correspondentes à seleção no gráfico.
                 </p>
               </div>
               <button
@@ -950,7 +1108,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
                   <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Total do Período</span>
                   <p className="text-base font-extrabold text-slate-900 dark:text-slate-100 mt-0.5">
-                    {formatBRL(selectedPeriodModal.items.reduce((s, i) => s + Math.abs(i.montante_moeda_doc || 0), 0))}
+                    {formatBRL(modalTotalValor)}
                   </p>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
@@ -1059,7 +1217,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                     <TableBody>
                       {modalSupplierGroups.map(group => {
                         const isExpanded = !!modalExpandedSuppliers[group.supplierName];
-                        const pctSupplier = modalTotalValor > 0 ? (group.totalValor / modalTotalValor) * 100 : 0;
+                        const pctSupplier = modalGrossTotal > 0 ? (group.grossValor / modalGrossTotal) * 100 : 0;
                         return (
                           <React.Fragment key={group.supplierName}>
                             {/* Linha Mãe: Totalizador por Fornecedor */}
@@ -1103,7 +1261,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                 </span>
                               </Td>
                               <Td align="right" numeric strong>
-                                {group.totalExposicaoAberto > 0 ? (
+                                {Math.abs(group.totalExposicaoAberto) >= 0.005 ? (
                                   <span className="text-amber-600 dark:text-amber-400 font-extrabold">
                                     {formatBRL(group.totalExposicaoAberto)}
                                   </span>
@@ -1170,7 +1328,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
                                             );
                                             const st = isComp ? 'Compensado' : 'Em aberto';
                                             const isVencido = st === 'Em aberto' && l.vencimento_liquido && l.vencimento_liquido < hoje;
-                                            const pctDoc = modalTotalValor > 0 ? (Math.abs(l.montante_moeda_doc || 0) / modalTotalValor) * 100 : 0;
+                                            const pctDoc = modalGrossTotal > 0 ? (Math.abs(l.montante_moeda_doc || 0) / modalGrossTotal) * 100 : 0;
                                             return (
                                               <tr key={l.id || `${l.numero_documento}-${l.vencimento_liquido}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                                                 <td className="px-3 py-2 font-mono font-medium text-slate-800 dark:text-slate-200">

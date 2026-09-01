@@ -19,7 +19,9 @@ create table if not exists public.port_registro_transportes (
   status text not null default 'NO_PATIO' check (status in ('NO_PATIO', 'FINALIZADO', 'CANCELADO')),
   criado_por text references public.profiles(id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists port_registro_transportes_data_idx on public.port_registro_transportes (data desc);

@@ -11,7 +11,9 @@ create table if not exists public.port_briefing_participantes (
   funcao text not null,
   assinatura_digital text,
   validade_dias integer not null default 90,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists port_briefing_participantes_sessao_idx on public.port_briefing_participantes (sessao_id);

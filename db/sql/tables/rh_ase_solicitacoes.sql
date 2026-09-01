@@ -16,7 +16,9 @@ create table public.rh_ase_solicitacoes (
   justificativa text,
   status text not null default 'RASCUNHO' check (status in ('RASCUNHO', 'ENVIADO', 'CANCELADO')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index rh_ase_solicitacoes_data_idx on public.rh_ase_solicitacoes (data_execucao desc);

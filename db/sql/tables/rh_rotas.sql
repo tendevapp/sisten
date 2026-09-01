@@ -10,7 +10,9 @@ create table if not exists public.rh_rotas (
   rota text not null,
   ativo boolean not null default true,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists rh_rotas_funcionario_idx on public.rh_rotas (lower(funcionario));

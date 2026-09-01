@@ -18,6 +18,7 @@ import type {
   AseHoraExtraCompleta, AseHoraExtraItem, AseHoraExtraSolicitacao, AseHoraExtraStatus,
   RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTurno,
 } from '../types';
+import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 
 export interface RhImportSummary {
   lidos: number;
@@ -146,11 +147,12 @@ export async function buscarPercentualHE(dia: string): Promise<number | null> {
   return null;
 }
 
-export async function listarRhRotas(filtroRota?: string): Promise<RhRota[]> {
+export async function listarRhRotas(filtroRota?: string, incluirExcluidos = false): Promise<RhRota[]> {
   let query = (supabase as any).from('rh_rotas').select('*').order('rota').order('horario');
   if (filtroRota) {
     query = query.eq('rota', filtroRota);
   }
+  query = apenasVigentes(query, incluirExcluidos);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data || []) as RhRota[];
@@ -161,6 +163,7 @@ export async function buscarRotaPorFuncionario(nomeFuncionario: string): Promise
   const { data, error } = await (supabase as any)
     .from('rh_rotas')
     .select('*')
+    .is('excluido_em', null)
     .ilike('funcionario', `%${nomeFuncionario.trim()}%`)
     .limit(1)
     .maybeSingle();
@@ -203,8 +206,13 @@ export async function atualizarRhRota(
   if (error) throw new Error(error.message);
 }
 
-export async function excluirRhRota(id: string): Promise<void> {
-  const { error } = await (supabase as any).from('rh_rotas').delete().eq('id', id);
+export async function excluirRhRota(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await (supabase as any).from('rh_rotas').update(marcarExcluido(excluidoPor)).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarRhRota(id: string): Promise<void> {
+  const { error } = await (supabase as any).from('rh_rotas').update(marcarRestaurado()).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -459,20 +467,23 @@ export function gerarProtocoloAse(dataISO?: string | null, nomeSetor?: string | 
   return `${base}-${seqStr}`;
 }
 
-export async function listarSolicitacoesASE(): Promise<AseHoraExtraCompleta[]> {
+export async function listarSolicitacoesASE(incluirExcluidos = false): Promise<AseHoraExtraCompleta[]> {
   const rotasMapPromise = carregarMapaRotas();
-  const { data, error } = await supabase
+  let query = supabase
     .from('rh_ase_solicitacoes')
     .select(`
       *,
       setor:rh_setores (nome),
       turno:rh_turnos (nome),
-      solicitante:profiles (name),
+      solicitante:profiles!rh_ase_solicitacoes_solicitante_id_fkey (name),
       itens:rh_ase_itens (*)
     `)
     .order('data_execucao', { ascending: false })
     .limit(300);
 
+  query = apenasVigentes(query, incluirExcluidos);
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   const rotasMap = await rotasMapPromise;
 
@@ -481,11 +492,11 @@ export async function listarSolicitacoesASE(): Promise<AseHoraExtraCompleta[]> {
     setor_nome: row.setor?.nome ?? null,
     turno_nome: row.turno?.nome ?? null,
     solicitante_nome: row.solicitante?.name ?? null,
-    itens: (row.itens || []).map((it: any) => normalizarItem(it, rotasMap)),
+    itens: semExcluidos(row.itens, incluirExcluidos).map((it: any) => normalizarItem(it, rotasMap)),
   })) as AseHoraExtraCompleta[];
 }
 
-export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompleta | null> {
+export async function obterSolicitacaoASE(id: string, incluirExcluidos = false): Promise<AseHoraExtraCompleta | null> {
   const rotasMapPromise = carregarMapaRotas();
   const { data, error } = await supabase
     .from('rh_ase_solicitacoes')
@@ -493,7 +504,7 @@ export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompl
       *,
       setor:rh_setores (nome),
       turno:rh_turnos (nome),
-      solicitante:profiles (name),
+      solicitante:profiles!rh_ase_solicitacoes_solicitante_id_fkey (name),
       itens:rh_ase_itens (*)
     `)
     .eq('id', id)
@@ -509,7 +520,7 @@ export async function obterSolicitacaoASE(id: string): Promise<AseHoraExtraCompl
     setor_nome: row.setor?.nome ?? null,
     turno_nome: row.turno?.nome ?? null,
     solicitante_nome: row.solicitante?.name ?? null,
-    itens: (row.itens || []).map((it: any) => normalizarItem(it, rotasMap)),
+    itens: semExcluidos(row.itens, incluirExcluidos).map((it: any) => normalizarItem(it, rotasMap)),
   } as AseHoraExtraCompleta;
 }
 
@@ -556,8 +567,13 @@ export async function salvarSolicitacaoASE(
   if (error) throw new Error(error.message);
 }
 
-export async function excluirSolicitacaoASE(id: string): Promise<void> {
-  const { error } = await supabase.from('rh_ase_solicitacoes').delete().eq('id', id);
+export async function excluirSolicitacaoASE(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase.from('rh_ase_solicitacoes').update(marcarExcluido(excluidoPor)).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarSolicitacaoASE(id: string): Promise<void> {
+  const { error } = await supabase.from('rh_ase_solicitacoes').update(marcarRestaurado()).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -593,7 +609,12 @@ export async function atualizarItemASE(id: string, patch: Partial<ItemEditavel>)
   if (error) throw new Error(error.message);
 }
 
-export async function removerItemASE(id: string): Promise<void> {
-  const { error } = await supabase.from('rh_ase_itens').delete().eq('id', id);
+export async function removerItemASE(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase.from('rh_ase_itens').update(marcarExcluido(excluidoPor)).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarItemASE(id: string): Promise<void> {
+  const { error } = await supabase.from('rh_ase_itens').update(marcarRestaurado()).eq('id', id);
   if (error) throw new Error(error.message);
 }

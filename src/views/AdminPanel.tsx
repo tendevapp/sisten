@@ -20,6 +20,7 @@ import { Profile, Sector, Material, FeedbackReport } from '../types';
 import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
+import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
 import { importarRhPessoas, importarRhSetores, importarRhHoraExtra } from '../lib/rhApi';
@@ -40,6 +41,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [bulkAccessModalOpen, setBulkAccessModalOpen] = useState(false);
+  const [resetPwdUserId, setResetPwdUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
@@ -1322,6 +1324,14 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                               className="text-slate-600 hover:underline font-bold"
                             >
                               Módulos de acesso
+                            </button>
+                            <button
+                              onClick={() => setResetPwdUserId(p.id)}
+                              disabled={p.id === user.id}
+                              className="text-blue-700 hover:underline font-bold disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                              title={p.id === user.id ? 'Use "Segurança & Senha" no seu perfil para trocar a própria senha' : 'Definir senha provisória e forçar troca no próximo login'}
+                            >
+                              Resetar senha
                             </button>
                             {p.status === 'inativo' ? (
                               <button
@@ -3795,6 +3805,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           }}
         />
       )}
+
+      {resetPwdUserId && (() => {
+        const target = profiles.find(p => p.id === resetPwdUserId);
+        if (!target) return null;
+        return (
+          <AdminResetPasswordModal
+            target={target}
+            onClose={() => setResetPwdUserId(null)}
+            onDone={loadData}
+          />
+        );
+      })()}
 
       {/* Botão flutuante e janela de chatbot para o usuário Admin */}
       <AdminChatbot user={user} />

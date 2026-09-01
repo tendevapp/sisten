@@ -12,6 +12,7 @@ import { EnrichedSAPRecord } from '../../types';
 import { demandaColor, Granularidade, bucketDate, resolveDataCorte, classifyCriticidadeNatureza } from '../../lib/demandas';
 import { formatInt } from '../../lib/format';
 import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
+import { useTelaEstreita } from '../../lib/useTelaEstreita';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 
@@ -43,6 +44,9 @@ interface Bucket {
 
 export default function RequisitadoVsPedidoChart({ records, granularidade, title, subtitle, loading, onSelecionarPeriodo }: RequisitadoVsPedidoChartProps) {
   const c = useChartConfig();
+  // No celular o balão de detalhes cobre metade do gráfico e some ao soltar o
+  // dedo — o toque abre o drill-down, que já mostra a composição.
+  const telaEstreita = useTelaEstreita();
   const handleBarClick = (d: any) => onSelecionarPeriodo?.(d?.key);
 
   // "Pedido Colocado" toma o slot 1 aqui porque a pilha de Requisitado usa a
@@ -134,6 +138,7 @@ export default function RequisitadoVsPedidoChart({ records, granularidade, title
       // período longo passa fácil de 30 categorias — melhor rolar do que
       // espremer até ilegível.
       minPlotWidth={estimateCategoryChartWidth(data.length, 64, 480)}
+      scrollToEnd
       loading={loading}
       empty={data.length === 0}
       emptyMessage="Nenhuma demanda no período/filtro selecionado."
@@ -158,7 +163,7 @@ export default function RequisitadoVsPedidoChart({ records, granularidade, title
               width={44}
               label={{ value: 'Acumulado', angle: 90, position: 'insideRight', fontSize: 11, fill: corAcumulado }}
             />
-            <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />
+            {!telaEstreita && <Tooltip content={<TooltipConteudo />} cursor={c.cursor} />}
             <Legend {...c.legend} />
             {/* Barra de requisitado empilhada por criticidade: a altura total é o
                 requisitado do período e os segmentos mostram a composição

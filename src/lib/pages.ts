@@ -83,9 +83,10 @@ export const PAGES: PageDef[] = [
   { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
   { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
 
-  { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin'] },
+  { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar_analise', group: 'FINANCEIRO', label: 'Análise', path: '/financeiro/contas-pagar/analise', icon: BarChart3, defaultRoles: ['admin'] },
+  { id: 'fin_reconciliacao_pedidos', group: 'FINANCEIRO', label: 'Reconciliação PO x Pgto', path: '/financeiro/reconciliacao-pedidos', icon: FileCheck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   // O hub não pode usar `/helpdesk` (já é a tela de Atendimento), então navega
   // para `/helpdesk/inicio`.

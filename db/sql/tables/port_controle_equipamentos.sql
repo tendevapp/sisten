@@ -19,7 +19,9 @@ create table if not exists public.port_controle_equipamentos (
   observacoes text,
   criado_por text references public.profiles(id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists port_controle_equipamentos_data_idx on public.port_controle_equipamentos (data_entrada desc);

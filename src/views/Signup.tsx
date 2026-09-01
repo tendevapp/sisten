@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { localDb } from '../db/localDb';
+import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO, DOMINIOS_CADASTRO_PERMITIDOS } from '../lib/authDomains';
 
 interface SignupProps {
   onNavigate: (path: string) => void;
@@ -39,6 +40,12 @@ export default function Signup({ onNavigate }: SignupProps) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError('Por favor, insira um e-mail válido.');
+      return;
+    }
+
+    // Cadastro liberado apenas para os domínios corporativos.
+    if (!emailDominioPermitido(email)) {
+      setError(MSG_DOMINIO_NAO_PERMITIDO);
       return;
     }
 
@@ -119,15 +126,18 @@ export default function Signup({ onNavigate }: SignupProps) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">E-mail</label>
+                  <label className="text-xs font-bold text-slate-700">E-mail corporativo</label>
                   <input
                     type="email"
                     required
-                    placeholder="seu.email@provedor.com"
+                    placeholder="seu.nome@ten.ind.br"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-xl border border-gray-250 py-2.5 px-3.5 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all"
                   />
+                  <p className="text-[11px] text-slate-400">
+                    Apenas {DOMINIOS_CADASTRO_PERMITIDOS.map(d => '@' + d).join(', ')}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

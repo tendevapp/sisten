@@ -17,6 +17,7 @@ import { formatBRL, formatQtd, formatDateTimeBR, formatInt } from '../lib/format
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 
 interface EstoqueProps {
   user: Profile;
@@ -74,7 +75,8 @@ export default function Estoque({ user }: EstoqueProps) {
   // aplicado — a busca só filtra ao pressionar Enter ou clicar em "Pesquisar".
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [depositoFilter, setDepositoFilter] = useState('Todos');
+  // Depósito aceita seleção múltipla: vazio = todos.
+  const [depositoFilter, setDepositoFilter] = useState<Set<string>>(new Set());
   const [tipoFilter, setTipoFilter] = useState('Todos');
   const [classFilter, setClassFilter] = useState('Todos');
   const [abcFilter, setAbcFilter] = useState<'Todos' | ClasseAbc>('Todos');
@@ -127,7 +129,7 @@ export default function Estoque({ user }: EstoqueProps) {
     const params = new URLSearchParams(hash.slice(qIndex + 1));
 
     const deposito = params.get('deposito');
-    if (deposito) setDepositoFilter(deposito);
+    if (deposito) setDepositoFilter(new Set(deposito.split(',').map(d => d.trim()).filter(Boolean)));
 
     const tipo = params.get('tipo');
     if (tipo) setTipoFilter(tipo);
@@ -192,7 +194,7 @@ export default function Estoque({ user }: EstoqueProps) {
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter(r => {
-      if (depositoFilter !== 'Todos' && r.deposito !== depositoFilter) return false;
+      if (depositoFilter.size > 0 && !depositoFilter.has(r.deposito)) return false;
       if (tipoFilter !== 'Todos' && r.tipo_material !== tipoFilter) return false;
       if (classFilter !== 'Todos' && r.class_item !== classFilter) return false;
       if (abcFilter !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFilter) return false;
@@ -437,18 +439,15 @@ export default function Estoque({ user }: EstoqueProps) {
           <span className="hidden lg:flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
             <Filter className="h-3 w-3" /> Filtros
           </span>
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
-            <div className="relative shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]">
-              <Warehouse className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-450 pointer-events-none" />
-              <select
-                value={depositoFilter}
-                onChange={(e) => setDepositoFilter(e.target.value)}
-                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
-              >
-                <option value="Todos">Depósito: Todos</option>
-                {depositoOptions.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
+            <MultiSelectFilter
+              label="Depósito"
+              icon={Warehouse}
+              options={depositoOptions}
+              selected={depositoFilter}
+              onChange={setDepositoFilter}
+              className="shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]"
+            />
             <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
               <select

@@ -373,6 +373,7 @@ export type Database = {
           email: string
           grupo_compras: string | null
           id: string
+          must_change_password: boolean
           name: string
           notification_preferences: string | null
           page_access: Json
@@ -389,6 +390,7 @@ export type Database = {
           email: string
           grupo_compras?: string | null
           id: string
+          must_change_password?: boolean
           name: string
           notification_preferences?: string | null
           page_access?: Json
@@ -405,6 +407,7 @@ export type Database = {
           email?: string
           grupo_compras?: string | null
           id?: string
+          must_change_password?: boolean
           name?: string
           notification_preferences?: string | null
           page_access?: Json
@@ -869,6 +872,8 @@ export type Database = {
       }
       expedicao_carregamentos: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           created_at: string
           criado_por: string
           criado_por_nome: string
@@ -881,6 +886,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           created_at?: string
           criado_por: string
           criado_por_nome: string
@@ -893,6 +900,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           created_at?: string
           criado_por?: string
           criado_por_nome?: string
@@ -908,6 +917,8 @@ export type Database = {
       }
       expedicao_fotos: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           carregamento_id: string
           created_at: string
           criado_por: string | null
@@ -918,6 +929,8 @@ export type Database = {
           tramo_id: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           carregamento_id: string
           created_at?: string
           criado_por?: string | null
@@ -928,6 +941,8 @@ export type Database = {
           tramo_id: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           carregamento_id?: string
           created_at?: string
           criado_por?: string | null
@@ -956,6 +971,8 @@ export type Database = {
       }
       expedicao_tramos: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           carregamento_id: string
           carreta_placa: string
           carreta_uf: string | null
@@ -978,6 +995,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           carregamento_id: string
           carreta_placa?: string
           carreta_uf?: string | null
@@ -1000,6 +1019,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           carregamento_id?: string
           carreta_placa?: string
           carreta_uf?: string | null
@@ -1555,6 +1576,8 @@ export type Database = {
       }
       port_briefing_participantes: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           assinatura_digital: string | null
           cpf: string
           created_at: string
@@ -1567,6 +1590,8 @@ export type Database = {
           validade_dias: number
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           assinatura_digital?: string | null
           cpf: string
           created_at?: string
@@ -1579,6 +1604,8 @@ export type Database = {
           validade_dias?: number
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           assinatura_digital?: string | null
           cpf?: string
           created_at?: string
@@ -1602,6 +1629,8 @@ export type Database = {
       }
       port_briefing_sessoes: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           codigo_formulario: string
           conteudo_programatico: string
           created_at: string
@@ -1618,6 +1647,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           conteudo_programatico?: string
           created_at?: string
@@ -1634,6 +1665,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           conteudo_programatico?: string
           created_at?: string
@@ -1668,6 +1701,8 @@ export type Database = {
       }
       port_controle_carretas: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           ass_motorista: string | null
           codigo_formulario: string
           cpf_motorista: string | null
@@ -1692,6 +1727,8 @@ export type Database = {
           vigilante_saida: string | null
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           ass_motorista?: string | null
           codigo_formulario?: string
           cpf_motorista?: string | null
@@ -1716,6 +1753,8 @@ export type Database = {
           vigilante_saida?: string | null
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           ass_motorista?: string | null
           codigo_formulario?: string
           cpf_motorista?: string | null
@@ -1758,6 +1797,8 @@ export type Database = {
       }
       port_controle_equipamentos: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
@@ -1778,6 +1819,8 @@ export type Database = {
           vigilante_saida: string | null
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -1798,6 +1841,8 @@ export type Database = {
           vigilante_saida?: string | null
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -1836,6 +1881,8 @@ export type Database = {
       }
       port_registro_transportes: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
@@ -1856,6 +1903,8 @@ export type Database = {
           vigilante: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -1876,6 +1925,8 @@ export type Database = {
           vigilante: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -1914,6 +1965,8 @@ export type Database = {
       }
       port_relatorio_ocorrencias: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           created_at: string
           descricao: string
           horario: string
@@ -1924,6 +1977,8 @@ export type Database = {
           vigilante: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           created_at?: string
           descricao: string
           horario: string
@@ -1934,6 +1989,8 @@ export type Database = {
           vigilante: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           created_at?: string
           descricao?: string
           horario?: string
@@ -1955,6 +2012,8 @@ export type Database = {
       }
       port_relatorio_portaria: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
@@ -1972,6 +2031,8 @@ export type Database = {
           vigilante_ronda02: string | null
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -1989,6 +2050,8 @@ export type Database = {
           vigilante_ronda02?: string | null
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
@@ -2024,6 +2087,8 @@ export type Database = {
       }
       port_vigilantes: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           ativo: boolean
           created_at: string
           criado_por: string | null
@@ -2039,6 +2104,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
@@ -2054,6 +2121,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
@@ -2087,6 +2156,8 @@ export type Database = {
       }
       rh_ase_itens: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           cargo: string | null
           created_at: string
           hora_entrada: string
@@ -2104,6 +2175,8 @@ export type Database = {
           transporte: boolean
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           cargo?: string | null
           created_at?: string
           hora_entrada: string
@@ -2121,6 +2194,8 @@ export type Database = {
           transporte?: boolean
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           cargo?: string | null
           created_at?: string
           hora_entrada?: string
@@ -2156,6 +2231,8 @@ export type Database = {
       }
       rh_ase_solicitacoes: {
         Row: {
+          excluido_em: string | null
+          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           data_execucao: string
@@ -2169,6 +2246,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           data_execucao: string
@@ -2182,6 +2261,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          excluido_em?: string | null
+          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           data_execucao?: string
@@ -2692,6 +2773,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_pedido_origem: string | null
           deposito: string | null
@@ -2757,6 +2839,7 @@ export type Database = {
           data_da_solicitacao?: string | null
           data_de_remessa?: string | null
           data_do_pedido?: string | null
+          data_entrega_confirmada?: string | null
           data_entrega_prevista?: string | null
           data_pedido_origem?: string | null
           deposito?: string | null
@@ -2822,6 +2905,7 @@ export type Database = {
           data_da_solicitacao?: string | null
           data_de_remessa?: string | null
           data_do_pedido?: string | null
+          data_entrega_confirmada?: string | null
           data_entrega_prevista?: string | null
           data_pedido_origem?: string | null
           deposito?: string | null
@@ -6369,6 +6453,7 @@ export type Database = {
           email: string | null
           grupo_compras: string | null
           id: string | null
+          must_change_password: boolean | null
           name: string | null
           notification_preferences: string | null
           page_access: Json | null
@@ -6385,6 +6470,7 @@ export type Database = {
           email?: string | null
           grupo_compras?: string | null
           id?: string | null
+          must_change_password?: boolean | null
           name?: string | null
           notification_preferences?: string | null
           page_access?: Json | null
@@ -6401,6 +6487,7 @@ export type Database = {
           email?: string | null
           grupo_compras?: string | null
           id?: string | null
+          must_change_password?: boolean | null
           name?: string | null
           notification_preferences?: string | null
           page_access?: Json | null
@@ -6922,6 +7009,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_pedido_origem: string | null
           deposito: string | null
@@ -6987,6 +7075,7 @@ export type Database = {
           data_da_solicitacao?: string | null
           data_de_remessa?: string | null
           data_do_pedido?: string | null
+          data_entrega_confirmada?: string | null
           data_entrega_prevista?: string | null
           data_pedido_origem?: string | null
           deposito?: string | null
@@ -7052,6 +7141,7 @@ export type Database = {
           data_da_solicitacao?: string | null
           data_de_remessa?: string | null
           data_do_pedido?: string | null
+          data_entrega_confirmada?: string | null
           data_entrega_prevista?: string | null
           data_pedido_origem?: string | null
           deposito?: string | null
@@ -7486,6 +7576,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_entrega_sap: string | null
           data_migo: string | null
@@ -7622,6 +7713,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_entrega_sap: string | null
           data_migo: string | null
@@ -8129,6 +8221,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_pedido_origem: string | null
           deposito: string | null
@@ -8423,6 +8516,7 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
+          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_entrega_sap: string | null
           data_migo: string | null

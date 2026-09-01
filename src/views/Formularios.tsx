@@ -119,6 +119,8 @@ const MODULOS: ModuloFormulario[] = [
 
 export default function Formularios({ user, onNavigate }: FormulariosProps) {
   const toast = useToast();
+  const [busca, setBusca] = React.useState('');
+  const [filtroStatus, setFiltroStatus] = React.useState<'todos' | 'ativos' | 'em_breve'>('todos');
 
   const handleAcessarModulo = (mod: ModuloFormulario) => {
     if (mod.path) {
@@ -128,120 +130,204 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
     toast.info(`${mod.label}: módulo e formulários dedicados em desenvolvimento. Em breve disponível.`);
   };
 
-  // Filtra os módulos pelas subpermissões do usuário
-  const modulosVisiveis = MODULOS.filter((mod) => canAccessFormGroup(user, mod.id));
+  // Filtra os modulos pelas subpermissoes do usuario
+  const modulosAcessiveis = MODULOS.filter((mod) => canAccessFormGroup(user, mod.id));
+
+  // Filtro por texto de busca e status
+  const modulosFiltrados = modulosAcessiveis.filter((mod) => {
+    const termo = busca.toLowerCase().trim();
+    const matchesBusca =
+      !termo ||
+      mod.label.toLowerCase().includes(termo) ||
+      (mod.codigo && mod.codigo.toLowerCase().includes(termo)) ||
+      mod.desc.toLowerCase().includes(termo) ||
+      mod.itensResumo.some((item) => item.toLowerCase().includes(termo));
+
+    if (!matchesBusca) return false;
+
+    if (filtroStatus === 'ativos') return Boolean(mod.path);
+    if (filtroStatus === 'em_breve') return !mod.path;
+    return true;
+  });
+
+  const totalAtivos = modulosAcessiveis.filter((m) => Boolean(m.path)).length;
+  const totalEmBreve = modulosAcessiveis.length - totalAtivos;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 pb-12">
-      {/* Header Premium */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-6 dark:border-slate-800">
+    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+      {/* Header Compacto */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-200 pb-5 dark:border-slate-800">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
               <FileText className="h-3.5 w-3.5" />
               SISTEN Hub Operacional
             </span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              • {modulosAcessiveis.length} módulos disponíveis
+            </span>
           </div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+          <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
             Formulários Operacionais
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-            Selecione o módulo operacional desejado para acessar os formulários dedicados, livros de registro e emissões oficiais.
+          <p className="mt-0.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Acesse formulários dedicados, registros de turno e rotinas de cada setor.
           </p>
+        </div>
+
+        {/* Barra de Filtro e Busca */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          {/* Campo de Busca */}
+          <div className="relative min-w-[220px]">
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar módulo ou formulário..."
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 shadow-2xs transition-all focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:placeholder-slate-500"
+            />
+            {busca && (
+              <button
+                onClick={() => setBusca('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {/* Filtro de Status em Pills */}
+          <div className="flex items-center rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
+            <button
+              onClick={() => setFiltroStatus('todos')}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                filtroStatus === 'todos'
+                  ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-700 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              Todos ({modulosAcessiveis.length})
+            </button>
+            <button
+              onClick={() => setFiltroStatus('ativos')}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                filtroStatus === 'ativos'
+                  ? 'bg-white text-emerald-700 shadow-2xs dark:bg-slate-700 dark:text-emerald-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              Ativos ({totalAtivos})
+            </button>
+            <button
+              onClick={() => setFiltroStatus('em_breve')}
+              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                filtroStatus === 'em_breve'
+                  ? 'bg-white text-amber-700 shadow-2xs dark:bg-slate-700 dark:text-amber-400'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              Em Breve ({totalEmBreve})
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Grid de Módulos de Formulários */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-2">
-        {modulosVisiveis.map((modulo) => {
-          const IconComponent = modulo.icon;
-          const disponivel = Boolean(modulo.path);
+      {/* Grid Otimizado: 3 a 4 colunas em telas médias e grandes */}
+      {modulosFiltrados.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+            Nenhum módulo encontrado para a busca "{busca}".
+          </p>
+          <button
+            onClick={() => {
+              setBusca('');
+              setFiltroStatus('todos');
+            }}
+            className="mt-3 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {modulosFiltrados.map((modulo) => {
+            const IconComponent = modulo.icon;
+            const disponivel = Boolean(modulo.path);
 
-          return (
-            <div
-              key={modulo.id}
-              onClick={() => handleAcessarModulo(modulo)}
-              className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900 ${
-                modulo.corBordaHover
-              }`}
-            >
-              <div className="space-y-4">
-                {/* Cabeçalho do Card */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3.5">
+            return (
+              <div
+                key={modulo.id}
+                onClick={() => handleAcessarModulo(modulo)}
+                className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 bg-white p-3 sm:p-4 shadow-2xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${
+                  modulo.corBordaHover
+                }`}
+              >
+                <div className="space-y-2 sm:space-y-3">
+                  {/* Linha Superior: Ícone à esquerda + Badge de Status à direita */}
+                  <div className="flex items-center justify-between gap-1.5 sm:gap-2">
                     <div
-                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-200 group-hover:scale-105 ${
+                      className={`flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl transition-transform duration-200 group-hover:scale-105 ${
                         modulo.corIcone
                       }`}
                     >
-                      <IconComponent className="h-6 w-6" />
+                      <IconComponent className="h-4 w-4 sm:h-5 sm:w-5" />
                     </div>
-                    <div>
-                      {modulo.codigo && (
-                        <p className="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase">
-                          {modulo.codigo}
-                        </p>
-                      )}
-                      <h2 className="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors dark:text-slate-100 dark:group-hover:text-blue-400">
-                        {modulo.label}
-                      </h2>
-                    </div>
+
+                    {modulo.badge && (
+                      <span
+                        className={`rounded-full px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold truncate max-w-[90px] sm:max-w-none ${
+                          modulo.badgeCor || 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {modulo.badge}
+                      </span>
+                    )}
                   </div>
 
-                  {modulo.badge && (
-                    <span
-                      className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${
-                        modulo.badgeCor || 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {modulo.badge}
-                    </span>
-                  )}
-                </div>
+                  {/* Bloco de Título com Largura Total (sem truncar) */}
+                  <div>
+                    {modulo.codigo && (
+                      <p className="text-[8px] sm:text-[10px] font-mono font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-0.5 truncate">
+                        {modulo.codigo}
+                      </p>
+                    )}
+                    <h2 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors dark:text-slate-100 dark:group-hover:text-blue-400 leading-tight sm:leading-snug">
+                      {modulo.label}
+                    </h2>
+                  </div>
 
-                {/* Descrição */}
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed dark:text-slate-400">
-                  {modulo.desc}
-                </p>
-
-                {/* Resumo dos Formulários Contidos */}
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/50">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 dark:text-slate-400">
-                    Formulários & Registros Disponíveis:
+                  {/* Descrição: Oculta no mobile (hidden sm:block) para economizar espaço */}
+                  <p className="hidden sm:block text-xs text-slate-500 leading-relaxed dark:text-slate-400 line-clamp-3">
+                    {modulo.desc}
                   </p>
-                  <ul className="space-y-1.5">
-                    {modulo.itensResumo.map((item, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-500/70 shrink-0" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              </div>
 
-              {/* Rodapé / Botão de Ação */}
-              <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-500 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400 flex items-center gap-1">
-                  {disponivel ? 'Abrir formulários dedicados' : 'Em desenvolvimento'}
-                </span>
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-200 ${
-                    disponivel
-                      ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-950/80 dark:text-blue-400 dark:group-hover:bg-blue-600 dark:group-hover:text-white'
-                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
-                  }`}
-                >
-                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                {/* Rodapé Compacto com Ação e Seta */}
+                <div className="mt-2.5 sm:mt-4 flex items-center justify-between border-t border-slate-100 pt-2 sm:pt-2.5 dark:border-slate-800/80">
+                  <span
+                    className={`inline-flex items-center text-[10px] sm:text-xs font-semibold ${
+                      disponivel
+                        ? 'text-blue-600 dark:text-blue-400 group-hover:underline'
+                        : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {disponivel ? 'Acessar' : 'Em breve'}
+                  </span>
+                  <div
+                    className={`flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md sm:rounded-lg transition-all duration-200 ${
+                      disponivel
+                        ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-950/80 dark:text-blue-400 dark:group-hover:bg-blue-600 dark:group-hover:text-white'
+                        : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+                    }`}
+                  >
+                    <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

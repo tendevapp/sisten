@@ -28,6 +28,7 @@ import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
+import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDomains';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
@@ -47,6 +48,21 @@ class LocalDatabase {
   private cache = new Map<string, any>();
   private pageCache = new Map<string, any>();
   private listeners = new Set<() => void>();
+  // Ouvintes de "dados reimportados por outro usuário": disparados quando um sync
+  // automático (polling/foco) detecta que o carimbo remoto de um dataset pesado
+  // subiu acima do que este navegador tem em cache. A UI usa isso para oferecer
+  // um recarregamento (ver DataUpdateModal). Separado de `listeners` porque estes
+  // últimos rodam a cada sync e só querem redesenhar telas de leitura.
+  private dataUpdateListeners = new Set<(datasets: string[]) => void>();
+  // Maior versão já anunciada por dataset nesta sessão — evita reabrir o modal a
+  // cada polling de 5 min enquanto o dataset não estiver em cache local (bases
+  // sob demanda, cujo meta só é atualizado quando a tela correspondente é aberta).
+  private announcedDataVersions = new Map<string, number>();
+  // A primeira sincronização da sessão só estabelece a linha de base: qualquer
+  // defasagem aí é "dados que mudaram desde a última visita", não "mudaram
+  // enquanto eu estava com a tela aberta". O modal de recarregamento só interessa
+  // no segundo caso, então só passa a disparar a partir do 2º sync.
+  private hasSyncedThisSession = false;
   // URLs assinadas de anexo, por caminho no bucket. Só em memória: uma URL
   // assinada expira, então persisti-la no IndexedDB só geraria link quebrado.
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -196,6 +212,19 @@ class LocalDatabase {
     this.listeners.forEach(cb => cb());
   }
 
+  // Avisa a UI quando um sync automático descobre que um administrador reimportou
+  // uma base SAP desde o último download deste navegador. Recebe a lista de
+  // datasets afetados. Nunca dispara no clique manual de "Atualizar" (o usuário
+  // já sabe que pediu dados novos).
+  public subscribeDataUpdate(callback: (datasets: string[]) => void): () => void {
+    this.dataUpdateListeners.add(callback);
+    return () => this.dataUpdateListeners.delete(callback);
+  }
+
+  private notifyDataUpdate(datasets: string[]): void {
+    this.dataUpdateListeners.forEach(cb => cb(datasets));
+  }
+
   // Cada tabela é sincronizada de forma independente e em paralelo (Promise.allSettled):
   // uma falha isolada (ex.: uma view indisponível) não deve mais abortar a sincronização
   // das demais tabelas, e o tempo total passa a ser o da tabela mais lenta, não a soma de todas.
@@ -246,6 +275,26 @@ class LocalDatabase {
         // rebaixadas quando a versão muda; as tabelas pequenas/interativas
         // (requests, notifications, etc.) continuam sincronizando normalmente.
         const markers = await this.fetchRemoteMarkers();
+
+        // Datasets que um administrador reimportou desde o último download deste
+        // navegador: o carimbo remoto está acima do que temos em cache. Só em
+        // sync automático — num sync forçado o próprio usuário pediu os dados
+        // novos e não precisa de aviso. A notificação sai depois que as tarefas
+        // abaixo atualizam o cache local (ver notifyDataUpdate no fim do try).
+        const staleDatasets: string[] = [];
+        if (!force && markers && this.hasSyncedThisSession) {
+          markers.forEach((marker, dataset) => {
+            const meta = this.getDatasetMeta(dataset);
+            // Sem meta: este navegador nunca baixou o dataset (nada em cache para
+            // ficar velho). Sem cache real: idem — needsSync já vai baixá-lo.
+            if (!meta || !this.cache.has(this.storageKeyFor(dataset))) return;
+            const alreadyAnnounced = this.announcedDataVersions.get(dataset) ?? 0;
+            if (marker.version > meta.version && marker.version > alreadyAnnounced) {
+              staleDatasets.push(dataset);
+              this.announcedDataVersions.set(dataset, marker.version);
+            }
+          });
+        }
 
         // Envelopa uma tarefa de sync pesada num gate de versão: se o cache local
         // já estiver na versão corrente, não baixa nada. Com `datasets` informado,
@@ -324,6 +373,16 @@ class LocalDatabase {
 
         console.log('Sincronização com o Supabase concluída.');
         this.notifyListeners();
+
+        // Avisa a UI (modal de recarregamento) depois das tarefas acima: as bases
+        // que entram na sincronização geral (pedidos, requisições…) já foram
+        // rebaixadas aqui, então o "Recarregar agora" só remonta a tela; as bases
+        // sob demanda (estoque, contas a pagar…) são rebaixadas pela própria tela
+        // ao recarregar.
+        if (staleDatasets.length > 0) {
+          this.notifyDataUpdate(staleDatasets);
+        }
+        this.hasSyncedThisSession = true;
       } finally {
         this.syncPromise = null;
       }
@@ -1130,7 +1189,11 @@ class LocalDatabase {
 
   public async signup(name: string, email: string, sector_id: string, cargo: string, password?: string): Promise<string> {
     if (!supabase) return 'Supabase não inicializado';
-    
+
+    // Cadastro restrito aos domínios corporativos (ver lib/authDomains.ts).
+    // Repetido aqui, não só na tela, para a regra valer em qualquer chamada.
+    if (!emailDominioPermitido(email)) return MSG_DOMINIO_NAO_PERMITIDO;
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: email.toLowerCase(),
@@ -4246,6 +4309,75 @@ class LocalDatabase {
     return { ok: gravados.length, failed };
   }
 
+  /**
+   * "Confirmar data" da Central de Compras: copia a `data_entrega_prevista`
+   * atual (valor de trabalho, possivelmente auto-preenchido pela remessa do PO)
+   * para `data_entrega_confirmada` — a única data que o Rastreio Compras exibe.
+   *
+   * Não mexe em `data_entrega_prevista` nem no status: se o comprador editar a
+   * previsão depois, a confirmada fica defasada até ele confirmar de novo, e o
+   * Rastreio segue mostrando o último valor confirmado (estável).
+   */
+  public async confirmDeliveryDate(ri: string): Promise<boolean> {
+    const reqs = this.getRequisicoes();
+    const idx = reqs.findIndex(r => r.ri === ri);
+    if (idx === -1) return false;
+
+    const dataConfirmar = reqs[idx].data_entrega_prevista || '';
+    if (!dataConfirmar) return false;
+
+    const user = this.getCurrentUser();
+    const userName = user?.name || 'Sistema';
+    const now = new Date().toISOString();
+    const anterior = reqs[idx].data_entrega_confirmada || '';
+    if (anterior === dataConfirmar) return true; // já confirmada nesse valor
+
+    reqs[idx].data_entrega_confirmada = dataConfirmar;
+    this.setStorageItem(this.requisicoesKey, reqs);
+
+    const histId = 'oh_' + Math.random().toString(36).substr(2, 9);
+    const hist = this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []);
+    hist.push({
+      id: histId,
+      ri,
+      obs_comprador: reqs[idx].obs_comprador || '',
+      data_entrega_prevista: dataConfirmar,
+      item_status: reqs[idx].item_status,
+      user_name: userName,
+      created_at: now
+    });
+    this.setStorageItem(this.obsHistoryKey, hist);
+
+    try {
+      const { error } = await supabase
+        .from('sap_me5a_rc')
+        .update({ data_entrega_confirmada: dataConfirmar } as any)
+        .eq('ri', ri);
+      if (error) throw error;
+
+      await supabase.from('sap_requisicoes_observacoes').insert({
+        id: histId,
+        ri,
+        campo_alterado: 'data_entrega_confirmada',
+        valor_anterior: JSON.stringify({ data_entrega_confirmada: anterior || null }),
+        valor_novo: JSON.stringify({ data_entrega_confirmada: dataConfirmar }),
+        user_name: userName,
+        created_at: now
+      });
+
+      return true;
+    } catch (e) {
+      console.error('Erro ao confirmar a data de entrega no Supabase:', e);
+      const revert = this.getRequisicoes();
+      const rIdx = revert.findIndex(r => r.ri === ri);
+      if (rIdx !== -1) {
+        revert[rIdx].data_entrega_confirmada = anterior || undefined;
+        this.setStorageItem(this.requisicoesKey, revert);
+      }
+      return false;
+    }
+  }
+
   // Busca leve (poucas colunas) dos campos editáveis pelo comprador
   // (status, previsão de entrega, observação) direto do Supabase, e mescla
   // no cache local por 'ri'. Diferente do sync completo (gated por
@@ -4261,11 +4393,12 @@ class LocalDatabase {
         item_status_updated_by: string | null;
         obs_comprador: string | null;
         data_entrega_prevista: string | null;
+        data_entrega_confirmada: string | null;
         obs_updated_at: string | null;
         obs_updated_by: string | null;
       }>(
         'sap_me5a_rc',
-        'ri,item_status,item_status_updated_at,item_status_updated_by,obs_comprador,data_entrega_prevista,obs_updated_at,obs_updated_by',
+        'ri,item_status,item_status_updated_at,item_status_updated_by,obs_comprador,data_entrega_prevista,data_entrega_confirmada,obs_updated_at,obs_updated_by',
         1000,
         q => q.gte('data_da_solicitacao', '2026-01-01'),
         'ri'
@@ -4283,6 +4416,7 @@ class LocalDatabase {
           item_status_updated_by: upd.item_status_updated_by || r.item_status_updated_by,
           obs_comprador: upd.obs_comprador ?? r.obs_comprador,
           data_entrega_prevista: upd.data_entrega_prevista ?? r.data_entrega_prevista,
+          data_entrega_confirmada: upd.data_entrega_confirmada ?? r.data_entrega_confirmada,
           obs_updated_at: upd.obs_updated_at || r.obs_updated_at,
           obs_updated_by: upd.obs_updated_by || r.obs_updated_by
         };
@@ -5064,14 +5198,25 @@ class LocalDatabase {
         const existingInBatch = newPedidosMap.get(compositeKey)!;
         const currentDataDoc = record.data_doc ? new Date(record.data_doc).getTime() : 0;
         const existingDataDoc = existingInBatch.data_pedido ? new Date(existingInBatch.data_pedido).getTime() : 0;
-        
+        const currentElim = record.eflag_e === 'L' || isExcludedPO;
+        const existingElim = existingInBatch.eflag_e === 'L';
+
+        // Quando o SAP cancela a linha do PO e a recria, o ZL0132 traz duas
+        // linhas com o mesmo (ReqC+item, Doc.compra) — uma com E='L', outra
+        // ativa — e a tabela só guarda uma (índice único ri+doc_compra). A linha
+        // ATIVA sempre vence a excluída; só quando as duas têm o mesmo status é
+        // que a data do documento desempata (comportamento anterior).
+        const shouldReplace = existingElim !== currentElim
+          ? (existingElim && !currentElim)
+          : (currentDataDoc > existingDataDoc);
+
         ignoredRows.push({
           row: fileRowIndex,
           identifier: ri + ' (PO: ' + docCompraVal + ')',
-          reason: `Registro com chave RI e PO duplicada no arquivo. Mantido apenas o documento com data mais recente.`
+          reason: `Registro com chave RI e PO duplicada no arquivo. Mantida a linha ativa (ou, se ambas iguais, a de data mais recente).`
         });
 
-        if (currentDataDoc > existingDataDoc) {
+        if (shouldReplace) {
           newPedidosMap.set(compositeKey, {
             ri,
             documento_compra: docCompraVal,
@@ -5524,14 +5669,24 @@ class LocalDatabase {
         const existingInBatch = newPedidosMap.get(compositeKey)!;
         const currentDataDoc = record.data_doc ? new Date(record.data_doc).getTime() : 0;
         const existingDataDoc = existingInBatch.data_pedido ? new Date(existingInBatch.data_pedido).getTime() : 0;
+        const currentElim = record.eflag_e === 'L';
+        const existingElim = existingInBatch.eflag_e === 'L';
+
+        // Linha ativa sempre vence a excluída (E='L'); só com o mesmo status é
+        // que a data do documento desempata. Ver comentário em importZL0132Raw:
+        // PO cancelado e recriado gera duas linhas ZL0132 com o mesmo
+        // (ReqC+item, Doc.compra) e a tabela só guarda uma.
+        const shouldReplace = existingElim !== currentElim
+          ? (existingElim && !currentElim)
+          : (currentDataDoc > existingDataDoc);
 
         ignoredRows.push({
           row: fileRowIndex,
           identifier: ri + ' (PO: ' + docCompraVal + ')',
-          reason: `Registro com chave RI e PO duplicada no arquivo. Mantido apenas o documento com data mais recente.`
+          reason: `Registro com chave RI e PO duplicada no arquivo. Mantida a linha ativa (ou, se ambas iguais, a de data mais recente).`
         });
 
-        if (currentDataDoc > existingDataDoc) {
+        if (shouldReplace) {
           newPedidosMap.set(compositeKey, {
             ri,
             material: record.material || null,
@@ -7137,6 +7292,60 @@ class LocalDatabase {
     return true;
   }
 
+  // Reset de senha forçado pelo admin (Painel de Administração > Usuários).
+  // O admin define uma senha provisória; ela é gravada no Supabase Auth via
+  // Admin API (requer service_role key — supabaseAdmin) e o perfil é marcado
+  // com must_change_password para obrigar o usuário a criar a própria senha
+  // logo após o próximo login. Retorna 'sucesso' ou uma mensagem de erro.
+  public async adminResetUserPassword(userId: string, newPassword: string): Promise<string> {
+    if (!newPassword || newPassword.length < 6) {
+      return 'A senha provisória deve ter pelo menos 6 caracteres.';
+    }
+    if (!supabase) return 'Supabase não inicializado.';
+
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return 'Usuário não encontrado.';
+
+    // 1. Troca a senha no Auth. Sem a service_role key configurada, supabaseAdmin
+    //    cai para a chave anônima e a Admin API responde 403 — avisamos o admin.
+    const adminClient = supabaseAdmin || supabase;
+    const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+      password: newPassword,
+    });
+    if (authError) {
+      console.error('Erro ao redefinir senha do usuário via Admin API:', authError);
+      const status = (authError as any).status;
+      if (status === 401 || status === 403 || /not_admin|not admin|service_role|user not allowed/i.test(authError.message || '')) {
+        return 'Sem permissão para redefinir senha. Verifique se a chave service_role do Supabase está configurada.';
+      }
+      return authError.message || 'Falha ao redefinir a senha no servidor.';
+    }
+
+    // 2. Marca o perfil para exigir troca de senha no próximo login.
+    const prevFlag = users[idx].must_change_password;
+    users[idx].must_change_password = true;
+    this.setStorageItem(this.profilesKey, users);
+
+    const { error: flagError } = await supabase.from('core_perfis')
+      .update({ must_change_password: true })
+      .eq('id', userId);
+
+    if (flagError) {
+      console.error('Erro ao marcar must_change_password no Supabase:', flagError);
+      const revert = this.getProfiles();
+      const rIdx = revert.findIndex(u => u.id === userId);
+      if (rIdx !== -1) {
+        revert[rIdx].must_change_password = prevFlag;
+        this.setStorageItem(this.profilesKey, revert);
+      }
+      return 'A senha foi alterada, mas não foi possível marcar a exigência de troca. Tente novamente.';
+    }
+
+    this.logActivity('admin', 'Administração', 'Resetar Senha', `Senha de ${users[idx].name} redefinida pelo admin. Troca obrigatória no próximo login.`);
+    return 'sucesso';
+  }
+
   // Define o grupo de compras SAP (ex.: 314, 358) associado a este usuário,
   // editável na tela de Gestão de Usuários (Admin). Vazio remove a associação.
   public async updateUserGrupoCompras(userId: string, grupoCompras: string): Promise<boolean> {
@@ -7870,6 +8079,28 @@ class LocalDatabase {
       const user = this.getCurrentUser();
       if (user) {
         this.logActivity(user.id, 'Perfil', 'Alterar Senha', 'Senha de usuário alterada com sucesso.');
+
+        // Se havia um reset forçado pelo admin pendente, a exigência é cumprida
+        // agora que o usuário definiu a própria senha — limpa a flag no cache,
+        // na sessão e no Supabase para o popup não reaparecer.
+        if (user.must_change_password) {
+          user.must_change_password = false;
+          this.setStorageItem(this.currentUserKey, user);
+
+          const profiles = this.getProfiles();
+          const idx = profiles.findIndex(p => p.id === user.id);
+          if (idx !== -1) {
+            profiles[idx].must_change_password = false;
+            this.setStorageItem(this.profilesKey, profiles);
+          }
+
+          const { error: clearError } = await supabase.from('core_perfis')
+            .update({ must_change_password: false })
+            .eq('id', user.id);
+          if (clearError) {
+            console.error('Erro ao limpar must_change_password no Supabase:', clearError);
+          }
+        }
       }
       return true;
     } catch (err) {

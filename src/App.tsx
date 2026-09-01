@@ -12,6 +12,8 @@ import Header from './components/Header';
 import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundary';
 import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
+import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
+import DataUpdateModal from './components/DataUpdateModal';
 
 // Views
 import Login from './views/Login';
@@ -36,6 +38,7 @@ const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
+const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const Estoque = lazy(() => import('./views/Estoque'));
@@ -494,6 +497,21 @@ export default function App() {
     return <Login onLoginSuccess={handleLoginSuccess} onNavigate={handleNavigate} />;
   }
 
+  // Reset de senha forçado pelo admin: bloqueia todo o app até o usuário
+  // definir uma nova senha pessoal.
+  if (user.must_change_password) {
+    return (
+      <ForcePasswordChangeModal
+        user={user}
+        onDone={handleUserSessionChange}
+        onLogout={async () => {
+          await localDb.logout();
+          handleUserSessionChange();
+        }}
+      />
+    );
+  }
+
   // Render view depending on authorized route path
   const renderActiveView = () => {
     const user = activeUser;
@@ -680,6 +698,12 @@ export default function App() {
       case '/financeiro/contas-pagar/analise':
         if (canAccessPage(user, 'fin_contas_pagar_analise')) {
           return <ContasPagarAnalise user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/reconciliacao-pedidos':
+        if (canAccessPage(user, 'fin_reconciliacao_pedidos')) {
+          return <ReconciliacaoPedidos user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -915,6 +939,7 @@ export default function App() {
         </main>
       </div>
       <FeedbackButton pagePath={currentPath} />
+      <DataUpdateModal currentPath={currentPath} />
     </div>
     </TourRegistryProvider>
   );

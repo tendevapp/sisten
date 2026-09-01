@@ -15,14 +15,15 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { CalendarDays, RefreshCw, AlertCircle, Filter, Search, TrendingUp, Package, Activity } from 'lucide-react';
+import { CalendarDays, RefreshCw, AlertCircle, Filter, Search, TrendingUp, Package, Activity, Clock } from 'lucide-react';
+import { format } from 'date-fns';
 import { localDb } from '../db/localDb';
-import { Profile, MB51Classificado, EstoqueGiro } from '../types';
+import { Profile, MB51Classificado, EstoqueGiro, SAPImportLog } from '../types';
 import {
-  construirBaseSemanal, serieDoMaterial, rotuloSemana, intervaloSemana, mediaPorSemanaAtiva,
+  construirBaseSemanal, serieDoMaterial, rotuloSemana, intervaloSemana, mediaPorSemanaAtiva, inicioDaSemana,
 } from '../lib/consumoSemanal';
 import { formatQtd, formatBRL, isProjetoItem } from '../lib/almoxarifado';
-import { formatInt, formatDateBR } from '../lib/format';
+import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
 import Sparkline from '../components/almoxarifado/Sparkline';
 import ConsumoSemanalChart from '../components/almoxarifado/ConsumoSemanalChart';
@@ -44,6 +45,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
   const [movs, setMovs] = useState<MB51Classificado[]>([]);
   // Grupo de mercadorias não existe na MB51; vem da posição de estoque.
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
+  const [ultimoLog, setUltimoLog] = useState<SAPImportLog | null>(null);
 
   const [busca, setBusca] = useState('');
   const [materialSel, setMaterialSel] = useState<string | null>(null);
@@ -64,6 +66,8 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
       ]);
       setMovs(m);
       setGiro(g);
+      const logs = localDb.getImportLogs();
+      setUltimoLog(logs.find(l => l.type === 'MB51') || null);
     } catch (e: any) {
       console.error('Erro ao carregar as movimentações:', e);
       setError('Falha ao carregar as movimentações. Tente atualizar novamente.');
@@ -75,7 +79,11 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
 
   useEffect(() => { load(false); }, [load]);
 
-  const base = useMemo(() => construirBaseSemanal(movs), [movs]);
+  const hojeIso = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const semanaAtualIso = useMemo(() => inicioDaSemana(hojeIso), [hojeIso]);
+
+  // Sempre estende o período até a semana atual de hoje
+  const base = useMemo(() => construirBaseSemanal(movs, hojeIso), [movs, hojeIso]);
 
   const grupoPorMaterial = useMemo(() => {
     const m = new Map<string, string>();
@@ -163,14 +171,40 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5 reveal" style={{ borderColor: 'var(--hairline)' }}>
         <div className="min-w-0">
-          <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
-            <CalendarDays className="h-7 w-7" style={{ color: 'var(--brand)' }} />
-            Perfil de Consumo Semanal
-          </h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--ink-secondary)' }}>
-            Escolha um material pela forma da série e veja semana a semana quanto saiu e quanto entrou.
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
+              <CalendarDays className="h-7 w-7" style={{ color: 'var(--brand)' }} />
+              Perfil de Consumo Semanal
+            </h2>
+
+            {base.maxData && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-xs"
+                style={{
+                  borderColor: 'var(--hairline)',
+                  background: 'var(--surface-raised)',
+                  color: 'var(--ink-secondary)',
+                }}
+                title={base.minData ? `Intervalo de movimentações na base: ${formatDateBR(base.minData)} até ${formatDateBR(base.maxData)}` : undefined}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                Base com dados até <strong className="font-bold ml-0.5" style={{ color: 'var(--ink-primary)' }}>{formatDateBR(base.maxData)}</strong>
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm mt-1.5" style={{ color: 'var(--ink-secondary)' }}>
+            <span>Escolha um material pela forma da série e veja semana a semana quanto saiu e quanto entrou.</span>
+            {ultimoLog && (
+              <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs" style={{ color: 'var(--ink-muted)' }}>
+                <span className="hidden sm:inline">•</span>
+                <Clock className="h-3 w-3 inline shrink-0 opacity-70" />
+                <span>Última importação SAP MB51: <strong className="font-semibold" style={{ color: 'var(--ink-secondary)' }}>{formatDateTimeBR(ultimoLog.created_at)}</strong> ({ultimoLog.filename})</span>
+              </span>
+            )}
+          </div>
         </div>
+
         <button
           onClick={() => load(true)}
           disabled={loading}
@@ -376,6 +410,8 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
                 descricao={resumoSel?.descricao}
                 umb={resumoSel?.umb}
                 semanaProducao={INICIO_PRODUCAO}
+                semanaAtual={hojeIso}
+                dataMaxima={base.maxData}
                 loading={loading}
               />
 
@@ -396,7 +432,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
                     <TableShell maxHeight="46vh">
                       <table className="w-full text-xs border-collapse">
                         <TableHeadRow>
-                          <Th label="Semana" width="w-20" />
+                          <Th label="Semana" width="w-24" />
                           <Th label="Período" width="w-32" />
                           <Th label="Consumo" align="right" width="w-32" />
                           <Th label="Entrada" align="right" width="w-32" />
@@ -404,20 +440,38 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
                           <Th label="Saldo acumulado" align="right" width="w-36" />
                         </TableHeadRow>
                         <TableBody>
-                          {detalhe.map(p => (
-                            <Tr key={p.semana}>
-                              <Td strong>{rotuloSemana(p.semana)}</Td>
-                              <Td>{intervaloSemana(p.semana)}</Td>
-                              <Td align="right" numeric strong={p.consumo > 0}>
-                                {p.consumo > 0 ? formatQtd(p.consumo) : '—'}
-                              </Td>
-                              <Td align="right" numeric>
-                                {p.entrada > 0 ? formatQtd(p.entrada) : '—'}
-                              </Td>
-                              <Td align="right" numeric>{p.eventosConsumo || '—'}</Td>
-                              <Td align="right" numeric>{formatQtd(p.acumulado)}</Td>
-                            </Tr>
-                          ))}
+                          {detalhe.map(p => {
+                            const ehAtual = p.semana === semanaAtualIso;
+                            return (
+                              <Tr
+                                key={p.semana}
+                                style={ehAtual ? { background: 'var(--surface-raised)' } : undefined}
+                              >
+                                <Td strong>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {rotuloSemana(p.semana)}
+                                    {ehAtual && (
+                                      <span
+                                        className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-[var(--brand)] text-white"
+                                        title="Semana atual em andamento"
+                                      >
+                                        Atual
+                                      </span>
+                                    )}
+                                  </span>
+                                </Td>
+                                <Td>{intervaloSemana(p.semana)}</Td>
+                                <Td align="right" numeric strong={p.consumo > 0}>
+                                  {p.consumo > 0 ? formatQtd(p.consumo) : '—'}
+                                </Td>
+                                <Td align="right" numeric>
+                                  {p.entrada > 0 ? formatQtd(p.entrada) : '—'}
+                                </Td>
+                                <Td align="right" numeric>{p.eventosConsumo || '—'}</Td>
+                                <Td align="right" numeric>{formatQtd(p.acumulado)}</Td>
+                              </Tr>
+                            );
+                          })}
                         </TableBody>
                       </table>
                     </TableShell>

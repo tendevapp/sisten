@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X, Info, Search, ArrowUp, ArrowDown, ArrowUpDown, ChevronRight, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X, Info, Search, ArrowUp, ArrowDown, ArrowUpDown, ChevronRight, ChevronDown, ChevronsUpDown, Warehouse } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
 import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro, formatBRL, formatQtd, isProjetoItem } from '../lib/almoxarifado';
@@ -18,6 +18,7 @@ import CompraEvitavelPanel from '../components/almoxarifado/CompraEvitavelPanel'
 import DivergenciaPmmPanel from '../components/almoxarifado/DivergenciaPmmPanel';
 import QualidadeCadastroPanel from '../components/almoxarifado/QualidadeCadastroPanel';
 import ChartCard from '../components/charts/ChartCard';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import { formatInt, formatPct } from '../lib/format';
 import { TableShell, TableHeadRow, Th, TableBody, Td } from '../components/ui/DataTable';
 
@@ -41,7 +42,8 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   const [requisicoes, setRequisicoes] = useState<EnrichedSAPRecord[]>([]);
 
   // Filtros compartilhados por todos os painéis.
-  const [depositoFiltro, setDepositoFiltro] = useState('Todos');
+  // Depósito aceita seleção múltipla: vazio = todos.
+  const [depositoFiltro, setDepositoFiltro] = useState<Set<string>>(new Set());
   const [tipoFiltro, setTipoFiltro] = useState('Todos');
   const [classeFiltro, setClasseFiltro] = useState('Todos');
   const [abcFiltro, setAbcFiltro] = useState<'Todos' | ClasseAbc>('Todos');
@@ -158,7 +160,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   }, [rows]);
 
   const filtrados = useMemo(() => rows.filter(r => {
-    if (depositoFiltro !== 'Todos' && r.deposito !== depositoFiltro) return false;
+    if (depositoFiltro.size > 0 && !depositoFiltro.has(r.deposito)) return false;
     if (tipoFiltro !== 'Todos' && r.tipo_material !== tipoFiltro) return false;
     if (classeFiltro !== 'Todos' && r.class_item !== classeFiltro) return false;
     if (grupoFiltro !== 'Todos' && r.grupo_mercadorias !== grupoFiltro) return false;
@@ -171,11 +173,11 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
     return true;
   }), [rows, depositoFiltro, tipoFiltro, classeFiltro, grupoFiltro, abcFiltro, tipoItemFiltro, mapaAbc]);
 
-  const filtroAtivo = depositoFiltro !== 'Todos' || tipoFiltro !== 'Todos'
+  const filtroAtivo = depositoFiltro.size > 0 || tipoFiltro !== 'Todos'
     || classeFiltro !== 'Todos' || grupoFiltro !== 'Todos' || abcFiltro !== 'Todos' || tipoItemFiltro !== 'Todos';
 
   const limparFiltros = useCallback(() => {
-    setDepositoFiltro('Todos');
+    setDepositoFiltro(new Set());
     setTipoFiltro('Todos');
     setClasseFiltro('Todos');
     setGrupoFiltro('Todos');
@@ -361,15 +363,19 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
               boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
             }}
           >
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
               <span className="shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
                 <Filter className="h-3 w-3" /> Filtros
               </span>
 
-              <select value={depositoFiltro} onChange={e => setDepositoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
-                <option value="Todos">Depósito: Todos</option>
-                {opcoes.depositos.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <MultiSelectFilter
+                label="Depósito"
+                icon={Warehouse}
+                options={opcoes.depositos}
+                selected={depositoFiltro}
+                onChange={setDepositoFiltro}
+                className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
+              />
 
               <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
                 <option value="Todos">Tipo: Todos</option>

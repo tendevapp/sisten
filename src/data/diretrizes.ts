@@ -39,6 +39,18 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-08-31',
+    resumo: 'Almoxarifado > Perfil de Consumo Semanal (`consumoSemanal.ts`, `ConsumoSemanal.tsx`, `ConsumoSemanalChart.tsx`): 1. Extensão automática da série temporal de consumo até a semana atual do calendário (mesmo sem saídas recentes registradas na MB51), garantindo visibilidade completa e sem omissão de semanas recentes; 2. Destaque visual da "Semana atual" com linha de referência dedicada no gráfico Recharts, indicação no tooltip e selo "Atual" na tabela de valores; 3. Inclusão de badge com a data dos dados da base ("Base com dados até DD/MM/AAAA") e metadados da última importação SAP MB51 (data/hora e nome do arquivo) no cabeçalho e descrição do gráfico para clareza sobre o frescor das informações.'
+  },
+  {
+    data: '2026-08-31',
+    resumo: 'Financeiro > Reconciliação de Pedidos (`vw_pedidos_conciliacao_pagamentos`, `vw_pedidos_conciliacao_detalhes`, `ReconciliacaoPedidos.tsx`): 1. Implementado o cruzamento automático de Pedidos de Compras (PO) com Notas Fiscais (MIRO) e liquidação no Contas a Pagar (FBL1N); 2. Resolução estrita 1:1 de materiais e deduplicação de partidas financeiras (eliminada multiplicação de linhas por movimentações de estoque); 3. Classificação consolidada por pedido (Totalmente Pago, Parcialmente Pago, Em Aberto); 4. Tabela expansível com detalhamento individual por NF/fatura (vencimento, compensação, status); 5. KPIs consolidados e exportação em Excel (.xlsx).'
+  },
+  {
+    data: '2026-08-31',
+    resumo: 'Contas a Pagar & Gráficos (`ChartCard.tsx`, `ContasPagarAnalise.tsx`, `MultiSelectFilter.tsx`, `index.css`): 1. Gráficos com muitos dados agora iniciam automaticamente com o scroll à direita exibindo as semanas/meses mais recentes; 2. Filtro de Fornecedor transformado em seleção múltipla com dropdown pesquisável (`MultiSelectFilter`), checkboxes, contador e suporte à busca por razão social e código SAP; 3. Scrollbar customizada, elegante e visível (`custom-scrollbar`); 4. Removido seletor redundante de empresas.'
+  },
+  {
     data: '2026-08-30',
     resumo: 'Portaria > Livro de Ocorrências & Briefing de Segurança: 1. Integração da Saída de Colaboradores com `rh_pessoas` (busca inteligente por nome ou matrícula e preenchimento automático de cargo/empresa/matrícula); 2. Validação estrita de 30 dias de validade do Briefing de Segurança com cálculo de data de realização e dias restantes/expirados em tela; 3. Multi-seleção de sessões e exportação em PDF Consolidado com renderização real das assinaturas digitais colhidas; 4. Compressão automática de fotos de câmera/galeria com anexo dedicado nos PDFs dos formulários operacionais.'
   },
@@ -85,6 +97,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-27',
     resumo: 'RH & Calendário de Horas Extras (`rh_hora_extra`): carga e configuração da tabela de percentuais por dia no Supabase cobrindo os anos de 2025, 2026 e 2027 com as regras padrão da empresa (Segunda a Sexta: 60%, Sábado: 80%, Domingo e Feriados Nacionais: 100%). Inclusão de fallback automático por dia da semana no método `buscarPercentualHE` para preenchimento ágil no formulário ASE - Hora Extra (FRM.RHU-0007).'
+  },
+  {
+    data: '2026-08-31',
+    resumo: 'Logística - Expedição & Otimização de Lançamento: 1. Adição dos campos "Nº Tramo (4 dígitos)" e "Número da NF" para identificação precisa nos registros e no e-mail; 2. Remoção do campo/botão de observação nas etapas de horário; 3. Prova de erros e sanitização automática de datas (normalização inteligente de anos digitados com 2 dígitos, ex: 0026 -> 2026, e restrições de intervalo no picker); 4. Cálculo automático de Lead Time das etapas (Portaria ➔ Pátio, Pátio ➔ Expedição e Lead Time Total) exibido em painel dedicado no card e incorporado ao fim do corpo do e-mail; 5. Atualização do formato de assunto do e-mail com prefixo, sequência, tramo, número do tramo, NF e placa.'
   },
   {
     data: '2026-08-27',
@@ -1026,6 +1042,34 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: ['`vw_fbl1n_c_pagar_analise` (mesma fonte de Contas a Pagar).']
           }
         ]
+      },
+      {
+        id: 'reconciliacao-pedidos',
+        nome: 'Reconciliação PO x Pgto',
+        arquivo: 'src/views/ReconciliacaoPedidos.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: ['Rastreamento de liquidação financeira de pedidos de compra (PO x MIRO x FBL1N), permitindo verificar se todas as notas fiscais faturadas já foram pagas sem consultar documento a documento.']
+          },
+          {
+            titulo: 'Regras de negócio',
+            itens: [
+              'Status Consolidado do Pedido: "Totalmente Pago" (todas as NFs compensadas/pagas), "Parcialmente Pago" (ao menos 1 NF paga e ao menos 1 em aberto), "Em Aberto" (nenhuma NF compensada) ou "Pendente Faturamento" (sem faturas MIRO lançadas).',
+              'Cruzamento relacional: `sap_zl0170_miro.numero_doc_contabil` = `sap_fbl1n_pagar.numero_documento`.',
+              'Total Faturado = soma de `montante_miro` das faturas do pedido.',
+              'Total Pago = soma do montante de faturas com `data_compensacao`, `doc_compensacao` ou `data_pagamento` preenchidos.',
+              'Total em Aberto = Total Faturado - Total Pago.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`vw_pedidos_conciliacao_pagamentos` (visão consolidada agrupada por `numero_pedido`).',
+              '`vw_pedidos_conciliacao_detalhes` (visão detalhada com MIGO, MIRO, doc contábil, vencimento e compensação).'
+            ]
+          }
+        ]
       }
     ]
   },
@@ -1153,6 +1197,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Login via Supabase Auth; se o profile ainda não existir (trigger falhou), cria um default com `roles: ["visualizador"]`, `status: "ativo"` — é fallback defensivo, não o caminho normal.',
               'Gate de status no login: `pendente` → força logout com "Aguarde a autorização do administrador"; `inativo` → força logout com "Conta inativa. Procure o administrador". Só `ativo` completa o login.',
               'Signup chama `supabase.auth.signUp` e, em seguida, força `signOut()` imediatamente para impedir login automático — o usuário precisa aguardar aprovação.',
+              'Auto-cadastro restrito aos domínios corporativos (`ten.ind.br`, `agnet.com.br`, `agterceiro.com.br`, incl. subdomínios) — ver `src/lib/authDomains.ts`. A checagem roda na tela Signup e também em `localDb.signup`, para não depender só da UI.',
               'Redefinição de senha usa `supabase.auth.updateUser` diretamente (usuário já autenticado pelo token do link de e-mail) — não pede a senha atual.',
               'Fluxo de redefinição de senha: `redirectTo` aponta para `window.location.origin/` (sem fragmentos de hash como `/#/reset-password`, evitando que o GoTrue do Supabase invalide o parâmetro e faça fallback para localhost). O App e o ResetPassword tratam eventos de recuperação de sessão e estados de erro/expiração de OTP diretamente.'
             ]

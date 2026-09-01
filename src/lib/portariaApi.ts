@@ -33,6 +33,7 @@ import type {
   PortTurno,
   PortVigilante,
 } from '../types';
+import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 
 export function formatarDataDDMMAA(dataISO?: string | null): string {
   if (!dataISO || !/^\d{4}-\d{2}-\d{2}$/.test(dataISO)) {
@@ -83,12 +84,15 @@ export async function listarEquipamentos(filtros?: {
   termoBusca?: string;
   dataInicio?: string;
   dataFim?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortControleEquipamento[]> {
   let query = supabase
     .from('port_controle_equipamentos')
     .select('*')
     .order('data_entrada', { ascending: false })
     .order('created_at', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.status && filtros.status !== 'TODOS') {
     query = query.eq('status', filtros.status);
@@ -164,8 +168,19 @@ export async function registrarSaidaEquipamento(
   });
 }
 
-export async function excluirEquipamento(id: string): Promise<void> {
-  const { error } = await supabase.from('port_controle_equipamentos').delete().eq('id', id);
+export async function excluirEquipamento(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_controle_equipamentos')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarEquipamento(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_controle_equipamentos')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -178,12 +193,15 @@ export async function listarTransportes(filtros?: {
   turno?: PortTurno | 'TODOS';
   status?: PortTransporteStatus | 'TODOS';
   termoBusca?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortRegistroTransporte[]> {
   let query = supabase
     .from('port_registro_transportes')
     .select('*')
     .order('data', { ascending: false })
     .order('hora_chegada', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.data) {
     query = query.eq('data', filtros.data);
@@ -254,8 +272,19 @@ export async function registrarSaidaTransporte(id: string, hora_saida?: string):
   });
 }
 
-export async function excluirTransporte(id: string): Promise<void> {
-  const { error } = await supabase.from('port_registro_transportes').delete().eq('id', id);
+export async function excluirTransporte(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_registro_transportes')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarTransporte(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_registro_transportes')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -268,12 +297,15 @@ export async function listarCarretas(filtros?: {
   termoBusca?: string;
   dataInicio?: string;
   dataFim?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortControleCarreta[]> {
   let query = supabase
     .from('port_controle_carretas')
     .select('*')
     .order('data_entrada', { ascending: false })
     .order('hora_entrada', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.status && filtros.status !== 'TODOS') {
     query = query.eq('status', filtros.status);
@@ -355,8 +387,19 @@ export async function registrarSaidaCarreta(
   });
 }
 
-export async function excluirCarreta(id: string): Promise<void> {
-  const { error } = await supabase.from('port_controle_carretas').delete().eq('id', id);
+export async function excluirCarreta(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_controle_carretas')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarCarreta(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_controle_carretas')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -396,15 +439,18 @@ export async function listarRelatorios(filtros?: {
   turno?: PortTurno | 'TODOS';
   dataInicio?: string;
   dataFim?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortRelatorioPortaria[]> {
   let query = supabase
     .from('port_relatorio_portaria')
     .select(`
       *,
-      ocorrencias:port_relatorio_ocorrencias (id, horario, local_setor, descricao, severidade, vigilante, created_at)
+      ocorrencias:port_relatorio_ocorrencias (id, horario, local_setor, descricao, severidade, vigilante, created_at, excluido_em)
     `)
     .order('data', { ascending: false })
     .order('created_at', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.status && filtros.status !== 'TODOS') {
     query = query.eq('status', filtros.status);
@@ -424,13 +470,13 @@ export async function listarRelatorios(filtros?: {
 
   return (data || []).map((r: any) => ({
     ...r,
-    ocorrencias: (r.ocorrencias || [])
+    ocorrencias: semExcluidos(r.ocorrencias, filtros?.incluirExcluidos)
       .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
   })) as PortRelatorioPortaria[];
 }
 
-export async function obterRelatorio(id: string): Promise<PortRelatorioPortaria | null> {
+export async function obterRelatorio(id: string, incluirExcluidos = false): Promise<PortRelatorioPortaria | null> {
   const { data, error } = await supabase
     .from('port_relatorio_portaria')
     .select(`
@@ -445,7 +491,7 @@ export async function obterRelatorio(id: string): Promise<PortRelatorioPortaria 
 
   return {
     ...data,
-    ocorrencias: (data.ocorrencias || [])
+    ocorrencias: semExcluidos(data.ocorrencias, incluirExcluidos)
       .map((o: any) => ({ ...o, ...obterMetadadosOcorrencia(o.id) }))
       .sort((a: any, b: any) => a.horario.localeCompare(b.horario)),
   } as PortRelatorioPortaria;
@@ -550,10 +596,21 @@ export async function atualizarOcorrencia(
   } as PortRelatorioOcorrencia;
 }
 
-export async function excluirOcorrencia(id: string): Promise<void> {
-  const { error } = await supabase.from('port_relatorio_ocorrencias').delete().eq('id', id);
+export async function excluirOcorrencia(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_relatorio_ocorrencias')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
   if (error) throw new Error(error.message);
   removerMetadadosOcorrencia(id);
+}
+
+export async function restaurarOcorrencia(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_relatorio_ocorrencias')
+    .update(marcarRestaurado())
+    .eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 export async function encerrarRelatorio(id: string, observacoes_gerais?: string): Promise<PortRelatorioPortaria> {
@@ -563,8 +620,19 @@ export async function encerrarRelatorio(id: string, observacoes_gerais?: string)
   });
 }
 
-export async function excluirRelatorio(id: string): Promise<void> {
-  const { error } = await supabase.from('port_relatorio_portaria').delete().eq('id', id);
+export async function excluirRelatorio(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_relatorio_portaria')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarRelatorio(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_relatorio_portaria')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -768,6 +836,7 @@ export async function listarSessoesBriefing(filtros?: {
   tipo?: PortBriefingTipo | 'TODOS';
   dataInicio?: string;
   dataFim?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortBriefingSessao[]> {
   let query = supabase
     .from('port_briefing_sessoes')
@@ -777,6 +846,8 @@ export async function listarSessoesBriefing(filtros?: {
     `)
     .order('data', { ascending: false })
     .order('created_at', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.status && filtros.status !== 'TODOS') {
     query = query.eq('status', filtros.status);
@@ -794,10 +865,13 @@ export async function listarSessoesBriefing(filtros?: {
   const { data, error } = await query.limit(200);
   if (error) throw new Error(error.message);
 
-  return (data || []) as PortBriefingSessao[];
+  return (data || []).map((s: any) => ({
+    ...s,
+    participantes: semExcluidos(s.participantes, filtros?.incluirExcluidos),
+  })) as PortBriefingSessao[];
 }
 
-export async function obterSessaoBriefing(id: string): Promise<PortBriefingSessao | null> {
+export async function obterSessaoBriefing(id: string, incluirExcluidos = false): Promise<PortBriefingSessao | null> {
   const { data, error } = await supabase
     .from('port_briefing_sessoes')
     .select(`
@@ -810,7 +884,10 @@ export async function obterSessaoBriefing(id: string): Promise<PortBriefingSessa
   if (error) throw new Error(error.message);
   if (!data) return null;
 
-  return data as PortBriefingSessao;
+  return {
+    ...data,
+    participantes: semExcluidos((data as any).participantes, incluirExcluidos),
+  } as PortBriefingSessao;
 }
 
 export async function criarSessaoBriefing(dados: Partial<PortBriefingSessao>): Promise<PortBriefingSessao> {
@@ -903,7 +980,8 @@ export async function salvarAssinaturaParticipanteBriefing(
     const { data: todos } = await supabase
       .from('port_briefing_participantes')
       .select('id, assinatura_digital')
-      .eq('sessao_id', part.sessao_id);
+      .eq('sessao_id', part.sessao_id)
+      .is('excluido_em', null);
 
     const todosAssinaram = todos && todos.length > 0 && todos.every((p: any) => !!p.assinatura_digital);
 
@@ -925,8 +1003,19 @@ export async function salvarAssinaturaParticipanteBriefing(
   };
 }
 
-export async function removerParticipanteBriefing(id: string): Promise<void> {
-  const { error } = await supabase.from('port_briefing_participantes').delete().eq('id', id);
+export async function removerParticipanteBriefing(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_briefing_participantes')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarParticipanteBriefing(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_briefing_participantes')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -958,6 +1047,7 @@ export async function checarStatusBriefingCpf(
     .from('port_briefing_participantes')
     .select('*')
     .eq('cpf', cpf)
+    .is('excluido_em', null)
     .order('data', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1005,8 +1095,19 @@ export async function buscarBriefingValidoPorCpf(cpfLimpo: string, validadeDias:
   return null;
 }
 
-export async function excluirSessaoBriefing(id: string): Promise<void> {
-  const { error } = await supabase.from('port_briefing_sessoes').delete().eq('id', id);
+export async function excluirSessaoBriefing(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_briefing_sessoes')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarSessaoBriefing(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_briefing_sessoes')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -1014,7 +1115,7 @@ export async function excluirSessaoBriefing(id: string): Promise<void> {
 // CADASTRO DE VIGILANTES DA PORTARIA
 // =====================================================================
 
-export async function listarVigilantes(apenasAtivos: boolean = false): Promise<PortVigilante[]> {
+export async function listarVigilantes(apenasAtivos: boolean = false, incluirExcluidos = false): Promise<PortVigilante[]> {
   let query = supabase
     .from('port_vigilantes')
     .select('*')
@@ -1023,6 +1124,7 @@ export async function listarVigilantes(apenasAtivos: boolean = false): Promise<P
   if (apenasAtivos) {
     query = query.eq('ativo', true);
   }
+  query = apenasVigentes(query, incluirExcluidos);
 
   const { data, error } = await query;
   if (error) {
@@ -1104,10 +1206,10 @@ export async function alternarStatusVigilante(id: string, ativo: boolean): Promi
   }
 }
 
-export async function excluirVigilante(id: string): Promise<void> {
+export async function excluirVigilante(id: string, excluidoPor?: string): Promise<void> {
   const { error } = await supabase
     .from('port_vigilantes')
-    .delete()
+    .update(marcarExcluido(excluidoPor))
     .eq('id', id);
 
   if (error) {
@@ -1116,11 +1218,23 @@ export async function excluirVigilante(id: string): Promise<void> {
   }
 }
 
+export async function restaurarVigilante(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('port_vigilantes')
+    .update(marcarRestaurado())
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao restaurar vigilante:', error);
+    throw error;
+  }
+}
+
 // =====================================================================
 // 7. MATERIAIS DE SEGURANÇA PATRIMONIAL (FACILITIES / PORTARIA)
 // =====================================================================
 
-export async function listarMateriaisSeguranca(somenteAtivos = false): Promise<PortMaterialSeguranca[]> {
+export async function listarMateriaisSeguranca(somenteAtivos = false, incluirExcluidos = false): Promise<PortMaterialSeguranca[]> {
   let query = supabase
     .from('port_materiais_seguranca')
     .select('*')
@@ -1130,6 +1244,7 @@ export async function listarMateriaisSeguranca(somenteAtivos = false): Promise<P
   if (somenteAtivos) {
     query = query.eq('ativo', true);
   }
+  query = apenasVigentes(query, incluirExcluidos);
 
   const { data, error } = await query;
   if (error) {
@@ -1202,14 +1317,26 @@ export async function alternarStatusMaterialSeguranca(id: string, ativo: boolean
   }
 }
 
-export async function excluirMaterialSeguranca(id: string): Promise<void> {
-  const { error } = await supabase
+export async function excluirMaterialSeguranca(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await (supabase as any)
     .from('port_materiais_seguranca')
-    .delete()
+    .update(marcarExcluido(excluidoPor))
     .eq('id', id);
 
   if (error) {
     console.error('Erro ao excluir material de seguranca:', error);
+    throw new Error(error.message);
+  }
+}
+
+export async function restaurarMaterialSeguranca(id: string): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('port_materiais_seguranca')
+    .update(marcarRestaurado())
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao restaurar material de seguranca:', error);
     throw new Error(error.message);
   }
 }
@@ -1224,12 +1351,15 @@ export async function listarPassagensPlantao(filtros?: {
   dataInicio?: string;
   dataFim?: string;
   termoBusca?: string;
+  incluirExcluidos?: boolean;
 }): Promise<PortPassagemPlantao[]> {
   let query = supabase
     .from('port_passagem_plantao')
     .select('*')
     .order('data', { ascending: false })
     .order('created_at', { ascending: false });
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
 
   if (filtros?.status && filtros.status !== 'TODOS') {
     query = query.eq('status', filtros.status);
@@ -1339,14 +1469,26 @@ export async function encerrarPassagemPlantao(
   });
 }
 
-export async function excluirPassagemPlantao(id: string): Promise<void> {
-  const { error } = await supabase
+export async function excluirPassagemPlantao(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await (supabase as any)
     .from('port_passagem_plantao')
-    .delete()
+    .update(marcarExcluido(excluidoPor))
     .eq('id', id);
 
   if (error) {
     console.error('Erro ao excluir passagem de plantao:', error);
+    throw new Error(error.message);
+  }
+}
+
+export async function restaurarPassagemPlantao(id: string): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('port_passagem_plantao')
+    .update(marcarRestaurado())
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao restaurar passagem de plantao:', error);
     throw new Error(error.message);
   }
 }
@@ -1375,12 +1517,12 @@ export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
     { count: pltCount },
     { count: brfCount },
   ] = await Promise.all([
-    supabase.from('port_controle_equipamentos').select('*', { count: 'exact', head: true }).eq('status', 'NO_PATIO'),
-    supabase.from('port_registro_transportes').select('*', { count: 'exact', head: true }).eq('status', 'NO_PATIO'),
-    supabase.from('port_controle_carretas').select('*', { count: 'exact', head: true }).in('status', ['NO_PATIO', 'DESCARREGANDO']),
-    supabase.from('port_relatorio_portaria').select('*', { count: 'exact', head: true }).eq('status', 'EM_ANDAMENTO'),
-    supabase.from('port_passagem_plantao').select('*', { count: 'exact', head: true }).eq('status', 'EM_ANDAMENTO'),
-    supabase.from('port_briefing_participantes').select('*', { count: 'exact', head: true }).eq('data', hoje),
+    supabase.from('port_controle_equipamentos').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'NO_PATIO'),
+    supabase.from('port_registro_transportes').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'NO_PATIO'),
+    supabase.from('port_controle_carretas').select('*', { count: 'exact', head: true }).is('excluido_em', null).in('status', ['NO_PATIO', 'DESCARREGANDO']),
+    supabase.from('port_relatorio_portaria').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'EM_ANDAMENTO'),
+    supabase.from('port_passagem_plantao').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'EM_ANDAMENTO'),
+    supabase.from('port_briefing_participantes').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('data', hoje),
   ]);
 
   return {

@@ -87,7 +87,7 @@ export interface RastreioRow {
   valorTotal?: number;    // valor líquido da linha do pedido em BRL (só itens com PO)
   dataCriacao: string;   // data_solicitacao
   dataPo: string;        // data_pedido
-  dataPrevista: string;  // data_entrega_prevista / data_entrega_sap
+  dataPrevista: string;  // data_entrega_confirmada (promessa confirmada na Central de Compras)
   dataEntrega: string;   // data_migo
   status: string;        // status exibido (Entregue quando há MIGO; senão item_status)
   statusReq: string;     // status_requisicao ('Sem PO' | 'Processado')
@@ -121,6 +121,16 @@ export function isProjetoItem(materialCode: string): boolean {
   return clean.startsWith('100000') || materialCode.trim().startsWith('100000');
 }
 
+export type RastreioDateField = 'rm' | 'po' | 'prev' | 'entrega';
+
+// Campo de data da linha correspondente a cada filtro de intervalo.
+const DATE_FIELD_MAP: Record<RastreioDateField, keyof RastreioRow> = {
+  rm: 'dataCriacao',
+  po: 'dataPo',
+  prev: 'dataPrevista',
+  entrega: 'dataEntrega',
+};
+
 export interface RastreioFilters {
   query: string;
   status: string; // 'Todos' ou um item_status
@@ -128,6 +138,9 @@ export interface RastreioFilters {
   ano: string;    // 'Todos' ou um ano (YYYY)
   scope: DeliveryScope;
   tipo?: TipoItemFilter;
+  // Intervalos de data (ISO YYYY-MM-DD) por campo. `from`/`to` vazios são
+  // ignorados; com um intervalo ativo, linhas sem data naquele campo saem.
+  dateRanges?: Partial<Record<RastreioDateField, { from?: string; to?: string }>>;
 }
 
 const EMPTY = '—';
@@ -174,11 +187,12 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
         valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
         dataCriacao: txt(r.data_solicitacao) !== EMPTY ? txt(r.data_solicitacao) : txt(raw.data_solicitacao),
         dataPo: txt(r.data_pedido),
-        // Data prevista = a promessa de entrega inserida pelo comprador na tela
-        // Itens Sem PO (data_entrega_prevista). NÃO usa data_entrega_sap como
-        // fallback: é a data de remessa do próprio SAP, não a promessa do
-        // comprador, e misturar as duas confundiria a origem do prazo exibido.
-        dataPrevista: txt(r.data_entrega_prevista),
+        // Data prevista = a promessa de entrega CONFIRMADA pelo comprador na
+        // Central de Compras (data_entrega_confirmada). Enquanto ele não clica em
+        // "Confirmar data", o valor de trabalho (data_entrega_prevista, muitas
+        // vezes só a estimativa da remessa do PO) NÃO aparece aqui. Também não
+        // usa data_entrega_sap como fallback: é a remessa do SAP, não a promessa.
+        dataPrevista: txt(r.data_entrega_confirmada),
         dataEntrega: txt(r.data_migo),
         // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
         // independentemente do item_status registrado.
@@ -223,6 +237,25 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
       const eProjeto = isProjetoItem(r.material);
       if (f.tipo === 'projeto' && !eProjeto) return false;
       if (f.tipo === 'consumo' && eProjeto) return false;
+    }
+    if (f.dateRanges) {
+      for (const key of Object.keys(f.dateRanges) as RastreioDateField[]) {
+        const range = f.dateRanges[key];
+        if (!range || (!range.from && !range.to)) continue;
+        const d = parseDate(r[DATE_FIELD_MAP[key]] as string);
+        if (!d) return false; // filtro de data ativo exclui linhas sem essa data
+        if (range.from) {
+          const from = parseDate(range.from);
+          if (from && d.getTime() < from.getTime()) return false;
+        }
+        if (range.to) {
+          const to = parseDate(range.to);
+          if (to) {
+            to.setHours(23, 59, 59, 999); // inclui o dia inteiro do "até"
+            if (d.getTime() > to.getTime()) return false;
+          }
+        }
+      }
     }
     if (q) {
       const hit =

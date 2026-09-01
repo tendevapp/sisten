@@ -16,7 +16,9 @@ create table if not exists public.port_relatorio_portaria (
   observacoes_gerais text,
   criado_por text references public.profiles(id),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  excluido_em timestamptz,
+  excluido_por text references public.core_perfis(id)
 );
 
 create index if not exists port_relatorio_portaria_data_idx on public.port_relatorio_portaria (data desc);

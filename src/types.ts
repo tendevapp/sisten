@@ -64,6 +64,11 @@ export interface Profile {
   // Dicionário de tours guiados já vistos pelo usuário (ex.: { 'nova-solicitacao': true }),
   // persistido no Supabase para não reabrir o tour quando o cache do navegador for limpo.
   tours_seen?: Record<string, boolean>;
+  // Quando true, o usuário é forçado a definir uma nova senha pessoal no próximo
+  // login (popup bloqueante). Ativado pelo admin ao usar "Resetar senha" em
+  // Gestão de Usuários; limpado automaticamente assim que o usuário grava a
+  // nova senha.
+  must_change_password?: boolean;
 }
 
 export interface ActivityLog {
@@ -348,7 +353,14 @@ export interface SAPRequisicao {
   
   // Buyer updated operational fields
   obs_comprador?: string;
+  /** Valor de trabalho da promessa de entrega (auto = remessa do PO + lead time, ou editado). */
   data_entrega_prevista?: string;
+  /**
+   * Promessa de entrega confirmada pelo comprador ("Confirmar data" na Central
+   * de Compras). É a única data que o Rastreio Compras exibe — a `data_entrega_prevista`
+   * não confirmada fica só na Central.
+   */
+  data_entrega_confirmada?: string;
   obs_updated_at?: string;
   obs_updated_by?: string;
   pedido?: string;
@@ -1387,6 +1399,9 @@ export interface ExpedicaoFoto {
   nome_arquivo: string | null;
   criado_por: string | null;
   created_at: string;
+  /** Exclusão lógica — nulo = vigente. Ver src/lib/softDelete.ts. */
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface ExpedicaoTramo {
@@ -1394,6 +1409,10 @@ export interface ExpedicaoTramo {
   carregamento_id: string;
   ordem: number;
   tramo: Tramo;
+  /** Número do tramo (4 dígitos). */
+  numero_tramo?: string | null;
+  /** Número da Nota Fiscal. */
+  numero_nf?: string | null;
   motorista: string;
   cavalo_placa: string;
   cavalo_uf: string | null;
@@ -1417,6 +1436,8 @@ export interface ExpedicaoTramo {
   obs_expedicao: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface ExpedicaoCarregamento {
@@ -1430,6 +1451,8 @@ export interface ExpedicaoCarregamento {
   criado_por_nome: string;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 /** Carregamento com seus tramos e fotos já reunidos — o que a tela de edição manipula. */
@@ -1479,6 +1502,8 @@ export interface RhRota {
   ativo: boolean;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 /** Calendário de percentual de hora extra por dia (`06/01/2023` = 60%, etc.), importado de planilha. */
@@ -1513,6 +1538,8 @@ export interface AseHoraExtraSolicitacao {
   status: AseHoraExtraStatus;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface AseHoraExtraItem {
@@ -1536,6 +1563,8 @@ export interface AseHoraExtraItem {
   horario_embarque_transporte?: string | null;
   contato_transporte?: string | null;
   created_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 /** Solicitação + colaboradores + os cadastros já resolvidos (setor/turno por extenso) — o que a tela de edição manipula. */
@@ -1574,6 +1603,8 @@ export interface PortControleEquipamento {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 // 2. Registro de Chegada de Transportes (FRM.SGP-0009)
@@ -1598,6 +1629,8 @@ export interface PortRegistroTransporte {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 // 3. Controle de Chegada e Saída de Carretas de Chapas (FRM.SGP-0020)
@@ -1626,6 +1659,8 @@ export interface PortControleCarreta {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 // 4. Relatório de Ocorrências da Portaria (FRM.SGP-0010)
@@ -1682,6 +1717,8 @@ export interface PortRelatorioOcorrencia {
   pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
   created_at: string;
   updated_at?: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface PortRelatorioPortaria {
@@ -1700,6 +1737,8 @@ export interface PortRelatorioPortaria {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
   ocorrencias?: PortRelatorioOcorrencia[];
 }
 
@@ -1720,6 +1759,8 @@ export interface PortBriefingParticipante {
   status_assinatura?: 'PENDENTE' | 'ASSINADA';
   validade_dias: number;
   created_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface PortBriefingSessao {
@@ -1737,6 +1778,8 @@ export interface PortBriefingSessao {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
   participantes?: PortBriefingParticipante[];
 }
 
@@ -1754,6 +1797,8 @@ export interface PortMaterialSeguranca {
   observacoes: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 export interface PortItemConferido {
@@ -1790,6 +1835,8 @@ export interface PortPassagemPlantao {
   criado_por: string | null;
   created_at: string;
   updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 // 6. Cadastro de Vigilantes (Portaria)
@@ -1807,6 +1854,8 @@ export interface PortVigilante {
   criado_por?: string | null;
   created_at?: string;
   updated_at?: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
 }
 
 // 7. Gestão de Envios de E-mails (Outlook / mailto)

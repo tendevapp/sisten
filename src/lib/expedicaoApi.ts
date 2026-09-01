@@ -22,6 +22,7 @@ import type {
   EtapaExpedicao, ExpedicaoCarregamento, ExpedicaoCarregamentoCompleto,
   ExpedicaoCarregamentoResumo, ExpedicaoFoto, ExpedicaoTramo, Tramo,
 } from '../types';
+import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 
 const BUCKET = 'expedicao-fotos';
 
@@ -45,26 +46,29 @@ function gerarNumero(): string {
   return `EXP-${ano}-${sufixo}`;
 }
 
-export async function listarCarregamentos(): Promise<ExpedicaoCarregamentoResumo[]> {
-  const { data, error } = await supabase
+export async function listarCarregamentos(incluirExcluidos = false): Promise<ExpedicaoCarregamentoResumo[]> {
+  let query = supabase
     .from('expedicao_carregamentos')
     // As relações vão nomeadas pela constraint: `expedicao_fotos` alcança
     // `expedicao_carregamentos` por dois caminhos (direto e via tramo), e sem
     // a dica o PostgREST recusa o embed por ambiguidade.
     .select(`
       *,
-      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (id, tramo, ordem, hora_chegada_portaria, hora_entrada_patio, hora_expedicao),
-      fotos:expedicao_fotos!expedicao_fotos_carregamento_id_fkey (id)
+      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (id, tramo, ordem, hora_chegada_portaria, hora_entrada_patio, hora_expedicao, excluido_em),
+      fotos:expedicao_fotos!expedicao_fotos_carregamento_id_fkey (id, excluido_em)
     `)
     .order('created_at', { ascending: false })
     .limit(200);
 
+  query = apenasVigentes(query, incluirExcluidos);
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   return (data || []).map((row: any) => ({
     ...row,
-    tramos: (row.tramos || []).sort((a: any, b: any) => a.ordem - b.ordem),
-    total_fotos: (row.fotos || []).length,
+    tramos: semExcluidos(row.tramos, incluirExcluidos).sort((a: any, b: any) => a.ordem - b.ordem),
+    total_fotos: semExcluidos(row.fotos, incluirExcluidos).length,
   })) as ExpedicaoCarregamentoResumo[];
 }
 
@@ -84,13 +88,14 @@ export async function listarSequenciasTramo(): Promise<Record<string, number>> {
     .from('expedicao_carregamentos')
     .select(`
       id, empresa, created_at,
-      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (tramo, ordem, data)
-    `);
+      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (tramo, ordem, data, excluido_em)
+    `)
+    .is('excluido_em', null);
 
   if (error) throw new Error(error.message);
 
   const linhas = (data || []).map((row: any) => {
-    const tramos = (row.tramos || []).slice().sort((a: any, b: any) => a.ordem - b.ordem);
+    const tramos = semExcluidos(row.tramos).slice().sort((a: any, b: any) => a.ordem - b.ordem);
     return {
       id: row.id as string,
       // Os carregamentos antigos podem ter mais de um tramo; a chave usa o
@@ -112,7 +117,7 @@ export async function listarSequenciasTramo(): Promise<Record<string, number>> {
   return sequencias;
 }
 
-export async function obterCarregamento(id: string): Promise<ExpedicaoCarregamentoCompleto | null> {
+export async function obterCarregamento(id: string, incluirExcluidos = false): Promise<ExpedicaoCarregamentoCompleto | null> {
   const { data, error } = await supabase
     .from('expedicao_carregamentos')
     .select('*, tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (*), fotos:expedicao_fotos!expedicao_fotos_carregamento_id_fkey (*)')
@@ -125,8 +130,8 @@ export async function obterCarregamento(id: string): Promise<ExpedicaoCarregamen
   const row = data as any;
   return {
     ...row,
-    tramos: (row.tramos || []).sort((a: ExpedicaoTramo, b: ExpedicaoTramo) => a.ordem - b.ordem),
-    fotos: row.fotos || [],
+    tramos: semExcluidos(row.tramos, incluirExcluidos).sort((a: ExpedicaoTramo, b: ExpedicaoTramo) => a.ordem - b.ordem),
+    fotos: semExcluidos(row.fotos, incluirExcluidos),
   } as ExpedicaoCarregamentoCompleto;
 }
 
@@ -161,21 +166,24 @@ export async function salvarCarregamento(
   if (error) throw new Error(error.message);
 }
 
-/** Remove o carregamento; tramos e fotos caem por `on delete cascade`. */
-export async function excluirCarregamento(id: string): Promise<void> {
-  // Os arquivos no bucket não têm FK para a tabela, então são apagados antes —
-  // depois do delete em cascata não haveria mais como descobrir seus caminhos.
-  const { data: fotos } = await supabase
-    .from('expedicao_fotos')
-    .select('storage_path')
-    .eq('carregamento_id', id);
+/**
+ * Exclusão lógica do carregamento: grava `excluido_em` e o registro some das
+ * listagens. Tramos e fotos filhos continuam no banco (e os arquivos no bucket
+ * são preservados) — o conjunto volta inteiro num `restaurarCarregamento`.
+ */
+export async function excluirCarregamento(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('expedicao_carregamentos')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
 
-  const caminhos = (fotos || []).map((f: any) => f.storage_path);
-  if (caminhos.length > 0) {
-    await supabase.storage.from(BUCKET).remove(caminhos);
-  }
-
-  const { error } = await supabase.from('expedicao_carregamentos').delete().eq('id', id);
+export async function restaurarCarregamento(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('expedicao_carregamentos')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -204,7 +212,7 @@ export async function criarTramo(params: {
 }
 
 type TramoEditavel = Pick<ExpedicaoTramo,
-  'tramo' | 'motorista' | 'cavalo_placa' | 'cavalo_uf' | 'carreta_placa' | 'carreta_uf'
+  'tramo' | 'numero_tramo' | 'numero_nf' | 'motorista' | 'cavalo_placa' | 'cavalo_uf' | 'carreta_placa' | 'carreta_uf'
   | 'dolly_placa' | 'dolly_uf' | 'data' | 'ordem'
   | 'data_chegada_portaria' | 'data_entrada_patio' | 'data_expedicao'
   | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'
@@ -218,18 +226,19 @@ export async function salvarTramo(id: string, patch: Partial<TramoEditavel>): Pr
   if (error) throw new Error(error.message);
 }
 
-export async function excluirTramo(id: string): Promise<void> {
-  const { data: fotos } = await supabase
-    .from('expedicao_fotos')
-    .select('storage_path')
-    .eq('tramo_id', id);
+export async function excluirTramo(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await supabase
+    .from('expedicao_tramos')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
 
-  const caminhos = (fotos || []).map((f: any) => f.storage_path);
-  if (caminhos.length > 0) {
-    await supabase.storage.from(BUCKET).remove(caminhos);
-  }
-
-  const { error } = await supabase.from('expedicao_tramos').delete().eq('id', id);
+export async function restaurarTramo(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('expedicao_tramos')
+    .update(marcarRestaurado())
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -309,10 +318,21 @@ export async function enviarFoto(params: {
   return data as ExpedicaoFoto;
 }
 
-export async function excluirFoto(foto: ExpedicaoFoto): Promise<void> {
-  const { error } = await supabase.from('expedicao_fotos').delete().eq('id', foto.id);
+export async function excluirFoto(foto: ExpedicaoFoto, excluidoPor?: string): Promise<void> {
+  // Exclusão lógica: o arquivo permanece no bucket para permitir restauração.
+  const { error } = await supabase
+    .from('expedicao_fotos')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', foto.id);
   if (error) throw new Error(error.message);
-  await supabase.storage.from(BUCKET).remove([foto.storage_path]);
+}
+
+export async function restaurarFoto(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('expedicao_fotos')
+    .update(marcarRestaurado())
+    .eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 const cacheUrls = new Map<string, { url: string; expiraEm: number }>();

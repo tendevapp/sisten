@@ -18,9 +18,9 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ResponsiveContainer } from 'recharts';
 import { CalendarDays } from 'lucide-react';
-import { PontoSemanal, rotuloSemana, intervaloSemana } from '../../lib/consumoSemanal';
+import { PontoSemanal, rotuloSemana, intervaloSemana, inicioDaSemana } from '../../lib/consumoSemanal';
 import { formatQtd } from '../../lib/almoxarifado';
-import { formatInt } from '../../lib/format';
+import { formatInt, formatDateBR } from '../../lib/format';
 import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
@@ -32,15 +32,19 @@ interface ConsumoSemanalChartProps {
   umb?: string;
   /** Semana em que a produção começou, marcada como referência. */
   semanaProducao?: string;
+  /** Data ou início da semana atual para destacar no gráfico. */
+  semanaAtual?: string;
+  /** Maior data de lançamento presente nos dados MB51. */
+  dataMaxima?: string | null;
   loading?: boolean;
 }
 
 function TooltipConteudo({ active, payload, cores, umb }: any) {
   if (!active || !payload?.length) return null;
-  const p = payload[0].payload as PontoSemanal & { rotulo: string; intervalo: string };
+  const p = payload[0].payload as PontoSemanal & { rotulo: string; intervalo: string; ehAtual?: boolean };
   return (
     <ChartTooltip
-      title={p.rotulo}
+      title={p.ehAtual ? `${p.rotulo} (Semana atual)` : p.rotulo}
       // O número da semana sozinho não situa no calendário; o intervalo situa.
       subtitle={p.intervalo}
       rows={[
@@ -49,31 +53,47 @@ function TooltipConteudo({ active, payload, cores, umb }: any) {
         { label: 'Saídas registradas', value: formatInt(p.eventosConsumo) },
         { label: 'Saldo acumulado', value: `${formatQtd(p.acumulado)} ${umb || ''}` },
       ]}
-      footer={p.consumo === 0 && p.entrada === 0 ? 'Sem movimento nesta semana.' : undefined}
+      footer={
+        p.ehAtual && p.consumo === 0 && p.entrada === 0
+          ? 'Semana atual em andamento (sem movimentações registradas).'
+          : p.consumo === 0 && p.entrada === 0
+          ? 'Sem movimento nesta semana.'
+          : undefined
+      }
     />
   );
 }
 
 export default function ConsumoSemanalChart({
-  dados, material, descricao, umb, semanaProducao, loading,
+  dados, material, descricao, umb, semanaProducao, semanaAtual, dataMaxima, loading,
 }: ConsumoSemanalChartProps) {
   const c = useChartConfig();
   const cores = [c.tokens.series[0], c.tokens.series[2]];
+  const semanaAtualIso = semanaAtual ? inicioDaSemana(semanaAtual) : undefined;
+  const rotuloAtual = semanaAtualIso ? rotuloSemana(semanaAtualIso) : undefined;
+
   const formatados = dados.map(d => ({
     ...d,
     rotulo: rotuloSemana(d.semana),
     intervalo: intervaloSemana(d.semana),
+    ehAtual: semanaAtualIso ? d.semana === semanaAtualIso : false,
   }));
 
   // Em 25 semanas todo rótulo cabe; acima disso, um sim outro não, para o
   // eixo não virar uma faixa preta de texto sobreposto.
   const intervalo = formatados.length > 30 ? 1 : 0;
 
+  const textoDescricao = descricao
+    ? (dataMaxima ? `${descricao} (dados na base até ${formatDateBR(dataMaxima)})` : descricao)
+    : (dataMaxima
+        ? `Consumo e entrada por semana até a semana atual (último lançamento na base em ${formatDateBR(dataMaxima)}).`
+        : 'Consumo e entrada por semana. Semanas sem movimento aparecem como zero.');
+
   return (
     <ChartCard
       title={`Consumo semanal — ${material}`}
       icon={CalendarDays}
-      description={descricao || 'Consumo e entrada por semana. Semanas sem movimento aparecem como zero.'}
+      description={textoDescricao}
       height={320}
       // Duas barras por semana; um material com longo histórico passa
       // fácil de 30-40 semanas — o intervalo salteado (acima) já reduz a
@@ -109,6 +129,24 @@ export default function ConsumoSemanalChart({
                 position: 'insideTopLeft',
                 fontSize: 10,
                 fill: c.tokens.inkMuted,
+              }}
+            />
+          )}
+
+          {/* Marcador da semana atual para destacar onde estamos no tempo */}
+          {rotuloAtual && formatados.some(d => d.rotulo === rotuloAtual) && (
+            <ReferenceLine
+              x={rotuloAtual}
+              stroke={cores[0]}
+              strokeDasharray="3 3"
+              strokeWidth={1.5}
+              strokeOpacity={0.8}
+              label={{
+                value: 'semana atual',
+                position: 'insideTopLeft',
+                fontSize: 10,
+                fill: cores[0],
+                fontWeight: 600,
               }}
             />
           )}

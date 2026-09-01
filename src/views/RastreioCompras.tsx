@@ -14,13 +14,14 @@ import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { canAccessPage } from '../lib/pages';
 import {
-  RastreioRow, DeliveryScope, TipoItemFilter, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
+  RastreioRow, DeliveryScope, TipoItemFilter, RastreioDateField, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort, itensSemMigo,
 } from '../lib/rastreio';
 import { AlmoxarifadoChegada } from '../types';
 import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
+import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -106,6 +107,23 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const STORAGE_COLS_KEY = 'sisten_rastreio_visible_columns';
 const PAGE_SIZE = 50;
 
+type DateRange = { from: string; to: string };
+type RastreioDateFilters = Record<RastreioDateField, DateRange>;
+
+const DATE_FILTER_DEFS: { key: RastreioDateField; label: string }[] = [
+  { key: 'rm', label: 'Data da RM' },
+  { key: 'po', label: 'Data do PO' },
+  { key: 'prev', label: 'Previsão de entrega' },
+  { key: 'entrega', label: 'Entrega (MIGO)' },
+];
+
+const emptyDateFilters = (): RastreioDateFilters => ({
+  rm: { from: '', to: '' },
+  po: { from: '', to: '' },
+  prev: { from: '', to: '' },
+  entrega: { from: '', to: '' },
+});
+
 export default function RastreioCompras({ user }: RastreioComprasProps) {
   const toast = useToast();
   const tour = usePageTour('rastreio-compras', RASTREIO_TOUR_STEPS.length);
@@ -124,6 +142,12 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [setorFilter, setSetorFilter] = useState('Todos');
   const [anoFilter, setAnoFilter] = useState('Todos');
   const [scope, setScope] = useState<DeliveryScope>('todos');
+  const [dateFilters, setDateFilters] = useState<RastreioDateFilters>(emptyDateFilters);
+  const [showDateFilters, setShowDateFilters] = useState(false);
+  const activeDateFilterCount = useMemo(
+    () => Object.values(dateFilters).filter(r => r.from || r.to).length,
+    [dateFilters]
+  );
 
   // Modal de detalhes + conversa
   const [selectedRow, setSelectedRow] = useState<RastreioRow | null>(null);
@@ -166,6 +190,15 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [bulkSaving, setBulkSaving] = useState(false);
   // PO cuja chegada em grupo está sendo gravada (botão do bloco no Cronograma).
   const [savingPo, setSavingPo] = useState<string | null>(null);
+  // Confirmação da data de chegada: a carga pode ter entrado no almoxarifado num
+  // dia diferente do de hoje (registro em atraso, conferência posterior). O botão
+  // "Marcar chegada" abre este prompt com a data editável em vez de gravar direto.
+  const [chegadaPrompt, setChegadaPrompt] = useState<
+    | { kind: 'ri'; ri: string }
+    | { kind: 'po'; po: string; ris: string[] }
+    | null
+  >(null);
+  const [chegadaPromptDate, setChegadaPromptDate] = useState(todayISO());
 
   const toggleSelectRi = useCallback((ri: string) => {
     setSelectedRis(prev => {
@@ -175,18 +208,12 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     });
   }, []);
 
-  const marcarChegada = useCallback(async (ri: string) => {
-    setSavingRi(ri);
-    try {
-      await localDb.setAlmoxarifadoChegada([ri], todayISO());
-      refreshChegadas();
-    } catch (e: any) {
-      console.error('Falha ao marcar chegada no almoxarifado:', e);
-      toast.error('Não foi possível salvar a chegada. Tente novamente.');
-    } finally {
-      setSavingRi(null);
-    }
-  }, [refreshChegadas, toast]);
+  // Abre o prompt de confirmação com a data (padrão: hoje). A gravação em si
+  // acontece em confirmarChegada, depois que o usuário confirma/ajusta a data.
+  const marcarChegada = useCallback((ri: string) => {
+    setChegadaPromptDate(todayISO());
+    setChegadaPrompt({ kind: 'ri', ri });
+  }, []);
 
   const desfazerChegada = useCallback(async (ri: string) => {
     setSavingRi(ri);
@@ -203,21 +230,45 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // Confirma de uma vez a chegada de todos os itens pendentes de um mesmo PO —
   // a carga chega por pedido (uma nota, um caminhão), então conferir item a
-  // item no cronograma era trabalho repetido.
-  const marcarChegadaPo = useCallback(async (po: string, ris: string[]) => {
+  // item no cronograma era trabalho repetido. Também passa pelo prompt de data.
+  const marcarChegadaPo = useCallback((po: string, ris: string[]) => {
     if (ris.length === 0) return;
-    setSavingPo(po);
-    try {
-      await localDb.setAlmoxarifadoChegada(ris, todayISO());
-      refreshChegadas();
-      toast.success(`Chegada registrada para ${ris.length} item(ns) do PO ${po}.`);
-    } catch (e: any) {
-      console.error('Falha ao marcar chegada do PO:', e);
-      toast.error('Não foi possível registrar a chegada do pedido. Tente novamente.');
-    } finally {
-      setSavingPo(null);
+    setChegadaPromptDate(todayISO());
+    setChegadaPrompt({ kind: 'po', po, ris });
+  }, []);
+
+  // Grava a chegada (item único ou PO inteiro) com a data escolhida no prompt.
+  const confirmarChegada = useCallback(async () => {
+    if (!chegadaPrompt || !chegadaPromptDate) return;
+    const data = chegadaPromptDate;
+    if (chegadaPrompt.kind === 'ri') {
+      setSavingRi(chegadaPrompt.ri);
+      try {
+        await localDb.setAlmoxarifadoChegada([chegadaPrompt.ri], data);
+        refreshChegadas();
+        setChegadaPrompt(null);
+      } catch (e: any) {
+        console.error('Falha ao marcar chegada no almoxarifado:', e);
+        toast.error('Não foi possível salvar a chegada. Tente novamente.');
+      } finally {
+        setSavingRi(null);
+      }
+    } else {
+      const { po, ris } = chegadaPrompt;
+      setSavingPo(po);
+      try {
+        await localDb.setAlmoxarifadoChegada(ris, data);
+        refreshChegadas();
+        toast.success(`Chegada registrada para ${ris.length} item(ns) do PO ${po}.`);
+        setChegadaPrompt(null);
+      } catch (e: any) {
+        console.error('Falha ao marcar chegada do PO:', e);
+        toast.error('Não foi possível registrar a chegada do pedido. Tente novamente.');
+      } finally {
+        setSavingPo(null);
+      }
     }
-  }, [refreshChegadas, toast]);
+  }, [chegadaPrompt, chegadaPromptDate, refreshChegadas, toast]);
 
   const marcarSelecionados = useCallback(async () => {
     if (selectedRis.size === 0) return;
@@ -277,8 +328,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const anoOpts = useMemo(() => anoOptions(rows), [rows]);
 
   const filteredRows = useMemo(
-    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope, tipo: tipoFilter }),
-    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope, tipoFilter]
+    () => filterRegistros(rows, { query: searchQuery, status: statusFilter, setor: setorFilter, ano: anoFilter, scope, tipo: tipoFilter, dateRanges: dateFilters }),
+    [rows, searchQuery, statusFilter, setorFilter, anoFilter, scope, tipoFilter, dateFilters]
   );
 
   // Ordenação da tabela. Sem coluna ativa, usa o padrão (MIGO ↑, descrição ↑).
@@ -323,8 +374,8 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     });
   }, [almoxarifadoCandidateRis]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir]);
-  useEffect(() => { setSelectedRis(new Set()); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, tab]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, sortColumn, sortDir, dateFilters]);
+  useEffect(() => { setSelectedRis(new Set()); }, [searchQuery, tipoFilter, statusFilter, setorFilter, anoFilter, scope, tab, dateFilters]);
 
   // Deep-link: notificação de mensagem abre a conversa do item (#/rastreio?ri=...).
   useEffect(() => {
@@ -580,7 +631,61 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
                 {anoOpts.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowDateFilters(v => !v)}
+              className={`relative shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                activeDateFilterCount > 0
+                  ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              Datas
+              {activeDateFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-black">
+                  {activeDateFilterCount}
+                </span>
+              )}
+              <ChevronDown className={`h-3 w-3 transition-transform ${showDateFilters ? 'rotate-180' : ''}`} />
+            </button>
           </div>
+
+          {showDateFilters && (
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
+              {DATE_FILTER_DEFS.map(({ key, label }) => (
+                <div key={key} className="space-y-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={dateFilters[key].from}
+                      max={dateFilters[key].to || undefined}
+                      onChange={e => setDateFilters(p => ({ ...p, [key]: { ...p[key], from: e.target.value } }))}
+                      className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-[11px] font-bold text-slate-400 shrink-0">até</span>
+                    <input
+                      type="date"
+                      value={dateFilters[key].to}
+                      min={dateFilters[key].from || undefined}
+                      onChange={e => setDateFilters(p => ({ ...p, [key]: { ...p[key], to: e.target.value } }))}
+                      className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              ))}
+              {activeDateFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilters(emptyDateFilters())}
+                  className="sm:col-span-2 justify-self-start text-xs font-bold text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                >
+                  Limpar filtros de data
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -755,6 +860,57 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
           onThreadRead={refreshUnread}
           canSeeValores={canSeeValores}
         />
+      )}
+
+      {/* Confirmação da data de chegada no almoxarifado */}
+      {chegadaPrompt && (
+        <Modal onClose={() => setChegadaPrompt(null)} maxWidth="max-w-sm" ariaLabel="Confirmar data de chegada">
+          <div className="flex items-start gap-3 px-4 sm:px-6 pt-5 pb-3.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+              <PackageCheck className="h-6 w-6" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Confirmar chegada</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                {chegadaPrompt.kind === 'po'
+                  ? `Registrar a chegada de ${chegadaPrompt.ris.length} item(ns) do PO ${chegadaPrompt.po} no almoxarifado.`
+                  : 'Registrar a chegada deste item no almoxarifado.'}
+              </p>
+            </div>
+          </div>
+          <ModalBody className="space-y-2">
+            <label className="flex flex-col gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+              <span className="flex items-center gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Data da chegada</span>
+              <input
+                type="date"
+                value={chegadaPromptDate}
+                onChange={e => setChegadaPromptDate(e.target.value)}
+                max={todayISO()}
+                className="px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-sm font-bold text-slate-700 dark:text-slate-200 focus:border-emerald-500 focus:outline-none"
+              />
+            </label>
+            <p className="text-[11px] text-slate-400">
+              Use a data em que a carga entrou no almoxarifado — pode ser diferente de hoje e da data de resposta do fornecedor.
+            </p>
+          </ModalBody>
+          <ModalFooter className="justify-between">
+            <button
+              type="button"
+              onClick={() => setChegadaPrompt(null)}
+              className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarChegada}
+              disabled={!chegadaPromptDate || savingRi !== null || savingPo !== null}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <PackageCheck className="h-4 w-4" /> Confirmar chegada
+            </button>
+          </ModalFooter>
+        </Modal>
       )}
 
       {tour.isOpen && (

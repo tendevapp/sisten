@@ -18,6 +18,7 @@ import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
 
 interface Props {
   user: Profile;
@@ -36,6 +37,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const [modalSaidaAberto, setModalSaidaAberto] = useState(false);
   const [itemSelecionado, setItemSelecionado] = useState<PortControleEquipamento | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortControleEquipamento | null>(null);
+  const podeVerExcluidos = user.roles.includes('admin');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Form states
   const [salvando, setSalvando] = useState(false);
@@ -63,6 +66,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
       const data = await api.listarEquipamentos({
         status: filtroStatus,
         termoBusca,
+        incluirExcluidos: podeVerExcluidos && mostrarExcluidos,
       });
       setItens(data);
     } catch (e) {
@@ -70,7 +74,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [filtroStatus, termoBusca, toast]);
+  }, [filtroStatus, termoBusca, toast, podeVerExcluidos, mostrarExcluidos]);
 
   useEffect(() => {
     carregarDados();
@@ -138,12 +142,22 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const handleExcluir = async () => {
     if (!itemParaExcluir) return;
     try {
-      await api.excluirEquipamento(itemParaExcluir.id);
-      toast.success('Registro excluído com sucesso.');
+      await api.excluirEquipamento(itemParaExcluir.id, user.id);
+      toast.success('Registro excluído. Continua no banco e pode ser restaurado por um administrador.');
       setItemParaExcluir(null);
       carregarDados();
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
+    }
+  };
+
+  const handleRestaurar = async (item: PortControleEquipamento) => {
+    try {
+      await api.restaurarEquipamento(item.id);
+      toast.success('Registro restaurado.');
+      carregarDados();
+    } catch (e) {
+      toast.error(`Erro ao restaurar: ${(e as Error).message}`);
     }
   };
 
@@ -201,6 +215,11 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto">
+          <MostrarExcluidosToggle
+            visivel={podeVerExcluidos}
+            checked={mostrarExcluidos}
+            onChange={setMostrarExcluidos}
+          />
           {(['NO_PATIO', 'TODOS', 'DEVOLVIDO', 'RETIDO'] as const).map((st) => (
             <button
               key={st}
@@ -249,10 +268,11 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                 {itens.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                  <tr key={item.id} className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors ${classeLinhaExcluida(item.excluido_em)}`}>
                     <td className="px-4 py-3.5 align-top">
-                      <div className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                      <div className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
                         {item.numero_protocolo}
+                        {item.excluido_em && <BadgeExcluido em={item.excluido_em} />}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {item.data_entrada} {item.hora_entrada && `às ${item.hora_entrada}`}
@@ -283,6 +303,10 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                     </td>
                     <td className="px-4 py-3.5 align-top text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {item.excluido_em ? (
+                          <RestaurarButton onClick={() => handleRestaurar(item)} />
+                        ) : (
+                        <>
                         {item.status === 'NO_PATIO' && (
                           <button
                             type="button"
@@ -313,6 +337,8 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -558,7 +584,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
       {itemParaExcluir && (
         <ConfirmDialog
           titulo="Excluir Registro de Equipamento"
-          mensagem={`Deseja realmente excluir o registro ${itemParaExcluir.numero_protocolo} da empresa ${itemParaExcluir.nome_empresa}? Esta ação não pode ser desfeita.`}
+          mensagem={`Deseja excluir o registro ${itemParaExcluir.numero_protocolo} da empresa ${itemParaExcluir.nome_empresa}? Ele será ocultado das listagens, mas mantido no banco e pode ser restaurado por um administrador.`}
           confirmarLabel="Sim, Excluir"
           variante="perigo"
           onConfirmar={handleExcluir}

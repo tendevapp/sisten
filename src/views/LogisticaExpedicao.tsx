@@ -230,6 +230,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | { tipo: 'voltar' }
     | { tipo: 'excluir-tramo'; tramoId: string; rotulo: string }
     | { tipo: 'excluir-carregamento' }
+    | { tipo: 'enviar-sem-nf-tramo'; pendencias: string[] }
     | null
   >(null);
   const [excluindo, setExcluindo] = useState(false);
@@ -291,6 +292,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       });
       await Promise.all(dadosParaSalvar.tramos.map(t => api.salvarTramo(t.id, {
         tramo: t.tramo,
+        numero_tramo: t.numero_tramo,
+        numero_nf: t.numero_nf,
         motorista: t.motorista,
         cavalo_placa: t.cavalo_placa,
         cavalo_uf: t.cavalo_uf,
@@ -498,6 +501,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         sequencia,
         tramo: tramo.tramo,
         carretaPlaca: tramo.carreta_placa,
+        numeroTramo: tramo.numero_tramo,
+        numeroNf: tramo.numero_nf,
       });
 
       await abrirOutlook(assunto, corpo, {
@@ -514,7 +519,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
    * Salva e abre o Outlook já preenchido. Os links das fotos são assinados
    * aqui, com validade longa, porque só nesta hora se sabe quais fotos entram.
    */
-  const salvarEEnviar = async () => {
+  const executarEnvioFinal = async () => {
     if (!dados) return;
     if (dados.tramos.length === 0) {
       toast.warning('Adicione ao menos um tramo antes de enviar.');
@@ -534,6 +539,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
       // Nos carregamentos novos há um tramo só; nos antigos, os rótulos e as
       // placas entram juntos para o assunto seguir identificando o caminhão.
+      const tramosComNum = dados.tramos.map(t => t.numero_tramo).filter(Boolean);
+      const tramosComNf = dados.tramos.map(t => t.numero_nf).filter(Boolean);
+
       const assunto = montarAssuntoExpedicao({
         prefixo: configTramos?.assunto_padrao || ASSUNTO_PADRAO,
         sequencia,
@@ -541,6 +549,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         carretaPlaca: [...new Set(
           dados.tramos.map(t => (t.carreta_placa || '').trim().toUpperCase()).filter(Boolean),
         )].join(' + '),
+        numeroTramo: tramosComNum.length > 0 ? tramosComNum.join(' + ') : undefined,
+        numeroNf: tramosComNf.length > 0 ? tramosComNf.join(' + ') : undefined,
       });
 
       await abrirOutlook(assunto, corpo, {
@@ -556,6 +566,31 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     } finally {
       setSalvando(false);
     }
+  };
+
+  const salvarEEnviar = async () => {
+    if (!dados) return;
+    if (dados.tramos.length === 0) {
+      toast.warning('Adicione ao menos um tramo antes de enviar.');
+      return;
+    }
+
+    const pendencias: string[] = [];
+    for (const t of dados.tramos) {
+      const faltantes: string[] = [];
+      if (!t.numero_tramo || !t.numero_tramo.trim()) faltantes.push('Nº do Tramo');
+      if (!t.numero_nf || !t.numero_nf.trim()) faltantes.push('Número da NF');
+      if (faltantes.length > 0) {
+        pendencias.push(`${t.tramo}: sem ${faltantes.join(' e ')}`);
+      }
+    }
+
+    if (pendencias.length > 0) {
+      setConfirmacao({ tipo: 'enviar-sem-nf-tramo', pendencias });
+      return;
+    }
+
+    await executarEnvioFinal();
   };
 
   const voltar = () => {
@@ -842,6 +877,36 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           variante="perigo"
           confirmando={excluindo}
           onConfirmar={confirmarExclusao}
+          onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
+      {confirmacao?.tipo === 'enviar-sem-nf-tramo' && (
+        <ConfirmDialog
+          titulo="Enviar e-mail sem Nº do Tramo ou NF?"
+          mensagem={
+            <div className="space-y-2.5">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Os seguintes dados de faturamento/identificação não foram preenchidos:
+              </p>
+              <ul className="list-inside list-disc rounded-xl bg-amber-50/90 p-2.5 text-xs font-semibold text-amber-900 border border-amber-200/60 dark:bg-amber-950/40 dark:border-amber-900/40 dark:text-amber-200 space-y-1">
+                {confirmacao.pendencias.map((p, idx) => (
+                  <li key={idx}>{p}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Deseja abrir o Outlook e realizar o envio mesmo sem essas informações?
+              </p>
+            </div>
+          }
+          confirmarLabel="Sim, enviar assim mesmo"
+          cancelarLabel="Voltar e preencher"
+          variante="padrao"
+          confirmando={salvando}
+          onConfirmar={async () => {
+            setConfirmacao(null);
+            await executarEnvioFinal();
+          }}
           onCancelar={() => setConfirmacao(null)}
         />
       )}

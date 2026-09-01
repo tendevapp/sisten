@@ -1,20 +1,8 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- *
- * Um tramo dentro do carregamento: os dados do veículo e do motorista, mais a
- * trilha das três marcações de tempo.
- *
- * É recolhível porque um carregamento pode ter cinco tramos: expandidos de uma
- * vez, o formulário passaria de dois metros de rolagem no celular, e quem está
- * no pátio para preencher *um* horário teria de caçá-lo. Recolhido, o
- * cabeçalho ainda mostra motorista e as três bolinhas de progresso — o
- * suficiente para achar o tramo certo sem abrir nenhum.
- */
-
-import { ChevronDown, Trash2 } from 'lucide-react';
+import React from 'react';
+import { ChevronDown, Clock, Hash, FileText, Trash2 } from 'lucide-react';
 import type { EtapaExpedicao, ExpedicaoFoto, ExpedicaoTramo, Tramo } from '../../types';
 import { TRAMOS } from '../../types';
+import { calcularLeadTimesTramo, normalizarDataISO } from '../../lib/expedicaoEmail';
 import EtapaHorario from './EtapaHorario';
 
 const UFS = [
@@ -79,6 +67,9 @@ export default function TramoCard({
 }: TramoCardProps) {
   const horas = ETAPAS.map(e => tramo[e.campo] as string | null);
   const concluidas = horas.filter(Boolean).length;
+  const leadTimes = calcularLeadTimesTramo(tramo);
+
+  const rotuloIdentificacao = tramo.numero_tramo ? `${tramo.tramo} - ${tramo.numero_tramo}` : tramo.tramo;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -90,12 +81,17 @@ export default function TramoCard({
           aria-expanded={aberto}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-extrabold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-            {tramo.tramo}
+          <span className="flex min-w-10 px-2.5 h-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-extrabold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+            {rotuloIdentificacao}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-50">
-              {tramo.motorista?.trim() || 'Motorista não informado'}
+            <span className="flex items-center gap-2 truncate text-sm font-bold text-slate-900 dark:text-slate-50">
+              <span className="truncate">{tramo.motorista?.trim() || 'Motorista não informado'}</span>
+              {tramo.numero_nf && (
+                <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  NF: {tramo.numero_nf}
+                </span>
+              )}
             </span>
             <span className="mt-0.5 flex items-center gap-1.5">
               {horas.map((h, i) => (
@@ -128,6 +124,7 @@ export default function TramoCard({
       {aberto && (
         <div className="border-t border-slate-100 px-3 pb-5 pt-4 sm:px-4 dark:border-slate-800">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Tipo do Tramo */}
             <div className="sm:col-span-1">
               <label htmlFor={`tramo-${tramo.id}`} className={rotuloClasse}>Tramo</label>
               <select
@@ -141,14 +138,21 @@ export default function TramoCard({
               </select>
             </div>
 
+            {/* Data Geral */}
             <div className="sm:col-span-1">
               <label htmlFor={`data-${tramo.id}`} className={rotuloClasse}>Data</label>
               <input
                 id={`data-${tramo.id}`}
                 type="date"
-                value={tramo.data || ''}
+                min="2020-01-01"
+                max="2099-12-31"
+                value={normalizarDataISO(tramo.data) || ''}
                 disabled={somenteLeitura}
-                onChange={e => onChange({ data: e.target.value || null })}
+                onChange={e => onChange({ data: normalizarDataISO(e.target.value) || null })}
+                onBlur={e => {
+                  const c = normalizarDataISO(e.target.value);
+                  if (c && c !== tramo.data) onChange({ data: c });
+                }}
                 className={`${campoClasse} mt-1.5`}
               />
             </div>
@@ -210,18 +214,100 @@ export default function TramoCard({
                 rotulo={e.rotulo}
                 data={tramo[e.campoData] as string | null}
                 hora={tramo[e.campo] as string | null}
-                obs={tramo[e.campoObs] as string | null}
                 fotos={fotos.filter(f => f.etapa === e.etapa)}
                 ultima={i === ETAPAS.length - 1}
                 desabilitado={somenteLeitura}
                 onDataChange={data => onChange({ [e.campoData]: data } as Partial<ExpedicaoTramo>)}
                 onHoraChange={hora => onChange({ [e.campo]: hora } as Partial<ExpedicaoTramo>)}
-                onObsChange={obs => onChange({ [e.campoObs]: obs } as Partial<ExpedicaoTramo>)}
                 onAnexar={arquivos => onAnexarFoto(e.etapa, arquivos)}
                 onExcluirFoto={onExcluirFoto}
                 onEnviarEmail={e.etapa === 'chegada_portaria' ? onEnviarChegada : undefined}
               />
             ))}
+
+            {/* Identificação de Expedição: Nº do Tramo e Número da NF (Posicionado antes do Lead Time) */}
+            <div className="mt-5 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Dados de Faturamento & Expedição
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor={`numero-tramo-${tramo.id}`} className={rotuloClasse}>
+                    Nº Tramo (4 dígitos)
+                  </label>
+                  <input
+                    id={`numero-tramo-${tramo.id}`}
+                    type="text"
+                    maxLength={4}
+                    value={tramo.numero_tramo || ''}
+                    disabled={somenteLeitura}
+                    placeholder="Ex.: 1234"
+                    inputMode="numeric"
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      onChange({ numero_tramo: v || null });
+                    }}
+                    className={`${campoClasse} mt-1.5 font-mono font-bold tracking-wider`}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor={`numero-nf-${tramo.id}`} className={rotuloClasse}>
+                    Número da NF
+                  </label>
+                  <input
+                    id={`numero-nf-${tramo.id}`}
+                    type="text"
+                    value={tramo.numero_nf || ''}
+                    disabled={somenteLeitura}
+                    placeholder="Ex.: 001234"
+                    onChange={e => onChange({ numero_nf: e.target.value ? e.target.value.toUpperCase() : null })}
+                    className={`${campoClasse} mt-1.5 font-semibold`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Painel de Cálculo de Lead Time das Etapas */}
+            <div className="mt-4 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900/80">
+              <div className="flex items-center gap-2 mb-2.5">
+                <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Cálculo de Tempos (Lead Time)
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">
+                    Portaria ➔ Pátio
+                  </p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {leadTimes.portariaAtePatio || <span className="font-normal text-slate-400">Aguardando etapas</span>}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">
+                    Pátio ➔ Expedição
+                  </p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                    {leadTimes.patioAteExpedicao || <span className="font-normal text-slate-400">Aguardando etapas</span>}
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-blue-50/70 p-2.5 border border-blue-100 dark:bg-blue-950/40 dark:border-blue-900/60">
+                  <p className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400">
+                    Lead Time Total (Portaria ➔ Exp.)
+                  </p>
+                  <p className="mt-0.5 text-xs font-extrabold text-blue-700 dark:text-blue-300">
+                    {leadTimes.leadTimeTotal || <span className="font-normal text-slate-400">Aguardando conclusão</span>}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

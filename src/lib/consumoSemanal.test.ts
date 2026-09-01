@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getISOWeek, parseISO } from 'date-fns';
 import {
   inicioDaSemana, semanasDoPeriodo, construirBaseSemanal, serieDoMaterial,
-  rotuloSemana, intervaloSemana, mediaPorSemanaAtiva,
+  rotuloSemana, intervaloSemana, mediaPorSemanaAtiva, ehSemanaAtual,
 } from './consumoSemanal';
 import { MB51Classificado } from '../types';
 
@@ -105,6 +105,22 @@ describe('construirBaseSemanal', () => {
     expect(construirBaseSemanal([]).materiais).toHaveLength(0);
     expect(construirBaseSemanal([]).semanas).toHaveLength(0);
   });
+
+  it('estende as semanas do periodo ate dataFim quando informada', () => {
+    // Ultimo movimento em 25/05, mas o app passa dataFim em 08/06 -> gera 6 semanas com zeros nas duas ultimas
+    const base = construirBaseSemanal([
+      mov({ data_lancamento: '2026-05-04', qtd_um_registro: -10 }),
+      mov({ id: 2, data_lancamento: '2026-05-25', qtd_um_registro: -5 }),
+    ], '2026-06-08');
+
+    expect(base.semanas).toHaveLength(6);
+    expect(base.semanas[base.semanas.length - 1]).toBe('2026-06-08');
+    expect(base.minData).toBe('2026-05-04');
+    expect(base.maxData).toBe('2026-05-25');
+    expect(base.materiais[0].serie).toEqual([10, 0, 0, 5, 0, 0]);
+    expect(base.materiais[0].totalSemanas).toBe(6);
+    expect(base.materiais[0].semanasAtivas).toBe(2);
+  });
 });
 
 describe('serieDoMaterial', () => {
@@ -167,3 +183,17 @@ describe('intervaloSemana', () => {
     expect(intervaloSemana('2026-05-04')).toBe('04/05-10/05');
   });
 });
+
+describe('ehSemanaAtual', () => {
+  it('identifica corretamente datas dentro da mesma semana', () => {
+    expect(ehSemanaAtual('2026-08-31', '2026-08-31')).toBe(true);
+    expect(ehSemanaAtual('2026-09-02', '2026-08-31')).toBe(true); // quarta da mesma semana
+    expect(ehSemanaAtual('2026-09-06', '2026-08-31')).toBe(true); // domingo da mesma semana
+  });
+
+  it('retorna falso para semanas diferentes', () => {
+    expect(ehSemanaAtual('2026-08-24', '2026-08-31')).toBe(false); // semana anterior
+    expect(ehSemanaAtual('2026-09-07', '2026-08-31')).toBe(false); // semana seguinte
+  });
+});
+

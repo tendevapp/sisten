@@ -13,10 +13,11 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { Camera, Check, ImagePlus, Loader2, Mail, MessageSquarePlus, Trash2, X } from 'lucide-react';
+import { Camera, Check, ImagePlus, Loader2, Mail, Trash2, X } from 'lucide-react';
 import type { EtapaExpedicao, ExpedicaoFoto } from '../../types';
 import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatDateBR } from '../../lib/format';
+import { normalizarDataISO } from '../../lib/expedicaoEmail';
 import Modal from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import FotoMiniatura from './FotoMiniatura';
@@ -26,14 +27,14 @@ interface EtapaHorarioProps {
   rotulo: string;
   data: string | null;
   hora: string | null;
-  obs: string | null;
+  obs?: string | null;
   fotos: ExpedicaoFoto[];
   /** Última etapa da trilha — não desenha o trecho de linha que desce. */
   ultima?: boolean;
   desabilitado?: boolean;
   onDataChange: (data: string | null) => void;
   onHoraChange: (hora: string | null) => void;
-  onObsChange: (obs: string | null) => void;
+  onObsChange?: (obs: string | null) => void;
   onAnexar: (arquivos: FileList) => Promise<void>;
   onExcluirFoto: (foto: ExpedicaoFoto) => Promise<void>;
   /**
@@ -55,8 +56,8 @@ function horaAgora(): string {
 }
 
 export default function EtapaHorario({
-  etapa, rotulo, data, hora, obs, fotos, ultima, desabilitado,
-  onDataChange, onHoraChange, onObsChange, onAnexar, onExcluirFoto, onEnviarEmail,
+  etapa, rotulo, data, hora, fotos, ultima, desabilitado,
+  onDataChange, onHoraChange, onAnexar, onExcluirFoto, onEnviarEmail,
 }: EtapaHorarioProps) {
   const arquivoRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -66,9 +67,6 @@ export default function EtapaHorario({
   const [origemEnvio, setOrigemEnvio] = useState<'camera' | 'arquivo' | null>(null);
   const enviando = origemEnvio !== null;
   const [ampliada, setAmpliada] = useState<ExpedicaoFoto | null>(null);
-  // Observação já escrita aparece aberta; vazia, fica atrás do botão para não
-  // encher a trilha de campos que quase sempre ficam em branco.
-  const [obsAberta, setObsAberta] = useState(Boolean(obs));
   const [enviandoEmail, setEnviandoEmail] = useState(false);
   const [dialogoConfirmacao, setDialogoConfirmacao] = useState<{
     titulo: string;
@@ -121,7 +119,8 @@ export default function EtapaHorario({
   };
 
   const handleDataInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const novo = e.target.value || null;
+    const raw = e.target.value || null;
+    const novo = normalizarDataISO(raw);
     if (novo === data) return;
     if (!data) {
       onDataChange(novo);
@@ -205,17 +204,25 @@ export default function EtapaHorario({
           {rotulo}
         </label>
 
-        {/* Linha com ordem dos campos: Data -> Hoje -> Hora -> Agora -> Obs -> Limpar */}
+        {/* Linha com ordem dos campos: Data -> Hoje -> Hora -> Agora -> Limpar */}
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {/* 1. Input de Data */}
+          {/* 1. Input de Data com prova de erros */}
           <input
             id={`data-${etapa}`}
             type="date"
-            value={data || ''}
+            min="2020-01-01"
+            max="2099-12-31"
+            value={normalizarDataISO(data) || ''}
             disabled={desabilitado}
             onChange={handleDataInput}
+            onBlur={(e) => {
+              const corrigido = normalizarDataISO(e.target.value);
+              if (corrigido && corrigido !== data) {
+                onDataChange(corrigido);
+              }
+            }}
             className="h-11 w-36 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold tabular-nums text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            title="Data da etapa"
+            title="Data da etapa (AAAA-MM-DD)"
           />
 
           {/* 2. Botão Hoje (ao lado da data) */}
@@ -251,24 +258,7 @@ export default function EtapaHorario({
             Agora
           </button>
 
-          {/* 5. Botão Obs */}
-          {!desabilitado && (
-            <button
-              type="button"
-              onClick={() => setObsAberta(a => !a)}
-              aria-expanded={obsAberta}
-              className={`inline-flex h-11 items-center gap-1.5 rounded-xl border px-3 text-xs font-bold uppercase tracking-wide transition-colors ${
-                obs?.trim()
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
-                  : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 dark:border-slate-700 dark:text-slate-300'
-              }`}
-            >
-              <MessageSquarePlus className="h-3.5 w-3.5" />
-              Obs.
-            </button>
-          )}
-
-          {/* 6. Botão Limpar */}
+          {/* 5. Botão Limpar */}
           {(hora || data) && !desabilitado && (
             <button
               type="button"
@@ -281,18 +271,6 @@ export default function EtapaHorario({
             </button>
           )}
         </div>
-
-        {obsAberta && (
-          <textarea
-            rows={2}
-            value={obs || ''}
-            disabled={desabilitado}
-            placeholder={`Observação — ${rotulo.toLowerCase()}`}
-            aria-label={`Observação — ${rotulo}`}
-            onChange={e => onObsChange(e.target.value ? e.target.value.toUpperCase() : null)}
-            className="mt-2 w-full uppercase resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-        )}
 
         {/* Fotos da etapa */}
         <div className="mt-2.5 flex flex-wrap items-center gap-2">

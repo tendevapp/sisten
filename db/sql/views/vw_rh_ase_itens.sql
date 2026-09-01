@@ -1,5 +1,6 @@
 -- Módulo RH — View que une os itens de ASE com o cadastro de rotas e pontos de embarque de transporte pelo nome do colaborador
 -- Aplicado via Supabase MCP em 2026-08-27 (migration create_vw_rh_ase_itens_and_rotas).
+-- 2026-08-30: passa a ignorar itens e rotas com exclusão lógica (excluido_em).
 
 create or replace view public.vw_rh_ase_itens as
 select
@@ -31,10 +32,12 @@ left join lateral (
     rot.contato
   from public.rh_rotas rot
   where rot.ativo = true
+    and rot.excluido_em is null
     and translate(lower(trim(rot.funcionario)), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')
       = translate(lower(trim(i.nome)), 'áàâãäéèêëíìîïóòôõöúùûüçñ', 'aaaaaeeeeiiiiooooouuuucn')
   order by
     case when rot.rota = 'Rota Turno' then 2 else 1 end,
     rot.created_at desc
   limit 1
-) r on true;
+) r on true
+where i.excluido_em is null;
