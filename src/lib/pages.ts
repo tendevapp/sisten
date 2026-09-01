@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
-  FileSpreadsheet, Cpu, ClipboardPlus,
+  FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -68,6 +68,7 @@ export const PAGES: PageDef[] = [
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
+  { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   { id: 'almoxarifado_home', group: 'ALMOXARIFADO', label: 'Almoxarifado', path: '/almoxarifado', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

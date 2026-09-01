@@ -83,6 +83,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_contratos: 'Contratos vigentes, aditivos e demandas contratuais.',
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
       sup_estimador_frete: 'Estimativa de custo de frete por rota e modal.',
+      sup_pendencias_processamento: 'Baixa das notas fiscais pendentes de processamento abertas via chamado.',
     },
   },
   {

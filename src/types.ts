@@ -1877,3 +1877,50 @@ export interface ConfigEnvioEmail {
   updated_at?: string;
 }
 
+// 8. Chamado Suprimentos — pendências de processamento
+export type SupPendenciaStatus = 'pendente' | 'concluido';
+/**
+ * `nfse` = relação de NFS-e; `documento` = lançamentos com erro/ação no SAP;
+ * `ajuste_pedido` = chamado "Ajuste de Pedido" (demanda + NF + pedido + imagem).
+ */
+export type SupPendenciaModelo = 'nfse' | 'documento' | 'ajuste_pedido';
+
+export interface SupPendenciaProcessamentoNF {
+  id: string;
+  /** FK para core_solicitacoes(id) — o chamado que originou estas linhas. */
+  request_id: string;
+  /** SUP-DDMMAA-NN, o mesmo para todas as linhas do chamado. */
+  protocolo: string;
+  modelo: SupPendenciaModelo;
+  /** Modelo `nfse`: nº da NFS-e. Modelo `documento`: nº do documento (9 pos.). */
+  numero_nfse: string;
+  data_emissao_nfse?: string | null;
+  nome_fornecedor?: string | null;
+  observacao?: string | null;
+  /* Só no modelo `nfse` */
+  nfse_cancelada?: string | null;
+  fornecedor?: string | null;
+  valor_nfse?: number | null;
+  valor_nfse_raw?: string | null;
+  mes_competencia?: string | null;
+  /* Só no modelo `documento` */
+  documento_status?: string | null;
+  serie?: string | null;
+  uf_emissor?: string | null;
+  chegou?: string | null;
+  documento_compras?: string | null;
+  comprador?: string | null;
+  data_envio?: string | null;
+  /* Só no modelo `ajuste_pedido` — caminhos das imagens no bucket request-attachments. */
+  imagem_paths?: string[] | null;
+  /** Primeira imagem (compat com o formato de imagem única). */
+  imagem_path?: string | null;
+  status: SupPendenciaStatus;
+  /** Nota do Suprimentos ao dar baixa na linha. */
+  resolucao?: string | null;
+  resolvido_por?: string | null;
+  resolvido_em?: string | null;
+  ordem: number;
+  created_at: string;
+}
+

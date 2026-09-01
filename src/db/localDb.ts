@@ -18,6 +18,7 @@ import { CompradorInfo } from '../lib/demandas';
 import { limparCacheBusca, sanitizeTechnicalText } from '../lib/materiais';
 import { canAccessPage } from '../lib/pages';
 import { NOME_SETOR_JURIDICO } from '../lib/juridico';
+import { isSuprimentosSector } from '../lib/supPendenciasProcessamento';
 import { formatDateTimeBR } from '../lib/format';
 import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
@@ -2769,6 +2770,13 @@ class LocalDatabase {
         if (destino?.name === NOME_SETOR_JURIDICO) {
           this.getProfiles()
             .filter(u => canAccessPage(u, 'juridico_notificar'))
+            .forEach(u => recipients.set(u.id, u));
+        }
+        // Suprimentos: o time que dá baixa nas pendências de processamento não
+        // usa necessariamente role 'atendente' — alcança pela gate da tela.
+        if (isSuprimentosSector(destino)) {
+          this.getProfiles()
+            .filter(u => canAccessPage(u, 'sup_pendencias_processamento'))
             .forEach(u => recipients.set(u.id, u));
         }
         recipients.forEach(att => {

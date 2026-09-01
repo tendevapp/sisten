@@ -6,11 +6,13 @@
  * informação do formulário de origem, sem precisar abrir a edição.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { Request, RequestItem, Sector } from '../types';
-import { formatBRL, formatDateBR, EMPTY } from '../lib/format';
+import { Request, RequestItem, Sector, SupPendenciaProcessamentoNF } from '../types';
+import { formatBRL, formatDateBR, formatDateTimeBR, EMPTY } from '../lib/format';
 import { rotuloTipo, rotuloCriticidade } from '../lib/solicitacoes';
+import { isChamadoSuprimentosPendencia, camposExibicao, rotuloNumero } from '../lib/supPendenciasProcessamento';
+import { listarPendenciasPorRequest } from '../lib/supPendenciasApi';
 import { localDb } from '../db/localDb';
 
 interface RequestDetailsModalProps {
@@ -65,6 +67,29 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
       document.body.style.overflow = '';
     };
   }, [onClose]);
+
+  // Chamados "Pendência de Processamento" e "Ajuste de Pedido": os dados vivem
+  // em tabela própria — aqui o solicitante acompanha, sem editar, a baixa pelo
+  // Suprimentos (e, no ajuste, a imagem anexada).
+  const [pendencias, setPendencias] = useState<SupPendenciaProcessamentoNF[]>([]);
+  useEffect(() => {
+    if (!isChamadoSuprimentosPendencia(r)) return;
+    let vivo = true;
+    listarPendenciasPorRequest(r.id).then(linhas => { if (vivo) setPendencias(linhas); });
+    return () => { vivo = false; };
+  }, [r.id, r.type, r.category_id]);
+
+  const [imagensAjusteUrls, setImagensAjusteUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const linha = pendencias.find(p => p.modelo === 'ajuste_pedido');
+    const paths = linha?.imagem_paths?.length ? linha.imagem_paths : (linha?.imagem_path ? [linha.imagem_path] : []);
+    if (paths.length === 0) { setImagensAjusteUrls([]); return; }
+    let vivo = true;
+    Promise.all(paths.map(p => localDb.getAttachmentUrl(p))).then(urls => {
+      if (vivo) setImagensAjusteUrls(urls.filter((u): u is string => !!u));
+    });
+    return () => { vivo = false; };
+  }, [pendencias]);
 
   const nomeSetor = (id?: string) => (id && sectors.find(s => s.id === id)?.name) || id || EMPTY;
 
@@ -201,6 +226,69 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
               {r.contrato_tipo && <Field label="Tipo de Contrato" value={r.contrato_tipo} />}
               {r.fornecedor_terceiro && <Field label="Fornecedor" value={r.fornecedor_terceiro} />}
             </Section>
+          )}
+
+          {isChamadoSuprimentosPendencia(r) && pendencias.length > 0 && (
+            <div className="space-y-2 pt-3 border-t" style={{ borderColor: 'var(--hairline)' }}>
+              <h4 className="text-[10px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>
+                <span>
+                  {pendencias[0].modelo === 'documento' ? 'Lançamentos' : pendencias[0].modelo === 'ajuste_pedido' ? 'Ajuste de Pedido' : 'Notas fiscais'}
+                  {pendencias[0].modelo !== 'ajuste_pedido' && ` (${pendencias.length})`}
+                </span>
+                <span>{pendencias.filter(p => p.status === 'concluido').length}/{pendencias.length} concluído(s)</span>
+              </h4>
+              <div className="space-y-2">
+                {pendencias.map(p => (
+                  <div
+                    key={p.id}
+                    className="rounded-lg border p-3 space-y-1.5"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold font-mono" style={{ color: 'var(--ink-primary)' }}>
+                        {rotuloNumero(p.modelo)} {p.numero_nfse}
+                      </span>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase"
+                        style={
+                          p.status === 'concluido'
+                            ? { background: 'color-mix(in srgb, var(--status-good) 15%, transparent)', color: 'var(--status-good)' }
+                            : { background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }
+                        }
+                      >
+                        {p.status === 'concluido' ? 'Concluído' : 'Pendente'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {camposExibicao(p)
+                        .filter(f => f.label !== 'Documento' && f.label !== 'Número da NFS-e' && f.label !== 'Número da NF' && f.value)
+                        .map(f => <Field key={f.label} label={f.label} value={f.value} />)}
+                      {p.status === 'concluido' && p.resolucao && <Field label="Resolução" value={p.resolucao} />}
+                      {p.status === 'concluido' && p.resolvido_em && (
+                        <Field label="Baixado em" value={formatDateTimeBR(p.resolvido_em)} />
+                      )}
+                    </div>
+                    {p.modelo === 'ajuste_pedido' && imagensAjusteUrls.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {imagensAjusteUrls.map((url, i) => (
+                          <a key={url} href={url} target="_blank" rel="noreferrer">
+                            <img
+                              src={url}
+                              alt={`Imagem ${i + 1} do ajuste de pedido`}
+                              className="max-h-40 rounded-lg border object-contain"
+                              style={{ borderColor: 'var(--hairline)' }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {p.modelo === 'ajuste_pedido' && imagensAjusteUrls.length === 0 && (p.imagem_paths?.length || p.imagem_path) && (
+                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando imagens…</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {(r.type === 'chamado' || (r.type === 'cadastro_sap' && cadastroSap)) && (

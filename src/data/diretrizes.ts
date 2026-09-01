@@ -372,7 +372,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Regras de exibição',
             itens: [
-              'Filtros combináveis e dependentes entre si: RM, Comprador, Status, Alerta, Grupo de Mercadoria, Prioridade (1-5, pedida pelo solicitante no Rastreio de Compras).',
+              'Filtros combináveis e dependentes entre si: RM, Comprador, Status, Alerta, Grupo de Mercadoria, Prioridade (1-5, pedida pelo solicitante no Rastreio de Compras) e Promessa de Entrega (intervalo de/até, estados com/sem data, atrasadas e prazos rápidos).',
               'Dois modos de visualização (cards/tabela); itens Sem PO sempre ordenados antes dos Processados.',
               'Ações de cotação: item único, item para todos os fornecedores históricos (BCC), ou lote selecionado.'
             ]

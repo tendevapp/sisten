@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { localDb } from './db/localDb';
 import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
@@ -50,6 +50,7 @@ const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
+const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
 const PortariaPassagemPlantao = lazy(() => import('./views/portaria/PortariaPassagemPlantao'));
 const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
@@ -202,9 +203,11 @@ export default function App() {
     }
   };
 
-  const activeUser = user && simulatedRole && user.roles.includes('admin')
-    ? { ...user, roles: [simulatedRole], page_access: {} }
-    : user;
+  const activeUser = useMemo(() => {
+    return user && simulatedRole && user.roles.includes('admin')
+      ? { ...user, roles: [simulatedRole], page_access: {} }
+      : user;
+  }, [user, simulatedRole]);
 
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [loading, setLoading] = useState(true);
@@ -686,6 +689,12 @@ export default function App() {
       case '/suprimentos/frete':
         if (canAccessPage(user, 'sup_estimador_frete')) {
           return <FreteEstimator user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/pendencias-processamento':
+        if (canAccessPage(user, 'sup_pendencias_processamento')) {
+          return <PendenciasProcessamento user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

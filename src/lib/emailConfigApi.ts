@@ -86,6 +86,20 @@ export const CONFIGS_EMAIL_PADRAO: ConfigEnvioEmail[] = [
     updated_at: new Date().toISOString(),
   },
   {
+    id: 'padrao-helpdesk-suprimentos',
+    chave: 'helpdesk_suprimentos',
+    nome: 'Pendências de Processamento de Notas Fiscais (Chamado Suprimentos)',
+    modulo: 'SUPRIMENTOS',
+    descricao: 'Disparado ao enviar um chamado com destino Suprimentos na categoria "Pendência de Processamento", com a relação de NFS-e coladas da planilha.',
+    destinatarios: 'suprimentosten@ten.ind.br',
+    copia: null,
+    copia_oculta: null,
+    assunto_padrao: 'Pendências de Processamento de Notas Fiscais',
+    ativo: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
     id: 'padrao-rh-ase-hora-extra',
     chave: 'rh_ase_hora_extra',
     nome: 'Autorização para Serviços Extraordinários (ASE - Hora Extra)',
@@ -95,6 +109,20 @@ export const CONFIGS_EMAIL_PADRAO: ConfigEnvioEmail[] = [
     copia: null,
     copia_oculta: null,
     assunto_padrao: 'ASE - Autorização de Horas Extras',
+    ativo: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'padrao-pendencia-processamento-conclusao',
+    chave: 'pendencia_processamento_conclusao',
+    nome: 'Conclusão de Pendências de Processamento (Suprimentos)',
+    modulo: 'SUPRIMENTOS',
+    descricao: 'Disparado ao dar baixa (individual ou em lote) em notas fiscais ou lançamentos de pendências de processamento.',
+    destinatarios: 'victor.oliveira@ten.ind.br',
+    copia: null,
+    copia_oculta: null,
+    assunto_padrao: 'Conclusão de Processamento',
     ativo: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -167,6 +195,13 @@ export function montarMailtoComConfig(params: {
   return url;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isUuid(valor?: string | null): boolean {
+  if (!valor) return false;
+  return UUID_REGEX.test(valor.trim());
+}
+
 /**
  * Lista todas as configurações de e-mail cadastradas no Supabase.
  */
@@ -202,16 +237,53 @@ export async function listarConfigsEmail(apenasAtivos = false): Promise<ConfigEn
         : CONFIGS_EMAIL_PADRAO;
     }
 
-    if (!data || data.length === 0) {
-      return apenasAtivos
-        ? CONFIGS_EMAIL_PADRAO.filter(c => c.ativo)
-        : CONFIGS_EMAIL_PADRAO;
+    const configsDb = (data || []) as ConfigEnvioEmail[];
+    const chavesExistentes = new Set(configsDb.map(c => c.chave.toLowerCase()));
+    
+    // Mesclar gatilhos padrão que ainda não foram persistidos no banco
+    const faltantes = CONFIGS_EMAIL_PADRAO.filter(
+      p => !chavesExistentes.has(p.chave.toLowerCase())
+    );
+
+    let listaFinal = [...configsDb];
+    if (faltantes.length > 0) {
+      try {
+        const registrosParaInserir = faltantes.map(item => ({
+          chave: item.chave,
+          nome: item.nome,
+          modulo: item.modulo,
+          descricao: item.descricao,
+          destinatarios: item.destinatarios,
+          copia: item.copia,
+          copia_oculta: item.copia_oculta,
+          assunto_padrao: item.assunto_padrao,
+          ativo: item.ativo,
+        }));
+
+        const { data: inseridos, error: insertErr } = await supabase
+          .from('config_envio_emails')
+          .insert(registrosParaInserir)
+          .select('*');
+
+        if (!insertErr && inseridos && inseridos.length > 0) {
+          listaFinal = [...configsDb, ...(inseridos as ConfigEnvioEmail[])];
+        } else {
+          listaFinal = [...configsDb, ...faltantes];
+        }
+      } catch (e) {
+        console.warn('Auto-seed de config_envio_emails:', e);
+        listaFinal = [...configsDb, ...faltantes];
+      }
     }
 
-    cacheConfigs = data as ConfigEnvioEmail[];
+    if (apenasAtivos) {
+      listaFinal = listaFinal.filter(c => c.ativo);
+    }
+
+    cacheConfigs = listaFinal;
     cacheTime = now;
 
-    return data as ConfigEnvioEmail[];
+    return listaFinal;
   } catch (err) {
     console.warn('Exceção ao listar configs de e-mail:', err);
     return apenasAtivos
@@ -278,7 +350,7 @@ export async function criarConfigEmail(
 }
 
 /**
- * Atualiza os dados de uma regra existente.
+ * Atualiza os dados de uma regra existente (suporta tanto UUID real quanto chave de fallback).
  */
 export async function atualizarConfigEmail(
   id: string,
@@ -288,11 +360,15 @@ export async function atualizarConfigEmail(
 
   if (!supabase) return;
 
+  const chaveLimpa = dados.chave
+    ? dados.chave.trim().toLowerCase().replace(/\s+/g, '_')
+    : undefined;
+
   const payload: any = {
     updated_at: new Date().toISOString(),
   };
 
-  if (dados.chave !== undefined) payload.chave = dados.chave.trim().toLowerCase().replace(/\s+/g, '_');
+  if (chaveLimpa !== undefined) payload.chave = chaveLimpa;
   if (dados.nome !== undefined) payload.nome = dados.nome.trim();
   if (dados.modulo !== undefined) payload.modulo = dados.modulo;
   if (dados.descricao !== undefined) payload.descricao = dados.descricao?.trim() || null;
@@ -301,6 +377,54 @@ export async function atualizarConfigEmail(
   if (dados.copia_oculta !== undefined) payload.copia_oculta = dados.copia_oculta?.trim() || null;
   if (dados.assunto_padrao !== undefined) payload.assunto_padrao = dados.assunto_padrao?.trim() || null;
   if (dados.ativo !== undefined) payload.ativo = dados.ativo;
+
+  // Se o ID não for um UUID válido do Postgres, localiza por chave ou insere no banco
+  if (!isUuid(id)) {
+    const chaveParaBuscar = chaveLimpa || (id.startsWith('padrao-') ? id.replace(/^padrao-/, '').replace(/-/g, '_') : '');
+
+    if (chaveParaBuscar) {
+      const { data: existente } = await supabase
+        .from('config_envio_emails')
+        .select('id')
+        .eq('chave', chaveParaBuscar)
+        .maybeSingle();
+
+      if (existente?.id) {
+        const { error: updErr } = await supabase
+          .from('config_envio_emails')
+          .update(payload)
+          .eq('id', existente.id);
+
+        if (updErr) {
+          console.error('Erro ao atualizar configuração por chave:', updErr);
+          throw updErr;
+        }
+        return;
+      }
+    }
+
+    // Se o registro não existia ainda no banco, cria diretamente
+    const padraoFallback = CONFIGS_EMAIL_PADRAO.find(p => p.chave.toLowerCase() === chaveParaBuscar.toLowerCase());
+    const { error: insErr } = await supabase
+      .from('config_envio_emails')
+      .insert({
+        chave: chaveLimpa || chaveParaBuscar || 'gatilho_personalizado',
+        nome: dados.nome?.trim() || padraoFallback?.nome || 'Gatilho de E-mail',
+        modulo: dados.modulo || padraoFallback?.modulo || 'GERAL',
+        descricao: dados.descricao !== undefined ? dados.descricao : (padraoFallback?.descricao || null),
+        destinatarios: dados.destinatarios?.trim() || padraoFallback?.destinatarios || '',
+        copia: dados.copia !== undefined ? dados.copia : (padraoFallback?.copia || null),
+        copia_oculta: dados.copia_oculta !== undefined ? dados.copia_oculta : (padraoFallback?.copia_oculta || null),
+        assunto_padrao: dados.assunto_padrao !== undefined ? dados.assunto_padrao : (padraoFallback?.assunto_padrao || null),
+        ativo: dados.ativo !== undefined ? dados.ativo : (padraoFallback?.ativo ?? true),
+      });
+
+    if (insErr) {
+      console.error('Erro ao cadastrar configuração a partir de padrão:', insErr);
+      throw insErr;
+    }
+    return;
+  }
 
   const { error } = await supabase
     .from('config_envio_emails')
@@ -316,10 +440,45 @@ export async function atualizarConfigEmail(
 /**
  * Alterna rapidamente o status ativo/inativo de uma configuração.
  */
-export async function alternarStatusConfigEmail(id: string, ativo: boolean): Promise<void> {
+export async function alternarStatusConfigEmail(id: string, ativo: boolean, chave?: string): Promise<void> {
   invalidarCacheConfigsEmail();
 
   if (!supabase) return;
+
+  if (!isUuid(id)) {
+    const chaveParaBuscar = chave || (id.startsWith('padrao-') ? id.replace(/^padrao-/, '').replace(/-/g, '_') : '');
+    if (chaveParaBuscar) {
+      const { data: existente } = await supabase
+        .from('config_envio_emails')
+        .select('id')
+        .eq('chave', chaveParaBuscar)
+        .maybeSingle();
+
+      if (existente?.id) {
+        await supabase
+          .from('config_envio_emails')
+          .update({ ativo, updated_at: new Date().toISOString() })
+          .eq('id', existente.id);
+        return;
+      }
+
+      const padrao = CONFIGS_EMAIL_PADRAO.find(p => p.chave.toLowerCase() === chaveParaBuscar.toLowerCase());
+      if (padrao) {
+        await supabase.from('config_envio_emails').insert({
+          chave: padrao.chave,
+          nome: padrao.nome,
+          modulo: padrao.modulo,
+          descricao: padrao.descricao,
+          destinatarios: padrao.destinatarios,
+          copia: padrao.copia,
+          copia_oculta: padrao.copia_oculta,
+          assunto_padrao: padrao.assunto_padrao,
+          ativo,
+        });
+      }
+    }
+    return;
+  }
 
   const { error } = await supabase
     .from('config_envio_emails')
@@ -338,10 +497,21 @@ export async function alternarStatusConfigEmail(id: string, ativo: boolean): Pro
 /**
  * Exclui permanentemente uma configuração de envio de e-mail.
  */
-export async function excluirConfigEmail(id: string): Promise<void> {
+export async function excluirConfigEmail(id: string, chave?: string): Promise<void> {
   invalidarCacheConfigsEmail();
 
   if (!supabase) return;
+
+  if (!isUuid(id)) {
+    const chaveParaBuscar = chave || (id.startsWith('padrao-') ? id.replace(/^padrao-/, '').replace(/-/g, '_') : '');
+    if (chaveParaBuscar) {
+      await supabase
+        .from('config_envio_emails')
+        .delete()
+        .eq('chave', chaveParaBuscar);
+    }
+    return;
+  }
 
   const { error } = await supabase
     .from('config_envio_emails')
@@ -352,4 +522,39 @@ export async function excluirConfigEmail(id: string): Promise<void> {
     console.error('Erro ao excluir configuração de e-mail:', error);
     throw error;
   }
+}
+
+/**
+ * Sincroniza e insere no Supabase quaisquer gatilhos padrão do sistema que ainda não existam.
+ */
+export async function sincronizarGatilhosPadrao(): Promise<{ inseridos: number }> {
+  invalidarCacheConfigsEmail();
+  if (!supabase) return { inseridos: 0 };
+
+  const { data, error } = await supabase.from('config_envio_emails').select('chave');
+  if (error) {
+    console.warn('Erro ao verificar gatilhos existentes para sincronização:', error);
+    return { inseridos: 0 };
+  }
+
+  const chavesExistentes = new Set(((data || []) as { chave: string }[]).map(c => c.chave.toLowerCase()));
+  const faltantes = CONFIGS_EMAIL_PADRAO.filter(p => !chavesExistentes.has(p.chave.toLowerCase()));
+
+  let inseridos = 0;
+  for (const item of faltantes) {
+    const { error: insertErr } = await supabase.from('config_envio_emails').insert({
+      chave: item.chave,
+      nome: item.nome,
+      modulo: item.modulo,
+      descricao: item.descricao,
+      destinatarios: item.destinatarios,
+      copia: item.copia,
+      copia_oculta: item.copia_oculta,
+      assunto_padrao: item.assunto_padrao,
+      ativo: item.ativo,
+    });
+    if (!insertErr) inseridos++;
+  }
+
+  return { inseridos };
 }

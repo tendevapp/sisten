@@ -9,6 +9,7 @@ import {
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
+  ReceiptText,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -27,6 +28,23 @@ import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import { useToast } from '../components/ui/Toast';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
+import {
+  CATEGORIA_PENDENCIA_PROCESSAMENTO,
+  CATEGORIA_AJUSTE_PEDIDO,
+  CATEGORIAS_SUPRIMENTOS,
+  isSuprimentosSector,
+  parseColagemPlanilha,
+  somarValores,
+  resumoColunas,
+  resumoValores,
+  gerarProtocoloSup,
+  assuntoEmailPendencias,
+  montarCorpoEmailPendencias,
+  assuntoEmailAjustePedido,
+  montarCorpoEmailAjustePedido,
+} from '../lib/supPendenciasProcessamento';
+import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
+import ImagesPasteInput from '../components/ui/ImagesPasteInput';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -208,6 +226,7 @@ const SECTOR_ICON: Record<string, React.ComponentType<{ className?: string }>> =
   'TI': Laptop2,
   'Facilities': Building2,
   'Manutenção': Wrench,
+  'Suprimentos': ReceiptText,
   [NOME_SETOR_JURIDICO]: Scale,
 };
 
@@ -352,6 +371,17 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [juridicoTitulo, setJuridicoTitulo] = useState('');
   const [juridicoTipoContrato, setJuridicoTipoContrato] = useState('');
   const [juridicoFornecedor, setJuridicoFornecedor] = useState('');
+  // Específico do destino Suprimentos: texto da planilha de pendências colado
+  // pelo solicitante, interpretado em linhas de NF na prévia e no envio.
+  const [pendenciasTexto, setPendenciasTexto] = useState('');
+  // Específicos da categoria "Ajuste de Pedido" (destino Suprimentos).
+  const [ajusteDemanda, setAjusteDemanda] = useState('');
+  const [ajusteNf, setAjusteNf] = useState('');
+  const [ajustePedido, setAjustePedido] = useState('');
+  const [ajusteFornecedor, setAjusteFornecedor] = useState('');
+  const [ajusteComprador, setAjusteComprador] = useState(''); // opcional
+  // Imagens comprimidas; fora do rascunho (Blob não serializa), como sapAttachments.
+  const [ajusteImagens, setAjusteImagens] = useState<PreparedAttachment[]>([]);
 
   // States
   const [uploadProgress, setUploadProgress] = useState(false);
@@ -376,20 +406,28 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     const bg = buyerGroups.find(b => b.group_code === c.grupo_compras);
     return { code: c.grupo_compras, label: c.nome_comprador, profileId: bg?.user_id };
   });
+  // Nomes de comprador únicos, para o seletor opcional do "Ajuste de Pedido".
+  const compradorNomes = Array.from(
+    new Set(compradoresList.map(c => c.nome_comprador).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   // Modo edição: `?editar=<id>` carrega uma solicitação já existente neste
   // mesmo formulário. Enquanto ele estiver ativo, o rascunho automático fica
   // fora do caminho — ver `saveDraft`.
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [carregandoEdicao, setCarregandoEdicao] = useState(true);
+  const editLoadedRef = useRef(false);
+  const draftLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (editLoadedRef.current) return;
     const params = new URLSearchParams(window.location.hash.split('?')[1]);
     const alvo = params.get('editar');
     if (!alvo) {
       setCarregandoEdicao(false);
       return;
     }
+    editLoadedRef.current = true;
 
     const req = localDb.getRequests().find(r => r.id === alvo);
     if (!req || !podeEditar(req, user)) {
@@ -456,7 +494,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     }
 
     setCarregandoEdicao(false);
-  }, [user, onNavigate]);
+  }, [user.id, onNavigate]);
 
   // Abre o tour sozinho na primeira visita — só para quem está criando uma
   // solicitação nova, nunca durante uma edição (o fluxo e o foco são outros).
@@ -464,11 +502,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     tour.autoOpenWhenReady(!carregandoEdicao && !editandoId);
   }, [carregandoEdicao, editandoId, tour.autoOpenWhenReady]);
 
-  // Load draft if exists
+  // Load draft if exists (executa estritamente uma única vez no carregamento inicial)
   useEffect(() => {
     // Em modo edição o rascunho não entra: sobrescreveria os dados da
     // solicitação real que acabou de ser carregada.
     if (carregandoEdicao || editandoId) return;
+    if (draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
 
     const draftKey = `sisten_draft_${user.id}`;
     const saved = localStorage.getItem(draftKey);
@@ -479,13 +519,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.sectorId) setSectorId(parsed.sectorId);
         if (parsed.compradorId) setCompradorId(parsed.compradorId);
         if (parsed.tipoCompra) setTipoCompra(parsed.tipoCompra);
-        if (parsed.criticality) setCriticality(parsed.criticality);
+        if (parsed.criticality !== undefined && parsed.criticality !== null) setCriticality(parsed.criticality);
         if (parsed.dataNecessidade) setDataNecessidade(parsed.dataNecessidade);
         if (parsed.justificativa) setJustificativa(parsed.justificativa);
         // Rascunho salvo antes do id estável de item não traz `id`; sem este
         // preenchimento o item iria para o banco sem identidade e o anexo
         // perderia a que se prender.
-        if (parsed.items) {
+        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
           setItems(parsed.items.map((it: PurchaseItemState) => ({ ...it, id: it.id || novoItemId() })));
         }
         if (parsed.registrationType) setRegistrationType(parsed.registrationType);
@@ -498,37 +538,51 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.sapRepresentanteTelefone) setSapRepresentanteTelefone(parsed.sapRepresentanteTelefone);
         if (parsed.sapRepresentanteEmail) setSapRepresentanteEmail(parsed.sapRepresentanteEmail);
         if (parsed.chamadoSectorId) setChamadoSectorId(parsed.chamadoSectorId);
-        if (parsed.helpdeskSectorId) setHelpdeskSectorId(parsed.helpdeskSectorId);
+        if (parsed.helpdeskSectorId) {
+          setHelpdeskSectorId(parsed.helpdeskSectorId);
+        } else {
+          const supportSectors = sectors.filter(s => s.helpdesk_enabled);
+          if (supportSectors.length > 0) setHelpdeskSectorId(supportSectors[0].id);
+        }
         if (parsed.helpdeskCategory) setHelpdeskCategory(parsed.helpdeskCategory);
         if (parsed.helpdeskLocal) setHelpdeskLocal(parsed.helpdeskLocal);
         if (parsed.juridicoTitulo) setJuridicoTitulo(parsed.juridicoTitulo);
         if (parsed.juridicoTipoContrato) setJuridicoTipoContrato(parsed.juridicoTipoContrato);
         if (parsed.juridicoFornecedor) setJuridicoFornecedor(parsed.juridicoFornecedor);
+        if (parsed.pendenciasTexto) setPendenciasTexto(parsed.pendenciasTexto);
+        if (parsed.ajusteDemanda) setAjusteDemanda(parsed.ajusteDemanda);
+        if (parsed.ajusteNf) setAjusteNf(parsed.ajusteNf);
+        if (parsed.ajustePedido) setAjustePedido(parsed.ajustePedido);
+        if (parsed.ajusteFornecedor) setAjusteFornecedor(parsed.ajusteFornecedor);
+        if (parsed.ajusteComprador) setAjusteComprador(parsed.ajusteComprador);
       } catch (err) {
         console.error('Error loading draft', err);
       }
+    } else {
+      // Se não há rascunho anterior, define o setor de helpdesk padrão
+      const supportSectors = sectors.filter(s => s.helpdesk_enabled);
+      if (supportSectors.length > 0) {
+        setHelpdeskSectorId(supportSectors[0].id);
+      }
     }
+  }, [user.id, carregandoEdicao, editandoId, sectors]);
 
-    // Set a default helpdesk sector if empty
-    const supportSectors = sectors.filter(s => s.helpdesk_enabled);
-    if (supportSectors.length > 0) {
-      setHelpdeskSectorId(supportSectors[0].id);
-    }
-  }, [user, carregandoEdicao, editandoId]);
-
-  // Draft autosave interval (every 30 seconds as requested)
+  // Draft autosave com debounce ao alterar campos + intervalo periódico de garantia
   useEffect(() => {
-    const interval = setInterval(() => {
-      saveDraft();
-    }, 30000);
+    if (!draftLoadedRef.current || editandoId) return;
 
-    return () => clearInterval(interval);
+    const timeout = setTimeout(() => {
+      saveDraft();
+    }, 1200);
+
+    return () => clearTimeout(timeout);
   }, [
     activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
     items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
-    juridicoTitulo, juridicoTipoContrato, juridicoFornecedor,
+    juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
+    ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
   ]);
 
   const saveDraft = () => {
@@ -546,7 +600,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
-      juridicoTitulo, juridicoTipoContrato, juridicoFornecedor,
+      juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
+      ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
     setTimeout(() => setAutosaveStatus('saved'), 600);
@@ -565,6 +620,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (!confirmed) return;
 
     clearDraft();
+    draftLoadedRef.current = true;
     setActiveTab('compra');
     setSectorId('');
     setCompradorId('');
@@ -591,6 +647,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setJuridicoTitulo('');
     setJuridicoTipoContrato('');
     setJuridicoFornecedor('');
+    setPendenciasTexto('');
+    setAjusteDemanda('');
+    setAjusteNf('');
+    setAjustePedido('');
+    setAjusteFornecedor('');
+    setAjusteComprador('');
+    setAjusteImagens([]);
     setActiveSearchIndex(null);
     setActiveSearchResults([]);
     setErroBusca(false);
@@ -670,12 +733,35 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Mobiliário', 'Limpeza', 'Chaves/Acesso', 'Outro'];
     } else if (isJuridicoSector(sectors.find(s => s.id === secId))) {
       return [...TIPOS_CHAMADO_JURIDICO];
+    } else if (isSuprimentosSector(sectors.find(s => s.id === secId))) {
+      return [...CATEGORIAS_SUPRIMENTOS];
     } else { // Manutenção / Others
       return ['Elétrica', 'Hidráulica', 'Climatização', 'Equipamento', 'Outro'];
     }
   };
 
   const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
+  const isDestinoSuprimentos = isSuprimentosSector(sectors.find(s => s.id === helpdeskSectorId));
+  // Categorias do destino Suprimentos.
+  const isSupPendencia = isDestinoSuprimentos && helpdeskCategory === CATEGORIA_PENDENCIA_PROCESSAMENTO;
+  const isAjustePedido = isDestinoSuprimentos && helpdeskCategory === CATEGORIA_AJUSTE_PEDIDO;
+
+  // Prévia das notas reconhecidas no texto colado (categoria "Pendência de Processamento").
+  const pendenciasParse = useMemo(
+    () => parseColagemPlanilha(pendenciasTexto),
+    [pendenciasTexto],
+  );
+  const pendenciasProntas = isSupPendencia
+    && pendenciasParse.linhas.length > 0
+    && pendenciasParse.erros.length === 0;
+  const ajustePronto = isAjustePedido
+    && ajusteDemanda.trim() !== ''
+    && ajusteNf.trim() !== ''
+    && ajustePedido.trim() !== ''
+    && ajusteFornecedor.trim() !== ''
+    && ajusteImagens.length > 0;
+  /** O envio deste chamado Suprimentos está bloqueado por falta de dados? */
+  const suprimentosBloqueado = isDestinoSuprimentos && !pendenciasProntas && !ajustePronto;
 
   // Monta o corpo do e-mail de aviso ao Suprimentos com o conteúdo preenchido no
   // formulário. Um mailto: não consegue anexar arquivos (restrição de segurança
@@ -735,7 +821,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return;
     }
 
+    if (activeTab === 'chamado' && isDestinoSuprimentos && !helpdeskCategory) {
+      alert('Selecione a categoria do chamado.');
+      return;
+    }
+    if (activeTab === 'chamado' && isSupPendencia && !pendenciasProntas) {
+      alert('Cole o texto da planilha de pendências. Nenhum registro foi reconhecido no conteúdo colado.');
+      return;
+    }
+    if (activeTab === 'chamado' && isAjustePedido && !ajustePronto) {
+      alert('Preencha a demanda, o número da NF, o número do pedido, o fornecedor e anexe a imagem.');
+      return;
+    }
+
     setUploadProgress(true);
+
+    // Protocolo SUP-DDMMAA-NN do chamado de pendências — gerado antes do payload
+    // para já entrar em `titulo` e acompanhar a solicitação nas listagens.
+    let protocoloSup = '';
 
     try {
       // Structure base request payload
@@ -787,18 +890,30 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           })
         };
       } else if (activeTab === 'chamado') {
+        if (isDestinoSuprimentos) {
+          const hojeISO = new Date().toISOString().slice(0, 10);
+          const indice = await proximoIndiceProtocoloDia(hojeISO);
+          protocoloSup = gerarProtocoloSup(indice, hojeISO);
+        }
         payload = {
           ...payload,
           solicitante_sector_id: chamadoSectorId,
           target_sector_id: helpdeskSectorId,
-          category_id: helpdeskCategory || getHelpdeskCategories(helpdeskSectorId)[0],
-          justificativa,
-          local: helpdeskLocal,
+          category_id: isDestinoSuprimentos
+            ? helpdeskCategory
+            : (helpdeskCategory || getHelpdeskCategories(helpdeskSectorId)[0]),
+          justificativa: isSupPendencia
+            ? `${pendenciasParse.linhas.length} ${pendenciasParse.modelo === 'documento' ? 'lançamento(s)' : 'nota(s) fiscal(is)'} para processamento (protocolo ${protocoloSup}). Ver a relação no chamado.`
+            : isAjustePedido
+              ? `Ajuste de pedido (protocolo ${protocoloSup}) — NF ${ajusteNf.trim()} / Pedido ${ajustePedido.trim()} / ${ajusteFornecedor.trim()}. Ver detalhes e imagem no chamado.`
+              : justificativa,
+          local: isDestinoSuprimentos ? '' : helpdeskLocal,
           ...(isDestinoJuridico && {
             titulo: juridicoTitulo,
             contrato_tipo: juridicoTipoContrato,
             fornecedor_terceiro: juridicoFornecedor,
           }),
+          ...(isDestinoSuprimentos && { titulo: protocoloSup }),
         };
       }
 
@@ -852,6 +967,72 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           `A solicitação #${reqNumero} foi ${editandoId ? 'atualizada' : 'criada'}, mas ${todasAsFalhas.length === 1 ? 'este anexo não subiu' : 'estes anexos não subiram'}: ` +
           `${todasAsFalhas.join(', ')}. Você pode reenviá-${todasAsFalhas.length === 1 ? 'lo' : 'los'} em Minhas Solicitações.`
         );
+      }
+
+      if (activeTab === 'chamado' && isDestinoSuprimentos) {
+        const configEmail = await obterConfigEmail('helpdesk_suprimentos');
+        const destinatarios = configEmail?.destinatarios || 'suprimentosten@ten.ind.br';
+        const linkChamado = `${window.location.origin}/#/solicitacoes/minhas?id=${reqId}`;
+        let assunto = '';
+        let corpo = '';
+
+        if (isAjustePedido) {
+          const dados = {
+            demanda: ajusteDemanda.trim(),
+            nf: ajusteNf.trim(),
+            pedido: ajustePedido.trim(),
+            fornecedor: ajusteFornecedor.trim(),
+            comprador: ajusteComprador.trim() || undefined,
+          };
+          try {
+            const rowId = await criarAjustePedido(reqId, protocoloSup, dados);
+            if (rowId && ajusteImagens.length > 0) {
+              const ok = await salvarImagensAjuste(
+                rowId,
+                reqId,
+                ajusteImagens.map(i => ({ blob: i.blob, mimeType: i.mimeType })),
+              );
+              if (!ok) toast.warning('O chamado foi criado, mas as imagens não subiram. Reenvie pela página de Pendências.');
+            }
+          } catch {
+            alert(`O chamado #${reqNumero} foi criado, mas o ajuste de pedido não pôde ser gravado. Contate o suporte.`);
+          }
+          assunto = assuntoEmailAjustePedido(protocoloSup, dados);
+          corpo = montarCorpoEmailAjustePedido({
+            protocolo: protocoloSup,
+            solicitante: user.name,
+            numeroChamado: reqNumero,
+            dados,
+            qtdImagens: ajusteImagens.length,
+            linkChamado,
+          });
+        } else {
+          try {
+            await criarPendencias(reqId, protocoloSup, pendenciasParse.linhas);
+          } catch {
+            alert(
+              `O chamado #${reqNumero} foi criado, mas a relação de notas não pôde ser gravada. ` +
+              `Abra um novo chamado ou contate o suporte.`
+            );
+          }
+          assunto = assuntoEmailPendencias(protocoloSup);
+          corpo = montarCorpoEmailPendencias({
+            protocolo: protocoloSup,
+            solicitante: user.name,
+            numeroChamado: reqNumero,
+            linkChamado,
+            linhas: pendenciasParse.linhas,
+          });
+        }
+
+        // O corpo vai sempre montado no e-mail — nada de "copie e cole".
+        window.location.href = montarMailtoComConfig({
+          destinatarios,
+          copia: configEmail?.copia,
+          copiaOculta: configEmail?.copia_oculta,
+          assunto,
+          corpo,
+        });
       }
 
       if (activeTab === 'cadastro_sap') {
@@ -1700,6 +1881,23 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               )}
 
+              {isDestinoSuprimentos ? (
+                <div>
+                  <label className={labelClass} style={labelStyle}>Categoria *</label>
+                  <select
+                    value={helpdeskCategory}
+                    onChange={(e) => setHelpdeskCategory(e.target.value)}
+                    required
+                    className={`${fieldClass} cursor-pointer`}
+                    style={fieldStyle}
+                  >
+                    <option value="">Selecione a categoria...</option>
+                    {CATEGORIAS_SUPRIMENTOS.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass} style={labelStyle}>Categoria do incidente/pedido *</label>
@@ -1750,6 +1948,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
                 )}
               </div>
+              )}
 
               {isDestinoJuridico && (
                 <div>
@@ -1766,6 +1965,188 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               )}
 
+              {isSupPendencia ? (
+                <div data-tour="novasol-justificativa" className="space-y-3">
+                  <div>
+                    <label className={labelClass} style={labelStyle}>
+                      Pendências de processamento — cole o texto da planilha *
+                    </label>
+                    <textarea
+                      required
+                      rows={8}
+                      placeholder={
+                        'Cole aqui o bloco copiado da planilha, com o cabeçalho. Dois modelos são aceitos:\n' +
+                        '• NFS-e: Número da NFS-e · NFS-e Cancelada · Data Emissão NFS-e · Fornecedor · Nome Fornecedor · OBSERVAÇÃO · Valor da NFS-e · Mês de Competência\n' +
+                        '• Lançamentos SAP: STATUS · Número de documento de nove posições · Data da Emissão · Séries · UF emissor · Chegou ? · Nome do Fornecedor · Documento de compras · OBSERVAÇÕES · COMPRADOR · DATA ENVIO'
+                      }
+                      value={pendenciasTexto}
+                      onChange={(e) => setPendenciasTexto(e.target.value)}
+                      className="w-full rounded-lg border py-2 px-3 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                      style={fieldStyle}
+                    />
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--ink-muted)' }}>
+                      Aceita a colagem direta do Excel (colunas separadas por tabulação) ou uma célula por linha.
+                      O modelo é reconhecido pelo cabeçalho colado.
+                    </p>
+                  </div>
+
+                  {pendenciasParse.erros.length > 0 && (
+                    <div
+                      className="rounded-lg border p-3 text-[12px] space-y-1"
+                      style={{
+                        borderColor: 'var(--status-serious)',
+                        background: 'color-mix(in srgb, var(--status-serious) 8%, transparent)',
+                        color: 'var(--ink-primary)',
+                      }}
+                    >
+                      {pendenciasParse.erros.map((msg, i) => (
+                        <p key={i} className="flex items-start gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: 'var(--status-serious)' }} />
+                          <span>{msg}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {pendenciasParse.linhas.length > 0 && (
+                    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
+                      <div
+                        className="px-3 py-1.5 text-[11px] font-bold flex items-center justify-between"
+                        style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
+                      >
+                        <span>
+                          {pendenciasParse.linhas.length} registro(s) reconhecido(s)
+                          {' · '}
+                          {pendenciasParse.modelo === 'documento' ? 'Lançamentos SAP' : 'NFS-e'}
+                        </span>
+                        {pendenciasParse.modelo === 'nfse' && (
+                          <span>Total: {formatBRL(somarValores(pendenciasParse.linhas))}</span>
+                        )}
+                      </div>
+                      <div className="max-h-56 overflow-auto">
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr style={{ color: 'var(--ink-muted)' }}>
+                              {resumoColunas(pendenciasParse.modelo).map(col => (
+                                <th key={col} className="text-left font-bold px-2 py-1 whitespace-nowrap">{col}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pendenciasParse.linhas.map((l, i) => (
+                              <tr key={i} className="border-t" style={{ borderColor: 'var(--hairline)' }}>
+                                {resumoValores(l).map((val, c) => (
+                                  <td
+                                    key={c}
+                                    className={`px-2 py-1 ${c === 0 ? 'font-mono' : ''} ${c === 2 ? 'truncate max-w-[200px]' : ''}`}
+                                    style={{ color: c === 0 ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+                                    title={c === 2 ? val : undefined}
+                                  >
+                                    {val || '—'}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    Ao enviar, abre um e-mail para <strong>suprimentosten@ten.ind.br</strong> com a relação em texto
+                    organizado, e os itens ficam disponíveis para o Suprimentos dar baixa um a um — você é notificado a
+                    cada conclusão.
+                  </p>
+                </div>
+              ) : isAjustePedido ? (
+                <div data-tour="novasol-justificativa" className="space-y-4">
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Demanda *</label>
+                    <textarea
+                      required
+                      rows={10}
+                      placeholder="Descreva o ajuste necessário no pedido: o que precisa mudar e por quê."
+                      value={ajusteDemanda}
+                      onChange={(e) => setAjusteDemanda(e.target.value)}
+                      className="w-full rounded-lg border py-2 px-3 text-base leading-relaxed transition-colors duration-150 focus:outline-2 focus:outline-offset-1 resize-y min-h-[10rem]"
+                      style={fieldStyle}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className={labelClass} style={labelStyle}>Número da NF *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: 000014252"
+                        value={ajusteNf}
+                        onChange={(e) => setAjusteNf(e.target.value)}
+                        className={fieldClass}
+                        style={fieldStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass} style={labelStyle}>Número do Pedido *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: 4100455805"
+                        value={ajustePedido}
+                        onChange={(e) => setAjustePedido(e.target.value)}
+                        className={fieldClass}
+                        style={fieldStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass} style={labelStyle}>Nome do Fornecedor *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="RAZÃO SOCIAL DO FORNECEDOR"
+                        value={ajusteFornecedor}
+                        onChange={(e) => setAjusteFornecedor(e.target.value.toLocaleUpperCase('pt-BR'))}
+                        className={fieldClass}
+                        style={{ ...fieldStyle, textTransform: 'uppercase' }}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass} style={labelStyle}>Comprador (opcional)</label>
+                      <select
+                        value={ajusteComprador}
+                        onChange={(e) => setAjusteComprador(e.target.value)}
+                        className={`${fieldClass} cursor-pointer`}
+                        style={fieldStyle}
+                      >
+                        <option value="">Sem comprador definido</option>
+                        {compradorNomes.map(nome => (
+                          <option key={nome} value={nome}>{nome}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Imagens do pedido / print da divergência *</label>
+                    <ImagesPasteInput
+                      value={ajusteImagens}
+                      onChange={setAjusteImagens}
+                      hint="As imagens são comprimidas automaticamente e aparecem no chamado, na página de Pendências do Suprimentos. Você pode adicionar mais de uma."
+                    />
+                  </div>
+
+                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    NF, Pedido e Fornecedor vão no título do e-mail enviado para{' '}
+                    <strong>suprimentosten@ten.ind.br</strong>. As imagens ficam anexadas ao chamado no SISTEN — o Suprimentos
+                    dá baixa e você é notificado.
+                  </p>
+                </div>
+              ) : isDestinoSuprimentos ? (
+                <p className="text-sm" style={{ color: 'var(--ink-muted)' }}>
+                  Selecione a categoria acima para continuar.
+                </p>
+              ) : (
               <div data-tour="novasol-justificativa">
                 <label className={labelClass} style={labelStyle}>Descrição detalhada *</label>
                 <textarea
@@ -1778,6 +2159,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   style={fieldStyle}
                 />
               </div>
+              )}
             </div>
           )}
         </div>
@@ -1893,8 +2275,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           <div data-tour="novasol-enviar" className="rounded-xl border p-5 shadow-xs space-y-2.5 reveal" style={cardStyle}>
             <button
               type="submit"
-              disabled={uploadProgress}
-              className="w-full rounded-lg disabled:opacity-50 text-white font-bold text-sm py-2.5 px-6 transition-[background-color,transform] duration-150 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2"
+              disabled={uploadProgress || (activeTab === 'chamado' && suprimentosBloqueado)}
+              className="w-full rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm py-2.5 px-6 transition-[background-color,transform] duration-150 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2"
               style={{ background: 'var(--brand)', outlineColor: 'var(--brand)' }}
             >
               {uploadProgress ? (

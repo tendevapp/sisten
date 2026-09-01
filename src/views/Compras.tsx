@@ -28,6 +28,7 @@ import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import DateRangeFilter, { DateRangeValue } from '../components/ui/DateRangeFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
 
@@ -471,6 +472,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
+  const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
   const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
@@ -516,6 +518,17 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
         .map(c => String(c.grupo_compras));
       setBuyerFilter(new Set(grupos.length > 0 ? grupos : [comprador]));
     }
+
+    const promessaPreset = deepLinkParams.get('promessa');
+    const promessaDe = deepLinkParams.get('promessa_de') || '';
+    const promessaAte = deepLinkParams.get('promessa_ate') || '';
+    if (promessaPreset || promessaDe || promessaAte) {
+      setPromessaFilter({
+        from: promessaDe,
+        to: promessaAte,
+        preset: promessaPreset || (promessaDe || promessaAte ? 'custom' : 'all'),
+      });
+    }
   }, [deepLinkParams, rawRmGroups]);
 
   // Decodificação do grupo de mercadoria do SAP para a descrição exibida ao
@@ -540,7 +553,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, poFilter, kpiFilter, viewMode]);
+  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -1170,6 +1183,41 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
     buildSuppliersData();
   };
 
+  // Obtém a data de promessa de entrega ativa do item (edição pendente ou persistida)
+  const getPromessaDate = useCallback((ri: string, record: EnrichedSAPRecord): string => {
+    return (dateInputState[ri] !== undefined ? dateInputState[ri] : (record.data_entrega_prevista || '')).trim();
+  }, [dateInputState]);
+
+  // Verifica se o item atende ao filtro de promessa de entrega
+  const matchesPromessaFilter = useCallback((ri: string, record: EnrichedSAPRecord): boolean => {
+    const { from, to, preset } = promessaFilter;
+    const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
+    if (!isActive) return true;
+
+    const dateStr = getPromessaDate(ri, record);
+
+    if (preset === 'sem_data') {
+      return !dateStr;
+    }
+    if (preset === 'com_data' && !from && !to) {
+      return Boolean(dateStr);
+    }
+    if (preset === 'atrasadas') {
+      if (!dateStr) return false;
+      const today = new Date().toISOString().slice(0, 10);
+      return dateStr < today;
+    }
+
+    if ((from || to) && !dateStr) {
+      return false;
+    }
+
+    if (from && dateStr < from) return false;
+    if (to && dateStr > to) return false;
+
+    return true;
+  }, [promessaFilter, getPromessaDate]);
+
   // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
   // ativos (menos o próprio), então escolher um comprador restringe as RMs exibidas,
   // escolher uma RM restringe os compradores, e assim por diante.
@@ -1186,6 +1234,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
       }
+      if (!matchesPromessaFilter(r.ri, r)) return false;
       return true;
     };
 
@@ -1223,7 +1272,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
       // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
       prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
     };
-  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe]);
+  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter]);
 
   // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
   // selecionado depois), ele é descartado em vez de zerar a listagem.
@@ -1255,6 +1304,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
           const nivel = prioridadesMap.get(r.ri)?.nivel;
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
         }
+        if (!matchesPromessaFilter(r.ri, r)) return false;
         if (q) {
           const inRecord =
             (r.material_code || '').toLowerCase().includes(q) ||
@@ -1276,7 +1326,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe]);
+  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1992,6 +2042,13 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
               renderOption={n => (n === 'Nenhuma' ? 'Sem solicitação' : `Grau ${n}`)}
               searchable={false}
               className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
+            />
+            <DateRangeFilter
+              label="Promessa"
+              icon={Calendar}
+              value={promessaFilter}
+              onChange={setPromessaFilter}
+              className="shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]"
             />
           </div>
         </div>

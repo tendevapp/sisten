@@ -12,7 +12,7 @@ import {
   Database, Shield, Users, Boxes, Plus, Search, Edit2, Trash2,
   CheckCircle2, XCircle, RefreshCw, AlertTriangle, ArrowRight,
   Filter, Check, UserCheck, ShieldCheck, Building2, Clock, Layers,
-  Mail, Send, AtSign, ExternalLink, HelpCircle, Tag, Copy, Globe
+  Mail, Send, AtSign, ExternalLink, HelpCircle, Tag, Copy, Globe, Sparkles
 } from 'lucide-react';
 import type { Profile, PortVigilante, ConfigEnvioEmail, EmailModulo } from '../types';
 import * as api from '../lib/portariaApi';
@@ -30,6 +30,8 @@ type TabType = 'portaria_vigilantes' | 'emails_envios';
 
 const SUGESTOES_GATILHOS = [
   { chave: 'cadastro_sap', nome: 'Solicitação de Cadastro SAP', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP' },
+  { chave: 'helpdesk_suprimentos', nome: 'Abertura de Chamado Suprimentos (Pendências)', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Pendências de Processamento de Notas Fiscais' },
+  { chave: 'pendencia_processamento_conclusao', nome: 'Conclusão de Pendências de Processamento', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Conclusão de Processamento' },
   { chave: 'expedicao_chegada', nome: 'Aviso de Chegada de Veículo na Portaria', modulo: 'LOGISTICA' as EmailModulo, assunto: 'Chegada na portaria' },
   { chave: 'expedicao_tramos', nome: 'Relatório de Carregamento de Tramos', modulo: 'LOGISTICA' as EmailModulo, assunto: 'Carregamento Tramos' },
   { chave: 'portaria_relatorio', nome: 'Relatório de Turno e Ocorrências', modulo: 'PORTARIA' as EmailModulo, assunto: 'Relatório de Turno - Portaria TEN' },
@@ -49,7 +51,14 @@ function formatarDataBR(dataStr?: string | null): string {
 
 export default function CadastrosAdmin({ user, onNavigate }: Props) {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<TabType>('portaria_vigilantes');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    const abaParam = params.get('aba') || params.get('tab');
+    if (abaParam === 'emails' || abaParam === 'emails_envios' || abaParam === 'outlook') {
+      return 'emails_envios';
+    }
+    return 'portaria_vigilantes';
+  });
 
   // ==========================================
   // ESTADO - VIGILANTES
@@ -337,7 +346,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
   const handleToggleAtivoEmail = async (c: ConfigEnvioEmail) => {
     const novoStatus = !c.ativo;
     try {
-      await emailApi.alternarStatusConfigEmail(c.id, novoStatus);
+      await emailApi.alternarStatusConfigEmail(c.id, novoStatus, c.chave);
       setConfigsEmail((prev) =>
         prev.map((item) => (item.id === c.id ? { ...item, ativo: novoStatus } : item))
       );
@@ -352,7 +361,7 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
   const handleExcluirEmail = async () => {
     if (!configEmailParaExcluir) return;
     try {
-      await emailApi.excluirConfigEmail(configEmailParaExcluir.id);
+      await emailApi.excluirConfigEmail(configEmailParaExcluir.id, configEmailParaExcluir.chave);
       setConfigsEmail((prev) => prev.filter((item) => item.id !== configEmailParaExcluir.id));
       toast.success(`Configuração "${configEmailParaExcluir.nome}" excluída com sucesso!`);
       setConfigEmailParaExcluir(null);
@@ -828,6 +837,32 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
                 title="Recarregar"
               >
                 <RefreshCw className={`h-4 w-4 ${loadingEmails ? 'animate-spin' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoadingEmails(true);
+                  try {
+                    const res = await emailApi.sincronizarGatilhosPadrao();
+                    await carregarConfigsEmail();
+                    if (res.inseridos > 0) {
+                      toast.success(`${res.inseridos} gatilho(s) padrão adicionado(s) com sucesso!`);
+                    } else {
+                      toast.info('Todos os gatilhos padrão do sistema já estão sincronizados.');
+                    }
+                  } catch (e: any) {
+                    toast.error('Erro ao sincronizar gatilhos: ' + (e.message || ''));
+                  } finally {
+                    setLoadingEmails(false);
+                  }
+                }}
+                disabled={loadingEmails}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60 disabled:opacity-50"
+                title="Sincroniza automaticamente quaisquer novos gatilhos padrão do sistema que ainda não foram gravados no banco"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="hidden md:inline">Sincronizar Padrões</span>
               </button>
             </div>
 

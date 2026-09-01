@@ -69,6 +69,19 @@ describe('emailConfigApi', () => {
       expect(chaves).toContain('expedicao_tramos');
       expect(chaves).toContain('portaria_relatorio');
       expect(chaves).toContain('rh_ase_hora_extra');
+      expect(chaves).toContain('helpdesk_suprimentos');
+      expect(chaves).toContain('pendencia_processamento_conclusao');
+    });
+  });
+
+  describe('isUuid', () => {
+    it('deve identificar UUIDs válidos e rejeitar IDs de padrão', async () => {
+      const { isUuid } = await import('./emailConfigApi');
+      expect(isUuid('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+      expect(isUuid('padrao-helpdesk-suprimentos')).toBe(false);
+      expect(isUuid('local-abc1234')).toBe(false);
+      expect(isUuid('')).toBe(false);
+      expect(isUuid(null)).toBe(false);
     });
   });
 });

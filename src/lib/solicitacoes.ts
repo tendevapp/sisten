@@ -15,6 +15,7 @@ import * as XLSX from 'xlsx';
 import { Profile, Request, RequestStatus, RequestType, Sector } from '../types';
 import { localDb } from '../db/localDb';
 import { formatDateBR, formatDateTimeBR } from './format';
+import { isChamadoSuprimentosPendencia } from './supPendenciasProcessamento';
 
 /** Papéis que enxergam a fila coletiva. Espelha os defaultRoles da página. */
 export const PAPEIS_FILA: string[] = [
@@ -113,6 +114,13 @@ const ENCERRADOS: RequestStatus[] = ['resolvido', 'fechado', 'cancelada'];
 export function podeEditar(r: Request, user: Profile): boolean {
   if (r.solicitante_id !== user.id) return false;
   if (r.status === 'rascunho') return false;
+
+  // Chamados de "Pendência de Processamento" e "Ajuste de Pedido": os dados vão
+  // para uma tabela própria no envio (linhas de NF, ou a imagem do ajuste) e não
+  // há como reconstruir o formulário original a partir dela — reabrir a edição
+  // deixaria a tabela e o texto divergentes. Correções se fazem abrindo um novo
+  // chamado.
+  if (r.type === 'chamado' && isChamadoSuprimentosPendencia(r)) return false;
 
   return r.type === 'compra'
     ? EDITAVEIS_COMPRA.includes(r.status)

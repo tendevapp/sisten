@@ -10,7 +10,7 @@ export const INITIAL_SECTORS: Sector[] = [
   { id: '2', name: 'Almoxarifado', is_support: true, helpdesk_enabled: false },
   { id: '3', name: 'Facilities', is_support: true, helpdesk_enabled: true },
   { id: '4', name: 'Comunicação', is_support: false, helpdesk_enabled: false },
-  { id: '5', name: 'Suprimentos', is_support: true, helpdesk_enabled: false },
+  { id: '5', name: 'Suprimentos', is_support: true, helpdesk_enabled: true },
   { id: '6', name: 'Financeiro', is_support: false, helpdesk_enabled: false },
   { id: '7', name: 'Contabilidade', is_support: false, helpdesk_enabled: false },
   { id: '8', name: 'Planejamento', is_support: false, helpdesk_enabled: false },
