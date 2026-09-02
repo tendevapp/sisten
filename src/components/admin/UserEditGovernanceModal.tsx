@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, Check, User, Shield, Building2, Briefcase, KeyRound,
   FileCheck, Sparkles, AlertCircle, ShoppingBag, Eye, Lock,
-  Save, SlidersHorizontal, CheckCircle2
+  Save, SlidersHorizontal, CheckCircle2, Search
 } from 'lucide-react';
 import { Profile, Sector, Role } from '../../types';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
-import AprovadorSetoresSelect from './AprovadorSetoresSelect';
 
 interface UserEditGovernanceModalProps {
   isOpen: boolean;
@@ -52,6 +51,7 @@ export default function UserEditGovernanceModal({
   const [grupoCompras, setGrupoCompras] = useState('');
   const [aprovadorSetores, setAprovadorSetores] = useState<string[]>([]);
   const [aprovadorCadastroSap, setAprovadorCadastroSap] = useState(false);
+  const [filtroSetores, setFiltroSetores] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -75,6 +75,26 @@ export default function UserEditGovernanceModal({
     const parts = str.trim().split(/\s+/);
     if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const setoresFiltrados = useMemo(() => {
+    const q = filtroSetores.trim().toLowerCase();
+    if (!q) return sectors;
+    return sectors.filter(s => s.name.toLowerCase().includes(q));
+  }, [sectors, filtroSetores]);
+
+  const handleToggleSetor = (id: string) => {
+    setAprovadorSetores(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelecionarTodosSetores = () => {
+    setAprovadorSetores(sectors.map(s => s.id));
+  };
+
+  const handleLimparSetores = () => {
+    setAprovadorSetores([]);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -204,210 +224,327 @@ export default function UserEditGovernanceModal({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-5 text-left">
-          {activeTab === 'perfil' && (
-            <div className="space-y-4 animate-in fade-in-50 duration-150">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value.toUpperCase())}
-                    required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white uppercase"
-                    placeholder="EX: JOÃO DA SILVA"
-                  />
+        {/* Form com corpo rolável e rodapé fixo */}
+        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 overflow-hidden text-left">
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {activeTab === 'perfil' && (
+              <div className="space-y-4 animate-in fade-in-50 duration-150">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value.toUpperCase())}
+                      required
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white uppercase"
+                      placeholder="EX: JOÃO DA SILVA"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">E-mail Corporativo</label>
+                    <input
+                      type="text"
+                      value={profile.email}
+                      disabled
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-500 bg-slate-50 cursor-not-allowed font-mono"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">O e-mail é a chave de autenticação exclusiva.</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Cargo / Função</label>
+                    <input
+                      type="text"
+                      value={cargo}
+                      onChange={(e) => setCargo(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white"
+                      placeholder="Ex: Analista de Suprimentos Pleno"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Setor Corporativo</label>
+                    <select
+                      value={sectorId}
+                      onChange={(e) => setSectorId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white cursor-pointer"
+                    >
+                      <option value="">Selecione o setor...</option>
+                      {sectors.map((sec) => (
+                        <option key={sec.id} value={sec.id}>
+                          {sec.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Status da Conta</label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value as any)}
+                      disabled={isSelf}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <option value="ativo">Ativo (Acesso Liberado)</option>
+                      <option value="inativo">Inativo (Bloqueado)</option>
+                      <option value="pendente">Pendente de Aprovação</option>
+                    </select>
+                    {isSelf && (
+                      <span className="text-[10px] text-amber-600 mt-1 block font-medium">Você não pode desativar seu próprio login.</span>
+                    )}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">E-mail Corporativo</label>
-                  <input
-                    type="text"
-                    value={profile.email}
-                    disabled
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-500 bg-slate-50 cursor-not-allowed font-mono"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">O e-mail é a chave de autenticação exclusiva.</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Cargo / Função</label>
-                  <input
-                    type="text"
-                    value={cargo}
-                    onChange={(e) => setCargo(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white"
-                    placeholder="Ex: Analista de Suprimentos Pleno"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Setor Corporativo</label>
-                  <select
-                    value={sectorId}
-                    onChange={(e) => setSectorId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white cursor-pointer"
-                  >
-                    <option value="">Selecione o setor...</option>
-                    {sectors.map((sec) => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Status da Conta</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
+                {/* Ações de Segurança Rápidas */}
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60 p-3.5 rounded-xl">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-slate-500" /> Segurança de Senha
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Definir senha temporária para o colaborador.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenResetPassword(profile.id)}
                     disabled={isSelf}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
-                    <option value="ativo">Ativo (Acesso Liberado)</option>
-                    <option value="inativo">Inativo (Bloqueado)</option>
-                    <option value="pendente">Pendente de Aprovação</option>
-                  </select>
-                  {isSelf && (
-                    <span className="text-[10px] text-amber-600 mt-1 block font-medium">Você não pode desativar seu próprio login.</span>
-                  )}
+                    <KeyRound className="w-3.5 h-3.5" /> Resetar Senha
+                  </button>
                 </div>
               </div>
+            )}
 
-              {/* Ações de Segurança Rápidas */}
-              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60 p-3.5 rounded-xl">
+            {activeTab === 'permissoes' && (
+              <div className="space-y-4 animate-in fade-in-50 duration-150">
                 <div>
-                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-slate-500" /> Segurança de Senha
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Definir senha temporária para o colaborador.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenResetPassword(profile.id)}
-                  disabled={isSelf}
-                  className="px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-                >
-                  <KeyRound className="w-3.5 h-3.5" /> Resetar Senha
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'permissoes' && (
-            <div className="space-y-4 animate-in fade-in-50 duration-150">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">Papel Principal de Acesso (Role)</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {ROLES_INFO.map((r) => {
-                    const isSelected = role === r.role;
-                    return (
-                      <div
-                        key={r.role}
-                        onClick={() => setRole(r.role)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                          isSelected
-                            ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600'
-                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${r.color}`}>
-                            {r.label}
-                          </span>
-                          {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Papel Principal de Acesso (Role)</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {ROLES_INFO.map((r) => {
+                      const isSelected = role === r.role;
+                      return (
+                        <div
+                          key={r.role}
+                          onClick={() => setRole(r.role)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-600'
+                              : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${r.color}`}>
+                              {r.label}
+                            </span>
+                            {isSelected && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">{r.desc}</p>
                         </div>
-                        <p className="text-[11px] text-slate-500 leading-relaxed mt-1">{r.desc}</p>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Grupo de Compras SAP */}
+                <div className="pt-3 border-t border-slate-100">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Grupo de Compras SAP Associado</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={grupoCompras}
+                      onChange={(e) => setGrupoCompras(e.target.value)}
+                      placeholder="Ex: 314, 358"
+                      className="w-48 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-600 bg-white"
+                    />
+                    <span className="text-[11px] text-slate-400">Vincular a demandas e pedidos deste código SAP.</span>
+                  </div>
+                </div>
+
+                {/* Módulos de Acesso Customizados */}
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" /> Permissões Granulares por Módulo
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Liberar ou restringir páginas individuais (ex: Compras, RH, Portaria).</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenPageAccess(profile.id)}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Configurar Módulos &rarr;
+                  </button>
                 </div>
               </div>
+            )}
 
-              {/* Grupo de Compras SAP */}
-              <div className="pt-3 border-t border-slate-100">
-                <label className="block text-xs font-bold text-slate-700 mb-1">Grupo de Compras SAP Associado</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={grupoCompras}
-                    onChange={(e) => setGrupoCompras(e.target.value)}
-                    placeholder="Ex: 314, 358"
-                    className="w-48 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:border-emerald-600 bg-white"
-                  />
-                  <span className="text-[11px] text-slate-400">Vincular a demandas e pedidos deste código SAP.</span>
+            {activeTab === 'aprovacoes' && (
+              <div className="space-y-4 animate-in fade-in-50 duration-150">
+                {/* Painel de Seleção de Setores Solicitantes */}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800">
+                        Setores Solicitantes que este usuário pode Aprovar
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        O usuário receberá notificações de aprovação para solicitações de compras abertas por estes setores.
+                      </p>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
+                      aprovadorSetores.length > 0
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}>
+                      {aprovadorSetores.length === 0
+                        ? 'Nenhum setor'
+                        : aprovadorSetores.length === 1
+                        ? '1 setor selecionado'
+                        : `${aprovadorSetores.length} setores selecionados`}
+                    </span>
+                  </div>
+
+                  {/* Chips de setores selecionados com remoção direta */}
+                  {aprovadorSetores.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {aprovadorSetores.map(id => {
+                        const sec = sectors.find(s => s.id === id);
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs transition-all"
+                          >
+                            <span>{sec?.name || id}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSetor(id)}
+                              className="rounded-full p-0.5 hover:bg-emerald-200 text-emerald-700 hover:text-emerald-950 cursor-pointer"
+                              title={`Remover ${sec?.name || id}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Barra de busca e ações rápidas */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={filtroSetores}
+                        onChange={(e) => setFiltroSetores(e.target.value)}
+                        placeholder="Buscar setor para aprovação..."
+                        className="w-full pl-8 pr-8 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                      />
+                      {filtroSetores && (
+                        <button
+                          type="button"
+                          onClick={() => setFiltroSetores('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleSelecionarTodosSetores}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        Selecionar Todos
+                      </button>
+                      {aprovadorSetores.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleLimparSetores}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Grade de Setores com Checkboxes */}
+                  <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                    <div className="max-h-52 overflow-y-auto p-2">
+                      {setoresFiltrados.length === 0 ? (
+                        <p className="py-6 text-center text-xs text-slate-400">
+                          Nenhum setor encontrado para "{filtroSetores}".
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {setoresFiltrados.map((s) => {
+                            const marcado = aprovadorSetores.includes(s.id);
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => handleToggleSetor(s.id)}
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left text-xs transition-all cursor-pointer border ${
+                                  marcado
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-2xs'
+                                    : 'bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50/80 text-slate-700 font-medium'
+                                }`}
+                              >
+                                <span
+                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                    marcado
+                                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                >
+                                  {marcado && <Check className="w-3 h-3 stroke-[3]" />}
+                                </span>
+                                <span className="truncate">{s.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Módulos de Acesso Customizados */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <div>
-                  <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" /> Permissões Granulares por Módulo
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Liberar ou restringir páginas individuais (ex: Compras, RH, Portaria).</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenPageAccess(profile.id)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Configurar Módulos &rarr;
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'aprovacoes' && (
-            <div className="space-y-4 animate-in fade-in-50 duration-150">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Setores Solicitantes que este usuário pode Aprovar
-                </label>
-                <p className="text-[11px] text-slate-500 mb-3">
-                  Quando uma nova solicitação de compras for aberta por um setor selecionado, este usuário receberá notificação para aprovação.
-                </p>
-
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
-                  <AprovadorSetoresSelect
-                    sectors={sectors}
-                    selected={aprovadorSetores}
-                    cadastroSap={aprovadorCadastroSap}
-                    onChangeSetores={(next) => setAprovadorSetores(next)}
-                    onChangeCadastroSap={(next) => setAprovadorCadastroSap(next)}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl border border-amber-200/80 bg-amber-50/50 space-y-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="modal-cadastro-sap-toggle"
-                    checked={aprovadorCadastroSap}
-                    onChange={(e) => setAprovadorCadastroSap(e.target.checked)}
-                    className="rounded border-slate-300 text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
-                  />
-                  <label htmlFor="modal-cadastro-sap-toggle" className="text-xs font-bold text-amber-900 cursor-pointer">
-                    Aprovador de Cadastro SAP de Novos Materiais
+                {/* Card Aprovador de Cadastro SAP */}
+                <div className="p-4 rounded-2xl border border-amber-200/90 bg-amber-50/60 transition-all">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="modal-cadastro-sap-toggle"
+                      checked={aprovadorCadastroSap}
+                      onChange={(e) => setAprovadorCadastroSap(e.target.checked)}
+                      className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold text-amber-950 block">
+                        Aprovador de Cadastro SAP de Novos Materiais
+                      </span>
+                      <p className="text-[11px] text-amber-800/90 leading-relaxed">
+                        Habilita este usuário para validar e aprovar solicitações de criação e ampliação de códigos de materiais requisitados pelas áreas para inclusão no SAP.
+                      </p>
+                    </div>
                   </label>
                 </div>
-                <p className="text-[11px] text-amber-700/90 pl-6 leading-relaxed">
-                  Permite validar e aprovar a criação e ampliação de códigos de materiais requisitados pelas áreas para inclusão no SAP.
-                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Footer Modal */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
+          {/* Footer Modal Fixo */}
+          <div className="border-t border-slate-200 bg-slate-50/80 px-6 py-3.5 flex items-center justify-end gap-2.5 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs transition-colors cursor-pointer"
             >
               Cancelar
             </button>

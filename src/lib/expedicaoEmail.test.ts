@@ -95,6 +95,7 @@ describe('listarTramos', () => {
     expect(listarTramos(['T1'])).toBe('T1');
     expect(listarTramos(['T1', 'T4'])).toBe('T1 e T4');
     expect(listarTramos(['T1', 'T2', 'T4'])).toBe('T1, T2 e T4');
+    expect(listarTramos(['T1', 'Escada / Plataforma'])).toBe('T1 e Escada / Plataforma');
   });
 });
 

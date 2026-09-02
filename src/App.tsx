@@ -50,7 +50,6 @@ const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
-const Diligenciamento = lazy(() => import('./views/Diligenciamento'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
 const PortariaPassagemPlantao = lazy(() => import('./views/portaria/PortariaPassagemPlantao'));
 const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
@@ -700,9 +699,14 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      // Rota histórica: o Diligenciamento deixou de ser página própria e virou
+      // o conteúdo do filtro "Sem MIGO" da Central de Compras — é o mesmo
+      // recorte (PO emitido, ainda sem chegada), então não fazia sentido ter
+      // dois lugares para a mesma pergunta. Mantida viva para não quebrar link
+      // salvo: abre a Central de Compras já no filtro "Sem MIGO".
       case '/suprimentos/diligenciamento':
-        if (canAccessPage(user, 'sup_diligenciamento')) {
-          return <Diligenciamento user={user} onNavigate={handleNavigate} />;
+        if (canAccessPage(user, 'sup_central_compras')) {
+          return <Compras user={user} onNavigate={handleNavigate} poFilterInicial="Sem MIGO" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

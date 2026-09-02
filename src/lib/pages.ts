@@ -63,7 +63,9 @@ export const PAGES: PageDef[] = [
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
   { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
-  { id: 'sup_diligenciamento', group: 'SUPRIMENTOS', label: 'Diligenciamento', path: '/suprimentos/diligenciamento', icon: Truck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // Diligenciamento não tem página/permissão própria: é o filtro "Sem MIGO"
+  // dentro de Central de Compras (sup_central_compras), em
+  // components/suprimentos/DiligenciamentoSemMigoTable.tsx.
 
   { id: 'almoxarifado_home', group: 'ALMOXARIFADO', label: 'Almoxarifado', path: '/almoxarifado', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

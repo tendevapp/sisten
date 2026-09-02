@@ -1164,6 +1164,8 @@ export interface ExtracaoResposta {
   truncado: boolean;
   extracao_id: string;
   duracao_ms: number;
+  custo_usd?: number | null;
+  custo_brl?: number | null;
 }
 
 // ---------- Modelo persistido ----------
@@ -1412,7 +1414,7 @@ export type ConversaoMarkdownResumo = Omit<ConversaoMarkdownLog, 'markdown'>;
 // ---------- Formulário: Logística - Expedição ----------
 
 /** Tramos da torre eólica que podem ser expedidos em um carregamento. */
-export const TRAMOS = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
+export const TRAMOS = ['T1', 'T2', 'T3', 'T4', 'T5', 'Escada / Plataforma'] as const;
 export type Tramo = typeof TRAMOS[number];
 
 /**

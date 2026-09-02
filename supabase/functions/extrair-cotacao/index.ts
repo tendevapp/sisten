@@ -37,6 +37,8 @@ const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-3.6-flash';
 const OPENAI_MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 const OPENROUTER_MODEL = Deno.env.get('OPENROUTER_MODEL') || 'deepseek/deepseek-v4-flash';
 
+const TAXA_DOLAR_REAL = 6;
+
 /** Preço por 1M de tokens (USD) — estimativa para telemetria, não é fonte oficial de cobrança. Mesmo padrão usado em converter-markdown-ia. */
 const PRECO_GEMINI_POR_1M_TOKENS: Record<string, { entrada: number; saida: number }> = {
   'gemini-2.0-flash': { entrada: 0.10, saida: 0.40 },
@@ -548,6 +550,8 @@ Deno.serve(async (req) => {
       truncado: resultado.truncado,
       extracao_id: extracaoId,
       duracao_ms: Date.now() - inicio,
+      custo_usd: resultado.custoUsd,
+      custo_brl: typeof resultado.custoUsd === 'number' ? resultado.custoUsd * TAXA_DOLAR_REAL : null,
     });
   } catch (e) {
     const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);

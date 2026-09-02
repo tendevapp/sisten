@@ -17,6 +17,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { montarResultado, type ResultadoConversao } from './markdownConvert';
+import { converterUsdParaBrl } from './format';
 import type { ConversaoMarkdownLog, ConversaoMarkdownResumo } from '../types';
 
 const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024;
@@ -71,6 +72,7 @@ export async function converterComIA(file: File): Promise<ResultadoConversao> {
     ...montarResultado(resposta.markdown, inicio),
     tokensReais: resposta.uso?.total_tokens,
     custoUsd: resposta.custo_usd,
+    custoBrl: converterUsdParaBrl(resposta.custo_usd),
     modelo: resposta.modelo,
   };
 }

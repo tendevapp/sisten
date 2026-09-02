@@ -18,6 +18,7 @@ import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { formatBRL, formatDateBR, formatDateTimeBR } from '../lib/format';
 import KpiCard from '../components/charts/KpiCard';
+import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
@@ -76,6 +77,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
   const [lancamentos, setLancamentos] = useState<Fbl1nLancamento[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [fornecedoresSelecionados, setFornecedoresSelecionados] = useState<Set<string>>(new Set());
   const [empresaFilter, setEmpresaFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('Todos');
   const [tipoDocFilter, setTipoDocFilter] = useState('Todos');
@@ -143,10 +145,39 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
       .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [lancamentos]);
 
+  const fornecedorOptions = useMemo(() => {
+    const s = new Set<string>();
+    lancamentos.forEach(l => {
+      const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim();
+      if (nome) s.add(nome);
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [lancamentos]);
+
+  const fornecedorCodigoMap = useMemo(() => {
+    const map = new Map<string, string>();
+    lancamentos.forEach(l => {
+      const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim();
+      if (nome && l.fornecedor && l.fornecedor !== nome) {
+        map.set(nome, l.fornecedor);
+      }
+    });
+    return map;
+  }, [lancamentos]);
+
+  const renderFornecedorOption = useCallback((name: string) => {
+    const cod = fornecedorCodigoMap.get(name);
+    return cod ? `${name} (${cod})` : name;
+  }, [fornecedorCodigoMap]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return lancamentos.filter(l => {
       if (empresaFilter !== 'Todas' && l.empresa !== empresaFilter) return false;
+      if (fornecedoresSelecionados.size > 0) {
+        const nome = l.razao_social_fornecedor?.trim() || l.fornecedor?.trim() || '';
+        if (!fornecedoresSelecionados.has(nome)) return false;
+      }
       if (statusFilter === 'Em aberto' && l.data_compensacao) return false;
       if (statusFilter === 'Compensado' && !l.data_compensacao) return false;
       if (statusFilter === 'Vencido') {
@@ -170,7 +201,7 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
       }
       return true;
     });
-  }, [lancamentos, searchQuery, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, hoje]);
+  }, [lancamentos, searchQuery, fornecedoresSelecionados, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, hoje]);
 
   const groupedSuppliers = useMemo(() => {
     const map = new Map<string, SupplierGroup>();
@@ -255,16 +286,16 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
   }, [filtered, sortColumn, sortDir, hoje]);
 
   useEffect(() => {
-    if (searchQuery.trim()) {
+    if (searchQuery.trim() || fornecedoresSelecionados.size > 0) {
       const next: Record<string, boolean> = {};
       groupedSuppliers.forEach(g => { next[g.supplierName] = true; });
       setExpandedSuppliers(next);
     }
-  }, [searchQuery, groupedSuppliers]);
+  }, [searchQuery, fornecedoresSelecionados, groupedSuppliers]);
 
   const visibleGroups = useMemo(() => groupedSuppliers.slice(0, visibleCount), [groupedSuppliers, visibleCount]);
 
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, fornecedoresSelecionados, empresaFilter, statusFilter, tipoDocFilter, vencimentoDe, vencimentoAte, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -347,14 +378,26 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap">
-          <div className="relative shrink-0 w-56 lg:w-auto">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
+          <MultiSelectFilter
+            label="Fornecedor"
+            icon={Building2}
+            allLabel="Todos"
+            searchable
+            options={fornecedorOptions}
+            selected={fornecedoresSelecionados}
+            onChange={setFornecedoresSelecionados}
+            renderOption={renderFornecedorOption}
+            className="shrink-0 w-60 lg:w-auto lg:min-w-[200px]"
+            panelClassName="w-80 sm:w-96 max-h-80"
+          />
+          <div className="relative shrink-0 w-48 lg:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Fornecedor ou nº documento..."
+              placeholder="Buscar por doc..."
               className="pl-8 pr-3 py-2 border rounded-lg text-xs h-9 w-full"
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
             />

@@ -81,8 +81,8 @@ export default function TramoCard({
           aria-expanded={aberto}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          <span className="flex min-w-10 px-2.5 h-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-extrabold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
-            {rotuloIdentificacao}
+          <span className="flex min-w-10 max-w-[170px] sm:max-w-none px-2.5 h-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xs sm:text-sm font-extrabold text-blue-600 dark:bg-blue-950/50 dark:text-blue-400 text-center">
+            <span className="truncate">{rotuloIdentificacao}</span>
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2 truncate text-sm font-bold text-slate-900 dark:text-slate-50">

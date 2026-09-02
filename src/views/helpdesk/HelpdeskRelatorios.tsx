@@ -65,10 +65,10 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50/50 p-6 space-y-6">
-      
+    <div className="flex-1 flex flex-col h-full overflow-y-auto bg-slate-50/50 p-4 sm:p-6 space-y-6">
+
       {/* CABEÇALHO E FILTROS DO RELATÓRIO */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -94,9 +94,9 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
 
         {/* Filtros em Linha */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
-          
+
           {/* Seletor de Período */}
-          <div className="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
             {[
               { key: '7d', label: '7 Dias' },
               { key: '30d', label: '30 Dias' },
@@ -120,12 +120,12 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
           </div>
 
           {/* Filtro por Setor */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-slate-400 uppercase">Setor Destino:</span>
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className="text-xs font-bold text-slate-400 uppercase shrink-0">Setor Destino:</span>
             <select
               value={selectedSector}
               onChange={(e) => setSelectedSector(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white py-1.5 px-3 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white py-1.5 px-3 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600"
             >
               <option value="todos">Todos os Setores</option>
               {sectors
@@ -140,7 +140,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
 
         {/* Seleção de Datas Personalizadas */}
         {period === 'custom' && (
-          <div className="flex items-center space-x-3 pt-3 border-t border-slate-100 text-xs">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 border-t border-slate-100 text-xs">
             <span className="text-slate-500 font-medium">De:</span>
             <input
               type="date"
@@ -240,7 +240,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Evolução Temporal (Abertos x Resolvidos) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Evolução Temporal de Chamados</h3>
@@ -281,7 +281,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         </div>
 
         {/* Aging do Backlog (Tempo em Aberto) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800">Aging do Backlog Ativo</h3>
@@ -346,7 +346,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
       </div>
 
       {/* TABELA: PRODUTIVIDADE POR ATENDENTE / TÉCNICO */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center">
@@ -423,7 +423,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Setores Solicitantes */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800 flex items-center">
@@ -455,7 +455,7 @@ export default function HelpdeskRelatorios({ user, onNavigate }: HelpdeskRelator
         </div>
 
         {/* Mural de Avaliações CSAT Recentes */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
               <h3 className="text-sm font-bold text-slate-800 flex items-center">

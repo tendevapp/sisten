@@ -66,7 +66,6 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
       sup_estimador_frete: 'Estimativa de custo de frete por rota e modal.',
       sup_pendencias_processamento: 'Baixa das notas fiscais pendentes de processamento abertas via chamado.',
-      sup_diligenciamento: 'Acompanhamento de pedidos de compra até a chegada: transportadora, faturamento e previsão.',
     },
   },
   {

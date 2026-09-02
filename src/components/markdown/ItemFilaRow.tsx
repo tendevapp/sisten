@@ -11,7 +11,7 @@ import {
   FileSpreadsheet, FileJson, FileCode, FileText, Image as ImageIcon, Clock, Loader2, CheckCircle2,
   AlertCircle, Info, Eye, Copy, RotateCcw, Trash2, Upload, Timer, Play, Sparkles,
 } from 'lucide-react';
-import { formatFileSize, formatDuration, formatUsd, formatModelo } from '../../lib/format';
+import { formatFileSize, formatDuration, formatCustoBrl, formatModelo } from '../../lib/format';
 import type { FormatoArquivo } from '../../lib/markdownConvert';
 
 export interface ItemFila {
@@ -22,7 +22,7 @@ export interface ItemFila {
   status: 'aguardando' | 'pendente' | 'processando' | 'concluido' | 'erro' | 'nao_suportado';
   resultado?: {
     markdown: string; duracaoMs: number; caracteres: number; tokensEstimados: number; resumo: string;
-    tokensReais?: number; custoUsd?: number | null; modelo?: string;
+    tokensReais?: number; custoUsd?: number | null; custoBrl?: number | null; modelo?: string;
   };
   erro?: string;
   /** Ausente após restaurar a fila de uma sessão anterior — precisa selecionar o arquivo de novo para (re)converter. */
@@ -110,7 +110,8 @@ export default function ItemFilaRow({
               {' · '}{item.resultado.resumo} · {formatDuration(item.resultado.duracaoMs)}
               {' · '}~{(item.resultado.tokensReais ?? item.resultado.tokensEstimados).toLocaleString('pt-BR')} tokens
               {item.resultado.tokensReais !== undefined && ' (reais)'}
-              {item.resultado.custoUsd !== undefined && item.resultado.custoUsd !== null && ` · ${formatUsd(item.resultado.custoUsd)}`}
+              {(item.resultado.custoBrl ?? (item.resultado.custoUsd != null ? item.resultado.custoUsd * 6 : null)) != null &&
+                ` · ${formatCustoBrl(item.resultado.custoBrl ?? item.resultado.custoUsd! * 6)}`}
               {item.resultado.modelo && ` · ${formatModelo(item.resultado.modelo)}`}
             </>
           )}

@@ -27,6 +27,7 @@ import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
+import DiligenciamentoSemMigoTable from '../components/suprimentos/DiligenciamentoSemMigoTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import DateRangeFilter, { DateRangeValue } from '../components/ui/DateRangeFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
@@ -35,6 +36,8 @@ import { useToast } from '../components/ui/Toast';
 interface ComprasProps {
   user: Profile;
   onNavigate: (path: string) => void;
+  /** Abre já no filtro indicado — usado pela rota histórica `/suprimentos/diligenciamento`. */
+  poFilterInicial?: 'Todos' | 'Sem PO' | 'Sem MIGO';
 }
 
 interface ItemNode {
@@ -390,7 +393,7 @@ const PROMESSA_TITLE: Record<PromessaEstado, string> = {
   confirmada: 'Data confirmada pelo comprador — visível no Rastreio Compras'
 };
 
-export default function Compras({ user, onNavigate }: ComprasProps) {
+export default function Compras({ user, onNavigate, poFilterInicial }: ComprasProps) {
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
   // Texto técnico por código, buscado só para os materiais desta página (Sem PO),
@@ -469,7 +472,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
-  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>('Todos');
+  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>(poFilterInicial || 'Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
   const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
@@ -2168,13 +2171,27 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
               </div>
             </div>
           )}
-          {filteredGroups.length === 0 && (
+          {poFilter !== 'Sem MIGO' && filteredGroups.length === 0 && (
             <div className="flex items-center gap-3 p-6 border border-amber-200 dark:border-amber-900/50 rounded-xl bg-amber-50/50 dark:bg-amber-955/15 text-amber-800 dark:text-amber-300 text-sm font-semibold">
               <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
               Nenhum registro coincide com os critérios e filtros aplicados atualmente.
             </div>
           )}
 
+          {/*
+            "Sem MIGO" já emitiu PO e só falta chegar — é a pergunta do
+            Diligenciamento, não a de achar fornecedor (que é o resto desta
+            tela). Por isso ganha uma tabela própria aqui, em vez de dividir
+            espaço com os cards/tabela de cotação abaixo.
+          */}
+          {poFilter === 'Sem MIGO' ? (
+            <DiligenciamentoSemMigoTable
+              registros={filteredFlatItems.map(({ item }) => item.record)}
+              chegadasMap={chegadasMap}
+              user={user}
+            />
+          ) : (
+          <>
           {/* VIEW: CARDS (Default) */}
           {viewMode === 'cards' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2490,7 +2507,9 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
                   <Th label="Material" />
                   <Th label="Descrição" />
                   <Th label="Qtd / Un" />
-                  {!tableShowSupplierFirst && <Th label={poFilter === 'Sem MIGO' ? 'Informações do PO' : 'Histórico Fornecedores'} />}
+                  {/* "Informações do PO" (Sem MIGO) saiu daqui — essa visão agora é a
+                      tabela de Diligenciamento, renderizada antes deste bloco. */}
+                  {!tableShowSupplierFirst && <Th label="Histórico Fornecedores" />}
                   <Th label="Status" />
                   <Th label="Promessa Entrega" />
                   <Th label="Observação" />
@@ -2797,7 +2816,7 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
             </TableShell>
           ));})()}
 
-          {/* Load More Button */}
+          {/* Sem MIGO não passa por este bloco — sua tabela (Diligenciamento) mostra tudo de uma vez, sem `visibleCount`. */}
           {totalFilteredCount > visibleCount && (
             <div className="flex flex-col items-center justify-center pt-6 pb-2 border-t border-slate-100 dark:border-slate-850 mt-6 space-y-2">
               <span className="text-xs text-slate-500 dark:text-slate-450 font-bold">
@@ -2811,6 +2830,8 @@ export default function Compras({ user, onNavigate }: ComprasProps) {
                 <ChevronDown className="h-4 w-4 text-slate-400" />
               </button>
             </div>
+          )}
+          </>
           )}
         </div>
       )}

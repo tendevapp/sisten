@@ -13,7 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { History, Eye, Loader2, RefreshCw, CheckCircle2, XCircle, Sparkles, Cpu, User } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody } from '../ui/Modal';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty, TableSkeleton } from '../ui/DataTable';
-import { formatDuration, formatUsd, formatDateTimeBR } from '../../lib/format';
+import { formatDuration, formatCustoBrl, formatDateTimeBR } from '../../lib/format';
 import { listarConversoesMarkdown, buscarConversaoMarkdown } from '../../lib/converterMarkdownApi';
 import { useToast } from '../ui/Toast';
 import type { ConversaoMarkdownResumo, ConversaoMarkdownLog } from '../../types';
@@ -127,7 +127,7 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
                   <Th label="Arquivo" />
                   <Th label="Via / Modelo" />
                   <Th label="Tokens" align="right" />
-                  <Th label="Custo" align="right" />
+                  <Th label="Custo (R$)" align="right" />
                   <Th label="Duração" align="right" />
                   <Th label="Status" />
                   <Th label="" />
@@ -150,7 +150,7 @@ export default function HistoricoConversoesModal({ onClose }: HistoricoConversoe
                         </span>
                       </Td>
                       <Td align="right" numeric>{item.tokens != null ? item.tokens.toLocaleString('pt-BR') : '—'}</Td>
-                      <Td align="right" numeric>{formatUsd(item.custo_usd)}</Td>
+                      <Td align="right" numeric>{formatCustoBrl(item.custo_usd != null ? item.custo_usd * 6 : null)}</Td>
                       <Td align="right" numeric>{formatDuration(item.duracao_ms)}</Td>
                       <Td>
                         {item.sucesso ? (

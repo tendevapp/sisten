@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, RefreshCw, Coins, DollarSign, CheckCircle2, XCircle, Loader2, User } from 'lucide-react';
 import { listarUsoApis, type ApiUsoRegistro, type PeriodoUso } from '../../lib/apiUsageApi';
-import { formatDuration, formatUsd, formatDateTimeBR } from '../../lib/format';
+import { formatDuration, formatCustoBrl, formatDateTimeBR } from '../../lib/format';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty } from '../ui/DataTable';
 
 const PERIODOS: { valor: PeriodoUso; label: string }[] = [
@@ -50,29 +50,33 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
     const totalChamadas = registros.length;
     const sucessos = registros.filter(r => r.sucesso).length;
     const tokens = registros.reduce((soma, r) => soma + (r.tokens ?? 0), 0);
-    let custoUsd = 0;
+    let custoBrl = 0;
     let temCusto = false;
-    for (const r of registros) if (r.custoUsd != null) { custoUsd += r.custoUsd; temCusto = true; }
+    for (const r of registros) {
+      const c = r.custoBrl ?? (r.custoUsd != null ? r.custoUsd * 6 : null);
+      if (c != null) { custoBrl += c; temCusto = true; }
+    }
     return {
       totalChamadas,
       taxaSucesso: totalChamadas > 0 ? sucessos / totalChamadas : null,
       tokens,
-      custoUsd: temCusto ? custoUsd : null,
+      custoBrl: temCusto ? custoBrl : null,
     };
   }, [registros]);
 
   const porModelo = useMemo(() => {
     const mapa = new Map<string, {
       modelo: string; chamadas: number; sucessos: number; tokens: number;
-      custoUsd: number; temCusto: boolean; duracaoSomaMs: number; duracaoQtd: number;
+      custoBrl: number; temCusto: boolean; duracaoSomaMs: number; duracaoQtd: number;
     }>();
     for (const r of registros) {
       const chave = r.modelo ?? '(modelo não informado)';
-      const entrada = mapa.get(chave) ?? { modelo: chave, chamadas: 0, sucessos: 0, tokens: 0, custoUsd: 0, temCusto: false, duracaoSomaMs: 0, duracaoQtd: 0 };
+      const entrada = mapa.get(chave) ?? { modelo: chave, chamadas: 0, sucessos: 0, tokens: 0, custoBrl: 0, temCusto: false, duracaoSomaMs: 0, duracaoQtd: 0 };
       entrada.chamadas += 1;
       if (r.sucesso) entrada.sucessos += 1;
       entrada.tokens += r.tokens ?? 0;
-      if (r.custoUsd != null) { entrada.custoUsd += r.custoUsd; entrada.temCusto = true; }
+      const c = r.custoBrl ?? (r.custoUsd != null ? r.custoUsd * 6 : null);
+      if (c != null) { entrada.custoBrl += c; entrada.temCusto = true; }
       if (r.duracaoMs != null) { entrada.duracaoSomaMs += r.duracaoMs; entrada.duracaoQtd += 1; }
       mapa.set(chave, entrada);
     }
@@ -142,8 +146,8 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
               <p className="text-lg font-bold text-slate-800">{totais.tokens.toLocaleString('pt-BR')}</p>
             </div>
             <div className="rounded-xl border border-slate-200 p-3">
-              <p className="flex items-center gap-1 text-[11px] text-slate-400"><DollarSign className="h-3 w-3" /> Custo estimado</p>
-              <p className="text-lg font-bold text-slate-800">{totais.custoUsd != null ? formatUsd(totais.custoUsd) : '—'}</p>
+              <p className="flex items-center gap-1 text-[11px] text-slate-400"><DollarSign className="h-3 w-3" /> Custo estimado (R$)</p>
+              <p className="text-lg font-bold text-slate-800">{totais.custoBrl != null ? formatCustoBrl(totais.custoBrl) : '—'}</p>
             </div>
           </div>
 
@@ -157,7 +161,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
                   <Th label="Chamadas" align="right" />
                   <Th label="Sucesso" align="right" />
                   <Th label="Tokens" align="right" />
-                  <Th label="Custo" align="right" />
+                  <Th label="Custo (R$)" align="right" />
                   <Th label="Duração média" align="right" />
                 </TableHeadRow>
                 <TableBody>
@@ -167,7 +171,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
                       <Td align="right" numeric>{m.chamadas.toLocaleString('pt-BR')}</Td>
                       <Td align="right" numeric>{Math.round((m.sucessos / m.chamadas) * 100)}%</Td>
                       <Td align="right" numeric>{m.tokens.toLocaleString('pt-BR')}</Td>
-                      <Td align="right" numeric>{m.temCusto ? formatUsd(m.custoUsd) : '—'}</Td>
+                      <Td align="right" numeric>{m.temCusto ? formatCustoBrl(m.custoBrl) : '—'}</Td>
                       <Td align="right" numeric>{m.duracaoQtd > 0 ? formatDuration(m.duracaoSomaMs / m.duracaoQtd) : '—'}</Td>
                     </Tr>
                   ))}
@@ -187,7 +191,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
                   <Th label="API" />
                   <Th label="Modelo" />
                   <Th label="Tokens" align="right" />
-                  <Th label="Custo" align="right" />
+                  <Th label="Custo (R$)" align="right" />
                   <Th label="Duração" align="right" />
                   <Th label="Status" />
                 </TableHeadRow>
@@ -204,7 +208,7 @@ export default function UsageAnalyticsSection({ nomesPorApiId }: UsageAnalyticsS
                       <Td>{nomesPorApiId[r.apiId] ?? r.apiId}</Td>
                       <Td mono>{r.modelo ?? '—'}</Td>
                       <Td align="right" numeric>{r.tokens != null ? r.tokens.toLocaleString('pt-BR') : '—'}</Td>
-                      <Td align="right" numeric>{formatUsd(r.custoUsd)}</Td>
+                      <Td align="right" numeric>{formatCustoBrl(r.custoBrl ?? (r.custoUsd != null ? r.custoUsd * 6 : null))}</Td>
                       <Td align="right" numeric>{formatDuration(r.duracaoMs)}</Td>
                       <Td>
                         {r.sucesso ? (

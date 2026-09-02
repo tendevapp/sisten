@@ -8,8 +8,8 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ClipboardPaste, Sparkles, Loader2, Timer, Coins, Cpu, AlertCircle } from 'lucide-react';
-import { formatModelo } from '../../lib/format';
+import { ClipboardPaste, Sparkles, Loader2, Timer, Coins, Cpu, DollarSign, AlertCircle } from 'lucide-react';
+import { formatModelo, formatCustoBrl } from '../../lib/format';
 import { buscarPropostasPorArquivo } from '../../lib/cotacoesApi';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import type { ExtracaoUso } from '../../types';
@@ -21,11 +21,13 @@ interface ColarMarkdownPanelProps {
   uso: ExtracaoUso | null;
   /** Provedor/modelo que atendeu a última extração (ex.: "gemini:gemini-2.0-flash") — só some quando uma nova extração começa. */
   modelo: string | null;
+  /** Custo estimado em BRL (conversão de USD multiplicando por 6). */
+  custoBrl?: number | null;
   /** Retorna se a extração deu certo — o textarea só é limpo em caso de sucesso. */
   onProcessar: (markdown: string, arquivoOrigem: string | null) => Promise<boolean>;
 }
 
-export default function ColarMarkdownPanel({ processoId, processando, erro, uso, modelo, onProcessar }: ColarMarkdownPanelProps) {
+export default function ColarMarkdownPanel({ processoId, processando, erro, uso, modelo, custoBrl, onProcessar }: ColarMarkdownPanelProps) {
   const [markdown, setMarkdown] = useState('');
   const [arquivoOrigem, setArquivoOrigem] = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -101,6 +103,7 @@ export default function ColarMarkdownPanel({ processoId, processando, erro, uso,
             <>
               <span className="inline-flex items-center gap-1"><Timer className="h-3 w-3" /> {(elapsedMs / 1000).toFixed(1)}s</span>
               {uso && <span className="inline-flex items-center gap-1"><Coins className="h-3 w-3" /> {uso.total_tokens.toLocaleString('pt-BR')} tokens</span>}
+              {custoBrl != null && <span className="inline-flex items-center gap-1" title="Custo estimado em R$ (USD x 6)"><DollarSign className="h-3 w-3" /> {formatCustoBrl(custoBrl)}</span>}
               {modelo && <span className="inline-flex items-center gap-1"><Cpu className="h-3 w-3" /> {formatModelo(modelo)}</span>}
             </>
           )}

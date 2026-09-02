@@ -39,6 +39,14 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-02',
+    resumo: 'Logística - Expedição > Opção "Escada / Plataforma" nos Tramos (`types.ts`, `TramoCard.tsx`, `expedicao_tramos`): Adicionada a opção "Escada / Plataforma" no dropdown de seleção de tramos do formulário de expedição e atualizada a restrição de verificação (check constraint) no banco de dados Supabase.',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Administração, APIs & Cotações > Layout de Alçadas de Usuário, Conversão Dólar/Real e Ampliação da Tabela de Cotação (`UserEditGovernanceModal.tsx`, `format.ts`, `DataTable.tsx`, `PropostaItensGrid.tsx`, `apiUsageApi.ts`, `UsageAnalyticsSection.tsx`, `ImportarPropostasPanel.tsx`, `extrair-cotacao`): 1. Redesign completo da aba "Alçadas de Aprovação" no modal de governança de usuários (`UserEditGovernanceModal.tsx`), substituindo o dropdown flutuante estreito que cortava na borda por uma seleção ampla em grade com busca em tempo real, chips de setores selecionados com remoção direta, botões "Selecionar Todos"/"Limpar" e rodapé de ações fixo; 2. Conversão de custos de chamadas de IA e telemetria de USD para BRL multiplicando pela taxa fixa de 6, com novo formatador `formatCustoBrl` (2 a 4 casas decimais para micro-custos de tokens em R$); 3. Aumento do tamanho e altura mínima da tabela de itens da cotação (`minHeight="24rem"`) em `PropostaItensGrid`, com coluna e menu de Vínculo de RI expandidos e inteligentes.'
+  },
+  {
     data: '2026-09-01',
     resumo: 'Administração > Gestão de Usuários e Permissões por Módulo (`AdminPanel.tsx`, `UsersByModuleView.tsx`, `pages.ts`): 1. Implementado seletor de visualização na aba Usuários alternando entre "Visão por Colaborador" e "Visão por Módulo & Permissões"; 2. Nova visão por módulo centralizando a auditoria de acesso de todas as telas e recursos do SISTEN; 3. Exibição de estatísticas de acesso por página, identificação da origem da permissão (Admin Global, Papel Padrão, Override Manual) e ações rápidas inline de liberação/bloqueio com persistência no Supabase; 4. Restrição do módulo Facilities exclusivamente a Administradores e ao responsável Adriano.'
   },
@@ -865,6 +873,42 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Tabelas do banco (Supabase)',
             itens: ['Tabela de frete via `localDb.getTabelaFrete()` (importada por planilha própria — ver Importação Tabela de Frete).']
+          }
+        ]
+      },
+      {
+        id: 'diligenciamento',
+        nome: 'Diligenciamento (dentro da Central de Compras, filtro "Sem MIGO")',
+        arquivo: 'src/components/suprimentos/DiligenciamentoSemMigoTable.tsx, src/lib/diligenciamento.ts, src/lib/diligenciamentoApi.ts, src/views/Compras.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: [
+              'Não é página própria: é o conteúdo do filtro "Sem MIGO" da Central de Compras (`Compras.tsx`, `poFilter === \'Sem MIGO\'`) — esse recorte já É "PO emitido, ainda sem chegada", então virou a mesma pergunta do Diligenciamento, sem precisar de uma segunda tela. A rota histórica `/suprimentos/diligenciamento` continua viva (redireciona para `/suprimentos/compras` com o filtro já selecionado, via prop `poFilterInicial`), mas não existe mais como página nem como entrada em `lib/pages.ts` — o acesso é o mesmo de Central de Compras (`sup_central_compras`).',
+              'Acompanhamento de pedidos de compra (PO/ZL0132) já emitidos e ainda sem chegada: fornecedor, valor, remessa, previsão de chegada calculada, transportadora e faturamento da transportadora.',
+              'Não importa dado novo do SAP: `Compras.tsx` já filtra `poFilter === \'Sem MIGO\'` como `status_requisicao === \'Processado\' && !data_migo && !isServicoRM(...)` sobre `getEnrichedSAPRequisicoes()` (o mesmo dado que Rastreio Compras e a chegada no almoxarifado usam) — a tabela de diligenciamento recebe esse resultado já filtrado/buscado pelos filtros da própria Central de Compras (RM, comprador, alerta, grupo de mercadoria, prioridade, promessa, busca) e só acrescenta as colunas novas.',
+              'Uma linha por item (RI), não por PO agrupado — mais simples que o desenho original em página própria, e mais parecido com o resto da Central de Compras.'
+            ]
+          },
+          {
+            titulo: 'Regras de negócio',
+            itens: [
+              'Previsão de chegada = `dt_remessa (data_entrega_sap) + dias corridos`. Os dias vêm de `sup_prazos_transporte`, chaveada por (UF do fornecedor, transportadora), com cascata: (1) UF+transportadora exatos; (2) UF com transportadora em branco (padrão da UF); (3) UF e transportadora em branco (padrão global). Sem remessa OU sem prazo cadastrado, a tela mostra o motivo em vez de inventar uma data (`motivoSemPrevisao`).',
+              'UF do fornecedor: prioriza `cidadeforn.estado_uf` (populado pela própria importação da ZL0132, coluna Rg); cai para a `regiao_uf` bruta do próprio pedido quando o fornecedor ainda não tem linha em `cidadeforn` — mesma prioridade de `lib/historicoAnalytics.ts`.',
+              'Decisão de produto: **não** usa `sup_fretes` (tabela do Estimador de Frete, com lead time por rota) como fonte deste prazo — o prazo do diligenciamento é mantido pelo próprio comprador, sem depender do cadastro de frete. As duas tabelas coexistem de propósito; não unificar sem revisitar a decisão.',
+              'Transportadora é texto livre por item (`sup_diligenciamento_itens.transportadora`), sem tela de cadastro: o autocompletar (`<datalist>`) é a lista das já digitadas antes, deduplicada por `normalizarChaveTransportadora` (trim + minúsculas + espaços colapsados). Trocar a transportadora de um item limpa a previsão manual dele — uma data digitada à mão para uma transportadora não deve sobreviver escondida atrás da escolha de outra.',
+              'Previsão manual (`previsao_manual`) sobrepõe a calculada quando o comprador edita a data diretamente; `null`/vazio volta a usar o cálculo. Edição é sempre por item (RI) — não existe mais edição em lote por PO (existia no desenho original em página própria; a tabela plana por item não precisa disso).',
+              'Chegada confirmada é só leitura aqui: vem de `almoxarifado_chegadas` (mesma tabela que o botão "Confirmar chegada" do Rastreio Compras grava, uma linha por RI) — o mesmo mapa que `Compras.tsx` já carregava para o selo "Chegou no almoxarifado" do badge de PO é reaproveitado, sem buscar de novo.',
+              'Toda mudança de previsão (manual ou por troca de transportadora) é levada automaticamente ao Rastreio Compras: grava `data_entrega_prevista` via `localDb.updateBuyerFields` (preservando `obs_comprador`/`item_status` do RI — essa função sempre regrava a observação inteira) e em seguida confirma com `localDb.confirmDeliveryDate`, que copia para `data_entrega_confirmada` — a única data que o Rastreio exibe ao solicitante. Nunca escreve em `dt_remessa` (ZL0132): é dado bruto do SAP, sobrescrito na próxima importação, e o Rastreio deliberadamente nunca usa a remessa do SAP como prazo (ver módulo Rastreio Compras).'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`sup_diligenciamento_itens` (por `ri`: transportadora, faturamento da transportadora, previsão manual — CRUD direto via `lib/diligenciamentoApi.ts`, fora do cache do `localDb`, mesmo padrão de `rhApi.ts`/`portariaApi.ts`).',
+              '`sup_prazos_transporte` (chave `uf, transportadora`, ambos podendo ser vazios para os níveis genéricos da cascata; `dias_corridos`), mantida pelo comprador na própria tabela ("Prazos de trânsito").',
+              'Leitura: `sap_zl0132_po`/`pedidosforn`, `vw_sap_requisicoes_enriquecidas`, `cidadeforn`, `almoxarifado_chegadas`, `sap_me5a_rc` (via os métodos já existentes do `localDb`).'
+            ]
           }
         ]
       }

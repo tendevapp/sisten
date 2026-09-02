@@ -381,6 +381,8 @@ export interface ResultadoConversao {
   tokensReais?: number;
   /** Só preenchido na via de IA — estimativa de custo em USD calculada pela Edge Function a partir da tabela de preço do modelo. `null` quando o modelo não está na tabela. */
   custoUsd?: number | null;
+  /** Estimativa de custo em BRL (conversão de USD multiplicando pela taxa fixa de 6). */
+  custoBrl?: number | null;
   /** Só preenchido na via de IA — modelo/provedor que atendeu a chamada (ex.: "gemini:gemini-2.0-flash"). */
   modelo?: string;
 }

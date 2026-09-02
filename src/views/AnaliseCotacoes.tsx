@@ -105,6 +105,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const [erroExtracao, setErroExtracao] = useState<string | null>(null);
   const [usoExtracao, setUsoExtracao] = useState<ExtracaoUso | null>(null);
   const [modeloExtracao, setModeloExtracao] = useState<string | null>(null);
+  const [custoExtracaoBrl, setCustoExtracaoBrl] = useState<number | null>(null);
   const [salvandoKey, setSalvandoKey] = useState<string | null>(null);
   // Exclusão de proposta salva é otimista + com janela de "Desfazer" (toast):
   // esconde na hora, só chama o Supabase de verdade se o usuário não desfizer
@@ -215,10 +216,13 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     setErroExtracao(null);
     setUsoExtracao(null);
     setModeloExtracao(null);
+    setCustoExtracaoBrl(null);
     try {
       const resposta = await extrairCotacao({ markdown, arquivoOrigem: arquivoOrigem ?? undefined, processoId: processo.id });
       setUsoExtracao(resposta.uso);
       setModeloExtracao(resposta.modelo);
+      const custoBrl = resposta.custo_brl ?? (typeof resposta.custo_usd === 'number' ? resposta.custo_usd * 6 : null);
+      setCustoExtracaoBrl(custoBrl);
       if (resposta.truncado) {
         toast.warning('A resposta da IA foi cortada por estourar o limite de tokens — mostrando o que veio completo.');
       }
@@ -431,6 +435,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
               erro={erroExtracao}
               uso={usoExtracao}
               modelo={modeloExtracao}
+              custoBrl={custoExtracaoBrl}
               onProcessar={handleProcessarMarkdown}
               onArquivosEnviados={handleArquivosEnviados}
             />

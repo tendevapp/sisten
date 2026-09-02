@@ -5,10 +5,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Radio, CheckSquare, Clock, User, ArrowRightLeft, Pause, Play, 
+  Radio, CheckSquare, Clock, User, ArrowRightLeft, Pause, Play,
   CheckCircle2, AlertTriangle, FileText, Send, UserCheck, ChevronRight,
   Search, Filter, MessageSquare, Lock, Globe, Paperclip, Sparkles,
-  Users, RefreshCw, Star, ShieldAlert, ArrowUpRight, ChevronDown
+  Users, RefreshCw, Star, ShieldAlert, ArrowUpRight, ChevronDown, ArrowLeft
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, Request, RequestComment, RequestStatusHistory, Sector, RequestAttachment } from '../../types';
@@ -30,8 +30,24 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
   // Estados principais
   const [tickets, setTickets] = useState<Request[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Controle de painel em telas pequenas: alterna entre a lista e o detalhe do chamado
+  const [mobilePane, setMobilePane] = useState<'list' | 'detail'>('list');
   const [activeQueueTab, setActiveQueueTab] = useState<QueueTab>('unassigned');
-  const [selectedSectorFilter, setSelectedSectorFilter] = useState<string>(user.sector_id || 'todos');
+  // Só pré-seleciona o setor do usuário se ele for uma das opções válidas do filtro
+  // (setor com helpdesk habilitado e fora de suprimento/jurídico). Caso contrário o
+  // <select> exibiria "Todos os Setores" mas o estado ficaria preso no setor do usuário,
+  // escondendo todos os chamados até que o dropdown fosse alterado manualmente.
+  const [selectedSectorFilter, setSelectedSectorFilter] = useState<string>(() => {
+    if (!user.sector_id) return 'todos';
+    const enabled = localDb.getSectors().some(s =>
+      s.id === user.sector_id &&
+      s.helpdesk_enabled &&
+      !s.name.toLowerCase().includes('suprimento') &&
+      !s.name.toLowerCase().includes('jurídico') &&
+      !s.name.toLowerCase().includes('juridico')
+    );
+    return enabled ? user.sector_id : 'todos';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [criticalityFilter, setCriticalityFilter] = useState<number | 'all'>('all');
 
@@ -126,6 +142,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
       }
     } else {
       setSelectedId(null);
+      setMobilePane('list');
     }
   }, [filteredTickets, selectedId]);
 
@@ -299,9 +316,9 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden bg-slate-50/50">
-      
+
       {/* PAINEL ESQUERDO: FILA DE ATENDIMENTO */}
-      <div className="w-full lg:w-[420px] xl:w-[460px] border-r border-slate-200 bg-white flex flex-col h-full shrink-0">
+      <div className={`${mobilePane === 'detail' ? 'hidden' : 'flex'} lg:flex w-full lg:w-[420px] xl:w-[460px] border-r border-slate-200 bg-white flex-col h-full shrink-0`}>
         
         {/* Cabeçalho de Filtros da Fila */}
         <div className="p-4 border-b border-slate-100 space-y-3 bg-slate-50/30">
@@ -449,7 +466,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
               return (
                 <button
                   key={t.id}
-                  onClick={() => setSelectedId(t.id)}
+                  onClick={() => { setSelectedId(t.id); setMobilePane('detail'); }}
                   className={`w-full text-left p-4 hover:bg-slate-50 transition-all flex flex-col space-y-2 border-l-4 cursor-pointer ${
                     isSelected 
                       ? 'bg-emerald-50/40 border-emerald-600 shadow-sm' 
@@ -487,12 +504,19 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
       </div>
 
       {/* PAINEL DIREITO: DETALHES DO CHAMADO E ATENDIMENTO */}
-      <div className="flex-1 bg-white flex flex-col h-full overflow-hidden">
+      <div className={`${mobilePane === 'list' ? 'hidden' : 'flex'} lg:flex flex-1 bg-white flex-col h-full overflow-hidden`}>
         {selectedTicket ? (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
-            
+
             {/* Header do Chamado */}
-            <div className="bg-white p-5 border-b border-slate-200 shrink-0 space-y-3">
+            <div className="bg-white p-4 sm:p-5 border-b border-slate-200 shrink-0 space-y-3">
+              <button
+                onClick={() => setMobilePane('list')}
+                className="lg:hidden inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 -ml-1"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar para a fila
+              </button>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2.5">
@@ -535,10 +559,10 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
             </div>
 
             {/* Corpo com Scroll: Descrição, Ações e Timeline */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
               
               {/* Box de Descrição */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Descrição do Incidente / Solicitação</h3>
                   <span className="text-[10px] text-slate-400 font-mono">ID: {selectedTicket.id}</span>
@@ -573,7 +597,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
               </div>
 
               {/* BARRA DE AÇÕES TÉCNICAS */}
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-5 space-y-4">
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 p-4 sm:p-5 space-y-4">
                 <h3 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Ações do Atendente</h3>
 
                 <div className="flex flex-wrap gap-3">
@@ -710,7 +734,7 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
               )}
 
               {/* LINHA DO TEMPO: HISTÓRICO, MENSAGENS E NOTAS INTERNAS */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center">
                     <MessageSquare className="h-4 w-4 text-emerald-700 mr-1.5" />
@@ -785,27 +809,28 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
                 {/* FORMULÁRIO DE RESPOSTA E NOTA INTERNA */}
                 <form onSubmit={handlePostNote} className="pt-3 border-t border-slate-100 space-y-3">
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     {/* Toggle Público / Interno */}
                     <div className="flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
                       <button
                         type="button"
                         onClick={() => setNoteType('public')}
                         className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                          noteType === 'public' 
-                            ? 'bg-white text-emerald-800 shadow-sm font-bold' 
+                          noteType === 'public'
+                            ? 'bg-white text-emerald-800 shadow-sm font-bold'
                             : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
                         <Globe className="inline h-3 w-3 mr-1" />
-                        Resposta Pública (Solicitante)
+                        <span className="sm:hidden">Pública</span>
+                        <span className="hidden sm:inline">Resposta Pública (Solicitante)</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setNoteType('internal')}
                         className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                          noteType === 'internal' 
-                            ? 'bg-amber-600 text-white shadow-sm font-bold' 
+                          noteType === 'internal'
+                            ? 'bg-amber-600 text-white shadow-sm font-bold'
                             : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >

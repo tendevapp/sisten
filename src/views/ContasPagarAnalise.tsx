@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  BarChart3, Wallet, CalendarClock, Building2, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown, Clock,
+  BarChart3, Wallet, CalendarClock, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown, Clock, CheckCircle2, Building2,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, Legend, ResponsiveContainer,
@@ -293,20 +293,17 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
     const vencidas = abertas.filter(l => l.vencimento_liquido && l.vencimento_liquido < hoje);
     const totalVencido = vencidas.reduce((sum, l) => sum + exposicao(l), 0);
 
-    const porFornecedor = new Map<string, number>();
-    abertas.forEach(l => {
-      const nome = l.razao_social_fornecedor || 'Sem fornecedor';
-      porFornecedor.set(nome, (porFornecedor.get(nome) || 0) + exposicao(l));
-    });
-    let maiorFornecedor = '—';
-    let maiorFornecedorValor = -Infinity;
-    porFornecedor.forEach((valor, nome) => {
-      if (valor > maiorFornecedorValor) { maiorFornecedorValor = valor; maiorFornecedor = nome; }
-    });
-    if (maiorFornecedorValor === -Infinity) maiorFornecedorValor = 0;
+    const pagas = filtradas.filter(l => estaCompensada(l) && (l.montante_moeda_doc || 0) > 0);
+    const totalPago = pagas.reduce((sum, l) => sum + (l.montante_moeda_doc || 0), 0);
 
-    return { totalAberto, totalVencido, maiorFornecedor, maiorFornecedorValor, qtdAbertas: abertas.length };
-  }, [abertas, hoje]);
+    return {
+      totalAberto,
+      totalVencido,
+      totalPago,
+      qtdPagas: pagas.length,
+      qtdAbertas: abertas.length,
+    };
+  }, [abertas, filtradas, hoje]);
 
   const temporalChartData = useMemo(() => {
     // aberto = aVencer + vencido; guardado só para o total do tooltip.
@@ -894,7 +891,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <KpiCard label="Total em Aberto" value={kpis.totalAberto} format={formatBRL} icon={Wallet} accent="var(--brand)" />
         <KpiCard label="Total Vencido" value={kpis.totalVencido} format={formatBRL} icon={CalendarClock} accent="#dc2626" />
-        <KpiCard label="Maior Fornecedor em Aberto" display={kpis.maiorFornecedor} detail={formatBRL(kpis.maiorFornecedorValor)} icon={Building2} accent="#0891b2" />
+        <KpiCard label="Total Pago" value={kpis.totalPago} format={formatBRL} detail={kpis.qtdPagas > 0 ? `${kpis.qtdPagas} lançamento(s)` : undefined} icon={CheckCircle2} accent="#10b981" />
         <KpiCard label="Lançamentos em Aberto" value={kpis.qtdAbertas} format={(v) => String(Math.round(v))} icon={ListChecks} accent="#7c3aed" />
       </div>
 

@@ -31,10 +31,12 @@ interface TableShellProps {
   /** Altura máxima da área rolável. Sem ela a tabela cresce sem limite e o
    *  cabeçalho fixo não tem contra o que grudar. */
   maxHeight?: number | string;
+  /** Altura mínima da área rolável. Garante espaço vertical para dropdowns e tabelas com poucos itens. */
+  minHeight?: number | string;
   className?: string;
 }
 
-export function TableShell({ children, maxHeight = '70vh', className = '' }: TableShellProps) {
+export function TableShell({ children, maxHeight = '70vh', minHeight, className = '' }: TableShellProps) {
   const topScrollRef = React.useRef<HTMLDivElement>(null);
   const mainScrollRef = React.useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = React.useState<number>(0);
@@ -108,7 +110,7 @@ export function TableShell({ children, maxHeight = '70vh', className = '' }: Tab
         ref={mainScrollRef}
         onScroll={handleMainScroll}
         className="overflow-auto flex-1"
-        style={{ maxHeight }}
+        style={{ maxHeight, minHeight }}
       >
         {children}
       </div>

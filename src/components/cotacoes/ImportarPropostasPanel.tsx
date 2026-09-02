@@ -33,7 +33,7 @@ import {
 } from '../../lib/markdownConvert';
 import { converterComIA, registrarConversaoLocal, buscarUltimaConversaoPorArquivo } from '../../lib/converterMarkdownApi';
 import { buscarPropostasPorArquivo } from '../../lib/cotacoesApi';
-import { formatDuration, formatUsd, formatModelo } from '../../lib/format';
+import { formatDuration, formatCustoBrl, formatModelo } from '../../lib/format';
 import type { Profile, ExtracaoUso } from '../../types';
 
 /** Item ainda não terminou e vai (ou está) sendo trabalhado. Um "pendente" sem `file` (recuperado de sessão anterior, aguardando reseleção) não conta. */
@@ -68,13 +68,15 @@ interface ImportarPropostasPanelProps {
   uso: ExtracaoUso | null;
   /** Provedor/modelo que atendeu a última extração (ex.: "gemini:gemini-2.0-flash") — só some quando uma nova extração começa. */
   modelo: string | null;
+  /** Custo estimado da extração em BRL (conversão de USD multiplicando por 6). */
+  custoBrl?: number | null;
   /** Retorna se a extração deu certo — só nesse caso a fila descarta os arquivos enviados. */
   onProcessar: (markdown: string, arquivoOrigem: string | null) => Promise<boolean>;
   /** Avisa quais arquivos (nome + File) foram mandados para extração, para o card da proposta poder oferecer "ver arquivo original" enquanto durar a sessão. */
   onArquivosEnviados?: (arquivos: { nome: string; file: File | null }[]) => void;
 }
 
-export default function ImportarPropostasPanel({ user, processoId, processando, erro, uso, modelo, onProcessar, onArquivosEnviados }: ImportarPropostasPanelProps) {
+export default function ImportarPropostasPanel({ user, processoId, processando, erro, uso, modelo, custoBrl, onProcessar, onArquivosEnviados }: ImportarPropostasPanelProps) {
   const toast = useToast();
   const lsKey = useMemo(() => `sisten:cotacoes:${processoId}:conversor:v1`, [processoId]);
 
@@ -246,6 +248,7 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
               resumo: `${(historico.caracteres ?? historico.markdown.length).toLocaleString('pt-BR')} carac.`,
               tokens: historico.tokens,
               custoUsd: historico.custo_usd,
+              custoBrl: historico.custo_usd != null ? historico.custo_usd * 6 : null,
               duracaoMs: historico.duracao_ms,
               via: historico.via,
               modelo: historico.modelo,
@@ -428,16 +431,17 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
   );
   const progressoPct = total > 0 ? Math.round((finalizados / total) * 100) : 0;
 
-  const { tokensAcumulados, custoAcumulado } = useMemo(() => {
+  const { tokensAcumulados, custoAcumuladoBrl } = useMemo(() => {
     let tokens = 0;
     let custo = 0;
     let temCusto = false;
     for (const i of itens) {
       if (i.status !== 'concluido' || !i.resultado) continue;
       tokens += i.resultado.tokensReais ?? i.resultado.tokensEstimados;
-      if (typeof i.resultado.custoUsd === 'number') { custo += i.resultado.custoUsd; temCusto = true; }
+      const c = i.resultado.custoBrl ?? (typeof i.resultado.custoUsd === 'number' ? i.resultado.custoUsd * 6 : null);
+      if (typeof c === 'number') { custo += c; temCusto = true; }
     }
-    return { tokensAcumulados: tokens, custoAcumulado: temCusto ? custo : null };
+    return { tokensAcumulados: tokens, custoAcumuladoBrl: temCusto ? custo : null };
   }, [itens]);
 
   const prosseguirExtracao = async () => {
@@ -561,9 +565,9 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
                   <Coins className="h-3 w-3" />
                   {tokensAcumulados.toLocaleString('pt-BR')} tokens
                 </span>
-                <span className="inline-flex items-center gap-1" title="Custo de IA somado dos arquivos já convertidos (planilha/JSON/XML não têm custo)">
+                <span className="inline-flex items-center gap-1" title="Custo de IA somado dos arquivos já convertidos em R$ (USD x 6; planilha/JSON/XML não têm custo)">
                   <DollarSign className="h-3 w-3" />
-                  {custoAcumulado != null ? formatUsd(custoAcumulado) : 'sem custo de IA ainda'}
+                  {custoAcumuladoBrl != null ? formatCustoBrl(custoAcumuladoBrl) : 'sem custo de IA ainda'}
                 </span>
               </div>
             </div>
@@ -662,7 +666,7 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
         </button>
       </div>
       {modoManual && (
-        <ColarMarkdownPanel processoId={processoId} processando={processando} erro={erro} uso={uso} modelo={modelo} onProcessar={onProcessar} />
+        <ColarMarkdownPanel processoId={processoId} processando={processando} erro={erro} uso={uso} modelo={modelo} custoBrl={custoBrl} onProcessar={onProcessar} />
       )}
 
       {itemPreview && (
@@ -675,7 +679,9 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
             itemPreview.resultado
               ? `${itemPreview.resultado.resumo} · ${formatDuration(itemPreview.resultado.duracaoMs)}` +
                 ` · ${(itemPreview.resultado.tokensReais ?? itemPreview.resultado.tokensEstimados).toLocaleString('pt-BR')} tokens${itemPreview.resultado.tokensReais !== undefined ? ' (reais)' : ' (estimados)'}` +
-                (itemPreview.resultado.custoUsd !== undefined && itemPreview.resultado.custoUsd !== null ? ` · ${formatUsd(itemPreview.resultado.custoUsd)}` : '')
+                ((itemPreview.resultado.custoBrl ?? (itemPreview.resultado.custoUsd != null ? itemPreview.resultado.custoUsd * 6 : null)) != null
+                  ? ` · ${formatCustoBrl(itemPreview.resultado.custoBrl ?? itemPreview.resultado.custoUsd! * 6)}`
+                  : '')
               : `Pronto para converter`
           }
           onClose={() => setItemPreview(null)}
@@ -729,7 +735,7 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
       {confirmRemoverItem && (
         <ConfirmDialog
           titulo="Remover arquivo já convertido?"
-          mensagem={`"${confirmRemoverItem.nome}" já foi convertido${confirmRemoverItem.resultado?.custoUsd ? ' com custo de IA' : ''}. Remover descarta esse resultado.`}
+          mensagem={`"${confirmRemoverItem.nome}" já foi convertido${confirmRemoverItem.resultado?.custoBrl || confirmRemoverItem.resultado?.custoUsd ? ' com custo de IA' : ''}. Remover descarta esse resultado.`}
           confirmarLabel="Remover"
           variante="perigo"
           onConfirmar={() => { removerItem(confirmRemoverItem.id); setConfirmRemoverItem(null); }}

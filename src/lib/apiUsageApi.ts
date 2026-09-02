@@ -17,12 +17,14 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { converterUsdParaBrl } from './format';
 
 export interface ApiUsoRegistro {
   apiId: string;
   modelo: string | null;
   tokens: number | null;
   custoUsd: number | null;
+  custoBrl: number | null;
   duracaoMs: number | null;
   sucesso: boolean;
   userName: string | null;
@@ -81,16 +83,16 @@ export async function listarUsoApis(periodo: PeriodoUso = '7d'): Promise<ApiUsoR
   const registros: ApiUsoRegistro[] = [
     ...(extracoes.data ?? []).map(r => ({
       apiId: 'extrair-cotacao',
-      modelo: r.modelo, tokens: r.total_tokens, custoUsd: r.custo_usd, duracaoMs: r.duracao_ms,
+      modelo: r.modelo, tokens: r.total_tokens, custoUsd: r.custo_usd, custoBrl: converterUsdParaBrl(r.custo_usd), duracaoMs: r.duracao_ms,
       sucesso: r.sucesso, userName: r.user_name, createdAt: r.created_at,
     })),
     ...(conversoes.data ?? []).map(r => ({
       apiId: 'converter-markdown-ia',
-      modelo: r.modelo, tokens: r.tokens, custoUsd: r.custo_usd, duracaoMs: r.duracao_ms,
+      modelo: r.modelo, tokens: r.tokens, custoUsd: r.custo_usd, custoBrl: converterUsdParaBrl(r.custo_usd), duracaoMs: r.duracao_ms,
       sucesso: r.sucesso, userName: r.user_name, createdAt: r.created_at,
     })),
     ...(geminiLogs.data ?? []).map(r => ({
-      apiId: r.api_id, modelo: r.modelo, tokens: r.total_tokens, custoUsd: r.custo_usd, duracaoMs: r.duracao_ms,
+      apiId: r.api_id, modelo: r.modelo, tokens: r.total_tokens, custoUsd: r.custo_usd, custoBrl: converterUsdParaBrl(r.custo_usd), duracaoMs: r.duracao_ms,
       sucesso: r.sucesso, userName: r.user_name, createdAt: r.created_at,
     })),
   ];

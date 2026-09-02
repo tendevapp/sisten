@@ -15,7 +15,7 @@ import {
   Database, CloudDownload,
 } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { formatDateTimeBR, formatDuration, formatFileSize, formatUsd } from '../../lib/format';
+import { formatDateTimeBR, formatDuration, formatFileSize, formatCustoBrl } from '../../lib/format';
 import type { ItemFila } from './ItemFilaRow';
 
 export interface DuplicadoInfo {
@@ -28,6 +28,7 @@ export interface DuplicadoInfo {
   resumo?: string | null;
   tokens?: number | null;
   custoUsd?: number | null;
+  custoBrl?: number | null;
   duracaoMs?: number | null;
   via?: 'ia' | 'local' | string | null;
   modelo?: string | null;
@@ -170,10 +171,10 @@ export default function ArquivoJaConvertidoModal({
                       {dup.tokens.toLocaleString('pt-BR')} tokens
                     </span>
                   )}
-                  {dup.custoUsd !== undefined && dup.custoUsd !== null && (
+                  {(dup.custoBrl ?? (dup.custoUsd != null ? dup.custoUsd * 6 : null)) != null && (
                     <span className="inline-flex items-center gap-1">
                       <DollarSign className="h-3 w-3" />
-                      {formatUsd(dup.custoUsd)}
+                      {formatCustoBrl(dup.custoBrl ?? dup.custoUsd! * 6)}
                     </span>
                   )}
                 </div>

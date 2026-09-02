@@ -138,13 +138,35 @@ export function formatDuration(ms?: number | null): string {
   return `${min}m ${String(seg).padStart(2, '0')}s`;
 }
 
+export const TAXA_DOLAR_REAL = 6;
+
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const brlCusto = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+/** Converte valor de USD para BRL multiplicando pela taxa fixa de 6. */
+export function converterUsdParaBrl(v?: number | null): number | null {
+  if (!isNum(v)) return null;
+  return v * TAXA_DOLAR_REAL;
+}
 
 /** Custo de chamada de IA em USD ("US$0,0032"). `null`/`undefined` vira "—" — modelo fora da tabela de preço, nunca mostra um valor inventado. */
 export function formatUsd(v?: number | null): string {
   if (!isNum(v)) return EMPTY;
   return usd.format(v);
 }
+
+/** Formata custo de chamada de IA em BRL ("R$ 0,0192"), preservando ate 4 casas decimais para micro-custos. */
+export function formatCustoBrl(v?: number | null): string {
+  if (!isNum(v)) return EMPTY;
+  return brlCusto.format(v);
+}
+
+/** Converte custo de USD para BRL (multiplicando por 6) e formata como moeda brasileira ("R$ 0,0192"). */
+export function formatUsdParaBrl(v?: number | null): string {
+  if (!isNum(v)) return EMPTY;
+  return brlCusto.format(v * TAXA_DOLAR_REAL);
+}
+
 
 const PROVEDOR_LABEL: Record<string, string> = {
   gemini: 'Gemini', openai: 'OpenAI', openrouter: 'OpenRouter',
