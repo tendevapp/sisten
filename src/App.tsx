@@ -14,6 +14,7 @@ import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
 import DataUpdateModal from './components/DataUpdateModal';
+import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 
 // Views
 import Login from './views/Login';
@@ -22,9 +23,7 @@ import ResetPassword from './views/ResetPassword';
 const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
-const MyRequests = lazy(() => import('./views/MyRequests'));
-const Solicitacoes = lazy(() => import('./views/Solicitacoes'));
-const Approvals = lazy(() => import('./views/Approvals'));
+const SolicitacoesCentral = lazy(() => import('./views/SolicitacoesCentral'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
@@ -51,6 +50,7 @@ const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
+const Diligenciamento = lazy(() => import('./views/Diligenciamento'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
 const PortariaPassagemPlantao = lazy(() => import('./views/portaria/PortariaPassagemPlantao'));
 const PortariaEquipamentos = lazy(() => import('./views/portaria/PortariaEquipamentos'));
@@ -71,9 +71,10 @@ const ModuleHome = lazy(() => import('./views/ModuleHome'));
 // refletir os dados recém-sincronizados.
 const STATE_PRESERVING_PATHS = new Set<string>([
   '/solicitacoes/nova',
+  // Mantém abas, filtros, seleção e a resposta sendo digitada — remontar a
+  // cada sincronização jogaria fora o recorte e o texto do usuário.
+  '/solicitacoes',
   '/solicitacoes/minhas',
-  // Mantém filtros, seleção e a resposta sendo digitada — remontar a cada
-  // sincronização jogaria fora o recorte e o texto do usuário.
   '/solicitacoes/todas',
   '/solicitacoes/aprovacoes',
   '/materiais/busca',
@@ -83,6 +84,9 @@ const STATE_PRESERVING_PATHS = new Set<string>([
   '/suprimentos/dashboards',
   '/suprimentos/demandas',
   '/suprimentos/compras',
+  // Mantém filtros, linhas expandidas e o que estiver sendo digitado
+  // (transportadora, faturamento, previsão) — igual ao motivo acima.
+  '/suprimentos/diligenciamento',
   // Mantém a fila de importação (arquivos em memória, resultados já
   // convertidos), o markdown colado, a grade em revisão e o processo aberto —
   // remontar a cada sincronização em segundo plano jogaria fora a extração.
@@ -170,8 +174,6 @@ const LEGACY_PATH_REDIRECTS: Record<string, string> = {
 // a própria tela ocupa 100% da altura computada pelo flexbox — sem números
 // mágicos, então sempre bate com o espaço realmente disponível.
 const FULL_BLEED_PATHS = new Set<string>([
-  '/solicitacoes/aprovacoes',
-  '/solicitacoes/minhas',
   '/helpdesk',
   '/helpdesk/relatorios',
 ]);
@@ -615,23 +617,23 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      // Rotas históricas: as três telas viraram abas da Central. Continuam vivas
+      // porque estão em links salvos, em notificações já enviadas e nos atalhos
+      // da tela Início — cada uma abre a Central já no escopo que prometia.
       case '/solicitacoes/minhas':
-        if (canAccessPage(user, 'sol_minhas')) {
-          return <MyRequests user={user} onNavigate={handleNavigate} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
-      
+        return <SolicitacoesCentral user={user} onNavigate={handleNavigate} escopoInicial="minhas" />;
+
       case '/solicitacoes/todas':
-        if (canAccessPage(user, 'sol_todas')) {
-          return <Solicitacoes user={user} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
+        return (
+          <SolicitacoesCentral
+            user={user}
+            onNavigate={handleNavigate}
+            escopoInicial={canAccessPage(user, 'sol_todas') ? 'todas' : undefined}
+          />
+        );
 
       case '/solicitacoes/aprovacoes':
-        if (canAccessPage(user, 'sol_aprovacoes')) {
-          return <Approvals user={user} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
+        return <SolicitacoesCentral user={user} onNavigate={handleNavigate} escopoInicial="acao" />;
 
       case '/suprimentos/dashboards':
         if (canAccessPage(user, 'sup_dashboards')) {
@@ -695,6 +697,12 @@ export default function App() {
       case '/suprimentos/pendencias-processamento':
         if (canAccessPage(user, 'sup_pendencias_processamento')) {
           return <PendenciasProcessamento user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/suprimentos/diligenciamento':
+        if (canAccessPage(user, 'sup_diligenciamento')) {
+          return <Diligenciamento user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -797,7 +805,7 @@ export default function App() {
       // do módulo. O conteúdo vem de `lib/moduleHomes.ts`.
       case '/solicitacoes':
         if (canAccessPage(user, 'solicitacoes_home')) {
-          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="solicitacoes" />;
+          return <SolicitacoesCentral user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -949,6 +957,7 @@ export default function App() {
       </div>
       <FeedbackButton pagePath={currentPath} />
       <DataUpdateModal currentPath={currentPath} />
+      {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}
     </div>
     </TourRegistryProvider>
   );

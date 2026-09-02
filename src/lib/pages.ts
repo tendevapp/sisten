@@ -40,19 +40,13 @@ export const PAGES: PageDef[] = [
   { id: 'relatorios', group: 'GERAL', label: 'Relatórios', path: '/relatorios', icon: BarChart3, defaultRoles: '*' },
   { id: 'sobre', group: 'GERAL', label: 'Sobre o SISTEN', path: '/sobre', icon: Info, defaultRoles: '*' },
 
-  // Tela inicial do módulo — no Sidebar o nome do grupo "SOLICITAÇÕES" navega
-  // para cá (ver GROUP_HOME em Sidebar.tsx). O hub é montado a partir das
-  // subpáginas do próprio grupo que o usuário tem acesso.
+  // Central de Solicitações: uma página só, com abas de escopo. Antes eram
+  // três telas (Minhas, a fila coletiva e Aprovações) sobre a mesma tabela,
+  // cada uma com o seu recorte — e ninguém sabia em qual procurar. Os ids
+  // `sol_minhas`, `sol_todas` e `sol_aprovacoes` sobrevivem como permissões
+  // (ver FEATURE_FLAGS): agora liberam abas, não páginas.
   { id: 'solicitacoes_home', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes', icon: ClipboardList, defaultRoles: '*' },
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
-  { id: 'sol_minhas', group: 'SOLICITAÇÕES', label: 'Minhas Solicitações', path: '/solicitacoes/minhas', icon: List, defaultRoles: '*' },
-  // Fila coletiva: quem opera a fila vê todas as solicitações em aberto,
-  // acompanha e responde. Complementa 'minhas' (as próprias) e 'aprovações'
-  // (a decisão do gestor).
-  { id: 'sol_todas', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes/todas', icon: ClipboardList, defaultRoles: ['requisitante', 'gestor', 'comprador', 'coordenador_suprimentos', 'admin'] },
-  // Correção de incoerência: o App.tsx aceitava coordenador_suprimentos por
-  // engano (Sidebar nunca prometeu isso no menu). Padrão alinhado ao menu.
-  { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin'] },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
@@ -69,6 +63,7 @@ export const PAGES: PageDef[] = [
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
   { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_diligenciamento', group: 'SUPRIMENTOS', label: 'Diligenciamento', path: '/suprimentos/diligenciamento', icon: Truck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   { id: 'almoxarifado_home', group: 'ALMOXARIFADO', label: 'Almoxarifado', path: '/almoxarifado', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -80,9 +75,9 @@ export const PAGES: PageDef[] = [
   // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
   // nome do grupo "FACILITIES" vira o botão para a tela inicial (ver GROUP_HOME
   // em Sidebar.tsx); os itens abaixo são as subpáginas expansíveis.
-  { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
-  { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
-  { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin', 'coordenador_suprimentos', 'gestor'] },
+  { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin'] },
+  { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin'] },
+  { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin'] },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
@@ -117,6 +112,27 @@ export const PAGES: PageDef[] = [
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),
 // controladas pelo mesmo mecanismo de override em profiles.page_access.
 export const FEATURE_FLAGS: PageDef[] = [
+  // Abas da Central de Solicitações. Continuam com o mesmo `id` de quando eram
+  // páginas próprias, para que o `page_access` já gravado nos perfis siga
+  // valendo — desmarcar aqui esconde a aba, como antes escondia o item de menu.
+  {
+    id: 'sol_minhas',
+    group: 'SOLICITAÇÕES',
+    label: 'Solicitações: aba "Minhas"',
+    defaultRoles: '*',
+  },
+  {
+    id: 'sol_todas',
+    group: 'SOLICITAÇÕES',
+    label: 'Solicitações: aba "Todas" (fila coletiva)',
+    defaultRoles: ['requisitante', 'gestor', 'comprador', 'coordenador_suprimentos', 'admin'],
+  },
+  {
+    id: 'sol_aprovacoes',
+    group: 'SOLICITAÇÕES',
+    label: 'Solicitações: aprovar compras',
+    defaultRoles: ['gestor', 'admin'],
+  },
   {
     id: 'rastreio_valores',
     group: 'DADOS SENSÍVEIS',
@@ -216,11 +232,33 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
 const ALL_ENTRIES: PageDef[] = [...PAGES, ...FEATURE_FLAGS];
 const BY_ID: Record<string, PageDef> = Object.fromEntries(ALL_ENTRIES.map(p => [p.id, p]));
 
+/**
+ * Identifica se o usuário é o responsável pelo módulo de Facilities (Adriano Oliveira).
+ */
+export function isUserAdriano(user: Profile): boolean {
+  const email = (user.email || '').toLowerCase().trim();
+  const name = (user.name || '').toLowerCase().trim();
+  return (
+    email.startsWith('adriano.oliveira') ||
+    email === 'adriano@ten.ind.br' ||
+    name.includes('adriano da silva costa') ||
+    (name.includes('adriano') && user.sector_id === '3')
+  );
+}
+
 export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
 
   const def = BY_ID[pageId];
   if (!def) return false;
+
+  // Módulo Facilities: restrito estritamente a Administradores e ao Adriano
+  if (def.group === 'FACILITIES' || pageId.startsWith('facilities')) {
+    if (!isUserAdriano(user)) return false;
+    const override = user.page_access?.[pageId];
+    if (override !== undefined) return override;
+    return true;
+  }
 
   const override = user.page_access?.[pageId];
   if (override !== undefined && !def.alwaysAdmin) return override;

@@ -23,4 +23,5 @@ export const INITIAL_SECTORS: Sector[] = [
   { id: '15', name: 'Manutenção', is_support: true, helpdesk_enabled: false },
   { id: '16', name: 'Diretoria', is_support: false, helpdesk_enabled: false },
   { id: '17', name: 'Jurídico', is_support: true, helpdesk_enabled: true },
+  { id: '18', name: 'Controladoria', is_support: false, helpdesk_enabled: false },
 ];

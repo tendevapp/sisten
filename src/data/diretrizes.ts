@@ -39,6 +39,26 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-01',
+    resumo: 'Administração > Gestão de Usuários e Permissões por Módulo (`AdminPanel.tsx`, `UsersByModuleView.tsx`, `pages.ts`): 1. Implementado seletor de visualização na aba Usuários alternando entre "Visão por Colaborador" e "Visão por Módulo & Permissões"; 2. Nova visão por módulo centralizando a auditoria de acesso de todas as telas e recursos do SISTEN; 3. Exibição de estatísticas de acesso por página, identificação da origem da permissão (Admin Global, Papel Padrão, Override Manual) e ações rápidas inline de liberação/bloqueio com persistência no Supabase; 4. Restrição do módulo Facilities exclusivamente a Administradores e ao responsável Adriano.'
+  },
+  {
+    data: '2026-09-01',
+    resumo: 'Helpdesk & Atendimento > Redesign Modular, Relatórios e Avaliação CSAT (`Helpdesk.tsx`, `HelpdeskAtendimento.tsx`, `HelpdeskRelatorios.tsx`, `HelpdeskSatisfactionCard.tsx`, `helpdeskUtils.ts`): 1. Nova estrutura modular separando Atendimento Operacional Split-View e Relatórios Executivos; 2. Fila inteligente de chamados com contagem regressiva e alertas visuais de SLA por criticidade (Níveis 1 a 5); 3. Linha do tempo unificada com respostas ao solicitante, notas internas confidenciais TI/Suporte e respostas rápidas (Canned Responses); 4. Dashboard executivo com KPIs de MTTR real, SLA Compliance %, CSAT 1-5 estrelas, evolução temporal e exportação CSV; 5. Formato estruturado de avaliação de satisfação (CSAT) no fechamento de chamados com tags específicas para TI e Facilities (agilidade, solução eficaz, cordialidade, organização do local) e ação de reabertura rápida; 6. Filtro rigoroso de atendentes ativos na atribuição de chamados.'
+  },
+  {
+    data: '2026-09-01',
+    resumo: 'Administração & Autenticação > Padronização de Nomes em MAIÚSCULAS (`localDb.ts`, `Signup.tsx`, `ProfileView.tsx`, `UserEditGovernanceModal.tsx`, `core_perfis`): 1. Todos os cadastros e atualizações de usuários agora convertem e persistem obrigatoriamente o nome completo em letras maiúsculas (`UPPER`); 2. Campos de entrada de nome no Signup, Meu Perfil e Modal de Governança forçam exibição e digitação em maiúsculas; 3. Criada trigger no PostgreSQL do Supabase (`trg_core_perfis_upper_name_trigger`) garantindo que qualquer inserção/atualização mantenha os nomes normalizados em caixa alta; 4. Executado script de migração atualizando 100% dos usuários existentes no Supabase e no cache local para caixa alta.'
+  },
+  {
+    data: '2026-09-01',
+    resumo: 'Administração > Redesign Completo da Gestão de Usuários (`AdminPanel.tsx`, `UserEditGovernanceModal.tsx`): 1. Reformulação visual e ergonômica seguindo design enterprise contemporâneo com cartões executivos de métricas (KPIs de Total, Pendentes, Ativos e Admins); 2. Fila de Aprovações Pendentes em formato "Inbox de Cadastros" com avatares dinâmicos, resumo de cargo e setor solicitado, e aprovação/configuração rápida; 3. Barra unificada de filtros com chips de status (Todos, Ativos, Pendentes, Admins, Compradores, Gestores, Inativos), busca global em tempo real e seletor com contadores de colaboradores por setor; 4. Tabela de usuários refinada com avatares coloridos por hash, badges semânticos para cada papel (Role) e alçadas de aprovação, e menu de ações integrado; 5. Novo modal completo de governança e edição de usuário (`UserEditGovernanceModal`) centralizando dados cadastrais, cargo, setor corporativo, papel de acesso, grupo SAP, alçadas de aprovação e reset de senha.'
+  },
+  {
+    data: '2026-09-01',
+    resumo: 'Administração > Gestão de Usuários (`AdminPanel.tsx`, `localDb.ts`): 1. Exibição clara e formatada do nome do setor (com ícone e badge visual) tanto na lista de Perfis Ativos quanto na Fila de Aprovações Pendentes; 2. Edição rápida de setor inline por usuário (seletor dinâmico com confirmação e persistência direta no Supabase `core_perfis`); 3. Botão "Editar Setor" adicionado na coluna de ações da tabela de usuários; 4. Inclusão de campo de busca global (nome, e-mail, cargo, setor, grupo SAP) e filtro de visualização por setor corporativo.'
+  },
+  {
     data: '2026-08-31',
     resumo: 'Almoxarifado > Perfil de Consumo Semanal (`consumoSemanal.ts`, `ConsumoSemanal.tsx`, `ConsumoSemanalChart.tsx`): 1. Extensão automática da série temporal de consumo até a semana atual do calendário (mesmo sem saídas recentes registradas na MB51), garantindo visibilidade completa e sem omissão de semanas recentes; 2. Destaque visual da "Semana atual" com linha de referência dedicada no gráfico Recharts, indicação no tooltip e selo "Atual" na tabela de valores; 3. Inclusão de badge com a data dos dados da base ("Base com dados até DD/MM/AAAA") e metadados da última importação SAP MB51 (data/hora e nome do arquivo) no cabeçalho e descrição do gráfico para clareza sobre o frescor das informações.'
   },
@@ -859,52 +879,60 @@ export const DIRETRIZES: DiretrizesDominio[] = [
     resumo: 'Fluxo completo de uma solicitação: criação, fila de atendimento, aprovação, acompanhamento pelo solicitante e relatórios agregados.',
     paginas: [
       {
-        id: 'solicitacoes-fila',
-        nome: 'Solicitações (fila coletiva)',
-        arquivo: 'src/views/Solicitacoes.tsx, src/lib/solicitacoes.ts',
+        id: 'solicitacoes-central',
+        nome: 'Central de Solicitações',
+        arquivo: 'src/views/SolicitacoesCentral.tsx, src/components/solicitacoes/RequestDetailPanel.tsx, src/lib/solicitacoesCentral.ts, src/lib/solicitacoes.ts',
         secoes: [
           {
             titulo: 'Visão geral',
-            itens: ['Fila de todas as solicitações "em aberto" do sistema (compra, cadastro SAP, chamado), para quem opera o atendimento.']
+            itens: [
+              'Tela única do módulo, em `/solicitacoes`. Substitui as três telas anteriores — Minhas Solicitações (`MyRequests.tsx`), a fila coletiva (`Solicitacoes.tsx`) e Aprovações (`Approvals.tsx`) —, que liam a mesma tabela `requests` com três recortes escritos em lugares diferentes e divergentes entre si.',
+              'A lista é agrupada por *o que precisa de você*, não por status: faixas "Aguardando você", "Novidades desde a sua última visita", "Em andamento" e "Concluídas" (esta última recolhida por padrão).',
+              'Abas de escopo: "Precisa de mim", "Minhas", "Do meu setor" e "Todas". Cada uma é um recorte do mesmo universo, não uma página diferente.',
+              'Rotas históricas `/solicitacoes/minhas`, `/solicitacoes/todas` e `/solicitacoes/aprovacoes` continuam atendidas e abrem a Central já no escopo correspondente — links salvos, e-mails antigos e notificações já enviadas seguem funcionando.'
+            ]
           },
           {
-            titulo: 'Regras de negócio',
+            titulo: 'Permissões',
             itens: [
-              'Recorte por papel: admin vê tudo; um usuário que é SÓ `gestor` (sem também ser requisitante/comprador/coordenador) vê só as solicitações do próprio setor; os demais papéis da fila veem tudo — regra espelha a mesma usada em Aprovações, deliberadamente, "para não criar duas verdades sobre o que um gestor enxerga".',
-              '"Em aberto" = tudo que não está em fechado, cancelada, rejeitada ou rascunho.',
-              'Ordenação: mais crítica primeiro; empatando, a mais antiga primeiro.',
-              'Só `comprador`, `coordenador_suprimentos`, `atendente` ou `admin` podem marcar uma resposta como "nota interna" (não visível ao solicitante).',
-              'Vínculo de RM SAP: o atendente/comprador pode informar e salvar o Nº da RM (`linked_rm_number`) diretamente no painel lateral de atendimento, persistindo no Supabase para correlação com ME5A e Central de Compras.',
-              'A janela de detalhes suspensa (`RequestDetailsModal`) possui largura ampliada (`max-w-4xl`/`max-w-5xl`) e layout de grid responsivo multi-colunas para identificação, dados de compra e itens.'
+              'Os ids `sol_minhas`, `sol_todas` e `sol_aprovacoes` deixaram de ser páginas e viraram feature flags em `lib/pages.ts`, com os mesmos ids e papéis padrão de antes: o `page_access` já gravado nos perfis continua valendo, só que agora libera abas em vez de itens de menu.',
+              'A aba "Todas" usa o mesmo `solicitacoesVisiveis` de antes (admin vê tudo; gestor "puro" vê só o próprio setor), deliberadamente: o redesenho reorganiza a navegação, não afrouxa nem aperta quem vê o quê.',
+              'O recorte pessoal (`podeVer`) soma: quem abriu, quem aprova aquele setor, o gestor dos setores acompanhados e quem opera a fila daquele tipo. Rascunho é sempre privado ao autor, nem admin vê.'
+            ]
+          },
+          {
+            titulo: 'Pendências ("Aguardando você")',
+            itens: [
+              'Compra `pendente` → "Aprovar ou devolver", para quem aprova aquele setor.',
+              'Para quem abriu: `em_revisao` → "Ajustar e reenviar"; `aguardando_solicitante` → "Responder ao atendente"; `rascunho` → "Terminar o rascunho"; chamado resolvido/fechado sem nota → "Avaliar o atendimento".',
+              'Para quem opera: chamado `aberto`/`reaberto` → "Assumir o chamado"; chamado `em_atendimento` cujo último comentário público é do solicitante → "Responder o solicitante"; cadastro SAP em triagem → "Triar o cadastro"; compra `aprovada` sem comprador → "Assumir a compra".',
+              'Distinção deliberada entre pendência e novidade: uma mensagem nova é aviso, não tarefa — só vira pendência quando o status diz que a bola está com aquela pessoa. Sem isso a aba "Precisa de mim" encheria de coisas que não exigem ação e perderia o sentido.'
+            ]
+          },
+          {
+            titulo: 'Novidades e leitura',
+            itens: [
+              'Estado de leitura por usuário em `sisten_sol_leitura_<userId>` (IndexedDB, via `localDb`): `marco_zero`, `por_solicitacao` e `ultima_visita`.',
+              '`marco_zero` é gravado no primeiro acesso e tudo anterior conta como lido — sem ele, o primeiro uso mostraria anos de histórico como novidade e o recurso nasceria sem credibilidade.',
+              'É novidade o comentário ou a mudança de status feita por OUTRA pessoa depois da última abertura daquela solicitação. Nota interna só é novidade para quem pode lê-la.',
+              'A faixa "Novidades" usa um retrato do estado de leitura congelado na montagem da tela: sem isso, a linha sumiria embaixo do cursor no instante do clique.',
+              'Abrir uma solicitação também marca como lidas as notificações do sino ligadas a ela — ler é dar ciência.'
+            ]
+          },
+          {
+            titulo: 'Painel de detalhe (`RequestDetailPanel`)',
+            itens: [
+              'Um só painel para todo mundo; o que muda é o que a pessoa pode fazer. Reúne o stepper e o histórico (que eram de Minhas), os itens com "copiar itens" e a nota interna (que eram da fila) e o painel de decisão com sinais do catálogo SAP e exportação em PDF (que eram de Aprovações).',
+              'Stepper: compra tem 5 passos, cadastro SAP tem 3, chamado tem 4. `rejeitada`/`cancelada` saem do trilho e exibem um aviso em vez de etapa ativa.',
+              'Decisão de compra: Aprovar → "aprovada"; Devolver → "em_revisao"; Rejeitar → "rejeitada". As duas últimas exigem justificativa. Toda decisão notifica o solicitante.',
+              'Avaliação de satisfação: só para chamado resolvido/fechado, 1 a 5 estrelas, somente leitura depois de enviada.',
+              'Ações operacionais profundas continuam no módulo de origem: o painel oferece o link "Abrir em Cadastros SAP / no Helpdesk / na Central de Compras" para quem opera aquela fila.',
+              'Reabertura automática segue valendo: chamado `aguardando_solicitante` volta para `em_atendimento` quando o próprio solicitante comenta.'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`requests` (inclui `linked_rm_number`), `request_items`, `request_comments`, `request_attachments`, `sectors`.']
-          }
-        ]
-      },
-      {
-        id: 'my-requests',
-        nome: 'Minhas Solicitações',
-        arquivo: 'src/views/MyRequests.tsx',
-        secoes: [
-          {
-            titulo: 'Visão geral',
-            itens: ['Tela do solicitante: lista as próprias solicitações (e, por tipo, de terceiros que deve acompanhar), com stepper, histórico, anexos e avaliação de satisfação.']
-          },
-          {
-            titulo: 'Regras de negócio',
-            itens: [
-              'Visibilidade por tipo: `chamado` é estritamente privado ao autor; `cadastro_sap` também aparece para quem atende a página (senão a solicitação "some" pro atendente); `compra` também aparece para gestor do setor, comprador designado e atendente do setor de destino.',
-              'Stepper: compra tem 5 passos, cadastro SAP tem 3, chamado tem 4. Fica sem passo ativo se o status é `rejeitada`/`cancelada`.',
-              'Avaliação de satisfação só aparece para chamado resolvido/fechado (1-5 estrelas); uma vez avaliado, vira somente leitura.',
-              'Reabertura automática: se o chamado está `aguardando_solicitante` e o próprio solicitante comenta, o status volta automaticamente para `em_atendimento` ("SLA retomado").'
-            ]
-          },
-          {
-            titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`requests`, `request_items`, `request_comments`, `request_status_history`, `request_attachments`.']
+            itens: ['`requests` (inclui `linked_rm_number`), `request_items`, `request_comments`, `request_status_history`, `request_attachments`, `sectors`, `core_notificacoes`; sinais de catálogo via `materials`.']
           }
         ]
       },
@@ -932,30 +960,6 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Tabelas do banco (Supabase)',
             itens: ['`compradores`, `materials` (busca); `requests`, `request_items`, `request_attachments`, `sectors`, `profiles`; RPC `proximo_numero_solicitacao`.']
-          }
-        ]
-      },
-      {
-        id: 'approvals',
-        nome: 'Aprovações',
-        arquivo: 'src/views/Approvals.tsx',
-        secoes: [
-          {
-            titulo: 'Visão geral',
-            itens: ['Fila de aprovação de compras para gestores de setor, coordenador de suprimentos e admin — só `type==="compra"` passa por aqui.']
-          },
-          {
-            titulo: 'Regras de negócio',
-            itens: [
-              'Quem vê/decide: `user.aprovador_setores` inclui o setor do solicitante, OU é `admin`, OU é `coordenador_suprimentos`.',
-              'Fila pendente ordenada por criticidade desc, depois data de necessidade asc.',
-              'Ações: Aprovar → "aprovada"; Rejeitar → "rejeitada" (justificativa obrigatória); Devolver → "em_revisao" (justificativa obrigatória).',
-              'Toda decisão notifica o solicitante (severidade alert se rejeitada, success se resolvido, senão info).'
-            ]
-          },
-          {
-            titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`requests`, `request_items`, `sectors`; sinais de catálogo via `materials`.']
           }
         ]
       },

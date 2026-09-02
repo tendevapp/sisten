@@ -228,6 +228,16 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
             </Section>
           )}
 
+          {pendencias[0] && (pendencias[0].classif_causa || pendencias[0].classif_responsavel || pendencias[0].classif_impacto || pendencias[0].classif_recorrencia || pendencias[0].observacao_chamado) && (
+            <Section title="Classificação da demanda">
+              {pendencias[0].classif_causa && <Field label="Causa provável" value={pendencias[0].classif_causa} />}
+              {pendencias[0].classif_responsavel && <Field label="Área responsável" value={pendencias[0].classif_responsavel} />}
+              {pendencias[0].classif_impacto && <Field label="Impacto" value={pendencias[0].classif_impacto} />}
+              {pendencias[0].classif_recorrencia && <Field label="Recorrência" value={pendencias[0].classif_recorrencia} />}
+              {pendencias[0].observacao_chamado && <Field label="Observação" value={pendencias[0].observacao_chamado} />}
+            </Section>
+          )}
+
           {isChamadoSuprimentosPendencia(r) && pendencias.length > 0 && (
             <div className="space-y-2 pt-3 border-t" style={{ borderColor: 'var(--hairline)' }}>
               <h4 className="text-[10px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: 'var(--ink-muted)' }}>

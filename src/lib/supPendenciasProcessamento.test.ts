@@ -11,6 +11,7 @@ import {
   formatarDataDDMMAA,
   assuntoEmailPendencias,
   montarCorpoEmailPendencias,
+  montarClassificacaoTexto,
   montarAssuntoEmailConclusao,
   montarCorpoEmailConclusao,
   assuntoEmailAjustePedido,
@@ -348,6 +349,34 @@ describe('e-mail', () => {
     expect(corpo).not.toContain(' | ');
   });
 
+  it('a classificação da demanda entra no corpo quando informada', () => {
+    const { linhas } = parseColagemPlanilha(NFSE_TSV);
+    const meta = {
+      classif_causa: 'Divergência de valor, ICMS ou base de cálculo',
+      classif_responsavel: 'Central Fiscal',
+      classif_impacto: 'Alto — bloqueia pagamento ou vencimento próximo',
+      classif_recorrencia: 'Recorrente com este fornecedor',
+      observacao: 'Já solicitado ajuste ao fornecedor por e-mail em 12/08.',
+    };
+    const corpo = montarCorpoEmailPendencias({
+      protocolo: 'SUP-070926-03', solicitante: 'F', numeroChamado: '2047', linhas, meta,
+    });
+    expect(corpo).toContain('CLASSIFICAÇÃO DA DEMANDA');
+    expect(corpo).toContain('Causa provável ..: Divergência de valor, ICMS ou base de cálculo');
+    expect(corpo).toContain('Área responsável : Central Fiscal');
+    expect(corpo).toContain('Impacto ........: Alto — bloqueia pagamento ou vencimento próximo');
+    expect(corpo).toContain('Recorrência .....: Recorrente com este fornecedor');
+    expect(corpo).toContain('Já solicitado ajuste ao fornecedor por e-mail em 12/08.');
+  });
+
+  it('montarClassificacaoTexto vazio quando não há nada', () => {
+    expect(montarClassificacaoTexto()).toBe('');
+    expect(montarClassificacaoTexto({})).toBe('');
+    expect(montarClassificacaoTexto({ observacao: '   ' })).toBe('');
+    expect(montarClassificacaoTexto({ classif_causa: 'Falta de aprovação' }))
+      .toContain('Causa provável ..: Falta de aprovação');
+  });
+
   it('monta assunto e corpo de conclusão individual e em lote com resoluções', () => {
     const item1 = {
       linha: {
@@ -472,6 +501,7 @@ describe('categoria Ajuste de Pedido', () => {
         fornecedor: 'Jacobina Material de Limpeza Eireli',
       },
       qtdImagens: 3,
+      meta: { classif_causa: 'Falta de aprovação', classif_impacto: 'Médio — atrasa o processamento' },
       linkChamado: 'https://sisten/#/x',
     });
     expect(corpo).toContain('AJUSTE DE PEDIDO');
@@ -481,6 +511,8 @@ describe('categoria Ajuste de Pedido', () => {
     expect(corpo).toContain('Número do Pedido : 4100455805');
     expect(corpo).toContain('Fornecedor ......: Jacobina Material de Limpeza Eireli');
     expect(corpo).toContain('Trocar o item pastilha por similar homologado.');
+    expect(corpo).toContain('CLASSIFICAÇÃO DA DEMANDA');
+    expect(corpo).toContain('Causa provável ..: Falta de aprovação');
     expect(corpo).toContain('3 imagens foram anexadas ao chamado no SISTEN');
     expect(corpo).toContain('https://sisten/#/x');
   });

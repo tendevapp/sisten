@@ -18,6 +18,7 @@ import {
   rotuloNumero,
   type LinhaPendencia,
   type DadosAjustePedido,
+  type MetaPendencia,
 } from './supPendenciasProcessamento';
 
 const TABELA = 'sup_pend_processamento_nf';
@@ -47,8 +48,16 @@ export async function criarPendencias(
   requestId: string,
   protocolo: string,
   linhas: LinhaPendencia[],
+  meta?: MetaPendencia,
 ): Promise<void> {
   if (!supabase || linhas.length === 0) return;
+  const classif = {
+    observacao_chamado: meta?.observacao?.trim() || null,
+    classif_causa: meta?.classif_causa || null,
+    classif_responsavel: meta?.classif_responsavel || null,
+    classif_impacto: meta?.classif_impacto || null,
+    classif_recorrencia: meta?.classif_recorrencia || null,
+  };
   const rows = linhas.map((l, i) => ({
     request_id: requestId,
     protocolo,
@@ -69,6 +78,7 @@ export async function criarPendencias(
     documento_compras: l.documento_compras || null,
     comprador: l.comprador || null,
     data_envio: l.data_envio || null,
+    ...classif,
     status: 'pendente',
     ordem: i,
   }));
@@ -87,6 +97,7 @@ export async function criarAjustePedido(
   requestId: string,
   protocolo: string,
   dados: DadosAjustePedido,
+  meta?: MetaPendencia,
 ): Promise<string | null> {
   if (!supabase) return null;
   const { data, error } = await (supabase as any)
@@ -100,6 +111,11 @@ export async function criarAjustePedido(
       nome_fornecedor: dados.fornecedor.trim() || null,
       comprador: dados.comprador?.trim() || null,
       observacao: dados.demanda.trim() || null,
+      observacao_chamado: meta?.observacao?.trim() || null,
+      classif_causa: meta?.classif_causa || null,
+      classif_responsavel: meta?.classif_responsavel || null,
+      classif_impacto: meta?.classif_impacto || null,
+      classif_recorrencia: meta?.classif_recorrencia || null,
       status: 'pendente',
       ordem: 0,
     })
@@ -181,6 +197,12 @@ export interface GrupoPendencia {
   linhas: SupPendenciaProcessamentoNF[];
   total: number;
   concluidas: number;
+  /** Classificação/observação do chamado (categoria "Pendência de Processamento"). */
+  observacao_chamado?: string | null;
+  classif_causa?: string | null;
+  classif_responsavel?: string | null;
+  classif_impacto?: string | null;
+  classif_recorrencia?: string | null;
 }
 
 /**
@@ -228,6 +250,11 @@ export async function listarPendenciasAgrupadas(apenasComPendencia = true): Prom
       linhas: ordenadas,
       total: ordenadas.length,
       concluidas,
+      observacao_chamado: ordenadas[0].observacao_chamado ?? null,
+      classif_causa: ordenadas[0].classif_causa ?? null,
+      classif_responsavel: ordenadas[0].classif_responsavel ?? null,
+      classif_impacto: ordenadas[0].classif_impacto ?? null,
+      classif_recorrencia: ordenadas[0].classif_recorrencia ?? null,
     });
   });
 

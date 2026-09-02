@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Bell, Search, User, LogOut, ChevronDown, Check, AlertCircle, Sun, Moon, Eye, Menu, Upload } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle, AlertTriangle, Bell, Check, CheckCircle2, ChevronDown, Eye, Info,
+  LogOut, Menu, Moon, Search, Sun, Upload, User, type LucideIcon,
+} from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 
@@ -21,6 +24,9 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  // O sino abre em "não lidas": a caixa cheia de avisos já lidos é justamente
+  // o que fazia o badge perder a força.
+  const [somenteNaoLidas, setSomenteNaoLidas] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
 
@@ -43,6 +49,28 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   }, [user]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  /** Agrupa por dia: "hoje" e "ontem" respondem sozinhos o quão urgente é o aviso. */
+  const notificacoesAgrupadas = useMemo(() => {
+    const visiveis = [...notifications]
+      .filter(n => !somenteNaoLidas || !n.is_read)
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+      .slice(0, 50);
+
+    const grupos: { rotulo: string; itens: Notification[] }[] = [];
+    for (const n of visiveis) {
+      const rotulo = rotuloDoDia(n.created_at);
+      const ultimo = grupos[grupos.length - 1];
+      if (ultimo && ultimo.rotulo === rotulo) ultimo.itens.push(n);
+      else grupos.push({ rotulo, itens: [n] });
+    }
+    return grupos;
+  }, [notifications, somenteNaoLidas]);
+
+  const marcarTodasComoLidas = () => {
+    localDb.markAllNotificationsAsRead(user.id);
+    setNotifications(localDb.getNotifications(user.id));
+  };
 
   const handleNotificationClick = (notif: Notification) => {
     localDb.markNotificationAsRead(notif.id);
@@ -95,61 +123,26 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }
 
     // 2. Roteamento por request_id (solicitações vinculadas)
+    //
+    // Antes havia aqui uma árvore de papéis para escolher entre Minhas, a fila
+    // coletiva e Aprovações — as três telas que a Central substituiu. Agora o
+    // destino é sempre a Central com a solicitação aberta: ela mesma decide o
+    // que essa pessoa pode fazer com ela. A única exceção é o Cadastro SAP,
+    // que tem uma fila operacional própria para quem a atende.
     if (notif.request_id) {
       const req = localDb.getRequests().find(r => r.id === notif.request_id);
+      const ehCadastroSap = req ? req.type === 'cadastro_sap' : titleLower.includes('cadastro sap');
 
-      if (req) {
-        if (req.type === 'cadastro_sap') {
-          if (
-            user.roles.includes('comprador') ||
-            user.roles.includes('coordenador_suprimentos') ||
-            user.roles.includes('admin') ||
-            user.aprovador_cadastro_sap
-          ) {
-            onNavigate(`/suprimentos/cadastros-sap?id=${req.id}`);
-          } else {
-            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
-          }
-          return;
-        }
+      const atendeCadastroSap =
+        user.roles.includes('comprador') ||
+        user.roles.includes('coordenador_suprimentos') ||
+        user.roles.includes('admin') ||
+        user.aprovador_cadastro_sap;
 
-        if (req.type === 'compra') {
-          if (
-            req.status === 'pendente' &&
-            (user.roles.includes('gestor') ||
-              user.roles.includes('admin') ||
-              user.roles.includes('coordenador_suprimentos') ||
-              user.aprovador_setores?.includes(req.solicitante_sector_id))
-          ) {
-            onNavigate(`/solicitacoes/aprovacoes?id=${req.id}`);
-          } else if (
-            user.roles.includes('comprador') ||
-            user.roles.includes('coordenador_suprimentos')
-          ) {
-            onNavigate(`/solicitacoes/todas?id=${req.id}`);
-          } else {
-            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
-          }
-          return;
-        }
-
-        if (req.type === 'chamado') {
-          if (user.roles.includes('atendente') || user.roles.includes('admin')) {
-            onNavigate(`/solicitacoes/todas?id=${req.id}`);
-          } else {
-            onNavigate(`/solicitacoes/minhas?id=${req.id}`);
-          }
-          return;
-        }
-      }
-
-      // Fallbacks com request_id
-      if (titleLower.includes('cadastro sap')) {
+      if (ehCadastroSap && atendeCadastroSap) {
         onNavigate(`/suprimentos/cadastros-sap?id=${notif.request_id}`);
-      } else if (titleLower.includes('aprovação') || (titleLower.includes('compra') && user.roles.includes('gestor'))) {
-        onNavigate(`/solicitacoes/aprovacoes?id=${notif.request_id}`);
       } else {
-        onNavigate(`/solicitacoes/minhas?id=${notif.request_id}`);
+        onNavigate(`/solicitacoes?id=${notif.request_id}`);
       }
       return;
     }
@@ -215,13 +208,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     if (numMatch) {
       const matchReq = localDb.getRequests().find(r => r.number === numMatch[1]);
       if (matchReq) {
-        if (matchReq.type === 'cadastro_sap') {
-          onNavigate(`/suprimentos/cadastros-sap?id=${matchReq.id}`);
-        } else if (matchReq.type === 'compra' && user.roles.includes('gestor')) {
-          onNavigate(`/solicitacoes/aprovacoes?id=${matchReq.id}`);
-        } else {
-          onNavigate(`/solicitacoes/minhas?id=${matchReq.id}`);
-        }
+        onNavigate(`/solicitacoes?id=${matchReq.id}`);
       }
     }
   };
@@ -236,11 +223,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
       const reqs = localDb.getRequests();
       const match = reqs.find(r => r.number === query);
       if (match) {
-        if (match.type === 'compra' && user.roles.includes('gestor') && match.status === 'pendente') {
-          onNavigate('/solicitacoes/aprovacoes');
-        } else {
-          onNavigate(`/solicitacoes/minhas?id=${match.id}`);
-        }
+        onNavigate(`/solicitacoes?id=${match.id}`);
         setSearchQuery('');
         return;
       }
@@ -366,43 +349,97 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
           </button>
 
           {showNotifications && (
-            <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-3 w-auto sm:w-80 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
-              <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 px-4 py-3">
-                <h3 className="font-semibold text-gray-800 dark:text-slate-100 text-sm">Notificações</h3>
-                <span className="rounded-full bg-gray-100 dark:bg-slate-800 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">
-                  {unreadCount} não lidas
-                </span>
-              </div>
-              <div className="max-h-80 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-gray-400">Nenhuma notificação no momento</div>
-                ) : (
-                  notifications.map((n) => (
+            <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 mt-3 w-auto sm:w-96 rounded-xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl ring-1 ring-black/5 focus:outline-none z-50">
+              <div className="border-b border-gray-100 dark:border-slate-800 px-4 py-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-gray-800 dark:text-slate-100 text-base">Notificações</h3>
+                  {unreadCount > 0 && (
                     <button
-                      key={n.id}
-                      onClick={() => handleNotificationClick(n)}
-                      className={`flex w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors border-b border-gray-50 dark:border-slate-850 ${!n.is_read ? 'bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-50/80' : ''}`}
+                      onClick={marcarTodasComoLidas}
+                      className="text-[13px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
                     >
-                      <div className="mr-3 mt-0.5">
-                        {n.type === 'critical' ? (
-                          <AlertCircle className="h-5 w-5 text-red-500" />
-                        ) : (
-                          <Check className="h-5 w-5 text-emerald-500" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs ${!n.is_read ? 'font-semibold text-gray-900 dark:text-slate-100' : 'text-gray-700 dark:text-slate-350'}`}>
-                          {n.title}
-                        </p>
-                        <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400 truncate">{n.description}</p>
-                        <span className="mt-1 block text-[10px] text-gray-400">
-                          {new Date(n.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
+                      Marcar todas como lidas
                     </button>
+                  )}
+                </div>
+
+                {/* Não lidas primeiro, mas o histórico continua a um clique. */}
+                <div className="flex gap-1 rounded-lg bg-gray-100 dark:bg-slate-800 p-0.5 text-[13px] font-bold">
+                  <button
+                    onClick={() => setSomenteNaoLidas(true)}
+                    aria-pressed={somenteNaoLidas}
+                    className={`flex-1 rounded-md py-1 cursor-pointer transition-colors ${somenteNaoLidas ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                  >
+                    Não lidas{unreadCount > 0 ? ` (${unreadCount})` : ''}
+                  </button>
+                  <button
+                    onClick={() => setSomenteNaoLidas(false)}
+                    aria-pressed={!somenteNaoLidas}
+                    className={`flex-1 rounded-md py-1 cursor-pointer transition-colors ${!somenteNaoLidas ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}
+                  >
+                    Todas
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                {notificacoesAgrupadas.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <Check className="mx-auto h-6 w-6 text-emerald-500" />
+                    <p className="mt-2 text-sm font-semibold text-gray-600 dark:text-slate-300">
+                      {somenteNaoLidas ? 'Tudo em dia' : 'Nenhuma notificação'}
+                    </p>
+                    {somenteNaoLidas && notifications.length > 0 && (
+                      <button
+                        onClick={() => setSomenteNaoLidas(false)}
+                        className="mt-1 text-[13px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer"
+                      >
+                        Ver as já lidas
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  notificacoesAgrupadas.map(grupo => (
+                    <div key={grupo.rotulo}>
+                      <p className="sticky top-0 bg-gray-50 dark:bg-slate-850 px-4 py-1 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                        {grupo.rotulo}
+                      </p>
+                      {grupo.itens.map(n => {
+                        const { Icone, cor } = ESTILO_NOTIFICACAO[n.type] ?? ESTILO_NOTIFICACAO.info;
+                        return (
+                          <button
+                            key={n.id}
+                            onClick={() => handleNotificationClick(n)}
+                            className={`flex w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors border-b border-gray-50 dark:border-slate-850 ${!n.is_read ? 'bg-emerald-50/40 dark:bg-emerald-950/15' : ''}`}
+                          >
+                            <Icone className={`mr-3 mt-0.5 h-5 w-5 shrink-0 ${cor}`} />
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${!n.is_read ? 'font-bold text-gray-900 dark:text-slate-100' : 'text-gray-700 dark:text-slate-350'}`}>
+                                {n.title}
+                              </p>
+                              <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400 line-clamp-2">{n.description}</p>
+                              <span className="mt-1 block text-xs text-gray-400">
+                                {haQuantoTempo(n.created_at)}
+                                {n.request_number ? ` · #${n.request_number}` : ''}
+                              </span>
+                            </div>
+                            {!n.is_read && (
+                              <span aria-hidden className="ml-2 mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   ))
                 )}
               </div>
+
+              <button
+                onClick={() => { setShowNotifications(false); onNavigate('/solicitacoes?escopo=acao'); }}
+                className="w-full border-t border-gray-100 dark:border-slate-800 px-4 py-2.5 text-[13px] font-bold text-emerald-700 dark:text-emerald-400 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Ver o que precisa de mim
+              </button>
             </div>
           )}
         </div>
@@ -464,4 +501,43 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
       </div>
     </header>
   );
+}
+
+/* Notificações — apoio ------------------------------------------------------ */
+
+/** "Hoje", "Ontem" ou a data. Datar cada aviso é o que separa o urgente do velho. */
+function rotuloDoDia(iso: string): string {
+  const dia = new Date(iso);
+  const hoje = new Date();
+  const ontem = new Date(hoje);
+  ontem.setDate(hoje.getDate() - 1);
+
+  const mesmoDia = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (mesmoDia(dia, hoje)) return 'Hoje';
+  if (mesmoDia(dia, ontem)) return 'Ontem';
+  return dia.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+}
+
+/**
+ * Cada tipo de notificação com o seu ícone e a sua cor.
+ *
+ * O sino antigo desenhava um "check" verde para tudo que não fosse crítico —
+ * um prazo estourado e uma solicitação aprovada chegavam com o mesmo rosto, e
+ * a pessoa tinha de ler o texto inteiro para saber se importava.
+ */
+const ESTILO_NOTIFICACAO: Record<Notification['type'], { Icone: LucideIcon; cor: string }> = {
+  info: { Icone: Info, cor: 'text-blue-500' },
+  success: { Icone: CheckCircle2, cor: 'text-emerald-500' },
+  alert: { Icone: AlertTriangle, cor: 'text-amber-500' },
+  critical: { Icone: AlertCircle, cor: 'text-red-500' },
+};
+
+/** Distância no tempo em texto curto: "agora", "há 3 h", "há 2 d". */
+function haQuantoTempo(iso: string): string {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutos < 1) return 'agora';
+  if (minutos < 60) return `há ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `há ${horas} h`;
+  return `há ${Math.round(horas / 24)} d`;
 }

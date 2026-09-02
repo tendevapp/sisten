@@ -20,8 +20,14 @@ const PATH_LABELS: Record<string, string> = {
   '/materiais/busca': 'Busca de Materiais',
   '/rastreio': 'Rastreio Compras',
   '/solicitacoes/nova': 'Nova Solicitação',
-  '/solicitacoes/minhas': 'Minhas Solicitações',
-  '/solicitacoes/aprovacoes': 'Aprovações',
+  '/solicitacoes': 'Solicitações',
+  // Rotas históricas das três telas que a Central substituiu. Continuam
+  // atendidas (abrem a Central no escopo certo) e ganham rótulo próprio no
+  // relatório de uso: quem chega por elas veio de link salvo ou de e-mail
+  // antigo, não do menu.
+  '/solicitacoes/minhas': 'Solicitações (link antigo: Minhas)',
+  '/solicitacoes/todas': 'Solicitações (link antigo: fila)',
+  '/solicitacoes/aprovacoes': 'Solicitações (link antigo: Aprovações)',
   '/suprimentos/dashboards': 'Gestão de Suprimentos',
   // Rota histórica da antiga tela de Demandas, hoje uma aba da anterior. O
   // rótulo distingue as duas no relatório de uso: quem chega por aqui veio de

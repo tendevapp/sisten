@@ -197,9 +197,9 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
                   <input
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 p-2.5 focus:border-emerald-500 focus:outline-none"
-                    placeholder="Seu nome completo"
+                    onChange={(e) => setName(e.target.value.toUpperCase())}
+                    className="w-full rounded-lg border border-slate-200 p-2.5 focus:border-emerald-500 focus:outline-none uppercase"
+                    placeholder="SEU NOME COMPLETO"
                     required
                   />
                 </div>

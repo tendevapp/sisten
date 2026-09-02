@@ -42,6 +42,10 @@ import {
   montarCorpoEmailPendencias,
   assuntoEmailAjustePedido,
   montarCorpoEmailAjustePedido,
+  CLASSIF_CAUSA,
+  CLASSIF_RESPONSAVEL,
+  CLASSIF_IMPACTO,
+  CLASSIF_RECORRENCIA,
 } from '../lib/supPendenciasProcessamento';
 import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
 import ImagesPasteInput from '../components/ui/ImagesPasteInput';
@@ -374,6 +378,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // Específico do destino Suprimentos: texto da planilha de pendências colado
   // pelo solicitante, interpretado em linhas de NF na prévia e no envio.
   const [pendenciasTexto, setPendenciasTexto] = useState('');
+  // Observação livre + classificação da demanda (para análise de causas).
+  const [pendObservacao, setPendObservacao] = useState('');
+  const [pendCausa, setPendCausa] = useState('');
+  const [pendResponsavel, setPendResponsavel] = useState('');
+  const [pendImpacto, setPendImpacto] = useState('');
+  const [pendRecorrencia, setPendRecorrencia] = useState('');
   // Específicos da categoria "Ajuste de Pedido" (destino Suprimentos).
   const [ajusteDemanda, setAjusteDemanda] = useState('');
   const [ajusteNf, setAjusteNf] = useState('');
@@ -431,7 +441,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     const req = localDb.getRequests().find(r => r.id === alvo);
     if (!req || !podeEditar(req, user)) {
-      onNavigate('/solicitacoes/minhas');
+      onNavigate('/solicitacoes?escopo=minhas');
       return;
     }
 
@@ -550,6 +560,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.juridicoTipoContrato) setJuridicoTipoContrato(parsed.juridicoTipoContrato);
         if (parsed.juridicoFornecedor) setJuridicoFornecedor(parsed.juridicoFornecedor);
         if (parsed.pendenciasTexto) setPendenciasTexto(parsed.pendenciasTexto);
+        if (parsed.pendObservacao) setPendObservacao(parsed.pendObservacao);
+        if (parsed.pendCausa) setPendCausa(parsed.pendCausa);
+        if (parsed.pendResponsavel) setPendResponsavel(parsed.pendResponsavel);
+        if (parsed.pendImpacto) setPendImpacto(parsed.pendImpacto);
+        if (parsed.pendRecorrencia) setPendRecorrencia(parsed.pendRecorrencia);
         if (parsed.ajusteDemanda) setAjusteDemanda(parsed.ajusteDemanda);
         if (parsed.ajusteNf) setAjusteNf(parsed.ajusteNf);
         if (parsed.ajustePedido) setAjustePedido(parsed.ajustePedido);
@@ -582,6 +597,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
     juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
+    pendObservacao, pendCausa, pendResponsavel, pendImpacto, pendRecorrencia,
     ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
   ]);
 
@@ -601,6 +617,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
       juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
+    pendObservacao, pendCausa, pendResponsavel, pendImpacto, pendRecorrencia,
       ajusteDemanda, ajusteNf, ajustePedido, ajusteFornecedor, ajusteComprador,
     };
     localStorage.setItem(`sisten_draft_${user.id}`, JSON.stringify(draftData));
@@ -648,6 +665,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setJuridicoTipoContrato('');
     setJuridicoFornecedor('');
     setPendenciasTexto('');
+    setPendObservacao('');
+    setPendCausa('');
+    setPendResponsavel('');
+    setPendImpacto('');
+    setPendRecorrencia('');
     setAjusteDemanda('');
     setAjusteNf('');
     setAjustePedido('');
@@ -753,15 +775,88 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   );
   const pendenciasProntas = isSupPendencia
     && pendenciasParse.linhas.length > 0
-    && pendenciasParse.erros.length === 0;
+    && pendenciasParse.erros.length === 0
+    && pendCausa !== '';
   const ajustePronto = isAjustePedido
     && ajusteDemanda.trim() !== ''
     && ajusteNf.trim() !== ''
     && ajustePedido.trim() !== ''
     && ajusteFornecedor.trim() !== ''
-    && ajusteImagens.length > 0;
+    && ajusteImagens.length > 0
+    && pendCausa !== '';
   /** O envio deste chamado Suprimentos está bloqueado por falta de dados? */
   const suprimentosBloqueado = isDestinoSuprimentos && !pendenciasProntas && !ajustePronto;
+
+  /** Bloco "Classificação da demanda" — reaproveitado por Pendência e Ajuste. */
+  const renderClassificacao = (incluirObservacao: boolean) => (
+    <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+      <p className="text-sm font-bold" style={{ color: 'var(--ink-secondary)' }}>Classificação da demanda</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className={labelClass} style={labelStyle}>Causa provável *</label>
+          <select
+            value={pendCausa}
+            onChange={(e) => setPendCausa(e.target.value)}
+            required
+            className={`${fieldClass} cursor-pointer`}
+            style={fieldStyle}
+          >
+            <option value="">Selecione a causa...</option>
+            {CLASSIF_CAUSA.map(op => <option key={op} value={op}>{op}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>Área responsável pela ação</label>
+          <select
+            value={pendResponsavel}
+            onChange={(e) => setPendResponsavel(e.target.value)}
+            className={`${fieldClass} cursor-pointer`}
+            style={fieldStyle}
+          >
+            <option value="">Não sei / não se aplica</option>
+            {CLASSIF_RESPONSAVEL.map(op => <option key={op} value={op}>{op}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>Impacto</label>
+          <select
+            value={pendImpacto}
+            onChange={(e) => setPendImpacto(e.target.value)}
+            className={`${fieldClass} cursor-pointer`}
+            style={fieldStyle}
+          >
+            <option value="">Não informado</option>
+            {CLASSIF_IMPACTO.map(op => <option key={op} value={op}>{op}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass} style={labelStyle}>Recorrência</label>
+          <select
+            value={pendRecorrencia}
+            onChange={(e) => setPendRecorrencia(e.target.value)}
+            className={`${fieldClass} cursor-pointer`}
+            style={fieldStyle}
+          >
+            <option value="">Não informado</option>
+            {CLASSIF_RECORRENCIA.map(op => <option key={op} value={op}>{op}</option>)}
+          </select>
+        </div>
+      </div>
+      {incluirObservacao && (
+        <div>
+          <label className={labelClass} style={labelStyle}>Observação (opcional)</label>
+          <textarea
+            rows={3}
+            placeholder="Contexto adicional, o que já foi tentado, prazos, links de referência..."
+            value={pendObservacao}
+            onChange={(e) => setPendObservacao(e.target.value)}
+            className="w-full rounded-lg border py-2 px-3 text-sm leading-relaxed transition-colors duration-150 focus:outline-2 focus:outline-offset-1 resize-y"
+            style={fieldStyle}
+          />
+        </div>
+      )}
+    </div>
+  );
 
   // Monta o corpo do e-mail de aviso ao Suprimentos com o conteúdo preenchido no
   // formulário. Um mailto: não consegue anexar arquivos (restrição de segurança
@@ -804,7 +899,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     linhas.push(
       '',
-      `Acompanhe a solicitação no SISTEN: ${window.location.origin}/#/solicitacoes/minhas?id=${reqId}`
+      `Acompanhe a solicitação no SISTEN: ${window.location.origin}/#/solicitacoes?id=${reqId}`
     );
 
     return linhas.join('\n');
@@ -972,9 +1067,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       if (activeTab === 'chamado' && isDestinoSuprimentos) {
         const configEmail = await obterConfigEmail('helpdesk_suprimentos');
         const destinatarios = configEmail?.destinatarios || 'suprimentosten@ten.ind.br';
-        const linkChamado = `${window.location.origin}/#/solicitacoes/minhas?id=${reqId}`;
+        const linkChamado = `${window.location.origin}/#/solicitacoes?id=${reqId}`;
         let assunto = '';
         let corpo = '';
+
+        // Classificação da demanda — comum às duas categorias do Suprimentos.
+        const metaPendencia = {
+          observacao: pendObservacao.trim() || undefined,
+          classif_causa: pendCausa || undefined,
+          classif_responsavel: pendResponsavel || undefined,
+          classif_impacto: pendImpacto || undefined,
+          classif_recorrencia: pendRecorrencia || undefined,
+        };
 
         if (isAjustePedido) {
           const dados = {
@@ -985,7 +1089,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             comprador: ajusteComprador.trim() || undefined,
           };
           try {
-            const rowId = await criarAjustePedido(reqId, protocoloSup, dados);
+            const rowId = await criarAjustePedido(reqId, protocoloSup, dados, metaPendencia);
             if (rowId && ajusteImagens.length > 0) {
               const ok = await salvarImagensAjuste(
                 rowId,
@@ -1004,11 +1108,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             numeroChamado: reqNumero,
             dados,
             qtdImagens: ajusteImagens.length,
+            meta: metaPendencia,
             linkChamado,
           });
         } else {
           try {
-            await criarPendencias(reqId, protocoloSup, pendenciasParse.linhas);
+            await criarPendencias(reqId, protocoloSup, pendenciasParse.linhas, metaPendencia);
           } catch {
             alert(
               `O chamado #${reqNumero} foi criado, mas a relação de notas não pôde ser gravada. ` +
@@ -1022,6 +1127,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             numeroChamado: reqNumero,
             linkChamado,
             linhas: pendenciasParse.linhas,
+            meta: metaPendencia,
           });
         }
 
@@ -1055,7 +1161,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
 
       // Navigate to tracking
-      onNavigate(`/solicitacoes/minhas?id=${reqId}`);
+      onNavigate(`/solicitacoes?id=${reqId}`);
     } catch (err) {
       console.error('Falha ao enviar a solicitação.', err);
       alert('Não foi possível enviar a solicitação. Tente novamente.');
@@ -1967,6 +2073,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
               {isSupPendencia ? (
                 <div data-tour="novasol-justificativa" className="space-y-3">
+                  {renderClassificacao(true)}
+
                   <div>
                     <label className={labelClass} style={labelStyle}>
                       Pendências de processamento — cole o texto da planilha *
@@ -2054,9 +2162,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   )}
 
                   <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    Ao enviar, abre um e-mail para <strong>suprimentosten@ten.ind.br</strong> com a relação em texto
-                    organizado, e os itens ficam disponíveis para o Suprimentos dar baixa um a um — você é notificado a
-                    cada conclusão.
+                    Ao enviar, abre um e-mail para <strong>suprimentosten@ten.ind.br</strong> com a relação e a
+                    classificação em texto organizado, e os itens ficam disponíveis para o Suprimentos dar baixa um a um —
+                    você é notificado a cada conclusão.
                   </p>
                 </div>
               ) : isAjustePedido ? (
@@ -2126,6 +2234,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </select>
                     </div>
                   </div>
+
+                  {renderClassificacao(false)}
 
                   <div>
                     <label className={labelClass} style={labelStyle}>Imagens do pedido / print da divergência *</label>
@@ -2313,7 +2423,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             <button
               type="button"
               onClick={() => {
-                if (editandoId) { onNavigate(`/solicitacoes/minhas?id=${editandoId}`); return; }
+                if (editandoId) { onNavigate(`/solicitacoes?id=${editandoId}`); return; }
                 clearDraft();
                 onNavigate('/');
               }}

@@ -166,9 +166,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   }
   const chips: Chip[] = ([
     { id: 'notif', label: 'Notificações', value: unread.length, icon: Bell, tone: 'blue', hideWhenZero: true },
-    { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes/aprovacoes'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
-    { id: 'minhas', label: 'Minhas em aberto', value: myOpen, icon: List, tone: 'indigo', onClick: () => onNavigate('/solicitacoes/minhas') },
-    { id: 'rasc', label: 'Rascunhos', value: myDrafts, icon: FileEdit, tone: 'slate', hideWhenZero: true, onClick: () => onNavigate('/solicitacoes/minhas') },
+    { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes?escopo=acao'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
+    { id: 'minhas', label: 'Minhas em aberto', value: myOpen, icon: List, tone: 'indigo', onClick: () => onNavigate('/solicitacoes?escopo=minhas') },
+    { id: 'rasc', label: 'Rascunhos', value: myDrafts, icon: FileEdit, tone: 'slate', hideWhenZero: true, onClick: () => onNavigate('/solicitacoes?escopo=minhas') },
     { id: 'sap', label: 'Requisições sem PO', value: openSapCount, icon: Database, tone: 'sky', show: canCentralCompras, onClick: () => onNavigate('/suprimentos/compras') },
     { id: 'usr', label: 'Usuários pendentes', value: pendingUsersCount, icon: Users, tone: 'rose', show: canUsers, hideWhenZero: true, onClick: () => onNavigate('/admin/usuarios') },
   ] as Chip[]).filter(c => c.show !== false && !(c.hideWhenZero && !c.value));
@@ -207,9 +207,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
       onNavigate(`/rastreio?ri=${encodeURIComponent(n.context_key.slice('rastreio:'.length))}`);
     } else if (n.request_id) {
       if (n.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
-        onNavigate('/solicitacoes/aprovacoes');
+        onNavigate('/solicitacoes?escopo=acao');
       } else {
-        onNavigate(`/solicitacoes/minhas?id=${n.request_id}`);
+        onNavigate(`/solicitacoes?id=${n.request_id}`);
       }
     }
   };
@@ -311,7 +311,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('/solicitacoes/aprovacoes')}
+            onClick={() => onNavigate('/solicitacoes?escopo=acao')}
             className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-700"
           >
             Ir para aprovações
@@ -394,7 +394,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               </h2>
               <button
                 type="button"
-                onClick={() => onNavigate('/solicitacoes/minhas')}
+                onClick={() => onNavigate('/solicitacoes?escopo=minhas')}
                 className="inline-flex items-center gap-0.5 text-[11px] font-bold text-blue-600 hover:underline dark:text-blue-400"
               >
                 Ver todas <ChevronRight className="h-3 w-3" />
@@ -421,7 +421,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                   <button
                     key={r.id}
                     type="button"
-                    onClick={() => onNavigate(`/solicitacoes/minhas?id=${r.id}`)}
+                    onClick={() => onNavigate(`/solicitacoes?id=${r.id}`)}
                     className="flex w-full items-center justify-between gap-3 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
                   >
                     <span className="flex min-w-0 items-center gap-3">

@@ -13,7 +13,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { ClipboardList, PackageSearch, Boxes, Receipt, Radio, Settings } from 'lucide-react';
+import { PackageSearch, Boxes, Receipt, Radio, Settings } from 'lucide-react';
 
 export interface ModuleHomeDef {
   /** Identificador passado em `<ModuleHome moduleId="..." />`. */
@@ -41,26 +41,8 @@ export interface ModuleHomeDef {
 }
 
 export const MODULE_HOMES: ModuleHomeDef[] = [
-  {
-    id: 'solicitacoes',
-    group: 'SOLICITAÇÕES',
-    homePath: '/solicitacoes',
-    title: 'Solicitações',
-    description: 'Abertura, acompanhamento e aprovação de solicitações de compra e de serviço.',
-    icon: ClipboardList,
-    accent: {
-      tile: 'bg-blue-600 shadow-blue-500/25',
-      hoverBorder: 'hover:border-blue-400/60 dark:hover:border-blue-400/40',
-      ring: 'focus-visible:ring-blue-500',
-      arrow: 'group-hover:text-blue-500',
-    },
-    cardDescriptions: {
-      sol_nova: 'Abrir uma nova solicitação de compra ou de serviço.',
-      sol_minhas: 'Acompanhar o andamento das solicitações que você abriu.',
-      sol_todas: 'Fila coletiva de todas as solicitações em aberto.',
-      sol_aprovacoes: 'Analisar e decidir as solicitações pendentes do seu setor.',
-    },
-  },
+  // SOLICITAÇÕES não tem hub: `/solicitacoes` é a própria Central. Um hub com
+  // cards levando a quatro telas era parte do problema que a Central resolveu.
   {
     id: 'suprimentos',
     group: 'SUPRIMENTOS',
@@ -84,6 +66,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
       sup_estimador_frete: 'Estimativa de custo de frete por rota e modal.',
       sup_pendencias_processamento: 'Baixa das notas fiscais pendentes de processamento abertas via chamado.',
+      sup_diligenciamento: 'Acompanhamento de pedidos de compra até a chegada: transportadora, faturamento e previsão.',
     },
   },
   {

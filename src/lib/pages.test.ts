@@ -67,6 +67,36 @@ describe('pages.ts - Controle de Acesso', () => {
       });
       expect(canAccessPage(userTentaAdmin, 'admin_usuarios')).toBe(false);
     });
+
+    it('módulo de facilities deve ser restrito exclusivamente a Adriano e admins', () => {
+      const admin = mockUser({ roles: ['admin'] });
+      expect(canAccessPage(admin, 'facilities')).toBe(true);
+      expect(canAccessPage(admin, 'facilities_rotas')).toBe(true);
+      expect(canAccessPage(admin, 'facilities_materiais')).toBe(true);
+
+      const adriano = mockUser({
+        name: 'ADRIANO DA SILVA COSTA OLIVEIRA',
+        email: 'adriano.oliveira@ten.ind.br',
+        roles: ['visualizador'],
+        sector_id: '3',
+      });
+      expect(canAccessPage(adriano, 'facilities')).toBe(true);
+      expect(canAccessPage(adriano, 'facilities_rotas')).toBe(true);
+      expect(canAccessPage(adriano, 'facilities_materiais')).toBe(true);
+
+      const gestor = mockUser({ roles: ['gestor'] });
+      expect(canAccessPage(gestor, 'facilities')).toBe(false);
+      expect(canAccessPage(gestor, 'facilities_rotas')).toBe(false);
+      expect(canAccessPage(gestor, 'facilities_materiais')).toBe(false);
+
+      const coord = mockUser({ roles: ['coordenador_suprimentos'] });
+      expect(canAccessPage(coord, 'facilities')).toBe(false);
+      expect(canAccessPage(coord, 'facilities_rotas')).toBe(false);
+      expect(canAccessPage(coord, 'facilities_materiais')).toBe(false);
+
+      const outro = mockUser({ roles: ['requisitante'] });
+      expect(canAccessPage(outro, 'facilities')).toBe(false);
+    });
   });
 
   describe('canAccessFormGroup - Subpermissões de Formulários', () => {

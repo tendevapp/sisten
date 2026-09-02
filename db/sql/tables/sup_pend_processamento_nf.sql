@@ -42,6 +42,13 @@ create table if not exists public.sup_pend_processamento_nf (
   -- modelo 'ajuste_pedido'
   imagem_paths text[],                -- caminhos no bucket request-attachments
   imagem_path text,                   -- primeiro caminho (compat com imagem única)
+  -- classificação da demanda (modelos 'nfse' / 'documento') — repetida em todas
+  -- as linhas da submissão; alimenta análise de causas.
+  observacao_chamado text,
+  classif_causa text,
+  classif_responsavel text,
+  classif_impacto text,
+  classif_recorrencia text,
   status text not null default 'pendente' check (status in ('pendente', 'concluido')),
   resolucao text,
   resolvido_por text references public.core_perfis(id),
@@ -54,6 +61,7 @@ create index if not exists sup_pend_proc_nf_request_idx on public.sup_pend_proce
 create index if not exists sup_pend_proc_nf_protocolo_idx on public.sup_pend_processamento_nf (protocolo);
 create index if not exists sup_pend_proc_nf_status_idx on public.sup_pend_processamento_nf (status);
 create index if not exists sup_pend_proc_nf_modelo_idx on public.sup_pend_processamento_nf (modelo);
+create index if not exists sup_pend_proc_nf_classif_causa_idx on public.sup_pend_processamento_nf (classif_causa);
 
 alter table public.sup_pend_processamento_nf enable row level security;
 

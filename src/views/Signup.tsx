@@ -118,10 +118,10 @@ export default function Signup({ onNavigate }: SignupProps) {
                   <input
                     type="text"
                     required
-                    placeholder="Nome Completo"
+                    placeholder="NOME COMPLETO"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full rounded-xl border border-gray-250 py-2.5 px-3.5 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all"
+                    onChange={(e) => setName(e.target.value.toUpperCase())}
+                    className="w-full rounded-xl border border-gray-250 py-2.5 px-3.5 text-sm focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 transition-all uppercase"
                   />
                 </div>
 

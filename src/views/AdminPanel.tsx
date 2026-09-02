@@ -10,7 +10,9 @@ import {
   Users, Map as MapIcon, Shield, Upload, Check, X, AlertTriangle,
   Trash, Save, Activity, RefreshCw, FileText, FileSpreadsheet, Plus,
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles,
-  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt
+  Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt,
+  Building2, Edit2, Search, UserCheck, UserX, MoreHorizontal, Filter, ShieldCheck, ShoppingBag, Award, Briefcase, KeyRound, Lock,
+  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -21,9 +23,11 @@ import { useToast } from '../components/ui/Toast';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
 import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal';
+import UserEditGovernanceModal from '../components/admin/UserEditGovernanceModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
 import { importarRhPessoas, importarRhSetores, importarRhHoraExtra } from '../lib/rhApi';
+import UsersByModuleView from '../components/admin/UsersByModuleView';
 
 interface AdminPanelProps {
   user: Profile;
@@ -46,6 +50,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [syncing, setSyncing] = useState(false);
   // Grupo de Compras (SAP) inline por usuário na tabela de Perfis Ativos.
   const [grupoComprasInputs, setGrupoComprasInputs] = useState<Record<string, string>>({});
+  // Busca e filtro por setor e status na tabela de Usuários
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userSectorFilter, setUserSectorFilter] = useState('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'ativo' | 'pendente' | 'inativo' | 'admin' | 'comprador' | 'gestor'>('all');
+  // Edição de setor inline por usuário
+  const [editingSectorProfileId, setEditingSectorProfileId] = useState<string | null>(null);
+  const [editingSectorId, setEditingSectorId] = useState<string>('');
+  // Modal unificado de edição e governança de usuário
+  const [governanceModalUser, setGovernanceModalUser] = useState<Profile | null>(null);
+  // Menu de ações rápidas aberto
+  const [actionDropdownUserId, setActionDropdownUserId] = useState<string | null>(null);
+  // Modo de visualização da aba Usuários: por Colaborador ou por Módulo
+  const [userViewMode, setUserViewMode] = useState<'colaborador' | 'modulo'>('colaborador');
 
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -291,6 +308,23 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     if (ok) {
       setSelectedProfileId(null);
       setEditingRole('');
+      toast.success('Permissão do usuário atualizada com sucesso.');
+      loadData();
+    } else {
+      toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+    }
+  };
+
+  const handleUpdateSector = async (userId: string, newSectorId: string) => {
+    if (!newSectorId) {
+      toast.error('Selecione um setor válido.');
+      return;
+    }
+    const ok = await localDb.updateUserSector(userId, newSectorId);
+    if (ok) {
+      setEditingSectorProfileId(null);
+      setEditingSectorId('');
+      toast.success('Setor do usuário atualizado com sucesso.');
       loadData();
     } else {
       toast.error('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
@@ -921,17 +955,92 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     return diffDays >= 0 && diffDays <= 7;
   };
 
+  const sectorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    sectors.forEach(s => map.set(s.id, s.name));
+    return map;
+  }, [sectors]);
+
+  const userStats = useMemo(() => {
+    const total = profiles.length;
+    const pending = profiles.filter(p => p.status === 'pendente').length;
+    const active = profiles.filter(p => p.status === 'ativo').length;
+    const inactive = profiles.filter(p => p.status === 'inativo').length;
+    const admins = profiles.filter(p => p.roles?.includes('admin')).length;
+    const buyers = profiles.filter(p => p.roles?.includes('comprador') || p.roles?.includes('coordenador_suprimentos')).length;
+    const managers = profiles.filter(p => p.roles?.includes('gestor')).length;
+    return { total, pending, active, inactive, admins, buyers, managers };
+  }, [profiles]);
+
   const pendingUsers = useMemo(
     () => profiles
       .filter(p => p.status === 'pendente')
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' })),
     [profiles]
   );
-  const activeUsers = useMemo(
+
+  const filteredUsers = useMemo(
     () => [...profiles]
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' })),
-    [profiles]
+      .filter(p => {
+        // Status / Role chips filter
+        if (userStatusFilter === 'ativo' && p.status !== 'ativo') return false;
+        if (userStatusFilter === 'inativo' && p.status !== 'inativo') return false;
+        if (userStatusFilter === 'pendente' && p.status !== 'pendente') return false;
+        if (userStatusFilter === 'admin' && !p.roles?.includes('admin')) return false;
+        if (userStatusFilter === 'comprador' && !p.roles?.includes('comprador') && !p.roles?.includes('coordenador_suprimentos')) return false;
+        if (userStatusFilter === 'gestor' && !p.roles?.includes('gestor')) return false;
+
+        // Sector dropdown filter
+        if (userSectorFilter !== 'all' && p.sector_id !== userSectorFilter) {
+          return false;
+        }
+
+        // Global search query filter
+        if (userSearchQuery.trim()) {
+          const q = userSearchQuery.toLowerCase();
+          const sectorName = (sectorMap.get(p.sector_id) || '').toLowerCase();
+          const matchesName = (p.name || '').toLowerCase().includes(q);
+          const matchesEmail = (p.email || '').toLowerCase().includes(q);
+          const matchesCargo = (p.cargo || '').toLowerCase().includes(q);
+          const matchesSector = sectorName.includes(q);
+          const matchesGrupoCompras = (p.grupo_compras || '').toLowerCase().includes(q);
+          const matchesRole = (p.roles || []).some(r => getRoleLabel(r).toLowerCase().includes(q));
+          return matchesName || matchesEmail || matchesCargo || matchesSector || matchesGrupoCompras || matchesRole;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // Pending users first, then alphabetically
+        if (a.status === 'pendente' && b.status !== 'pendente') return -1;
+        if (a.status !== 'pendente' && b.status === 'pendente') return 1;
+        return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
+      }),
+    [profiles, userSearchQuery, userSectorFilter, userStatusFilter, sectorMap]
   );
+
+  const getInitials = (str: string) => {
+    if (!str) return 'U';
+    const parts = str.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const getAvatarGradient = (name: string) => {
+    const gradients = [
+      'from-emerald-600 to-teal-700 text-white',
+      'from-blue-600 to-indigo-700 text-white',
+      'from-indigo-600 to-violet-700 text-white',
+      'from-amber-600 to-orange-700 text-white',
+      'from-sky-600 to-cyan-700 text-white',
+      'from-slate-700 to-slate-900 text-white',
+    ];
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % gradients.length;
+    return gradients[idx];
+  };
 
   const getRoleLabel = (role: string) => {
     const labels: Record<string, string> = {
@@ -946,6 +1055,65 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       pendente: 'Acesso Pendente'
     };
     return labels[role] || role;
+  };
+
+  const getRoleBadgeUI = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return {
+          bg: 'bg-amber-50 text-amber-900 border-amber-200',
+          icon: ShieldCheck,
+          label: 'Administrador'
+        };
+      case 'comprador':
+        return {
+          bg: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+          icon: ShoppingBag,
+          label: 'Comprador'
+        };
+      case 'coordenador_suprimentos':
+        return {
+          bg: 'bg-purple-50 text-purple-900 border-purple-200',
+          icon: Award,
+          label: 'Coordenador'
+        };
+      case 'gestor':
+        return {
+          bg: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+          icon: Briefcase,
+          label: 'Gestor'
+        };
+      case 'solicitante':
+        return {
+          bg: 'bg-sky-50 text-sky-900 border-sky-200',
+          icon: UserCheck,
+          label: 'Solicitante'
+        };
+      case 'requisitante':
+        return {
+          bg: 'bg-blue-50 text-blue-900 border-blue-200',
+          icon: Users,
+          label: 'Requisitante'
+        };
+      case 'atendente':
+        return {
+          bg: 'bg-teal-50 text-teal-900 border-teal-200',
+          icon: Users2,
+          label: 'Atendente'
+        };
+      case 'pendente':
+        return {
+          bg: 'bg-yellow-50 text-yellow-900 border-yellow-300',
+          icon: AlertTriangle,
+          label: 'Pendente'
+        };
+      default:
+        return {
+          bg: 'bg-slate-50 text-slate-700 border-slate-200',
+          icon: Eye,
+          label: 'Visualizador'
+        };
+    }
   };
 
   // Matrix configurations
@@ -1058,64 +1226,254 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       {/* Tab 1: Users approval list and settings */}
       {activeTab === 'usuarios' && (
         <div className="space-y-6">
-          {/* Approval Queue for pending users */}
+          {/* Seletor de Visão: Colaborador vs Módulo */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setUserViewMode('colaborador')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  userViewMode === 'colaborador'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Visão por Colaborador</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUserViewMode('modulo')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  userViewMode === 'modulo'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-4 h-4" />
+                <span>Visão por Módulo & Permissões</span>
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 font-medium px-2">
+              {userViewMode === 'colaborador' 
+                ? 'Lista de colaboradores cadastrados, setores, cargos e papéis'
+                : 'Auditoria e controle de acesso tela a tela do SISTEN'}
+            </p>
+          </div>
+
+          {userViewMode === 'modulo' ? (
+            <UsersByModuleView
+              profiles={profiles}
+              sectors={sectors}
+              currentUser={user}
+              onChanged={loadData}
+              onEditUser={(u) => setGovernanceModalUser(u)}
+              onConfigurePermissions={(id) => setPageAccessProfileId(id)}
+            />
+          ) : (
+            <>
+              {/* Executive Overview KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* Card 1: Total */}
+            <div
+              onClick={() => { setUserStatusFilter('all'); setUserSectorFilter('all'); setUserSearchQuery(''); }}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs hover:shadow-xs flex items-center justify-between ${
+                userStatusFilter === 'all' && !userSearchQuery && userSectorFilter === 'all'
+                  ? 'border-slate-300 ring-2 ring-slate-400/20'
+                  : 'border-slate-200/80 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total de Usuários</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-2xl font-black text-slate-900">{userStats.total}</span>
+                  <span className="text-[11px] font-semibold text-slate-500">cadastrados</span>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 2: Pendentes */}
+            <div
+              onClick={() => { setUserStatusFilter('pendente'); }}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs hover:shadow-xs flex items-center justify-between ${
+                userStatusFilter === 'pendente'
+                  ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-400/20'
+                  : userStats.pending > 0
+                  ? 'border-amber-200/80 bg-amber-50/10 hover:border-amber-300'
+                  : 'border-slate-200/80 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                  Pendentes {userStats.pending > 0 && <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />}
+                </p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className={`text-2xl font-black ${userStats.pending > 0 ? 'text-amber-700' : 'text-slate-900'}`}>
+                    {userStats.pending}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">aguardando</span>
+                </div>
+              </div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${userStats.pending > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 3: Ativos */}
+            <div
+              onClick={() => { setUserStatusFilter('ativo'); }}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs hover:shadow-xs flex items-center justify-between ${
+                userStatusFilter === 'ativo'
+                  ? 'border-emerald-400 bg-emerald-50/30 ring-2 ring-emerald-400/20'
+                  : 'border-slate-200/80 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Perfis Ativos</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-2xl font-black text-emerald-700">{userStats.active}</span>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    ({userStats.total > 0 ? Math.round((userStats.active / userStats.total) * 100) : 0}%)
+                  </span>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <UserCheck className="w-5 h-5" />
+              </div>
+            </div>
+
+            {/* Card 4: Privilégios Elevados */}
+            <div
+              onClick={() => { setUserStatusFilter('admin'); }}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer bg-white shadow-2xs hover:shadow-xs flex items-center justify-between ${
+                userStatusFilter === 'admin'
+                  ? 'border-purple-400 bg-purple-50/30 ring-2 ring-purple-400/20'
+                  : 'border-slate-200/80 hover:border-slate-300'
+              }`}
+            >
+              <div>
+                <p className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">Administradores</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-2xl font-black text-purple-900">{userStats.admins}</span>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    +{userStats.buyers} compradores
+                  </span>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {/* Fila de aprovações pendentes (Inbox de Novos Cadastros) */}
           {pendingUsers.length > 0 && (
-            <div className="rounded-xl border border-yellow-100 bg-yellow-50/50 p-5 space-y-3.5">
-              <h3 className="text-xs font-bold text-yellow-800 uppercase tracking-widest flex items-center">
-                <AlertTriangle className="h-4 w-4 mr-1.5 shrink-0" /> Fila de aprovações pendentes ({pendingUsers.length})
-              </h3>
-              
-              <div className="divide-y divide-yellow-100">
-                {pendingUsers.map((p) => (
-                  <div key={p.id} className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-3 text-xs">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-slate-800">{p.name}</p>
-                        <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-300 uppercase shrink-0 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                          Novo Cadastro
-                        </span>
-                      </div>
-                      <p className="text-slate-500 mt-0.5">{p.email} • {p.cargo}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleApproveUser(p.id, true)}
-                        className="rounded bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-1 px-3 cursor-pointer"
-                      >
-                        Aprovar
-                      </button>
-                      <button
-                        onClick={() => handleApproveUser(p.id, false)}
-                        className="rounded border border-yellow-300 hover:bg-yellow-100 text-yellow-800 font-bold py-1 px-3 cursor-pointer"
-                      >
-                        Recusar
-                      </button>
-                    </div>
+            <div className="rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/80 via-amber-50/40 to-white p-5 shadow-2xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/70 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                    <UserPlus className="w-4 h-4" />
                   </div>
-                ))}
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                      Fila de Aprovações Pendentes
+                      <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-2xs">
+                        {pendingUsers.length}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-amber-800/80 mt-0.5">
+                      Novos colaboradores que criaram conta e aguardam liberação de perfil e setor.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {pendingUsers.map((p) => {
+                  const secName = sectorMap.get(p.sector_id) || (p.sector_id ? `Setor ${p.sector_id}` : 'Não informado');
+                  return (
+                    <div
+                      key={p.id}
+                      className="bg-white rounded-xl border border-amber-200/80 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between space-y-3.5"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white font-bold text-sm flex items-center justify-center shadow-2xs shrink-0">
+                          {getInitials(p.name)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-slate-900 text-xs truncate" title={p.name}>{p.name}</p>
+                          <p className="text-[11px] text-slate-500 truncate" title={p.email}>{p.email}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 truncate">
+                              <Briefcase className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                              {p.cargo || 'Sem cargo'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 truncate">
+                              <Building2 className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              {secName}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleApproveUser(p.id, true)}
+                          className="flex-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-1.5 px-3 transition-colors shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
+                          title="Aprovar com papel padrão (Visualizador)"
+                        >
+                          <Check className="w-3.5 h-3.5" /> Aprovar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGovernanceModalUser(p)}
+                          className="rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                          title="Definir setor e papel antes de aprovar"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApproveUser(p.id, false)}
+                          className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs py-1.5 px-2.5 transition-colors flex items-center justify-center cursor-pointer"
+                          title="Recusar cadastro"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Active profiles list */}
-          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+          {/* Diretório de Usuários & Controles */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs space-y-4">
+            {/* Header da Tabela com Sincronização */}
             <div className="flex flex-wrap justify-between items-center gap-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-800">Perfis Ativos ({activeUsers.length})</h3>
-                {selectedUserIds.length > 0 && (
-                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                    {selectedUserIds.length} selecionado(s)
-                  </span>
-                )}
+              <div>
+                <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  Diretório de Usuários ({filteredUsers.length})
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Gerenciamento de credenciais, setores vinculados, alçadas de compras e liberação de módulos.
+                </p>
               </div>
+
               <div className="flex items-center gap-2">
                 {selectedUserIds.length > 0 && (
                   <>
                     <button
                       type="button"
                       onClick={() => setBulkAccessModalOpen(true)}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] py-1.5 px-3 cursor-pointer shadow-sm transition-colors"
+                      className="flex items-center gap-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-3.5 cursor-pointer shadow-xs transition-colors"
                     >
                       <Layers className="h-3.5 w-3.5" />
                       Editar Acessos em Massa ({selectedUserIds.length})
@@ -1123,40 +1481,195 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     <button
                       type="button"
                       onClick={() => setSelectedUserIds([])}
-                      className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] py-1.5 px-2.5 cursor-pointer transition-colors"
+                      className="rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 px-3 cursor-pointer transition-colors"
                     >
                       Desmarcar todos
                     </button>
                   </>
                 )}
                 <button
+                  type="button"
                   onClick={async () => {
                     setSyncing(true);
                     try {
                       await localDb.syncFromSupabase(true);
+                      toast.success('Usuários e setores sincronizados com o Supabase com sucesso.');
                     } catch (err) {
                       console.error('Falha de sincronização explícita no painel admin:', err);
+                      toast.error('Erro na sincronização com o banco.');
                     } finally {
                       setSyncing(false);
                     }
                   }}
                   disabled={syncing}
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-bold text-[11px] py-1.5 px-3 cursor-pointer transition-colors border border-slate-200"
+                  className="flex items-center gap-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 disabled:opacity-50 text-slate-700 font-bold text-xs py-2 px-3.5 cursor-pointer transition-colors border border-slate-200/80 shadow-2xs"
+                  title="Sincronizar base local com Supabase"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                  Sincronizar com o Supabase
+                  <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin text-emerald-600' : ''}`} />
+                  Sincronizar
                 </button>
               </div>
             </div>
 
+            {/* Chips Rápidos de Filtragem por Status / Papel */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  userStatusFilter === 'all'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Todos ({userStats.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('ativo')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  userStatusFilter === 'ativo'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200/70 hover:bg-emerald-100'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Ativos ({userStats.active})
+              </button>
+              {userStats.pending > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setUserStatusFilter('pendente')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    userStatusFilter === 'pendente'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  Pendentes ({userStats.pending})
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('admin')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  userStatusFilter === 'admin'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'bg-purple-50 text-purple-900 border border-purple-200/70 hover:bg-purple-100'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Admins ({userStats.admins})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('comprador')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  userStatusFilter === 'comprador'
+                    ? 'bg-teal-700 text-white shadow-xs'
+                    : 'bg-teal-50 text-teal-900 border border-teal-200/70 hover:bg-teal-100'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                Compradores ({userStats.buyers})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('gestor')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  userStatusFilter === 'gestor'
+                    ? 'bg-indigo-700 text-white shadow-xs'
+                    : 'bg-indigo-50 text-indigo-900 border border-indigo-200/70 hover:bg-indigo-100'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5" />
+                Gestores ({userStats.managers})
+              </button>
+              {userStats.inactive > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setUserStatusFilter('inativo')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    userStatusFilter === 'inativo'
+                      ? 'bg-rose-700 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  Inativos ({userStats.inactive})
+                </button>
+              )}
+            </div>
+
+            {/* Barra de Busca e Filtro de Setor */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Buscar por nome, e-mail, cargo, setor, papel ou grupo SAP..."
+                  className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 bg-white placeholder:text-slate-400"
+                />
+                {userSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setUserSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    title="Limpar busca"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-slate-500 font-semibold">Setor:</span>
+                  <select
+                    value={userSectorFilter}
+                    onChange={(e) => setUserSectorFilter(e.target.value)}
+                    className="bg-transparent border-0 text-slate-800 font-bold focus:outline-none cursor-pointer pr-2 text-xs"
+                  >
+                    <option value="all">Todos ({profiles.length})</option>
+                    {sectors.map((sec) => {
+                      const count = profiles.filter(p => p.sector_id === sec.id).length;
+                      return (
+                        <option key={sec.id} value={sec.id}>
+                          {sec.name} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {(userSearchQuery || userSectorFilter !== 'all' || userStatusFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserSearchQuery('');
+                      setUserSectorFilter('all');
+                      setUserStatusFilter('all');
+                    }}
+                    className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                  >
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Barra de Seleção em Lote */}
             {selectedUserIds.length > 0 && (
-              <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80 px-3.5 py-2 text-xs">
-                <div className="flex items-center gap-2 text-emerald-900 font-medium">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-xs animate-in fade-in-50">
+                <div className="flex items-center gap-2.5 text-emerald-950 font-semibold">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-700 text-white text-[10px] font-bold">
                     {selectedUserIds.length}
                   </span>
                   <span>
-                    {selectedUserIds.length} {selectedUserIds.length === 1 ? 'usuário selecionado' : 'usuários selecionados'} para alteração em lote.
+                    {selectedUserIds.length} {selectedUserIds.length === 1 ? 'usuário selecionado' : 'usuários selecionados'} para modificação em massa.
                   </span>
                 </div>
                 <button
@@ -1164,202 +1677,246 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   onClick={() => setBulkAccessModalOpen(true)}
                   className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
                 >
-                  Configurar módulos de acesso agora &rarr;
+                  Configurar módulos em lote &rarr;
                 </button>
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            {/* Tabela de Usuários */}
+            <div className="overflow-x-auto rounded-xl border border-slate-100">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="py-2.5 px-2 w-8 text-center">
+                  <tr className="border-b border-slate-200/80 bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-3 w-10 text-center">
                       <input
                         type="checkbox"
-                        checked={activeUsers.length > 0 && activeUsers.every(u => selectedUserIds.includes(u.id))}
+                        checked={filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.includes(u.id))}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedUserIds(activeUsers.map(u => u.id));
+                            setSelectedUserIds(filteredUsers.map(u => u.id));
                           } else {
                             setSelectedUserIds([]);
                           }
                         }}
-                        title="Selecionar / Desmarcar todos os usuários ativos"
+                        title="Selecionar / Desmarcar todos os usuários listados"
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
                       />
                     </th>
-                    <th className="py-2.5">Nome</th>
-                    <th className="py-2.5">E-mail</th>
-                    <th className="py-2.5">Cargo / Setor</th>
-                    <th className="py-2.5">Grupo Compras</th>
-                    <th className="py-2.5">Aprovador</th>
-                    <th className="py-2.5">Nível de Acesso (Role)</th>
-                    <th className="py-2.5 text-center">Ações</th>
+                    <th className="py-3 px-3">Colaborador</th>
+                    <th className="py-3 px-3">Cargo & Setor</th>
+                    <th className="py-3 px-3">Papel Principal</th>
+                    <th className="py-3 px-3 text-center">Grupo SAP</th>
+                    <th className="py-3 px-3">Alçadas / Aprovador</th>
+                    <th className="py-3 px-3 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {activeUsers.map((p) => (
-                    <tr key={p.id} className={`hover:bg-slate-50/50 ${selectedUserIds.includes(p.id) ? 'bg-emerald-50/30' : ''}`}>
-                      <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.includes(p.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedUserIds(prev => [...prev, p.id]);
-                            } else {
-                              setSelectedUserIds(prev => prev.filter(id => id !== p.id));
-                            }
-                          }}
-                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-3 font-semibold text-slate-800 flex items-center gap-2 flex-wrap">
-                        <span className={p.status === 'inativo' ? 'line-through text-slate-400' : ''}>{p.name}</span>
-                        {p.status === 'pendente' && (
-                          <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-amber-300 uppercase shrink-0 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                            Novo Cadastro (Pendente)
-                          </span>
-                        )}
-                        {p.status === 'inativo' && (
-                          <span className="bg-slate-100 text-slate-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-slate-300 uppercase shrink-0">
-                            Inativo
-                          </span>
-                        )}
-                        {p.status === 'ativo' && isRecentlyCreated(p.created_at) && (
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-300 uppercase shrink-0 flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-emerald-600" />
-                            Novo Cadastro
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 text-slate-500">{p.email}</td>
-                      <td className="py-3 text-slate-600 font-medium">{p.cargo} • Setor {p.sector_id}</td>
-                      <td className="py-3">
-                        {(() => {
-                          const current = p.grupo_compras || '';
-                          const value = grupoComprasInputs[p.id] ?? current;
-                          const dirty = value.trim() !== current.trim();
-                          return (
-                            <div className="flex items-center gap-1.5">
-                              <input
-                                type="text"
-                                value={value}
-                                onChange={(e) => setGrupoComprasInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                onKeyDown={(e) => { if (e.key === 'Enter' && dirty) handleSaveGrupoCompras(p.id); }}
-                                placeholder="Ex: 314"
-                                className="w-20 rounded border border-slate-200 py-1 px-2 text-xs font-mono focus:outline-none focus:border-emerald-600 bg-white"
-                              />
-                              {dirty && (
-                                <button
-                                  onClick={() => handleSaveGrupoCompras(p.id)}
-                                  className="rounded bg-emerald-700 hover:bg-emerald-800 text-white p-1 shrink-0"
-                                  title="Salvar grupo de compras"
-                                >
-                                  <Save className="h-3.5 w-3.5" />
-                                </button>
-                              )}
+                  {filteredUsers.map((p) => {
+                    const secName = sectorMap.get(p.sector_id) || (p.sector_id ? `Setor ${p.sector_id}` : null);
+                    const isSelected = selectedUserIds.includes(p.id);
+                    const isSelf = p.id === user.id;
+                    const roleBadge = getRoleBadgeUI(p.roles?.[0] || 'visualizador');
+                    const RoleIcon = roleBadge.icon;
+                    const hasSectorsApproval = (p.aprovador_setores || []).length > 0;
+                    const hasSapApproval = !!p.aprovador_cadastro_sap;
+
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`hover:bg-slate-50/70 transition-colors ${
+                          isSelected ? 'bg-emerald-50/30' : p.status === 'inativo' ? 'bg-slate-50/40 opacity-70' : ''
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <td className="py-3.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedUserIds(prev => [...prev, p.id]);
+                              } else {
+                                setSelectedUserIds(prev => prev.filter(id => id !== p.id));
+                              }
+                            }}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer"
+                          />
+                        </td>
+
+                        {/* Colaborador (Avatar, Nome, E-mail, Status) */}
+                        <td className="py-3.5 px-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${getAvatarGradient(p.name)} font-bold text-xs flex items-center justify-center shadow-2xs shrink-0`}>
+                              {getInitials(p.name)}
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="py-3" onClick={(e) => e.stopPropagation()}>
-                        <AprovadorSetoresSelect
-                          sectors={sectors}
-                          selected={p.aprovador_setores || []}
-                          cadastroSap={!!p.aprovador_cadastro_sap}
-                          onChangeSetores={(next) => handleChangeAprovadorSetores(p.id, next)}
-                          onChangeCadastroSap={(next) => handleChangeAprovadorCadastroSap(p.id, next)}
-                        />
-                      </td>
-                      <td className="py-3">
-                        {selectedProfileId === p.id ? (
-                          <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-                            <select
-                              value={editingRole}
-                              onChange={(e) => setEditingRole(e.target.value)}
-                              className="rounded border border-slate-200 py-1 px-2 text-xs focus:outline-none focus:border-emerald-600 cursor-pointer bg-white"
-                            >
-                              <option value="pendente">Acesso Pendente</option>
-                              <option value="admin">Admin</option>
-                              <option value="solicitante">Solicitante</option>
-                              <option value="requisitante">Requisitante</option>
-                              <option value="gestor">Gestor</option>
-                              <option value="comprador">Comprador</option>
-                              <option value="atendente">Atendente</option>
-                              <option value="coordenador_suprimentos">Coordenador</option>
-                              <option value="visualizador">Visualizador</option>
-                            </select>
-                            <button
-                              onClick={() => handleUpdateRole(p.id)}
-                              className="rounded bg-emerald-800 text-white p-1"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setSelectedProfileId(null)}
-                              className="rounded border border-slate-200 text-slate-400 p-1"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`font-bold text-slate-900 ${p.status === 'inativo' ? 'line-through text-slate-400' : ''}`}>
+                                  {p.name}
+                                </span>
+                                {isSelf && (
+                                  <span className="bg-sky-100 text-sky-800 text-[9px] font-bold px-1.5 py-0.2 rounded border border-sky-200">
+                                    Você
+                                  </span>
+                                )}
+                                {p.status === 'pendente' && (
+                                  <span className="bg-amber-100 text-amber-800 text-[9px] font-extrabold px-1.5 py-0.2 rounded border border-amber-300">
+                                    Pendente
+                                  </span>
+                                )}
+                                {p.status === 'inativo' && (
+                                  <span className="bg-rose-100 text-rose-700 text-[9px] font-bold px-1.5 py-0.2 rounded border border-rose-200">
+                                    Inativo
+                                  </span>
+                                )}
+                                {p.status === 'ativo' && isRecentlyCreated(p.created_at) && (
+                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-0.5">
+                                    <Sparkles className="w-2.5 h-2.5 text-emerald-600" /> Novo
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5 truncate">{p.email}</p>
+                            </div>
                           </div>
-                        ) : (
-                          <span className="font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded inline-block border">
-                            {getRoleLabel(p.roles[0])}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 text-center">
-                        {selectedProfileId !== p.id && (
-                          <div className="flex items-center justify-center gap-3">
+                        </td>
+
+                        {/* Cargo & Setor */}
+                        <td className="py-3.5 px-3">
+                          <p className="font-semibold text-slate-800 text-xs">{p.cargo || '—'}</p>
+                          <button
+                            type="button"
+                            onClick={() => setGovernanceModalUser(p)}
+                            className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-slate-600 hover:text-emerald-800 transition-colors cursor-pointer group"
+                            title="Clique para editar dados ou setor deste colaborador"
+                          >
+                            <Building2 className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 shrink-0" />
+                            <span className="group-hover:underline">{secName || 'Sem setor vinculado'}</span>
+                          </button>
+                        </td>
+
+                        {/* Papel Principal */}
+                        <td className="py-3.5 px-3">
+                          <button
+                            type="button"
+                            onClick={() => setGovernanceModalUser(p)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${roleBadge.bg}`}
+                            title="Clique para gerenciar papéis e permissões"
+                          >
+                            <RoleIcon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{roleBadge.label}</span>
+                          </button>
+                        </td>
+
+                        {/* Grupo SAP */}
+                        <td className="py-3.5 px-3 text-center">
+                          {p.grupo_compras ? (
+                            <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs">
+                              {p.grupo_compras}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-mono">—</span>
+                          )}
+                        </td>
+
+                        {/* Alçadas / Aprovador */}
+                        <td className="py-3.5 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {hasSectorsApproval && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                <CheckCircle2 className="w-3 h-3 text-indigo-600" />
+                                {p.aprovador_setores?.length} setor(es)
+                              </span>
+                            )}
+                            {hasSapApproval && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                <FileCheck className="w-3 h-3 text-amber-600" />
+                                SAP Mat.
+                              </span>
+                            )}
+                            {!hasSectorsApproval && !hasSapApproval && (
+                              <span className="text-slate-400 text-xs font-normal">Nenhuma</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Ações */}
+                        <td className="py-3.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
                             <button
-                              onClick={() => { setSelectedProfileId(p.id); setEditingRole(p.roles[0]); }}
-                              className="text-emerald-700 hover:underline font-bold"
+                              type="button"
+                              onClick={() => setGovernanceModalUser(p)}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer border border-slate-200/80"
+                              title="Gerenciar todos os dados, alçadas e setor deste colaborador"
                             >
-                              Editar Permissão
+                              <Settings2 className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Editar</span>
                             </button>
+
                             <button
+                              type="button"
                               onClick={() => setPageAccessProfileId(p.id)}
-                              className="text-slate-600 hover:underline font-bold"
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200"
+                              title="Configurar permissão granular por módulo"
                             >
-                              Módulos de acesso
+                              <SlidersHorizontal className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={() => setResetPwdUserId(p.id)}
-                              disabled={p.id === user.id}
-                              className="text-blue-700 hover:underline font-bold disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
-                              title={p.id === user.id ? 'Use "Segurança & Senha" no seu perfil para trocar a própria senha' : 'Definir senha provisória e forçar troca no próximo login'}
-                            >
-                              Resetar senha
-                            </button>
+
                             {p.status === 'inativo' ? (
                               <button
+                                type="button"
                                 onClick={() => handleToggleUserStatus(p.id, 'ativo')}
-                                className="text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-0.5 rounded border border-emerald-200 font-bold transition-colors cursor-pointer"
-                                title="Ativar usuário no sistema"
+                                className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                title="Reativar colaborador"
                               >
-                                Ativar
+                                <UserCheck className="w-4 h-4" />
                               </button>
                             ) : (
                               <button
+                                type="button"
                                 onClick={() => handleToggleUserStatus(p.id, 'inativo')}
-                                disabled={p.id === user.id}
-                                className="text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 disabled:opacity-40 disabled:hover:bg-rose-50 px-2.5 py-0.5 rounded border border-rose-200 font-bold transition-colors cursor-pointer"
-                                title={p.id === user.id ? 'Você não pode inativar seu próprio usuário' : 'Inativar usuário no sistema'}
+                                disabled={isSelf}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={isSelf ? 'Você não pode inativar sua própria conta' : 'Inativar acesso deste usuário'}
                               >
-                                Inativar
+                                <UserX className="w-4 h-4" />
                               </button>
                             )}
                           </div>
-                        )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                          <Users className="w-8 h-8 opacity-30" />
+                          <p className="font-semibold text-sm text-slate-600">Nenhum colaborador encontrado</p>
+                          <p className="text-xs text-slate-400">Tente ajustar a busca ou os filtros aplicados acima.</p>
+                          {(userSearchQuery || userSectorFilter !== 'all' || userStatusFilter !== 'all') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserSearchQuery('');
+                                setUserSectorFilter('all');
+                                setUserStatusFilter('all');
+                              }}
+                              className="mt-2 text-xs font-bold text-emerald-700 hover:underline cursor-pointer"
+                            >
+                              Limpar todos os filtros
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
+              </div>
             </div>
-          </div>
+            </>
+          )}
         </div>
       )}
 
@@ -3817,6 +4374,25 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           />
         );
       })()}
+
+      {governanceModalUser && (
+        <UserEditGovernanceModal
+          isOpen={!!governanceModalUser}
+          onClose={() => setGovernanceModalUser(null)}
+          profile={governanceModalUser}
+          sectors={sectors}
+          currentUserId={user.id}
+          onSaveSuccess={loadData}
+          onOpenPageAccess={(userId) => {
+            setGovernanceModalUser(null);
+            setPageAccessProfileId(userId);
+          }}
+          onOpenResetPassword={(userId) => {
+            setGovernanceModalUser(null);
+            setResetPwdUserId(userId);
+          }}
+        />
+      )}
 
       {/* Botão flutuante e janela de chatbot para o usuário Admin */}
       <AdminChatbot user={user} />

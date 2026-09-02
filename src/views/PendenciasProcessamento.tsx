@@ -28,13 +28,15 @@ import {
   Truck,
   Calendar,
   FileSpreadsheet,
+  BarChart3,
   Mail,
+  MessageSquareText,
   CheckSquare,
   Square,
   CheckCheck,
 } from 'lucide-react';
 import type { Profile, SupPendenciaProcessamentoNF } from '../types';
-import { formatBRL, formatDateBR, formatDateTimeBR } from '../lib/format';
+import { formatBRL, formatDateTimeBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
 import { localDb } from '../db/localDb';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
@@ -55,6 +57,7 @@ import {
   reabrirPendencia,
   type GrupoPendencia,
 } from '../lib/supPendenciasApi';
+import PendenciasProcessamentoAnalise from './PendenciasProcessamentoAnalise';
 
 interface PendenciasProcessamentoProps {
   user: Profile;
@@ -107,10 +110,16 @@ function caminhosImagem(l: { imagem_paths?: string[] | null; imagem_path?: strin
 
 const EMAIL_DESTINATARIO_PADRAO = 'victor.oliveira@ten.ind.br';
 
+/** Rótulos de `camposExibicao` que carregam a observação/demanda — exibidos em destaque, fora da grade de metadados. */
+const OBS_LABELS = ['Observação', 'Observações', 'Demanda'];
+/** Rótulos que não entram na grade de metadados da linha (já aparecem no título ou no bloco de observação). */
+const OMITIR_GRID = ['Nome do Fornecedor', 'Fornecedor', 'Número da NF', ...OBS_LABELS];
+
 export default function PendenciasProcessamento({ user, onNavigate }: PendenciasProcessamentoProps) {
   const toast = useToast();
   const [grupos, setGrupos] = useState<GrupoPendencia[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [aba, setAba] = useState<'fila' | 'analise'>('fila');
   const [salvandoId, setSalvandoId] = useState<string | null>(null);
   const [salvandoLote, setSalvandoLote] = useState(false);
   const [resolucoes, setResolucoes] = useState<Record<string, string>>({});
@@ -126,6 +135,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
   const [solicitanteFilter, setSolicitanteFilter] = useState<Set<string>>(new Set());
   const [setorFilter, setSetorFilter] = useState<Set<string>>(new Set());
   const [fornecedorFilter, setFornecedorFilter] = useState<Set<string>>(new Set());
+  const [causaFilter, setCausaFilter] = useState<Set<string>>(new Set());
   const [dateFilter, setDateFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
   // Mapa de setores
@@ -178,6 +188,12 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [grupos]);
 
+  const causaOptions = useMemo(() => {
+    const set = new Set<string>();
+    grupos.forEach(g => { if (g.classif_causa) set.add(g.classif_causa); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [grupos]);
+
   // Filtragem combinada de grupos e linhas
   const gruposFiltrados = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -196,6 +212,9 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
       // 4. Filtro de Setor
       const sectorName = getSectorName(g.solicitante_sector_id);
       if (setorFilter.size > 0 && !setorFilter.has(sectorName)) return null;
+
+      // 4b. Filtro de Causa
+      if (causaFilter.size > 0 && !(g.classif_causa && causaFilter.has(g.classif_causa))) return null;
 
       // 5. Filtro de Data de Abertura
       const recordDate = g.created_at ? g.created_at.slice(0, 10) : '';
@@ -220,7 +239,10 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
         const groupMatches = (
           g.protocolo.toLowerCase().includes(q) ||
           g.numero.toLowerCase().includes(q) ||
-          g.solicitante_name.toLowerCase().includes(q)
+          g.solicitante_name.toLowerCase().includes(q) ||
+          Boolean(g.classif_causa && g.classif_causa.toLowerCase().includes(q)) ||
+          Boolean(g.classif_responsavel && g.classif_responsavel.toLowerCase().includes(q)) ||
+          Boolean(g.observacao_chamado && g.observacao_chamado.toLowerCase().includes(q))
         );
         if (groupMatches) return true;
 
@@ -251,6 +273,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     solicitanteFilter,
     setorFilter,
     fornecedorFilter,
+    causaFilter,
     dateFilter,
     getSectorName,
   ]);
@@ -286,11 +309,12 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
       solicitanteFilter.size > 0 ||
       setorFilter.size > 0 ||
       fornecedorFilter.size > 0 ||
+      causaFilter.size > 0 ||
       (dateFilter.preset && dateFilter.preset !== 'all') ||
       Boolean(dateFilter.from) ||
       Boolean(dateFilter.to)
     );
-  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, dateFilter]);
+  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, causaFilter, dateFilter]);
 
   const handleClearAllFilters = () => {
     setSearchQuery('');
@@ -299,6 +323,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     setSolicitanteFilter(new Set());
     setSetorFilter(new Set());
     setFornecedorFilter(new Set());
+    setCausaFilter(new Set());
     setDateFilter({ from: '', to: '', preset: 'all' });
   };
 
@@ -480,6 +505,38 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
         </p>
       </div>
 
+      {/* Abas: fila de baixa x análise dos dados */}
+      <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 w-fit border border-slate-200/50 dark:border-slate-800 reveal">
+        <button
+          type="button"
+          onClick={() => setAba('fila')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            aba === 'fila'
+              ? 'bg-white dark:bg-slate-800 text-[#0056c6] dark:text-[#3b82f6] shadow-xs'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+          }`}
+        >
+          <ReceiptText className="h-3.5 w-3.5" /> Fila
+        </button>
+        <button
+          type="button"
+          onClick={() => setAba('analise')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            aba === 'analise'
+              ? 'bg-white dark:bg-slate-800 text-[#0056c6] dark:text-[#3b82f6] shadow-xs'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+          }`}
+        >
+          <BarChart3 className="h-3.5 w-3.5" /> Análise
+        </button>
+      </div>
+
+      {aba === 'analise' && (
+        <PendenciasProcessamentoAnalise grupos={grupos} carregando={carregando} onRecarregar={carregar} />
+      )}
+
+      {aba === 'fila' && (
+      <>
       {/* Resumo de Indicadores, Ações Globais e Botão Atualizar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-4 text-sm" style={{ color: 'var(--ink-secondary)' }}>
@@ -615,6 +672,15 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
             panelClassName="w-80"
             className="shrink-0 w-[160px] sm:w-auto sm:min-w-[160px]"
           />
+          <MultiSelectFilter
+            label="Causa"
+            icon={Search}
+            options={causaOptions}
+            selected={causaFilter}
+            onChange={setCausaFilter}
+            panelClassName="w-80"
+            className="shrink-0 w-[140px] sm:w-auto sm:min-w-[140px]"
+          />
           <DateRangeFilter
             label="Abertura"
             icon={Calendar}
@@ -668,6 +734,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
             const totalValor = g.linhas.reduce((s, l) => s + (l.valor_nfse ?? 0), 0);
             const isDoc = g.modelo === 'documento';
             const isAjuste = g.modelo === 'ajuste_pedido';
+            const impactoAlto = /^\s*alto/i.test(g.classif_impacto || '');
             const pendentesGrupo = g.linhas.filter(l => l.status !== 'concluido');
             const todosGrupoSelecionados = pendentesGrupo.length > 0 && pendentesGrupo.every(l => selectedIds.has(l.id));
 
@@ -693,7 +760,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                   <span className="font-bold font-mono text-sm" style={{ color: 'var(--ink-primary)' }}>{g.protocolo}</span>
                   <button
                     type="button"
-                    onClick={() => onNavigate(`/solicitacoes/todas?id=${g.request_id}`)}
+                    onClick={() => onNavigate(`/solicitacoes?id=${g.request_id}`)}
                     className="text-[12px] font-bold inline-flex items-center gap-0.5 cursor-pointer hover:underline"
                     style={{ color: 'var(--brand)' }}
                   >
@@ -705,7 +772,10 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                       {getSectorName(g.solicitante_sector_id)}
                     </span>
                   )}
-                  <span className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>Aberto em {formatDateBR(g.created_at)}</span>
+                  <span className="text-[12px] inline-flex items-center gap-1" style={{ color: 'var(--ink-muted)' }}>
+                    <Calendar className="h-3 w-3" />
+                    Aberto em {formatDateTimeBR(g.created_at)}
+                  </span>
                   <span className="text-[11px] font-bold px-1.5 py-0.5 rounded uppercase" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
                     {rotuloModelo(g.modelo)}
                   </span>
@@ -719,11 +789,60 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                   )}
                 </div>
 
+                {/* Classificação da demanda + observação do chamado */}
+                {(g.classif_causa || g.classif_responsavel || g.classif_impacto || g.classif_recorrencia || g.observacao_chamado) && (
+                  <div className="px-5 py-2.5 border-b flex flex-col gap-2" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
+                    <div className="flex flex-wrap gap-x-2 gap-y-1">
+                      {g.classif_causa && (
+                        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'color-mix(in srgb, var(--status-serious) 14%, transparent)', color: 'var(--status-serious)' }}>
+                          Causa: {g.classif_causa}
+                        </span>
+                      )}
+                      {g.classif_responsavel && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-card)', color: 'var(--ink-secondary)' }}>
+                          Resp.: {g.classif_responsavel}
+                        </span>
+                      )}
+                      {g.classif_impacto && (
+                        <span
+                          className="text-[11px] px-1.5 py-0.5 rounded"
+                          style={
+                            impactoAlto
+                              ? { background: 'color-mix(in srgb, var(--status-critical) 15%, transparent)', color: 'var(--status-critical)', fontWeight: 700 }
+                              : { background: 'var(--surface-card)', color: 'var(--ink-secondary)' }
+                          }
+                        >
+                          Impacto: {g.classif_impacto}
+                        </span>
+                      )}
+                      {g.classif_recorrencia && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-card)', color: 'var(--ink-secondary)' }}>
+                          {g.classif_recorrencia}
+                        </span>
+                      )}
+                    </div>
+                    {g.observacao_chamado && (
+                      <div className="rounded-lg border-l-2 px-3 py-2" style={{ borderColor: 'var(--brand)', background: 'var(--surface-card)' }}>
+                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--ink-muted)' }}>
+                          <MessageSquareText className="h-3 w-3" />
+                          Observação do solicitante
+                        </span>
+                        <p className="text-[13px] leading-snug whitespace-pre-wrap break-words" style={{ color: 'var(--ink-primary)' }}>
+                          {g.observacao_chamado}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Linhas de Notas Fiscais / Documentos */}
                 <div className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
                   {g.linhas.map(l => {
                     const concluido = l.status === 'concluido';
                     const isSelected = selectedIds.has(l.id);
+                    const camposLinha = camposExibicao(l);
+                    const obsLinha = camposLinha.find(f => OBS_LABELS.includes(f.label) && f.value.trim());
+                    const gridLinha = camposLinha.filter(f => !OMITIR_GRID.includes(f.label) && f.value);
 
                     return (
                       <div
@@ -774,16 +893,36 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                               </span>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
-                            {camposExibicao(l)
-                              .filter(f => !['Nome do Fornecedor', 'Fornecedor', 'Número da NF'].includes(f.label) && f.value)
-                              .map(f => (
+                          {/* Observação da linha — o que o comprador precisa resolver. Vem antes dos metadados secundários. */}
+                          {obsLinha && (
+                            <div
+                              className="rounded-lg border-l-2 px-3 py-2"
+                              style={{
+                                borderColor: concluido ? 'var(--status-good)' : 'var(--status-serious)',
+                                background: concluido
+                                  ? 'color-mix(in srgb, var(--status-good) 6%, transparent)'
+                                  : 'color-mix(in srgb, var(--status-serious) 9%, transparent)',
+                              }}
+                            >
+                              <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--ink-muted)' }}>
+                                <MessageSquareText className="h-3 w-3" />
+                                {obsLinha.label === 'Demanda' ? 'Demanda' : 'Observação — ação necessária'}
+                              </span>
+                              <p className="text-[13px] leading-snug whitespace-pre-wrap break-words" style={{ color: 'var(--ink-primary)' }}>
+                                {obsLinha.value}
+                              </p>
+                            </div>
+                          )}
+                          {gridLinha.length > 0 && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
+                              {gridLinha.map(f => (
                                 <div key={f.label} className="min-w-0">
                                   <span className="text-[10px] font-bold uppercase tracking-wider block" style={{ color: 'var(--ink-muted)' }}>{f.label}</span>
                                   <span className="text-[12px] break-words" style={{ color: 'var(--ink-primary)' }}>{f.value}</span>
                                 </div>
                               ))}
-                          </div>
+                            </div>
+                          )}
                           {l.modelo === 'ajuste_pedido' && (
                             <ImagensAjustePedido paths={caminhosImagem(l)} />
                           )}
@@ -847,9 +986,11 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           })}
         </div>
       )}
+      </>
+      )}
 
       {/* Barra Flutuante de Ação em Lote */}
-      {selectedIds.size > 0 && (
+      {aba === 'fila' && selectedIds.size > 0 && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 max-w-3xl w-[calc(100%-2rem)] bg-slate-900/95 dark:bg-slate-900/95 backdrop-blur-md text-white border border-slate-700 shadow-2xl rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-bottom-5">
           <div className="flex items-center gap-2.5">
             <span className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold shrink-0">

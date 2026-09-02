@@ -28,6 +28,61 @@ export const CATEGORIAS_SUPRIMENTOS = [
 
 export type ModeloPendencia = 'nfse' | 'documento' | 'ajuste_pedido';
 
+/* -------------------------------------------------------------------------- */
+/* Classificação da demanda (categoria "Pendência de Processamento")          */
+/* Listas exportadas para alimentar o formulário, os filtros e futuras        */
+/* análises de causa. Ordem = ordem de exibição no <select>.                  */
+/* -------------------------------------------------------------------------- */
+
+/** Causa provável / motivo da pendência — o eixo principal de análise de causa. */
+export const CLASSIF_CAUSA = [
+  'Pedido não lançado / RM pendente',
+  'Divergência de valor, ICMS ou base de cálculo',
+  'Nota fiscal em desacordo com o pedido',
+  'Saldo insuficiente no pedido',
+  'Item não cadastrado ou conversão de item',
+  'Falta de aprovação',
+  'Parametrização fiscal (Central Fiscal)',
+  'Documentação ou anexo faltando',
+  'Frete ou condição de frete',
+  'Cadastro do fornecedor incompleto',
+  'Outro',
+] as const;
+
+/** Área que precisa agir para resolver a pendência. */
+export const CLASSIF_RESPONSAVEL = [
+  'Suprimentos / Comprador',
+  'Central Fiscal',
+  'Solicitante / Requisitante',
+  'Fornecedor',
+  'Contabilidade',
+  'TI / Sistema',
+  'Outro',
+] as const;
+
+/** Grau de impacto da pendência. */
+export const CLASSIF_IMPACTO = [
+  'Baixo — sem risco de prazo',
+  'Médio — atrasa o processamento',
+  'Alto — bloqueia pagamento ou vencimento próximo',
+] as const;
+
+/** Recorrência do problema. */
+export const CLASSIF_RECORRENCIA = [
+  'Primeira ocorrência',
+  'Recorrente com este fornecedor',
+  'Recorrente neste tipo de item ou processo',
+] as const;
+
+/** Metadados de classificação + observação livre de um chamado de pendência. */
+export interface MetaPendencia {
+  observacao?: string;
+  classif_causa?: string;
+  classif_responsavel?: string;
+  classif_impacto?: string;
+  classif_recorrencia?: string;
+}
+
 /** Remove acentos para comparação tolerante de nomes/rótulos. */
 const semAcento = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -417,6 +472,21 @@ export function montarRelacaoPendencias(linhas: LinhaPendencia[]): string {
     .join('\n\n');
 }
 
+/** Bloco de texto com a classificação da demanda + observação, quando houver. */
+export function montarClassificacaoTexto(meta?: MetaPendencia): string {
+  if (!meta) return '';
+  const linhas: string[] = [];
+  if (meta.classif_causa) linhas.push(`Causa provável ..: ${meta.classif_causa}`);
+  if (meta.classif_responsavel) linhas.push(`Área responsável : ${meta.classif_responsavel}`);
+  if (meta.classif_impacto) linhas.push(`Impacto ........: ${meta.classif_impacto}`);
+  if (meta.classif_recorrencia) linhas.push(`Recorrência .....: ${meta.classif_recorrencia}`);
+  if (meta.observacao && meta.observacao.trim()) {
+    linhas.push('', 'Observação:', meta.observacao.trim());
+  }
+  if (linhas.length === 0) return '';
+  return ['CLASSIFICAÇÃO DA DEMANDA', ...linhas].join('\n');
+}
+
 /** Corpo do e-mail enviado ao Suprimentos com a relação de registros pendentes. */
 export function montarCorpoEmailPendencias(params: {
   protocolo: string;
@@ -424,8 +494,9 @@ export function montarCorpoEmailPendencias(params: {
   numeroChamado: string;
   linkChamado?: string;
   linhas: LinhaPendencia[];
+  meta?: MetaPendencia;
 }): string {
-  const { protocolo, solicitante, numeroChamado, linkChamado, linhas } = params;
+  const { protocolo, solicitante, numeroChamado, linkChamado, linhas, meta } = params;
   const modelo: ModeloPendencia = linhas[0]?.modelo ?? 'nfse';
   const rotulo = modelo === 'nfse' ? 'notas fiscais' : 'lançamentos';
 
@@ -442,6 +513,12 @@ export function montarCorpoEmailPendencias(params: {
   if (modelo === 'nfse') {
     cabecalho.push(`Valor total: R$ ${formatarBRL(somarValores(linhas))}`);
   }
+
+  const classificacao = montarClassificacaoTexto(meta);
+  if (classificacao) {
+    cabecalho.push('', '------------------------------------------------------------', classificacao);
+  }
+
   cabecalho.push(
     '',
     `Segue a relação de ${rotulo} pendentes de processamento:`,
@@ -491,9 +568,10 @@ export function montarCorpoEmailAjustePedido(params: {
   dados: DadosAjustePedido;
   /** Nº de imagens anexadas ao chamado (não vão no e-mail). Aceita boolean por compat. */
   qtdImagens?: number | boolean;
+  meta?: MetaPendencia;
   linkChamado?: string;
 }): string {
-  const { protocolo, solicitante, numeroChamado, dados, qtdImagens, linkChamado } = params;
+  const { protocolo, solicitante, numeroChamado, dados, qtdImagens, meta, linkChamado } = params;
   const nImagens = typeof qtdImagens === 'boolean' ? (qtdImagens ? 1 : 0) : (qtdImagens ?? 0);
 
   const linhas = [
@@ -519,6 +597,12 @@ export function montarCorpoEmailAjustePedido(params: {
         ? 'Uma imagem foi anexada ao chamado no SISTEN (não vai no e-mail).'
         : `${nImagens} imagens foram anexadas ao chamado no SISTEN (não vão no e-mail).`,
   ];
+
+  const classificacao = montarClassificacaoTexto(meta);
+  if (classificacao) {
+    linhas.push('', '------------------------------------------------------------', classificacao);
+  }
+
   if (linkChamado) linhas.push('', `Acompanhe o chamado: ${linkChamado}`);
 
   return linhas.join('\n');

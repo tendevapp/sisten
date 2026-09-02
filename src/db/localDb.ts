@@ -396,7 +396,24 @@ class LocalDatabase {
     const { data: sectors, error } = await supabase.from('core_setores').select('*');
     if (error) throw error;
     if (sectors && sectors.length > 0) {
-      this.setStorageItem(this.sectorsKey, sectors);
+      const existingNames = new Set(sectors.map(s => s.name.trim().toLowerCase()));
+      const missing = INITIAL_SECTORS.filter(s => !existingNames.has(s.name.trim().toLowerCase()));
+      if (missing.length > 0) {
+        let maxId = 0;
+        sectors.forEach(s => {
+          const n = parseInt(s.id, 10);
+          if (!isNaN(n) && n > maxId) maxId = n;
+        });
+        const toInsert = missing.map(m => {
+          maxId += 1;
+          return { ...m, id: String(maxId) };
+        });
+        await supabase.from('core_setores').upsert(toInsert).catch(() => null);
+        const merged = [...sectors, ...toInsert];
+        this.setStorageItem(this.sectorsKey, merged);
+      } else {
+        this.setStorageItem(this.sectorsKey, sectors);
+      }
     } else {
       await supabase.from('core_setores').upsert(INITIAL_SECTORS);
       this.setStorageItem(this.sectorsKey, INITIAL_SECTORS);
@@ -409,6 +426,7 @@ class LocalDatabase {
     if (profiles && profiles.length > 0) {
       const mappedProfiles = profiles.map(p => ({
         ...p,
+        name: (p.name || '').trim().toUpperCase(),
         roles: p.roles || [],
         tours_seen: p.tours_seen || {},
       }));
@@ -1195,14 +1213,16 @@ class LocalDatabase {
     // Repetido aqui, não só na tela, para a regra valer em qualquer chamada.
     if (!emailDominioPermitido(email)) return MSG_DOMINIO_NAO_PERMITIDO;
 
+    const normalizedName = (name || '').trim().toUpperCase();
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: email.toLowerCase(),
         password: password || 'ten123',
         options: {
           data: {
-            name,
-            cargo,
+            name: normalizedName,
+            cargo: (cargo || '').trim(),
             sector_id
           }
         }
@@ -1518,10 +1538,15 @@ class LocalDatabase {
 
   // Sectors Management
   public getSectors(): Sector[] {
-    // Cópia antes de ordenar: getStorageItem devolve a referência do cache em
-    // memória, e um .sort() in-place corromperia a ordem original guardada lá.
-    return [...this.getStorageItem<Sector[]>(this.sectorsKey, INITIAL_SECTORS)]
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const stored = this.getStorageItem<Sector[]>(this.sectorsKey, INITIAL_SECTORS) || [];
+    const storedNames = new Set(stored.map(s => s.name.trim().toLowerCase()));
+    const missing = INITIAL_SECTORS.filter(s => !storedNames.has(s.name.trim().toLowerCase()));
+    let list = stored;
+    if (missing.length > 0) {
+      list = [...stored, ...missing];
+      this.setStorageItem(this.sectorsKey, list);
+    }
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
   public updateSector(sectorId: string, isSupport: boolean, helpdeskEnabled: boolean): void {
@@ -2211,6 +2236,51 @@ class LocalDatabase {
     }
   }
 
+  /**
+   * Marca várias notificações como lidas de uma vez.
+   *
+   * Uma chamada ao Supabase por lote (`in`), não uma por notificação: o botão
+   * "marcar todas" com 40 pendências acumuladas dispararia 40 requisições.
+   */
+  public markNotificationsAsRead(notifIds: string[]): void {
+    if (notifIds.length === 0) return;
+    const alvo = new Set(notifIds);
+    const notifications = this.getStorageItem<Notification[]>(this.notificationsKey, []);
+
+    const pendentes = notifications.filter(n => alvo.has(n.id) && !n.is_read).map(n => n.id);
+    if (pendentes.length === 0) return;
+
+    this.setStorageItem(
+      this.notificationsKey,
+      notifications.map(n => (alvo.has(n.id) ? { ...n, is_read: true } : n)),
+    );
+
+    (async () => {
+      try { if (supabase) await supabase.from('core_notificacoes').update({ is_read: true }).in('id', pendentes); }
+      catch (e) { console.error('Falha ao marcar notificações como lidas no Supabase:', e); }
+    })();
+  }
+
+  /** Marca como lidas todas as notificações não lidas do usuário. */
+  public markAllNotificationsAsRead(userId: string): void {
+    const ids = this.getNotifications(userId).filter(n => !n.is_read).map(n => n.id);
+    this.markNotificationsAsRead(ids);
+  }
+
+  /**
+   * Marca como lidas as notificações do usuário ligadas a uma solicitação.
+   *
+   * Abrir a solicitação e ler o que mudou é o mesmo ato de "dar ciência" — sem
+   * isto o sino continuaria acusando pendência de algo que a pessoa acabou de
+   * ler, que é justamente o ruído que faz o badge perder o sentido.
+   */
+  public markRequestNotificationsAsRead(userId: string, requestId: string): void {
+    const ids = this.getNotifications(userId)
+      .filter(n => !n.is_read && n.request_id === requestId)
+      .map(n => n.id);
+    this.markNotificationsAsRead(ids);
+  }
+
   // ============================================================
   // Rastreio Compras — mensagens (conversas) e notificações
   // ============================================================
@@ -2560,6 +2630,23 @@ class LocalDatabase {
 
   public getRequestComments(reqId: string): RequestComment[] {
     return this.getStorageItem<RequestComment[]>(this.commentsKey, []).filter(c => c.request_id === reqId);
+  }
+
+  /**
+   * Todos os comentários em cache, sem filtro por solicitação.
+   *
+   * A Central de Solicitações precisa saber, para dezenas de solicitações de
+   * uma vez, quem falou por último — chamar `getRequestComments` numa por uma
+   * varreria o array inteiro a cada item. Aqui o chamador varre uma vez e
+   * monta o índice que precisa.
+   */
+  public getAllRequestComments(): RequestComment[] {
+    return this.getStorageItem<RequestComment[]>(this.commentsKey, []);
+  }
+
+  /** Todo o histórico de status em cache. Mesmo motivo de `getAllRequestComments`. */
+  public getAllRequestHistory(): RequestStatusHistory[] {
+    return this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []);
   }
 
   public async addRequestComment(reqId: string, content: string, isInternal: boolean): Promise<void> {
@@ -7235,7 +7322,8 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
         .update({
           status: status,
           roles: users[idx].roles
@@ -7243,7 +7331,7 @@ class LocalDatabase {
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar status do usuário no Supabase:', error);
+        console.error('Erro ao sincronizar status do usuário no Supabase:', error.message, error.details || '', error);
         // Reverte o cache local: sem isso o admin veria a mudança como aplicada
         // enquanto o Supabase (visto por todos os outros usuários) mantém o valor antigo.
         const revertUsers = this.getProfiles();
@@ -7276,7 +7364,8 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
         .update({
           roles: [role],
           status: users[idx].status
@@ -7284,7 +7373,7 @@ class LocalDatabase {
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar papéis do usuário no Supabase:', error);
+        console.error('Erro ao sincronizar papéis do usuário no Supabase:', error.message, error.details || '', error);
         const revertUsers = this.getProfiles();
         const revertIdx = revertUsers.findIndex(u => u.id === userId);
         if (revertIdx !== -1) {
@@ -7297,6 +7386,52 @@ class LocalDatabase {
     }
 
     this.logActivity('admin', 'Administração', 'Editar Perfil', `Perfil de ${users[idx].name} alterado para papel ${role}.`);
+    return true;
+  }
+
+  public async updateUserSector(userId: string, sectorId: string | null): Promise<boolean> {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    const normalizedSectorId = sectorId && String(sectorId).trim() !== '' ? String(sectorId).trim() : null;
+    const prevSectorId = users[idx].sector_id;
+    users[idx].sector_id = normalizedSectorId || undefined as any;
+    this.setStorageItem(this.profilesKey, users);
+
+    // Also update in session if it's the current user
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      currentUser.sector_id = normalizedSectorId || undefined as any;
+      this.setStorageItem(this.currentUserKey, currentUser);
+    }
+
+    if (supabase) {
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
+        .update({
+          sector_id: normalizedSectorId
+        })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar setor do usuário no Supabase:', error.message, error.details || '', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].sector_id = prevSectorId;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        if (currentUser && currentUser.id === userId) {
+          currentUser.sector_id = prevSectorId;
+          this.setStorageItem(this.currentUserKey, currentUser);
+        }
+        return false;
+      }
+    }
+
+    const sectorName = normalizedSectorId ? (this.getSectors().find(s => s.id === normalizedSectorId)?.name || normalizedSectorId) : 'Nenhum';
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Setor de ${users[idx].name} alterado para ${sectorName}.`);
     return true;
   }
 
@@ -7367,12 +7502,13 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
         .update({ grupo_compras: value })
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar grupo de compras no Supabase:', error);
+        console.error('Erro ao sincronizar grupo de compras no Supabase:', error.message, error.details || '', error);
         const revertUsers = this.getProfiles();
         const revertIdx = revertUsers.findIndex(u => u.id === userId);
         if (revertIdx !== -1) {
@@ -7401,12 +7537,13 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
         .update({ aprovador_setores: sectorIds })
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar setores de aprovação no Supabase:', error);
+        console.error('Erro ao sincronizar setores de aprovação no Supabase:', error.message, error.details || '', error);
         const revertUsers = this.getProfiles();
         const revertIdx = revertUsers.findIndex(u => u.id === userId);
         if (revertIdx !== -1) {
@@ -7435,12 +7572,13 @@ class LocalDatabase {
     this.setStorageItem(this.profilesKey, users);
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
         .update({ aprovador_cadastro_sap: value })
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar aprovador de Cadastro SAP no Supabase:', error);
+        console.error('Erro ao sincronizar aprovador de Cadastro SAP no Supabase:', error.message, error.details || '', error);
         const revertUsers = this.getProfiles();
         const revertIdx = revertUsers.findIndex(u => u.id === userId);
         if (revertIdx !== -1) {
@@ -8027,33 +8165,52 @@ class LocalDatabase {
   }
 
   // Profile Management methods
-  public async updateProfileFields(userId: string, name: string, cargo: string): Promise<Profile | null> {
+  public async updateProfileFields(userId: string, name: string, cargo: string, sector_id?: string): Promise<Profile | null> {
     const users = this.getProfiles();
     const idx = users.findIndex(u => u.id === userId);
     if (idx === -1) return null;
 
     const prevName = users[idx].name;
     const prevCargo = users[idx].cargo;
+    const prevSectorId = users[idx].sector_id;
 
-    users[idx].name = name;
-    users[idx].cargo = cargo;
+    const upperName = (name || '').trim().toUpperCase();
+    const cleanCargo = (cargo || '').trim();
+
+    const normalizedSectorId = sector_id !== undefined
+      ? (sector_id && String(sector_id).trim() !== '' ? String(sector_id).trim() : null)
+      : undefined;
+
+    users[idx].name = upperName;
+    users[idx].cargo = cleanCargo;
+    if (normalizedSectorId !== undefined) {
+      users[idx].sector_id = normalizedSectorId || undefined as any;
+    }
     this.setStorageItem(this.profilesKey, users);
 
     // Also update in session if it's the current user
     const currentUser = this.getCurrentUser();
     if (currentUser && currentUser.id === userId) {
-      currentUser.name = name;
-      currentUser.cargo = cargo;
+      currentUser.name = upperName;
+      currentUser.cargo = cleanCargo;
+      if (normalizedSectorId !== undefined) {
+        currentUser.sector_id = normalizedSectorId || undefined as any;
+      }
       this.setStorageItem(this.currentUserKey, currentUser);
     }
 
     if (supabase) {
-      const { error } = await supabase.from('core_perfis')
-        .update({ name, cargo })
+      const client = supabaseAdmin || supabase;
+      const payload: Record<string, any> = { name: upperName, cargo: cleanCargo };
+      if (normalizedSectorId !== undefined) {
+        payload.sector_id = normalizedSectorId;
+      }
+      const { error } = await client.from('core_perfis')
+        .update(payload)
         .eq('id', userId);
 
       if (error) {
-        console.error('Erro ao sincronizar dados do perfil no Supabase:', error);
+        console.error('Erro ao sincronizar dados do perfil no Supabase:', error.message, error.details || '', error);
         // Reverte cache local e sessão: sem isso o usuário veria o novo nome/cargo
         // aplicado enquanto o Supabase mantém o valor antigo.
         const revertUsers = this.getProfiles();
@@ -8061,11 +8218,13 @@ class LocalDatabase {
         if (revertIdx !== -1) {
           revertUsers[revertIdx].name = prevName;
           revertUsers[revertIdx].cargo = prevCargo;
+          revertUsers[revertIdx].sector_id = prevSectorId;
           this.setStorageItem(this.profilesKey, revertUsers);
         }
         if (currentUser && currentUser.id === userId) {
           currentUser.name = prevName;
           currentUser.cargo = prevCargo;
+          currentUser.sector_id = prevSectorId;
           this.setStorageItem(this.currentUserKey, currentUser);
         }
         return null;
@@ -8129,13 +8288,16 @@ class LocalDatabase {
     this.logActivity(userId, 'Perfil', 'Notificações', `Preferências de notificação definidas para "${pref}".`);
   }
 
-  public evaluateTicket(reqId: string, rating: number, comment?: string): void {
+  public async evaluateTicket(reqId: string, rating: number, comment?: string): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
     if (idx !== -1) {
       requests[idx].rating = rating;
       if (comment) {
         requests[idx].rating_comment = comment;
+      }
+      if (requests[idx].status === 'resolvido') {
+        requests[idx].status = 'fechado';
       }
       requests[idx].updated_at = new Date().toISOString();
       this.setStorageItem(this.requestsKey, requests);
@@ -8144,8 +8306,12 @@ class LocalDatabase {
       this.logActivity(user?.id || 'sistema', 'Helpdesk', 'Avaliar Chamado', `Chamado #${requests[idx].number} avaliado com ${rating} estrelas.`);
       
       // Also write as system comment
-      this.addRequestComment(reqId, `Chamado avaliado pelo solicitante: ${rating} / 5 estrelas.${comment ? ` Comentário: "${comment}"` : ''}`, false);
+      await this.addRequestComment(reqId, `Chamado avaliado pelo solicitante: ${rating} / 5 estrelas.${comment ? ` Detalhes: "${comment}"` : ''}`, false);
+      await this.publishRequestRow(requests[idx]);
+      this.notifyListeners();
+      return true;
     }
+    return false;
   }
 }
 

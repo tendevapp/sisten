@@ -7,7 +7,9 @@
  * `AttachmentPicker` é usado antes de a solicitação existir: comprime no momento
  * da escolha e segura os blobs em memória, para que o envio só faça rede. Quem
  * usa é dono do estado e o repassa ao `localDb.uploadAttachments` depois do
- * submit.
+ * submit. Aceita arquivo escolhido, foto da câmera, imagem arrastada e imagem
+ * colada da área de transferência — as quatro entradas passam pelo mesmo
+ * `adicionarArquivos`, então a validação e a compressão são as mesmas.
  *
  * `AttachmentGallery` é o lado de leitura: o bucket é privado, então cada
  * miniatura depende de uma URL assinada resolvida de forma assíncrona.
@@ -16,7 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2, Search, Check, Camera } from 'lucide-react';
+import { Paperclip, X, FileText, ImageIcon, AlertTriangle, Loader2, Search, Check, Camera, ClipboardPaste } from 'lucide-react';
 import {
   prepareAttachment,
   AnexoInvalidoError,
@@ -211,22 +213,23 @@ export function AttachmentPicker({
 }: AttachmentPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
   const ehTouch = usePonteiroGrosso();
   const [erro, setErro] = useState('');
   const [processando, setProcessando] = useState(false);
   const [bancoAberto, setBancoAberto] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
+  const [dicaColar, setDicaColar] = useState(false);
 
   const total = value.length + reusedValue.length;
   const cheio = total >= max;
 
-  const handleSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const escolhidos = Array.from(e.target.files || []);
-    // Zera o input já: sem isso, escolher o mesmo arquivo de novo depois de
-    // removê-lo não dispara change (o valor não mudou).
-    e.target.value = '';
+  /** Caminho único de entrada: escolher, fotografar, arrastar ou colar. */
+  const adicionarArquivos = async (escolhidos: File[]) => {
     if (escolhidos.length === 0) return;
 
     setErro('');
+    setDicaColar(false);
     setProcessando(true);
 
     const aceitos: PreparedAttachment[] = [];
@@ -252,6 +255,78 @@ export function AttachmentPicker({
     if (aceitos.length > 0) onChange([...value, ...aceitos]);
   };
 
+  const handleSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const escolhidos = Array.from(e.target.files || []);
+    // Zera o input já: sem isso, escolher o mesmo arquivo de novo depois de
+    // removê-lo não dispara change (o valor não mudou).
+    e.target.value = '';
+    adicionarArquivos(escolhidos);
+  };
+
+  /**
+   * Uma captura de tela chega na área de transferência sem nome de arquivo (ou
+   * como "image.png" para todas). Sem renomear, três prints viram três anexos
+   * homônimos e ninguém distingue um do outro depois de enviados.
+   */
+  const nomearColada = (f: File): File => {
+    if (f.name && f.name !== 'image.png') return f;
+    const extensao = f.type.split('/')[1] || 'png';
+    return new File([f], `imagem-colada-${Date.now()}.${extensao}`, { type: f.type });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (disabled || cheio) return;
+
+    const arquivos = Array.from(e.clipboardData.items)
+      .filter(i => i.kind === 'file')
+      .map(i => i.getAsFile())
+      .filter((f): f is File => f !== null)
+      .map(nomearColada);
+
+    if (arquivos.length === 0) return;
+    e.preventDefault();
+    adicionarArquivos(arquivos);
+  };
+
+  /**
+   * Botão "Colar": tenta ler a área de transferência direto, o que resolve em
+   * um clique. O navegador pode recusar (sem permissão, sem suporte, ou fora
+   * de HTTPS) — nesse caso o campo recebe o foco e a dica de Ctrl+V aparece,
+   * que é o caminho que sempre funciona.
+   */
+  const colarDaAreaDeTransferencia = async () => {
+    setErro('');
+    try {
+      const itens = await navigator.clipboard.read();
+      const arquivos: File[] = [];
+
+      for (const item of itens) {
+        const tipo = item.types.find(t => t.startsWith('image/') || t === 'application/pdf');
+        if (!tipo) continue;
+        const blob = await item.getType(tipo);
+        arquivos.push(nomearColada(new File([blob], '', { type: tipo })));
+      }
+
+      if (arquivos.length === 0) {
+        setDicaColar(false);
+        setErro('Não há imagem na área de transferência. Copie a imagem e tente de novo.');
+        return;
+      }
+      adicionarArquivos(arquivos);
+    } catch {
+      // Sem permissão ou sem suporte: cai no Ctrl+V manual.
+      setDicaColar(true);
+      areaRef.current?.focus();
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastando(false);
+    if (disabled || cheio) return;
+    adicionarArquivos(Array.from(e.dataTransfer.files));
+  };
+
   const remover = (idx: number) => {
     URL.revokeObjectURL(value[idx].previewUrl);
     onChange(value.filter((_, i) => i !== idx));
@@ -268,7 +343,37 @@ export function AttachmentPicker({
   };
 
   return (
-    <div className="space-y-2">
+    /*
+      O wrapper inteiro é o alvo de colar e de arrastar, em vez de uma área
+      tracejada separada: este campo aparece dentro de linhas de item bem
+      compactas em Nova Solicitação, onde uma caixa de soltar de 70px de altura
+      quebraria a lista. `tabIndex` existe para que o campo possa receber foco
+      e ouvir o Ctrl+V.
+    */
+    <div
+      ref={areaRef}
+      tabIndex={disabled ? -1 : 0}
+      onPaste={handlePaste}
+      onDragOver={(e) => { e.preventDefault(); if (!disabled && !cheio) setArrastando(true); }}
+      onDragLeave={() => setArrastando(false)}
+      onDrop={handleDrop}
+      /*
+        `onBlur` no React é focusout e borbulha: sem checar para onde o foco
+        foi, clicar no botão "Colar imagem" (um filho) apagaria a dica no mesmo
+        instante em que ela aparece. Só limpa quando o foco sai do campo todo.
+      */
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDicaColar(false);
+      }}
+      aria-label="Área de anexos — cole uma imagem com Ctrl+V ou arraste arquivos aqui"
+      className="space-y-2 rounded-lg transition-colors focus:outline-2 focus:outline-offset-2"
+      style={{
+        outlineColor: 'var(--brand)',
+        ...(arrastando
+          ? { outline: '2px dashed var(--brand)', outlineOffset: '4px', background: 'var(--brand-wash)' }
+          : null),
+      }}
+    >
       <input
         ref={inputRef}
         type="file"
@@ -303,6 +408,24 @@ export function AttachmentPicker({
           <Paperclip className="h-3.5 w-3.5" />
           {processando ? 'Comprimindo…' : cheio ? `Limite de ${max} anexos` : label}
         </button>
+
+        {/*
+          Em aparelho tocado não há Ctrl+V nem área de transferência de imagem
+          acessível: lá o botão útil é o da câmera, logo abaixo.
+        */}
+        {!ehTouch && (
+          <button
+            type="button"
+            disabled={disabled || cheio || processando}
+            onClick={colarDaAreaDeTransferencia}
+            title="Colar imagem copiada (Ctrl+V)"
+            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+          >
+            <ClipboardPaste className="h-3.5 w-3.5" />
+            Colar imagem
+          </button>
+        )}
 
         {ehTouch && (
           <button
@@ -412,6 +535,13 @@ export function AttachmentPicker({
             </li>
           ))}
         </ul>
+      )}
+
+      {dicaColar && !erro && (
+        <p className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: 'var(--brand-strong)' }}>
+          <ClipboardPaste className="h-3 w-3 shrink-0" />
+          <span>Agora tecle Ctrl+V para colar a imagem copiada.</span>
+        </p>
       )}
 
       {erro && (

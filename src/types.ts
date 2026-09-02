@@ -799,6 +799,38 @@ export interface ContratoAnexo {
   created_at: string;
 }
 
+/**
+ * Diligenciamento de um item de pedido (RI) -- o que o comprador digita no
+ * painel de Diligenciamento. Tudo que a ZL0132 ja fornece (fornecedor, valor,
+ * remessa) NAO mora aqui; ver `src/lib/diligenciamento.ts`.
+ */
+export interface DiligenciamentoItem {
+  ri: string;
+  doc_compra?: string | null;
+  transportadora?: string | null;
+  data_faturamento_transportadora?: string | null;
+  /** Sobrepoe a previsao calculada (remessa + prazo). NULL = usa o calculo. */
+  previsao_manual?: string | null;
+  atualizado_por_id?: string | null;
+  atualizado_por_nome?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Prazo de transito (dias corridos) por UF de origem + transportadora,
+ * mantido pelo comprador. `uf`/`transportadora` vazios sao os niveis
+ * genericos da cascata -- ver `db/sql/tables/sup_prazos_transporte.sql`.
+ */
+export interface PrazoTransporte {
+  id: string;
+  uf: string;
+  transportadora: string;
+  dias_corridos: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface CidadeForn {
   id?: string;
   forn_codigo: string;
@@ -1915,6 +1947,13 @@ export interface SupPendenciaProcessamentoNF {
   imagem_paths?: string[] | null;
   /** Primeira imagem (compat com o formato de imagem única). */
   imagem_path?: string | null;
+  /* Classificação da demanda (categoria "Pendência de Processamento") — dados
+     do chamado, repetidos em todas as linhas da submissão. */
+  observacao_chamado?: string | null;
+  classif_causa?: string | null;
+  classif_responsavel?: string | null;
+  classif_impacto?: string | null;
+  classif_recorrencia?: string | null;
   status: SupPendenciaStatus;
   /** Nota do Suprimentos ao dar baixa na linha. */
   resolucao?: string | null;
