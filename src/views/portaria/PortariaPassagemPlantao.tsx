@@ -22,6 +22,7 @@ import type {
   PortPassagemPlantaoStatus
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -36,7 +37,7 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-export default function PortariaPassagemPlantao({ user: _user, onNavigate }: Props) {
+export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const toast = useToast();
 
   const [plantoes, setPlantoes] = useState<PortPassagemPlantao[]>([]);
@@ -446,6 +447,8 @@ export default function PortariaPassagemPlantao({ user: _user, onNavigate }: Pro
           const totalItens = (p.itens_conferidos || []).length;
           const itensOk = (p.itens_conferidos || []).filter((i) => i.conferido).length;
           const isCompleto = totalItens > 0 && itensOk === totalItens;
+          // Encerrar/excluir só para o autor do plantão ou admin (espelha a RLS).
+          const podeEditar = podeEditarFormulario(user, p);
 
           return (
             <div
@@ -553,7 +556,7 @@ export default function PortariaPassagemPlantao({ user: _user, onNavigate }: Pro
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {p.status === 'EM_ANDAMENTO' && (
+                  {p.status === 'EM_ANDAMENTO' && podeEditar && (
                     <button
                       type="button"
                       onClick={() => setPlantaoParaEncerrar(p)}
@@ -562,14 +565,16 @@ export default function PortariaPassagemPlantao({ user: _user, onNavigate }: Pro
                       Encerrar
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setPlantaoParaExcluir(p)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                    title="Excluir Plantão"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  {podeEditar && (
+                    <button
+                      type="button"
+                      onClick={() => setPlantaoParaExcluir(p)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                      title="Excluir Plantão"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

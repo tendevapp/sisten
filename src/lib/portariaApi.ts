@@ -222,28 +222,47 @@ export async function listarTransportes(filtros?: {
   return (data || []) as PortRegistroTransporte[];
 }
 
+// Campos de texto livre dos transportes gravados sempre em MAIÚSCULO
+// (padronização da escrita). `veiculo` fica de fora: é valor de <select>
+// ('Van', 'Ônibus'...) e precisa casar com as opções.
+const CAMPOS_TEXTO_TRANSPORTE = ['vigilante', 'placa', 'empresa', 'motorista', 'rota', 'ocupacao', 'observacoes'] as const;
+
+function normalizarTextoTransporte<T extends Record<string, any>>(dados: T): T {
+  const out: Record<string, any> = { ...dados };
+  for (const campo of CAMPOS_TEXTO_TRANSPORTE) {
+    if (typeof out[campo] === 'string') {
+      const v = out[campo].toUpperCase().trim();
+      out[campo] = v === '' ? (campo === 'placa' || campo === 'empresa' || campo === 'motorista' || campo === 'vigilante' ? '' : null) : v;
+    }
+  }
+  return out as T;
+}
+
 export async function criarTransporte(dados: Partial<PortRegistroTransporte>): Promise<PortRegistroTransporte> {
   const dataRegistro = dados.data || hojeISO();
   const placaLimpa = dados.placa ? dados.placa.replace(/[^A-Za-z0-9]/g, '') : undefined;
-  const payload = {
+  const payload = normalizarTextoTransporte({
     codigo_formulario: 'FRM.SGP-0009',
     numero_protocolo: dados.numero_protocolo || gerarProtocolo('TRP', dataRegistro, placaLimpa),
     data: dataRegistro,
     turno: dados.turno || sugerirTurno(),
     vigilante: dados.vigilante || '',
     veiculo: dados.veiculo || 'Van',
-    placa: dados.placa ? dados.placa.toUpperCase().trim() : '',
+    placa: dados.placa || '',
     empresa: dados.empresa || '',
     hora_chegada: dados.hora_chegada || horaAgora(),
     hora_saida: dados.hora_saida || null,
     motorista: dados.motorista || '',
+    rota: dados.rota || null,
     ocupacao: dados.ocupacao || null,
     observacoes: dados.observacoes || null,
     status: dados.status || 'NO_PATIO',
     criado_por: dados.criado_por || null,
-  };
+  });
 
-  const { data, error } = await supabase
+  // `rota` ainda não está no database.types gerado (migration pendente) —
+  // cast alinhado ao padrão do arquivo para colunas fora dos tipos.
+  const { data, error } = await (supabase as any)
     .from('port_registro_transportes')
     .insert(payload)
     .select('*')
@@ -254,15 +273,47 @@ export async function criarTransporte(dados: Partial<PortRegistroTransporte>): P
 }
 
 export async function atualizarTransporte(id: string, dados: Partial<PortRegistroTransporte>): Promise<PortRegistroTransporte> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('port_registro_transportes')
-    .update({ ...dados, updated_at: new Date().toISOString() })
+    .update({ ...normalizarTextoTransporte(dados), updated_at: new Date().toISOString() })
     .eq('id', id)
     .select('*')
     .single();
 
   if (error) throw new Error(error.message);
   return data as PortRegistroTransporte;
+}
+
+/**
+ * Busca chegadas de transporte já lançadas que casem com o termo (placa,
+ * empresa ou motorista), para preenchimento rápido do formulário. Deduplica
+ * por placa+empresa+motorista, mantendo o lançamento mais recente.
+ */
+export async function buscarTransportesAnteriores(termo: string, limite = 8): Promise<PortRegistroTransporte[]> {
+  const t = (termo || '').trim();
+  if (t.length < 2) return [];
+  const esc = t.replace(/[%,()]/g, ' ');
+
+  const { data, error } = await supabase
+    .from('port_registro_transportes')
+    .select('*')
+    .is('excluido_em', null)
+    .or(`placa.ilike.%${esc}%,empresa.ilike.%${esc}%,motorista.ilike.%${esc}%`)
+    .order('created_at', { ascending: false })
+    .limit(40);
+
+  if (error) throw new Error(error.message);
+
+  const vistos = new Set<string>();
+  const unicos: PortRegistroTransporte[] = [];
+  for (const r of (data || []) as PortRegistroTransporte[]) {
+    const chave = `${r.placa}|${r.empresa}|${r.motorista}`.toUpperCase();
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicos.push(r);
+    if (unicos.length >= limite) break;
+  }
+  return unicos;
 }
 
 export async function registrarSaidaTransporte(id: string, hora_saida?: string): Promise<PortRegistroTransporte> {

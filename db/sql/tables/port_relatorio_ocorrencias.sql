@@ -19,6 +19,7 @@ create index if not exists port_relatorio_ocorrencias_horario_idx on public.port
 
 alter table public.port_relatorio_ocorrencias enable row level security;
 
-drop policy if exists port_relatorio_ocorrencias_rw on public.port_relatorio_ocorrencias;
-create policy port_relatorio_ocorrencias_rw on public.port_relatorio_ocorrencias
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada; edição/exclusão herda o dono do relatório-pai
+-- (port_relatorio_portaria.criado_por) — só o autor ou um admin. Policies
+-- granulares em
+-- supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

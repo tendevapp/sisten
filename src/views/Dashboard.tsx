@@ -23,6 +23,7 @@ import { supabase } from '../db/supabaseClient';
 import type { Notification, Profile, Request } from '../types';
 import { PAGES, canAccessPage, pageIdForPath } from '../lib/pages';
 import { getRecentPages, getFavoritePages, toggleFavoritePage } from '../lib/homePrefs';
+import { resolverRotaNotificacao } from '../lib/notificationRouting';
 
 interface DashboardProps {
   user: Profile;
@@ -203,14 +204,9 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   const handleNotif = (n: Notification) => {
     localDb.markNotificationAsRead(n.id);
     setNotifs(localDb.getNotifications(user.id));
-    if (n.context_key?.startsWith('rastreio:')) {
-      onNavigate(`/rastreio?ri=${encodeURIComponent(n.context_key.slice('rastreio:'.length))}`);
-    } else if (n.request_id) {
-      if (n.title.toLowerCase().includes('compra') && user.roles.includes('gestor')) {
-        onNavigate('/solicitacoes?escopo=acao');
-      } else {
-        onNavigate(`/solicitacoes?id=${n.request_id}`);
-      }
+    const rota = resolverRotaNotificacao(n, user);
+    if (rota) {
+      onNavigate(rota);
     }
   };
 
@@ -353,22 +349,19 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
               ) : (
                 notifList.map(n => {
                   const { icon: NIcon, klass } = NOTIF_STYLE[n.type] || NOTIF_STYLE.info;
-                  const clickable = Boolean(n.context_key || n.request_id);
                   return (
                     <button
                       key={n.id}
                       type="button"
-                      onClick={() => clickable && handleNotif(n)}
-                      className={`flex w-full items-start gap-3 py-3 text-left transition-colors ${
-                        clickable ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50' : 'cursor-default'
-                      }`}
+                      onClick={() => handleNotif(n)}
+                      className="group flex w-full items-start gap-3 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
                     >
                       <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${klass}`}>
                         <NIcon className="h-4 w-4" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
-                          <span className={`truncate text-xs font-bold ${n.is_read ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                          <span className={`truncate text-xs font-bold transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400 ${n.is_read ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100'}`}>
                             {n.title}
                           </span>
                           {!n.is_read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />}
@@ -378,6 +371,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
                         </span>
                         <span className="mt-1 block text-[10px] font-medium text-slate-400">{tempoRelativo(n.created_at)}</span>
                       </span>
+                      <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-slate-300 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 dark:text-slate-600" />
                     </button>
                   );
                 })

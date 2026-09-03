@@ -28,5 +28,7 @@ create index rh_ase_itens_solicitacao_idx on public.rh_ase_itens (solicitacao_id
 
 alter table public.rh_ase_itens enable row level security;
 
-create policy rh_ase_itens_rw on public.rh_ase_itens
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada; edição/exclusão herda o dono da solicitação-pai
+-- (rh_ase_solicitacoes.solicitante_id) — só o autor ou um admin. Policies
+-- granulares em
+-- supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

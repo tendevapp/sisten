@@ -30,6 +30,8 @@ create index if not exists port_controle_equipamentos_empresa_idx on public.port
 
 alter table public.port_controle_equipamentos enable row level security;
 
-drop policy if exists port_controle_equipamentos_rw on public.port_controle_equipamentos;
-create policy port_controle_equipamentos_rw on public.port_controle_equipamentos
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada a todo autenticado; INSERT/UPDATE/DELETE só do autor
+-- (criado_por) ou de um admin. As policies granulares (sel/ins/upd/del) e a
+-- função public.form_pode_editar() estão em
+-- supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql
+-- (fonte da verdade). `criado_por` tem default auth.uid().

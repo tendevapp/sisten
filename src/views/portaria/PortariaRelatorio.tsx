@@ -26,6 +26,7 @@ import type {
   PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
 import { exportRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
@@ -129,6 +130,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [relatorios, setRelatorios] = useState<PortRelatorioPortaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [relatorioAtivo, setRelatorioAtivo] = useState<PortRelatorioPortaria | null>(null);
+  // Só o autor do livro de plantão (ou um admin) altera lançamentos; os
+  // demais só consultam. Espelha a RLS em `form_pode_editar`.
+  const podeEditarAtivo = podeEditarFormulario(user, relatorioAtivo);
 
   // Modais
   const [modalNovoRelatorio, setModalNovoRelatorio] = useState(false);
@@ -1014,22 +1018,30 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={abrirModalOcorrencia}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-purple-500"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Nova Ocorrência
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setItemParaExcluir(relatorioAtivo)}
-                      className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
-                      title="Excluir livro do período"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {podeEditarAtivo ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={abrirModalOcorrencia}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-purple-500"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Nova Ocorrência
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemParaExcluir(relatorioAtivo)}
+                          className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                          title="Excluir livro do período"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        Somente leitura — livro de outro usuário
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1170,7 +1182,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                             )}
 
                             {/* Botão Registrar Saída se estiver no pátio */}
-                            {temSaidaPendente && (
+                            {temSaidaPendente && podeEditarAtivo && (
                               <button
                                 type="button"
                                 onClick={() => abrirModalDarSaida(oc)}
@@ -1182,24 +1194,26 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               </button>
                             )}
 
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => abrirModalEdicao(oc)}
-                                className="p-1.5 text-slate-400 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
-                                title="Editar ou reabrir lançamento"
-                              >
-                                <Edit3 className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setOcorrenciaParaExcluir(oc)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
-                                title="Excluir lançamento"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
+                            {podeEditarAtivo && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => abrirModalEdicao(oc)}
+                                  className="p-1.5 text-slate-400 hover:text-purple-600 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/50 transition-all"
+                                  title="Editar ou reabrir lançamento"
+                                >
+                                  <Edit3 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setOcorrenciaParaExcluir(oc)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-all"
+                                  title="Excluir lançamento"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

@@ -12,7 +12,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
-import type { SupPendenciaProcessamentoNF } from '../types';
+import type { SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
 import {
   formatarDataDDMMAA,
   rotuloNumero,
@@ -261,14 +261,63 @@ export async function listarPendenciasAgrupadas(apenasComPendencia = true): Prom
   return grupos.sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+function extrairHistoricoExistente(
+  row: { historico_acoes?: any; resolvido_por?: string | null; resolvido_em?: string | null; resolucao?: string | null } | null | undefined
+): SupPendenciaAcaoLog[] {
+  if (!row) return [];
+  if (Array.isArray(row.historico_acoes) && row.historico_acoes.length > 0) {
+    return [...row.historico_acoes];
+  }
+  if (row.resolvido_em) {
+    const perfis = localDb.getProfiles();
+    const p = perfis.find(x => x.id === row.resolvido_por);
+    return [
+      {
+        tipo: 'concluido',
+        usuario_id: row.resolvido_por || null,
+        usuario_nome: p?.name || 'Suprimentos',
+        data_hora: row.resolvido_em,
+        resolucao: row.resolucao || null,
+      },
+    ];
+  }
+  return [];
+}
+
 /**
  * Dá baixa numa nota e notifica quem abriu o chamado. O chamado em si não muda
  * de status — o atendente o resolve manualmente quando julgar concluído.
  */
-export async function concluirPendencia(id: string, resolucao: string): Promise<boolean> {
+export async function concluirPendencia(
+  id: string,
+  resolucao: string,
+  linhaAtual?: SupPendenciaProcessamentoNF
+): Promise<boolean> {
   if (!supabase) return false;
   const user = localDb.getCurrentUser();
   const texto = resolucao.trim();
+  const agoraISO = new Date().toISOString();
+
+  let hist: SupPendenciaAcaoLog[] = [];
+  if (linhaAtual) {
+    hist = extrairHistoricoExistente(linhaAtual);
+  } else {
+    const { data: row } = await (supabase as any)
+      .from(TABELA)
+      .select('historico_acoes, resolvido_por, resolvido_em, resolucao')
+      .eq('id', id)
+      .maybeSingle();
+    hist = extrairHistoricoExistente(row);
+  }
+
+  const novaAcao: SupPendenciaAcaoLog = {
+    tipo: 'concluido',
+    usuario_id: user?.id || null,
+    usuario_nome: user?.name || 'Suprimentos',
+    data_hora: agoraISO,
+    resolucao: texto || null,
+  };
+  hist.push(novaAcao);
 
   const { data, error } = await (supabase as any)
     .from(TABELA)
@@ -276,7 +325,8 @@ export async function concluirPendencia(id: string, resolucao: string): Promise<
       status: 'concluido',
       resolucao: texto || null,
       resolvido_por: user?.id || null,
-      resolvido_em: new Date().toISOString(),
+      resolvido_em: agoraISO,
+      historico_acoes: hist,
     })
     .eq('id', id)
     .select()
@@ -303,13 +353,48 @@ export async function concluirPendencia(id: string, resolucao: string): Promise<
   return true;
 }
 
-/** Reabre uma linha concluída (correção de baixa indevida). */
-export async function reabrirPendencia(id: string): Promise<boolean> {
+/** Reabre uma linha concluída registrando a reabertura no histórico de ações. */
+export async function reabrirPendencia(
+  id: string,
+  motivo?: string,
+  linhaAtual?: SupPendenciaProcessamentoNF
+): Promise<boolean> {
   if (!supabase) return false;
+  const user = localDb.getCurrentUser();
+  const agoraISO = new Date().toISOString();
+
+  let hist: SupPendenciaAcaoLog[] = [];
+  if (linhaAtual) {
+    hist = extrairHistoricoExistente(linhaAtual);
+  } else {
+    const { data: row } = await (supabase as any)
+      .from(TABELA)
+      .select('historico_acoes, resolvido_por, resolvido_em, resolucao')
+      .eq('id', id)
+      .maybeSingle();
+    hist = extrairHistoricoExistente(row);
+  }
+
+  const novaAcao: SupPendenciaAcaoLog = {
+    tipo: 'reaberto',
+    usuario_id: user?.id || null,
+    usuario_nome: user?.name || 'Suprimentos',
+    data_hora: agoraISO,
+    motivo: motivo?.trim() || null,
+  };
+  hist.push(novaAcao);
+
   const { error } = await (supabase as any)
     .from(TABELA)
-    .update({ status: 'pendente', resolucao: null, resolvido_por: null, resolvido_em: null })
+    .update({
+      status: 'pendente',
+      resolucao: null,
+      resolvido_por: null,
+      resolvido_em: null,
+      historico_acoes: hist,
+    })
     .eq('id', id);
+
   if (error) {
     console.error('Falha ao reabrir pendência:', error);
     return false;
@@ -319,14 +404,35 @@ export async function reabrirPendencia(id: string): Promise<boolean> {
 
 /** Conclui múltiplas notas de pendência em lote e gera as notificações para os solicitantes. */
 export async function concluirPendenciasEmLote(
-  itens: { id: string; resolucao: string }[]
+  itens: { id: string; resolucao: string; linhaAtual?: SupPendenciaProcessamentoNF }[]
 ): Promise<boolean> {
   if (!supabase || itens.length === 0) return false;
   const user = localDb.getCurrentUser();
   const agoraISO = new Date().toISOString();
 
-  const promises = itens.map(item => {
+  const promises = itens.map(async item => {
     const texto = item.resolucao.trim();
+    let hist: SupPendenciaAcaoLog[] = [];
+    if (item.linhaAtual) {
+      hist = extrairHistoricoExistente(item.linhaAtual);
+    } else {
+      const { data: row } = await (supabase as any)
+        .from(TABELA)
+        .select('historico_acoes, resolvido_por, resolvido_em, resolucao')
+        .eq('id', item.id)
+        .maybeSingle();
+      hist = extrairHistoricoExistente(row);
+    }
+
+    const novaAcao: SupPendenciaAcaoLog = {
+      tipo: 'concluido',
+      usuario_id: user?.id || null,
+      usuario_nome: user?.name || 'Suprimentos',
+      data_hora: agoraISO,
+      resolucao: texto || null,
+    };
+    hist.push(novaAcao);
+
     return (supabase as any)
       .from(TABELA)
       .update({
@@ -334,6 +440,7 @@ export async function concluirPendenciasEmLote(
         resolucao: texto || null,
         resolvido_por: user?.id || null,
         resolvido_em: agoraISO,
+        historico_acoes: hist,
       })
       .eq('id', item.id)
       .select()

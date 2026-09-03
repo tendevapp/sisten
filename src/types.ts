@@ -432,7 +432,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'FBL1N' | 'MB51' | 'FRETE' | 'CADMATERIAIS' | 'ZL0170';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'FBL1N' | 'MB51' | 'FRETE' | 'CADMATERIAIS' | 'ZL0170' | 'BAHIASUL';
   user_name: string;
   filename: string;
   records_read: number;
@@ -827,6 +827,20 @@ export interface PrazoTransporte {
   uf: string;
   transportadora: string;
   dias_corridos: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Transportadora do cadastro mestre (`sup_transportadoras`), editavel em
+ * Admin > Cadastros Gerais. Alimenta a lista de escolha da coluna
+ * "Transportadora" do Diligenciamento. `Coleta`/`CIF` sao modalidades de
+ * retirada, mas entram na mesma lista.
+ */
+export interface Transportadora {
+  id: string;
+  nome: string;
+  ativo: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -1448,6 +1462,8 @@ export interface ExpedicaoTramo {
   /** Número da Nota Fiscal. */
   numero_nf?: string | null;
   motorista: string;
+  /** CNH do motorista. */
+  cnh?: string | null;
   cavalo_placa: string;
   cavalo_uf: string | null;
   carreta_placa: string;
@@ -1474,6 +1490,16 @@ export interface ExpedicaoTramo {
   excluido_por?: string | null;
 }
 
+export interface ExpedicaoLogEnvio {
+  tipo: 'expedicao_completa' | 'aviso_chegada';
+  usuario_id: string;
+  usuario_nome: string;
+  enviado_em: string;
+  assunto?: string;
+  destinatarios?: string;
+  detalhes?: string;
+}
+
 export interface ExpedicaoCarregamento {
   id: string;
   numero: string;
@@ -1481,6 +1507,9 @@ export interface ExpedicaoCarregamento {
   observacoes: string | null;
   status: 'aberto' | 'enviado';
   enviado_em: string | null;
+  enviado_por?: string | null;
+  enviado_por_nome?: string | null;
+  historico_envios?: ExpedicaoLogEnvio[] | null;
   criado_por: string;
   criado_por_nome: string;
   created_at: string;
@@ -1657,6 +1686,8 @@ export interface PortRegistroTransporte {
   hora_chegada: string;
   hora_saida: string | null;
   motorista: string;
+  /** Rota do transporte na portaria: R1, R2, R3. */
+  rota: string | null;
   ocupacao: string | null;
   observacoes: string | null;
   status: PortTransporteStatus;
@@ -1919,6 +1950,15 @@ export type SupPendenciaStatus = 'pendente' | 'concluido';
  */
 export type SupPendenciaModelo = 'nfse' | 'documento' | 'ajuste_pedido';
 
+export interface SupPendenciaAcaoLog {
+  tipo: 'concluido' | 'reaberto' | 'criado';
+  usuario_id?: string | null;
+  usuario_nome?: string | null;
+  data_hora: string;
+  resolucao?: string | null;
+  motivo?: string | null;
+}
+
 export interface SupPendenciaProcessamentoNF {
   id: string;
   /** FK para core_solicitacoes(id) — o chamado que originou estas linhas. */
@@ -1961,7 +2001,50 @@ export interface SupPendenciaProcessamentoNF {
   resolucao?: string | null;
   resolvido_por?: string | null;
   resolvido_em?: string | null;
+  /** Historico completo de acoes (conclusoes, reaberturas, etc). */
+  historico_acoes?: SupPendenciaAcaoLog[] | null;
   ordem: number;
   created_at: string;
+}
+
+// =====================================================================
+// ---------- MÓDULO SUPRIMENTOS: ENTREGAS BAHIA SUL (CTE) ----------
+// =====================================================================
+
+export interface BahiaSulEntrega {
+  id?: number;
+  cto_documento: string | null;
+  cto_filial: string | null;
+  cto_serie: string | null;
+  cto_numero: string;
+  tpo_embarque: string | null;
+  rmt_nome: string | null;
+  rmt_cnpj: string | null;
+  dst_nome: string | null;
+  dst_cnpj: string | null;
+  emissao: string | null; // ISO YYYY-MM-DD
+  referencia: string | null;
+  prz_contratado: string | null;
+  embarque: string | null;
+  prv_chegada: string | null;
+  chegada: string | null;
+  prv_entrega: string | null;
+  entrega: string | null;
+  situacao: string | null;
+  org_cidade: string | null;
+  dst_cidade: string | null;
+  nfs_embarcadas: string | null;
+  kgs_declarado: number | null;
+  kgs_real: number | null;
+  kgs_cubado: number | null;
+  qtd_volumes: number | null;
+  vlr_mercadoria: number | null;
+  frt_cobrado: number | null;
+  obs_diversos: string | null;
+  nro_pedido: string | null;
+  chave_unica: string;
+  imported_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 

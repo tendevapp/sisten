@@ -11,7 +11,8 @@ import {
 
   RastreioMensagem, RastreioPrioridade, AlmoxarifadoChegada, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
   ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry,
-  MB51MovEstoque, MB51ImportMode, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao
+  MB51MovEstoque, MB51ImportMode, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao,
+  BahiaSulEntrega
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
 import { CompradorInfo } from '../lib/demandas';
@@ -27,6 +28,7 @@ import { supabase, supabaseAdmin } from './supabaseClient';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
+import { parseBahiaSulRows } from '../lib/bahiasul';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDomains';
@@ -6769,6 +6771,153 @@ class LocalDatabase {
       console.error('Erro ao salvar importação de movimentação de estoque (MB51) no Supabase:', e);
       throw e;
     }
+  }
+
+  /**
+   * Importação de dados de entregas da transportadora Bahia Sul (CTe).
+   * Faz o parsing automático, valida as colunas e executa upsert em lote por chave_unica no Supabase.
+   */
+  public async importBahiaSulRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(5);
+
+    const { validRows, totalRows, errors } = parseBahiaSulRows(rawRows);
+    if (errors.length > 0 && validRows.length === 0) {
+      throw new Error(`Erro na importação da Bahia Sul: ${errors.join(' ')}`);
+    }
+
+    if (validRows.length === 0) {
+      throw new Error('Nenhum registro válido de CTe/entrega encontrado na planilha.');
+    }
+
+    onProgress?.(20);
+
+    const user = this.getCurrentUser();
+
+    try {
+      const { count: countBefore } = await supabase
+        .from('sup_bahiasul_entregas')
+        .select('id', { count: 'exact', head: true });
+
+      const batchSize = 300;
+      const totalBatches = Math.ceil(validRows.length / batchSize) || 1;
+
+      for (let i = 0; i < validRows.length; i += batchSize) {
+        const batch = validRows.slice(i, i + batchSize).map(r => ({
+          ...r,
+          imported_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+
+        const { error } = await supabase
+          .from('sup_bahiasul_entregas')
+          .upsert(batch, { onConflict: 'chave_unica' });
+
+        if (error) {
+          console.error('Erro ao enviar lote Bahia Sul para o Supabase:', error);
+          throw new Error(`Falha no Supabase ao salvar lote ${Math.floor(i / batchSize) + 1}: ${error.message}`);
+        }
+
+        const batchIndex = Math.floor(i / batchSize) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const { count: countAfter } = await supabase
+        .from('sup_bahiasul_entregas')
+        .select('id', { count: 'exact', head: true });
+
+      const recordsInserted = Math.max(0, (countAfter || 0) - (countBefore || 0));
+      const recordsUpdated = Math.max(0, validRows.length - recordsInserted);
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj: SAPImportLog = {
+        id: logId,
+        type: 'BAHIASUL',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: totalRows,
+        records_inserted: recordsInserted,
+        records_updated: recordsUpdated,
+        records_unchanged: 0,
+        records_eliminated: 0,
+        columns_missing: [],
+        columns_new: [],
+        quantity_changes: [],
+        missing_ris: [],
+        created_at: new Date().toISOString()
+      };
+
+      try {
+        await supabase.from('ops_importacoes').insert(logObj);
+      } catch {
+        // Fallback silencioso se a tabela ops_importacoes nao tiver a coluna/enum atualizado
+      }
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      this.logActivity(
+        user?.id || 'sistema',
+        'Suprimentos',
+        'Importar Bahia Sul',
+        `Importou Entregas Bahia Sul (${filename}). Lidos: ${totalRows}, novos CTe: ${recordsInserted}, atualizados: ${recordsUpdated}.`
+      );
+
+      onProgress?.(100);
+      return logObj;
+    } catch (e: any) {
+      console.error('Erro na importação da Bahia Sul:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Retorna os registros de entregas da transportadora Bahia Sul.
+   */
+  public async getBahiaSulEntregas(options?: { pedido?: string; nf?: string; limit?: number }): Promise<BahiaSulEntrega[]> {
+    let query = supabase
+      .from('sup_bahiasul_entregas')
+      .select('*')
+      .order('emissao', { ascending: false });
+
+    if (options?.pedido) {
+      query = query.eq('nro_pedido', options.pedido);
+    }
+    if (options?.nf) {
+      query = query.ilike('nfs_embarcadas', `%${options.nf}%`);
+    }
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Erro ao buscar entregas da Bahia Sul no Supabase:', error);
+      return [];
+    }
+    return (data || []) as BahiaSulEntrega[];
+  }
+
+  /**
+   * Atualiza ou vincula o número do pedido de compra SAP em um CTe da Bahia Sul.
+   */
+  public async updateBahiaSulPedido(chaveUnica: string, nroPedido: string): Promise<boolean> {
+    const { error } = await supabase
+      .from('sup_bahiasul_entregas')
+      .update({
+        nro_pedido: nroPedido.trim() || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('chave_unica', chaveUnica);
+
+    if (error) {
+      console.error('Erro ao vincular pedido SAP na entrega Bahia Sul:', error);
+      throw error;
+    }
+    return true;
   }
 
   // Contratos (ME3N): upsert por (documento_compras, item) — atualiza o que

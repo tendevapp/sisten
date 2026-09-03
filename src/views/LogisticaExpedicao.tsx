@@ -21,16 +21,17 @@ import {
 } from 'lucide-react';
 import type {
   EtapaExpedicao, ExpedicaoCarregamentoCompleto, ExpedicaoCarregamentoResumo,
-  ExpedicaoFoto, ExpedicaoTramo, Profile,
+  ExpedicaoFoto, ExpedicaoLogEnvio, ExpedicaoTramo, Profile,
 } from '../types';
 import * as api from '../lib/expedicaoApi';
+import { podeEditarFormulario } from '../lib/permissoesFormularios';
 import {
   ASSUNTO_CHEGADA_PADRAO, ASSUNTO_PADRAO, cabeNoMailto,
   montarAssuntoExpedicao, montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
 } from '../lib/expedicaoEmail';
 import type { FotoComUrl } from '../lib/expedicaoEmail';
 import { obterConfigEmail } from '../lib/emailConfigApi';
-import { formatDateBR } from '../lib/format';
+import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -197,9 +198,17 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                       )}
                     </div>
 
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      Criado por {c.criado_por_nome} em {formatDateBR(c.created_at)}
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                      <span>Criado por {c.criado_por_nome} em {formatDateBR(c.created_at)}</span>
+                      {c.enviado_em && (
+                        <>
+                          <span>·</span>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                            Enviado por {c.enviado_por_nome || c.criado_por_nome} em {formatDateTimeBR(c.enviado_em)}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
@@ -208,6 +217,112 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             );
           })}
         </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Card exibido no topo do formulário detalhando o status e o histórico de envios
+ * de e-mail da expedição, com nome do usuário que disparou e timestamps.
+ */
+function LogEnviosCard({
+  carregamento,
+}: {
+  carregamento: ExpedicaoCarregamentoCompleto;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  const logs = carregamento.historico_envios || [];
+  const temEnvio = carregamento.status === 'enviado' || Boolean(carregamento.enviado_em) || logs.length > 0;
+
+  if (!temEnvio) {
+    return (
+      <div className="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-400">
+        <div className="flex items-center gap-2">
+          <Mail className="h-4 w-4 text-slate-400 shrink-0" />
+          <span>
+            Status do e-mail: <strong className="font-semibold text-slate-700 dark:text-slate-300">Pendente de envio</strong>. O e-mail de expedição será registrado aqui assim que for disparado pelo atendente.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const enviadoPor = carregamento.enviado_por_nome || carregamento.criado_por_nome || 'Usuário';
+  const dataEnvioFormatada = carregamento.enviado_em ? formatDateTimeBR(carregamento.enviado_em) : null;
+
+  return (
+    <div className="mt-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/40 p-4 transition-all dark:border-emerald-900/50 dark:bg-emerald-950/20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 shrink-0 shadow-2xs">
+            <Mail className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                Log de Envio do E-mail
+              </span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+                {logs.length > 0 ? `${logs.length} registro(s)` : 'Enviado'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 dark:text-slate-300 mt-0.5">
+              Enviado por <strong className="font-bold text-slate-900 dark:text-slate-100">{enviadoPor}</strong>
+              {dataEnvioFormatada && <span> em <span className="font-semibold">{dataEnvioFormatada}</span></span>}
+            </p>
+          </div>
+        </div>
+
+        {logs.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setExpandido(prev => !prev)}
+            className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
+          >
+            {expandido ? 'Recolher histórico' : `Ver histórico completo (${logs.length})`}
+          </button>
+        )}
+      </div>
+
+      {/* Lista detalhada dos envios */}
+      {logs.length > 0 && (expandido || logs.length === 1) && (
+        <div className="mt-3 space-y-2 border-t border-emerald-200/60 pt-2.5 dark:border-emerald-900/40">
+          {logs.map((log, idx) => (
+            <div
+              key={idx}
+              className="flex flex-col gap-1 rounded-xl bg-white/80 p-2.5 text-xs text-slate-700 shadow-2xs dark:bg-slate-900/70 dark:text-slate-300"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="font-mono text-[10px] text-slate-400">#{idx + 1}</span>
+                  {log.tipo === 'expedicao_completa' ? 'E-mail de Expedição (Final)' : 'Aviso de Chegada (Portaria)'}
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {formatDateTimeBR(log.enviado_em)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Disparado por: <strong className="text-slate-800 dark:text-slate-200">{log.usuario_nome}</strong>
+              </p>
+              {log.assunto && (
+                <p className="text-[11px] truncate text-slate-500 dark:text-slate-400 font-mono">
+                  Assunto: {log.assunto}
+                </p>
+              )}
+              {log.destinatarios && (
+                <p className="text-[11px] truncate text-slate-500 dark:text-slate-400">
+                  Para: {log.destinatarios}
+                </p>
+              )}
+              {log.detalhes && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                  {log.detalhes}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -295,6 +410,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         numero_tramo: t.numero_tramo,
         numero_nf: t.numero_nf,
         motorista: t.motorista,
+        cnh: t.cnh,
         cavalo_placa: t.cavalo_placa,
         cavalo_uf: t.cavalo_uf,
         carreta_placa: t.carreta_placa,
@@ -510,6 +626,26 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         copia: configChegada?.copia || undefined,
         copiaOculta: configChegada?.copia_oculta || undefined,
       });
+
+      // Registra evento no histórico de envios
+      const agoraISO = new Date().toISOString();
+      const novoLog: ExpedicaoLogEnvio = {
+        tipo: 'aviso_chegada',
+        usuario_id: user.id,
+        usuario_nome: user.name,
+        enviado_em: agoraISO,
+        assunto,
+        destinatarios: configChegada?.destinatarios,
+        detalhes: `Aviso de chegada: ${tramo.tramo}${tramo.numero_tramo ? ` (Nº ${tramo.numero_tramo})` : ''}`,
+      };
+      const enviosAtualizados = await api.registrarEnvioEmail(
+        dados.id,
+        novoLog,
+        false,
+        dados.historico_envios
+      );
+      setDados(d => (d ? { ...d, historico_envios: enviosAtualizados } : d));
+      toast.success('Aviso de chegada aberto no Outlook e registrado no log.');
     } catch (e) {
       toast.error(`Falha ao gerar o aviso de chegada: ${(e as Error).message}`);
     }
@@ -559,8 +695,33 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         copiaOculta: configTramos?.copia_oculta || undefined,
       });
 
-      await api.salvarCarregamento(dados.id, { status: 'enviado', enviado_em: new Date().toISOString() });
-      setDados(d => (d ? { ...d, status: 'enviado' } : d));
+      const agoraISO = new Date().toISOString();
+      const novoLog: ExpedicaoLogEnvio = {
+        tipo: 'expedicao_completa',
+        usuario_id: user.id,
+        usuario_nome: user.name,
+        enviado_em: agoraISO,
+        assunto,
+        destinatarios: configTramos?.destinatarios,
+        detalhes: `E-mail de expedição final: ${dados.tramos.map(t => t.tramo).join(' + ')}`,
+      };
+
+      const enviosAtualizados = await api.registrarEnvioEmail(
+        dados.id,
+        novoLog,
+        true,
+        dados.historico_envios
+      );
+
+      setDados(d => (d ? {
+        ...d,
+        status: 'enviado',
+        enviado_em: agoraISO,
+        enviado_por: user.id,
+        enviado_por_nome: user.name,
+        historico_envios: enviosAtualizados,
+      } : d));
+      toast.success('E-mail de expedição aberto no Outlook e registrado no log.');
     } catch (e) {
       toast.error(`Falha ao gerar o e-mail: ${(e as Error).message}`);
     } finally {
@@ -601,6 +762,11 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     () => (dados ? dados.tramos.map(t => t.tramo).join(', ') : ''),
     [dados],
   );
+
+  // Só o autor do carregamento (ou admin) edita; os demais consultam.
+  // A RLS (`form_pode_editar`) recusa gravações de terceiros.
+  const podeEditar = podeEditarFormulario(user, dados);
+  const bloqueado = salvando || !podeEditar;
 
   const temTramos = Boolean(dados && dados.tramos.length > 0);
   const todosTramosComExpedicao = useMemo(() => {
@@ -678,15 +844,24 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setConfirmacao({ tipo: 'excluir-carregamento' })}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          Excluir
-        </button>
+        {podeEditar ? (
+          <button
+            type="button"
+            onClick={() => setConfirmacao({ tipo: 'excluir-carregamento' })}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Excluir
+          </button>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+            Somente leitura — carregamento de outro usuário
+          </span>
+        )}
       </div>
+
+      {/* Log de Envio do E-mail */}
+      <LogEnviosCard carregamento={dados} />
 
       {/* Dados do carregamento */}
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -699,7 +874,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               id="empresa"
               type="text"
               value={dados.empresa}
-              disabled={salvando}
+              disabled={bloqueado}
               placeholder="Ex.: TRANSMAQUINAS"
               autoCapitalize="characters"
               onChange={e => alterarCarregamento({ empresa: e.target.value.toUpperCase() })}
@@ -714,7 +889,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               id="observacoes"
               rows={2}
               value={dados.observacoes || ''}
-              disabled={salvando}
+              disabled={bloqueado}
               placeholder="Ex.: Motoristas com escolta – SERIDÓ"
               onChange={e => alterarCarregamento({ observacoes: e.target.value ? e.target.value.toUpperCase() : null })}
               className="mt-1.5 w-full uppercase resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
@@ -731,7 +906,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             tramo={t}
             fotos={dados.fotos.filter(f => f.tramo_id === t.id)}
             aberto={Boolean(abertos[t.id])}
-            somenteLeitura={salvando}
+            somenteLeitura={bloqueado}
             onAlternar={() => setAbertos(a => ({ ...a, [t.id]: !a[t.id] }))}
             onChange={patch => alterarTramo(t.id, patch)}
             onExcluir={dados.tramos.length > 1
@@ -756,18 +931,21 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               <ArrowLeft className="h-4 w-4" />
               Voltar
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirmacao({ tipo: 'excluir-carregamento' })}
-              disabled={salvando || excluindo}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400"
-              title="Excluir todo este carregamento"
-            >
-              <Trash2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Excluir</span>
-            </button>
+            {podeEditar && (
+              <button
+                type="button"
+                onClick={() => setConfirmacao({ tipo: 'excluir-carregamento' })}
+                disabled={salvando || excluindo}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-400"
+                title="Excluir todo este carregamento"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Excluir</span>
+              </button>
+            )}
           </div>
 
+          {podeEditar && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
               type="button"
@@ -803,6 +981,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
 

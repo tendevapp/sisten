@@ -195,6 +195,9 @@ export function calcularLeadTimesTramo(t: ExpedicaoTramo): LeadTimesTramo {
 function blocoIdentificacao(t: ExpedicaoTramo): string[] {
   const linhas: string[] = [];
   linhas.push(`Motorista: ${(t.motorista || '').trim()}`, '');
+  if (t.cnh && t.cnh.trim()) {
+    linhas.push(`CNH:         ${t.cnh.trim()}`, '');
+  }
   linhas.push(`Cavalo:      ${placaComUf(t.cavalo_placa, t.cavalo_uf)}`, '');
   linhas.push(`Carreta:     ${placaComUf(t.carreta_placa, t.carreta_uf)}`, '');
 

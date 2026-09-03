@@ -1888,10 +1888,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {/* Card 1: RMs em aberto (Info) */}
+          {/* Card 1: RMs em aberto / Total RMs (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">RMs em aberto</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+              {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : 'Total RMs'}
+            </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
           </div>
 

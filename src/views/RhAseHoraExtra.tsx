@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
   AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
-  Calendar, User, Filter, Users,
+  Calendar, User, Filter, Users, Eye,
 } from 'lucide-react';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
@@ -36,6 +36,7 @@ import {
 } from '../lib/pdfExport/exportAseHoraExtraPdf';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 import { canViewAllAse } from '../lib/pages';
+import { podeEditarFormulario } from '../lib/permissoesFormularios';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -637,7 +638,11 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [processando, setProcessando] = useState(false);
 
   const [modoEdicao, setModoEdicao] = useState(false);
-  const somenteLeitura = dados?.status === 'CANCELADO' || (dados?.status === 'ENVIADO' && !modoEdicao);
+  // Só o solicitante que criou a ASE (ou um admin) edita/envia/exclui.
+  // Os demais abrem em modo consulta. A RLS (`form_pode_editar`) recusa
+  // qualquer gravação de quem não é o dono.
+  const podeEditar = podeEditarFormulario(user, dados);
+  const somenteLeitura = !podeEditar || dados?.status === 'CANCELADO' || (dados?.status === 'ENVIADO' && !modoEdicao);
 
   useEffect(() => {
     let ativo = true;
@@ -714,6 +719,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         percentual_he: it.percentual_he,
         total_horas: it.total_horas,
         observacao: it.observacao,
+        // Colaborador "Outro" (sem vínculo): nome/registro/função são
+        // editáveis na linha, então também são persistidos.
+        ...(it.pessoa_id === null ? { nome: it.nome, registro: it.registro, cargo: it.cargo } : {}),
       })));
       setSujo(false);
       if (!silencioso) toast.success('ASE salva com sucesso.');
@@ -744,6 +752,40 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         registro: pessoa.registro,
         nome: pessoa.nome,
         cargo: pessoa.cargo,
+        transporte: false,
+        refeicao: false,
+        hora_entrada: '',
+        hora_saida: '',
+        intervalo_minutos: 0,
+        percentual_he: percentualSugerido,
+        total_horas: 0,
+        observacao: null,
+      });
+      setDados(d => (d ? { ...d, itens: [...d.itens, novo] } : d));
+      setBuscaAberta(false);
+    } catch (e) {
+      toast.error(`Não foi possível adicionar o colaborador: ${(e as Error).message}`);
+    }
+  };
+
+  // Colaborador digitado à mão ("Outro"): entra sem vínculo com rh_pessoas
+  // (pessoa_id null). Nome/registro/função ficam editáveis na linha.
+  const adicionarColaboradorManual = async (info: { nome: string; registro: string; cargo: string }) => {
+    if (!dados) return;
+    const nome = info.nome.trim();
+    if (!nome) return;
+    let percentualSugerido: number | null = null;
+    try {
+      percentualSugerido = await api.buscarPercentualHE(dados.data_execucao);
+    } catch {
+      // Sem calendário para a data: segue sem sugestão.
+    }
+    try {
+      const novo = await api.adicionarItemASE(dados.id, {
+        pessoa_id: null,
+        registro: info.registro.trim(),
+        nome,
+        cargo: info.cargo.trim() || null,
         transporte: false,
         refeicao: false,
         hora_entrada: '',
@@ -971,7 +1013,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </div>
 
         <div className="flex items-center gap-2">
-          {dados.status === 'ENVIADO' && !modoEdicao && (
+          {podeEditar && dados.status === 'ENVIADO' && !modoEdicao && (
             <button
               type="button"
               onClick={() => setModoEdicao(true)}
@@ -982,7 +1024,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             </button>
           )}
 
-          {dados.status === 'RASCUNHO' && (
+          {podeEditar && dados.status === 'RASCUNHO' && (
             <button
               type="button"
               onClick={() => setConfirmacao({ tipo: 'excluir' })}
@@ -991,6 +1033,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               <Trash2 className="h-3.5 w-3.5" />
               Excluir
             </button>
+          )}
+
+          {!podeEditar && (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+              <Eye className="h-3.5 w-3.5" />
+              Somente leitura
+            </span>
           )}
         </div>
       </div>
@@ -1015,7 +1064,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               className={`mt-1.5 ${inputBase}`}
             >
               <option value="">Selecione...</option>
-              {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              {setores
+                .filter(s => s.ativo || s.id === dados.setor_id)
+                .map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.nome}{!s.ativo ? ' (Inativo)' : ''}
+                  </option>
+                ))}
             </select>
           </div>
           <div>
@@ -1074,7 +1129,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                 Adicionar colaborador
               </button>
               {buscaAberta && (
-                <BuscaColaborador pessoas={pessoas} onSelecionar={adicionarColaborador} onFechar={() => setBuscaAberta(false)} />
+                <BuscaColaborador
+                  pessoas={pessoas}
+                  onSelecionar={adicionarColaborador}
+                  onAdicionarManual={adicionarColaboradorManual}
+                  onFechar={() => setBuscaAberta(false)}
+                />
               )}
             </div>
           )}
@@ -1195,7 +1255,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
           {/* Ações de Estado / Salvamento */}
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            {somenteLeitura ? (
+            {!podeEditar ? (
+              <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <Eye className="h-4 w-4" />
+                Somente leitura — ASE de outro usuário
+              </span>
+            ) : somenteLeitura ? (
               <>
                 <button
                   type="button"
@@ -1303,20 +1368,38 @@ function CardColaboradorMobile({
 }) {
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const inputStyle = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
+  const manual = item.pessoa_id === null;
+  const editavelManual = manual && !somenteLeitura;
 
   return (
     <div className="relative rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-3 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm">
       {/* Topo: Nome, Matrícula e Ações */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.nome}</span>
-            <span className="rounded bg-slate-200/80 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-              {item.registro}
-            </span>
-          </div>
-          {item.cargo && (
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.cargo}</p>
+          {editavelManual ? (
+            <div className="space-y-1.5">
+              <input value={item.nome} onChange={e => onChange({ nome: e.target.value.toUpperCase() })} placeholder="Nome" className={`${inputStyle} uppercase`} />
+              <div className="grid grid-cols-2 gap-1.5">
+                <input value={item.registro} onChange={e => onChange({ registro: e.target.value.toUpperCase() })} placeholder="Registro" className={`${inputStyle} uppercase font-mono`} />
+                <input value={item.cargo || ''} onChange={e => onChange({ cargo: e.target.value.toUpperCase() || null })} placeholder="Função" className={`${inputStyle} uppercase`} />
+              </div>
+              <span className="inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.nome}</span>
+                <span className="rounded bg-slate-200/80 px-1.5 py-0.2 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  {item.registro}
+                </span>
+                {manual && (
+                  <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">NÃO CADASTRADO</span>
+                )}
+              </div>
+              {item.cargo && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.cargo}</p>
+              )}
+            </>
           )}
 
           {/* Rota / Ponto / Contato quando transporte marcado */}
@@ -1477,12 +1560,27 @@ function LinhaColaborador({
 }) {
   const excedeLimiteClt = (item.total_horas || 0) > LIMITE_DIARIO_CLT_HORAS;
   const cellInput = 'h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50';
+  const manual = item.pessoa_id === null;
+  const editavelManual = manual && !somenteLeitura;
 
   return (
     <tr className="border-b border-slate-100 align-middle dark:border-slate-800/70">
-      <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{item.registro}</td>
+      <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">
+        {editavelManual ? (
+          <input value={item.registro} onChange={e => onChange({ registro: e.target.value.toUpperCase() })} placeholder="Registro" className={`${cellInput} w-24 font-mono`} />
+        ) : (item.registro || '—')}
+      </td>
       <td className="px-2 py-2 text-xs text-slate-900 dark:text-slate-50">
-        <span className="font-semibold">{item.nome}</span>
+        {editavelManual ? (
+          <input value={item.nome} onChange={e => onChange({ nome: e.target.value.toUpperCase() })} placeholder="Nome" className={`${cellInput} min-w-[150px]`} />
+        ) : (
+          <span className="font-semibold">{item.nome}</span>
+        )}
+        {manual && (
+          <span className="ml-1.5 whitespace-nowrap rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+            NÃO CADASTRADO
+          </span>
+        )}
         {item.transporte && (item.rota_transporte || item.ponto_embarque_transporte) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
             <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
@@ -1495,7 +1593,11 @@ function LinhaColaborador({
           </div>
         )}
       </td>
-      <td className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">{item.cargo || '-'}</td>
+      <td className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">
+        {editavelManual ? (
+          <input value={item.cargo || ''} onChange={e => onChange({ cargo: e.target.value.toUpperCase() || null })} placeholder="Função" className={`${cellInput} min-w-[110px]`} />
+        ) : (item.cargo || '-')}
+      </td>
       <td className="px-2 py-2 text-center">
         <input type="checkbox" checked={item.transporte} disabled={somenteLeitura} onChange={e => onChange({ transporte: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
       </td>
@@ -1539,13 +1641,16 @@ function LinhaColaborador({
 // =====================================================================
 
 function BuscaColaborador({
-  pessoas, onSelecionar, onFechar,
+  pessoas, onSelecionar, onAdicionarManual, onFechar,
 }: {
   pessoas: RhPessoa[];
   onSelecionar: (p: RhPessoa) => void;
+  onAdicionarManual: (dados: { nome: string; registro: string; cargo: string }) => void;
   onFechar: () => void;
 }) {
   const [termo, setTermo] = useState('');
+  const [modo, setModo] = useState<'busca' | 'manual'>('busca');
+  const [manual, setManual] = useState({ nome: '', registro: '', cargo: '' });
 
   const resultados = useMemo(() => {
     const q = termo.trim().toLowerCase();
@@ -1555,6 +1660,71 @@ function BuscaColaborador({
       .filter(p => p.nome.toLowerCase().includes(q) || p.registro.toLowerCase().includes(q))
       .slice(0, 30);
   }, [pessoas, termo]);
+
+  const campoManual = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs uppercase text-slate-900 placeholder:normal-case focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
+
+  if (modo === 'manual') {
+    const nomeOk = manual.nome.trim().length > 0;
+    return (
+      <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Colaborador não cadastrado</span>
+          <button type="button" onClick={onFechar} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-3 space-y-2">
+          <div>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Nome *</label>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- popover só abre por clique explícito */}
+            <input
+              type="text"
+              autoFocus
+              value={manual.nome}
+              onChange={e => setManual(m => ({ ...m, nome: e.target.value.toUpperCase() }))}
+              placeholder="Nome completo"
+              className={campoManual}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Registro</label>
+              <input
+                type="text"
+                value={manual.registro}
+                onChange={e => setManual(m => ({ ...m, registro: e.target.value.toUpperCase() }))}
+                placeholder="Opcional"
+                className={campoManual}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Função</label>
+              <input
+                type="text"
+                value={manual.cargo}
+                onChange={e => setManual(m => ({ ...m, cargo: e.target.value.toUpperCase() }))}
+                placeholder="Opcional"
+                className={campoManual}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <button type="button" onClick={() => setModo('busca')} className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+            ← Voltar à busca
+          </button>
+          <button
+            type="button"
+            disabled={!nomeOk}
+            onClick={() => onAdicionarManual({ nome: manual.nome.trim(), registro: manual.registro.trim(), cargo: manual.cargo.trim() })}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+          >
+            Adicionar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -1593,6 +1763,14 @@ function BuscaColaborador({
           ))
         )}
       </ul>
+      <button
+        type="button"
+        onClick={() => setModo('manual')}
+        className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-blue-600 dark:hover:bg-blue-950/30"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Outro — colaborador não cadastrado
+      </button>
     </div>
   );
 }

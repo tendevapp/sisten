@@ -19,7 +19,7 @@
 
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
-import type { DiligenciamentoItem, PrazoTransporte } from '../types';
+import type { DiligenciamentoItem, PrazoTransporte, Transportadora } from '../types';
 
 /* Leitura --------------------------------------------------------------- */
 
@@ -37,6 +37,42 @@ export async function listarPrazosTransporte(): Promise<PrazoTransporte[]> {
     .order('transportadora');
   if (error) throw new Error(error.message);
   return (data || []) as PrazoTransporte[];
+}
+
+export async function listarTransportadoras(): Promise<Transportadora[]> {
+  const { data, error } = await (supabase as any)
+    .from('sup_transportadoras')
+    .select('*')
+    .order('nome');
+  if (error) throw new Error(error.message);
+  return (data || []) as Transportadora[];
+}
+
+/* Escrita — sup_transportadoras ---------------------------------------- */
+
+/** Cria (sem `id`) ou renomeia (com `id`) uma transportadora do cadastro. */
+export async function salvarTransportadora(nome: string, id?: string): Promise<void> {
+  const nomeLimpo = nome.trim();
+  if (!nomeLimpo) throw new Error('Informe o nome da transportadora.');
+  const q = id
+    ? (supabase as any).from('sup_transportadoras')
+        .update({ nome: nomeLimpo, updated_at: new Date().toISOString() }).eq('id', id)
+    : (supabase as any).from('sup_transportadoras').insert({ nome: nomeLimpo });
+  const { error } = await q;
+  if (error) throw new Error(error.message);
+}
+
+export async function definirTransportadoraAtiva(id: string, ativo: boolean): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('sup_transportadoras')
+    .update({ ativo, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function excluirTransportadora(id: string): Promise<void> {
+  const { error } = await (supabase as any).from('sup_transportadoras').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 /**

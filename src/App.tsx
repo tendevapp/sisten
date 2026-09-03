@@ -5,6 +5,7 @@ import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, pageIdForPath } from './lib/pages';
+import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia } from './lib/sessaoDiaria';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -267,7 +268,17 @@ export default function App() {
         }
 
         // Obter sessão inicial
-        const { data: { session } } = await supabase.auth.getSession();
+        let { data: { session } } = await supabase.auth.getSession();
+
+        // Expiração diária: se a sessão foi aberta em outro dia (virou a
+        // meia-noite), descarta antes de restaurar — o usuário faz login
+        // de novo. Zera `session` para cair no fluxo de "sem sessão".
+        if (session && session.user && !isRecovery && sessaoExpirouNoDia()) {
+          await supabase.auth.signOut().catch(() => {});
+          limparDiaSessao();
+          session = null;
+        }
+
         if (session && session.user) {
           if (isRecovery) {
             // Em fluxo de recuperação de senha, NÃO busca profile nem marca usuário como logado
@@ -286,6 +297,7 @@ export default function App() {
               const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
+              marcarDiaSessao();
               trackLogin(mapped);
               // Sincroniza logo de início se estiver com sessão ativa
               localDb.syncFromSupabase().catch(err => {
@@ -336,6 +348,7 @@ export default function App() {
               const mapped = { ...profile, roles: profile.roles || [], tours_seen: profile.tours_seen || {} };
               localDb.setCurrentUser(mapped);
               setUser(mapped);
+              marcarDiaSessao();
               trackLogin(mapped);
               // Sincroniza ao detectar login com sucesso
               localDb.syncFromSupabase().catch(err => {
@@ -343,6 +356,7 @@ export default function App() {
               });
             }
           } else if (event === 'SIGNED_OUT') {
+            limparDiaSessao();
             localDb.setCurrentUser(null);
             setUser(null);
           }
@@ -440,6 +454,34 @@ export default function App() {
     };
   }, [user?.id]);
 
+  // Expiração diária da sessão: quando vira a meia-noite com o usuário
+  // logado, faz logoff. Checa a cada minuto e também ao voltar o foco para
+  // a aba (uma aba que passou a madrugada aberta expira assim que reativa).
+  useEffect(() => {
+    if (!user) return;
+
+    const encerrarSePassouODia = async () => {
+      if (!sessaoExpirouNoDia()) return;
+      await localDb.logout();
+      handleUserSessionChange();
+    };
+
+    const intervalId = setInterval(encerrarSePassouODia, 60 * 1000);
+    const aoFocar = () => {
+      if (document.visibilityState === 'visible') void encerrarSePassouODia();
+    };
+    window.addEventListener('focus', aoFocar);
+    document.addEventListener('visibilitychange', aoFocar);
+
+    void encerrarSePassouODia();
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', aoFocar);
+      document.removeEventListener('visibilitychange', aoFocar);
+    };
+  }, [user?.id]);
+
   // Telemetria de navegação: registra uma visualização de página sempre que a
   // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
   // Não dispara mais um sync aqui: com o polling de 5 min + sync ao focar a
@@ -463,6 +505,7 @@ export default function App() {
 
   const handleLoginSuccess = (authenticatedUser: Profile) => {
     setUser(authenticatedUser);
+    marcarDiaSessao();
     handleNavigate('/');
   };
 

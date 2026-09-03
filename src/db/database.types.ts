@@ -987,6 +987,7 @@ export type Database = {
           hora_expedicao: string | null
           id: string
           motorista: string
+          cnh: string | null
           obs_chegada_portaria: string | null
           obs_entrada_patio: string | null
           obs_expedicao: string | null
@@ -1011,6 +1012,7 @@ export type Database = {
           hora_expedicao?: string | null
           id?: string
           motorista?: string
+          cnh?: string | null
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null
@@ -1035,6 +1037,7 @@ export type Database = {
           hora_expedicao?: string | null
           id?: string
           motorista?: string
+          cnh?: string | null
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null

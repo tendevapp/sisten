@@ -277,6 +277,16 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                       {p.status === 'concluido' && p.resolvido_em && (
                         <Field label="Baixado em" value={formatDateTimeBR(p.resolvido_em)} />
                       )}
+                      {p.status === 'concluido' && (p.resolvido_por || (p.historico_acoes && p.historico_acoes.length > 0)) && (
+                        <Field
+                          label="Baixado por"
+                          value={
+                            p.historico_acoes?.slice(-1)[0]?.usuario_nome ||
+                            localDb.getProfiles().find(u => u.id === p.resolvido_por)?.name ||
+                            'Suprimentos'
+                          }
+                        />
+                      )}
                     </div>
                     {p.modelo === 'ajuste_pedido' && imagensAjusteUrls.length > 0 && (
                       <div className="flex flex-wrap gap-2">

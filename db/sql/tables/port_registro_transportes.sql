@@ -14,6 +14,7 @@ create table if not exists public.port_registro_transportes (
   hora_chegada time not null,
   hora_saida time,
   motorista text not null,
+  rota text, -- R1 / R2 / R3 na UI, ou valor livre via opção "Outro"
   ocupacao text,
   observacoes text,
   status text not null default 'NO_PATIO' check (status in ('NO_PATIO', 'FINALIZADO', 'CANCELADO')),
@@ -27,9 +28,10 @@ create table if not exists public.port_registro_transportes (
 create index if not exists port_registro_transportes_data_idx on public.port_registro_transportes (data desc);
 create index if not exists port_registro_transportes_placa_idx on public.port_registro_transportes (placa);
 create index if not exists port_registro_transportes_status_idx on public.port_registro_transportes (status);
+create index if not exists port_registro_transportes_rota_idx on public.port_registro_transportes (rota);
 
 alter table public.port_registro_transportes enable row level security;
 
-drop policy if exists port_registro_transportes_rw on public.port_registro_transportes;
-create policy port_registro_transportes_rw on public.port_registro_transportes
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada a todo autenticado; INSERT/UPDATE/DELETE só do autor
+-- (criado_por) ou de um admin. Policies granulares e public.form_pode_editar()
+-- em supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

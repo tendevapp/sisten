@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
+import { resolverRotaNotificacao } from '../lib/notificationRouting';
 
 interface HeaderProps {
   user: Profile;
@@ -77,139 +78,9 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     setNotifications(localDb.getNotifications(user.id));
     setShowNotifications(false);
 
-    const titleLower = notif.title.toLowerCase();
-    const descLower = (notif.description || '').toLowerCase();
-    const contextKey = notif.context_key || '';
-
-    // 1. Roteamento por context_key
-    if (contextKey.startsWith('rastreio:')) {
-      const ri = contextKey.slice('rastreio:'.length);
-      onNavigate(`/rastreio?ri=${encodeURIComponent(ri)}`);
-      return;
-    }
-
-    if (contextKey.startsWith('feedback:')) {
-      const feedbackId = contextKey.slice('feedback:'.length);
-      onNavigate(`/admin/feedback?id=${encodeURIComponent(feedbackId)}`);
-      return;
-    }
-
-    if (contextKey.startsWith('expedicao:') || contextKey.startsWith('carregamento:')) {
-      const id = contextKey.split(':')[1];
-      onNavigate(`/formularios/logistica-expedicao?id=${encodeURIComponent(id)}`);
-      return;
-    }
-
-    if (contextKey.startsWith('ase:') || contextKey.startsWith('rh_ase:')) {
-      const id = contextKey.split(':')[1];
-      onNavigate(`/formularios/rh-ase-hora-extra?id=${encodeURIComponent(id)}`);
-      return;
-    }
-
-    if (contextKey.startsWith('portaria:')) {
-      const id = contextKey.split(':')[1];
-      onNavigate(`/formularios/portaria-relatorio?id=${encodeURIComponent(id)}`);
-      return;
-    }
-
-    if (contextKey.startsWith('importacao:') || contextKey.startsWith('exportacao:') || contextKey.startsWith('importar:')) {
-      onNavigate('/admin/importacao-materiais');
-      return;
-    }
-
-    if (contextKey.startsWith('/')) {
-      onNavigate(contextKey);
-      return;
-    }
-
-    // 2. Roteamento por request_id (solicitações vinculadas)
-    //
-    // Antes havia aqui uma árvore de papéis para escolher entre Minhas, a fila
-    // coletiva e Aprovações — as três telas que a Central substituiu. Agora o
-    // destino é sempre a Central com a solicitação aberta: ela mesma decide o
-    // que essa pessoa pode fazer com ela. A única exceção é o Cadastro SAP,
-    // que tem uma fila operacional própria para quem a atende.
-    if (notif.request_id) {
-      const req = localDb.getRequests().find(r => r.id === notif.request_id);
-      const ehCadastroSap = req ? req.type === 'cadastro_sap' : titleLower.includes('cadastro sap');
-
-      const atendeCadastroSap =
-        user.roles.includes('comprador') ||
-        user.roles.includes('coordenador_suprimentos') ||
-        user.roles.includes('admin') ||
-        user.aprovador_cadastro_sap;
-
-      if (ehCadastroSap && atendeCadastroSap) {
-        onNavigate(`/suprimentos/cadastros-sap?id=${notif.request_id}`);
-      } else {
-        onNavigate(`/solicitacoes?id=${notif.request_id}`);
-      }
-      return;
-    }
-
-    // 3. Roteamento por inferência de título/descrição (quando não há ID explícito)
-    if (titleLower.includes('novo cadastro') || titleLower.includes('aguarda aprovação')) {
-      if (user.roles.includes('admin')) {
-        onNavigate('/admin/usuarios');
-      } else {
-        onNavigate('/perfil');
-      }
-      return;
-    }
-
-    if (titleLower.includes('status do perfil') || titleLower.includes('acesso')) {
-      onNavigate('/perfil');
-      return;
-    }
-
-    if (titleLower.includes('feedback') || titleLower.includes('bug') || titleLower.includes('sugestão') || titleLower.includes('reporte')) {
-      if (user.roles.includes('admin')) {
-        onNavigate('/admin/feedback');
-      }
-      return;
-    }
-
-    if (titleLower.includes('cadastro sap')) {
-      onNavigate('/suprimentos/cadastros-sap');
-      return;
-    }
-
-    if (titleLower.includes('importação') || titleLower.includes('exportação') || titleLower.includes('planilha')) {
-      if (user.roles.includes('admin')) {
-        onNavigate('/admin/importacao-materiais');
-      } else {
-        onNavigate('/materiais/busca');
-      }
-      return;
-    }
-
-    if (titleLower.includes('expedição') || titleLower.includes('carregamento') || descLower.includes('expedição')) {
-      onNavigate('/formularios/logistica-expedicao');
-      return;
-    }
-
-    if (titleLower.includes('ase') || titleLower.includes('hora extra') || descLower.includes('hora extra')) {
-      onNavigate('/formularios/rh-ase-hora-extra');
-      return;
-    }
-
-    if (titleLower.includes('portaria')) {
-      onNavigate('/formularios/portaria');
-      return;
-    }
-
-    if (titleLower.includes('rastreio')) {
-      onNavigate('/rastreio');
-      return;
-    }
-
-    // Fallback padrão se houver número de solicitação mencionado na descrição (ex: #1234567)
-    const numMatch = (notif.title + ' ' + (notif.description || '')).match(/#(\d{7})/);
-    if (numMatch) {
-      const matchReq = localDb.getRequests().find(r => r.number === numMatch[1]);
-      if (matchReq) {
-        onNavigate(`/solicitacoes?id=${matchReq.id}`);
-      }
+    const rota = resolverRotaNotificacao(notif, user);
+    if (rota) {
+      onNavigate(rota);
     }
   };
 

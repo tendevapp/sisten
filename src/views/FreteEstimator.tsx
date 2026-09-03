@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, TabelaFrete } from '../types';
 import { useToast } from '../components/ui/Toast';
+import BahiaSulAnalyticsPanel from '../components/frete/BahiaSulAnalyticsPanel';
 
 interface FreteEstimatorProps {
   user: Profile;
@@ -22,6 +23,8 @@ interface FreteEstimatorProps {
 
 export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps) {
   const toast = useToast();
+  // Janela ativa: 'bahiasul' (inicial / padrão) ou 'estimador'
+  const [activeTab, setActiveTab] = useState<'bahiasul' | 'estimador'>('bahiasul');
   const [tabelaFreteList, setTabelaFreteList] = useState<TabelaFrete[]>([]);
   const [copied, setCopied] = useState(false);
 
@@ -355,11 +358,42 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
   return (
     <div className="flex flex-col h-full bg-slate-50/50 overflow-y-auto p-4 md:p-6 space-y-6 text-left">
       
-      {/* Header Banner */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center space-x-2">
-            <span className="p-2 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-100">
+      {/* Abas de Navegação das Janelas */}
+      <div className="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-2">
+        <button
+          onClick={() => setActiveTab('bahiasul')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+            activeTab === 'bahiasul'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <Truck className="h-4 w-4" />
+          <span>Acompanhamento & Análise (Bahia Sul)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('estimador')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+            activeTab === 'estimador'
+              ? 'bg-cyan-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+        >
+          <Calculator className="h-4 w-4" />
+          <span>Simulador & Estimador de Frete</span>
+        </button>
+      </div>
+
+      {activeTab === 'bahiasul' ? (
+        <BahiaSulAnalyticsPanel user={user} onNavigate={onNavigate} />
+      ) : (
+        <>
+          {/* Header Banner */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <span className="p-2 rounded-xl bg-cyan-50 text-cyan-600 border border-cyan-100">
               <Truck className="h-5 w-5" />
             </span>
             <h1 className="text-xl font-black text-slate-800 tracking-tight">Estimador & Calculadora de Frete</h1>
@@ -922,6 +956,8 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
             )}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

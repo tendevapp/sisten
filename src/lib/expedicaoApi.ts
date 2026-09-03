@@ -20,7 +20,7 @@
 import { supabase } from '../db/supabaseClient';
 import type {
   EtapaExpedicao, ExpedicaoCarregamento, ExpedicaoCarregamentoCompleto,
-  ExpedicaoCarregamentoResumo, ExpedicaoFoto, ExpedicaoTramo, Tramo,
+  ExpedicaoCarregamentoResumo, ExpedicaoFoto, ExpedicaoLogEnvio, ExpedicaoTramo, Tramo,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 
@@ -157,13 +157,61 @@ export async function criarCarregamento(params: {
 /** Salva o cabeçalho. Os tramos têm sua própria chamada — ver `salvarTramo`. */
 export async function salvarCarregamento(
   id: string,
-  patch: Partial<Pick<ExpedicaoCarregamento, 'empresa' | 'observacoes' | 'status' | 'enviado_em'>>,
+  patch: Partial<Pick<ExpedicaoCarregamento, 'empresa' | 'observacoes' | 'status' | 'enviado_em' | 'enviado_por' | 'enviado_por_nome' | 'historico_envios'>>,
 ): Promise<void> {
   const { error } = await supabase
     .from('expedicao_carregamentos')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Registra um evento no histórico de envios do carregamento e atualiza enviado_por / enviado_em se aplicável.
+ */
+export async function registrarEnvioEmail(
+  id: string,
+  novoLog: ExpedicaoLogEnvio,
+  atualizarStatus = true,
+  historicoExistente?: ExpedicaoLogEnvio[] | null
+): Promise<ExpedicaoLogEnvio[]> {
+  let enviosAtuais: ExpedicaoLogEnvio[] = [];
+
+  if (Array.isArray(historicoExistente)) {
+    enviosAtuais = [...historicoExistente];
+  } else {
+    const { data: row } = await supabase
+      .from('expedicao_carregamentos')
+      .select('historico_envios')
+      .eq('id', id)
+      .single();
+    if (row && Array.isArray((row as any).historico_envios)) {
+      enviosAtuais = [...(row as any).historico_envios];
+    }
+  }
+
+  enviosAtuais.push(novoLog);
+
+  const patch: any = {
+    historico_envios: enviosAtuais,
+    enviado_em: novoLog.enviado_em,
+    enviado_por: novoLog.usuario_id,
+    enviado_por_nome: novoLog.usuario_nome,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (atualizarStatus) {
+    patch.status = 'enviado';
+  }
+
+  const { error } = await supabase
+    .from('expedicao_carregamentos')
+    .update(patch)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+
+  return enviosAtuais;
 }
 
 /**
@@ -212,7 +260,7 @@ export async function criarTramo(params: {
 }
 
 type TramoEditavel = Pick<ExpedicaoTramo,
-  'tramo' | 'numero_tramo' | 'numero_nf' | 'motorista' | 'cavalo_placa' | 'cavalo_uf' | 'carreta_placa' | 'carreta_uf'
+  'tramo' | 'numero_tramo' | 'numero_nf' | 'motorista' | 'cnh' | 'cavalo_placa' | 'cavalo_uf' | 'carreta_placa' | 'carreta_uf'
   | 'dolly_placa' | 'dolly_uf' | 'data' | 'ordem'
   | 'data_chegada_portaria' | 'data_entrada_patio' | 'data_expedicao'
   | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'

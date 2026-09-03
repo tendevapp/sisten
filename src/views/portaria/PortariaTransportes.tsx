@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import type { Profile, PortRegistroTransporte, PortTransporteStatus, PortTurno } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
+import SugestoesChegadaTransporte from '../../components/portaria/SugestoesChegadaTransporte';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -26,6 +28,21 @@ interface Props {
 }
 
 const TIPOS_VEICULO = ['Van', 'Carro', 'Ônibus', 'Caminhão', 'Caminhonete', 'Micro-ônibus', 'Outro'];
+const ROTAS = ['R1', 'R2', 'R3'] as const;
+
+const formTransporteVazio = () => ({
+  data: api.hojeISO(),
+  turno: api.sugerirTurno(),
+  vigilante: '',
+  veiculo: 'Van',
+  placa: '',
+  empresa: '',
+  hora_chegada: api.horaAgora(),
+  motorista: '',
+  rota: '',
+  ocupacao: '',
+  observacoes: '',
+});
 
 export default function PortariaTransportes({ user, onNavigate }: Props) {
   const toast = useToast();
@@ -43,18 +60,33 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
-  const [formNovo, setFormNovo] = useState({
-    data: api.hojeISO(),
-    turno: api.sugerirTurno(),
-    vigilante: '',
-    veiculo: 'Van',
-    placa: '',
-    empresa: '',
-    hora_chegada: api.horaAgora(),
-    motorista: '',
-    ocupacao: '',
-    observacoes: '',
-  });
+  const [formNovo, setFormNovo] = useState(formTransporteVazio);
+  // Enquanto false, os dropdowns de sugestão ficam fechados — evita reabri-los
+  // logo após um preenchimento. Volta a true assim que o usuário digita.
+  const [sugestoesAtivas, setSugestoesAtivas] = useState(true);
+  // "Outro" na rota: mostra o campo de digitação livre.
+  const [rotaModoOutro, setRotaModoOutro] = useState(false);
+
+  const editarCampo = (patch: Partial<ReturnType<typeof formTransporteVazio>>) => {
+    setSugestoesAtivas(true);
+    setFormNovo((f) => ({ ...f, ...patch }));
+  };
+
+  // Preenche o formulário a partir de uma chegada já lançada (autocomplete).
+  const preencherDeRegistro = (r: PortRegistroTransporte) => {
+    setSugestoesAtivas(false);
+    const rota = (r.rota || '').toUpperCase();
+    setRotaModoOutro(rota !== '' && !ROTAS.includes(rota as (typeof ROTAS)[number]));
+    setFormNovo((f) => ({
+      ...f,
+      veiculo: r.veiculo || f.veiculo,
+      placa: (r.placa || '').toUpperCase(),
+      empresa: (r.empresa || '').toUpperCase(),
+      motorista: (r.motorista || '').toUpperCase(),
+      rota: rota || f.rota,
+      ocupacao: (r.ocupacao || '').toUpperCase(),
+    }));
+  };
 
   const carregarDados = useCallback(async () => {
     setLoading(true);
@@ -97,18 +129,9 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       });
       toast.success('Chegada de transporte registrada!');
       setModalNovoAberto(false);
-      setFormNovo({
-        data: api.hojeISO(),
-        turno: api.sugerirTurno(),
-        vigilante: '',
-        veiculo: 'Van',
-        placa: '',
-        empresa: '',
-        hora_chegada: api.horaAgora(),
-        motorista: '',
-        ocupacao: '',
-        observacoes: '',
-      });
+      setFormNovo(formTransporteVazio());
+      setSugestoesAtivas(true);
+      setRotaModoOutro(false);
       carregarDados();
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
@@ -197,7 +220,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
           <button
             type="button"
-            onClick={() => setModalNovoAberto(true)}
+            onClick={() => { setFormNovo(formTransporteVazio()); setSugestoesAtivas(true); setRotaModoOutro(false); setModalNovoAberto(true); }}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400"
           >
             <Plus className="h-4 w-4" />
@@ -309,7 +332,14 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-slate-100">
-                      {item.empresa}
+                      <div className="flex items-center gap-2">
+                        <span>{item.empresa}</span>
+                        {item.rota && (
+                          <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                            {item.rota}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5 text-xs">
                       <div className="flex items-center gap-1 font-semibold text-slate-900 dark:text-slate-200">
@@ -336,10 +366,10 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {item.excluido_em ? (
-                          <RestaurarButton onClick={() => handleRestaurar(item)} />
+                          podeEditarFormulario(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
                         ) : (
                         <>
-                        {item.status === 'NO_PATIO' && (
+                        {item.status === 'NO_PATIO' && podeEditarFormulario(user, item) && (
                           <button
                             type="button"
                             onClick={() => handleRegistrarSaida(item)}
@@ -350,14 +380,16 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                             Marcar Saída
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setItemParaExcluir(item)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
-                          title="Excluir registro"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {podeEditarFormulario(user, item) && (
+                          <button
+                            type="button"
+                            onClick={() => setItemParaExcluir(item)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                            title="Excluir registro"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                         </>
                         )}
                       </div>
@@ -399,47 +431,53 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Placa do Veículo *
                   </label>
                   <input
                     type="text"
                     required
+                    autoCapitalize="characters"
                     placeholder="Ex: ABC1D23"
                     value={formNovo.placa}
-                    onChange={(e) => setFormNovo({ ...formNovo, placa: e.target.value.toUpperCase() })}
+                    onChange={(e) => editarCampo({ placa: e.target.value.toUpperCase() })}
                     className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <SugestoesChegadaTransporte termo={formNovo.placa} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Empresa *
                   </label>
                   <input
                     type="text"
                     required
+                    autoCapitalize="characters"
                     placeholder="Ex: Transportes São Geraldo"
                     value={formNovo.empresa}
-                    onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value.toUpperCase() })}
+                    onChange={(e) => editarCampo({ empresa: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <SugestoesChegadaTransporte termo={formNovo.empresa} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
                 </div>
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Nome do Motorista *
                   </label>
                   <input
                     type="text"
                     required
+                    autoCapitalize="characters"
                     placeholder="Nome completo do motorista"
                     value={formNovo.motorista}
-                    onChange={(e) => setFormNovo({ ...formNovo, motorista: e.target.value.toUpperCase() })}
+                    onChange={(e) => editarCampo({ motorista: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <SugestoesChegadaTransporte termo={formNovo.motorista} ativo={sugestoesAtivas} aoSelecionar={preencherDeRegistro} />
                 </div>
               </div>
 
@@ -482,19 +520,58 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Rota
+                  </label>
+                  <select
+                    value={rotaModoOutro ? '__OUTRO__' : (ROTAS.includes(formNovo.rota as (typeof ROTAS)[number]) ? formNovo.rota : '')}
+                    onChange={(e) => {
+                      if (e.target.value === '__OUTRO__') {
+                        setRotaModoOutro(true);
+                        setFormNovo({ ...formNovo, rota: '' });
+                      } else {
+                        setRotaModoOutro(false);
+                        setFormNovo({ ...formNovo, rota: e.target.value });
+                      }
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  >
+                    <option value="">— Sem rota</option>
+                    {ROTAS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                    <option value="__OUTRO__">Outro (digitar)...</option>
+                  </select>
+                  {rotaModoOutro && (
+                    <input
+                      type="text"
+                      autoFocus
+                      autoCapitalize="characters"
+                      placeholder="Ex: R4, ESPECIAL..."
+                      value={formNovo.rota}
+                      onChange={(e) => setFormNovo({ ...formNovo, rota: e.target.value.toUpperCase() })}
+                      className="mt-2 w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  )}
+                </div>
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Ocupação / Motivo (Opcional)
                   </label>
                   <input
                     type="text"
+                    autoCapitalize="characters"
                     placeholder="Ex: Entrega de suprimentos / 4 passageiros"
                     value={formNovo.ocupacao}
                     onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <VigilanteSelect
                     label="Vigilante Portaria"

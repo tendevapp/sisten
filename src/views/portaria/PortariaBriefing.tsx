@@ -19,6 +19,7 @@ import type {
   Profile, PortBriefingSessao, PortBriefingParticipante
 } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportBriefingPdf, exportBriefingConsolidadoPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import SignaturePadModal from '../../components/portaria/SignaturePadModal';
@@ -36,6 +37,8 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [sessaoAtiva, setSessaoAtiva] = useState<PortBriefingSessao | null>(null);
   const [sessoesSelecionadasIds, setSessoesSelecionadasIds] = useState<string[]>([]);
+  // Só o autor da sessão (ou admin) altera a lista de presença / assinaturas.
+  const podeEditarSessao = podeEditarFormulario(user, sessaoAtiva);
 
   // CPF Quick Check
   const [cpfConsulta, setCpfConsulta] = useState('');
@@ -412,14 +415,20 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setItemParaExcluir(sessaoAtiva)}
-                      className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
-                      title="Excluir sessão de briefing"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {podeEditarSessao ? (
+                      <button
+                        type="button"
+                        onClick={() => setItemParaExcluir(sessaoAtiva)}
+                        className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                        title="Excluir sessão de briefing"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                        Somente leitura — sessão de outro usuário
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -503,19 +512,21 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md dark:bg-emerald-950/50 dark:text-emerald-400">
                                     <Check className="h-3 w-3" /> Assinada
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setParticipanteParaAssinar(p);
-                                      setModalAssinaturaAberto(true);
-                                    }}
-                                    className="text-[10px] text-blue-600 hover:underline dark:text-blue-400"
-                                    title="Refazer assinatura"
-                                  >
-                                    (Alterar)
-                                  </button>
+                                  {podeEditarSessao && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setParticipanteParaAssinar(p);
+                                        setModalAssinaturaAberto(true);
+                                      }}
+                                      className="text-[10px] text-blue-600 hover:underline dark:text-blue-400"
+                                      title="Refazer assinatura"
+                                    >
+                                      (Alterar)
+                                    </button>
+                                  )}
                                 </div>
-                              ) : (
+                              ) : podeEditarSessao ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -527,17 +538,21 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                                   <PenTool className="h-3.5 w-3.5" />
                                   Coletar Assinatura
                                 </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400">Pendente</span>
                               )}
                             </td>
                             <td className="px-3.5 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoverParticipante(p.id)}
-                                className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
-                                title="Remover participante"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              {podeEditarSessao && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoverParticipante(p.id)}
+                                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                                  title="Remover participante"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

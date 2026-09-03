@@ -110,6 +110,87 @@ export async function listarRhSetores(): Promise<RhSetor[]> {
   return (data || []) as RhSetor[];
 }
 
+export async function criarRhSetor(nome: string): Promise<RhSetor> {
+  const nomeLimpo = nome.trim().toUpperCase();
+  if (!nomeLimpo) throw new Error('Nome do setor é obrigatório.');
+
+  const { data, error } = await supabase
+    .from('rh_setores')
+    .insert({ nome: nomeLimpo, ativo: true })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error(`Já existe um setor cadastrado com o nome "${nomeLimpo}".`);
+    }
+    throw new Error(error.message);
+  }
+  return data as RhSetor;
+}
+
+export async function atualizarRhSetor(
+  id: string,
+  patch: { nome?: string; ativo?: boolean }
+): Promise<RhSetor> {
+  const payload: any = {};
+  if (patch.nome !== undefined) {
+    const nomeLimpo = patch.nome.trim().toUpperCase();
+    if (!nomeLimpo) throw new Error('Nome do setor não pode ser vazio.');
+    payload.nome = nomeLimpo;
+  }
+  if (patch.ativo !== undefined) {
+    payload.ativo = patch.ativo;
+  }
+
+  const { data, error } = await supabase
+    .from('rh_setores')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error('Já existe outro setor com este nome.');
+    }
+    throw new Error(error.message);
+  }
+  return data as RhSetor;
+}
+
+export async function alternarStatusRhSetor(id: string, ativo: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('rh_setores')
+    .update({ ativo })
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function excluirRhSetor(id: string): Promise<void> {
+  // Verifica se o setor possui solicitacoes de ASE vinculadas antes de excluir
+  const { count, error: countErr } = await supabase
+    .from('rh_ase_solicitacoes')
+    .select('*', { count: 'exact', head: true })
+    .eq('setor_id', id);
+
+  if (countErr) throw new Error(countErr.message);
+
+  if (count && count > 0) {
+    throw new Error(
+      `Este setor está vinculado a ${count} solicitação(ões) de ASE. Para preservar o histórico, inative o setor em vez de excluí-lo.`
+    );
+  }
+
+  const { error } = await supabase
+    .from('rh_setores')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function listarRhTurnos(): Promise<RhTurno[]> {
   const { data, error } = await supabase.from('rh_turnos').select('*').order('nome');
   if (error) throw new Error(error.message);

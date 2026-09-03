@@ -25,8 +25,8 @@ create index rh_ase_solicitacoes_data_idx on public.rh_ase_solicitacoes (data_ex
 
 alter table public.rh_ase_solicitacoes enable row level security;
 
--- Acesso liberado a todo autenticado no banco — a restrição real de quem
--- vê/preenche é a gate de página (page_access), igual ao padrão já usado em
--- expedicao_carregamentos/expedicao_tramos.
-create policy rh_ase_solicitacoes_rw on public.rh_ase_solicitacoes
-  for all to authenticated using (true) with check (true);
+-- SELECT liberado a todo autenticado (a gate de página controla quem vê o
+-- módulo); INSERT/UPDATE/DELETE só do solicitante que criou a ASE
+-- (solicitante_id, com default auth.uid()) ou de um admin. Policies
+-- granulares e public.form_pode_editar() em
+-- supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

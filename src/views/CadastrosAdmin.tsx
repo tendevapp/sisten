@@ -12,11 +12,15 @@ import {
   Database, Shield, Users, Boxes, Plus, Search, Edit2, Trash2,
   CheckCircle2, XCircle, RefreshCw, AlertTriangle, ArrowRight,
   Filter, Check, UserCheck, ShieldCheck, Building2, Clock, Layers,
-  Mail, Send, AtSign, ExternalLink, HelpCircle, Tag, Copy, Globe, Sparkles
+  Mail, Send, AtSign, ExternalLink, HelpCircle, Tag, Copy, Globe, Sparkles, Truck
 } from 'lucide-react';
-import type { Profile, PortVigilante, ConfigEnvioEmail, EmailModulo } from '../types';
+import type { Profile, PortVigilante, ConfigEnvioEmail, EmailModulo, PrazoTransporte, Transportadora } from '../types';
 import * as api from '../lib/portariaApi';
 import * as emailApi from '../lib/emailConfigApi';
+import * as diligApi from '../lib/diligenciamentoApi';
+import {
+  UFS_BRASIL, PRAZO_ENTREGA_PADRAO_DIAS, PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS,
+} from '../data/prazosEntregaPadrao';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -26,7 +30,9 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-type TabType = 'portaria_vigilantes' | 'emails_envios';
+type TabType = 'portaria_vigilantes' | 'emails_envios' | 'suprimentos';
+/** Sub-cadastros do módulo Suprimentos (botões dentro da aba). */
+type SubSuprimentos = 'lead_time' | 'transportadoras';
 
 const SUGESTOES_GATILHOS = [
   { chave: 'cadastro_sap', nome: 'Solicitação de Cadastro SAP', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP' },
@@ -51,14 +57,23 @@ function formatarDataBR(dataStr?: string | null): string {
 
 export default function CadastrosAdmin({ user, onNavigate }: Props) {
   const toast = useToast();
+  const abaParamInicial = useMemo(
+    () => new URLSearchParams(window.location.hash.split('?')[1] || '').get('aba')
+      || new URLSearchParams(window.location.hash.split('?')[1] || '').get('tab'),
+    [],
+  );
   const [activeTab, setActiveTab] = useState<TabType>(() => {
-    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
-    const abaParam = params.get('aba') || params.get('tab');
-    if (abaParam === 'emails' || abaParam === 'emails_envios' || abaParam === 'outlook') {
+    if (abaParamInicial === 'emails' || abaParamInicial === 'emails_envios' || abaParamInicial === 'outlook') {
       return 'emails_envios';
+    }
+    if (['suprimentos', 'lead_time', 'prazos', 'transportadoras'].includes(abaParamInicial || '')) {
+      return 'suprimentos';
     }
     return 'portaria_vigilantes';
   });
+  const [subSuprimentos, setSubSuprimentos] = useState<SubSuprimentos>(
+    abaParamInicial === 'transportadoras' ? 'transportadoras' : 'lead_time',
+  );
 
   // ==========================================
   // ESTADO - VIGILANTES
@@ -115,6 +130,213 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
   // Confirmação de Exclusão de E-mail
   const [configEmailParaExcluir, setConfigEmailParaExcluir] = useState<ConfigEnvioEmail | null>(null);
 
+  // ==========================================
+  // ESTADO - SUPRIMENTOS: LEAD TIME DE ENTREGAS (sup_prazos_transporte)
+  // ==========================================
+  const [prazos, setPrazos] = useState<PrazoTransporte[]>([]);
+  const [loadingPrazos, setLoadingPrazos] = useState(false);
+  const [erroPrazos, setErroPrazos] = useState<string | null>(null);
+  const [salvandoPrazo, setSalvandoPrazo] = useState<string | null>(null); // uf em gravação
+  // Rascunho editável por UF ('' = padrão global): string p/ deixar o campo vazio.
+  const [rascunhoPrazo, setRascunhoPrazo] = useState<Record<string, string>>({});
+  const [prazoParaExcluir, setPrazoParaExcluir] = useState<PrazoTransporte | null>(null);
+  const [semeandoPrazos, setSemeandoPrazos] = useState(false);
+
+  // ==========================================
+  // ESTADO - SUPRIMENTOS: CADASTRO DE TRANSPORTADORAS (sup_transportadoras)
+  // ==========================================
+  const [transportadoras, setTransportadoras] = useState<Transportadora[]>([]);
+  const [loadingTransp, setLoadingTransp] = useState(false);
+  const [erroTransp, setErroTransp] = useState<string | null>(null);
+  const [novaTransp, setNovaTransp] = useState('');
+  const [salvandoTransp, setSalvandoTransp] = useState(false);
+  // Rascunho de renomear, por id.
+  const [rascunhoTransp, setRascunhoTransp] = useState<Record<string, string>>({});
+  const [transpParaExcluir, setTranspParaExcluir] = useState<Transportadora | null>(null);
+
+  const ORDEM_REGIAO = ['Sudeste', 'Sul', 'Centro-Oeste', 'Nordeste', 'Norte'];
+
+  const prazoGlobal = useMemo(
+    () => prazos.find(p => p.uf === '' && p.transportadora === '') || null,
+    [prazos],
+  );
+
+  // Todas as 27 UFs, cada uma com a linha do banco (se houver) ou o padrão
+  // da região. Ordena por região e depois por UF.
+  const linhasUf = useMemo(() => {
+    return UFS_BRASIL
+      .map(u => {
+        const row = prazos.find(p => p.uf === u.uf && p.transportadora === '') || null;
+        return {
+          ...u,
+          id: row?.id ?? null,
+          row,
+          dias: row ? row.dias_corridos : (PRAZO_ENTREGA_PADRAO_DIAS[u.uf] ?? PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS),
+          salvo: !!row,
+        };
+      })
+      .sort((a, b) => {
+        const ra = ORDEM_REGIAO.indexOf(a.regiao);
+        const rb = ORDEM_REGIAO.indexOf(b.regiao);
+        return ra !== rb ? ra - rb : a.uf.localeCompare(b.uf);
+      });
+  }, [prazos]);
+
+  const totalUfSalvas = useMemo(() => linhasUf.filter(l => l.salvo).length, [linhasUf]);
+  const ufsNaoSalvas = useMemo(() => linhasUf.filter(l => !l.salvo), [linhasUf]);
+
+  const carregarPrazos = async () => {
+    setLoadingPrazos(true);
+    setErroPrazos(null);
+    try {
+      const lista = await diligApi.listarPrazosTransporte();
+      setPrazos(lista);
+      setRascunhoPrazo({});
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (/schema cache|does not exist|not find the table/i.test(msg)) {
+        setErroPrazos('A tabela sup_prazos_transporte ainda não existe no banco. Os valores abaixo são o padrão sugerido — aplique a migration (supabase db push) para poder salvar edições.');
+      } else {
+        toast.error('Erro ao carregar lead time de entregas: ' + msg);
+      }
+    } finally {
+      setLoadingPrazos(false);
+    }
+  };
+
+  const salvarPrazo = async (uf: string, valorBruto: string) => {
+    const dias = Number(valorBruto);
+    if (!Number.isFinite(dias) || dias < 0 || !Number.isInteger(dias)) {
+      toast.error('Informe um número inteiro de dias (0 ou mais).');
+      return;
+    }
+    setSalvandoPrazo(uf || '__GLOBAL__');
+    try {
+      await diligApi.salvarPrazoTransporte(uf, '', dias);
+      toast.success(uf ? `Prazo de ${uf} salvo: remessa + ${dias} dia(s).` : `Prazo padrão salvo: remessa + ${dias} dia(s).`);
+      await carregarPrazos();
+    } catch (err: any) {
+      toast.error('Falha ao salvar: ' + (err.message || ''));
+    } finally {
+      setSalvandoPrazo(null);
+    }
+  };
+
+  const confirmarExcluirPrazo = async () => {
+    if (!prazoParaExcluir) return;
+    try {
+      await diligApi.excluirPrazoTransporte(prazoParaExcluir.id);
+      toast.success(`Prazo de ${prazoParaExcluir.uf} removido.`);
+      setPrazoParaExcluir(null);
+      await carregarPrazos();
+    } catch (err: any) {
+      toast.error('Falha ao excluir: ' + (err.message || ''));
+    }
+  };
+
+  // Persiste no banco todas as UFs ainda não salvas (com o padrão da região)
+  // + o padrão global, se faltar.
+  const semearPrazosPadrao = async () => {
+    setSemeandoPrazos(true);
+    try {
+      const faltantes = ufsNaoSalvas;
+      if (faltantes.length === 0 && prazoGlobal) {
+        toast.info('Todas as UFs já estão cadastradas.');
+        return;
+      }
+      for (const u of faltantes) {
+        await diligApi.salvarPrazoTransporte(u.uf, '', PRAZO_ENTREGA_PADRAO_DIAS[u.uf] ?? PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS);
+      }
+      if (!prazoGlobal) {
+        await diligApi.salvarPrazoTransporte('', '', PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS);
+      }
+      toast.success(`${faltantes.length} UF(s) cadastrada(s) com o padrão da região.`);
+      await carregarPrazos();
+    } catch (err: any) {
+      toast.error('Falha ao cadastrar as UFs: ' + (err.message || ''));
+    } finally {
+      setSemeandoPrazos(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // HANDLERS - CADASTRO DE TRANSPORTADORAS
+  // -------------------------------------------------------------
+  const carregarTransportadoras = async () => {
+    setLoadingTransp(true);
+    setErroTransp(null);
+    try {
+      const lista = await diligApi.listarTransportadoras();
+      setTransportadoras(lista);
+      setRascunhoTransp({});
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (/schema cache|does not exist|not find the table/i.test(msg)) {
+        setErroTransp('A tabela sup_transportadoras ainda não existe no banco. Aplique a migration (supabase db push) para cadastrar transportadoras.');
+      } else {
+        toast.error('Erro ao carregar transportadoras: ' + msg);
+      }
+    } finally {
+      setLoadingTransp(false);
+    }
+  };
+
+  const adicionarTransportadora = async () => {
+    const nome = novaTransp.trim();
+    if (!nome) { toast.error('Informe o nome da transportadora.'); return; }
+    if (transportadoras.some(t => t.nome.trim().toLowerCase() === nome.toLowerCase())) {
+      toast.error(`"${nome}" já está cadastrada.`);
+      return;
+    }
+    setSalvandoTransp(true);
+    try {
+      await diligApi.salvarTransportadora(nome);
+      setNovaTransp('');
+      toast.success(`Transportadora "${nome}" cadastrada.`);
+      await carregarTransportadoras();
+    } catch (err: any) {
+      toast.error('Não foi possível cadastrar: ' + (err.message || ''));
+    } finally {
+      setSalvandoTransp(false);
+    }
+  };
+
+  const renomearTransportadora = async (t: Transportadora) => {
+    const nome = (rascunhoTransp[t.id] ?? t.nome).trim();
+    if (!nome || nome === t.nome) { setRascunhoTransp(r => { const { [t.id]: _, ...rest } = r; return rest; }); return; }
+    setSalvandoTransp(true);
+    try {
+      await diligApi.salvarTransportadora(nome, t.id);
+      toast.success('Transportadora renomeada.');
+      await carregarTransportadoras();
+    } catch (err: any) {
+      toast.error('Não foi possível renomear: ' + (err.message || ''));
+    } finally {
+      setSalvandoTransp(false);
+    }
+  };
+
+  const alternarAtivoTransportadora = async (t: Transportadora) => {
+    try {
+      await diligApi.definirTransportadoraAtiva(t.id, !t.ativo);
+      setTransportadoras(prev => prev.map(x => x.id === t.id ? { ...x, ativo: !t.ativo } : x));
+    } catch (err: any) {
+      toast.error('Não foi possível alterar o status: ' + (err.message || ''));
+    }
+  };
+
+  const confirmarExcluirTransportadora = async () => {
+    if (!transpParaExcluir) return;
+    try {
+      await diligApi.excluirTransportadora(transpParaExcluir.id);
+      toast.success(`"${transpParaExcluir.nome}" removida.`);
+      setTranspParaExcluir(null);
+      await carregarTransportadoras();
+    } catch (err: any) {
+      toast.error('Não foi possível remover: ' + (err.message || ''));
+    }
+  };
+
   // Carregamento de Vigilantes
   const carregarVigilantes = async () => {
     setLoadingVigilantes(true);
@@ -145,6 +367,18 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     carregarVigilantes();
     carregarConfigsEmail();
   }, []);
+
+  // Lead time de entregas: carrega só ao abrir a aba (tabela de baixo volume,
+  // e evita ruído se a migration ainda não tiver sido aplicada).
+  useEffect(() => {
+    if (activeTab === 'suprimentos' && subSuprimentos === 'lead_time' && prazos.length === 0 && !loadingPrazos && !erroPrazos) {
+      carregarPrazos();
+    }
+    if (activeTab === 'suprimentos' && subSuprimentos === 'transportadoras' && transportadoras.length === 0 && !loadingTransp && !erroTransp) {
+      carregarTransportadoras();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, subSuprimentos]);
 
   // -------------------------------------------------------------
   // HANDLERS - VIGILANTES
@@ -522,6 +756,19 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
           }`}>
             {configsEmail.length}
           </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('suprimentos')}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+            activeTab === 'suprimentos'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+          }`}
+        >
+          <Boxes className="h-4 w-4" />
+          Suprimentos — Cadastros
         </button>
 
         <button
@@ -1065,6 +1312,339 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* ABA: SUPRIMENTOS — CADASTROS (sub-janelas por botão)     */}
+      {/* ========================================================= */}
+      {activeTab === 'suprimentos' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5 dark:border-slate-800 dark:bg-slate-900/40">
+            {([
+              { chave: 'lead_time' as const, icone: Clock, rotulo: 'Lead Time de Entregas', contagem: totalUfSalvas },
+              { chave: 'transportadoras' as const, icone: Truck, rotulo: 'Transportadoras', contagem: transportadoras.length },
+            ]).map(({ chave, icone: Icone, rotulo, contagem }) => (
+              <button
+                key={chave}
+                type="button"
+                onClick={() => setSubSuprimentos(chave)}
+                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all ${
+                  subSuprimentos === chave
+                    ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-800 dark:text-blue-300'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <Icone className="h-4 w-4" />
+                {rotulo}
+                <span className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] ${
+                  subSuprimentos === chave ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                }`}>
+                  {contagem}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {subSuprimentos === 'lead_time' && (
+          <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                <Clock className="h-5 w-5" />
+              </span>
+              <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Lead time de entregas por UF de origem</p>
+                <p className="mt-0.5">
+                  A previsão de entrega é <strong>data de remessa + N dias corridos</strong>, conforme a UF de
+                  origem do fornecedor (ex.: pedido de <strong>SP</strong> → remessa + {PRAZO_ENTREGA_PADRAO_DIAS.SP} dias;{' '}
+                  <strong>MG</strong> + {PRAZO_ENTREGA_PADRAO_DIAS.MG}; <strong>PE</strong> + {PRAZO_ENTREGA_PADRAO_DIAS.PE};{' '}
+                  <strong>BA</strong> + {PRAZO_ENTREGA_PADRAO_DIAS.BA}). Editável — usado no Diligenciamento de Compras.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {erroPrazos && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{erroPrazos}</span>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end sm:justify-between dark:border-slate-800 dark:bg-slate-900">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Prazo padrão (UF não cadastrada)
+              </label>
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="text-xs text-slate-400">remessa +</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={rascunhoPrazo[''] ?? String(prazoGlobal?.dias_corridos ?? PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS)}
+                  onChange={(e) => setRascunhoPrazo((r) => ({ ...r, ['']: e.target.value }))}
+                  className="h-9 w-20 rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                />
+                <span className="text-xs text-slate-500 dark:text-slate-400">dia(s)</span>
+                <button
+                  type="button"
+                  onClick={() => salvarPrazo('', rascunhoPrazo[''] ?? String(prazoGlobal?.dias_corridos ?? PRAZO_ENTREGA_PADRAO_GLOBAL_DIAS))}
+                  disabled={salvandoPrazo === '__GLOBAL__'}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Salvar
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={semearPrazosPadrao}
+              disabled={semeandoPrazos || (ufsNaoSalvas.length === 0 && !!prazoGlobal)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              title="Grava no banco as UFs ainda não salvas com o prazo padrão da região"
+            >
+              <Sparkles className="h-4 w-4" />
+              {semeandoPrazos ? 'Cadastrando...' : `Cadastrar UFs pendentes (${ufsNaoSalvas.length})`}
+            </button>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            {loadingPrazos ? (
+              <div className="flex items-center justify-center py-12"><RefreshCw className="h-5 w-5 animate-spin text-slate-400" /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-slate-100 bg-slate-50/75 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3">UF</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3">Prazo</th>
+                      <th className="px-4 py-3 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {linhasUf.map((l, idx) => {
+                      const valorAtual = rascunhoPrazo[l.uf] ?? String(l.dias);
+                      const mudou = valorAtual !== String(l.dias);
+                      const primeiraDaRegiao = idx === 0 || linhasUf[idx - 1].regiao !== l.regiao;
+                      return (
+                        <React.Fragment key={l.uf}>
+                          {primeiraDaRegiao && (
+                            <tr className="bg-slate-50/60 dark:bg-slate-950/40">
+                              <td colSpan={4} className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                {l.regiao}
+                              </td>
+                            </tr>
+                          )}
+                          <tr className="text-slate-700 dark:text-slate-300">
+                            <td className="px-4 py-2.5 font-mono font-bold text-slate-900 dark:text-slate-100">{l.uf}</td>
+                            <td className="px-4 py-2.5">
+                              {l.nome}
+                              {!l.salvo && (
+                                <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                                  PADRÃO
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-400">remessa +</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={valorAtual}
+                                  onChange={(e) => setRascunhoPrazo((r) => ({ ...r, [l.uf]: e.target.value }))}
+                                  className="h-8 w-20 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                                />
+                                <span className="text-slate-400">dia(s)</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {(mudou || !l.salvo) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => salvarPrazo(l.uf, valorAtual)}
+                                    disabled={salvandoPrazo === l.uf}
+                                    className="rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                                  >
+                                    {l.salvo ? 'Salvar' : 'Cadastrar'}
+                                  </button>
+                                )}
+                                {l.salvo && l.row && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPrazoParaExcluir(l.row)}
+                                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                                    title="Voltar ao padrão da região"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          </div>
+          )}
+
+          {subSuprimentos === 'transportadoras' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                  <Truck className="h-5 w-5" />
+                </span>
+                <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                  <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Transportadoras do Diligenciamento</p>
+                  <p className="mt-0.5">
+                    Lista de escolha da coluna <strong>Transportadora</strong> no painel de Diligenciamento (aba "Sem MIGO").
+                    <strong> Coleta</strong> e <strong>CIF</strong> não são transportadoras, mas entram aqui porque é a mesma escolha do comprador.
+                    Inativar esconde da lista sem apagar o histórico; excluir remove de vez.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {erroTransp && (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{erroTransp}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Nova transportadora
+                </label>
+                <input
+                  value={novaTransp}
+                  onChange={(e) => setNovaTransp(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarTransportadora(); } }}
+                  placeholder="Ex.: Jamef, Braspress…"
+                  className="mt-1.5 h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={adicionarTransportadora}
+                disabled={salvandoTransp || !novaTransp.trim()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+              {loadingTransp ? (
+                <div className="flex items-center justify-center py-12"><RefreshCw className="h-5 w-5 animate-spin text-slate-400" /></div>
+              ) : transportadoras.length === 0 ? (
+                <p className="px-4 py-10 text-center text-xs text-slate-400">Nenhuma transportadora cadastrada ainda.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-100 bg-slate-50/75 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">Nome</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {transportadoras.map((t) => {
+                        const rascunho = rascunhoTransp[t.id] ?? t.nome;
+                        const mudou = rascunho.trim() !== t.nome && rascunho.trim() !== '';
+                        return (
+                          <tr key={t.id} className="text-slate-700 dark:text-slate-300">
+                            <td className="px-4 py-2.5">
+                              <input
+                                value={rascunho}
+                                onChange={(e) => setRascunhoTransp((r) => ({ ...r, [t.id]: e.target.value }))}
+                                onBlur={() => { if (mudou) renomearTransportadora(t); }}
+                                className="h-8 w-full max-w-xs rounded-lg border border-slate-300 bg-white px-2 text-sm font-medium text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                              />
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <button
+                                type="button"
+                                onClick={() => alternarAtivoTransportadora(t)}
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                                  t.ativo
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                    : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                }`}
+                                title={t.ativo ? 'Clique para inativar' : 'Clique para ativar'}
+                              >
+                                {t.ativo ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                                {t.ativo ? 'Ativa' : 'Inativa'}
+                              </button>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {mudou && (
+                                  <button
+                                    type="button"
+                                    onClick={() => renomearTransportadora(t)}
+                                    disabled={salvandoTransp}
+                                    className="rounded-lg bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                                  >
+                                    Salvar
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setTranspParaExcluir(t)}
+                                  className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
+        </div>
+      )}
+
+      {transpParaExcluir && (
+        <ConfirmDialog
+          titulo="Remover transportadora"
+          mensagem={`Remover "${transpParaExcluir.nome}" do cadastro? Itens que já usam esse nome mantêm o texto; ele só deixa de aparecer na lista. Prefira "Inativar" se houver histórico.`}
+          confirmarLabel="Sim, remover"
+          variante="perigo"
+          onConfirmar={confirmarExcluirTransportadora}
+          onCancelar={() => setTranspParaExcluir(null)}
+        />
+      )}
+
+      {prazoParaExcluir && (
+        <ConfirmDialog
+          titulo="Remover prazo de entrega"
+          mensagem={`Remover o lead time cadastrado para ${prazoParaExcluir.uf}? Pedidos dessa UF passarão a usar o prazo padrão.`}
+          confirmarLabel="Sim, remover"
+          variante="perigo"
+          onConfirmar={confirmarExcluirPrazo}
+          onCancelar={() => setPrazoParaExcluir(null)}
+        />
       )}
 
       {/* ========================================================= */}

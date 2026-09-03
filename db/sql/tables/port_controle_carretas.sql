@@ -34,6 +34,6 @@ create index if not exists port_controle_carretas_status_idx on public.port_cont
 
 alter table public.port_controle_carretas enable row level security;
 
-drop policy if exists port_controle_carretas_rw on public.port_controle_carretas;
-create policy port_controle_carretas_rw on public.port_controle_carretas
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada a todo autenticado; INSERT/UPDATE/DELETE só do autor
+-- (criado_por) ou de um admin. Policies granulares e public.form_pode_editar()
+-- em supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

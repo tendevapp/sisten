@@ -21,6 +21,8 @@ import {
   RotateCcw,
   ChevronRight,
   CircleCheck,
+  CheckCircle2,
+  History,
   Search,
   X,
   User,
@@ -35,10 +37,11 @@ import {
   Square,
   CheckCheck,
 } from 'lucide-react';
-import type { Profile, SupPendenciaProcessamentoNF } from '../types';
+import type { Profile, SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
 import { localDb } from '../db/localDb';
+import { supabase } from '../db/supabaseClient';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import DateRangeFilter, { type DateRangeValue } from '../components/ui/DateRangeFilter';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
@@ -115,6 +118,191 @@ const OBS_LABELS = ['Observação', 'Observações', 'Demanda'];
 /** Rótulos que não entram na grade de metadados da linha (já aparecem no título ou no bloco de observação). */
 const OMITIR_GRID = ['Nome do Fornecedor', 'Fornecedor', 'Número da NF', ...OBS_LABELS];
 
+/** Extrai a lista de ações registradas na linha com resolução de nomes dos usuários. */
+function obterHistoricoLinha(
+  l: SupPendenciaProcessamentoNF,
+  profileMap: Map<string, string>
+): SupPendenciaAcaoLog[] {
+  if (Array.isArray(l.historico_acoes) && l.historico_acoes.length > 0) {
+    return l.historico_acoes.map(a => ({
+      ...a,
+      usuario_nome:
+        a.usuario_nome ||
+        (a.usuario_id ? profileMap.get(a.usuario_id) : undefined) ||
+        'Usuário Suprimentos',
+    }));
+  }
+  if (l.resolvido_em) {
+    const nome =
+      (l.resolvido_por ? profileMap.get(l.resolvido_por) : undefined) ||
+      'Usuário Suprimentos';
+    return [
+      {
+        tipo: 'concluido',
+        usuario_id: l.resolvido_por,
+        usuario_nome: nome,
+        data_hora: l.resolvido_em,
+        resolucao: l.resolucao,
+      },
+    ];
+  }
+  return [];
+}
+
+/** Componente que renderiza o log de ações (fechamentos, reaberturas, resoluções) com timeline elegante. */
+function LogAcoesPendencia({
+  acoes,
+}: {
+  acoes: SupPendenciaAcaoLog[];
+}) {
+  const [expandido, setExpandido] = useState(false);
+
+  if (acoes.length === 0) return null;
+
+  if (acoes.length === 1) {
+    const ac = acoes[0];
+    const isConclusao = ac.tipo === 'concluido';
+    return (
+      <div
+        className="rounded-lg px-2.5 py-1.5 text-[12px] flex flex-wrap items-center gap-x-2 gap-y-1 border"
+        style={{
+          borderColor: isConclusao ? 'color-mix(in srgb, var(--status-good) 35%, transparent)' : 'var(--hairline)',
+          background: isConclusao ? 'color-mix(in srgb, var(--status-good) 6%, transparent)' : 'var(--surface-raised)',
+        }}
+      >
+        <span
+          className="inline-flex items-center gap-1 font-bold text-[11px] px-1.5 py-0.5 rounded"
+          style={{
+            color: isConclusao ? 'var(--status-good)' : 'var(--status-serious)',
+            background: isConclusao
+              ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+              : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+          }}
+        >
+          {isConclusao ? <CheckCircle2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+          {isConclusao ? 'Baixado' : 'Reaberto'}
+        </span>
+        <span style={{ color: 'var(--ink-secondary)' }}>
+          por <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>{ac.usuario_nome}</strong>
+        </span>
+        <span style={{ color: 'var(--ink-muted)' }} className="text-[11px]">
+          em {formatDateTimeBR(ac.data_hora)}
+        </span>
+        {ac.resolucao && (
+          <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+            · Resolução: <span className="italic">{ac.resolucao}</span>
+          </span>
+        )}
+        {ac.motivo && (
+          <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+            · Motivo: <span className="italic">{ac.motivo}</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const acaoMaisRecente = acoes[acoes.length - 1];
+  const isConclusaoRecente = acaoMaisRecente.tipo === 'concluido';
+
+  return (
+    <div
+      className="rounded-lg border p-2.5 text-[12px] space-y-2 transition-all"
+      style={{
+        borderColor: 'var(--hairline)',
+        background: 'var(--surface-raised)',
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <History className="h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
+          <span className="font-bold uppercase tracking-wider text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+            Log de Ações ({acoes.length})
+          </span>
+          <span
+            className="inline-flex items-center gap-1 font-semibold text-[10px] px-1.5 py-0.5 rounded ml-1"
+            style={{
+              color: isConclusaoRecente ? 'var(--status-good)' : 'var(--status-serious)',
+              background: isConclusaoRecente
+                ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+                : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+            }}
+          >
+            Última ação: {isConclusaoRecente ? 'Baixado' : 'Reaberto'} por {acaoMaisRecente.usuario_nome?.split(' ')[0]}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpandido(prev => !prev)}
+          className="text-[11px] font-semibold underline cursor-pointer hover:opacity-80 transition-opacity"
+          style={{ color: 'var(--brand)' }}
+        >
+          {expandido ? 'Ocultar histórico' : `Ver histórico completo (${acoes.length})`}
+        </button>
+      </div>
+
+      {expandido ? (
+        <div className="space-y-1.5 pt-1 border-t" style={{ borderColor: 'var(--hairline)' }}>
+          {acoes.map((ac, idx) => {
+            const isConclusao = ac.tipo === 'concluido';
+            return (
+              <div
+                key={idx}
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] py-1 border-b last:border-b-0"
+                style={{ borderColor: 'color-mix(in srgb, var(--hairline) 50%, transparent)' }}
+              >
+                <span className="text-[10px] font-mono px-1 rounded bg-black/5 dark:bg-white/5" style={{ color: 'var(--ink-muted)' }}>
+                  #{idx + 1}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 font-bold text-[11px] px-1.5 py-0.5 rounded"
+                  style={{
+                    color: isConclusao ? 'var(--status-good)' : 'var(--status-serious)',
+                    background: isConclusao
+                      ? 'color-mix(in srgb, var(--status-good) 14%, transparent)'
+                      : 'color-mix(in srgb, var(--status-serious) 14%, transparent)',
+                  }}
+                >
+                  {isConclusao ? <CheckCircle2 className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
+                  {isConclusao ? 'Baixado' : 'Reaberto'}
+                </span>
+                <span style={{ color: 'var(--ink-secondary)' }}>
+                  por <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>{ac.usuario_nome}</strong>
+                </span>
+                <span style={{ color: 'var(--ink-muted)' }} className="text-[11px]">
+                  em {formatDateTimeBR(ac.data_hora)}
+                </span>
+                {ac.resolucao && (
+                  <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+                    · Resolução: <span className="italic">{ac.resolucao}</span>
+                  </span>
+                )}
+                {ac.motivo && (
+                  <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+                    · Motivo: <span className="italic">{ac.motivo}</span>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+          <span>
+            {isConclusaoRecente ? 'Baixado' : 'Reaberto'} por <strong style={{ color: 'var(--ink-primary)' }}>{acaoMaisRecente.usuario_nome}</strong> em {formatDateTimeBR(acaoMaisRecente.data_hora)}
+          </span>
+          {acaoMaisRecente.resolucao && (
+            <span className="italic">· "{acaoMaisRecente.resolucao}"</span>
+          )}
+          {acaoMaisRecente.motivo && (
+            <span className="italic">· Motivo: "{acaoMaisRecente.motivo}"</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PendenciasProcessamento({ user, onNavigate }: PendenciasProcessamentoProps) {
   const toast = useToast();
   const [grupos, setGrupos] = useState<GrupoPendencia[]>([]);
@@ -146,6 +334,30 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
   const getSectorName = useCallback((id?: string) => {
     return id ? sectorMap.get(id) || 'Sem setor' : 'Sem setor';
   }, [sectorMap]);
+
+  // Mapa de nomes de perfis com sincronizacao de usuarios do Supabase para o log de acoes
+  const [profileMap, setProfileMap] = useState<Map<string, string>>(() => {
+    return new Map(localDb.getProfiles().map(p => [p.id, p.name]));
+  });
+
+  useEffect(() => {
+    if (supabase) {
+      (supabase as any)
+        .from('profiles')
+        .select('id, name')
+        .then(({ data }: any) => {
+          if (data && Array.isArray(data)) {
+            setProfileMap(prev => {
+              const next = new Map(prev);
+              data.forEach((p: { id: string; name: string }) => {
+                if (p.id && p.name) next.set(p.id, p.name);
+              });
+              return next;
+            });
+          }
+        });
+    }
+  }, []);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -402,7 +614,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
   const handleConcluir = async (l: SupPendenciaProcessamentoNF, g: GrupoPendencia) => {
     setSalvandoId(l.id);
     const resTexto = resolucoes[l.id] || '';
-    const ok = await concluirPendencia(l.id, resTexto);
+    const ok = await concluirPendencia(l.id, resTexto, l);
     setSalvandoId(null);
     if (!ok) {
       toast.error('Não foi possível concluir a nota. Tente novamente.');
@@ -435,6 +647,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     const itensParaConcluir: {
       id: string;
       resolucao: string;
+      linhaAtual: SupPendenciaProcessamentoNF;
       itemEmail: ItemConcluidoEmail;
     }[] = [];
 
@@ -445,6 +658,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           itensParaConcluir.push({
             id: l.id,
             resolucao: res,
+            linhaAtual: l,
             itemEmail: {
               linha: l,
               protocolo: g.protocolo,
@@ -464,7 +678,9 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
 
     setSalvandoLote(true);
     try {
-      const ok = await concluirPendenciasEmLote(itensParaConcluir.map(i => ({ id: i.id, resolucao: i.resolucao })));
+      const ok = await concluirPendenciasEmLote(
+        itensParaConcluir.map(i => ({ id: i.id, resolucao: i.resolucao, linhaAtual: i.linhaAtual }))
+      );
       if (!ok) {
         toast.error('Não foi possível concluir os itens selecionados.');
         return;
@@ -482,14 +698,15 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     }
   };
 
-  const handleReabrir = async (id: string) => {
+  const handleReabrir = async (id: string, linha?: SupPendenciaProcessamentoNF) => {
     setSalvandoId(id);
-    const ok = await reabrirPendencia(id);
+    const ok = await reabrirPendencia(id, undefined, linha);
     setSalvandoId(null);
     if (!ok) {
       toast.error('Não foi possível reabrir a nota.');
       return;
     }
+    toast.success('Nota reaberta com sucesso.');
     carregar();
   };
 
@@ -926,12 +1143,9 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                           {l.modelo === 'ajuste_pedido' && (
                             <ImagensAjustePedido paths={caminhosImagem(l)} />
                           )}
-                          {concluido && (
-                            <p className="text-[12px]" style={{ color: 'var(--status-good)' }}>
-                              Baixado{l.resolvido_em ? ` em ${formatDateTimeBR(l.resolvido_em)}` : ''}
-                              {l.resolucao ? ` · ${l.resolucao}` : ''}
-                            </p>
-                          )}
+                          <LogAcoesPendencia
+                            acoes={obterHistoricoLinha(l, profileMap)}
+                          />
                         </div>
 
                         {/* Ações por Linha */}
@@ -939,7 +1153,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
                           {concluido ? (
                             <button
                               type="button"
-                              onClick={() => handleReabrir(l.id)}
+                              onClick={() => handleReabrir(l.id, l)}
                               disabled={salvandoId === l.id}
                               className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-bold cursor-pointer disabled:opacity-50 transition-colors hover:bg-[var(--surface-raised)]"
                               style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}

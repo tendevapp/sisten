@@ -87,6 +87,11 @@ export default function TramoCard({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2 truncate text-sm font-bold text-slate-900 dark:text-slate-50">
               <span className="truncate">{tramo.motorista?.trim() || 'Motorista não informado'}</span>
+              {tramo.cnh && (
+                <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  CNH: {tramo.cnh}
+                </span>
+              )}
               {tramo.numero_nf && (
                 <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   NF: {tramo.numero_nf}
@@ -157,7 +162,8 @@ export default function TramoCard({
               />
             </div>
 
-            <div className="sm:col-span-2">
+            {/* Motorista */}
+            <div className="sm:col-span-1">
               <label htmlFor={`motorista-${tramo.id}`} className={rotuloClasse}>Motorista</label>
               <input
                 id={`motorista-${tramo.id}`}
@@ -168,6 +174,21 @@ export default function TramoCard({
                 autoCapitalize="characters"
                 onChange={e => onChange({ motorista: e.target.value.toUpperCase() })}
                 className={`${campoClasse} uppercase mt-1.5`}
+              />
+            </div>
+
+            {/* CNH */}
+            <div className="sm:col-span-1">
+              <label htmlFor={`cnh-${tramo.id}`} className={rotuloClasse}>CNH</label>
+              <input
+                id={`cnh-${tramo.id}`}
+                type="text"
+                value={tramo.cnh || ''}
+                disabled={somenteLeitura}
+                placeholder="Nº da CNH"
+                maxLength={20}
+                onChange={e => onChange({ cnh: e.target.value ? e.target.value.trim() : null })}
+                className={`${campoClasse} mt-1.5`}
               />
             </div>
 

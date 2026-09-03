@@ -40,6 +40,30 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-02',
+    resumo: 'Admin > Cadastros Gerais > aba "Suprimentos — Lead Time de Entregas" (`CadastrosAdmin.tsx`, `data/prazosEntregaPadrao.ts`, `diligenciamentoApi.ts`, `sup_prazos_transporte`): Nova aba para cadastrar/editar o lead time de entrega por UF de origem (previsão = data de remessa + N dias corridos). Semeado com SP +8, MG +6, PE +4, BA +2 e por região Sudeste +8 / Sul +10 / Norte +10 / Centro-Oeste +10 / demais do Nordeste +4; inclui prazo padrão global, adicionar UF, botão "Preencher UFs faltantes" e edição/remoção linha a linha. Reaproveita a tabela usada no Diligenciamento (transportadora vazia = padrão da UF).',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Painel Admin > Gestão de Setores da ASE (`rhApi.ts`, `AdminPanel.tsx`, `RhAseHoraExtra.tsx`, `rh_setores`): Adicionada sub-aba dedicada a "Setores da ASE / RH" na aba Setores do painel administrativo, permitindo adicionar novos setores, editar nome e status, inativar/reativar com 1 clique e excluir com validação de vínculo histórico em solicitações de ASE. No formulário de ASE, setores inativos são ocultados para novas seleções preservando o histórico existente.',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Início & Notificações (`notificationRouting.ts`, `Dashboard.tsx`, `Header.tsx`, `SolicitacoesCentral.tsx`): Implementado roteamento inteligente e unificado para abertura da tela de destino ao clicar em qualquer notificação na página de Início e no Header. Suporta context_key, ID de solicitação (abrindo o modal correspondente), número de chamado (#1234567) e inferência de assuntos, tornando todos os itens interativos.',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Logística - Expedição > Log de Envio de E-mail (`types.ts`, `expedicaoApi.ts`, `LogisticaExpedicao.tsx`, `expedicao_carregamentos`): Adicionadas colunas enviado_por, enviado_por_nome e historico_envios (JSONB), registrando quem disparou cada e-mail (aviso de chegada ou expedição final), data/hora, assunto e destinatários, com exibição de card detalhado no topo do formulário e quem enviou nos cards da lista.',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Suprimentos > Pendências de Processamento (`types.ts`, `supPendenciasApi.ts`, `PendenciasProcessamento.tsx`, `RequestDetailsModal.tsx`): Implementado log de auditoria de ações completo (`historico_acoes` JSONB no Supabase), registrando cada baixa (com resolução) e reabertura com nome do usuário, data/hora e motivos, com visualização de timeline e histórico na tela.',
+  },
+  {
+    data: '2026-09-02',
+    resumo: 'Logística - Expedição > Campo CNH do Motorista (`types.ts`, `database.types.ts`, `TramoCard.tsx`, `LogisticaExpedicao.tsx`, `expedicaoEmail.ts`, `expedicao_tramos`): Adicionado campo de CNH após o nome do motorista no formulário de expedição com persistência no Supabase, badge indicativo no cabeçalho do tramo e integração aos e-mails automáticos.',
+  },
+  {
+    data: '2026-09-02',
     resumo: 'Logística - Expedição > Opção "Escada / Plataforma" nos Tramos (`types.ts`, `TramoCard.tsx`, `expedicao_tramos`): Adicionada a opção "Escada / Plataforma" no dropdown de seleção de tramos do formulário de expedição e atualizada a restrição de verificação (check constraint) no banco de dados Supabase.',
   },
   {
@@ -1559,6 +1583,29 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Duplicado no arquivo com texto vazio NÃO apaga um texto já capturado de uma ocorrência anterior do mesmo material.',
               'Sanitiza automaticamente caracteres corrompidos de truncamento ALV antes de gravar.',
               'Usa a RPC `atualizar_textos_tecnicos_zl0162` (essa sim é chamada de fato).'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'import-bahiasul',
+        nome: 'Bahia Sul — Entregas e CTe de Compras',
+        arquivo: 'localDb.importBahiaSulRaw, src/lib/bahiasul.ts, src/components/frete/BahiaSulAnalyticsPanel.tsx',
+        secoes: [
+          {
+            titulo: 'Formato, chave e tabela',
+            itens: [
+              'Planilha de CTe da transportadora Bahia Sul com base de dados das entregas das compras da TEN.',
+              'Tabela no Supabase: `sup_bahiasul_entregas`. Mapeia 29 colunas incluindo dados do CTe (CTO_FILIAL, CTO_SERIE, CTO_NUMERO), datas de emissão, previsão e chegada/entrega, dados de remetente/destinatário, pesos e valores.',
+              'Chave única composta (`chave_unica`): `CTO_FILIAL_CTO_SERIE_CTO_NUMERO` (ex: `BHZ_1_42383`), permitindo reimportações com atualização de status operacionais sem duplicar registros.',
+              'Upsert em lotes de 300 registros com cálculo de SLA e vínculo com pedidos SAP e notas fiscais.'
+            ]
+          },
+          {
+            titulo: 'Acompanhamento & Análise no Estimador de Frete',
+            itens: [
+              'Página Estimador de Frete organizada em duas janelas: 1) Janela Inicial de Acompanhamento & Análise das entregas Bahia Sul (KPIs, filtros, cruzamento com PO SAP, detalhes e upload rápido); 2) Janela do Simulador & Calculadora de frete fracionado/dedicado.',
+              'Cruzamento inteligente por número de PO SAP (`nro_pedido` vs `documento_compra`) com exibição de fornecedor, valor em BRL e data do pedido, além de permitir vinculação manual direta na interface.'
             ]
           }
         ]

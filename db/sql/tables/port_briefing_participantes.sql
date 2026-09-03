@@ -22,6 +22,7 @@ create index if not exists port_briefing_participantes_data_idx on public.port_b
 
 alter table public.port_briefing_participantes enable row level security;
 
-drop policy if exists port_briefing_participantes_rw on public.port_briefing_participantes;
-create policy port_briefing_participantes_rw on public.port_briefing_participantes
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada; edição/exclusão herda o dono da sessão-pai
+-- (port_briefing_sessoes.criado_por) — só o autor ou um admin. Policies
+-- granulares em
+-- supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

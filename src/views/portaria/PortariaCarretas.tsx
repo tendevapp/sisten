@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { Profile, PortControleCarreta, PortCarretaStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportCarretasPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
@@ -334,10 +335,10 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {item.excluido_em ? (
-                          <RestaurarButton onClick={() => handleRestaurar(item)} />
+                          podeEditarFormulario(user, item) && <RestaurarButton onClick={() => handleRestaurar(item)} />
                         ) : (
                         <>
-                        {item.status !== 'FINALIZADO' && (
+                        {item.status !== 'FINALIZADO' && podeEditarFormulario(user, item) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -351,14 +352,16 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                             Liberar Saída
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setItemParaExcluir(item)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
-                          title="Excluir registro"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {podeEditarFormulario(user, item) && (
+                          <button
+                            type="button"
+                            onClick={() => setItemParaExcluir(item)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
+                            title="Excluir registro"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                         </>
                         )}
                       </div>

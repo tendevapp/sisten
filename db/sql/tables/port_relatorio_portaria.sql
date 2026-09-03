@@ -26,6 +26,6 @@ create index if not exists port_relatorio_portaria_status_idx on public.port_rel
 
 alter table public.port_relatorio_portaria enable row level security;
 
-drop policy if exists port_relatorio_portaria_rw on public.port_relatorio_portaria;
-create policy port_relatorio_portaria_rw on public.port_relatorio_portaria
-  for all to authenticated using (true) with check (true);
+-- Leitura liberada a todo autenticado; INSERT/UPDATE/DELETE só do autor
+-- (criado_por) ou de um admin. Policies granulares e public.form_pode_editar()
+-- em supabase/migrations/20260902160000_formularios_rls_autor_ou_admin.sql.

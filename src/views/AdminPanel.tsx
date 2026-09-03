@@ -12,21 +12,27 @@ import {
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles,
   Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt,
   Building2, Edit2, Search, UserCheck, UserX, MoreHorizontal, Filter, ShieldCheck, ShoppingBag, Award, Briefcase, KeyRound, Lock,
-  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck
+  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck, Trash2, Loader2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { getAutoCategory } from '../data/materials';
 import { calcularProximoCodigoMaterial, sanitizeTechnicalText } from '../lib/materiais';
-import { Profile, Sector, Material, FeedbackReport } from '../types';
+import { Profile, Sector, Material, FeedbackReport, RhSetor } from '../types';
 import { useToast } from '../components/ui/Toast';
+import { formatDateBR } from '../lib/format';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import PageAccessModal from '../components/admin/PageAccessModal';
 import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
 import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal';
 import UserEditGovernanceModal from '../components/admin/UserEditGovernanceModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
-import { importarRhPessoas, importarRhSetores, importarRhHoraExtra } from '../lib/rhApi';
+import {
+  importarRhPessoas, importarRhSetores, importarRhHoraExtra,
+  listarRhSetores, criarRhSetor, atualizarRhSetor, alternarStatusRhSetor, excluirRhSetor,
+} from '../lib/rhApi';
 import UsersByModuleView from '../components/admin/UsersByModuleView';
 
 interface AdminPanelProps {
@@ -66,6 +72,18 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   // Sectors State
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [subTabSetores, setSubTabSetores] = useState<'corporativos' | 'ase'>('corporativos');
+  const [rhSetores, setRhSetores] = useState<RhSetor[]>([]);
+  const [loadingRhSetores, setLoadingRhSetores] = useState(false);
+  const [buscaRhSetores, setBuscaRhSetores] = useState('');
+  const [filtroStatusRhSetores, setFiltroStatusRhSetores] = useState<'todos' | 'ativos' | 'inativos'>('todos');
+  const [modalRhSetorAberto, setModalRhSetorAberto] = useState(false);
+  const [editingRhSetor, setEditingRhSetor] = useState<RhSetor | null>(null);
+  const [rhSetorNomeInput, setRhSetorNomeInput] = useState('');
+  const [rhSetorAtivoInput, setRhSetorAtivoInput] = useState(true);
+  const [salvandoRhSetor, setSalvandoRhSetor] = useState(false);
+  const [confirmDeleteRhSetor, setConfirmDeleteRhSetor] = useState<RhSetor | null>(null);
+  const [excluindoRhSetor, setExcluindoRhSetor] = useState(false);
 
   // Materials Importer ZL0169 (Cadastro de Materiais SAP)
   const [zl0169File, setZl0169File] = useState<File | null>(null);
@@ -257,6 +275,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     setProfiles(localDb.getProfiles());
     setSectors(localDb.getSectors());
     setSapLogs(localDb.getImportLogs());
+    carregarRhSetores();
   };
 
   // Expande/recolhe um log de importação, buscando as linhas ignoradas/RIs
@@ -378,6 +397,99 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     localDb.toggleSectorHelpdesk(id);
     loadData();
   };
+
+  const carregarRhSetores = async () => {
+    setLoadingRhSetores(true);
+    try {
+      const data = await listarRhSetores();
+      setRhSetores(data);
+    } catch (err: any) {
+      console.error('Erro ao carregar setores da ASE:', err);
+    } finally {
+      setLoadingRhSetores(false);
+    }
+  };
+
+  const handleOpenNovoRhSetor = () => {
+    setEditingRhSetor(null);
+    setRhSetorNomeInput('');
+    setRhSetorAtivoInput(true);
+    setModalRhSetorAberto(true);
+  };
+
+  const handleOpenEditarRhSetor = (setor: RhSetor) => {
+    setEditingRhSetor(setor);
+    setRhSetorNomeInput(setor.nome);
+    setRhSetorAtivoInput(setor.ativo);
+    setModalRhSetorAberto(true);
+  };
+
+  const handleSalvarRhSetor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nomeLimpo = rhSetorNomeInput.trim().toUpperCase();
+    if (!nomeLimpo) {
+      toast.warning('Informe o nome do setor da ASE.');
+      return;
+    }
+
+    setSalvandoRhSetor(true);
+    try {
+      if (editingRhSetor) {
+        await atualizarRhSetor(editingRhSetor.id, {
+          nome: nomeLimpo,
+          ativo: rhSetorAtivoInput,
+        });
+        toast.success(`Setor "${nomeLimpo}" atualizado com sucesso.`);
+      } else {
+        await criarRhSetor(nomeLimpo);
+        toast.success(`Setor "${nomeLimpo}" cadastrado com sucesso.`);
+      }
+      setModalRhSetorAberto(false);
+      await carregarRhSetores();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar setor da ASE.');
+    } finally {
+      setSalvandoRhSetor(false);
+    }
+  };
+
+  const handleToggleStatusRhSetor = async (setor: RhSetor) => {
+    const novoStatus = !setor.ativo;
+    try {
+      await alternarStatusRhSetor(setor.id, novoStatus);
+      setRhSetores(prev => prev.map(s => s.id === setor.id ? { ...s, ativo: novoStatus } : s));
+      toast.success(`Setor "${setor.nome}" ${novoStatus ? 'ativado' : 'inativado'}.`);
+    } catch (err: any) {
+      toast.error(err.message || 'Falha ao alterar status do setor.');
+      await carregarRhSetores();
+    }
+  };
+
+  const handleConfirmarExcluirRhSetor = async () => {
+    if (!confirmDeleteRhSetor) return;
+    setExcluindoRhSetor(true);
+    try {
+      await excluirRhSetor(confirmDeleteRhSetor.id);
+      toast.success(`Setor "${confirmDeleteRhSetor.nome}" excluído com sucesso.`);
+      setConfirmDeleteRhSetor(null);
+      await carregarRhSetores();
+    } catch (err: any) {
+      toast.error(err.message || 'Não foi possível excluir o setor.');
+    } finally {
+      setExcluindoRhSetor(false);
+    }
+  };
+
+  const filteredRhSetores = useMemo(() => {
+    return rhSetores.filter(s => {
+      const matchBusca = !buscaRhSetores.trim() || s.nome.toLowerCase().includes(buscaRhSetores.trim().toLowerCase());
+      const matchStatus =
+        filtroStatusRhSetores === 'todos' ||
+        (filtroStatusRhSetores === 'ativos' && s.ativo) ||
+        (filtroStatusRhSetores === 'inativos' && !s.ativo);
+      return matchBusca && matchStatus;
+    });
+  }, [rhSetores, buscaRhSetores, filtroStatusRhSetores]);
 
   const VALID_COMPANIES = ['TEN2', 'AG', 'AMBAS'];
 
@@ -1920,47 +2032,387 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         </div>
       )}
 
-      {/* Tab 2: Sectors matrix settings */}
+      {/* Tab 2: Sectors matrix settings (Corporativos + ASE) */}
       {activeTab === 'setores' && (
-        <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">Setores Corporativos da Torres Eólicas ({sectors.length})</h3>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                  <th className="py-3">ID Setor</th>
-                  <th className="py-3">Nome do Setor</th>
-                  <th className="py-3 text-center">É Apoio? (Suporte)</th>
-                  <th className="py-3 text-center">Helpdesk Ativo?</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {sectors.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50/50">
-                    <td className="py-3 font-mono text-slate-500 font-bold">#{s.id}</td>
-                    <td className="py-3 font-semibold text-slate-800">{s.name}</td>
-                    <td className="py-3 text-center">
-                      <button
-                        onClick={() => handleToggleSectorSupport(s.id)}
-                        className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all ${s.is_support ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
-                      >
-                        {s.is_support ? 'Suporte Ativo' : 'Não'}
-                      </button>
-                    </td>
-                    <td className="py-3 text-center">
-                      <button
-                        onClick={() => handleToggleSectorHelpdesk(s.id)}
-                        className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all ${s.helpdesk_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
-                      >
-                        {s.helpdesk_enabled ? 'Helpdesk Ativo' : 'Inativo'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="space-y-4">
+          {/* Sub-tabs header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:px-5 sm:py-3.5 shadow-2xs">
+            <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setSubTabSetores('corporativos')}
+                className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  subTabSetores === 'corporativos'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <span>Setores Corporativos</span>
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                  subTabSetores === 'corporativos' ? 'bg-slate-100 text-slate-800' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {sectors.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSubTabSetores('ase')}
+                className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  subTabSetores === 'ase'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <span>Setores da ASE / RH</span>
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                  subTabSetores === 'ase' ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {rhSetores.length}
+                </span>
+              </button>
+            </div>
+
+            {subTabSetores === 'ase' && (
+              <button
+                type="button"
+                onClick={handleOpenNovoRhSetor}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 px-3.5 py-2 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Novo Setor ASE</span>
+              </button>
+            )}
           </div>
+
+          {/* Sub-tab 1: Setores Corporativos */}
+          {subTabSetores === 'corporativos' && (
+            <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Setores Corporativos da Torres Eólicas ({sectors.length})</h3>
+                  <p className="text-xs text-slate-500">
+                    Setores organizacionais para cadastro de usuários, fluxo de aprovações e roteamento de chamados do Helpdesk.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="py-3">ID Setor</th>
+                      <th className="py-3">Nome do Setor</th>
+                      <th className="py-3 text-center">É Apoio? (Suporte)</th>
+                      <th className="py-3 text-center">Helpdesk Ativo?</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {sectors.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50/50">
+                        <td className="py-3 font-mono text-slate-500 font-bold">#{s.id}</td>
+                        <td className="py-3 font-semibold text-slate-800">{s.name}</td>
+                        <td className="py-3 text-center">
+                          <button
+                            onClick={() => handleToggleSectorSupport(s.id)}
+                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.is_support ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                          >
+                            {s.is_support ? 'Suporte Ativo' : 'Não'}
+                          </button>
+                        </td>
+                        <td className="py-3 text-center">
+                          <button
+                            onClick={() => handleToggleSectorHelpdesk(s.id)}
+                            className={`inline-flex items-center px-2 py-1 rounded font-bold text-[10px] uppercase border transition-all cursor-pointer ${s.helpdesk_enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}
+                          >
+                            {s.helpdesk_enabled ? 'Helpdesk Ativo' : 'Inativo'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-tab 2: Setores da ASE / RH */}
+          {subTabSetores === 'ase' && (
+            <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-800">
+                      Setores da ASE / RH (Hora Extra)
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {rhSetores.length} setores ({rhSetores.filter(s => s.ativo).length} ativos)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Setores operacionais de fábrica utilizados na abertura de solicitações de ASE e controle de horas extras.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={carregarRhSetores}
+                  disabled={loadingRhSetores}
+                  title="Recarregar setores da ASE"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs cursor-pointer transition-colors shrink-0 disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loadingRhSetores ? 'animate-spin' : ''}`} />
+                  <span>Atualizar</span>
+                </button>
+              </div>
+
+              {/* Filtros e Busca */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome do setor..."
+                    value={buscaRhSetores}
+                    onChange={e => setBuscaRhSetores(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
+                  />
+                  {buscaRhSetores && (
+                    <button
+                      type="button"
+                      onClick={() => setBuscaRhSetores('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-slate-500 mr-1 font-medium">Filtrar:</span>
+                  {(['todos', 'ativos', 'inativos'] as const).map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setFiltroStatusRhSetores(st)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all cursor-pointer ${
+                        filtroStatusRhSetores === st
+                          ? 'bg-slate-800 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tabela de Setores ASE */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider bg-slate-50/50">
+                      <th className="py-3 px-3">Nome do Setor</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                      <th className="py-3 px-3 text-center">Criado em</th>
+                      <th className="py-3 px-3 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredRhSetores.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" />
+                            <span className={`font-bold ${s.ativo ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                              {s.nome}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
+                            s.ativo
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${s.ativo ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                            {s.ativo ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono text-[11px] text-slate-500">
+                          {s.created_at ? formatDateBR(s.created_at) : '—'}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditarRhSetor(s)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                              title="Editar nome ou status do setor"
+                            >
+                              <Edit2 className="h-3.5 w-3.5 text-slate-500" />
+                              <span>Editar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatusRhSetor(s)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                                s.ativo
+                                  ? 'border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800'
+                                  : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
+                              }`}
+                              title={s.ativo ? 'Inativar setor (não aparecerá em novas solicitações)' : 'Reativar setor'}
+                            >
+                              <span>{s.ativo ? 'Inativar' : 'Reativar'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteRhSetor(s)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Excluir setor"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {filteredRhSetores.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-slate-400">
+                          <p className="font-semibold text-sm">Nenhum setor da ASE encontrado</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {buscaRhSetores || filtroStatusRhSetores !== 'todos'
+                              ? 'Tente limpar a busca ou os filtros de status.'
+                              : 'Clique em "Novo Setor ASE" para cadastrar.'}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Adicionar / Editar Setor ASE */}
+          {modalRhSetorAberto && (
+            <Modal
+              onClose={() => !salvandoRhSetor && setModalRhSetorAberto(false)}
+              maxWidth="max-w-md"
+              ariaLabel={editingRhSetor ? 'Editar Setor da ASE' : 'Novo Setor da ASE'}
+            >
+              <ModalHeader onClose={() => !salvandoRhSetor && setModalRhSetorAberto(false)}>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                    <Building2 className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">
+                      {editingRhSetor ? 'Editar Setor da ASE' : 'Novo Setor da ASE'}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      {editingRhSetor ? 'Altere o nome ou o status do setor' : 'Cadastre um novo setor para o formulário de ASE'}
+                    </p>
+                  </div>
+                </div>
+              </ModalHeader>
+
+              <form onSubmit={handleSalvarRhSetor} className="flex flex-col flex-1 min-h-0">
+                <ModalBody className="space-y-4">
+                  <div>
+                    <label htmlFor="nomeSetorAse" className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Nome do Setor *
+                    </label>
+                    <input
+                      id="nomeSetorAse"
+                      type="text"
+                      required
+                      placeholder="Ex: CALDEIRARIA, PINTURA, PRODUÇÃO..."
+                      value={rhSetorNomeInput}
+                      onChange={e => setRhSetorNomeInput(e.target.value.toUpperCase())}
+                      className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold uppercase text-slate-800 placeholder-slate-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      O nome será salvo padronizado em caixa alta.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={rhSetorAtivoInput}
+                        onChange={e => setRhSetorAtivoInput(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block">Setor Ativo</span>
+                        <span className="text-[11px] text-slate-500 block">
+                          Setores ativos ficam visíveis para seleção em novas solicitações de ASE.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </ModalBody>
+
+                <ModalFooter>
+                  <button
+                    type="button"
+                    onClick={() => setModalRhSetorAberto(false)}
+                    disabled={salvandoRhSetor}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvandoRhSetor}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {salvandoRhSetor ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        <span>{editingRhSetor ? 'Salvar Alterações' : 'Cadastrar Setor'}</span>
+                      </>
+                    )}
+                  </button>
+                </ModalFooter>
+              </form>
+            </Modal>
+          )}
+
+          {/* Diálogo de confirmação de exclusão */}
+          {confirmDeleteRhSetor && (
+            <ConfirmDialog
+              titulo="Excluir Setor da ASE"
+              mensagem={
+                <div className="space-y-2 text-xs text-slate-600">
+                  <p>
+                    Tem certeza de que deseja excluir o setor <strong>{confirmDeleteRhSetor.nome}</strong>?
+                  </p>
+                  <p className="text-slate-500">
+                    Se este setor já tiver solicitações de ASE vinculadas no banco, o sistema impedirá a exclusão física e recomendará <strong>inativá-lo</strong> para preservar o histórico.
+                  </p>
+                </div>
+              }
+              confirmarLabel="Sim, excluir"
+              cancelarLabel="Cancelar"
+              variante="perigo"
+              confirmando={excluindoRhSetor}
+              onConfirmar={handleConfirmarExcluirRhSetor}
+              onCancelar={() => setConfirmDeleteRhSetor(null)}
+            />
+          )}
         </div>
       )}
 
@@ -3157,6 +3609,73 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Contatos</p>
+                </div>
+              </div>
+
+              {/* Bahia Sul Upload Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Bahia Sul (Entregas CTe)
+                </h4>
+                <p className="text-[10px] text-slate-400">Planilha de CTe da transportadora Bahia Sul com dados de entregas das compras.</p>
+                <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        const file = e.target.files[0];
+                        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+                        setSapLogStatus('saving');
+                        setLastUploadLog(null);
+                        setSapLogError('');
+                        const r = new FileReader();
+
+                        r.onload = (ev) => {
+                          try {
+                            let rawRows: any[][] = [];
+                            if (fileExtension === 'csv') {
+                              const text = ev.target?.result as string;
+                              rawRows = text.split('\n').filter(l => l.trim()).map(l => {
+                                return l.split(';').map(c => c.replace(/"/g, '').trim());
+                              });
+                            } else {
+                              const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+                              const workbook = XLSX.read(data, { type: 'array' });
+                              if (!workbook.SheetNames.length) throw new Error('Nenhuma planilha encontrada no arquivo.');
+                              const sheetName = workbook.SheetNames[0];
+                              const worksheet = workbook.Sheets[sheetName];
+                              rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+                            }
+
+                            setSapProgress(0);
+                            setSapLogMessage('Processando dados da transportadora Bahia Sul...');
+                            localDb.importBahiaSulRaw(rawRows, file.name, setSapProgress).then(log => {
+                              setLastUploadLog(log);
+                              setSapLogStatus('success');
+                              toast.success(`Bahia Sul: ${log.records_inserted} CTe novo(s), ${log.records_updated} atualizado(s).`);
+                              loadData();
+                            }).catch(err => {
+                              setSapLogError(err.message || 'Falha ao processar planilha Bahia Sul.');
+                              setSapLogStatus('error');
+                            });
+                          } catch (err: any) {
+                            setSapLogError(err.message || 'Falha ao processar planilha Bahia Sul.');
+                            setSapLogStatus('error');
+                          }
+                        };
+
+                        if (fileExtension === 'csv') {
+                          r.readAsText(file);
+                        } else {
+                          r.readAsArrayBuffer(file);
+                        }
+                      }
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="mx-auto h-6 w-6 text-slate-400" />
+                  <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Bahia Sul</p>
                 </div>
               </div>
             </div>

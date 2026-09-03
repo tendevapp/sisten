@@ -207,7 +207,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   const concluidasOcultas = mostrarConcluidas ? 0 : (porFaixa.get('concluidas')?.length ?? 0);
 
-  const aberta = universo.find(r => r.id === abertaId) || null;
+  const aberta = universo.find(r => r.id === abertaId) || todas.find(r => r.id === abertaId) || null;
 
   /* Ações ------------------------------------------------------------------ */
 

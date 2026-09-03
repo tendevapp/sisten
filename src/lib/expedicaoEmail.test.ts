@@ -182,6 +182,15 @@ describe('montarCorpoEmailChegada', () => {
     expect(corpo).not.toContain('Horário de entrada pátio');
     expect(corpo).not.toContain('Horário de expedição');
   });
+
+  it('inclui a CNH do motorista quando informada', () => {
+    const comCnh = tramo({
+      id: 't1', tramo: 'T1', motorista: 'GERALDO', cnh: '12345678900',
+    });
+    const corpo = montarCorpoEmailChegada({ empresa: 'TRANSMAQUINAS', tramo: comCnh, fotos: [] });
+    expect(corpo).toContain('Motorista: GERALDO');
+    expect(corpo).toContain('CNH:         12345678900');
+  });
 });
 
 describe('montarAssuntoExpedicao', () => {
