@@ -22,7 +22,7 @@
 import { Profile, Request, RequestComment, RequestStatusHistory } from '../types';
 import { localDb } from '../db/localDb';
 import { canAccessPage } from './pages';
-import { estaEmAberto, podeAprovar, solicitacoesVisiveis } from './solicitacoes';
+import { estaEmAberto, solicitacoesVisiveis } from './solicitacoes';
 
 /* Escopos ----------------------------------------------------------------- */
 
@@ -101,7 +101,32 @@ export const escopoPadrao = (user: Profile): Escopo => escoposDisponiveis(user)[
 
 /* Visibilidade ------------------------------------------------------------ */
 
-export { podeAprovar };
+export function podeAprovar(r: Request, user: Profile): boolean {
+  if (r.type !== 'compra') return false;
+  return (
+    user.roles.includes('admin') ||
+    user.roles.includes('coordenador_suprimentos') ||
+    !!user.aprovador_setores?.includes(r.solicitante_sector_id)
+  );
+}
+
+/** Aprovador pode alterar uma decisao tomada previamente ou redecidir a compra. */
+export function podeAlterarDecisao(r: Request, user: Profile): boolean {
+  if (!podeAprovar(r, user)) return false;
+  if (r.status === 'fechado' || r.status === 'resolvido') return false;
+  return true;
+}
+
+/** Permite cancelar solicitacao enquanto nao estiver finalizada. */
+export function podeCancelar(r: Request, user: Profile): boolean {
+  if (r.status === 'cancelada' || r.status === 'resolvido' || r.status === 'fechado') {
+    return false;
+  }
+  if (user.roles.includes('admin')) return true;
+  if (r.solicitante_id === user.id) return true;
+  if (podeAprovar(r, user)) return true;
+  return false;
+}
 
 /** Quem opera a fila daquele tipo de solicitação — quem a atende, não quem a abriu. */
 export function ehOperador(r: Request, user: Profile): boolean {

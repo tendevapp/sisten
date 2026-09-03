@@ -25,8 +25,11 @@ vi.mock('xlsx', () => ({
 }));
 
 const {
-  exportarSolicitacoes, podeAlterarDecisao, podeCancelar, classificarEventoHistorico,
+  exportarSolicitacoes, classificarEventoHistorico,
 } = await import('./solicitacoes');
+const {
+  podeAlterarDecisao, podeCancelar,
+} = await import('./solicitacoesCentral');
 
 const setores: Sector[] = [
   { id: '5', name: 'Manutenção', is_support: false, helpdesk_enabled: false },

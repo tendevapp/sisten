@@ -33,11 +33,11 @@ import { useToast } from '../ui/Toast';
 import { formatDateBR, formatDateTimeBR } from '../../lib/format';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
-  avisoEdicao, classificarEventoHistorico, podeAlterarDecisao, podeCancelar, podeEditar,
+  avisoEdicao, classificarEventoHistorico, podeEditar,
   rotuloCriticidade, rotuloStatus, rotuloTipo,
 } from '../../lib/solicitacoes';
 import {
-  Pendencia, ehOperador, podeAprovar, podeVerNotaInterna,
+  Pendencia, ehOperador, podeAlterarDecisao, podeAprovar, podeCancelar, podeVerNotaInterna,
 } from '../../lib/solicitacoesCentral';
 import HelpdeskSatisfactionCard from '../helpdesk/HelpdeskSatisfactionCard';
 
