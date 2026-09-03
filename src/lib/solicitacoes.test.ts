@@ -24,7 +24,9 @@ vi.mock('xlsx', () => ({
   writeFile: () => undefined,
 }));
 
-const { exportarSolicitacoes } = await import('./solicitacoes');
+const {
+  exportarSolicitacoes, podeAlterarDecisao, podeCancelar, classificarEventoHistorico,
+} = await import('./solicitacoes');
 
 const setores: Sector[] = [
   { id: '5', name: 'Manutenção', is_support: false, helpdesk_enabled: false },
@@ -106,5 +108,101 @@ describe('exportarSolicitacoes', () => {
     const linha = exportar()[0];
     expect(linha['Categoria']).toBe('');
     expect(linha['Local']).toBe('');
+  });
+});
+
+describe('podeAlterarDecisao', () => {
+  const gestorAprovador = {
+    id: 'u_gestor',
+    name: 'Gestor',
+    roles: ['gestor'],
+    aprovador_setores: ['5'],
+  } as any;
+
+  const solicitante = {
+    id: 'u9',
+    name: 'Ana',
+    roles: ['requisitante'],
+  } as any;
+
+  it('permite que o aprovador altere a decisao quando a compra estiver em revisao, aprovada ou rejeitada', () => {
+    expect(podeAlterarDecisao({ ...req, status: 'em_revisao' }, gestorAprovador)).toBe(true);
+    expect(podeAlterarDecisao({ ...req, status: 'aprovada' }, gestorAprovador)).toBe(true);
+    expect(podeAlterarDecisao({ ...req, status: 'rejeitada' }, gestorAprovador)).toBe(true);
+    expect(podeAlterarDecisao({ ...req, status: 'cancelada' }, gestorAprovador)).toBe(true);
+  });
+
+  it('nao permite alterar decisao se a solicitacao ja estiver fechada/resolvida', () => {
+    expect(podeAlterarDecisao({ ...req, status: 'fechado' }, gestorAprovador)).toBe(false);
+    expect(podeAlterarDecisao({ ...req, status: 'resolvido' }, gestorAprovador)).toBe(false);
+  });
+
+  it('nao permite que solicitante comum altere a decisao', () => {
+    expect(podeAlterarDecisao({ ...req, status: 'em_revisao' }, solicitante)).toBe(false);
+  });
+
+  it('nao se aplica para chamados ou cadastros sap', () => {
+    expect(podeAlterarDecisao({ ...req, type: 'chamado' }, gestorAprovador)).toBe(false);
+  });
+});
+
+describe('podeCancelar', () => {
+  const solicitante = { id: 'u9', name: 'Ana', roles: ['requisitante'] } as any;
+  const admin = { id: 'u_adm', name: 'Admin', roles: ['admin'] } as any;
+  const estranho = { id: 'u_estranho', name: 'Outro', roles: ['requisitante'] } as any;
+
+  it('permite que o proprio solicitante cancele a solicitacao em aberto', () => {
+    expect(podeCancelar({ ...req, status: 'pendente' }, solicitante)).toBe(true);
+    expect(podeCancelar({ ...req, status: 'em_revisao' }, solicitante)).toBe(true);
+  });
+
+  it('permite que o admin cancele a solicitacao', () => {
+    expect(podeCancelar({ ...req, status: 'pendente' }, admin)).toBe(true);
+  });
+
+  it('nao permite que outro usuario sem permissao cancele', () => {
+    expect(podeCancelar({ ...req, status: 'pendente' }, estranho)).toBe(false);
+  });
+
+  it('nao permite cancelar solicitacao que ja esta cancelada ou fechada', () => {
+    expect(podeCancelar({ ...req, status: 'cancelada' }, solicitante)).toBe(false);
+    expect(podeCancelar({ ...req, status: 'fechado' }, admin)).toBe(false);
+  });
+});
+
+describe('classificarEventoHistorico', () => {
+  it('classifica aprovacao corretamente', () => {
+    const ev = classificarEventoHistorico('pendente', 'aprovada', 'Aprovado sem ressalvas');
+    expect(ev.tipo).toBe('aprovacao');
+    expect(ev.cor).toBe('verde');
+  });
+
+  it('classifica devolucao para revisao corretamente', () => {
+    const ev = classificarEventoHistorico('pendente', 'em_revisao', 'Favor detalhar itens');
+    expect(ev.tipo).toBe('devolucao');
+    expect(ev.cor).toBe('laranja');
+  });
+
+  it('classifica cancelamento corretamente', () => {
+    const ev = classificarEventoHistorico('em_revisao', 'cancelada', 'Nao e mais necessario');
+    expect(ev.tipo).toBe('cancelamento');
+    expect(ev.cor).toBe('vermelho');
+  });
+
+  it('classifica rejeicao corretamente', () => {
+    const ev = classificarEventoHistorico('pendente', 'rejeitada', 'Fora do orcamento');
+    expect(ev.tipo).toBe('rejeicao');
+    expect(ev.cor).toBe('vermelho');
+  });
+
+  it('classifica alteracao de decisao do aprovador com destaque', () => {
+    const ev = classificarEventoHistorico('em_revisao', 'aprovada', '[Decisão alterada] De Em revisao para Aprovada');
+    expect(ev.tipo).toBe('edicao_decisao');
+    expect(ev.cor).toBe('azul');
+  });
+
+  it('classifica abertura de solicitacao', () => {
+    const ev = classificarEventoHistorico('rascunho', 'pendente', 'Solicitacao criada');
+    expect(ev.tipo).toBe('abertura');
   });
 });

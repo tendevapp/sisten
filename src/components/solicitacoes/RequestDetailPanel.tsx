@@ -18,11 +18,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, Calendar, Check, CheckCircle, Copy, ExternalLink, FileText,
-  Info, Loader2, Paperclip, Pencil, RefreshCw, Send, Star, Upload, XCircle,
+  AlertTriangle, Ban, Calendar, Check, CheckCircle, Clock, Copy,
+  ExternalLink, FileEdit, FileText, Info, Loader2, Paperclip, Pencil,
+  PlusCircle, RefreshCw, Send, Star, Upload, XCircle,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
-import { Profile, Request, RequestComment, RequestItem, Sector } from '../../types';
+import { Profile, Request, RequestComment, RequestItem, RequestStatus, Sector } from '../../types';
 import { AttachmentGallery, AttachmentPicker } from '../ui/Attachments';
 import { PreparedAttachment } from '../../lib/imageCompression';
 import { SinalChips } from '../ui/SinalChips';
@@ -30,8 +31,10 @@ import { buscarMateriais, resumoSinais, type SinalChip } from '../../lib/materia
 import { exportCompraPdf } from '../../lib/pdfExport/exportCompraPdf';
 import { useToast } from '../ui/Toast';
 import { formatDateBR, formatDateTimeBR } from '../../lib/format';
+import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
-  avisoEdicao, podeEditar, rotuloCriticidade, rotuloStatus, rotuloTipo,
+  avisoEdicao, classificarEventoHistorico, podeAlterarDecisao, podeCancelar, podeEditar,
+  rotuloCriticidade, rotuloStatus, rotuloTipo,
 } from '../../lib/solicitacoes';
 import {
   Pendencia, ehOperador, podeAprovar, podeVerNotaInterna,
@@ -140,6 +143,18 @@ export default function RequestDetailPanel({
   const [sinais, setSinais] = useState<Record<string, SinalChip[]>>({});
   const [carregandoSinais, setCarregandoSinais] = useState(false);
 
+  // Estados dos modais de decisao e cancelamento
+  const [modalDecisaoAberta, setModalDecisaoAberta] = useState(false);
+  const [novaDecisaoStatus, setNovaDecisaoStatus] = useState<RequestStatus>('aprovada');
+  const [novaDecisaoJustificativa, setNovaDecisaoJustificativa] = useState('');
+  const [salvandoDecisao, setSalvandoDecisao] = useState(false);
+  const [erroModalDecisao, setErroModalDecisao] = useState('');
+
+  const [modalCancelarAberta, setModalCancelarAberta] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [salvandoCancelamento, setSalvandoCancelamento] = useState(false);
+  const [erroModalCancelar, setErroModalCancelar] = useState('');
+
   // Toda troca de solicitação zera os rascunhos da tela: uma resposta digitada
   // para a #300 não pode reaparecer no formulário da #301.
   useEffect(() => {
@@ -152,6 +167,12 @@ export default function RequestDetailPanel({
     setNotaComentario('');
     setAnexosPendentes([]);
     setSinais({});
+    setModalDecisaoAberta(false);
+    setModalCancelarAberta(false);
+    setNovaDecisaoJustificativa('');
+    setMotivoCancelamento('');
+    setErroModalDecisao('');
+    setErroModalCancelar('');
 
     // Quem abre uma solicitação que está esperando uma resposta dele cai
     // direto na conversa: era o clique a mais que todo mundo dava.
@@ -162,6 +183,16 @@ export default function RequestDetailPanel({
   const itens = localDb.getRequestItems(request.id);
   const historico = [...localDb.getRequestHistory(request.id)]
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+  const ultimaDecisaoHistorico = useMemo(() => {
+    return historico.find(h =>
+      h.to_status === 'aprovada' ||
+      h.to_status === 'em_revisao' ||
+      h.to_status === 'rejeitada' ||
+      h.to_status === 'cancelada' ||
+      (h.comment && (h.comment.startsWith('[Decisão alterada') || h.comment.startsWith('[Decisao alterada')))
+    );
+  }, [historico]);
 
   const podeLerInterna = podeVerNotaInterna(user);
   const comentarios = localDb.getRequestComments(request.id)
@@ -224,16 +255,22 @@ export default function RequestDetailPanel({
     onChanged();
   };
 
-  const decidir = async (acao: 'aprovar' | 'rejeitar' | 'revisar') => {
+  const decidir = async (acao: 'aprovar' | 'rejeitar' | 'revisar' | 'cancelar') => {
     setErroDecisao('');
     if (acao !== 'aprovar' && !parecer.trim()) {
-      setErroDecisao('A justificativa é obrigatória para devolver ou rejeitar.');
+      setErroDecisao('A justificativa é obrigatória para devolver, rejeitar ou cancelar.');
       return;
     }
 
-    const proximo = acao === 'aprovar' ? 'aprovada' : acao === 'rejeitar' ? 'rejeitada' : 'em_revisao';
+    const proximo: RequestStatus =
+      acao === 'aprovar' ? 'aprovada' :
+      acao === 'rejeitar' ? 'rejeitada' :
+      acao === 'revisar' ? 'em_revisao' : 'cancelada';
+
+    const textoComentario = parecer.trim() || (acao === 'aprovar' ? 'Aprovação realizada pelo gestor.' : '');
+
     setDecidindo(true);
-    const ok = await localDb.updateRequestStatus(request.id, proximo, user.id, parecer.trim());
+    const ok = await localDb.updateRequestStatus(request.id, proximo, user.id, textoComentario);
     setDecidindo(false);
 
     if (!ok) {
@@ -242,6 +279,64 @@ export default function RequestDetailPanel({
     }
     setParecer('');
     toast.success(`Solicitação #${request.number} atualizada.`);
+    onChanged();
+  };
+
+  const abrirModalDecisao = () => {
+    if (request.status === 'em_revisao' || request.status === 'rejeitada' || request.status === 'cancelada') {
+      setNovaDecisaoStatus('aprovada');
+    } else if (request.status === 'aprovada') {
+      setNovaDecisaoStatus('em_revisao');
+    } else {
+      setNovaDecisaoStatus('aprovada');
+    }
+    setNovaDecisaoJustificativa('');
+    setErroModalDecisao('');
+    setModalDecisaoAberta(true);
+  };
+
+  const salvarAlteracaoDecisao = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErroModalDecisao('');
+    if (!novaDecisaoJustificativa.trim()) {
+      setErroModalDecisao('A justificativa da alteração da decisão é obrigatória.');
+      return;
+    }
+    setSalvandoDecisao(true);
+    const ok = await localDb.updateApproverDecision(
+      request.id,
+      novaDecisaoStatus,
+      user.id,
+      novaDecisaoJustificativa.trim()
+    );
+    setSalvandoDecisao(false);
+    if (!ok) {
+      setErroModalDecisao('Não foi possível salvar a nova decisão. Verifique suas permissões.');
+      return;
+    }
+    toast.success(`Decisão da solicitação #${request.number} alterada para ${rotuloStatus({ ...request, status: novaDecisaoStatus })}.`);
+    setModalDecisaoAberta(false);
+    setNovaDecisaoJustificativa('');
+    onChanged();
+  };
+
+  const confirmarCancelamento = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErroModalCancelar('');
+    if (!motivoCancelamento.trim()) {
+      setErroModalCancelar('O motivo do cancelamento é obrigatório.');
+      return;
+    }
+    setSalvandoCancelamento(true);
+    const ok = await localDb.cancelRequest(request.id, user.id, motivoCancelamento.trim());
+    setSalvandoCancelamento(false);
+    if (!ok) {
+      setErroModalCancelar('Não foi possível cancelar a solicitação.');
+      return;
+    }
+    toast.success(`Solicitação #${request.number} cancelada.`);
+    setModalCancelarAberta(false);
+    setMotivoCancelamento('');
     onChanged();
   };
 
@@ -384,6 +479,28 @@ export default function RequestDetailPanel({
             </BotaoSecundario>
           )}
 
+          {podeAlterarDecisao(request, user) && request.status !== 'pendente' && (
+            <BotaoSecundario
+              onClick={abrirModalDecisao}
+              title="Alterar decisão tomada pelo aprovador"
+            >
+              <FileEdit className="h-4 w-4" /> Alterar decisão
+            </BotaoSecundario>
+          )}
+
+          {podeCancelar(request, user) && (
+            <BotaoSecundario
+              onClick={() => {
+                setMotivoCancelamento('');
+                setErroModalCancelar('');
+                setModalCancelarAberta(true);
+              }}
+              title="Cancelar esta solicitação"
+            >
+              <Ban className="h-4 w-4 text-rose-500" /> Cancelar
+            </BotaoSecundario>
+          )}
+
           {request.type === 'compra' && (
             <BotaoSecundario onClick={exportarPdf} disabled={exportandoPdf}>
               <FileText className="h-4 w-4" /> {exportandoPdf ? 'Gerando…' : 'PDF'}
@@ -423,7 +540,7 @@ export default function RequestDetailPanel({
             rows={3}
             value={parecer}
             onChange={e => setParecer(e.target.value)}
-            placeholder="Parecer da aprovação, ou o motivo da devolução/rejeição (obrigatório nesses dois casos)."
+            placeholder="Parecer da aprovação, ou o motivo da devolução, rejeição ou cancelamento."
             className="w-full rounded-lg border p-2.5 text-sm focus:outline-2 focus:outline-offset-1"
             style={campo}
           />
@@ -431,26 +548,70 @@ export default function RequestDetailPanel({
           <div className="flex flex-wrap gap-2">
             <button
               type="button" onClick={() => decidir('aprovar')} disabled={decidindo}
-              className="inline-flex flex-1 min-w-[130px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white cursor-pointer disabled:opacity-50"
+              className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold text-white cursor-pointer disabled:opacity-50"
               style={{ background: 'var(--brand)' }}
             >
               <CheckCircle className="h-4 w-4" /> Aprovar
             </button>
             <button
               type="button" onClick={() => decidir('revisar')} disabled={decidindo}
-              className="inline-flex flex-1 min-w-[130px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-bold cursor-pointer disabled:opacity-50"
+              className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-bold cursor-pointer disabled:opacity-50"
               style={{ borderColor: 'var(--status-warning)', color: 'var(--status-warning)' }}
             >
               <RefreshCw className="h-4 w-4" /> Devolver
             </button>
             <button
               type="button" onClick={() => decidir('rejeitar')} disabled={decidindo}
-              className="inline-flex flex-1 min-w-[130px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-bold cursor-pointer disabled:opacity-50"
+              className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-bold cursor-pointer disabled:opacity-50"
               style={{ borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}
             >
               <XCircle className="h-4 w-4" /> Rejeitar
             </button>
+            <button
+              type="button" onClick={() => decidir('cancelar')} disabled={decidindo}
+              className="inline-flex flex-1 min-w-[120px] items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-bold cursor-pointer disabled:opacity-50"
+              style={{ borderColor: 'var(--hairline-strong)', color: 'var(--ink-muted)' }}
+            >
+              <Ban className="h-4 w-4" /> Cancelar
+            </button>
           </div>
+        </section>
+      )}
+
+      {podeAlterarDecisao(request, user) && request.type === 'compra' && request.status !== 'pendente' && (
+        <section className="space-y-3 rounded-2xl border p-4" style={cartao}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-0.5">
+              <Titulo>Decisão do Aprovador</Titulo>
+              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                Decisão atual: <strong style={{ color: 'var(--ink-primary)' }}>{rotuloStatus(request)}</strong>
+                {ultimaDecisaoHistorico?.user_name && ` · por ${ultimaDecisaoHistorico.user_name}`}
+                {ultimaDecisaoHistorico?.created_at && ` em ${formatDateTimeBR(ultimaDecisaoHistorico.created_at)}`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={abrirModalDecisao}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white cursor-pointer transition-opacity hover:opacity-90"
+              style={{ background: 'var(--brand)' }}
+            >
+              <FileEdit className="h-3.5 w-3.5" /> Alterar decisão
+            </button>
+          </div>
+
+          {ultimaDecisaoHistorico?.comment && (
+            <div
+              className="rounded-xl p-2.5 text-xs border"
+              style={{
+                background: 'var(--surface-sunken)',
+                borderColor: 'var(--hairline)',
+                color: 'var(--ink-secondary)',
+              }}
+            >
+              <span className="font-semibold" style={{ color: 'var(--ink-muted)' }}>Último parecer registrado: </span>
+              <span className="italic">&ldquo;{ultimaDecisaoHistorico.comment.replace(/^\[Decisão alterada\]\s*/i, '')}&rdquo;</span>
+            </div>
+          )}
         </section>
       )}
 
@@ -703,28 +864,262 @@ export default function RequestDetailPanel({
               Nenhuma movimentação registrada.
             </p>
           ) : (
-            <ol className="space-y-3">
-              {historico.map(h => (
-                <li key={h.id} className="border-l-2 pl-3 text-sm" style={{ borderColor: 'var(--hairline-strong)' }}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-                    <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>
-                      {rotuloStatus({ ...request, status: h.to_status })}
+            <ol className="space-y-3.5 relative before:absolute before:inset-y-0 before:left-3.5 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
+              {historico.map(h => {
+                const info = classificarEventoHistorico(h.from_status, h.to_status, h.comment);
+                const houveTransicao = h.from_status && h.to_status && h.from_status !== h.to_status;
+
+                return (
+                  <li key={h.id} className="relative flex items-start gap-3 text-sm">
+                    {/* Marcador circular com icone */}
+                    <span
+                      className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border shadow-xs"
+                      style={{
+                        background: 'var(--surface-card)',
+                        borderColor: 'var(--hairline-strong)',
+                      }}
+                    >
+                      <IconeEventoHistorico tipo={info.tipo} />
                     </span>
-                    <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                      {formatDateTimeBR(h.created_at)}
-                    </span>
-                  </div>
-                  <p className="mt-0.5" style={{ color: 'var(--ink-muted)' }}>por {h.user_name || 'Sistema'}</p>
-                  {h.comment && (
-                    <p className="mt-1 rounded-lg p-2 italic" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}>
-                      &ldquo;{h.comment}&rdquo;
-                    </p>
-                  )}
-                </li>
-              ))}
+
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <BadgeEventoHistorico cor={info.cor} texto={info.titulo} />
+                          {houveTransicao && (
+                            <span className="text-[11px] font-mono" style={{ color: 'var(--ink-muted)' }}>
+                              {rotuloStatus({ ...request, status: h.from_status })} ➔ {rotuloStatus({ ...request, status: h.to_status })}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs shrink-0" style={{ color: 'var(--ink-muted)' }}>
+                          {formatDateTimeBR(h.created_at)}
+                        </span>
+                      </div>
+
+                      <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                        por <strong style={{ color: 'var(--ink-secondary)' }}>{h.user_name || 'Sistema'}</strong>
+                      </p>
+
+                      {h.comment && (
+                        <div
+                          className="mt-1.5 rounded-xl border p-2.5 text-xs leading-relaxed"
+                          style={{
+                            background: 'var(--surface-sunken)',
+                            borderColor: 'var(--hairline)',
+                            color: 'var(--ink-secondary)',
+                          }}
+                        >
+                          <p className="whitespace-pre-wrap italic">
+                            &ldquo;{h.comment.replace(/^\[Decisão alterada\]\s*/i, '')}&rdquo;
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           )}
         </section>
+      )}
+
+      {/* Modal para o aprovador alterar a decisao */}
+      {modalDecisaoAberta && (
+        <Modal
+          onClose={() => !salvandoDecisao && setModalDecisaoAberta(false)}
+          maxWidth="max-w-lg"
+          ariaLabel="Alterar Decisão do Aprovador"
+          zIndexClassName="z-[110]"
+        >
+          <ModalHeader onClose={() => !salvandoDecisao && setModalDecisaoAberta(false)}>
+            <div className="flex items-center gap-2">
+              <FileEdit className="h-5 w-5" style={{ color: 'var(--brand)' }} />
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
+                  Alterar Decisão — #{request.number}
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  A alteração será registrada no histórico com seu parecer e data/hora.
+                </p>
+              </div>
+            </div>
+          </ModalHeader>
+
+          <form onSubmit={salvarAlteracaoDecisao}>
+            <ModalBody>
+              <div className="space-y-3.5">
+                {erroModalDecisao && (
+                  <p
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold"
+                    style={{ background: 'rgba(208,59,59,0.1)', color: 'var(--status-critical)' }}
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" /> {erroModalDecisao}
+                  </p>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Nova Decisão:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      { key: 'aprovada', label: 'Aprovar', desc: 'Aprova e envia para suprimentos', activeBg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500' },
+                      { key: 'em_revisao', label: 'Devolver', desc: 'Devolve para revisão do solicitante', activeBg: 'bg-amber-50 dark:bg-amber-950/40 border-amber-500' },
+                      { key: 'rejeitada', label: 'Rejeitar', desc: 'Rejeita a compra definitivamente', activeBg: 'bg-rose-50 dark:bg-rose-950/40 border-rose-500' },
+                      { key: 'cancelada', label: 'Cancelar', desc: 'Cancela a solicitação', activeBg: 'bg-rose-50 dark:bg-rose-950/40 border-rose-500' },
+                      { key: 'pendente', label: 'Aguardando aprovação', desc: 'Retorna para pendente', activeBg: 'bg-sky-50 dark:bg-sky-950/40 border-sky-500' },
+                    ].map(opt => {
+                      const selecionado = novaDecisaoStatus === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => setNovaDecisaoStatus(opt.key as RequestStatus)}
+                          className={`flex flex-col text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                            selecionado ? opt.activeBg + ' ring-1' : 'border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                              {opt.label}
+                            </span>
+                            {selecionado && <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                          </div>
+                          <span className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                            {opt.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Justificativa / Parecer da Alteração <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={novaDecisaoJustificativa}
+                    onChange={e => setNovaDecisaoJustificativa(e.target.value)}
+                    placeholder="Descreva o motivo pelo qual a decisão anterior está sendo alterada..."
+                    className="w-full rounded-lg border p-2.5 text-sm focus:outline-2 focus:outline-offset-1"
+                    style={campo}
+                    required
+                  />
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--ink-muted)' }}>
+                    Obrigatório para registrar a auditoria no histórico da solicitação.
+                  </p>
+                </div>
+              </div>
+            </ModalBody>
+
+            <ModalFooter>
+              <div className="flex items-center justify-end gap-2 w-full">
+                <button
+                  type="button"
+                  disabled={salvandoDecisao}
+                  onClick={() => setModalDecisaoAberta(false)}
+                  className="rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer disabled:opacity-50"
+                  style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoDecisao || !novaDecisaoJustificativa.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
+                  style={{ background: 'var(--brand)' }}
+                >
+                  {salvandoDecisao ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  Salvar nova decisão
+                </button>
+              </div>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal para cancelamento de solicitacao */}
+      {modalCancelarAberta && (
+        <Modal
+          onClose={() => !salvandoCancelamento && setModalCancelarAberta(false)}
+          maxWidth="max-w-md"
+          ariaLabel="Cancelar Solicitação"
+          zIndexClassName="z-[110]"
+        >
+          <ModalHeader onClose={() => !salvandoCancelamento && setModalCancelarAberta(false)}>
+            <div className="flex items-center gap-2">
+              <Ban className="h-5 w-5 text-rose-500" />
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
+                  Cancelar Solicitação — #{request.number}
+                </h3>
+                <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  Esta ação interrompe o andamento da solicitação.
+                </p>
+              </div>
+            </div>
+          </ModalHeader>
+
+          <form onSubmit={confirmarCancelamento}>
+            <ModalBody>
+              <div className="space-y-3.5">
+                {erroModalCancelar && (
+                  <p
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold"
+                    style={{ background: 'rgba(208,59,59,0.1)', color: 'var(--status-critical)' }}
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" /> {erroModalCancelar}
+                  </p>
+                )}
+
+                <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
+                  Tem certeza de que deseja cancelar esta solicitação? Uma notificação será enviada aos envolvidos e o motivo ficará registrado no histórico.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Motivo do Cancelamento <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={motivoCancelamento}
+                    onChange={e => setMotivoCancelamento(e.target.value)}
+                    placeholder="Informe detalhadamente o motivo do cancelamento..."
+                    className="w-full rounded-lg border p-2.5 text-sm focus:outline-2 focus:outline-offset-1"
+                    style={campo}
+                    required
+                  />
+                </div>
+              </div>
+            </ModalBody>
+
+            <ModalFooter>
+              <div className="flex items-center justify-end gap-2 w-full">
+                <button
+                  type="button"
+                  disabled={salvandoCancelamento}
+                  onClick={() => setModalCancelarAberta(false)}
+                  className="rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer disabled:opacity-50"
+                  style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                >
+                  Voltar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoCancelamento || !motivoCancelamento.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
+                  style={{ background: 'var(--status-critical)' }}
+                >
+                  {salvandoCancelamento ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                  Confirmar cancelamento
+                </button>
+              </div>
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
     </div>
   );
@@ -770,6 +1165,46 @@ function Selo({ texto, tom }: { texto: string; tom: 'neutro' | 'alerta' }) {
           ? { background: 'rgba(208,59,59,0.12)', color: 'var(--status-critical)' }
           : { background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }
       }
+    >
+      {texto}
+    </span>
+  );
+}
+
+function IconeEventoHistorico({ tipo }: { tipo: string }) {
+  switch (tipo) {
+    case 'aprovacao':
+      return <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />;
+    case 'devolucao':
+      return <RefreshCw className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />;
+    case 'cancelamento':
+      return <Ban className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />;
+    case 'rejeicao':
+      return <XCircle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0" />;
+    case 'edicao_decisao':
+      return <FileEdit className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />;
+    case 'edicao_solicitante':
+      return <Pencil className="h-4 w-4 text-cyan-600 dark:text-cyan-400 shrink-0" />;
+    case 'abertura':
+      return <PlusCircle className="h-4 w-4 text-slate-500 dark:text-slate-400 shrink-0" />;
+    default:
+      return <Clock className="h-4 w-4 text-slate-400 shrink-0" />;
+  }
+}
+
+function BadgeEventoHistorico({ cor, texto }: { cor: string; texto: string }) {
+  const estilos: Record<string, { bg: string; text: string }> = {
+    verde: { bg: 'rgba(16,185,129,0.12)', text: '#059669' },
+    laranja: { bg: 'rgba(245,158,11,0.12)', text: '#d97706' },
+    vermelho: { bg: 'rgba(225,29,72,0.12)', text: '#e11d48' },
+    azul: { bg: 'rgba(37,99,235,0.12)', text: '#2563eb' },
+    neutro: { bg: 'var(--surface-sunken)', text: 'var(--ink-secondary)' },
+  };
+  const estilo = estilos[cor] || estilos.neutro;
+  return (
+    <span
+      className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold"
+      style={{ background: estilo.bg, color: estilo.text }}
     >
       {texto}
     </span>

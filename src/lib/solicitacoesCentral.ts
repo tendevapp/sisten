@@ -22,7 +22,7 @@
 import { Profile, Request, RequestComment, RequestStatusHistory } from '../types';
 import { localDb } from '../db/localDb';
 import { canAccessPage } from './pages';
-import { estaEmAberto, solicitacoesVisiveis } from './solicitacoes';
+import { estaEmAberto, podeAprovar, solicitacoesVisiveis } from './solicitacoes';
 
 /* Escopos ----------------------------------------------------------------- */
 
@@ -101,14 +101,7 @@ export const escopoPadrao = (user: Profile): Escopo => escoposDisponiveis(user)[
 
 /* Visibilidade ------------------------------------------------------------ */
 
-export function podeAprovar(r: Request, user: Profile): boolean {
-  if (r.type !== 'compra') return false;
-  return (
-    user.roles.includes('admin') ||
-    user.roles.includes('coordenador_suprimentos') ||
-    !!user.aprovador_setores?.includes(r.solicitante_sector_id)
-  );
-}
+export { podeAprovar };
 
 /** Quem opera a fila daquele tipo de solicitação — quem a atende, não quem a abriu. */
 export function ehOperador(r: Request, user: Profile): boolean {

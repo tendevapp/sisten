@@ -40,6 +40,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-03',
+    resumo: 'Solicitações (`RequestDetailPanel.tsx`, `solicitacoes.ts`, `localDb.ts`): 1. Registrado log completo de Aprovação, Devolução e Cancelamento no histórico de status (`core_solicitacoes_historico_status` e auditoria no Supabase); 2. Opção para o aprovador editar/alterar sua decisão a qualquer momento através do botão "Alterar decisão" e card de decisão vigente, com justificativa obrigatória e registro de auditoria no histórico; 3. Ação de Cancelamento de solicitação com exigência de motivo para solicitante e aprovador/admin; 4. Aba "Histórico" enriquecida com marcadores visuais, badges coloridos, ícones representativos por tipo de ação e destaque para pareceres e justificativas.',
+  },
+  {
+    data: '2026-09-03',
     resumo: 'Formulários > RH / ASE Hora Extra (`RhAseHoraExtra.tsx`, `rhApi.ts`): Implementados controles de preenchimento em lote no cabeçalho da lista de colaboradores (desktop e mobile). Permite marcar/desmarcar Transporte e Refeição para todos com 1 clique, e definir horários de Entrada, Saída e Intervalo preenchendo todos os colaboradores simultaneamente com recálculo automático de horas.',
   },
   {

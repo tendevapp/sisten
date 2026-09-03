@@ -3230,6 +3230,146 @@ class LocalDatabase {
   }
 
   /**
+   * Permite que o aprovador altere uma decisao tomada previamente ou redecida a compra,
+   * registrando o log completo com justificativa/parecer no historico de status.
+   */
+  public async updateApproverDecision(
+    reqId: string,
+    newStatus: RequestStatus,
+    userId: string,
+    justificativa: string
+  ): Promise<boolean> {
+    const user = this.getCurrentUser() || this.getProfiles().find(u => u.id === userId);
+    if (!user) return false;
+
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return false;
+
+    const request = requests[idx];
+    const fromStatus = request.status;
+    const prevUpdatedAt = request.updated_at;
+
+    request.status = newStatus;
+    request.updated_at = new Date().toISOString();
+
+    requests[idx] = request;
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(request);
+    if (!published) {
+      const revertRequests = this.getRequests();
+      const revertIdx = revertRequests.findIndex(r => r.id === reqId);
+      if (revertIdx !== -1) {
+        revertRequests[revertIdx].status = fromStatus;
+        revertRequests[revertIdx].updated_at = prevUpdatedAt;
+        this.setStorageItem(this.requestsKey, revertRequests);
+      }
+      return false;
+    }
+
+    const rotuloStatusFn = (s: RequestStatus): string => {
+      const rotulos: Record<string, string> = {
+        pendente: 'Aguardando aprovação',
+        aprovada: 'Aprovada',
+        em_revisao: 'Em revisão',
+        rejeitada: 'Rejeitada',
+        cancelada: 'Cancelada',
+      };
+      return rotulos[s] || s;
+    };
+
+    const rotuloAnterior = rotuloStatusFn(fromStatus);
+    const rotuloNovo = rotuloStatusFn(newStatus);
+    const motivoTexto = justificativa.trim();
+    const comentario = `[Decisão alterada] De "${rotuloAnterior}" para "${rotuloNovo}". ${motivoTexto ? `Justificativa: ${motivoTexto}` : ''}`.trim();
+
+    await this.logStatusChange(reqId, fromStatus, newStatus, user.id, user.name, comentario);
+    this.logActivity(
+      user.id,
+      'Solicitações',
+      'Edição de Decisão',
+      `Alterou a decisão da solicitação #${request.number} de ${rotuloAnterior} para ${rotuloNovo}. ${motivoTexto ? `Motivo: ${motivoTexto}` : ''}`.trim()
+    );
+
+    this.createNotification(
+      request.solicitante_id,
+      `Decisão Alterada: #${request.number}`,
+      `O aprovador ${user.name} alterou a decisão para: ${rotuloNovo}.${motivoTexto ? ` Motivo: ${motivoTexto}` : ''}`,
+      newStatus === 'rejeitada' || newStatus === 'cancelada' ? 'alert' : (newStatus === 'aprovada' ? 'success' : 'info'),
+      request.id,
+      request.number
+    );
+
+    this.notifyListeners();
+    return true;
+  }
+
+  /**
+   * Cancela a solicitacao (pelo solicitante ou aprovador/admin), exigindo o motivo
+   * e registrando o log completo no historico.
+   */
+  public async cancelRequest(
+    reqId: string,
+    userId: string,
+    motivo: string
+  ): Promise<boolean> {
+    const user = this.getCurrentUser() || this.getProfiles().find(u => u.id === userId);
+    if (!user) return false;
+
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return false;
+
+    const request = requests[idx];
+    const fromStatus = request.status;
+    const prevUpdatedAt = request.updated_at;
+
+    request.status = 'cancelada';
+    request.updated_at = new Date().toISOString();
+
+    requests[idx] = request;
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(request);
+    if (!published) {
+      const revertRequests = this.getRequests();
+      const revertIdx = revertRequests.findIndex(r => r.id === reqId);
+      if (revertIdx !== -1) {
+        revertRequests[revertIdx].status = fromStatus;
+        revertRequests[revertIdx].updated_at = prevUpdatedAt;
+        this.setStorageItem(this.requestsKey, revertRequests);
+      }
+      return false;
+    }
+
+    const motivoTexto = motivo.trim();
+    const comentario = `Solicitação cancelada. Motivo: ${motivoTexto}`;
+
+    await this.logStatusChange(reqId, fromStatus, 'cancelada', user.id, user.name, comentario);
+    this.logActivity(
+      user.id,
+      'Solicitações',
+      'Cancelamento',
+      `Cancelou a solicitação #${request.number}. Motivo: ${motivoTexto}`
+    );
+
+    if (request.solicitante_id !== user.id) {
+      this.createNotification(
+        request.solicitante_id,
+        `Solicitação Cancelada: #${request.number}`,
+        `Sua solicitação foi cancelada por ${user.name}. Motivo: ${motivoTexto}`,
+        'alert',
+        request.id,
+        request.number
+      );
+    }
+
+    this.notifyListeners();
+    return true;
+  }
+
+  /**
    * Publica uma linha filha de solicitação (histórico ou comentário).
    *
    * Nenhuma das duas tabelas tem FK, então a linha sobe mesmo que a
