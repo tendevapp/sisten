@@ -64,85 +64,24 @@ const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'))
 const FacilitiesMateriais = lazy(() => import('./views/facilities/FacilitiesMateriais'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
-// Telas que mantêm trabalho em andamento do usuário (formulários, filtros, buscas,
-// edições inline, rascunhos, textos sendo digitados). Elas NÃO devem ser remontadas
-// quando a sincronização em segundo plano chega, pois isso apagaria o estado local.
-// As demais (Início, Relatórios) são de leitura e podem remontar para
-// refletir os dados recém-sincronizados.
-const STATE_PRESERVING_PATHS = new Set<string>([
-  '/solicitacoes/nova',
-  // Mantém abas, filtros, seleção e a resposta sendo digitada — remontar a
-  // cada sincronização jogaria fora o recorte e o texto do usuário.
-  '/solicitacoes',
-  '/solicitacoes/minhas',
-  '/solicitacoes/todas',
-  '/solicitacoes/aprovacoes',
-  '/materiais/busca',
-  // A página de Gestão de Suprimentos passou a manter filtros e aba ativa —
-  // remontá-la a cada sincronização em segundo plano jogaria fora o recorte
-  // que o usuário acabou de montar.
-  '/suprimentos/dashboards',
-  '/suprimentos/demandas',
-  '/suprimentos/compras',
-  // Mantém filtros, linhas expandidas e o que estiver sendo digitado
-  // (transportadora, faturamento, previsão) — igual ao motivo acima.
-  '/suprimentos/diligenciamento',
-  // Mantém a fila de importação (arquivos em memória, resultados já
-  // convertidos), o markdown colado, a grade em revisão e o processo aberto —
-  // remontar a cada sincronização em segundo plano jogaria fora a extração.
-  '/suprimentos/cotacoes',
-  '/suprimentos/historico',
-  '/suprimentos/historico/dashboards',
-  '/suprimentos/fornecedores',
-  '/suprimentos/contratos',
-  '/financeiro/contas-pagar',
-  '/financeiro/contas-pagar/analise',
-  '/suprimentos/cadastros-sap',
-  '/helpdesk',
-  '/helpdesk/relatorios',
-  '/perfil',
-  '/admin/usuarios',
-  '/admin/cadastros',
-  '/admin/setores',
-  '/admin/permissoes',
-  '/admin/importacao-materiais',
-  '/admin/helpdesk',
-  '/admin/uso',
-  '/admin/feedback',
-  '/admin/diretrizes',
-  '/suprimentos/importar',
-  '/suprimentos/importar/log',
-  '/suprimentos/grupos-comprador',
-  '/rastreio',
-  '/almoxarifado/estoque',
-  '/almoxarifado/movimentacoes',
-  '/almoxarifado/movimentacoes/giro',
-  '/almoxarifado/movimentacoes/idade',
-  '/almoxarifado/movimentacoes/urgencia',
-  '/almoxarifado/movimentacoes/minimo',
-  // Mantém material selecionado, filtros e ordenação da lista — remontar a
-  // cada sincronização em segundo plano jogaria fora o recorte montado.
-  '/almoxarifado/consumo-semanal',
-  '/almoxarifado/dashboards',
-  // A página Sobre é só leitura, mas remontá-la a cada sincronização em segundo
-  // plano reiniciaria as animações de entrada no meio da leitura.
-  '/sobre',
-  '/formularios',
-  // Formulário longo, preenchido ao longo do dia: remontar a cada sync em
-  // segundo plano jogaria fora os campos digitados e ainda não salvos.
-  '/formularios/logistica-expedicao',
-  '/formularios/rh-ase-hora-extra',
-  '/formularios/portaria',
-  '/formularios/portaria-equipamentos',
-  '/formularios/portaria-transportes',
-  '/formularios/portaria-carretas',
-  '/formularios/portaria-relatorio',
-  '/formularios/portaria-briefing',
-  '/admin/importacao-rh',
-  // Facilities: a tela de rotas mantém filtros, seleção múltipla e edição
-  // inline; remontar a cada sync em segundo plano jogaria fora esse recorte.
+// Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
+// estado local dela: formulário preenchido, filtros, busca, seleção, edição
+// inline, texto sendo digitado. Como o sync dispara sozinho (polling de 5 min,
+// volta de foco à aba e cada gravação que notifica o localDb), a regra é
+// preservar por padrão — a lista abaixo é a exceção, não o contrário.
+//
+// Só entram aqui telas de leitura, sem nada que o usuário possa perder: o
+// Início, os Relatórios e os hubs de módulo. Elas carregam dados no mount, então
+// remontar é o que faz os números recém-sincronizados aparecerem.
+const REMOUNT_ON_SYNC_PATHS = new Set<string>([
+  '/',
+  '/relatorios',
+  '/suprimentos',
+  '/almoxarifado',
+  '/financeiro',
+  '/admin',
   '/facilities',
-  '/facilities/rotas',
+  '/helpdesk/inicio',
 ]);
 
 /**
@@ -983,17 +922,15 @@ export default function App() {
           <ErrorBoundary key={currentPath}>
             <Suspense fallback={<ViewLoadingFallback />}>
               {/*
-                A chave inclui dataVersion para forçar remontagem quando a sincronização
-                em segundo plano traz dados novos — útil para telas de leitura que carregam
-                dados apenas no mount (Início, Relatórios, Dashboards).
+                Chave estável (só o path) por padrão: remontar destrói todo o estado
+                local da tela — formulário, filtros, busca, edição inline, rascunho,
+                texto sendo digitado — e o sync chega sozinho, no meio do trabalho.
 
-                PORÉM, remontar destrói todo o estado local da tela (formulários, filtros,
-                buscas, edições inline, rascunhos, textos sendo digitados). Em telas onde o
-                usuário está trabalhando, isso apagaria o que ele faz quando o sync chega.
-                Por isso essas telas usam uma chave estável (só o path), sem dataVersion.
+                Só as telas de leitura de REMOUNT_ON_SYNC_PATHS incluem dataVersion na
+                chave, para reexibir os números que acabaram de ser sincronizados.
               */}
               <div
-                key={STATE_PRESERVING_PATHS.has(currentPath) ? currentPath : `${currentPath}:${dataVersion}`}
+                key={REMOUNT_ON_SYNC_PATHS.has(currentPath) ? `${currentPath}:${dataVersion}` : currentPath}
                 className={FULL_BLEED_PATHS.has(currentPath) ? 'h-full' : undefined}
               >
                 {renderActiveView()}

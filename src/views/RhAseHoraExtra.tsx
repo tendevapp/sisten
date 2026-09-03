@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
   AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
-  Calendar, User, Filter, Users, Eye,
+  Calendar, User, Filter, Users, Eye, Sparkles,
 } from 'lucide-react';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
@@ -37,6 +37,12 @@ import {
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 import { canViewAllAse } from '../lib/pages';
 import { podeEditarFormulario } from '../lib/permissoesFormularios';
+import {
+  MostrarExcluidosToggle,
+  BadgeExcluido,
+  RestaurarButton,
+  classeLinhaExcluida,
+} from '../components/ui/ExcluidosControls';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -120,7 +126,7 @@ Protocolo: ${solicitacao.numero_protocolo}
 Status: ${solicitacao.status}
 Setor: ${setorNome}
 Turno: ${turnoNome}
-Data de Execução: ${dataFormatada} (${diaSemanaStr})
+Data do Expediente: ${dataFormatada} (${diaSemanaStr})
 Solicitante: ${solicitanteNome}
 Total de Colaboradores: ${solicitacao.itens.length}
 Total Geral de Horas: ${totalHoras.toFixed(2)}h
@@ -179,6 +185,7 @@ const STATUS_CLASSES: Record<string, string> = {
 function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
   const toast = useToast();
   const podeVerTodas = canViewAllAse(user);
+  const isAdmin = Boolean(user.roles?.includes('admin'));
 
   const [itens, setItens] = useState<AseHoraExtraCompleta[] | null>(null);
   const [criando, setCriando] = useState(false);
@@ -186,17 +193,45 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
   const [escopoFiltro, setEscopoFiltro] = useState<'todas' | 'minhas'>(podeVerTodas ? 'todas' : 'minhas');
   const [termoBusca, setTermoBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+  const [itemParaExcluir, setItemParaExcluir] = useState<AseHoraExtraCompleta | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   const recarregar = useCallback(async () => {
     try {
-      setItens(await api.listarSolicitacoesASE());
+      setItens(await api.listarSolicitacoesASE(mostrarExcluidos));
     } catch (e) {
       toast.error(`Falha ao carregar a lista: ${(e as Error).message}`);
       setItens([]);
     }
-  }, [toast]);
+  }, [mostrarExcluidos, toast]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
+
+  const handleConfirmarExclusao = async () => {
+    if (!itemParaExcluir) return;
+    setExcluindo(true);
+    try {
+      await api.excluirSolicitacaoASE(itemParaExcluir.id, user.id);
+      toast.success(`Solicitação ${itemParaExcluir.numero_protocolo} excluída.`);
+      setItemParaExcluir(null);
+      void recarregar();
+    } catch (e) {
+      toast.error(`Erro ao excluir: ${(e as Error).message}`);
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
+  const handleRestaurar = async (s: AseHoraExtraCompleta) => {
+    try {
+      await api.restaurarSolicitacaoASE(s.id);
+      toast.success(`Solicitação ${s.numero_protocolo} restaurada.`);
+      void recarregar();
+    } catch (e) {
+      toast.error(`Erro ao restaurar: ${(e as Error).message}`);
+    }
+  };
 
   const exportarConsolidadoPdf = async (solicitacoes: AseHoraExtraCompleta[], dataExecucao: string) => {
     setExportandoData(`pdf-${dataExecucao}`);
@@ -320,9 +355,9 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
           <button
             type="button"
             onClick={() => onNavigate('/formularios')}
-            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-violet-400 hover:bg-violet-50/50 hover:text-violet-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 cursor-pointer"
           >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
+            <ArrowLeft className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-x-1 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400" />
             <span>Voltar para Módulos de Formulários</span>
           </button>
           <div className="flex flex-wrap items-center gap-2.5">
@@ -406,6 +441,11 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                 {st === 'TODOS' ? 'Todos' : STATUS_LABEL[st]}
               </button>
             ))}
+            <MostrarExcluidosToggle
+              visivel={isAdmin}
+              checked={mostrarExcluidos}
+              onChange={setMostrarExcluidos}
+            />
           </div>
         </div>
 
@@ -542,15 +582,17 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                   const totalHoras = s.itens.reduce((acc, it) => acc + (it.total_horas || 0), 0);
                   const totalTransporte = s.itens.filter(it => it.transporte).length;
                   const totalRefeicao = s.itens.filter(it => it.refeicao).length;
+                  const podeEditar = podeEditarFormulario(user, s);
 
                   return (
-                    <button
+                    <div
                       key={s.id}
-                      type="button"
-                      onClick={() => onAbrir(s.id)}
-                      className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40"
+                      className={`group flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40 ${classeLinhaExcluida(s.excluido_em)}`}
                     >
-                      <div className="min-w-0 flex-1 space-y-1.5">
+                      <div
+                        onClick={() => onAbrir(s.id)}
+                        className="min-w-0 flex-1 space-y-1.5 cursor-pointer"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
                             {s.numero_protocolo}
@@ -558,6 +600,7 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_CLASSES[s.status]}`}>
                             {STATUS_LABEL[s.status]}
                           </span>
+                          {s.excluido_em && <BadgeExcluido em={s.excluido_em} />}
                           {podeVerTodas && s.solicitante_nome && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                               <User className="h-3 w-3" />
@@ -601,14 +644,53 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                         )}
                       </div>
 
-                      <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-slate-600" />
-                    </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {s.excluido_em ? (
+                          podeEditar && <RestaurarButton onClick={() => handleRestaurar(s)} />
+                        ) : (
+                          podeEditar && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemParaExcluir(s);
+                              }}
+                              className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                              title="Excluir ASE"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onAbrir(s.id)}
+                          className="p-1 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-slate-600 cursor-pointer"
+                          title="Abrir detalhes"
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             </section>
           ))}
         </div>
+      )}
+
+      {itemParaExcluir && (
+        <ConfirmDialog
+          titulo={`Excluir ASE ${itemParaExcluir.numero_protocolo}?`}
+          mensagem="Esta solicitação será desativada e ocultada das listagens operacionais. O registro permanecerá salvo no banco de dados com a identificação de quem o excluiu, podendo ser auditado ou restaurado por um administrador."
+          confirmarLabel="Sim, Excluir"
+          cancelarLabel="Cancelar"
+          variante="perigo"
+          confirmando={excluindo}
+          onConfirmar={handleConfirmarExclusao}
+          onCancelar={() => setItemParaExcluir(null)}
+        />
       )}
     </div>
   );
@@ -638,11 +720,84 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [processando, setProcessando] = useState(false);
 
   const [modoEdicao, setModoEdicao] = useState(false);
+  const [carregandoLote, setCarregandoLote] = useState(false);
+
+  // Estados para campos de preenchimento em lote no cabecalho dos colaboradores
+  const [loteHoraEntrada, setLoteHoraEntrada] = useState('');
+  const [loteHoraSaida, setLoteHoraSaida] = useState('');
+  const [loteIntervalo, setLoteIntervalo] = useState<number | ''>('');
+
   // Só o solicitante que criou a ASE (ou um admin) edita/envia/exclui.
   // Os demais abrem em modo consulta. A RLS (`form_pode_editar`) recusa
   // qualquer gravação de quem não é o dono.
   const podeEditar = podeEditarFormulario(user, dados);
   const somenteLeitura = !podeEditar || dados?.status === 'CANCELADO' || (dados?.status === 'ENVIADO' && !modoEdicao);
+
+  const aplicarEmLoteTodos = (patch: Partial<AseHoraExtraItem>) => {
+    setDados(d => {
+      if (!d) return d;
+      return {
+        ...d,
+        itens: api.aplicarPreenchimentoLoteItens(d.itens, patch),
+      };
+    });
+    setSujo(true);
+  };
+
+  const totalItens = dados?.itens.length || 0;
+  const todosTransp = Boolean(totalItens && dados?.itens.every(it => it.transporte));
+  const algunsTransp = Boolean(totalItens && dados?.itens.some(it => it.transporte));
+  const todosRefeicao = Boolean(totalItens && dados?.itens.every(it => it.refeicao));
+  const algunsRefeicao = Boolean(totalItens && dados?.itens.some(it => it.refeicao));
+
+  const carregarColaboradoresProducao = useCallback(async (dadosBase?: AseHoraExtraCompleta) => {
+    const alvo = dadosBase || dados;
+    if (!alvo || somenteLeitura) return;
+    const colabsProducao = pessoas.filter(p => p.ativo && api.isCargoProducao(p.cargo));
+    const existentesPessoaIds = new Set(alvo.itens.map(it => it.pessoa_id).filter(Boolean));
+    const existentesRegistros = new Set(alvo.itens.map(it => it.registro).filter(Boolean));
+    const faltantes = colabsProducao.filter(
+      p => !existentesPessoaIds.has(p.id) && !existentesRegistros.has(p.registro)
+    );
+
+    if (faltantes.length === 0) {
+      toast.info('Todos os colaboradores da Produção já foram adicionados.');
+      return;
+    }
+
+    setCarregandoLote(true);
+    try {
+      let percentualSugerido: number | null = null;
+      try {
+        percentualSugerido = await api.buscarPercentualHE(alvo.data_execucao);
+      } catch {
+        // Sem calendario cadastrado para a data: segue sem sugestao
+      }
+
+      const novosItensPayload = faltantes.map(p => ({
+        pessoa_id: p.id,
+        registro: p.registro,
+        nome: p.nome,
+        cargo: p.cargo,
+        transporte: false,
+        refeicao: false,
+        hora_entrada: '',
+        hora_saida: '',
+        intervalo_minutos: 0,
+        percentual_he: percentualSugerido,
+        total_horas: 0,
+        observacao: null,
+      }));
+
+      const novosItens = await api.adicionarItensLoteASE(alvo.id, novosItensPayload);
+      setDados(d => (d ? { ...d, itens: [...d.itens, ...novosItens] } : d));
+      toast.success(`${novosItens.length} colaboradores da Produção adicionados à ASE.`);
+    } catch (e) {
+      toast.error(`Falha ao adicionar colaboradores da Produção: ${(e as Error).message}`);
+    } finally {
+      setCarregandoLote(false);
+    }
+  }, [dados, pessoas, somenteLeitura, toast]);
 
   useEffect(() => {
     let ativo = true;
@@ -802,16 +957,31 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   };
 
+  const removerItem = async (it: AseHoraExtraItem) => {
+    const temHorario = Boolean(it.hora_entrada || it.hora_saida || (it.total_horas && it.total_horas > 0));
+    if (temHorario) {
+      setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome });
+      return;
+    }
+    // Remove direto sem modal para agilizar a triagem operacional
+    try {
+      await api.removerItemASE(it.id, user.id);
+      setDados(d => (d ? { ...d, itens: d.itens.filter(item => item.id !== it.id) } : d));
+    } catch (e) {
+      toast.error(`Falha ao excluir colaborador: ${(e as Error).message}`);
+    }
+  };
+
   const confirmarAcao = async () => {
     if (!confirmacao || !dados) return;
     setProcessando(true);
     try {
       if (confirmacao.tipo === 'remover-item') {
-        await api.removerItemASE(confirmacao.itemId);
+        await api.removerItemASE(confirmacao.itemId, user.id);
         setDados(d => (d ? { ...d, itens: d.itens.filter(it => it.id !== confirmacao.itemId) } : d));
         setConfirmacao(null);
       } else if (confirmacao.tipo === 'excluir') {
-        await api.excluirSolicitacaoASE(dados.id);
+        await api.excluirSolicitacaoASE(dados.id, user.id);
         toast.success('ASE excluída.');
         onVoltar();
       }
@@ -963,7 +1133,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       <div className="mx-auto max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center dark:border-rose-900 dark:bg-rose-950/30">
         <AlertCircle className="mx-auto h-8 w-8 text-rose-500" />
         <p className="mt-2 text-sm font-semibold text-rose-800 dark:text-rose-300">{erro}</p>
-        <button type="button" onClick={onVoltar} className="mt-4 text-sm font-semibold text-blue-600 hover:underline">
+        <button
+          type="button"
+          onClick={onVoltar}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" />
           Voltar para a lista
         </button>
       </div>
@@ -988,10 +1163,10 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           <button
             type="button"
             onClick={voltar}
-            className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 dark:text-slate-400"
+            className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 cursor-pointer"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            ASE - Hora Extra
+            <ArrowLeft className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-x-1 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400" />
+            <span>Voltar para solicitações de ASE</span>
           </button>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">
@@ -1024,11 +1199,29 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             </button>
           )}
 
-          {podeEditar && dados.status === 'RASCUNHO' && (
+          {dados.excluido_em && (
+            <BadgeExcluido em={dados.excluido_em} />
+          )}
+
+          {dados.excluido_em && podeEditar && (
+            <RestaurarButton
+              onClick={async () => {
+                try {
+                  await api.restaurarSolicitacaoASE(dados.id);
+                  toast.success('ASE restaurada com sucesso!');
+                  setDados(d => (d ? { ...d, excluido_em: null } : d));
+                } catch (e) {
+                  toast.error(`Erro ao restaurar: ${(e as Error).message}`);
+                }
+              }}
+            />
+          )}
+
+          {podeEditar && !dados.excluido_em && dados.status !== 'CANCELADO' && (
             <button
               type="button"
               onClick={() => setConfirmacao({ tipo: 'excluir' })}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Excluir
@@ -1088,7 +1281,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </div>
           <div>
             <label htmlFor="data" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Data {dados.data_execucao && `(${diaDaSemana(dados.data_execucao)})`}
+              Data do Expediente {dados.data_execucao && `(${diaDaSemana(dados.data_execucao)})`}
             </label>
             <input
               id="data"
@@ -1117,25 +1310,47 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       {/* Colaboradores */}
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Colaboradores ({dados.itens.length})</h2>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Colaboradores ({dados.itens.length})</h2>
+            {carregandoLote && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+                Adicionando produção...
+              </span>
+            )}
+          </div>
           {!somenteLeitura && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setBuscaAberta(v => !v)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Adicionar colaborador
-              </button>
-              {buscaAberta && (
-                <BuscaColaborador
-                  pessoas={pessoas}
-                  onSelecionar={adicionarColaborador}
-                  onAdicionarManual={adicionarColaboradorManual}
-                  onFechar={() => setBuscaAberta(false)}
-                />
+            <div className="flex flex-wrap items-center gap-2">
+              {api.isSetorProducao(setores.find(s => s.id === dados.setor_id)?.nome || dados.setor_nome) && (
+                <button
+                  type="button"
+                  onClick={() => carregarColaboradoresProducao()}
+                  disabled={carregandoLote}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50 cursor-pointer"
+                  title="Carregar todos os colaboradores da Produção que ainda não constam nesta ASE"
+                >
+                  {carregandoLote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                  Carregar Produção
+                </button>
               )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBuscaAberta(v => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Adicionar colaborador
+                </button>
+                {buscaAberta && (
+                  <BuscaColaborador
+                    pessoas={pessoas}
+                    onSelecionar={adicionarColaborador}
+                    onAdicionarManual={adicionarColaboradorManual}
+                    onFechar={() => setBuscaAberta(false)}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1146,6 +1361,89 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </div>
         ) : (
           <>
+            {/* Modo Mobile: Barra de Preenchimento em Lote (< md) */}
+            {!somenteLeitura && totalItens > 0 && (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/80 p-3.5 space-y-3 dark:border-blue-900/60 dark:bg-blue-950/30 md:hidden shadow-xs">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-800 dark:text-blue-300">
+                  <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span>Preencher todos os colaboradores ({totalItens})</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white p-2.5 text-xs font-semibold text-slate-700 dark:border-blue-900/50 dark:bg-slate-900 dark:text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={todosTransp}
+                      onChange={e => {
+                        aplicarEmLoteTodos({ transporte: e.target.checked });
+                        toast.info(e.target.checked ? 'Transporte marcado para todos.' : 'Transporte desmarcado para todos.');
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>Transp. (Todos)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 rounded-lg border border-blue-200 bg-white p-2.5 text-xs font-semibold text-slate-700 dark:border-blue-900/50 dark:bg-slate-900 dark:text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={todosRefeicao}
+                      onChange={e => {
+                        aplicarEmLoteTodos({ refeicao: e.target.checked });
+                        toast.info(e.target.checked ? 'Refeição marcada para todos.' : 'Refeição desmarcada para todos.');
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>Refeição (Todos)</span>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300 mb-1">
+                      Entrada (Todos)
+                    </label>
+                    <input
+                      type="time"
+                      value={loteHoraEntrada}
+                      onChange={e => setLoteHoraEntrada(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wide text-blue-800 dark:text-blue-300 mb-1">
+                      Saída (Todos)
+                    </label>
+                    <input
+                      type="time"
+                      value={loteHoraSaida}
+                      onChange={e => setLoteHoraSaida(e.target.value)}
+                      className="h-9 w-full rounded-lg border border-blue-300 bg-white px-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!loteHoraEntrada && !loteHoraSaida) {
+                      toast.warning('Informe pelo menos o horário de entrada ou saída para aplicar.');
+                      return;
+                    }
+                    const patch: Partial<AseHoraExtraItem> = {};
+                    if (loteHoraEntrada) patch.hora_entrada = loteHoraEntrada;
+                    if (loteHoraSaida) patch.hora_saida = loteHoraSaida;
+                    if (loteIntervalo !== '') patch.intervalo_minutos = Number(loteIntervalo) || 0;
+                    aplicarEmLoteTodos(patch);
+                    toast.success(`Horários aplicados a todos os ${totalItens} colaboradores!`);
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2.5 text-xs font-bold text-white hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                >
+                  <Check className="h-4 w-4" />
+                  Aplicar Horários a Todos
+                </button>
+              </div>
+            )}
+
             {/* Modo Mobile: Cards de Colaboradores (< md) */}
             <div className="mt-4 space-y-3 md:hidden">
               {dados.itens.map(it => (
@@ -1154,16 +1452,17 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                   item={it}
                   somenteLeitura={somenteLeitura}
                   onChange={patch => alterarItem(it.id, patch)}
-                  onRemover={() => setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome })}
+                  onRemover={() => removerItem(it)}
                 />
               ))}
             </div>
 
             {/* Modo Desktop: Tabela Completa (>= md) */}
-            <div className="mt-4 hidden overflow-x-auto md:block">
+            <div className="mt-4 hidden overflow-x-auto md:block max-h-[72vh] rounded-xl border border-slate-200 dark:border-slate-800">
               <table className="w-full min-w-[860px] border-collapse text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white shadow-xs dark:bg-slate-900">
                   <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    {!somenteLeitura && <th className="w-10 px-2 py-2 text-center">Excluir</th>}
                     <th className="px-2 py-2">Registro</th>
                     <th className="px-2 py-2">Funcionário</th>
                     <th className="px-2 py-2">Função</th>
@@ -1174,8 +1473,166 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                     <th className="px-2 py-2">Interv. (min)</th>
                     <th className="px-2 py-2">% HE</th>
                     <th className="px-2 py-2 text-right">Total</th>
-                    <th className="px-2 py-2" />
                   </tr>
+
+                  {/* Linha de Preenchimento em Lote no Cabeçalho */}
+                  {!somenteLeitura && totalItens > 0 && (
+                    <tr className="border-b-2 border-blue-300 bg-blue-50/90 text-xs dark:border-blue-800 dark:bg-blue-950/40">
+                      <td colSpan={somenteLeitura ? 3 : 4} className="px-3 py-2">
+                        <div className="flex items-center gap-1.5 font-bold text-blue-800 dark:text-blue-300">
+                          <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span className="whitespace-nowrap">Preencher todos ({totalItens}):</span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <label className="inline-flex flex-col items-center cursor-pointer select-none" title="Marcar ou desmarcar Transporte para todos">
+                          <input
+                            type="checkbox"
+                            checked={todosTransp}
+                            ref={el => { if (el) el.indeterminate = algunsTransp && !todosTransp; }}
+                            onChange={e => {
+                              aplicarEmLoteTodos({ transporte: e.target.checked });
+                              toast.info(e.target.checked ? 'Transporte marcado para todos.' : 'Transporte desmarcado para todos.');
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="text-[9px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
+                        </label>
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <label className="inline-flex flex-col items-center cursor-pointer select-none" title="Marcar ou desmarcar Refeição para todos">
+                          <input
+                            type="checkbox"
+                            checked={todosRefeicao}
+                            ref={el => { if (el) el.indeterminate = algunsRefeicao && !todosRefeicao; }}
+                            onChange={e => {
+                              aplicarEmLoteTodos({ refeicao: e.target.checked });
+                              toast.info(e.target.checked ? 'Refeição marcada para todos.' : 'Refeição desmarcada para todos.');
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="text-[9px] font-bold text-blue-700 dark:text-blue-300 mt-0.5">Todos</span>
+                        </label>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="time"
+                            value={loteHoraEntrada}
+                            onChange={e => setLoteHoraEntrada(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && loteHoraEntrada) {
+                                aplicarEmLoteTodos({ hora_entrada: loteHoraEntrada });
+                                toast.success(`Entrada ${loteHoraEntrada} aplicada a todos.`);
+                              }
+                            }}
+                            className="h-8 w-full min-w-[70px] rounded-md border border-blue-300 bg-white px-1.5 text-xs text-slate-900 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
+                            title="Horário de Entrada para todos (Enter ou botão para aplicar)"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!loteHoraEntrada) {
+                                toast.warning('Informe a hora de entrada.');
+                                return;
+                              }
+                              aplicarEmLoteTodos({ hora_entrada: loteHoraEntrada });
+                              toast.success(`Entrada ${loteHoraEntrada} aplicada a todos os ${totalItens} colaboradores.`);
+                            }}
+                            className="rounded bg-blue-600 px-1.5 py-1 text-[10px] font-bold text-white hover:bg-blue-700 transition-colors cursor-pointer shrink-0"
+                            title="Aplicar entrada para todos"
+                          >
+                            ✓
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="time"
+                            value={loteHoraSaida}
+                            onChange={e => setLoteHoraSaida(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && loteHoraSaida) {
+                                aplicarEmLoteTodos({ hora_saida: loteHoraSaida });
+                                toast.success(`Saída ${loteHoraSaida} aplicada a todos.`);
+                              }
+                            }}
+                            className="h-8 w-full min-w-[70px] rounded-md border border-blue-300 bg-white px-1.5 text-xs text-slate-900 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
+                            title="Horário de Saída para todos (Enter ou botão para aplicar)"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!loteHoraSaida) {
+                                toast.warning('Informe a hora de saída.');
+                                return;
+                              }
+                              aplicarEmLoteTodos({ hora_saida: loteHoraSaida });
+                              toast.success(`Saída ${loteHoraSaida} aplicada a todos os ${totalItens} colaboradores.`);
+                            }}
+                            className="rounded bg-blue-600 px-1.5 py-1 text-[10px] font-bold text-white hover:bg-blue-700 transition-colors cursor-pointer shrink-0"
+                            title="Aplicar saída para todos"
+                          >
+                            ✓
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            step={5}
+                            value={loteIntervalo}
+                            placeholder="0"
+                            onChange={e => setLoteIntervalo(e.target.value === '' ? '' : Number(e.target.value))}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                const val = Number(loteIntervalo) || 0;
+                                aplicarEmLoteTodos({ intervalo_minutos: val });
+                                toast.success(`Intervalo de ${val} min aplicado a todos.`);
+                              }
+                            }}
+                            className="h-8 w-full min-w-[50px] rounded-md border border-blue-300 bg-white px-1 text-xs text-slate-900 shadow-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-blue-700 dark:bg-slate-900 dark:text-slate-50"
+                            title="Intervalo em minutos para todos"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const val = Number(loteIntervalo) || 0;
+                              aplicarEmLoteTodos({ intervalo_minutos: val });
+                              toast.success(`Intervalo de ${val} min aplicado a todos.`);
+                            }}
+                            className="rounded bg-slate-600 px-1.5 py-1 text-[10px] font-bold text-white hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
+                            title="Aplicar intervalo para todos"
+                          >
+                            ✓
+                          </button>
+                        </div>
+                      </td>
+                      <td colSpan={2} className="px-2 py-2 text-right">
+                        {(loteHoraEntrada || loteHoraSaida) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const patch: Partial<AseHoraExtraItem> = {};
+                              if (loteHoraEntrada) patch.hora_entrada = loteHoraEntrada;
+                              if (loteHoraSaida) patch.hora_saida = loteHoraSaida;
+                              if (loteIntervalo !== '') patch.intervalo_minutos = Number(loteIntervalo) || 0;
+                              aplicarEmLoteTodos(patch);
+                              toast.success(`Entrada e Saída aplicadas a todos os ${totalItens} colaboradores!`);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 shadow-xs transition-colors cursor-pointer"
+                            title="Aplicar ambos horários preenchidos a todos os colaboradores"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>Aplicar Horários</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )}
                 </thead>
                 <tbody>
                   {dados.itens.map(it => (
@@ -1184,7 +1641,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
                       item={it}
                       somenteLeitura={somenteLeitura}
                       onChange={patch => alterarItem(it.id, patch)}
-                      onRemover={() => setConfirmacao({ tipo: 'remover-item', itemId: it.id, nome: it.nome })}
+                      onRemover={() => removerItem(it)}
                     />
                   ))}
                 </tbody>
@@ -1220,8 +1677,18 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       {/* Barra de ação fixa */}
       <div className="sticky bottom-0 -mx-3 mt-5 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:-mx-6 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95 z-10 shadow-lg">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-          {/* Ações de Exportação */}
+          {/* Ações de Navegação e Exportação */}
           <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={voltar}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer mr-1"
+              title="Voltar para a lista de solicitações"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </button>
+            <div className="hidden sm:block h-5 w-px bg-slate-200 dark:bg-slate-800 mr-1" />
             <button
               type="button"
               onClick={exportarCsv}
@@ -1330,8 +1797,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       {confirmacao?.tipo === 'excluir' && (
         <ConfirmDialog
           titulo="Excluir esta ASE?"
-          mensagem="Todos os colaboradores e horários deste formulário serão excluídos. A ação não pode ser desfeita."
-          confirmarLabel="Excluir"
+          mensagem="Esta solicitação será desativada e ocultada das listagens operacionais. O registro permanecerá salvo no banco de dados com a marcação de quem e quando foi excluído."
+          confirmarLabel="Sim, Excluir"
+          cancelarLabel="Cancelar"
           variante="perigo"
           confirmando={processando}
           onConfirmar={confirmarAcao}
@@ -1564,7 +2032,19 @@ function LinhaColaborador({
   const editavelManual = manual && !somenteLeitura;
 
   return (
-    <tr className="border-b border-slate-100 align-middle dark:border-slate-800/70">
+    <tr className="border-b border-slate-100 align-middle hover:bg-slate-50/50 dark:border-slate-800/70 dark:hover:bg-slate-800/30">
+      {!somenteLeitura && (
+        <td className="w-10 px-2 py-2 text-center">
+          <button
+            type="button"
+            onClick={onRemover}
+            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+            title="Excluir da ASE"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </td>
+      )}
       <td className="whitespace-nowrap px-2 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">
         {editavelManual ? (
           <input value={item.registro} onChange={e => onChange({ registro: e.target.value.toUpperCase() })} placeholder="Registro" className={`${cellInput} w-24 font-mono`} />
@@ -1624,13 +2104,6 @@ function LinhaColaborador({
           {excedeLimiteClt && <AlertTriangle className="h-3.5 w-3.5" />}
           {(item.total_horas ?? 0).toFixed(2)}h
         </span>
-      </td>
-      <td className="px-2 py-2 text-right">
-        {!somenteLeitura && (
-          <button type="button" onClick={onRemover} className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
       </td>
     </tr>
   );

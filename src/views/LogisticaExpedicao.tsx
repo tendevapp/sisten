@@ -35,6 +35,12 @@ import { formatDateBR, formatDateTimeBR } from '../lib/format';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import {
+  MostrarExcluidosToggle,
+  BadgeExcluido,
+  RestaurarButton,
+  classeLinhaExcluida,
+} from '../components/ui/ExcluidosControls';
 import TramoCard from '../components/expedicao/TramoCard';
 
 interface Props {
@@ -67,14 +73,18 @@ export default function LogisticaExpedicao({ user, onNavigate }: Props) {
 
 function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
   const toast = useToast();
+  const isAdmin = Boolean(user.roles?.includes('admin'));
   const [itens, setItens] = useState<ExpedicaoCarregamentoResumo[] | null>(null);
   const [sequencias, setSequencias] = useState<Record<string, number>>({});
   const [criando, setCriando] = useState(false);
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+  const [itemParaExcluir, setItemParaExcluir] = useState<ExpedicaoCarregamentoResumo | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   const recarregar = useCallback(async () => {
     try {
       const [lista, seq] = await Promise.all([
-        api.listarCarregamentos(),
+        api.listarCarregamentos(mostrarExcluidos),
         // A numeracao e acessoria: se falhar, a lista continua util sem ela.
         api.listarSequenciasTramo().catch(() => ({} as Record<string, number>)),
       ]);
@@ -84,9 +94,34 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
       toast.error(`Falha ao carregar a lista: ${(e as Error).message}`);
       setItens([]);
     }
-  }, [toast]);
+  }, [mostrarExcluidos, toast]);
 
   useEffect(() => { void recarregar(); }, [recarregar]);
+
+  const handleConfirmarExclusao = async () => {
+    if (!itemParaExcluir) return;
+    setExcluindo(true);
+    try {
+      await api.excluirCarregamento(itemParaExcluir.id, user.id);
+      toast.success(`Carregamento ${itemParaExcluir.numero} excluído.`);
+      setItemParaExcluir(null);
+      void recarregar();
+    } catch (e) {
+      toast.error(`Erro ao excluir: ${(e as Error).message}`);
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
+  const handleRestaurar = async (c: ExpedicaoCarregamentoResumo) => {
+    try {
+      await api.restaurarCarregamento(c.id);
+      toast.success(`Carregamento ${c.numero} restaurado.`);
+      void recarregar();
+    } catch (e) {
+      toast.error(`Erro ao restaurar: ${(e as Error).message}`);
+    }
+  };
 
   const novo = async () => {
     setCriando(true);
@@ -120,15 +155,22 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={novo}
-          disabled={criando}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
-        >
-          {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Novo carregamento
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <MostrarExcluidosToggle
+            visivel={isAdmin}
+            checked={mostrarExcluidos}
+            onChange={setMostrarExcluidos}
+          />
+          <button
+            type="button"
+            onClick={novo}
+            disabled={criando}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto cursor-pointer"
+          >
+            {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Novo carregamento
+          </button>
+        </div>
       </div>
 
       {itens === null ? (
@@ -158,14 +200,17 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             // "1º T4 - TRANSPES" e "2º T4 - TRANSPES".
             const ordinal = sequencias[c.id];
             const prefixo = [ordinal ? `${ordinal}º` : '', rotuloTramos].filter(Boolean).join(' ');
+            const podeEditar = podeEditarFormulario(user, c);
+
             return (
               <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => onAbrir(c.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40"
+                <div
+                  className={`flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-blue-400/50 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-500/40 ${classeLinhaExcluida(c.excluido_em)}`}
                 >
-                  <div className="min-w-0 flex-1">
+                  <div
+                    onClick={() => onAbrir(c.id)}
+                    className="min-w-0 flex-1 cursor-pointer"
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-[11px] font-semibold text-slate-400">{c.numero}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
@@ -175,6 +220,7 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                       }`}>
                         {c.status === 'enviado' ? 'Enviado' : 'Aberto'}
                       </span>
+                      {c.excluido_em && <BadgeExcluido em={c.excluido_em} />}
                     </div>
 
                     <p className="mt-1 flex items-baseline gap-1.5 text-base font-bold text-slate-900 dark:text-slate-50">
@@ -211,12 +257,51 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                     </div>
                   </div>
 
-                  <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-                </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {c.excluido_em ? (
+                      podeEditar && <RestaurarButton onClick={() => handleRestaurar(c)} />
+                    ) : (
+                      podeEditar && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setItemParaExcluir(c);
+                          }}
+                          className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                          title="Excluir carregamento"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onAbrir(c.id)}
+                      className="p-1 text-slate-300 transition-transform hover:text-blue-500 dark:text-slate-600 cursor-pointer"
+                      title="Abrir carregamento"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
               </li>
             );
           })}
         </ul>
+      )}
+
+      {itemParaExcluir && (
+        <ConfirmDialog
+          titulo={`Excluir carregamento ${itemParaExcluir.numero}?`}
+          mensagem="Este carregamento será desativado e ocultado das listagens operacionais. O registro permanecerá salvo no banco de dados com a marcação de quem e quando foi excluído, podendo ser auditado ou restaurado por um administrador."
+          confirmarLabel="Sim, Excluir"
+          cancelarLabel="Cancelar"
+          variante="perigo"
+          confirmando={excluindo}
+          onConfirmar={handleConfirmarExclusao}
+          onCancelar={() => setItemParaExcluir(null)}
+        />
       )}
     </div>
   );
@@ -536,7 +621,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     setExcluindo(true);
     try {
       if (confirmacao.tipo === 'excluir-tramo') {
-        await api.excluirTramo(confirmacao.tramoId);
+        await api.excluirTramo(confirmacao.tramoId, user.id);
         setDados(d => (d ? {
           ...d,
           tramos: d.tramos.filter(t => t.id !== confirmacao.tramoId),
@@ -544,7 +629,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         } : d));
         setConfirmacao(null);
       } else if (confirmacao.tipo === 'excluir-carregamento') {
-        await api.excluirCarregamento(dados.id);
+        await api.excluirCarregamento(dados.id, user.id);
         toast.success('Carregamento excluído.');
         onVoltar();
       }
@@ -1051,8 +1136,9 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       {confirmacao?.tipo === 'excluir-carregamento' && (
         <ConfirmDialog
           titulo="Excluir o carregamento?"
-          mensagem="Todos os tramos, horários e fotos deste carregamento serão excluídos. A ação não pode ser desfeita."
-          confirmarLabel="Excluir"
+          mensagem="Este carregamento será desativado e ocultado das listagens operacionais. O registro permanecerá salvo no banco de dados com a marcação de quem e quando foi excluído."
+          confirmarLabel="Sim, Excluir"
+          cancelarLabel="Cancelar"
           variante="perigo"
           confirmando={excluindo}
           onConfirmar={confirmarExclusao}

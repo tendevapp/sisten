@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { AlertTriangle, Layers, PackageCheck, Settings2, Truck, X } from 'lucide-react';
+import { AlertTriangle, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { AlmoxarifadoChegada, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
 import { useToast } from '../ui/Toast';
@@ -45,6 +45,15 @@ import {
   ItemDiligenciamento, dataValida, indexarCidadesPorCodigo, montarItens,
   normalizarChaveTransportadora, resolverPrazoDias, somarDiasCorridos, transportadorasConhecidas,
 } from '../../lib/diligenciamento';
+import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigApi';
+// O teto prático do `mailto:` no Windows não é específico da expedição — é do
+// handler do sistema. Uma lista de coleta com muitos itens estoura fácil, e aí
+// o corpo vai para a área de transferência em vez de ser truncado em silêncio.
+import { cabeNoMailto } from '../../lib/expedicaoEmail';
+import {
+  ASSUNTO_COLETA_PADRAO, CHAVE_CONFIG_COLETA, DESTINATARIO_COLETA_PADRAO, LinhaColeta,
+  montarAssuntoColeta, montarCorpoColeta,
+} from '../../lib/coletaEmail';
 import {
   PatchDiligenciamentoItem,
   gravarPrevisaoNoRastreio, listarDiligenciamentoItens, listarPrazosTransporte,
@@ -57,6 +66,9 @@ interface Props {
   chegadasMap: Map<string, AlmoxarifadoChegada>;
   user: Profile;
 }
+
+/** Valor sentinela do filtro: itens que ainda não têm transportadora atribuída. */
+const SEM_TRANSPORTADORA = '__sem__';
 
 const campo: React.CSSProperties = {
   borderColor: 'var(--hairline)',
@@ -80,6 +92,15 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const [loteFat, setLoteFat] = useState('');
   const [lotePrev, setLotePrev] = useState('');
   const [aplicandoLote, setAplicandoLote] = useState(false);
+  const [enviandoColeta, setEnviandoColeta] = useState(false);
+
+  /**
+   * Filtro por transportadora — a lista de coleta é montada por transportadora
+   * ("um caminhão, uma viagem"), então o comprador primeiro recorta a fila de
+   * quem vai buscar e só então marca os itens. `SEM_TRANSPORTADORA` é o recorte
+   * do que ainda não foi atribuído a ninguém.
+   */
+  const [filtroTransp, setFiltroTransp] = useState('');
 
   const cidades = useMemo(() => localDb.getCidadeForn(), []);
   const cidadesPorCodigo = useMemo(() => indexarCidadesPorCodigo(cidades), [cidades]);
@@ -118,7 +139,19 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return a.docCompra.localeCompare(b.docCompra);
   }), [itens]);
 
-  const itensPorRi = useMemo(() => new Map(itensOrdenados.map(i => [i.ri, i])), [itensOrdenados]);
+  /**
+   * Recorte visível = fila ordenada filtrada por transportadora. Tudo abaixo
+   * (resumo, seleção, tabela e cartões) trabalha em cima dele, para que
+   * "selecionar todos" nunca marque um item que o comprador não está vendo.
+   */
+  const itensVisiveis = useMemo(() => {
+    if (!filtroTransp) return itensOrdenados;
+    if (filtroTransp === SEM_TRANSPORTADORA) return itensOrdenados.filter(i => !(i.transportadora || '').trim());
+    const chave = normalizarChaveTransportadora(filtroTransp);
+    return itensOrdenados.filter(i => normalizarChaveTransportadora(i.transportadora || '') === chave);
+  }, [itensOrdenados, filtroTransp]);
+
+  const itensPorRi = useMemo(() => new Map(itensVisiveis.map(i => [i.ri, i])), [itensVisiveis]);
 
   /**
    * Opções de transportadora: cadastro ativo (`sup_transportadoras`) primeiro,
@@ -138,7 +171,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const selecionaveis = useMemo(() => itensOrdenados.filter(i => !i.chegou), [itensOrdenados]);
+  const selecionaveis = useMemo(() => itensVisiveis.filter(i => !i.chegou), [itensVisiveis]);
   const todosSelecionados = selecionaveis.length > 0 && selecionaveis.every(i => selecionados.has(i.ri));
 
   // Solta da seleção itens que saíram do recorte (mudança de filtro) ou já chegaram.
@@ -159,7 +192,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
    */
   const resumo = useMemo(() => {
     let pendentes = 0, vencidos = 0, semPrevisao = 0, valorTransito = 0;
-    for (const it of itensOrdenados) {
+    for (const it of itensVisiveis) {
       if (it.chegou) continue;
       pendentes++;
       valorTransito += it.valor || 0;
@@ -167,7 +200,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       else if (it.previsaoEfetiva < hojeISO) vencidos++;
     }
     return { pendentes, vencidos, semPrevisao, valorTransito };
-  }, [itensOrdenados, hojeISO]);
+  }, [itensVisiveis, hojeISO]);
 
   /* Seleção --------------------------------------------------------------- */
 
@@ -244,6 +277,71 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   };
 
   /**
+   * Lista de coleta: o que a logística precisa para ir buscar o material no
+   * fornecedor. Sai pelo Outlook (`mailto:`), com destinatário e assunto vindos
+   * do painel Admin › E-mails (gatilho `coleta_jacobina`) — quem recebe muda
+   * sem depender de deploy.
+   */
+  const enviarListaColeta = async () => {
+    const selecionadosItens = selecionaveis.filter(i => selecionados.has(i.ri));
+    if (selecionadosItens.length === 0) return;
+
+    setEnviandoColeta(true);
+    try {
+      const linhas: LinhaColeta[] = selecionadosItens.map(item => {
+        const reg = regPorRi.get(item.ri);
+        const rm = reg?.requisicao_de_compra
+          ? `${reg.requisicao_de_compra}${reg.item_reqc ? ` / ${reg.item_reqc}` : ''}`
+          : '';
+        return {
+          dataColeta: item.previsaoEfetiva,
+          fornecedor: reg?.fornecedor_name || '',
+          rm,
+          po: item.docCompra,
+          codigoItem: item.material,
+          material: item.descricao,
+          quantidade: item.quantidade ?? null,
+          unidade: item.unidade || null,
+          valor: item.valor ?? null,
+        };
+      });
+
+      // A transportadora só entra no assunto quando a lista inteira é de uma só
+      // — misturar duas numa coleta é possível, e nesse caso o assunto omite.
+      const chaves = new Set(selecionadosItens.map(i => normalizarChaveTransportadora(i.transportadora || '')));
+      const transportadora = chaves.size === 1 ? (selecionadosItens[0].transportadora || '').trim() : '';
+
+      const config = await obterConfigEmail(CHAVE_CONFIG_COLETA);
+      const assunto = montarAssuntoColeta({
+        assuntoBase: config?.assunto_padrao || ASSUNTO_COLETA_PADRAO,
+        transportadora,
+        quantidadeItens: linhas.length,
+      });
+      const corpo = montarCorpoColeta({ linhas, transportadora, solicitante: user.name });
+      const destinatarios = config?.destinatarios || DESTINATARIO_COLETA_PADRAO;
+
+      const mailto = montarMailtoComConfig({
+        destinatarios, copia: config?.copia, copiaOculta: config?.copia_oculta, assunto, corpo,
+      });
+
+      if (cabeNoMailto(mailto)) {
+        window.location.href = mailto;
+      } else {
+        await navigator.clipboard.writeText(corpo).catch(() => null);
+        window.location.href = montarMailtoComConfig({
+          destinatarios, copia: config?.copia, copiaOculta: config?.copia_oculta, assunto, corpo: '',
+        });
+        toast.warning('Lista longa demais para o preenchimento automático: o conteúdo foi copiado — cole no Outlook com Ctrl+V.');
+      }
+    } catch (e) {
+      console.error('Falha ao montar a lista de coleta:', e);
+      toast.error('Não foi possível montar o e-mail da lista de coleta.');
+    } finally {
+      setEnviandoColeta(false);
+    }
+  };
+
+  /**
    * Aplica em lote os campos preenchidos na barra de ação a todos os itens
    * selecionados. Campos vazios não são tocados. Trocar a transportadora sem
    * informar previsão limpa a previsão manual (mesma regra da edição por
@@ -296,14 +394,31 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
           Previsão = remessa do pedido + prazo de trânsito por UF/transportadora. Editar aqui atualiza o Rastreio Compras.
         </p>
-        <button
-          type="button"
-          onClick={() => setPrazosAberto(true)}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer"
-          style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
-        >
-          <Settings2 className="h-3.5 w-3.5" /> Prazos de trânsito
-        </button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+              Transportadora
+            </span>
+            <select
+              value={filtroTransp}
+              onChange={e => setFiltroTransp(e.target.value)}
+              className="h-8 rounded-lg border px-2 text-xs font-semibold cursor-pointer"
+              style={campo}
+            >
+              <option value="">Todas</option>
+              <option value={SEM_TRANSPORTADORA}>Sem transportadora</option>
+              {opcoesTransportadora.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setPrazosAberto(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
+          >
+            <Settings2 className="h-3.5 w-3.5" /> Prazos de trânsito
+          </button>
+        </div>
       </div>
 
       {resumo.pendentes > 0 && (
@@ -333,10 +448,12 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           aplicando={aplicandoLote}
           onAplicar={aplicarLote}
           onLimpar={limparSelecao}
+          enviandoColeta={enviandoColeta}
+          onEnviarColeta={enviarListaColeta}
         />
       )}
 
-      {itensOrdenados.length === 0 ? (
+      {itensVisiveis.length === 0 ? (
         <TableEmpty icon={Truck} title="Nenhum item sem MIGO neste recorte" hint="Ajuste a busca ou os filtros acima." />
       ) : (
         <>
@@ -367,7 +484,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                   <Th label="Chegada (Rastreio)" />
                 </TableHeadRow>
                 <TableBody>
-                  {itensOrdenados.map(item => {
+                  {itensVisiveis.map(item => {
                     const vencido = !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO;
                     const reg = regPorRi.get(item.ri);
                     const marcado = selecionados.has(item.ri);
@@ -452,7 +569,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                 {todosSelecionados ? 'Desmarcar todos' : `Selecionar todos (${selecionaveis.length})`}
               </button>
             )}
-            {itensOrdenados.map(item => (
+            {itensVisiveis.map(item => (
               <ItemCard
                 key={item.ri}
                 item={item}
@@ -505,6 +622,7 @@ function ResumoStat({ rotulo, valor, cor }: { rotulo: string; valor: string; cor
 /** Barra de ação em lote — aparece quando há itens selecionados. */
 function BarraLote({
   quantidade, opcoes, transp, setTransp, fat, setFat, prev, setPrev, aplicando, onAplicar, onLimpar,
+  enviandoColeta, onEnviarColeta,
 }: {
   quantidade: number;
   opcoes: string[];
@@ -514,6 +632,8 @@ function BarraLote({
   aplicando: boolean;
   onAplicar: () => void;
   onLimpar: () => void;
+  enviandoColeta: boolean;
+  onEnviarColeta: () => void;
 }) {
   const listId = useId();
   return (
@@ -559,6 +679,18 @@ function BarraLote({
         >
           {aplicando ? 'Aplicando…' : `Aplicar a ${quantidade}`}
         </button>
+        <button
+          type="button"
+          onClick={onEnviarColeta}
+          disabled={enviandoColeta}
+          title="Abre o Outlook com a lista dos itens marcados para a logística coletar"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-3.5 text-xs font-bold cursor-pointer disabled:opacity-50"
+          style={{ borderColor: 'var(--brand)', color: 'var(--brand)', background: 'var(--surface-card)' }}
+        >
+          <Mail className="h-3.5 w-3.5" />
+          {enviandoColeta ? 'Montando…' : 'Lista de coleta'}
+        </button>
+
         <button
           type="button"
           onClick={onLimpar}

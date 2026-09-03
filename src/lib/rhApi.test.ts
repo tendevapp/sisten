@@ -6,6 +6,9 @@ import {
   extrairSiglaSetor,
   gerarProtocoloAse,
   normalizarItem,
+  isSetorProducao,
+  isCargoProducao,
+  aplicarPreenchimentoLoteItens,
 } from './rhApi';
 
 describe('calcularHorasASE', () => {
@@ -174,3 +177,112 @@ describe('Módulo RH: Rotas de Transporte', () => {
     expect(normalizado.total_horas).toBe(2);
   });
 });
+
+describe('Módulo RH: Helpers de Produção', () => {
+  it('identifica corretamente o setor de Produção', () => {
+    expect(isSetorProducao('PRODUÇÃO')).toBe(true);
+    expect(isSetorProducao('PRODUCAO')).toBe(true);
+    expect(isSetorProducao('Produção - Linha 1')).toBe(true);
+    expect(isSetorProducao('FABRICAÇÃO')).toBe(true);
+    expect(isSetorProducao('ALMOXARIFADO')).toBe(false);
+    expect(isSetorProducao('RECURSOS HUMANOS')).toBe(false);
+    expect(isSetorProducao('')).toBe(false);
+    expect(isSetorProducao(null)).toBe(false);
+  });
+
+  it('identifica cargos da linha operacional de produção', () => {
+    expect(isCargoProducao('AUXILIAR DE PRODUCAO')).toBe(true);
+    expect(isCargoProducao('LIDER DE PRODUCAO')).toBe(true);
+    expect(isCargoProducao('SOLDADOR I')).toBe(true);
+    expect(isCargoProducao('SOLDADOR III')).toBe(true);
+    expect(isCargoProducao('CALDEIREIRO II')).toBe(true);
+    expect(isCargoProducao('LIXADOR')).toBe(true);
+    expect(isCargoProducao('JATISTA I')).toBe(true);
+    expect(isCargoProducao('PINTOR INDUSTRIAL I')).toBe(true);
+    expect(isCargoProducao('METALIZADOR')).toBe(true);
+    expect(isCargoProducao('MECANICO MONTADOR')).toBe(true);
+    expect(isCargoProducao('OPERADOR DE PONTE ROLANTE')).toBe(true);
+    expect(isCargoProducao('OPERADOR DE PORTICO')).toBe(true);
+    expect(isCargoProducao('OPERADOR DE MAQUINAS II')).toBe(true);
+    expect(isCargoProducao('OPERADOR DE EMPILHADEIRA')).toBe(true);
+
+    // Cargos que não devem ser classificados como produção direta
+    expect(isCargoProducao('DIRETOR PRESIDENTE')).toBe(false);
+    expect(isCargoProducao('ANALISTA DE RECURSOS HUMANOS I')).toBe(false);
+    expect(isCargoProducao('ANALISTA DE CONTROLADORIA I')).toBe(false);
+    expect(isCargoProducao('ENFERMEIRO DO TRABALHO')).toBe(false);
+    expect(isCargoProducao('MEDICO DO TRABALHO')).toBe(false);
+    expect(isCargoProducao('ALMOXARIFE')).toBe(false);
+    expect(isCargoProducao('TECNICO DE SUPORTE TI')).toBe(false);
+    expect(isCargoProducao('')).toBe(false);
+    expect(isCargoProducao(null)).toBe(false);
+  });
+});
+
+describe('aplicarPreenchimentoLoteItens', () => {
+  const mockItens: any[] = [
+    {
+      id: 'it-1',
+      nome: 'CARLOS SILVA',
+      transporte: false,
+      refeicao: false,
+      hora_entrada: '',
+      hora_saida: '',
+      intervalo_minutos: 0,
+      total_horas: 0,
+    },
+    {
+      id: 'it-2',
+      nome: 'MARCOS SOUZA',
+      transporte: true,
+      refeicao: false,
+      hora_entrada: '08:00',
+      hora_saida: '12:00',
+      intervalo_minutos: 0,
+      total_horas: 4,
+    },
+  ];
+
+  it('atualiza transporte para todos os colaboradores', () => {
+    const atualizados = aplicarPreenchimentoLoteItens(mockItens, { transporte: true });
+    expect(atualizados.every(i => i.transporte)).toBe(true);
+
+    const desmarcados = aplicarPreenchimentoLoteItens(atualizados, { transporte: false });
+    expect(desmarcados.every(i => !i.transporte)).toBe(true);
+  });
+
+  it('atualiza refeição para todos os colaboradores', () => {
+    const atualizados = aplicarPreenchimentoLoteItens(mockItens, { refeicao: true });
+    expect(atualizados.every(i => i.refeicao)).toBe(true);
+  });
+
+  it('aplica hora de entrada e saída em lote e recalcula total de horas', () => {
+    const atualizados = aplicarPreenchimentoLoteItens(mockItens, {
+      hora_entrada: '06:00',
+      hora_saida: '14:00',
+      intervalo_minutos: 0,
+    });
+
+    expect(atualizados[0].hora_entrada).toBe('06:00');
+    expect(atualizados[0].hora_saida).toBe('14:00');
+    expect(atualizados[0].total_horas).toBe(8);
+
+    expect(atualizados[1].hora_entrada).toBe('06:00');
+    expect(atualizados[1].hora_saida).toBe('14:00');
+    expect(atualizados[1].total_horas).toBe(8);
+  });
+
+  it('preserva horários ao alterar apenas transporte ou refeição', () => {
+    const comHoras = aplicarPreenchimentoLoteItens(mockItens, {
+      hora_entrada: '14:00',
+      hora_saida: '22:00',
+    });
+
+    const comTransp = aplicarPreenchimentoLoteItens(comHoras, { transporte: true });
+    expect(comTransp[0].transporte).toBe(true);
+    expect(comTransp[0].hora_entrada).toBe('14:00');
+    expect(comTransp[0].hora_saida).toBe('22:00');
+    expect(comTransp[0].total_horas).toBe(8);
+  });
+});
+

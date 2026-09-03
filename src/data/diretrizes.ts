@@ -39,6 +39,26 @@ export interface ChangelogEntry {
 // Entradas mais recentes primeiro.
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-03',
+    resumo: 'Formulários > RH / ASE Hora Extra (`RhAseHoraExtra.tsx`, `rhApi.ts`): Implementados controles de preenchimento em lote no cabeçalho da lista de colaboradores (desktop e mobile). Permite marcar/desmarcar Transporte e Refeição para todos com 1 clique, e definir horários de Entrada, Saída e Intervalo preenchendo todos os colaboradores simultaneamente com recálculo automático de horas.',
+  },
+  {
+    data: '2026-09-03',
+    resumo: 'Formulários > RH / ASE Hora Extra (`RhAseHoraExtra.tsx`, `rhApi.ts`): Adicionada inclusão automática em lote de todos os colaboradores operacionais da Produção (97 colaboradores da fábrica) ao selecionar o setor "PRODUÇÃO" no formulário de ASE, com botão dedicado para recarregar quando necessário. O botão de exclusão foi reposicionado para a primeira coluna da tabela (com exclusão instantânea para linhas sem horários preenchidos), acelerando a triagem de quem participará do expediente.',
+  },
+  {
+    data: '2026-09-03',
+    resumo: 'Formulários Operacionais > Exclusão Lógica e Permissões (`RhAseHoraExtra.tsx`, `LogisticaExpedicao.tsx`, `PortariaPassagemPlantao.tsx`, `PortariaRelatorio.tsx`, `ExcluidosControls.tsx`, `softDelete.ts`): 1. Permitida a exclusão de lançamentos de formulários tanto para Administradores quanto para o usuário que criou o registro (via `podeEditarFormulario`); 2. Exclusão 100% lógica (soft delete) persistindo `excluido_em` e `excluido_por` no Supabase sem remover os dados físicos; 3. Adicionados botões de exclusão direta por lixeira nos cartões das listagens com diálogo de confirmação; 4. Adicionado alternador "Mostrar excluídos" exclusivo para administradores com selo de data de exclusão e botão de restauração imediata; 5. Na ASE, remoção do bloqueio de exclusão em status ENVIADO para correções operacionais.',
+  },
+  {
+    data: '2026-09-03',
+    resumo: 'Formulários > RH / ASE Hora Extra (`RhAseHoraExtra.tsx`, `exportAseHoraExtraPdf.ts`): Atualizado o rótulo do campo de data para "Data do Expediente" (formulário, e-mail e relatórios PDF/Excel) e aprimorada a visibilidade e ergonomia do botão Voltar com visualização destacada, micro-interação no ícone e inclusão de botão Voltar na barra fixa de ações inferior.',
+  },
+  {
+    data: '2026-09-03',
+    resumo: 'Suprimentos > Pendências de Processamento (`PendenciasProcessamento.tsx`, `PendenciasProcessamentoAnalise.tsx`): Adicionado filtro multi-select de Comprador nas abas Fila e Análise, permitindo filtrar chamados e notas pelo comprador responsável com totalizadores e gráficos reativos.',
+  },
+  {
     data: '2026-09-02',
     resumo: 'Admin > Cadastros Gerais > aba "Suprimentos — Lead Time de Entregas" (`CadastrosAdmin.tsx`, `data/prazosEntregaPadrao.ts`, `diligenciamentoApi.ts`, `sup_prazos_transporte`): Nova aba para cadastrar/editar o lead time de entrega por UF de origem (previsão = data de remessa + N dias corridos). Semeado com SP +8, MG +6, PE +4, BA +2 e por região Sudeste +8 / Sul +10 / Norte +10 / Centro-Oeste +10 / demais do Nordeste +4; inclui prazo padrão global, adicionar UF, botão "Preencher UFs faltantes" e edição/remoção linha a linha. Reaproveita a tabela usada no Diligenciamento (transportadora vazia = padrão da UF).',
   },

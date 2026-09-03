@@ -28,6 +28,12 @@ import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import {
+  MostrarExcluidosToggle,
+  BadgeExcluido,
+  RestaurarButton,
+  classeLinhaExcluida,
+} from '../../components/ui/ExcluidosControls';
+import {
   exportPassagemPlantaoPdf,
   exportPassagensPlantaoConsolidadoPdf,
 } from '../../lib/pdfExport/exportPortariaPdf';
@@ -54,6 +60,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const [dataInicio, setDataInicio] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [termoBusca, setTermoBusca] = useState('');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Modal Novo / Edição
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
@@ -94,6 +101,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           dataInicio: dataInicio || undefined,
           dataFim: dataFim || undefined,
           termoBusca: termoBusca || undefined,
+          incluirExcluidos: mostrarExcluidos,
         }),
         api.listarMateriaisSeguranca(true),
       ]);
@@ -108,7 +116,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
   useEffect(() => {
     carregarDados();
-  }, [filtroStatus, filtroTurno, dataInicio, dataFim]);
+  }, [filtroStatus, filtroTurno, dataInicio, dataFim, mostrarExcluidos]);
 
   // Montar texto declaratório dinâmico
   const textoDeclaracaoGerado = useMemo(() => {
@@ -247,12 +255,22 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const handleConfirmarExclusao = async () => {
     if (!plantaoParaExcluir) return;
     try {
-      await api.excluirPassagemPlantao(plantaoParaExcluir.id);
+      await api.excluirPassagemPlantao(plantaoParaExcluir.id, user.id);
       toast.success(`Plantão ${plantaoParaExcluir.numero_protocolo} excluído!`);
       setPlantaoParaExcluir(null);
       carregarDados();
     } catch (err: any) {
       toast.error('Erro ao excluir plantão: ' + (err.message || ''));
+    }
+  };
+
+  const handleRestaurarPlantao = async (p: PortPassagemPlantao) => {
+    try {
+      await api.restaurarPassagemPlantao(p.id);
+      toast.success(`Plantão ${p.numero_protocolo} restaurado!`);
+      carregarDados();
+    } catch (err: any) {
+      toast.error('Erro ao restaurar plantão: ' + (err.message || ''));
     }
   };
 
@@ -388,6 +406,16 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           </div>
         </div>
 
+        {Boolean(user.roles?.includes('admin')) && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <MostrarExcluidosToggle
+              visivel={true}
+              checked={mostrarExcluidos}
+              onChange={setMostrarExcluidos}
+            />
+          </div>
+        )}
+
         {/* Barra de Seleção em Lote e Exportação Consolidada */}
         {plantoes.length > 0 && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -453,7 +481,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           return (
             <div
               key={p.id}
-              className={`flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all hover:shadow-md ${
+              className={`flex flex-col justify-between rounded-2xl border p-5 shadow-xs transition-all hover:shadow-md ${classeLinhaExcluida(p.excluido_em)} ${
                 isSelected
                   ? 'border-indigo-400 bg-indigo-50/20 ring-2 ring-indigo-500/30 dark:border-indigo-600 dark:bg-indigo-950/20'
                   : 'border-slate-200 bg-white hover:border-indigo-500/40 dark:border-slate-800 dark:bg-slate-900'
@@ -477,15 +505,18 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                       </h3>
                     </div>
                   </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                      p.status === 'EM_ANDAMENTO'
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    }`}
-                  >
-                    {p.status === 'EM_ANDAMENTO' ? 'Em Aberto' : 'Concluído'}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                    {p.excluido_em && <BadgeExcluido em={p.excluido_em} />}
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                        p.status === 'EM_ANDAMENTO'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      }`}
+                    >
+                      {p.status === 'EM_ANDAMENTO' ? 'Em Aberto' : 'Concluído'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -556,24 +587,30 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {p.status === 'EM_ANDAMENTO' && podeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => setPlantaoParaEncerrar(p)}
-                      className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-500 shadow-xs"
-                    >
-                      Encerrar
-                    </button>
-                  )}
-                  {podeEditar && (
-                    <button
-                      type="button"
-                      onClick={() => setPlantaoParaExcluir(p)}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                      title="Excluir Plantão"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                  {p.excluido_em ? (
+                    podeEditar && <RestaurarButton onClick={() => handleRestaurarPlantao(p)} />
+                  ) : (
+                    <>
+                      {p.status === 'EM_ANDAMENTO' && podeEditar && (
+                        <button
+                          type="button"
+                          onClick={() => setPlantaoParaEncerrar(p)}
+                          className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-500 shadow-xs"
+                        >
+                          Encerrar
+                        </button>
+                      )}
+                      {podeEditar && (
+                        <button
+                          type="button"
+                          onClick={() => setPlantaoParaExcluir(p)}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                          title="Excluir Plantão"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1045,7 +1082,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       {plantaoParaExcluir && (
         <ConfirmDialog
           titulo="Excluir Plantão da Portaria"
-          mensagem={`Tem certeza que deseja excluir o plantão ${plantaoParaExcluir.numero_protocolo}? Esta ação não pode ser desfeita.`}
+          mensagem={`Tem certeza que deseja excluir o plantão ${plantaoParaExcluir.numero_protocolo}? O registro será desativado e arquivado no banco de dados com a marcação de quem e quando foi excluído.`}
           confirmarLabel="Sim, Excluir"
           cancelarLabel="Cancelar"
           variante="perigo"

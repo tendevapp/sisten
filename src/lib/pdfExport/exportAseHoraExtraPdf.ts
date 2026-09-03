@@ -334,7 +334,7 @@ export async function exportAseHoraExtraPdf(solicitacao: AseHoraExtraCompleta): 
   writer.drawField('Status', statusFormatado);
   writer.drawField('Setor', solicitacao.setor_nome || '-');
   writer.drawField('Turno', solicitacao.turno_nome || '-');
-  writer.drawField('Data de Execução', dataExtenso);
+  writer.drawField('Data do Expediente', dataExtenso);
   writer.drawField('Solicitante', solicitacao.solicitante_nome || '-');
 
   if (solicitacao.justificativa?.trim()) {
@@ -403,7 +403,7 @@ export async function exportAseConsolidadoDiaPdf(solicitacoes: AseHoraExtraCompl
   // 1. Cabeçalho Principal
   writer.drawTitle('ASE - Relatório Consolidado do Dia');
   writer.spacer(2);
-  writer.drawField('Data de Execução', `${dataFormatada} (${diaSem})`);
+  writer.drawField('Data do Expediente', `${dataFormatada} (${diaSem})`);
   writer.drawField('Resumo do Dia', `${totalAses} ASE(s) · ${totalColabs} Colaborador(es) · ${totalHoras.toFixed(2)}h Extras Totais · ${colabsTransporte.length} Transporte(s) · ${colabsRefeicao.length} Refeição(ões)`);
   writer.spacer(6);
 
@@ -1242,7 +1242,7 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
   // Aba 1: Resumo Geral das ASEs do Dia
   const resumoRows = [
     ['RELATÓRIO CONSOLIDADO DE ASE - HORA EXTRA (FRM.RHU-0007)'],
-    [`DATA DE EXECUÇÃO: ${dataFormatada} (${diaSem})`],
+    [`DATA DO EXPEDIENTE: ${dataFormatada} (${diaSem})`],
     [`TOTAL DE ASES: ${solicitacoes.length} | TOTAL DE COLABORADORES: ${todosColaboradores.length} | TOTAL HORAS EXTRAS: ${totalHorasGeral.toFixed(2)}h | TRANSPORTES: ${colabsTransporte.length} | REFEIÇÕES: ${colabsRefeicao.length}`],
     [],
     ['Protocolo', 'Setor', 'Turno', 'Solicitante', 'Qtd Colaboradores', 'Total Horas (h)', 'Transportes', 'Refeições', 'Status', 'Justificativa'],

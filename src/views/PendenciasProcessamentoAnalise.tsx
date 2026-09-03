@@ -110,6 +110,7 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
   const [statusFiltro, setStatusFiltro] = useState<'pendentes' | 'todos' | 'concluidos'>('pendentes');
   const [modeloFiltro, setModeloFiltro] = useState<Set<string>>(new Set());
   const [causaFiltro, setCausaFiltro] = useState<Set<string>>(new Set());
+  const [compradorFiltro, setCompradorFiltro] = useState<Set<string>>(new Set());
   const [dataFiltro, setDataFiltro] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
   const tokens = useChartTokens();
@@ -143,11 +144,17 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
     [linhas],
   );
 
-  /** Filtros que valem para a página inteira (modelo, causa, janela de abertura). */
+  const compradorOpcoes = useMemo(
+    () => Array.from(new Set(linhas.map(l => l.comprador).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [linhas],
+  );
+
+  /** Filtros que valem para a página inteira (modelo, causa, comprador, janela de abertura). */
   const linhasFiltradas = useMemo(() => {
     return linhas.filter(l => {
       if (modeloFiltro.size > 0 && !modeloFiltro.has(rotuloModelo(l.modelo))) return false;
       if (causaFiltro.size > 0 && !causaFiltro.has(l.causa)) return false;
+      if (compradorFiltro.size > 0 && (!l.comprador || !compradorFiltro.has(l.comprador))) return false;
       const dia = l.created_at ? l.created_at.slice(0, 10) : '';
       if (dataFiltro.preset === 'sem_data' || dataFiltro.preset === 'no_date') {
         if (dia) return false;
@@ -157,7 +164,7 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
       }
       return true;
     });
-  }, [linhas, modeloFiltro, causaFiltro, dataFiltro]);
+  }, [linhas, modeloFiltro, causaFiltro, compradorFiltro, dataFiltro]);
 
   const pendentes = useMemo(() => linhasFiltradas.filter(l => !l.concluida), [linhasFiltradas]);
   const concluidas = useMemo(() => linhasFiltradas.filter(l => l.concluida), [linhasFiltradas]);
@@ -243,6 +250,7 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
     statusFiltro !== 'pendentes' ||
     modeloFiltro.size > 0 ||
     causaFiltro.size > 0 ||
+    compradorFiltro.size > 0 ||
     Boolean(dataFiltro.from) ||
     Boolean(dataFiltro.to) ||
     (dataFiltro.preset && dataFiltro.preset !== 'all');
@@ -251,6 +259,7 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
     setStatusFiltro('pendentes');
     setModeloFiltro(new Set());
     setCausaFiltro(new Set());
+    setCompradorFiltro(new Set());
     setDataFiltro({ from: '', to: '', preset: 'all' });
   };
 
@@ -311,6 +320,15 @@ export default function PendenciasProcessamentoAnalise({ grupos, carregando, onR
               options={causaOpcoes}
               selected={causaFiltro}
               onChange={setCausaFiltro}
+              panelClassName="w-80"
+              className="shrink-0 w-[150px] sm:w-auto sm:min-w-[150px]"
+            />
+            <MultiSelectFilter
+              label="Comprador"
+              icon={UserRound}
+              options={compradorOpcoes}
+              selected={compradorFiltro}
+              onChange={setCompradorFiltro}
               panelClassName="w-80"
               className="shrink-0 w-[150px] sm:w-auto sm:min-w-[150px]"
             />

@@ -26,6 +26,7 @@ import {
   Search,
   X,
   User,
+  UserCheck,
   Building2,
   Truck,
   Calendar,
@@ -323,6 +324,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
   const [solicitanteFilter, setSolicitanteFilter] = useState<Set<string>>(new Set());
   const [setorFilter, setSetorFilter] = useState<Set<string>>(new Set());
   const [fornecedorFilter, setFornecedorFilter] = useState<Set<string>>(new Set());
+  const [compradorFilter, setCompradorFilter] = useState<Set<string>>(new Set());
   const [causaFilter, setCausaFilter] = useState<Set<string>>(new Set());
   const [dateFilter, setDateFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
@@ -400,6 +402,17 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [grupos]);
 
+  const compradorOptions = useMemo(() => {
+    const set = new Set<string>();
+    grupos.forEach(g => {
+      g.linhas.forEach(l => {
+        const comp = (l.comprador || '').trim();
+        if (comp) set.add(comp);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [grupos]);
+
   const causaOptions = useMemo(() => {
     const set = new Set<string>();
     grupos.forEach(g => { if (g.classif_causa) set.add(g.classif_causa); });
@@ -445,6 +458,12 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           if (!forn || !fornecedorFilter.has(forn)) return false;
         }
 
+        // Comprador
+        if (compradorFilter.size > 0) {
+          const comp = (l.comprador || '').trim();
+          if (!comp || !compradorFilter.has(comp)) return false;
+        }
+
         // Pesquisa textual
         if (!q) return true;
 
@@ -485,14 +504,15 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     solicitanteFilter,
     setorFilter,
     fornecedorFilter,
+    compradorFilter,
     causaFilter,
     dateFilter,
     getSectorName,
   ]);
 
   const totais = useMemo(() => {
-    const notas = gruposFiltrados.reduce((s, g) => s + g.total, 0);
-    const pendentes = gruposFiltrados.reduce((s, g) => s + (g.total - g.concluidas), 0);
+    const notas = gruposFiltrados.reduce((s, g) => s + g.linhas.length, 0);
+    const pendentes = gruposFiltrados.reduce((s, g) => s + g.linhas.filter(l => l.status !== 'concluido').length, 0);
     const totalGeralChamados = grupos.length;
     return {
       chamados: gruposFiltrados.length,
@@ -521,12 +541,13 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
       solicitanteFilter.size > 0 ||
       setorFilter.size > 0 ||
       fornecedorFilter.size > 0 ||
+      compradorFilter.size > 0 ||
       causaFilter.size > 0 ||
       (dateFilter.preset && dateFilter.preset !== 'all') ||
       Boolean(dateFilter.from) ||
       Boolean(dateFilter.to)
     );
-  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, causaFilter, dateFilter]);
+  }, [searchQuery, statusFilter, modeloFilter, solicitanteFilter, setorFilter, fornecedorFilter, compradorFilter, causaFilter, dateFilter]);
 
   const handleClearAllFilters = () => {
     setSearchQuery('');
@@ -535,6 +556,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     setSolicitanteFilter(new Set());
     setSetorFilter(new Set());
     setFornecedorFilter(new Set());
+    setCompradorFilter(new Set());
     setCausaFilter(new Set());
     setDateFilter({ from: '', to: '', preset: 'all' });
   };
@@ -888,6 +910,15 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
             onChange={setFornecedorFilter}
             panelClassName="w-80"
             className="shrink-0 w-[160px] sm:w-auto sm:min-w-[160px]"
+          />
+          <MultiSelectFilter
+            label="Comprador"
+            icon={UserCheck}
+            options={compradorOptions}
+            selected={compradorFilter}
+            onChange={setCompradorFilter}
+            panelClassName="w-80"
+            className="shrink-0 w-[150px] sm:w-auto sm:min-w-[150px]"
           />
           <MultiSelectFilter
             label="Causa"

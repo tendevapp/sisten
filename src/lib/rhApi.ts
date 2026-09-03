@@ -521,6 +521,71 @@ export function extrairSiglaSetor(nomeSetor?: string | null): string {
 }
 
 /**
+ * Verifica se um determinado setor corresponde a PRODUCAO.
+ */
+export function isSetorProducao(nomeSetor?: string | null): boolean {
+  if (!nomeSetor || !nomeSetor.trim()) return false;
+  const limpo = nomeSetor
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+  return limpo.includes('PRODUC') || limpo.includes('FABRIC');
+}
+
+/**
+ * Verifica se um cargo pertence a linha operacional de Producao.
+ */
+export function isCargoProducao(cargo?: string | null): boolean {
+  if (!cargo || !cargo.trim()) return false;
+  const limpo = cargo
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  // Cargos operacionais da linha de fabricacao / producao
+  const termosProducao = [
+    'PRODUC',
+    'SOLDADOR',
+    'CALDEIREIRO',
+    'LIXADOR',
+    'JATISTA',
+    'PINTOR INDUSTRIAL',
+    'METALIZADOR',
+    'MONTADOR',
+    'PONTE ROLANTE',
+    'PORTICO',
+    'OPERADOR DE MAQUINA',
+    'OPERADOR DE EQUIPAMENTO',
+    'OPERADOR DE EMPILHADEIRA',
+  ];
+
+  return termosProducao.some(termo => limpo.includes(termo));
+}
+
+/**
+ * Aplica atualizacao em lote (ex: transporte, refeicao, horarios) para todos os itens da ASE,
+ * recalculando as horas totais caso horarios ou intervalos tenham sido alterados.
+ */
+export function aplicarPreenchimentoLoteItens(
+  itens: AseHoraExtraItem[],
+  patch: Partial<AseHoraExtraItem>
+): AseHoraExtraItem[] {
+  return itens.map(it => {
+    const merged = { ...it, ...patch };
+    if ('hora_entrada' in patch || 'hora_saida' in patch || 'intervalo_minutos' in patch) {
+      merged.total_horas = calcularHorasASE(
+        merged.hora_entrada,
+        merged.hora_saida,
+        merged.intervalo_minutos
+      ).totalHoras;
+    }
+    return merged;
+  });
+}
+
+/**
  * Converte data ISO (YYYY-MM-DD) para formato DDMMAA (ex: "2026-08-27" -> "270826").
  */
 export function formatarDataDDMMAA(dataISO?: string | null): string {
@@ -683,6 +748,30 @@ export async function adicionarItemASE(solicitacaoId: string, item: ItemEditavel
   if (error) throw new Error(error.message);
   const rotasMap = await rotasMapPromise;
   return normalizarItem(data, rotasMap);
+}
+
+/**
+ * Adiciona múltiplos colaboradores em lote na ASE em uma unica transacao/requisicao ao banco.
+ */
+export async function adicionarItensLoteASE(
+  solicitacaoId: string,
+  itens: ItemEditavel[]
+): Promise<AseHoraExtraItem[]> {
+  if (itens.length === 0) return [];
+  const rotasMapPromise = carregarMapaRotas();
+  const linhas = itens.map(it => ({
+    solicitacao_id: solicitacaoId,
+    ...limparItemParaDb(it),
+  }));
+
+  const { data, error } = await supabase
+    .from('rh_ase_itens')
+    .insert(linhas)
+    .select();
+
+  if (error) throw new Error(error.message);
+  const rotasMap = await rotasMapPromise;
+  return (data || []).map((row: any) => normalizarItem(row, rotasMap));
 }
 
 export async function atualizarItemASE(id: string, patch: Partial<ItemEditavel>): Promise<void> {

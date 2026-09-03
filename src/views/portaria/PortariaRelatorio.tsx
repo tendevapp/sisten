@@ -34,6 +34,12 @@ import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
+import {
+  MostrarExcluidosToggle,
+  BadgeExcluido,
+  RestaurarButton,
+  classeLinhaExcluida,
+} from '../../components/ui/ExcluidosControls';
 
 interface Props {
   user: Profile;
@@ -148,6 +154,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Filtros de Linha do Tempo
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODAS');
   const [termoBuscaPlantao, setTermoBuscaPlantao] = useState('');
+  const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Form Novo Plantão
   const [formRelatorio, setFormRelatorio] = useState({
@@ -321,7 +328,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Função estável para carregar relatórios sem loop de dependência
   const carregarRelatorios = useCallback(async (selecionarId?: string) => {
     try {
-      const data = await api.listarRelatorios();
+      const data = await api.listarRelatorios({ incluirExcluidos: mostrarExcluidos });
       setRelatorios(data);
       setRelatorioAtivo((prev) => {
         if (selecionarId) {
@@ -339,7 +346,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [mostrarExcluidos, toast]);
 
   useEffect(() => {
     carregarRelatorios();
@@ -735,7 +742,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const handleExcluirOcorrencia = async () => {
     if (!ocorrenciaParaExcluir || !relatorioAtivo) return;
     try {
-      await api.excluirOcorrencia(ocorrenciaParaExcluir.id);
+      await api.excluirOcorrencia(ocorrenciaParaExcluir.id, user.id);
       toast.success('Ocorrência removida com sucesso!');
       setOcorrenciaParaExcluir(null);
       const relAtualizado = await api.obterRelatorio(relatorioAtivo.id);
@@ -749,7 +756,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const handleExcluirPlantao = async () => {
     if (!itemParaExcluir) return;
     try {
-      await api.excluirRelatorio(itemParaExcluir.id);
+      await api.excluirRelatorio(itemParaExcluir.id, user.id);
       toast.success(`Plantão ${itemParaExcluir.numero_protocolo} excluído!`);
       setItemParaExcluir(null);
       if (relatorioAtivo?.id === itemParaExcluir.id) {
@@ -758,6 +765,16 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       carregarRelatorios();
     } catch (e) {
       toast.error(`Erro ao excluir plantão: ${(e as Error).message}`);
+    }
+  };
+
+  const handleRestaurarPlantao = async (r: PortRelatorioPortaria) => {
+    try {
+      await api.restaurarRelatorio(r.id);
+      toast.success(`Plantão ${r.numero_protocolo} restaurado!`);
+      carregarRelatorios(r.id);
+    } catch (e) {
+      toast.error(`Erro ao restaurar plantão: ${(e as Error).message}`);
     }
   };
 
@@ -877,7 +894,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Shifts List */}
         <div className="space-y-3 lg:col-span-4">
-          <div className="flex items-center justify-between px-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <div className="flex items-center gap-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Livros por Data & Turno
@@ -886,27 +903,34 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 {relatorios.length}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFormRelatorio({
-                  data: api.hojeISO(),
-                  turno: api.sugerirTurno(),
-                  horario_inicio: '06:00',
-                  horario_fim: '18:00',
-                  vigilante_principal: '',
-                  vigilante_ronda01: '',
-                  vigilante_ronda02: '',
-                  observacoes_gerais: '',
-                });
-                setModalNovoRelatorio(true);
-              }}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400"
-              title="Abrir novo período / turno"
-            >
-              <Plus className="h-3 w-3" />
-              Novo Turno
-            </button>
+            <div className="flex items-center gap-1.5">
+              <MostrarExcluidosToggle
+                visivel={Boolean(user.roles?.includes('admin'))}
+                checked={mostrarExcluidos}
+                onChange={setMostrarExcluidos}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setFormRelatorio({
+                    data: api.hojeISO(),
+                    turno: api.sugerirTurno(),
+                    horario_inicio: '06:00',
+                    horario_fim: '18:00',
+                    vigilante_principal: '',
+                    vigilante_ronda01: '',
+                    vigilante_ronda02: '',
+                    observacoes_gerais: '',
+                  });
+                  setModalNovoRelatorio(true);
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 cursor-pointer"
+                title="Abrir novo período / turno"
+              >
+                <Plus className="h-3 w-3" />
+                Novo Turno
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -943,7 +967,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   <div
                     key={rel.id}
                     onClick={() => setRelatorioAtivo(rel)}
-                    className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                    className={`cursor-pointer rounded-2xl border p-4 transition-all ${classeLinhaExcluida(rel.excluido_em)} ${
                       isSelected
                         ? 'border-purple-500 bg-purple-50/40 ring-2 ring-purple-500/20 dark:border-purple-500 dark:bg-purple-950/20'
                         : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
@@ -958,12 +982,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           {rel.data.split('-').reverse().join('/')} · Turno {rel.turno}
                         </h4>
                       </div>
-                      <StatusPortariaBadge status={rel.status} />
+                      <div className="flex flex-wrap items-center gap-1 justify-end">
+                        {rel.excluido_em && <BadgeExcluido em={rel.excluido_em} />}
+                        <StatusPortariaBadge status={rel.status} />
+                      </div>
                     </div>
 
                     <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 pt-2 dark:border-slate-800/80">
                       <span className="truncate max-w-[140px]">Vig: {rel.vigilante_principal}</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         {countNoPatio > 0 && (
                           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             {countNoPatio} no pátio
@@ -972,6 +999,25 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         <span className="font-bold text-purple-600 dark:text-purple-400">
                           {countOcorrencias} reg
                         </span>
+                        {rel.excluido_em ? (
+                          podeEditarFormulario(user, rel) && (
+                            <RestaurarButton onClick={() => handleRestaurarPlantao(rel)} />
+                          )
+                        ) : (
+                          podeEditarFormulario(user, rel) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemParaExcluir(rel);
+                              }}
+                              className="rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 cursor-pointer"
+                              title="Excluir este plantão"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2361,7 +2407,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       {itemParaExcluir && (
         <ConfirmDialog
           titulo="Excluir Relatório de Ocorrências"
-          mensagem={`Tem certeza que deseja excluir o plantão ${itemParaExcluir.numero_protocolo} de ${itemParaExcluir.data}? Todas as ocorrências registradas serão removidas.`}
+          mensagem={`Tem certeza que deseja excluir o plantão ${itemParaExcluir.numero_protocolo} de ${itemParaExcluir.data}? O registro será desativado e arquivado no banco de dados com a marcação de quem e quando foi excluído.`}
           confirmarLabel="Sim, Excluir Plantão"
           cancelarLabel="Cancelar"
           variante="perigo"

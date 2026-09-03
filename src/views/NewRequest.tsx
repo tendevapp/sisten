@@ -197,6 +197,7 @@ const itemVazio = (): PurchaseItemState => ({
 /** UN até PAC, em ordem alfabética visual — "M²"/"M³" lidos como "M2"/"M3". */
 const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M³', 'PAC', 'UN'] as const;
 
+
 const cardStyle: React.CSSProperties = {
   borderColor: 'var(--hairline)',
   background: 'var(--surface-card)',
@@ -241,6 +242,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sectorId, setSectorId] = useState('');
   const [compradorId, setCompradorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
+  // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
+  // livre e o bloco de busca some inteiro em vez de oferecer um campo morto.
+  const ehServico = tipoCompra === 'Serviço';
   // Sem valor padrão: criticidade é decisão do solicitante, não um "grau 3"
   // silencioso que ele nem percebeu que escolheu.
   const [criticality, setCriticality] = useState<number | null>(null);
@@ -302,7 +306,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
 
-    if (activeSearchIndex === null) {
+    if (activeSearchIndex === null || ehServico) {
       setActiveSearchResults([]);
       setErroBusca(false);
       return;
@@ -350,7 +354,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, areaUsuario, tentativaBusca]);
+  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, areaUsuario, tentativaBusca, ehServico]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -858,6 +862,56 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     </div>
   );
 
+  // Serviço não segue o fluxo normal de compra: quem cadastra e negocia é o
+  // Jefferson, então a solicitação vai por e-mail no mesmo molde do Cadastro
+  // SAP — mailto: não leva anexos, por isso vai a contagem e o link do SISTEN.
+  const buildCompraServicoEmailBody = (reqId: string, reqNumero: string): string => {
+    const setorNome = sectors.find(sec => sec.id === sectorId)?.name || '—';
+    const compradorNome = buyerOptions.find(b => (b.profileId || b.code) === compradorId)?.label || '—';
+    const totalAnexos = items.reduce(
+      (acc, it) => acc + (it.attachments?.length || 0) + (it.reusedAttachments?.length || 0),
+      0,
+    );
+
+    const linhas: string[] = [
+      'Olá, Jeff!',
+      '',
+      'Abri uma solicitação de compra de SERVIÇO no SISTEN:',
+      '',
+      `Número da solicitação: #${reqNumero}`,
+      `Solicitante: ${user.name}${user.cargo ? ` (${user.cargo})` : ''}`,
+      `Setor: ${setorNome}`,
+      `Comprador responsável: ${compradorNome}`,
+      `Criticidade: ${criticality ?? '—'}`,
+      `Data de necessidade: ${dataNecessidade ? dataNecessidade.split('-').reverse().join('/') : '—'}`,
+      '',
+      `Serviços solicitados (${items.length}):`,
+    ];
+
+    items.forEach((it, i) => {
+      linhas.push(
+        '',
+        `${i + 1}. ${it.description || '—'}${it.is_generic ? ' [GENÉRICO]' : ''}`,
+        `   Quantidade: ${it.quantity || '—'}`,
+        `   Prestador sugerido: ${it.suggested_supplier || '—'}`,
+        `   Estimativa: ${it.estimated_value ? `R$ ${Number(it.estimated_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—'}`,
+        `   Escopo: ${it.observation || '—'}`,
+      );
+      if (it.reference_link) linhas.push(`   Link de referência: ${it.reference_link}`);
+    });
+
+    linhas.push(
+      '',
+      `Justificativa: ${justificativa}`,
+      '',
+      `Anexos (${totalAnexos}) - ${totalAnexos > 0 ? 'Essa solicitação contém anexos' : 'Essa solicitação não contém anexos'}`,
+      '',
+      `Acompanhe a solicitação no SISTEN: ${window.location.origin}/#/solicitacoes?id=${reqId}`,
+    );
+
+    return linhas.join('\n');
+  };
+
   // Monta o corpo do e-mail de aviso ao Suprimentos com o conteúdo preenchido no
   // formulário. Um mailto: não consegue anexar arquivos (restrição de segurança
   // do navegador/SO) — por isso os anexos entram como lista + link para a
@@ -1141,6 +1195,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         });
       }
 
+      if (activeTab === 'compra' && ehServico) {
+        const configEmail = await obterConfigEmail('compra_servico');
+        const subject = configEmail?.assunto_padrao
+          ? `${configEmail.assunto_padrao} #${reqNumero}`
+          : `Solicitação de Serviço #${reqNumero}`;
+        window.location.href = montarMailtoComConfig({
+          destinatarios: configEmail?.destinatarios || 'jefferson.santana@ten.ind.br',
+          copia: configEmail?.copia,
+          copiaOculta: configEmail?.copia_oculta,
+          assunto: subject,
+          corpo: buildCompraServicoEmailBody(reqId, reqNumero),
+        });
+        toast.info('E-mail aberto no Outlook para o Jefferson. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
+      }
+
       if (activeTab === 'cadastro_sap') {
         const configEmail = await obterConfigEmail('cadastro_sap');
         const subject = configEmail?.assunto_padrao
@@ -1320,7 +1389,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       <button
                         key={type}
                         type="button"
-                        onClick={() => setTipoCompra(type)}
+                        onClick={() => {
+                          setTipoCompra(type);
+                          // O que veio do catálogo SAP não vale para serviço —
+                          // sai da tela e do payload junto com os campos.
+                          if (type === 'Serviço') {
+                            setActiveSearchIndex(null);
+                            setBuscaModalIndex(null);
+                            setItems(prev => prev.map(it => ({
+                              ...it,
+                              sap_code: '',
+                              technical_text: '',
+                              sinais: undefined,
+                              unit: '',
+                            })));
+                          }
+                        }}
                         aria-pressed={tipoCompra === type}
                         className="rounded py-1 text-center text-[11px] font-bold uppercase cursor-pointer transition-colors duration-150"
                         style={
@@ -1339,7 +1423,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               {/* Repeatable Items Area */}
               <div className="space-y-3 pt-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Itens solicitados *</span>
+                  <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+                    {ehServico ? 'Serviços solicitados *' : 'Itens solicitados *'}
+                  </span>
                   <button
                     type="button"
                     data-tour="novasol-add-item"
@@ -1347,7 +1433,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     className="flex items-center gap-1 text-sm font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--brand-strong)]"
                     style={{ color: 'var(--brand)' }}
                   >
-                    <Plus className="h-4 w-4" /> Item
+                    <Plus className="h-4 w-4" /> {ehServico ? 'Serviço' : 'Item'}
                   </button>
                 </div>
 
@@ -1360,7 +1446,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
-                        Item {index + 1}
+                        {ehServico ? 'Serviço' : 'Item'} {index + 1}
                       </span>
                       <div className="flex items-center gap-3">
                         <label data-tour="novasol-item-generico" className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
@@ -1379,8 +1465,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             onClick={() => handleRemoveItem(index)}
                             className="cursor-pointer transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 rounded"
                             style={{ color: 'var(--status-critical)', outlineColor: 'var(--status-critical)' }}
-                            title="Remover Item"
-                            aria-label={`Remover item ${index + 1}`}
+                            title={ehServico ? 'Remover Serviço' : 'Remover Item'}
+                            aria-label={`Remover ${ehServico ? 'serviço' : 'item'} ${index + 1}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -1392,62 +1478,70 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       {/* Código SAP + Descrição — busca bidirecional no catálogo SAP */}
                       <div className="sm:col-span-8 relative" ref={(el) => { dropdownRefs.current[index] = el; }}>
                         <div className="flex gap-3">
-                          <div className="w-28 shrink-0">
-                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Código SAP</label>
-                            <input
-                              type="text"
-                              placeholder="8 dígitos"
-                              maxLength={8}
-                              value={it.sap_code}
-                              onChange={(e) => {
-                                handleItemChange(index, 'sap_code', e.target.value);
-                                setActiveSearchIndex(index);
-                              }}
-                              onFocus={() => setActiveSearchIndex(index)}
-                              className="w-full rounded border py-1 px-2 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                              style={fieldStyle}
-                            />
-                          </div>
+                          {!ehServico && (
+                            <div className="w-28 shrink-0">
+                              <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Código SAP</label>
+                              <input
+                                type="text"
+                                placeholder="8 dígitos"
+                                maxLength={8}
+                                value={it.sap_code}
+                                onChange={(e) => {
+                                  handleItemChange(index, 'sap_code', e.target.value);
+                                  setActiveSearchIndex(index);
+                                }}
+                                onFocus={() => setActiveSearchIndex(index)}
+                                className="w-full rounded border py-1 px-2 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                                style={fieldStyle}
+                              />
+                            </div>
+                          )}
                           <div data-tour="novasol-descricao-busca" className="flex-1">
-                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Descrição *</label>
+                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                              {ehServico ? 'Descrição do serviço *' : 'Descrição *'}
+                            </label>
                             <div className="flex gap-1.5">
                               <div className="relative flex-1">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
+                                {!ehServico && (
+                                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
+                                )}
                                 <input
                                   type="text"
                                   required
-                                  placeholder="Digite para buscar no catálogo SAP..."
+                                  placeholder={ehServico ? 'Ex: Manutenção preventiva da ponte rolante' : 'Digite para buscar no catálogo SAP...'}
                                   value={it.description}
                                   onChange={(e) => {
                                     handleItemChange(index, 'description', e.target.value);
-                                    setActiveSearchIndex(index);
+                                    if (!ehServico) setActiveSearchIndex(index);
                                   }}
-                                  onFocus={() => setActiveSearchIndex(index)}
-                                  className="w-full rounded border py-1 pl-7 pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                                  onFocus={() => { if (!ehServico) setActiveSearchIndex(index); }}
+                                  className={`w-full rounded border py-1 ${ehServico ? 'pl-2' : 'pl-7'} pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1`}
                                   style={fieldStyle}
                                 />
                               </div>
                               {/* Escape para o caso difícil: termo genérico, muita
                                   quase-duplicata, decisão que pede ler a lista
                                   inteira em vez de espiar um dropdown de 60px. */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveSearchIndex(null);
-                                  setBuscaModalIndex(index);
-                                }}
-                                title="Abrir o catálogo SAP para buscar com calma"
-                                className="shrink-0 rounded border px-2.5 text-[11px] font-bold transition-colors hover:bg-[var(--surface-raised)]"
-                                style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}
-                              >
-                                Buscar
-                              </button>
+                              {!ehServico && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveSearchIndex(null);
+                                    setBuscaModalIndex(index);
+                                  }}
+                                  title="Abrir o catálogo SAP para buscar com calma"
+                                  className="shrink-0 rounded border px-2.5 text-[11px] font-bold transition-colors hover:bg-[var(--surface-raised)]"
+                                  style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}
+                                >
+                                  Buscar
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
 
                         {/* Autocomplete Dropdown list */}
-                        {activeSearchIndex === index && (
+                        {!ehServico && activeSearchIndex === index && (
                           <div
                             className="absolute left-0 right-0 top-full mt-1 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto divide-y border animate-fade-in"
                             style={{ background: 'var(--chart-tooltip-bg)', borderColor: 'var(--chart-tooltip-border)', boxShadow: 'var(--chart-tooltip-shadow)' }}
@@ -1569,21 +1663,23 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
                       {/* Un — sem padrão: UN silencioso escondia a unidade
                           errada passar despercebida. */}
-                      <div className="sm:col-span-2 sm:max-w-[160px]">
-                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
-                        <select
-                          required
-                          value={it.unit}
-                          onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
-                          className="w-full rounded border py-1 px-1.5 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                          style={fieldStyle}
-                        >
-                          <option value="">Selecione...</option>
-                          {UNIDADES.map(un => (
-                            <option key={un} value={un}>{un}</option>
-                          ))}
-                        </select>
-                      </div>
+                      {!ehServico && (
+                        <div className="sm:col-span-2 sm:max-w-[160px]">
+                          <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
+                          <select
+                            required
+                            value={it.unit}
+                            onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                            className="w-full rounded border py-1 px-1.5 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                            style={fieldStyle}
+                          >
+                            <option value="">Selecione...</option>
+                            {UNIDADES.map(un => (
+                              <option key={un} value={un}>{un}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
 
                     {/* Chips de estoque/RM/pedido + texto técnico do catálogo
@@ -1611,35 +1707,40 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      {/* Marca */}
-                      <div>
-                        <label className="text-[11px] font-bold flex items-center justify-between mb-1" style={{ color: 'var(--ink-muted)' }}>
-                          <span>Marca / Fabricante</span>
-                          <label className="inline-flex items-center gap-1 text-[11px] font-normal cursor-pointer" style={{ color: 'var(--ink-muted)' }}>
-                            <input
-                              type="checkbox"
-                              checked={it.is_similar_allowed}
-                              onChange={(e) => handleItemChange(index, 'is_similar_allowed', e.target.checked)}
-                              style={{ accentColor: 'var(--brand)' }}
-                            /> ou similar
+                      {/* Marca — só faz sentido para material; serviço não tem
+                          fabricante nem "ou similar". */}
+                      {!ehServico && (
+                        <div>
+                          <label className="text-[11px] font-bold flex items-center justify-between mb-1" style={{ color: 'var(--ink-muted)' }}>
+                            <span>Marca / Fabricante</span>
+                            <label className="inline-flex items-center gap-1 text-[11px] font-normal cursor-pointer" style={{ color: 'var(--ink-muted)' }}>
+                              <input
+                                type="checkbox"
+                                checked={it.is_similar_allowed}
+                                onChange={(e) => handleItemChange(index, 'is_similar_allowed', e.target.checked)}
+                                style={{ accentColor: 'var(--brand)' }}
+                              /> ou similar
+                            </label>
                           </label>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Marca sugerida"
-                          value={it.brand}
-                          onChange={(e) => handleItemChange(index, 'brand', e.target.value)}
-                          className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                          style={fieldStyle}
-                        />
-                      </div>
+                          <input
+                            type="text"
+                            placeholder="Marca sugerida"
+                            value={it.brand}
+                            onChange={(e) => handleItemChange(index, 'brand', e.target.value)}
+                            className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                            style={fieldStyle}
+                          />
+                        </div>
+                      )}
 
                       {/* Fornecedor */}
                       <div>
-                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Fornecedor sugerido</label>
+                        <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                          {ehServico ? 'Prestador sugerido' : 'Fornecedor sugerido'}
+                        </label>
                         <input
                           type="text"
-                          placeholder="Sugestão de distribuidor"
+                          placeholder={ehServico ? 'Sugestão de prestador' : 'Sugestão de distribuidor'}
                           value={it.suggested_supplier}
                           onChange={(e) => handleItemChange(index, 'suggested_supplier', e.target.value)}
                           className="w-full rounded border py-1 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
@@ -1683,12 +1784,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         é o único lugar onde o comprador sabe o que comprar. */}
                     <div>
                       <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                        Observação / Informações Técnicas{it.is_generic ? ' *' : ''}
+                        {ehServico ? 'Escopo / Detalhamento do serviço *' : `Observação / Informações Técnicas${it.is_generic ? ' *' : ''}`}
                       </label>
                       <textarea
-                        rows={2}
-                        required={it.is_generic || false}
-                        placeholder="Informações técnicas adicionais, observações ou especificações..."
+                        rows={ehServico ? 3 : 2}
+                        required={ehServico || it.is_generic || false}
+                        placeholder={ehServico
+                          ? 'O que será executado, onde, prazo, periodicidade, requisitos de segurança...'
+                          : 'Informações técnicas adicionais, observações ou especificações...'}
                         value={it.observation || ''}
                         onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
                         className="w-full rounded border py-1.5 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
@@ -1701,7 +1804,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         certo, não solta na solicitação. */}
                     <div>
                       <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                        Fotos / documentos do item
+                        {ehServico ? 'Fotos / documentos do serviço' : 'Fotos / documentos do item'}
                       </label>
                       {/* Em edição, os anexos já enviados aparecem como
                           somente-leitura; os novos entram pelo seletor abaixo. */}
