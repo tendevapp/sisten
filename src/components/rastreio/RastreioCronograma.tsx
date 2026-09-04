@@ -81,7 +81,7 @@ function EntryCard({
                     <PackageCheck className="h-3 w-3" /> Chegou {formatDateBR(chegada.data_chegada)}
                   </span>
                   <button
-                    onClick={() => onDesfazerChegada?.(row.ri)}
+                    onClick={() => onDesfazerChegada?.(row.riPo)}
                     disabled={saving}
                     title="Desfazer chegada"
                     className="p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
@@ -91,7 +91,7 @@ function EntryCard({
                 </>
               ) : (
                 <button
-                  onClick={() => onMarcarChegada?.(row.ri)}
+                  onClick={() => onMarcarChegada?.(row.riPo)}
                   disabled={saving}
                   className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[9px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
                 >
@@ -115,9 +115,9 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
 } & ViewExtras) {
   const cards = group.rows.map((r, j) => (
     <EntryCard
-      key={`${r.ri}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact={compact} onOpen={onOpen}
+      key={`${r.riPo}-${j}`} row={r} delivery={deriveDeliveryStatus(r, hoje)} compact={compact} onOpen={onOpen}
       unread={unreadRis?.has(r.ri)} hidePo={hasValue(group.po)}
-      canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.ri)} saving={savingRi === r.ri}
+      canAlmoxarifado={canAlmoxarifado} chegada={chegadasMap?.get(r.riPo)} saving={savingRi === r.riPo}
       onMarcarChegada={onMarcarChegada} onDesfazerChegada={onDesfazerChegada}
     />
   ));
@@ -126,7 +126,7 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
   if (!hasValue(group.po)) return <div className="space-y-1.5">{cards}</div>;
 
   const candidatos = group.rows.filter(isAlmoxarifadoCandidate);
-  const pendentes = candidatos.filter(r => !chegadasMap?.get(r.ri));
+  const pendentes = candidatos.filter(r => !chegadasMap?.get(r.riPo));
   const chegaram = candidatos.length - pendentes.length;
   const completo = candidatos.length > 0 && pendentes.length === 0;
   const parcial = chegaram > 0 && pendentes.length > 0;
@@ -159,7 +159,7 @@ function PoGroupBlock({ group, hoje, compact, onOpen, unreadRis, canAlmoxarifado
             </span>
           ) : (
             <button
-              onClick={(e) => { e.stopPropagation(); onMarcarChegadaPo?.(group.po, pendentes.map(r => r.ri)); }}
+              onClick={(e) => { e.stopPropagation(); onMarcarChegadaPo?.(group.po, pendentes.map(r => r.riPo)); }}
               disabled={salvando}
               title={`Marcar chegada dos ${pendentes.length} item(ns) pendentes do PO ${group.po}`}
               className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 text-[9px] font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-50"

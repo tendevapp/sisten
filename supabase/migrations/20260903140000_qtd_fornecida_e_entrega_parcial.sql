@@ -1,0 +1,24 @@
+-- Ja aplicada no projeto remoto (via MCP), registrada aqui para o repositorio
+-- refletir o schema. Ver as migrations `mv_pedidos_por_ri_com_qtd_fornecida` e
+-- `vw_requisicoes_expondo_qtd_fornecida` no historico do Supabase para o corpo
+-- completo.
+--
+-- Entrega parcial: a ZL0132 guarda, por linha de pedido, quanto foi PEDIDO
+-- (qtd_pedido) e quanto ja foi FORNECIDO (qtd_fornecida). A coluna nao vinha na
+-- matview, entao a tela nao tinha como mostrar saldo em aberto.
+--
+-- 1. mv_pedidos_por_ri passa a carregar qtd_fornecida. Matview nao aceita
+--    CREATE OR REPLACE: cria-se a nova ao lado (mv_pedidos_por_ri_novo), aponta
+--    a view para ela, derruba a antiga e renomeia -- o rename mantem a
+--    dependencia (Postgres liga view e matview por OID), entao
+--    refresh_historico_pedidos() segue valendo sem alteracao.
+--
+-- 2. vw_sap_requisicoes_enriquecidas expoe no fim:
+--      qtd_fornecida_po     quanto ja foi fornecido NESTA linha de pedido
+--      qtd_pedida_total     soma pedida em todos os POs do item de RM
+--      qtd_fornecida_total  soma fornecida em todos os POs do item de RM
+--
+-- A comparacao entre qtd_fornecida_total e qtd_solicitada e o que a Central de
+-- Compras usa para marcar o item como entrega parcial (ver
+-- src/lib/entregaParcial.ts). Nao vale para RM de servico (17...) nem item de
+-- contrato: nesses a ZL0132 traz VALOR em R$ nessa coluna, nao quantidade.

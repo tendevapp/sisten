@@ -143,6 +143,9 @@ export const antesDeHoje = (dataISO: string, hojeISO: string): boolean => dataIS
 export type EstadoChegada = 'pendente' | 'parcial' | 'chegou';
 
 export interface ItemDiligenciamento {
+  /** Identidade da linha: item de RM + pedido. Um item comprado em dois POs
+   *  aparece duas vezes na fila, uma por pedido. */
+  riPo: string;
   ri: string;
   docCompra: string;
   material: string;
@@ -195,6 +198,7 @@ interface ItemComPo extends ItemDiligenciamento {
  */
 export function montarItens(
   registros: EnrichedSAPRecord[],
+  // Diligenciamento e chegada são do PEDIDO: indexados por `ri_po`, não por `ri`.
   diligenciamentoPorRi: Map<string, DiligenciamentoItem>,
   chegadasPorRi: Map<string, AlmoxarifadoChegada>,
   cidadesPorCodigo: Map<string, CidadeForn>,
@@ -205,7 +209,7 @@ export function montarItens(
     .filter(r => !!r.documento_compra && !dataValida(r.data_migo))
     .filter(r => !isServicoItem(r.requisicao_de_compra || r.ri))
     .map(r => {
-      const dilig = diligenciamentoPorRi.get(r.ri);
+      const dilig = diligenciamentoPorRi.get(r.ri_po);
       const transportadora = dilig?.transportadora || '';
       const uf = ufDoFornecedor(r.fornecedor_code, regiaoUfBrutaPorRi.get(r.ri), cidadesPorCodigo);
       const prazoDias = resolverPrazoDias(uf, transportadora, prazos);
@@ -218,14 +222,16 @@ export function montarItens(
       else previsaoCalculada = somarDiasCorridos(remessa, prazoDias);
 
       const previsaoManual = dataValida(dilig?.previsao_manual) ? (dilig!.previsao_manual as string) : undefined;
-      const chegada = chegadasPorRi.get(r.ri);
+      const chegada = chegadasPorRi.get(r.ri_po);
 
       const item: ItemComPo = {
+        riPo: r.ri_po,
         ri: r.ri,
         docCompra: r.documento_compra as string,
         material: r.material_code,
         descricao: r.texto_breve,
-        quantidade: r.qtd_requisicao,
+        // Quantidade DESTE pedido: a RM pode ter sido dividida em vários.
+        quantidade: r.qtd_po ?? r.qtd_requisicao,
         unidade: r.unidade_medida,
         valor: r.valor_total,
         transportadora,

@@ -112,23 +112,27 @@ export interface PatchDiligenciamentoItem {
  * no cabeçalho do PO aplica a todos os itens abertos dele, e a edição de um
  * único item chama esta mesma função com uma lista de um elemento só.
  *
- * Upsert por `ri`: PostgREST monta o `ON CONFLICT DO UPDATE SET` só com as
+ * Upsert por `ri_po` (item de RM + pedido): o diligenciamento é do PEDIDO, e
+ * um item comprado em dois POs tem transportadora e previsão próprias em cada.
+ * PostgREST monta o `ON CONFLICT DO UPDATE SET` só com as
  * colunas presentes no corpo da requisição, então um patch parcial (ex.: só
  * `transportadora`) não apaga `data_faturamento_transportadora`/`previsao_manual`
  * já gravados noutra edição.
  */
 export async function salvarDiligenciamentoItens(
-  ris: string[],
-  docCompraPorRi: Map<string, string>,
+  riPos: string[],
+  docCompraPorRiPo: Map<string, string>,
   patch: PatchDiligenciamentoItem,
   usuario: { id: string; nome: string },
 ): Promise<void> {
-  if (ris.length === 0) return;
+  if (riPos.length === 0) return;
   const agora = new Date().toISOString();
 
-  const linhas = ris.map(ri => ({
-    ri,
-    doc_compra: docCompraPorRi.get(ri) || null,
+  const linhas = riPos.map(riPo => ({
+    ri_po: riPo,
+    // O `ri` sai da própria chave: `ri_po` é `<ri>-<PO>` e o `ri` não tem hífen.
+    ri: riPo.split('-')[0],
+    doc_compra: docCompraPorRiPo.get(riPo) || null,
     ...patch,
     atualizado_por_id: usuario.id,
     atualizado_por_nome: usuario.nome,
@@ -137,7 +141,7 @@ export async function salvarDiligenciamentoItens(
 
   const { error } = await (supabase as any)
     .from('sup_diligenciamento_itens')
-    .upsert(linhas, { onConflict: 'ri' });
+    .upsert(linhas, { onConflict: 'ri_po' });
   if (error) throw new Error(error.message);
 }
 
@@ -148,12 +152,12 @@ export async function salvarDiligenciamentoItens(
  * `sup_diligenciamento_itens.sql`.
  */
 export async function trocarTransportadora(
-  ris: string[],
-  docCompraPorRi: Map<string, string>,
+  riPos: string[],
+  docCompraPorRiPo: Map<string, string>,
   transportadora: string,
   usuario: { id: string; nome: string },
 ): Promise<void> {
-  await salvarDiligenciamentoItens(ris, docCompraPorRi, { transportadora, previsao_manual: null }, usuario);
+  await salvarDiligenciamentoItens(riPos, docCompraPorRiPo, { transportadora, previsao_manual: null }, usuario);
 }
 
 /* Escrita — sup_prazos_transporte ----------------------------------------- */

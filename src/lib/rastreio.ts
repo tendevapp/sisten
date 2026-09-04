@@ -9,6 +9,7 @@
 import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { EnrichedSAPRecord, GrupoMercadoria, RastreioPrioridade } from '../types';
 import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './format';
+import { avaliarEntregaParcial, type EntregaParcial } from './entregaParcial';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
 // RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
@@ -73,6 +74,13 @@ export function latestPriorityByRi(prioridades: RastreioPrioridade[]): Map<strin
 // Uma linha de rastreio = uma requisição/item enriquecido, já mapeado para os
 // campos que a tela exibe. Inclui preço do pedido (só em itens já com PO).
 export interface RastreioRow {
+  /**
+   * Identidade da linha: item de RM + pedido. Um item comprado em dois POs
+   * rende duas linhas com o mesmo `ri` — use `riPo` para React key, seleção e
+   * marcação de chegada; `ri` continua identificando o item da RM, que é a
+   * quem pertencem chat, prioridade e promessa de entrega.
+   */
+  riPo: string;
   ri: string;
   rm: string;          // requisicao_de_compra
   item: string;        // item_reqc
@@ -81,7 +89,14 @@ export interface RastreioRow {
   descricao: string;   // texto_breve
   fornecedor: string;  // fornecedor_name
   setor: string;       // area_solicitante / requisitante_name
-  qtd?: number;        // qtd_requisicao
+  qtd?: number;        // qtd do pedido (ou da RM, quando ainda não há PO)
+  qtdFornecida?: number; // qtd_fornecida do pedido (ZL0132) — o que já chegou
+  /**
+   * Comparação entre o total fornecido do item de RM e o que a RM pediu.
+   * `null` quando não há o que comparar (sem PO, serviço, contrato, nada
+   * fornecido ainda) — ver `lib/entregaParcial.ts`.
+   */
+  entrega?: EntregaParcial | null;
   unidade: string;     // unidade_medida
   precoUnitario?: number; // preço líquido unitário do pedido (só itens com PO)
   valorTotal?: number;    // valor líquido da linha do pedido em BRL (só itens com PO)
@@ -172,8 +187,10 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
     })
     .map(r => {
       const raw = r as any;
+      const ri = txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri;
       return {
-        ri: txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri,
+        riPo: r.ri_po || `${ri}-${txt(r.documento_compra) !== EMPTY ? String(r.documento_compra).trim() : 'SEM-PO'}`,
+        ri,
         rm: txt(r.requisicao_de_compra),
         item: txt(r.item_reqc),
         po: txt(r.documento_compra),
@@ -181,7 +198,13 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
         descricao: txt(r.texto_breve),
         fornecedor: txt(r.fornecedor_name),
         setor: txt(r.area_solicitante) !== EMPTY ? txt(r.area_solicitante) : txt(r.requisitante_name),
-        qtd: typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
+        // Com PO, a quantidade da linha é a DO PEDIDO: a RM pode ter sido
+        // dividida em vários, e repetir a quantidade cheia em cada linha faria
+        // parecer que se comprou o múltiplo do que foi pedido.
+        qtd: typeof r.qtd_po === 'number' ? r.qtd_po
+          : typeof r.qtd_requisicao === 'number' ? r.qtd_requisicao : undefined,
+        qtdFornecida: typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : undefined,
+        entrega: avaliarEntregaParcial(r),
         unidade: txt(r.unidade_medida),
         precoUnitario: typeof r.preco_unitario === 'number' ? r.preco_unitario : undefined,
         valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,

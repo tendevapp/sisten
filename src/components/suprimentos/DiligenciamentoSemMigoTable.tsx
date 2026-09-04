@@ -60,6 +60,7 @@ import {
   listarTransportadoras, regiaoUfBrutaPorRi, salvarDiligenciamentoItens, salvarPrazoTransporte,
   excluirPrazoTransporte, trocarTransportadora,
 } from '../../lib/diligenciamentoApi';
+import CobrancaPoModal from './CobrancaPoModal';
 
 interface Props {
   registros: EnrichedSAPRecord[];
@@ -104,10 +105,20 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const cidades = useMemo(() => localDb.getCidadeForn(), []);
   const cidadesPorCodigo = useMemo(() => indexarCidadesPorCodigo(cidades), [cidades]);
+  const contatos = useMemo(() => localDb.getContatosForn(), []);
   const regiaoUfMap = useMemo(() => regiaoUfBrutaPorRi(), []);
-  const diligPorRi = useMemo(() => new Map(diligItensRaw.map(i => [i.ri, i])), [diligItensRaw]);
-  // Índice por RI para não varrer `registros` a cada linha (era O(n²) no render).
-  const regPorRi = useMemo(() => new Map(registros.map(r => [r.ri, r])), [registros]);
+  // Chaveado por `ri_po` (item de RM + pedido): diligenciamento e chegada são
+  // do PEDIDO, e um item comprado em dois POs tem uma linha para cada.
+  const diligPorRi = useMemo(() => new Map(diligItensRaw.map(i => [i.ri_po, i])), [diligItensRaw]);
+  // Índice por linha para não varrer `registros` a cada linha (era O(n²) no render).
+  const regPorRi = useMemo(() => new Map(registros.map(r => [r.ri_po, r])), [registros]);
+
+  // Estado do modal de cobranca de PO para o fornecedor
+  const [cobrancaPo, setCobrancaPo] = useState<{
+    docCompra: string;
+    fornecedorNome: string;
+    fornecedorCode: string;
+  } | null>(null);
 
   const carregarDiligenciamento = async () => {
     try {
@@ -151,7 +162,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return itensOrdenados.filter(i => normalizarChaveTransportadora(i.transportadora || '') === chave);
   }, [itensOrdenados, filtroTransp]);
 
-  const itensPorRi = useMemo(() => new Map(itensVisiveis.map(i => [i.ri, i])), [itensVisiveis]);
+  const itensPorRi = useMemo(() => new Map(itensVisiveis.map(i => [i.riPo, i])), [itensVisiveis]);
 
   /**
    * Opções de transportadora: cadastro ativo (`sup_transportadoras`) primeiro,
@@ -172,12 +183,12 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const selecionaveis = useMemo(() => itensVisiveis.filter(i => !i.chegou), [itensVisiveis]);
-  const todosSelecionados = selecionaveis.length > 0 && selecionaveis.every(i => selecionados.has(i.ri));
+  const todosSelecionados = selecionaveis.length > 0 && selecionaveis.every(i => selecionados.has(i.riPo));
 
   // Solta da seleção itens que saíram do recorte (mudança de filtro) ou já chegaram.
   useEffect(() => {
     setSelecionados(prev => {
-      const validos = new Set(selecionaveis.map(i => i.ri));
+      const validos = new Set(selecionaveis.map(i => i.riPo));
       let mudou = false;
       const proximo = new Set<string>();
       for (const ri of prev) { if (validos.has(ri)) proximo.add(ri); else mudou = true; }
@@ -211,7 +222,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   });
 
   const alternarSelTodos = () => setSelecionados(
-    todosSelecionados ? new Set() : new Set(selecionaveis.map(i => i.ri)),
+    todosSelecionados ? new Set() : new Set(selecionaveis.map(i => i.riPo)),
   );
 
   const limparSelecao = () => {
@@ -226,7 +237,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     let efetiva: string | null = novaPrevisaoManual !== undefined ? (novaPrevisaoManual || null) : (item.previsaoManual || null);
 
     if (!efetiva && item.dataRemessa) {
-      const reg = regPorRi.get(item.ri);
+      const reg = regPorRi.get(item.riPo);
       const uf = cidadesPorCodigo.get(reg?.fornecedor_code || '')?.estado_uf || regiaoUfMap.get(item.ri) || '';
       const dias = resolverPrazoDias(uf, transportadora, prazos);
       if (dias !== null) efetiva = somarDiasCorridos(item.dataRemessa, dias);
@@ -239,7 +250,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const salvarTransportadora = async (item: ItemDiligenciamento, novoNome: string) => {
     try {
-      await trocarTransportadora([item.ri], new Map([[item.ri, item.docCompra]]), novoNome, { id: user.id, nome: user.name });
+      await trocarTransportadora([item.riPo], new Map([[item.riPo, item.docCompra]]), novoNome, { id: user.id, nome: user.name });
       await propagarPrevisaoParaRastreio(item, novoNome, undefined);
       await carregarDiligenciamento();
     } catch (e) {
@@ -251,7 +262,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const salvarFaturamento = async (item: ItemDiligenciamento, data: string) => {
     try {
       await salvarDiligenciamentoItens(
-        [item.ri], new Map([[item.ri, item.docCompra]]), { data_faturamento_transportadora: data || null },
+        [item.riPo], new Map([[item.riPo, item.docCompra]]), { data_faturamento_transportadora: data || null },
         { id: user.id, nome: user.name },
       );
       await carregarDiligenciamento();
@@ -264,7 +275,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const salvarPrevisaoManual = async (item: ItemDiligenciamento, data: string) => {
     try {
       await salvarDiligenciamentoItens(
-        [item.ri], new Map([[item.ri, item.docCompra]]), { previsao_manual: data || null },
+        [item.riPo], new Map([[item.riPo, item.docCompra]]), { previsao_manual: data || null },
         { id: user.id, nome: user.name },
       );
       await propagarPrevisaoParaRastreio(item, undefined, data);
@@ -283,13 +294,13 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
    * sem depender de deploy.
    */
   const enviarListaColeta = async () => {
-    const selecionadosItens = selecionaveis.filter(i => selecionados.has(i.ri));
+    const selecionadosItens = selecionaveis.filter(i => selecionados.has(i.riPo));
     if (selecionadosItens.length === 0) return;
 
     setEnviandoColeta(true);
     try {
       const linhas: LinhaColeta[] = selecionadosItens.map(item => {
-        const reg = regPorRi.get(item.ri);
+        const reg = regPorRi.get(item.riPo);
         const rm = reg?.requisicao_de_compra
           ? `${reg.requisicao_de_compra}${reg.item_reqc ? ` / ${reg.item_reqc}` : ''}`
           : '';
@@ -348,8 +359,12 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
    * linha — ver `trocarTransportadora`), deixando o cálculo assumir.
    */
   const aplicarLote = async () => {
-    const ris = selecionaveis.filter(i => selecionados.has(i.ri)).map(i => i.ri);
-    if (ris.length === 0) return;
+    const selecionadosItens = selecionaveis.filter(i => selecionados.has(i.riPo));
+    const riPos = selecionadosItens.map(i => i.riPo);
+    // A promessa de entrega é do ITEM da RM (mora na ME5A), então o Rastreio
+    // recebe os `ri` — sem repetir o mesmo item quando dois POs dele entram no lote.
+    const ris = Array.from(new Set(selecionadosItens.map(i => i.ri)));
+    if (riPos.length === 0) return;
 
     const patch: PatchDiligenciamentoItem = {};
     if (loteTransp) patch.transportadora = loteTransp;
@@ -364,8 +379,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
     setAplicandoLote(true);
     try {
-      const docPorRi = new Map(ris.map(ri => [ri, itensPorRi.get(ri)?.docCompra || '']));
-      await salvarDiligenciamentoItens(ris, docPorRi, patch, { id: user.id, nome: user.name });
+      const docPorRi = new Map(riPos.map(riPo => [riPo, itensPorRi.get(riPo)?.docCompra || '']));
+      await salvarDiligenciamentoItens(riPos, docPorRi, patch, { id: user.id, nome: user.name });
 
       if (lotePrev) {
         const { falhas } = await gravarPrevisaoNoRastreio(ris, lotePrev);
@@ -373,7 +388,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           toast.error(`Previsão salva, mas ${falhas.length} item(ns) não atualizaram o Rastreio Compras.`);
         }
       }
-      toast.success(`${ris.length} item(ns) atualizados.`);
+      toast.success(`${riPos.length} item(ns) atualizados.`);
       limparSelecao();
       await carregarDiligenciamento();
     } catch (e) {
@@ -386,7 +401,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   /* Desenho ------------------------------------------------------------------- */
 
-  if (carregando) return <TableSkeleton columns={9} rows={6} />;
+  if (carregando) return <TableSkeleton columns={10} rows={6} />;
 
   return (
     <div className="space-y-3">
@@ -482,22 +497,23 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                   <Th label="Fat. Transportadora" />
                   <Th label="Transportadora" />
                   <Th label="Chegada (Rastreio)" />
+                  <Th label="Cobrar" />
                 </TableHeadRow>
                 <TableBody>
                   {itensVisiveis.map(item => {
                     const vencido = !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO;
-                    const reg = regPorRi.get(item.ri);
-                    const marcado = selecionados.has(item.ri);
+                    const reg = regPorRi.get(item.riPo);
+                    const marcado = selecionados.has(item.riPo);
 
                     return (
-                      <Tr key={item.ri} accent={vencido ? 'var(--status-critical)' : (marcado ? 'var(--brand)' : undefined)}>
+                      <Tr key={item.riPo} accent={vencido ? 'var(--status-critical)' : (marcado ? 'var(--brand)' : undefined)}>
                         <Td stickyLeft>
                           <input
                             type="checkbox"
                             aria-label={`Selecionar PO ${item.docCompra}`}
                             checked={marcado}
                             disabled={item.chegou}
-                            onChange={() => alternarSel(item.ri)}
+                            onChange={() => alternarSel(item.riPo)}
                             className="h-3.5 w-3.5 cursor-pointer align-middle disabled:opacity-40"
                             style={{ accentColor: 'var(--brand)' }}
                           />
@@ -545,6 +561,26 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                         <Td>
                           <EstadoChegada item={item} />
                         </Td>
+                        <Td>
+                          <button
+                            type="button"
+                            onClick={() => setCobrancaPo({
+                              docCompra: item.docCompra,
+                              fornecedorNome: reg?.fornecedor_name || '',
+                              fornecedorCode: reg?.fornecedor_code || '',
+                            })}
+                            title={`Cobrar fornecedor sobre o PO ${item.docCompra}`}
+                            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-bold cursor-pointer transition-all hover:opacity-90 active:scale-95"
+                            style={{
+                              borderColor: 'var(--brand)',
+                              color: 'var(--brand)',
+                              background: 'color-mix(in srgb, var(--brand) 8%, var(--surface-card))',
+                            }}
+                          >
+                            <Mail className="h-3 w-3" />
+                            Cobrar
+                          </button>
+                        </Td>
                       </Tr>
                     );
                   })}
@@ -571,17 +607,18 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
             )}
             {itensVisiveis.map(item => (
               <ItemCard
-                key={item.ri}
+                key={item.riPo}
                 item={item}
-                reg={regPorRi.get(item.ri)}
-                marcado={selecionados.has(item.ri)}
-                onAlternarSel={() => alternarSel(item.ri)}
+                reg={regPorRi.get(item.riPo)}
+                marcado={selecionados.has(item.riPo)}
+                onAlternarSel={() => alternarSel(item.riPo)}
                 vencido={!item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO}
                 opcoesTransportadora={opcoesTransportadora}
                 onAbrirPrazos={() => setPrazosAberto(true)}
                 onSalvarPrevisao={salvarPrevisaoManual}
                 onSalvarFaturamento={salvarFaturamento}
                 onSalvarTransportadora={salvarTransportadora}
+                onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
               />
             ))}
           </div>
@@ -594,6 +631,19 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           onClose={() => setPrazosAberto(false)}
           onSalvar={async (uf, transp, dias) => { await salvarPrazoTransporte(uf, transp, dias); await carregarDiligenciamento(); }}
           onExcluir={async id => { await excluirPrazoTransporte(id); await carregarDiligenciamento(); }}
+        />
+      )}
+
+      {cobrancaPo && (
+        <CobrancaPoModal
+          docCompra={cobrancaPo.docCompra}
+          fornecedorNome={cobrancaPo.fornecedorNome}
+          fornecedorCode={cobrancaPo.fornecedorCode}
+          itensPo={itens.filter(i => i.docCompra === cobrancaPo.docCompra)}
+          registrosPo={registros.filter(r => r.documento_compra === cobrancaPo.docCompra)}
+          contatos={contatos}
+          user={user}
+          onClose={() => setCobrancaPo(null)}
         />
       )}
     </div>
@@ -779,6 +829,7 @@ function EstadoChegada({ item }: { item: ItemDiligenciamento }) {
 function ItemCard({
   item, reg, marcado, onAlternarSel, vencido, opcoesTransportadora,
   onAbrirPrazos, onSalvarPrevisao, onSalvarFaturamento, onSalvarTransportadora,
+  onCobrar,
 }: {
   item: ItemDiligenciamento;
   reg?: EnrichedSAPRecord;
@@ -790,6 +841,7 @@ function ItemCard({
   onSalvarPrevisao: (item: ItemDiligenciamento, data: string) => void;
   onSalvarFaturamento: (item: ItemDiligenciamento, data: string) => void;
   onSalvarTransportadora: (item: ItemDiligenciamento, nome: string) => void;
+  onCobrar: (docCompra: string, fornecedorNome: string, fornecedorCode: string) => void;
 }) {
   return (
     <div
@@ -812,7 +864,22 @@ function ItemCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <span className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>{item.docCompra}</span>
-            <EstadoChegada item={item} />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onCobrar(item.docCompra, reg?.fornecedor_name || '', reg?.fornecedor_code || '')}
+                title={`Cobrar fornecedor sobre o PO ${item.docCompra}`}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-bold cursor-pointer transition-all active:scale-95"
+                style={{
+                  borderColor: 'var(--brand)',
+                  color: 'var(--brand)',
+                  background: 'color-mix(in srgb, var(--brand) 8%, var(--surface-card))',
+                }}
+              >
+                <Mail className="h-3 w-3" /> Cobrar
+              </button>
+              <EstadoChegada item={item} />
+            </div>
           </div>
           <span className="block text-xs" style={{ color: 'var(--ink-muted)' }}>
             RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}

@@ -1,0 +1,14 @@
+-- Ja aplicada no projeto remoto (via MCP). Registrada aqui para o repositorio
+-- refletir o schema. Ver o corpo completo em
+-- `mv_pedidos_por_ri_todos_os_pos` e
+-- `vw_requisicoes_enriquecidas_uma_linha_por_po` no historico de migrations do
+-- Supabase.
+--
+-- Resumo:
+--   1. mv_pedidos_por_ri: materialized view com TODOS os pedidos de cada item
+--      de RM (uma linha por ri + doc_compra), em lugar do DISTINCT ON (ri) da
+--      mv_pedido_atual_por_ri, que guardava um pedido e descartava os demais.
+--   2. vw_sap_requisicoes_enriquecidas passa a fazer join nela: uma linha por
+--      (item de RM + pedido), com as colunas novas ri_po, qtd_po, unidade_po,
+--      preco_unit_po, por_po, valor_po, eflag_po e total_pos no fim.
+--   3. refresh_historico_pedidos() passa a atualizar tambem a nova matview.

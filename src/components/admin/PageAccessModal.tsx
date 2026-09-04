@@ -172,7 +172,11 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                             <div className="space-y-1.5 pt-0.5">
                               {FORMULARIO_SUBPERMISSOES.map(sub => {
                                 const subHasOverride = pageAccess[sub.id] !== undefined;
-                                const subChecked = pageAccess[sub.id] !== undefined ? pageAccess[sub.id] : true;
+                                const isDefaultAllowed =
+                                  sub.defaultRoles === '*'
+                                    ? true
+                                    : sub.defaultRoles.some((r) => user.roles.includes(r as any));
+                                const subChecked = pageAccess[sub.id] !== undefined ? pageAccess[sub.id] : isDefaultAllowed;
 
                                 return (
                                   <React.Fragment key={sub.id}>
@@ -187,14 +191,16 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                         <span className="font-semibold text-slate-800 dark:text-slate-200">{sub.label}</span>
                                         <span className="text-[10px] text-slate-400 truncate hidden sm:inline">({sub.descricao})</span>
                                         {!subHasOverride && (
-                                          <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 shrink-0">(todos)</span>
+                                          <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 shrink-0">
+                                            {sub.defaultRoles === '*' ? '(todos)' : '(admin/gestor)'}
+                                          </span>
                                         )}
                                       </label>
                                       {subHasOverride && (
                                         <button
                                           type="button"
                                           onClick={() => handleReset(sub.id)}
-                                          title="Restaurar padrão liberado"
+                                          title="Restaurar padrão"
                                           className="text-slate-400 hover:text-emerald-700 shrink-0"
                                         >
                                           <RotateCcw className="h-3 w-3" />
@@ -251,6 +257,61 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                             <div>
                                               <span className="font-semibold text-slate-800 dark:text-slate-200">Ver todas as ASEs</span>
                                               <p className="text-[10px] text-slate-500 dark:text-slate-400">Permite visualizar todas as ASEs abertas por todos os usuários e setores.</p>
+                                            </div>
+                                          </label>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Opções de edição para o formulário RID de SSMA */}
+                                    {sub.id === 'form_ssma' && subChecked && (
+                                      <div className="ml-6 my-1.5 rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/60 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            Edição no formulário RID:
+                                          </span>
+                                          {pageAccess['ssma_rid_editar_todas'] !== undefined && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleReset('ssma_rid_editar_todas')}
+                                              title="Restaurar padrão do perfil"
+                                              className="text-[10px] font-semibold text-slate-400 hover:text-emerald-700 inline-flex items-center gap-1"
+                                            >
+                                              <RotateCcw className="h-2.5 w-2.5" /> Padrão
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                            <input
+                                              type="radio"
+                                              name={`ssma_rid_edit_${user.id}`}
+                                              checked={
+                                                pageAccess['ssma_rid_editar_todas'] === false ||
+                                                (pageAccess['ssma_rid_editar_todas'] === undefined && !user.roles.includes('admin'))
+                                              }
+                                              onChange={() => handleToggle('ssma_rid_editar_todas', false)}
+                                              className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                            />
+                                            <div>
+                                              <span className="font-semibold text-slate-800 dark:text-slate-200">Apenas os próprios RIDs criados (Padrão)</span>
+                                              <p className="text-[10px] text-slate-500 dark:text-slate-400">Vê todos os desvios, mas edita, altera status e exclui apenas os que ele mesmo registrou.</p>
+                                            </div>
+                                          </label>
+                                          <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer">
+                                            <input
+                                              type="radio"
+                                              name={`ssma_rid_edit_${user.id}`}
+                                              checked={
+                                                pageAccess['ssma_rid_editar_todas'] === true ||
+                                                (pageAccess['ssma_rid_editar_todas'] === undefined && user.roles.includes('admin'))
+                                              }
+                                              onChange={() => handleToggle('ssma_rid_editar_todas', true)}
+                                              className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5"
+                                            />
+                                            <div>
+                                              <span className="font-semibold text-slate-800 dark:text-slate-200">Editar todos os RIDs</span>
+                                              <p className="text-[10px] text-slate-500 dark:text-slate-400">Permite editar, mudar status, emitir parecer e gerenciar RIDs abertos por qualquer usuário.</p>
                                             </div>
                                           </label>
                                         </div>

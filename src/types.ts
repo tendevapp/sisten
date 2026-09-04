@@ -305,7 +305,14 @@ export interface RastreioPrioridade {
 // Chegada física no almoxarifado de um item com PO emitida mas ainda sem
 // MIGO lançado no SAP. Ver db/sql/tables/almoxarifado_chegadas.sql.
 export interface AlmoxarifadoChegada {
+  /**
+   * Chave da linha: item de RM + pedido (`<ri>-<doc_compra>`). A chegada é do
+   * PEDIDO — uma mesma RM/item comprada em dois POs chega em dois momentos.
+   */
+  ri_po: string;
   ri: string;
+  /** Pedido a que esta chegada se refere. */
+  doc_compra?: string | null;
   rm?: string;
   data_chegada: string; // yyyy-MM-dd
   registrado_por_id: string;
@@ -328,7 +335,16 @@ export type ItemStatus =
 
 // 4. SAP Panel (ME5A and ZL0132 Integration)
 export interface SAPRequisicao {
-  ri: string; // Unique key: requisicao_de_compra + item_reqc
+  ri: string; // requisicao_de_compra + item_reqc — NÃO é único: um item pode ter vários POs
+  /**
+   * Chave única da linha: `<ri>-<documento_compra>` (ou `<ri>-SEM-PO`).
+   * Um item de RM pode ter sido comprado em mais de um pedido — quantidade
+   * dividida entre fornecedores, saldo, reemissão — e cada pedido é uma linha
+   * própria nas telas. Use SEMPRE `ri_po` como identidade de linha (React key,
+   * seleção, chegada, diligenciamento); `ri` continua identificando o ITEM DA
+   * RM, que é a quem pertencem observação, status e promessa de entrega.
+   */
+  ri_po: string;
   requisicao_de_compra: string; // 10 digits
   item_reqc: string; // 5 digits
   material_code: string;
@@ -347,6 +363,12 @@ export interface SAPRequisicao {
   requisitante_name: string;
   area_solicitante?: string;
   tipo_documento: string; // ZR01, ZR02, ZR03...
+  /**
+   * Categoria do item no SAP. `D` = item de contrato: o fornecimento já está
+   * amarrado a um contrato guarda-chuva, então não é uma compra a cotar nem
+   * uma RM esperando pedido — a Central de Compras trata como já atendida.
+   */
+  categoria_do_item?: string | null;
   codigo_de_eliminacao: boolean;
   presente_ultima_carga: boolean;
   campos_extras: Record<string, any>;
@@ -383,6 +405,21 @@ export interface EnrichedSAPRecord extends SAPRequisicao {
   // líquido unitário; valor_total = valor líquido da linha em BRL.
   preco_unitario?: number;
   valor_total?: number;
+  /** Quantidade deste pedido (a da RM inteira fica em `qtd_requisicao`). */
+  qtd_po?: number;
+  /** Quanto deste pedido já foi FORNECIDO (ZL0132). Menor que `qtd_po` = entrega parcial. */
+  qtd_fornecida_po?: number;
+  /** Soma pedida em todos os POs do item de RM. */
+  qtd_pedida_total?: number;
+  /** Soma fornecida em todos os POs do item de RM — comparada à qtd da RM diz se o item chegou inteiro. */
+  qtd_fornecida_total?: number;
+  /** Unidade de medida do pedido. */
+  unidade_po?: string;
+  /** Quantos pedidos existem para o mesmo item de RM (1 no caso comum). */
+  total_pos?: number;
+  /** Item de contrato (`categoria_do_item = 'D'`): entra como atendido, com o
+   *  selo "Contrato" no lugar do número do pedido. */
+  is_contrato?: boolean;
   natureza: string;
   status_requisicao: 'Sem PO' | 'Processado';
   lead_time_compras_meta: number;
@@ -805,6 +842,9 @@ export interface ContratoAnexo {
  * remessa) NAO mora aqui; ver `src/lib/diligenciamento.ts`.
  */
 export interface DiligenciamentoItem {
+  /** Chave: item de RM + pedido (`<ri>-<doc_compra>`) -- o diligenciamento e
+   *  do PEDIDO, e um item comprado em dois POs tem uma linha para cada. */
+  ri_po: string;
   ri: string;
   doc_compra?: string | null;
   transportadora?: string | null;
@@ -2047,4 +2087,105 @@ export interface BahiaSulEntrega {
   created_at?: string;
   updated_at?: string;
 }
+
+// =====================================================================
+// ---------- MÓDULO SSMA: REGISTRO DE IDENTIFICAÇÃO DE DESVIO (RID) ----------
+// =====================================================================
+
+export type SsmaEmpresa = 'TEN' | 'CONTRATADA';
+
+export type SsmaRidStatus = 'REGISTRADO' | 'EM_TRATAMENTO' | 'CONCLUIDO' | 'CANCELADO';
+
+export interface SsmaRidFoto {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  preview_url?: string;
+  created_at: string;
+}
+
+export interface SsmaRidDesvio {
+  id: string;
+  numero_registro: string;
+  pessoa_id: string | null;
+  nome_informante: string;
+  matricula_informante: string | null;
+  origem_informante: 'rh_pessoas' | 'manual';
+  setor: string;
+  data_registro: string; // YYYY-MM-DD
+  semana: string;
+  empresa: SsmaEmpresa;
+  empresa_contratada_nome: string | null;
+  area_desvio: string;
+  area_desvio_outro: string | null;
+  descricao_desvio: string;
+  sanado_imediato: boolean;
+  acao_imediata: string | null;
+  acao_proposta: string | null;
+  comunicado_responsavel_area: boolean;
+  comunicado_seguranca: boolean;
+  responsavel_seguranca_informado: string | null;
+  comportamentos_inseguros: string[];
+  condicoes_inseguras: string[];
+  classificacao_outro: string | null;
+  fotos: SsmaRidFoto[];
+  status: SsmaRidStatus;
+  parecer_ssma: string | null;
+  criado_por: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
+export interface SsmaRidFiltros {
+  termo?: string;
+  setor?: string;
+  semana?: string;
+  empresa?: string;
+  sanado?: 'todos' | 'sim' | 'nao';
+  status?: string;
+  dataInicio?: string;
+  dataFim?: string;
+}
+
+export interface SsmaRidMetricas {
+  total: number;
+  sanadosImediato: number;
+  pendentesTratamento: number;
+  totalEstaSemana: number;
+  taxaResolucaoImediata: number;
+}
+
+export interface SsmaFormPerguntaConfig {
+  id: string;
+  numero: number;
+  campo: string;
+  titulo: string;
+  subtitulo: string;
+  obrigatorio: boolean;
+  ativo: boolean;
+  tipo: 'texto' | 'autocomplete' | 'select' | 'data' | 'radio' | 'textarea' | 'boolean' | 'fotos' | 'checklist';
+}
+
+export interface SsmaFormOpcoesConfig {
+  empresas: string[];
+  areas: string[];
+  responsaveis_seguranca: string[];
+  comportamentos_inseguros: string[];
+  condicoes_inseguras: string[];
+}
+
+export interface SsmaFormConfig {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  perguntas: SsmaFormPerguntaConfig[];
+  opcoes: SsmaFormOpcoesConfig;
+  atualizado_em?: string;
+  atualizado_por?: string | null;
+}
+
 

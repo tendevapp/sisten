@@ -3,6 +3,8 @@ import {
   canAccessPage,
   canAccessFormGroup,
   canViewAllAse,
+  canEditDesvioRid,
+  canDeleteDesvioRid,
   FORMULARIO_SUBPERMISSOES,
   getPageGroups,
 } from './pages';
@@ -119,12 +121,19 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessFormGroup(userSemForm, 'almoxarifado')).toBe(false);
     });
 
-    it('se selecionar formulários (padrão), deve mostrar todos os grupos', () => {
+    it('se selecionar formulários (padrão), deve mostrar grupos gerais e restringir rh (ASE) a admin e gestor', () => {
       const userComForm = mockUser({ roles: ['requisitante'] });
       expect(canAccessFormGroup(userComForm, 'portaria')).toBe(true);
       expect(canAccessFormGroup(userComForm, 'logistica')).toBe(true);
-      expect(canAccessFormGroup(userComForm, 'rh')).toBe(true);
+      expect(canAccessFormGroup(userComForm, 'ssma')).toBe(true);
       expect(canAccessFormGroup(userComForm, 'almoxarifado')).toBe(true);
+      // RH/ASE só aparece por padrão para admin e gestor
+      expect(canAccessFormGroup(userComForm, 'rh')).toBe(false);
+
+      const gestor = mockUser({ roles: ['gestor'] });
+      expect(canAccessFormGroup(gestor, 'rh')).toBe(true);
+      const admin = mockUser({ roles: ['admin'] });
+      expect(canAccessFormGroup(admin, 'rh')).toBe(true);
     });
 
     it('deve respeitar subpermissões específicas desmarcadas pelo admin', () => {
@@ -187,13 +196,60 @@ describe('pages.ts - Controle de Acesso', () => {
     });
   });
 
+  describe('canEditDesvioRid & canDeleteDesvioRid - Permissões do RID SSMA', () => {
+    const desvioOutro = { criado_por: 'outro-usr', matricula_informante: '99999' };
+    const desvioMeu = { criado_por: 'usr-1', matricula_informante: '12345' };
+    const desvioLegadoMeu = { criado_por: null, matricula_informante: '12345' };
+
+    it('administrador pode editar e excluir qualquer RID', () => {
+      const admin = mockUser({ roles: ['admin'] });
+      expect(canEditDesvioRid(admin, desvioOutro)).toBe(true);
+      expect(canDeleteDesvioRid(admin, desvioOutro)).toBe(true);
+    });
+
+    it('usuario comum pode editar e excluir apenas o proprio RID', () => {
+      const user = mockUser({ id: 'usr-1', matricula: '12345' });
+      // Proprio
+      expect(canEditDesvioRid(user, desvioMeu)).toBe(true);
+      expect(canDeleteDesvioRid(user, desvioMeu)).toBe(true);
+      // De outro usuario
+      expect(canEditDesvioRid(user, desvioOutro)).toBe(false);
+      expect(canDeleteDesvioRid(user, desvioOutro)).toBe(false);
+    });
+
+    it('usuario comum pode editar registro legado com base na matricula', () => {
+      const user = mockUser({ id: 'usr-1', matricula: '12345' });
+      expect(canEditDesvioRid(user, desvioLegadoMeu)).toBe(true);
+    });
+
+    it('override ssma_rid_editar_todas = true permite edicao e exclusao de todos', () => {
+      const userComOverride = mockUser({
+        id: 'usr-1',
+        page_access: { ssma_rid_editar_todas: true },
+      });
+      expect(canEditDesvioRid(userComOverride, desvioOutro)).toBe(true);
+      expect(canDeleteDesvioRid(userComOverride, desvioOutro)).toBe(true);
+    });
+
+    it('override ssma_rid_editar_todas = false restringe apenas ao proprio', () => {
+      const gestorRestrito = mockUser({
+        id: 'usr-1',
+        roles: ['gestor'],
+        page_access: { ssma_rid_editar_todas: false },
+      });
+      expect(canEditDesvioRid(gestorRestrito, desvioOutro)).toBe(false);
+      expect(canEditDesvioRid(gestorRestrito, desvioMeu)).toBe(true);
+    });
+  });
+
   describe('FORMULARIO_SUBPERMISSOES & getPageGroups', () => {
-    it('deve definir os 4 grupos essenciais de formulários', () => {
+    it('deve definir os 5 grupos essenciais de formulários incluindo SSMA', () => {
       const grupos = FORMULARIO_SUBPERMISSOES.map(s => s.grupoId);
       expect(grupos).toContain('portaria');
       expect(grupos).toContain('logistica');
       expect(grupos).toContain('rh');
       expect(grupos).toContain('almoxarifado');
+      expect(grupos).toContain('ssma');
     });
 
     it('getPageGroups deve agrupar as páginas e feature flags', () => {

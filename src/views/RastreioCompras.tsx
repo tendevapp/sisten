@@ -210,15 +210,17 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // Abre o prompt de confirmação com a data (padrão: hoje). A gravação em si
   // acontece em confirmarChegada, depois que o usuário confirma/ajusta a data.
-  const marcarChegada = useCallback((ri: string) => {
+  // A chave é `riPo` (item de RM + pedido): a carga chega por pedido, e um
+  // item comprado em dois POs chega em dois momentos.
+  const marcarChegada = useCallback((riPo: string) => {
     setChegadaPromptDate(todayISO());
-    setChegadaPrompt({ kind: 'ri', ri });
+    setChegadaPrompt({ kind: 'ri', ri: riPo });
   }, []);
 
-  const desfazerChegada = useCallback(async (ri: string) => {
-    setSavingRi(ri);
+  const desfazerChegada = useCallback(async (riPo: string) => {
+    setSavingRi(riPo);
     try {
-      await localDb.removeAlmoxarifadoChegada(ri);
+      await localDb.removeAlmoxarifadoChegada(riPo);
       refreshChegadas();
     } catch (e: any) {
       console.error('Falha ao desfazer chegada no almoxarifado:', e);
@@ -344,6 +346,9 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         case 'fornecedor': return r.fornecedor.toLowerCase();
         case 'setor': return r.setor.toLowerCase();
         case 'qtd': return r.qtd ?? -Infinity;
+        // Ordena pelo % atendido, não pela quantidade crua: 80 de 115 e 80 de
+        // 8000 são situações bem diferentes para quem cobra saldo.
+        case 'qtdFornecida': return r.entrega?.percentual ?? (r.qtdFornecida !== undefined ? Infinity : -Infinity);
         case 'precoUnitario': return r.precoUnitario ?? -Infinity;
         case 'valorTotal': return r.valorTotal ?? -Infinity;
         case 'dataCriacao': return parseDate(r.dataCriacao)?.getTime() ?? 0;
@@ -365,7 +370,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
 
   // Itens com PO emitida e ainda sem MIGO, dentro do que está visível na
   // tabela — candidatos a seleção em lote para marcar chegada no almoxarifado.
-  const almoxarifadoCandidateRis = useMemo(() => itensSemMigo(visibleRows).map(r => r.ri), [visibleRows]);
+  const almoxarifadoCandidateRis = useMemo(() => itensSemMigo(visibleRows).map(r => r.riPo), [visibleRows]);
 
   const toggleSelectAllRis = useCallback(() => {
     setSelectedRis(prev => {
@@ -422,6 +427,12 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       'Fornecedor': r.fornecedor,
       'Setor': r.setor,
       'Quantidade': r.qtd ?? '—',
+      'Qtd. Fornecida': r.qtdFornecida ?? '—',
+      '% Atendido': r.entrega ? Math.round(r.entrega.percentual) : '—',
+      'Entrega': r.entrega
+        ? (r.entrega.parcial ? `Parcial (faltam ${r.entrega.faltando})`
+          : r.entrega.excedente ? `A maior (${-r.entrega.faltando} a mais)` : 'Completa')
+        : '—',
       'Unidade': r.unidade,
       ...(canSeeValores ? {
         'Preço Unit. (R$)': r.precoUnitario ?? '—',
@@ -451,6 +462,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         <td>${esc(r.material)} — ${esc(r.descricao)}</td>
         <td>${esc(r.fornecedor)}</td><td>${esc(r.setor)}</td>
         <td class="r">${r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}</td>
+        <td class="r">${r.qtdFornecida !== undefined ? r.qtdFornecida.toLocaleString('pt-BR') : '—'}${r.entrega && (r.entrega.parcial || r.entrega.excedente) ? ` (${Math.round(r.entrega.percentual)}%)` : ''}</td>
         <td>${formatDateBR(r.dataCriacao)}</td><td>${formatDateBR(r.dataPo)}</td><td>${formatDateBR(r.dataPrevista)}</td><td>${formatDateBR(r.dataEntrega)}</td>
         <td>${esc(r.status)}</td>
       </tr>`).join('');
@@ -472,7 +484,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       <div class="meta">${filteredRows.length} registro(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
       <table><thead><tr>
         <th>RM</th><th>PO</th><th>Item / Descrição</th><th>Fornecedor</th><th>Setor</th>
-        <th>Qtd</th><th>RM Data</th><th>PO Data</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
+        <th>Qtd</th><th>Qtd fornecida</th><th>RM Data</th><th>PO Data</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
       </tr></thead><tbody>${bodyRows}</tbody></table>
       </body></html>`);
     win.document.close();

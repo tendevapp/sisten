@@ -6,6 +6,7 @@
 import React from 'react';
 import { MessageSquare, PackageCheck, Undo2 } from 'lucide-react';
 import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatBRL, isAlmoxarifadoCandidate } from '../../lib/rastreio';
+import type { EntregaParcial } from '../../lib/entregaParcial';
 import { formatInt } from '../../lib/format';
 import { AlmoxarifadoChegada } from '../../types';
 import {
@@ -32,6 +33,7 @@ export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[200px] min-w-[200px]' },
   { id: 'setor', label: 'Setor', sortable: true, width: 'w-[120px] min-w-[120px]' },
   { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[80px] min-w-[80px]' },
+  { id: 'qtdFornecida', label: 'Qtd fornecida', align: 'right', sortable: true, width: 'w-[145px] min-w-[145px]' },
   { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[115px] min-w-[115px]' },
   { id: 'valorTotal', label: 'Valor total', align: 'right', sortable: true, width: 'w-[125px] min-w-[125px]' },
   { id: 'dataCriacao', label: 'RM Data', sortable: true, width: 'w-[105px] min-w-[105px]' },
@@ -47,6 +49,33 @@ const VALUE_COLUMN_IDS = new Set(['precoUnitario', 'valorTotal']);
 
 export function getRastreioColumns(canSeeValores: boolean): ColumnOption[] {
   return canSeeValores ? RASTREIO_COLUMNS : RASTREIO_COLUMNS.filter(c => !VALUE_COLUMN_IDS.has(c.id));
+}
+
+/**
+ * Selo de entrega parcial em %: o pedido foi colocado, mas o fornecedor
+ * entregou menos (ou mais) do que a RM pediu. O percentual é fixado entre 1 e
+ * 99 no caso parcial — arredondar 114,7 de 115 para "100%" faria o selo se
+ * contradizer.
+ */
+function EntregaParcialChip({ entrega }: { entrega?: EntregaParcial | null }) {
+  if (!entrega || (!entrega.parcial && !entrega.excedente)) return null;
+  const pct = entrega.parcial
+    ? Math.min(99, Math.max(1, Math.round(entrega.percentual)))
+    : Math.round(entrega.percentual);
+  const parcial = entrega.parcial;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
+      style={parcial
+        ? { background: 'var(--status-warning-wash, rgba(249,115,22,0.12))', color: 'var(--status-warning, #c2410c)', borderColor: 'currentColor' }
+        : { background: 'rgba(139,92,246,0.12)', color: '#7c3aed', borderColor: 'currentColor' }}
+      title={parcial
+        ? `Entrega parcial: ${formatInt(entrega.fornecido)} de ${formatInt(entrega.solicitado)} — faltam ${formatInt(entrega.faltando)}`
+        : `Fornecido a mais: ${formatInt(entrega.fornecido)} contra ${formatInt(entrega.solicitado)} pedidos na RM`}
+    >
+      {parcial ? 'Parcial' : 'A maior'} {pct}%
+    </span>
+  );
 }
 
 const ITEM_STATUS_STYLE: Record<string, string> = {
@@ -90,7 +119,7 @@ export default function RastreioTable({
 }: RastreioTableProps) {
   const cols = getRastreioColumns(canSeeValores).filter(c => visibleColumns[c.id]);
   const selectableRows = canAlmoxarifado ? rows.filter(isAlmoxarifadoCandidate) : [];
-  const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedRis?.has(r.ri));
+  const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedRis?.has(r.riPo));
 
   const chegouChip = (chegada: AlmoxarifadoChegada) => (
     <span
@@ -120,12 +149,12 @@ export default function RastreioTable({
         {rows.map((r, idx) => {
           const delivery: DeliveryStatus = deriveDeliveryStatus(r, hoje);
           const unread = unreadRis.has(r.ri);
-          const chegada = chegadasMap?.get(r.ri);
+          const chegada = chegadasMap?.get(r.riPo);
           const candidate = canAlmoxarifado && isAlmoxarifadoCandidate(r);
-          const saving = savingRi === r.ri;
+          const saving = savingRi === r.riPo;
           return (
             <div
-              key={`m-${r.ri}-${idx}`}
+              key={`m-${r.riPo}-${idx}`}
               onClick={() => onOpenRow(r)}
               className="p-4 space-y-2.5 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors cursor-pointer"
               style={{ borderColor: 'var(--hairline)' }}
@@ -135,8 +164,8 @@ export default function RastreioTable({
                   {candidate && (
                     <input
                       type="checkbox"
-                      checked={!!selectedRis?.has(r.ri)}
-                      onChange={() => onToggleSelect?.(r.ri)}
+                      checked={!!selectedRis?.has(r.riPo)}
+                      onChange={() => onToggleSelect?.(r.riPo)}
                       onClick={(e) => e.stopPropagation()}
                       className="cursor-pointer shrink-0"
                       aria-label={`Selecionar ${r.rm}`}
@@ -189,6 +218,12 @@ export default function RastreioTable({
                 {visibleColumns.qtd && (
                   <span>Qtd <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{r.qtd !== undefined ? formatInt(r.qtd) : '—'}</strong></span>
                 )}
+                {visibleColumns.qtdFornecida && r.qtdFornecida !== undefined && (
+                  <span className="inline-flex items-center gap-1.5">
+                    Fornecido <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatInt(r.qtdFornecida)}</strong>
+                    <EntregaParcialChip entrega={r.entrega} />
+                  </span>
+                )}
                 {visibleColumns.precoUnitario && (
                   <span>Unit. <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{formatBRL(r.precoUnitario)}</strong></span>
                 )}
@@ -230,7 +265,7 @@ export default function RastreioTable({
                     <div className="flex items-center gap-2">
                       {chegouChip(chegada)}
                       <button
-                        onClick={() => onDesfazerChegada?.(r.ri)}
+                        onClick={() => onDesfazerChegada?.(r.riPo)}
                         disabled={saving}
                         title="Desfazer chegada"
                         className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
@@ -240,7 +275,7 @@ export default function RastreioTable({
                     </div>
                   ) : (
                     <button
-                      onClick={() => onMarcarChegada?.(r.ri)}
+                      onClick={() => onMarcarChegada?.(r.riPo)}
                       disabled={saving}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
                     >
@@ -285,18 +320,18 @@ export default function RastreioTable({
               {rows.map((r, idx) => {
             const delivery: DeliveryStatus = deriveDeliveryStatus(r, hoje);
             const unread = unreadRis.has(r.ri);
-            const chegada = chegadasMap?.get(r.ri);
+            const chegada = chegadasMap?.get(r.riPo);
             const candidate = canAlmoxarifado && isAlmoxarifadoCandidate(r);
-            const saving = savingRi === r.ri;
+            const saving = savingRi === r.riPo;
             return (
-              <Tr key={`${r.ri}-${idx}`} onClick={() => onOpenRow(r)}>
+              <Tr key={`${r.riPo}-${idx}`} onClick={() => onOpenRow(r)}>
                 {canAlmoxarifado && (
                   <Td className="py-1.5 px-2">
                     {candidate && (
                       <input
                         type="checkbox"
-                        checked={!!selectedRis?.has(r.ri)}
-                        onChange={() => onToggleSelect?.(r.ri)}
+                        checked={!!selectedRis?.has(r.riPo)}
+                        onChange={() => onToggleSelect?.(r.riPo)}
                         onClick={(e) => e.stopPropagation()}
                         className="cursor-pointer"
                         aria-label={`Selecionar ${r.rm}`}
@@ -331,6 +366,16 @@ export default function RastreioTable({
                 {visibleColumns.qtd && (
                   <Td align="right" numeric className="py-1.5 px-2 whitespace-nowrap">
                     {r.qtd !== undefined ? formatInt(r.qtd) : '—'}
+                  </Td>
+                )}
+                {visibleColumns.qtdFornecida && (
+                  <Td align="right" numeric className="py-1.5 px-2 whitespace-nowrap">
+                    {r.qtdFornecida !== undefined ? (
+                      <span className="inline-flex items-center justify-end gap-1.5">
+                        <span>{formatInt(r.qtdFornecida)}</span>
+                        <EntregaParcialChip entrega={r.entrega} />
+                      </span>
+                    ) : '—'}
                   </Td>
                 )}
                 {visibleColumns.precoUnitario && (
@@ -382,7 +427,7 @@ export default function RastreioTable({
                       {chegada && chegouChip(chegada)}
                       {chegada ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onDesfazerChegada?.(r.ri); }}
+                          onClick={(e) => { e.stopPropagation(); onDesfazerChegada?.(r.riPo); }}
                           disabled={saving}
                           title="Desfazer chegada"
                           className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 disabled:opacity-50"
@@ -391,7 +436,7 @@ export default function RastreioTable({
                         </button>
                       ) : candidate ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onMarcarChegada?.(r.ri); }}
+                          onClick={(e) => { e.stopPropagation(); onMarcarChegada?.(r.riPo); }}
                           disabled={saving}
                           className="flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 hover:border-emerald-300 dark:hover:border-emerald-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50"
                         >

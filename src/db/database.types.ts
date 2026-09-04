@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -18,27 +18,33 @@ export type Database = {
         Row: {
           created_at: string
           data_chegada: string
+          doc_compra: string | null
           registrado_por_id: string | null
           registrado_por_nome: string | null
           ri: string
+          ri_po: string | null
           rm: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
           data_chegada: string
+          doc_compra?: string | null
           registrado_por_id?: string | null
           registrado_por_nome?: string | null
           ri: string
+          ri_po?: string | null
           rm?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
           data_chegada?: string
+          doc_compra?: string | null
           registrado_por_id?: string | null
           registrado_por_nome?: string | null
           ri?: string
+          ri_po?: string | null
           rm?: string | null
           updated_at?: string
         }
@@ -76,57 +82,6 @@ export type Database = {
           },
         ]
       }
-      cadastro_status_requisicao: {
-        Row: {
-          codigo: string
-          descricao: string
-          detalhe: string | null
-        }
-        Insert: {
-          codigo: string
-          descricao: string
-          detalhe?: string | null
-        }
-        Update: {
-          codigo?: string
-          descricao?: string
-          detalhe?: string | null
-        }
-        Relationships: []
-      }
-      cadastro_tipo_documento: {
-        Row: {
-          categoria: string
-          codigo: string
-          denominacao: string
-        }
-        Insert: {
-          categoria: string
-          codigo: string
-          denominacao: string
-        }
-        Update: {
-          categoria?: string
-          codigo?: string
-          denominacao?: string
-        }
-        Relationships: []
-      }
-      cadastro_tipo_movimento: {
-        Row: {
-          codigo: string
-          descricao: string | null
-        }
-        Insert: {
-          codigo: string
-          descricao?: string | null
-        }
-        Update: {
-          codigo?: string
-          descricao?: string | null
-        }
-        Relationships: []
-      }
       cadastro_tipodoc: {
         Row: {
           categoria_modulo: string | null
@@ -154,30 +109,51 @@ export type Database = {
         }
         Relationships: []
       }
-      cadastro_tipodoc_fbl1n: {
+      config_envio_emails: {
         Row: {
-          categoria_modulo: string | null
-          codigo: string
-          created_at: string | null
-          descricao_operacional: string | null
-          tipo_documento: string
-          updated_at: string | null
+          assunto_padrao: string | null
+          ativo: boolean
+          chave: string
+          copia: string | null
+          copia_oculta: string | null
+          created_at: string
+          criado_por: string | null
+          descricao: string | null
+          destinatarios: string
+          id: string
+          modulo: string
+          nome: string
+          updated_at: string
         }
         Insert: {
-          categoria_modulo?: string | null
-          codigo: string
-          created_at?: string | null
-          descricao_operacional?: string | null
-          tipo_documento: string
-          updated_at?: string | null
+          assunto_padrao?: string | null
+          ativo?: boolean
+          chave: string
+          copia?: string | null
+          copia_oculta?: string | null
+          created_at?: string
+          criado_por?: string | null
+          descricao?: string | null
+          destinatarios: string
+          id?: string
+          modulo?: string
+          nome: string
+          updated_at?: string
         }
         Update: {
-          categoria_modulo?: string | null
-          codigo?: string
-          created_at?: string | null
-          descricao_operacional?: string | null
-          tipo_documento?: string
-          updated_at?: string | null
+          assunto_padrao?: string | null
+          ativo?: boolean
+          chave?: string
+          copia?: string | null
+          copia_oculta?: string | null
+          created_at?: string
+          criado_por?: string | null
+          descricao?: string | null
+          destinatarios?: string
+          id?: string
+          modulo?: string
+          nome?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -872,13 +848,16 @@ export type Database = {
       }
       expedicao_carregamentos: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           created_at: string
           criado_por: string
           criado_por_nome: string
           empresa: string
           enviado_em: string | null
+          enviado_por: string | null
+          enviado_por_nome: string | null
+          excluido_em: string | null
+          excluido_por: string | null
+          historico_envios: Json | null
           id: string
           numero: string
           observacoes: string | null
@@ -886,13 +865,16 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           created_at?: string
           criado_por: string
           criado_por_nome: string
           empresa?: string
           enviado_em?: string | null
+          enviado_por?: string | null
+          enviado_por_nome?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          historico_envios?: Json | null
           id?: string
           numero: string
           observacoes?: string | null
@@ -900,53 +882,71 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           created_at?: string
           criado_por?: string
           criado_por_nome?: string
           empresa?: string
           enviado_em?: string | null
+          enviado_por?: string | null
+          enviado_por_nome?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          historico_envios?: Json | null
           id?: string
           numero?: string
           observacoes?: string | null
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "expedicao_carregamentos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expedicao_carregamentos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       expedicao_fotos: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           carregamento_id: string
           created_at: string
           criado_por: string | null
           etapa: string
+          excluido_em: string | null
+          excluido_por: string | null
           id: string
           nome_arquivo: string | null
           storage_path: string
           tramo_id: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           carregamento_id: string
           created_at?: string
           criado_por?: string | null
           etapa: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           nome_arquivo?: string | null
           storage_path: string
           tramo_id: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           carregamento_id?: string
           created_at?: string
           criado_por?: string | null
           etapa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           nome_arquivo?: string | null
           storage_path?: string
@@ -961,6 +961,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "expedicao_fotos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expedicao_fotos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "expedicao_fotos_tramo_id_fkey"
             columns: ["tramo_id"]
             isOneToOne: false
@@ -971,23 +985,28 @@ export type Database = {
       }
       expedicao_tramos: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           carregamento_id: string
           carreta_placa: string
           carreta_uf: string | null
           cavalo_placa: string
           cavalo_uf: string | null
+          cnh: string | null
           created_at: string
           data: string | null
+          data_chegada_portaria: string | null
+          data_entrada_patio: string | null
+          data_expedicao: string | null
           dolly_placa: string
           dolly_uf: string | null
+          excluido_em: string | null
+          excluido_por: string | null
           hora_chegada_portaria: string | null
           hora_entrada_patio: string | null
           hora_expedicao: string | null
           id: string
           motorista: string
-          cnh: string | null
+          numero_nf: string | null
+          numero_tramo: string | null
           obs_chegada_portaria: string | null
           obs_entrada_patio: string | null
           obs_expedicao: string | null
@@ -996,23 +1015,28 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           carregamento_id: string
           carreta_placa?: string
           carreta_uf?: string | null
           cavalo_placa?: string
           cavalo_uf?: string | null
+          cnh?: string | null
           created_at?: string
           data?: string | null
+          data_chegada_portaria?: string | null
+          data_entrada_patio?: string | null
+          data_expedicao?: string | null
           dolly_placa?: string
           dolly_uf?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_chegada_portaria?: string | null
           hora_entrada_patio?: string | null
           hora_expedicao?: string | null
           id?: string
           motorista?: string
-          cnh?: string | null
+          numero_nf?: string | null
+          numero_tramo?: string | null
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null
@@ -1021,23 +1045,28 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           carregamento_id?: string
           carreta_placa?: string
           carreta_uf?: string | null
           cavalo_placa?: string
           cavalo_uf?: string | null
+          cnh?: string | null
           created_at?: string
           data?: string | null
+          data_chegada_portaria?: string | null
+          data_entrada_patio?: string | null
+          data_expedicao?: string | null
           dolly_placa?: string
           dolly_uf?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_chegada_portaria?: string | null
           hora_entrada_patio?: string | null
           hora_expedicao?: string | null
           id?: string
           motorista?: string
-          cnh?: string | null
+          numero_nf?: string | null
+          numero_tramo?: string | null
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null
@@ -1051,6 +1080,20 @@ export type Database = {
             columns: ["carregamento_id"]
             isOneToOne: false
             referencedRelation: "expedicao_carregamentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expedicao_tramos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expedicao_tramos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1579,13 +1622,13 @@ export type Database = {
       }
       port_briefing_participantes: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           assinatura_digital: string | null
           cpf: string
           created_at: string
           data: string
           empresa: string
+          excluido_em: string | null
+          excluido_por: string | null
           funcao: string
           id: string
           nome: string
@@ -1593,13 +1636,13 @@ export type Database = {
           validade_dias: number
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           assinatura_digital?: string | null
           cpf: string
           created_at?: string
           data?: string
           empresa: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcao: string
           id?: string
           nome: string
@@ -1607,13 +1650,13 @@ export type Database = {
           validade_dias?: number
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           assinatura_digital?: string | null
           cpf?: string
           created_at?: string
           data?: string
           empresa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcao?: string
           id?: string
           nome?: string
@@ -1621,6 +1664,20 @@ export type Database = {
           validade_dias?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "port_briefing_participantes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_briefing_participantes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "port_briefing_participantes_sessao_id_fkey"
             columns: ["sessao_id"]
@@ -1632,13 +1689,13 @@ export type Database = {
       }
       port_briefing_sessoes: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           codigo_formulario: string
           conteudo_programatico: string
           created_at: string
           criado_por: string | null
           data: string
+          excluido_em: string | null
+          excluido_por: string | null
           id: string
           instrutor_responsavel: string
           numero_protocolo: string
@@ -1650,13 +1707,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           conteudo_programatico?: string
           created_at?: string
           criado_por?: string | null
           data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           instrutor_responsavel: string
           numero_protocolo: string
@@ -1668,13 +1725,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           conteudo_programatico?: string
           created_at?: string
           criado_por?: string | null
           data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           instrutor_responsavel?: string
           numero_protocolo?: string
@@ -1700,12 +1757,24 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_briefing_sessoes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_briefing_sessoes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       port_controle_carretas: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           ass_motorista: string | null
           codigo_formulario: string
           cpf_motorista: string | null
@@ -1714,6 +1783,8 @@ export type Database = {
           data_entrada: string
           data_saida: string | null
           empresa: string
+          excluido_em: string | null
+          excluido_por: string | null
           hora_entrada: string
           hora_saida: string | null
           id: string
@@ -1730,8 +1801,6 @@ export type Database = {
           vigilante_saida: string | null
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           ass_motorista?: string | null
           codigo_formulario?: string
           cpf_motorista?: string | null
@@ -1740,6 +1809,8 @@ export type Database = {
           data_entrada?: string
           data_saida?: string | null
           empresa: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_entrada: string
           hora_saida?: string | null
           id?: string
@@ -1756,8 +1827,6 @@ export type Database = {
           vigilante_saida?: string | null
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           ass_motorista?: string | null
           codigo_formulario?: string
           cpf_motorista?: string | null
@@ -1766,6 +1835,8 @@ export type Database = {
           data_entrada?: string
           data_saida?: string | null
           empresa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_entrada?: string
           hora_saida?: string | null
           id?: string
@@ -1796,18 +1867,32 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_controle_carretas_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_controle_carretas_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       port_controle_equipamentos: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
           data_entrada: string
           data_saida: string | null
           descricao_materiais: string
+          excluido_em: string | null
+          excluido_por: string | null
           funcionario: string
           hora_entrada: string | null
           hora_saida: string | null
@@ -1822,14 +1907,14 @@ export type Database = {
           vigilante_saida: string | null
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data_entrada?: string
           data_saida?: string | null
           descricao_materiais: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcionario: string
           hora_entrada?: string | null
           hora_saida?: string | null
@@ -1844,14 +1929,14 @@ export type Database = {
           vigilante_saida?: string | null
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data_entrada?: string
           data_saida?: string | null
           descricao_materiais?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcionario?: string
           hora_entrada?: string | null
           hora_saida?: string | null
@@ -1880,17 +1965,181 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_controle_equipamentos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_controle_equipamentos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      port_materiais_seguranca: {
+        Row: {
+          ativo: boolean | null
+          categoria: string | null
+          created_at: string | null
+          excluido_em: string | null
+          excluido_por: string | null
+          id: string
+          nome: string
+          observacoes: string | null
+          ordem: number | null
+          quantidade_padrao: number
+          unidade: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria?: string | null
+          created_at?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          nome: string
+          observacoes?: string | null
+          ordem?: number | null
+          quantidade_padrao?: number
+          unidade?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria?: string | null
+          created_at?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          nome?: string
+          observacoes?: string | null
+          ordem?: number | null
+          quantidade_padrao?: number
+          unidade?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "port_materiais_seguranca_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_materiais_seguranca_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      port_passagem_plantao: {
+        Row: {
+          codigo_formulario: string | null
+          created_at: string | null
+          criado_por: string | null
+          data: string
+          excluido_em: string | null
+          excluido_por: string | null
+          horario_fim: string
+          horario_inicio: string
+          id: string
+          itens_conferidos: Json
+          numero_protocolo: string
+          observacoes: string | null
+          status: string | null
+          texto_declaracao: string | null
+          turno: string
+          updated_at: string | null
+          vigilante_anterior01: string | null
+          vigilante_anterior02: string | null
+          vigilante_portaria: string
+          vigilante_preenchedor: string
+          vigilante_ronda01: string | null
+          vigilante_ronda02: string | null
+        }
+        Insert: {
+          codigo_formulario?: string | null
+          created_at?: string | null
+          criado_por?: string | null
+          data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          itens_conferidos?: Json
+          numero_protocolo: string
+          observacoes?: string | null
+          status?: string | null
+          texto_declaracao?: string | null
+          turno?: string
+          updated_at?: string | null
+          vigilante_anterior01?: string | null
+          vigilante_anterior02?: string | null
+          vigilante_portaria: string
+          vigilante_preenchedor: string
+          vigilante_ronda01?: string | null
+          vigilante_ronda02?: string | null
+        }
+        Update: {
+          codigo_formulario?: string | null
+          created_at?: string | null
+          criado_por?: string | null
+          data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          itens_conferidos?: Json
+          numero_protocolo?: string
+          observacoes?: string | null
+          status?: string | null
+          texto_declaracao?: string | null
+          turno?: string
+          updated_at?: string | null
+          vigilante_anterior01?: string | null
+          vigilante_anterior02?: string | null
+          vigilante_portaria?: string
+          vigilante_preenchedor?: string
+          vigilante_ronda01?: string | null
+          vigilante_ronda02?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "port_passagem_plantao_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_passagem_plantao_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       port_registro_transportes: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
           data: string
           empresa: string
+          excluido_em: string | null
+          excluido_por: string | null
           hora_chegada: string
           hora_saida: string | null
           id: string
@@ -1906,13 +2155,13 @@ export type Database = {
           vigilante: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data?: string
           empresa: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_chegada: string
           hora_saida?: string | null
           id?: string
@@ -1928,13 +2177,13 @@ export type Database = {
           vigilante: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data?: string
           empresa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           hora_chegada?: string
           hora_saida?: string | null
           id?: string
@@ -1964,14 +2213,28 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_registro_transportes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_registro_transportes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       port_relatorio_ocorrencias: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           created_at: string
           descricao: string
+          excluido_em: string | null
+          excluido_por: string | null
           horario: string
           id: string
           local_setor: string
@@ -1980,10 +2243,10 @@ export type Database = {
           vigilante: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           created_at?: string
           descricao: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           horario: string
           id?: string
           local_setor: string
@@ -1992,10 +2255,10 @@ export type Database = {
           vigilante: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           created_at?: string
           descricao?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           horario?: string
           id?: string
           local_setor?: string
@@ -2004,6 +2267,20 @@ export type Database = {
           vigilante?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "port_relatorio_ocorrencias_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_relatorio_ocorrencias_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "port_relatorio_ocorrencias_relatorio_id_fkey"
             columns: ["relatorio_id"]
@@ -2015,12 +2292,12 @@ export type Database = {
       }
       port_relatorio_portaria: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           criado_por: string | null
           data: string
+          excluido_em: string | null
+          excluido_por: string | null
           horario_fim: string
           horario_inicio: string
           id: string
@@ -2034,12 +2311,12 @@ export type Database = {
           vigilante_ronda02: string | null
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           horario_fim?: string
           horario_inicio?: string
           id?: string
@@ -2053,12 +2330,12 @@ export type Database = {
           vigilante_ronda02?: string | null
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           criado_por?: string | null
           data?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           horario_fim?: string
           horario_inicio?: string
           id?: string
@@ -2086,18 +2363,32 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_relatorio_portaria_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_relatorio_portaria_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       port_vigilantes: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           ativo: boolean
           created_at: string
           criado_por: string | null
           data_admissao: string | null
           data_nascimento: string | null
           empresa: string
+          excluido_em: string | null
+          excluido_por: string | null
           funcao: string
           id: string
           matricula: string | null
@@ -2107,14 +2398,14 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
           data_admissao?: string | null
           data_nascimento?: string | null
           empresa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcao?: string
           id?: string
           matricula?: string | null
@@ -2124,14 +2415,14 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           ativo?: boolean
           created_at?: string
           criado_por?: string | null
           data_admissao?: string | null
           data_nascimento?: string | null
           empresa?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           funcao?: string
           id?: string
           matricula?: string | null
@@ -2155,16 +2446,30 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "port_vigilantes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "port_vigilantes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       rh_ase_itens: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           cargo: string | null
           created_at: string
-          hora_entrada: string
-          hora_saida: string
+          excluido_em: string | null
+          excluido_por: string | null
+          hora_entrada: string | null
+          hora_saida: string | null
           id: string
           intervalo_minutos: number
           nome: string
@@ -2178,12 +2483,12 @@ export type Database = {
           transporte: boolean
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           cargo?: string | null
           created_at?: string
-          hora_entrada: string
-          hora_saida: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          hora_entrada?: string | null
+          hora_saida?: string | null
           id?: string
           intervalo_minutos?: number
           nome: string
@@ -2197,12 +2502,12 @@ export type Database = {
           transporte?: boolean
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           cargo?: string | null
           created_at?: string
-          hora_entrada?: string
-          hora_saida?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          hora_entrada?: string | null
+          hora_saida?: string | null
           id?: string
           intervalo_minutos?: number
           nome?: string
@@ -2217,11 +2522,32 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "rh_ase_itens_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_ase_itens_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rh_ase_itens_pessoa_id_fkey"
             columns: ["pessoa_id"]
             isOneToOne: false
             referencedRelation: "rh_pessoas"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_ase_itens_pessoa_id_fkey"
+            columns: ["pessoa_id"]
+            isOneToOne: false
+            referencedRelation: "vw_rh_rotas_colaboradores"
+            referencedColumns: ["pessoa_id"]
           },
           {
             foreignKeyName: "rh_ase_itens_solicitacao_id_fkey"
@@ -2234,11 +2560,11 @@ export type Database = {
       }
       rh_ase_solicitacoes: {
         Row: {
-          excluido_em: string | null
-          excluido_por: string | null
           codigo_formulario: string
           created_at: string
           data_execucao: string
+          excluido_em: string | null
+          excluido_por: string | null
           id: string
           justificativa: string | null
           numero_protocolo: string
@@ -2249,11 +2575,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           data_execucao: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           justificativa?: string | null
           numero_protocolo: string
@@ -2264,11 +2590,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          excluido_em?: string | null
-          excluido_por?: string | null
           codigo_formulario?: string
           created_at?: string
           data_execucao?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
           id?: string
           justificativa?: string | null
           numero_protocolo?: string
@@ -2279,6 +2605,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "rh_ase_solicitacoes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_ase_solicitacoes_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "rh_ase_solicitacoes_setor_id_fkey"
             columns: ["setor_id"]
@@ -2359,6 +2699,63 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      rh_rotas: {
+        Row: {
+          ativo: boolean
+          contato: string | null
+          created_at: string
+          excluido_em: string | null
+          excluido_por: string | null
+          funcionario: string
+          horario: string
+          id: string
+          ponto_embarque: string
+          rota: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          contato?: string | null
+          created_at?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          funcionario: string
+          horario: string
+          id?: string
+          ponto_embarque: string
+          rota: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          contato?: string | null
+          created_at?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          funcionario?: string
+          horario?: string
+          id?: string
+          ponto_embarque?: string
+          rota?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_rotas_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_rotas_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rh_setores: {
         Row: {
@@ -3560,6 +3957,117 @@ export type Database = {
         }
         Relationships: []
       }
+      sup_bahiasul_entregas: {
+        Row: {
+          chave_unica: string
+          chegada: string | null
+          created_at: string | null
+          cto_documento: string | null
+          cto_filial: string | null
+          cto_numero: string
+          cto_serie: string | null
+          dst_cidade: string | null
+          dst_cnpj: string | null
+          dst_nome: string | null
+          embarque: string | null
+          emissao: string | null
+          entrega: string | null
+          frt_cobrado: number | null
+          id: number
+          imported_at: string | null
+          kgs_cubado: number | null
+          kgs_declarado: number | null
+          kgs_real: number | null
+          nfs_embarcadas: string | null
+          nro_pedido: string | null
+          obs_diversos: string | null
+          org_cidade: string | null
+          prv_chegada: string | null
+          prv_entrega: string | null
+          prz_contratado: string | null
+          qtd_volumes: number | null
+          referencia: string | null
+          rmt_cnpj: string | null
+          rmt_nome: string | null
+          situacao: string | null
+          tpo_embarque: string | null
+          updated_at: string | null
+          vlr_mercadoria: number | null
+        }
+        Insert: {
+          chave_unica: string
+          chegada?: string | null
+          created_at?: string | null
+          cto_documento?: string | null
+          cto_filial?: string | null
+          cto_numero: string
+          cto_serie?: string | null
+          dst_cidade?: string | null
+          dst_cnpj?: string | null
+          dst_nome?: string | null
+          embarque?: string | null
+          emissao?: string | null
+          entrega?: string | null
+          frt_cobrado?: number | null
+          id?: number
+          imported_at?: string | null
+          kgs_cubado?: number | null
+          kgs_declarado?: number | null
+          kgs_real?: number | null
+          nfs_embarcadas?: string | null
+          nro_pedido?: string | null
+          obs_diversos?: string | null
+          org_cidade?: string | null
+          prv_chegada?: string | null
+          prv_entrega?: string | null
+          prz_contratado?: string | null
+          qtd_volumes?: number | null
+          referencia?: string | null
+          rmt_cnpj?: string | null
+          rmt_nome?: string | null
+          situacao?: string | null
+          tpo_embarque?: string | null
+          updated_at?: string | null
+          vlr_mercadoria?: number | null
+        }
+        Update: {
+          chave_unica?: string
+          chegada?: string | null
+          created_at?: string | null
+          cto_documento?: string | null
+          cto_filial?: string | null
+          cto_numero?: string
+          cto_serie?: string | null
+          dst_cidade?: string | null
+          dst_cnpj?: string | null
+          dst_nome?: string | null
+          embarque?: string | null
+          emissao?: string | null
+          entrega?: string | null
+          frt_cobrado?: number | null
+          id?: number
+          imported_at?: string | null
+          kgs_cubado?: number | null
+          kgs_declarado?: number | null
+          kgs_real?: number | null
+          nfs_embarcadas?: string | null
+          nro_pedido?: string | null
+          obs_diversos?: string | null
+          org_cidade?: string | null
+          prv_chegada?: string | null
+          prv_entrega?: string | null
+          prz_contratado?: string | null
+          qtd_volumes?: number | null
+          referencia?: string | null
+          rmt_cnpj?: string | null
+          rmt_nome?: string | null
+          situacao?: string | null
+          tpo_embarque?: string | null
+          updated_at?: string | null
+          vlr_mercadoria?: number | null
+        }
+        Relationships: []
+      }
       sup_compradores: {
         Row: {
           email: string | null
@@ -4153,6 +4661,45 @@ export type Database = {
         }
         Relationships: []
       }
+      sup_diligenciamento_itens: {
+        Row: {
+          atualizado_por_id: string | null
+          atualizado_por_nome: string | null
+          created_at: string
+          data_faturamento_transportadora: string | null
+          doc_compra: string | null
+          previsao_manual: string | null
+          ri: string
+          ri_po: string | null
+          transportadora: string | null
+          updated_at: string
+        }
+        Insert: {
+          atualizado_por_id?: string | null
+          atualizado_por_nome?: string | null
+          created_at?: string
+          data_faturamento_transportadora?: string | null
+          doc_compra?: string | null
+          previsao_manual?: string | null
+          ri: string
+          ri_po?: string | null
+          transportadora?: string | null
+          updated_at?: string
+        }
+        Update: {
+          atualizado_por_id?: string | null
+          atualizado_por_nome?: string | null
+          created_at?: string
+          data_faturamento_transportadora?: string | null
+          doc_compra?: string | null
+          previsao_manual?: string | null
+          ri?: string
+          ri_po?: string | null
+          transportadora?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sup_fornecedores_cidades: {
         Row: {
           codigo_postal: string | null
@@ -4390,6 +4937,173 @@ export type Database = {
         }
         Relationships: []
       }
+      sup_pend_processamento_nf: {
+        Row: {
+          chegou: string | null
+          classif_causa: string | null
+          classif_impacto: string | null
+          classif_recorrencia: string | null
+          classif_responsavel: string | null
+          comprador: string | null
+          created_at: string
+          data_emissao_nfse: string | null
+          data_envio: string | null
+          documento_compras: string | null
+          documento_status: string | null
+          fornecedor: string | null
+          historico_acoes: Json | null
+          id: string
+          imagem_path: string | null
+          imagem_paths: string[] | null
+          mes_competencia: string | null
+          modelo: string
+          nfse_cancelada: string | null
+          nome_fornecedor: string | null
+          numero_nfse: string
+          observacao: string | null
+          observacao_chamado: string | null
+          ordem: number
+          protocolo: string
+          request_id: string
+          resolucao: string | null
+          resolvido_em: string | null
+          resolvido_por: string | null
+          serie: string | null
+          status: string
+          uf_emissor: string | null
+          valor_nfse: number | null
+          valor_nfse_raw: string | null
+        }
+        Insert: {
+          chegou?: string | null
+          classif_causa?: string | null
+          classif_impacto?: string | null
+          classif_recorrencia?: string | null
+          classif_responsavel?: string | null
+          comprador?: string | null
+          created_at?: string
+          data_emissao_nfse?: string | null
+          data_envio?: string | null
+          documento_compras?: string | null
+          documento_status?: string | null
+          fornecedor?: string | null
+          historico_acoes?: Json | null
+          id?: string
+          imagem_path?: string | null
+          imagem_paths?: string[] | null
+          mes_competencia?: string | null
+          modelo?: string
+          nfse_cancelada?: string | null
+          nome_fornecedor?: string | null
+          numero_nfse: string
+          observacao?: string | null
+          observacao_chamado?: string | null
+          ordem?: number
+          protocolo: string
+          request_id: string
+          resolucao?: string | null
+          resolvido_em?: string | null
+          resolvido_por?: string | null
+          serie?: string | null
+          status?: string
+          uf_emissor?: string | null
+          valor_nfse?: number | null
+          valor_nfse_raw?: string | null
+        }
+        Update: {
+          chegou?: string | null
+          classif_causa?: string | null
+          classif_impacto?: string | null
+          classif_recorrencia?: string | null
+          classif_responsavel?: string | null
+          comprador?: string | null
+          created_at?: string
+          data_emissao_nfse?: string | null
+          data_envio?: string | null
+          documento_compras?: string | null
+          documento_status?: string | null
+          fornecedor?: string | null
+          historico_acoes?: Json | null
+          id?: string
+          imagem_path?: string | null
+          imagem_paths?: string[] | null
+          mes_competencia?: string | null
+          modelo?: string
+          nfse_cancelada?: string | null
+          nome_fornecedor?: string | null
+          numero_nfse?: string
+          observacao?: string | null
+          observacao_chamado?: string | null
+          ordem?: number
+          protocolo?: string
+          request_id?: string
+          resolucao?: string | null
+          resolvido_em?: string | null
+          resolvido_por?: string | null
+          serie?: string | null
+          status?: string
+          uf_emissor?: string | null
+          valor_nfse?: number | null
+          valor_nfse_raw?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sup_pend_processamento_nf_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "core_solicitacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_pend_processamento_nf_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_pend_processamento_nf_resolvido_por_fkey"
+            columns: ["resolvido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_pend_processamento_nf_resolvido_por_fkey"
+            columns: ["resolvido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sup_prazos_transporte: {
+        Row: {
+          created_at: string
+          dias_corridos: number
+          id: string
+          transportadora: string
+          uf: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dias_corridos: number
+          id?: string
+          transportadora?: string
+          uf?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dias_corridos?: number
+          id?: string
+          transportadora?: string
+          uf?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sup_rastreio_mensagens: {
         Row: {
           autor_id: string
@@ -4450,6 +5164,30 @@ export type Database = {
           rm?: string | null
           solicitante_id?: string
           solicitante_nome?: string
+        }
+        Relationships: []
+      }
+      sup_transportadoras: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          nome: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -6135,6 +6873,30 @@ export type Database = {
         }
         Relationships: []
       }
+      mv_pedidos_por_ri: {
+        Row: {
+          criado_por_pedido: string | null
+          data_doc: string | null
+          data_migo: string | null
+          dias_atrasado: number | null
+          doc_compra: string | null
+          dt_remessa: string | null
+          eflag_e: string | null
+          fornecedor_codigo: string | null
+          fornecedor_nome: string | null
+          item: string | null
+          modificado_em: string | null
+          por: string | null
+          preco_liquido_unit: number | null
+          qtd_pedido: number | null
+          ri: string | null
+          status_entrega: string | null
+          unidade_medida_pedido: string | null
+          valor_em_brl: number | null
+          valor_liquido: number | null
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           context_key: string | null
@@ -6456,7 +7218,6 @@ export type Database = {
           email: string | null
           grupo_compras: string | null
           id: string | null
-          must_change_password: boolean | null
           name: string | null
           notification_preferences: string | null
           page_access: Json | null
@@ -6473,7 +7234,6 @@ export type Database = {
           email?: string | null
           grupo_compras?: string | null
           id?: string | null
-          must_change_password?: boolean | null
           name?: string | null
           notification_preferences?: string | null
           page_access?: Json | null
@@ -6490,7 +7250,6 @@ export type Database = {
           email?: string | null
           grupo_compras?: string | null
           id?: string | null
-          must_change_password?: boolean | null
           name?: string | null
           notification_preferences?: string | null
           page_access?: Json | null
@@ -7579,7 +8338,6 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
-          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_entrega_sap: string | null
           data_migo: string | null
@@ -7716,7 +8474,6 @@ export type Database = {
           data_da_solicitacao: string | null
           data_de_remessa: string | null
           data_do_pedido: string | null
-          data_entrega_confirmada: string | null
           data_entrega_prevista: string | null
           data_entrega_sap: string | null
           data_migo: string | null
@@ -7805,31 +8562,6 @@ export type Database = {
           qtd_entrada: number | null
           qtd_remanescente: number | null
           valor_remanescente: number | null
-        }
-        Relationships: []
-      }
-      vw_estoque_decorado: {
-        Row: {
-          aplicacao: string | null
-          centro: string | null
-          class_item: string | null
-          deposito: string | null
-          empresa: string | null
-          grp_mercad: string | null
-          grupo_mercadoria_classificacao: string | null
-          grupo_mercadoria_desc: string | null
-          grupo_mercadorias: string | null
-          id: number | null
-          imported_at: string | null
-          material: string | null
-          preco_medio: number | null
-          quantidade: number | null
-          referencia_fabricante: string | null
-          texto_pedido_compra: string | null
-          tipo_material: string | null
-          txt_breve_material: string | null
-          umb: string | null
-          valor_total: number | null
         }
         Relationships: []
       }
@@ -8048,233 +8780,124 @@ export type Database = {
         }
         Relationships: []
       }
-      vw_pedidos_decorado: {
+      vw_pedidos_conciliacao_detalhes: {
         Row: {
-          campos_extras: Json | null
-          categoria: string | null
-          cen_cen: string | null
-          ci: string | null
-          cn_lcr_parcs: string | null
-          cnpj_fornecedor: string | null
-          codigo_liberacao_doc_compra: string | null
-          condicao_pagamento: string | null
-          contrato: string | null
-          crf: string | null
-          criado_por_condicao: string | null
-          criado_por_liberacao: string | null
-          criado_por_pedido: string | null
-          criado_por_rc: string | null
-          data_doc: string | null
-          data_migo: string | null
-          data_pc_sc: string | null
-          data_rc: string | null
-          dep_dep: string | null
-          doc_compra: string | null
-          doc_compra_ref: string | null
-          dt_remessa: string | null
-          eflag_e: string | null
-          empremp: string | null
-          est_liber: string | null
-          estr: string | null
-          fornecedor_codigo: string | null
-          fornecedor_nome: string | null
-          ftf: string | null
-          grp_mercads: string | null
-          grupo_mercadoria_classificacao: string | null
-          grupo_mercadoria_curto: string | null
-          grupo_mercadoria_desc: string | null
-          item: string | null
-          item_contrato: string | null
-          item_rc_cotacao: string | null
-          itm_liberacao: string | null
-          itm_ref: string | null
-          material: string | null
-          modificado_em: string | null
-          moeda_1: string | null
-          moeda_2: string | null
-          moeda_3: string | null
-          n_acomp: string | null
-          por: string | null
-          posicao: string | null
-          preco_liquido_unit: number | null
-          qtd_fornecida: number | null
-          qtd_pedido: number | null
-          regiao_uf: string | null
-          req_cotacao: string | null
-          reqc: string | null
-          requisitante: string | null
-          ri: string | null
-          tipo_doc_compra: string | null
-          tipo_pedido_desc: string | null
-          tipo_requisicao_desc: string | null
-          tmatt: string | null
-          tpdc: string | null
-          txt_breve: string | null
-          ump_1: string | null
-          ump_2: string | null
-          ump_3: string | null
-          unidade_medida_basica: string | null
-          unidade_medida_pedido: string | null
-          upp: string | null
-          valor_efetivo: number | null
-          valor_em_brl: number | null
-          valor_liquido: number | null
-        }
-        Relationships: []
-      }
-      vw_pedidosforn_decorado: {
-        Row: {
-          campos_extras: Json | null
-          categoria: string | null
-          cen_cen: string | null
-          ci: string | null
-          cn_lcr_parcs: string | null
-          cnpj: string | null
-          cnpj_fornecedor: string | null
-          cod_forn: string | null
-          codigo_liberacao_doc_compra: string | null
-          condicao_pagamento: string | null
-          contrato: string | null
-          created_at: string | null
-          crf: string | null
-          criado_por_condicao: string | null
-          criado_por_liberacao: string | null
-          criado_por_pedido: string | null
-          criado_por_rc: string | null
-          data_doc: string | null
-          data_migo: string | null
-          data_pc_sc: string | null
-          data_pedido: string | null
-          data_rc: string | null
-          dep_dep: string | null
-          doc_compra: string | null
-          doc_compra_ref: string | null
-          dt_remessa: string | null
-          eflag_e: string | null
-          empremp: string | null
-          est_liber: string | null
-          estr: string | null
-          fornecedor: string | null
-          fornecedor_codigo: string | null
-          fornecedor_nome: string | null
-          ftf: string | null
-          grp_mercads: string | null
-          grupo_mercadoria_classificacao: string | null
-          grupo_mercadoria_curto: string | null
-          grupo_mercadoria_desc: string | null
-          id: string | null
-          item: string | null
-          item_contrato: string | null
-          item_rc_cotacao: string | null
-          itm_liberacao: string | null
-          itm_ref: string | null
-          material: string | null
-          modificado_em: string | null
-          moeda_1: string | null
-          moeda_2: string | null
-          moeda_3: string | null
-          n_acomp: string | null
-          por: string | null
-          posicao: string | null
-          preco_liquido: number | null
-          preco_liquido_unit: number | null
-          qtd_fornecida: number | null
-          qtd_pedido: number | null
-          regiao_uf: string | null
-          req_cotacao: string | null
-          reqc: string | null
-          requisitante: string | null
-          ri: string | null
-          tipo_doc_compra: string | null
-          tipo_pedido_desc: string | null
-          tipo_requisicao_desc: string | null
-          tmatt: string | null
-          tpdc: string | null
-          txt_breve: string | null
-          ump_1: string | null
-          ump_2: string | null
-          ump_3: string | null
-          unidade_medida_basica: string | null
-          unidade_medida_pedido: string | null
-          updated_at: string | null
-          upp: string | null
-          valor_efetivo: number | null
-          valor_em_brl: number | null
-          valor_liquido: number | null
-        }
-        Relationships: []
-      }
-      vw_requisicoes_decorada: {
-        Row: {
-          apelido: string | null
-          aplicacao: string | null
-          area_solicitante: string | null
-          campos_extras: Json | null
-          categoria_do_item: string | null
+          ano_miro: string | null
           centro: string | null
-          centro_fornecedor: string | null
-          codigo_de_bloqueio: string | null
-          codigo_de_eliminacao: boolean | null
-          codigo_de_liberacao: string | null
-          concluida: string | null
-          contrato_basico: string | null
-          criado_por: string | null
-          ctg_class_cont: string | null
-          data_da_liberacao: string | null
-          data_da_solicitacao: string | null
-          data_de_remessa: string | null
-          data_do_pedido: string | null
-          data_entrega_confirmada: string | null
-          data_entrega_prevista: string | null
-          data_pedido_origem: string | null
-          deposito: string | null
-          descricao_do_grupo_de_compradores: string | null
-          eliminado: boolean | null
-          fornecedor_fixo: string | null
-          grupo_de_compradores: string | null
-          grupo_de_mercadorias: string | null
-          grupo_mercadoria_classificacao: string | null
-          grupo_mercadoria_desc: string | null
-          it_contrato_superior: string | null
-          item_do_pedido: string | null
-          item_reqc: string | null
-          item_status: string | null
-          item_status_updated_at: string | null
-          item_status_updated_by: string | null
-          marca_da_peca: string | null
+          data_compensacao: string | null
+          data_documento_miro: string | null
+          data_lancamento_fbl1n: string | null
+          data_lancamento_migo: string | null
+          data_lancamento_miro: string | null
+          data_pagamento: string | null
+          doc_compensacao: string | null
+          doc_fbl1n: string | null
+          doc_migo: string | null
+          doc_miro: string | null
+          doc_pagamento: string | null
+          empresa: string | null
+          fornecedor: string | null
+          id: number | null
+          item: string | null
           material: string | null
-          modelo: string | null
-          moeda: string | null
-          n_acompanhamento: string | null
-          n_de_reqsc: number | null
-          n_material_fornecedor: string | null
-          n_peca_fabricante: string | null
-          nome_do_fornecedor: string | null
-          obs_comprador: string | null
-          obs_updated_at: string | null
-          obs_updated_by: string | null
-          organiz_compras: string | null
-          peca_original: string | null
-          pedido: string | null
-          presente_ultima_carga: boolean | null
-          qtd_solicitada: number | null
-          quantidade_pedida: number | null
-          remessas_de_ate: string | null
-          requisicao_de_compra: string | null
-          requisicao_externa: string | null
-          requisitante: string | null
-          ri: string | null
-          status_desc: string | null
-          status_detalhe: string | null
-          status_processamento: string | null
-          sugestao_local_compra: string | null
-          tempo_procmto_em: number | null
-          texto_breve: string | null
-          tipo_data_de_remessa: string | null
-          tipo_de_documento: string | null
-          tipo_de_transporte: string | null
-          tipo_documento_desc: string | null
-          unidade_de_medida: string | null
+          material_codigo: string | null
+          material_descricao: string | null
+          montante_migo: number | null
+          montante_miro: number | null
+          nf_referencia: string | null
+          numero_doc_contabil: string | null
+          numero_pedido: string | null
+          qtd_migo: number | null
+          qtd_miro: number | null
+          razao_social_fornecedor: string | null
+          status_nf: string | null
+          tipo_documento: string | null
+          vencimento_liquido: string | null
+        }
+        Relationships: []
+      }
+      vw_pedidos_conciliacao_pagamentos: {
+        Row: {
+          centro: string | null
+          data_aprovacao_pedido: string | null
+          data_criacao_pedido: string | null
+          empresa: string | null
+          fornecedor: string | null
+          numero_pedido: string | null
+          qtd_itens: number | null
+          qtd_materiais: number | null
+          qtd_miros: number | null
+          qtd_nfs: number | null
+          qtd_nfs_abertas: number | null
+          qtd_nfs_pagas: number | null
+          razao_social_fornecedor: string | null
+          status_pagamento: string | null
+          total_em_aberto: number | null
+          total_faturado_miro: number | null
+          total_pago: number | null
+          valor_pedido: number | null
+        }
+        Relationships: []
+      }
+      vw_rh_ase_itens: {
+        Row: {
+          cargo: string | null
+          contato_transporte: string | null
+          created_at: string | null
+          hora_entrada: string | null
+          hora_saida: string | null
+          horario_embarque_transporte: string | null
+          id: string | null
+          intervalo_minutos: number | null
+          nome: string | null
+          observacao: string | null
+          percentual_he: number | null
+          pessoa_id: string | null
+          ponto_embarque_transporte: string | null
+          refeicao: boolean | null
+          registro: string | null
+          rota_transporte: string | null
+          solicitacao_id: string | null
+          total_horas: number | null
+          transporte: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_ase_itens_pessoa_id_fkey"
+            columns: ["pessoa_id"]
+            isOneToOne: false
+            referencedRelation: "rh_pessoas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_ase_itens_pessoa_id_fkey"
+            columns: ["pessoa_id"]
+            isOneToOne: false
+            referencedRelation: "vw_rh_rotas_colaboradores"
+            referencedColumns: ["pessoa_id"]
+          },
+          {
+            foreignKeyName: "rh_ase_itens_solicitacao_id_fkey"
+            columns: ["solicitacao_id"]
+            isOneToOne: false
+            referencedRelation: "rh_ase_solicitacoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vw_rh_rotas_colaboradores: {
+        Row: {
+          cargo: string | null
+          contato: string | null
+          horario_embarque: string | null
+          nome: string | null
+          pessoa_ativa: boolean | null
+          pessoa_id: string | null
+          ponto_embarque: string | null
+          registro: string | null
+          rota: string | null
+          rota_ativa: boolean | null
+          rota_id: string | null
         }
         Relationships: []
       }
@@ -8531,6 +9154,7 @@ export type Database = {
           dias_atrasado: number | null
           dias_em_aberto: number | null
           documento_compra: string | null
+          eflag_po: string | null
           eliminado: boolean | null
           faixa_atraso: string | null
           fornecedor_code: string | null
@@ -8562,7 +9186,10 @@ export type Database = {
           organiz_compras: string | null
           peca_original: string | null
           pedido: string | null
+          por_po: string | null
+          preco_unit_po: number | null
           presente_ultima_carga: boolean | null
+          qtd_po: number | null
           qtd_solicitada: number | null
           quantidade_pedida: number | null
           remessas_de_ate: string | null
@@ -8570,6 +9197,7 @@ export type Database = {
           requisicao_externa: string | null
           requisitante: string | null
           ri: string | null
+          ri_po: string | null
           status_atualizado: string | null
           status_entrega: string | null
           status_processamento: string | null
@@ -8580,7 +9208,10 @@ export type Database = {
           tipo_data_de_remessa: string | null
           tipo_de_documento: string | null
           tipo_de_transporte: string | null
+          total_pos: number | null
           unidade_de_medida: string | null
+          unidade_po: string | null
+          valor_po: number | null
         }
         Relationships: []
       }
@@ -8812,7 +9443,6 @@ export type Database = {
       escapar_like: { Args: { t: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       has_role: { Args: { required_role: string }; Returns: boolean }
-      importar_materiais_zl0169: { Args: { p_materiais: Json }; Returns: Json }
       ipca_fator: { Args: { p_data: string }; Returns: number }
       ipca_mes_referencia: { Args: never; Returns: string }
       listar_categorias_materiais: {
@@ -8926,12 +9556,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8955,11 +9585,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8980,11 +9610,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9005,11 +9635,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9022,11 +9652,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

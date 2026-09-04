@@ -20,8 +20,9 @@ import {
   CotacaoHistoricoEntry
 } from '../types';
 
-import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc } from '../lib/rastreio';
-import { formatDateBR, formatDateTimeBR } from '../lib/format';
+import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc, isProjetoItem, type TipoItemFilter } from '../lib/rastreio';
+import { avaliarEntregaParcial, temDivergenciaDeEntrega } from '../lib/entregaParcial';
+import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
 import type { CotacaoProcessoItemDraft } from '../types';
@@ -208,6 +209,18 @@ const precoUnitarioPorBase = (preco?: number | null, por?: string | null): numbe
 
 // RM de serviço (começa com "17") nunca recebe MIGO no SAP — não deve entrar no grupo "Sem MIGO".
 const isServicoRM = (rm: string): boolean => String(rm || '').trim().startsWith('17');
+
+/**
+ * Quantidade e unidade da LINHA. Com PO emitido, é a quantidade do pedido —
+ * a RM pode ter sido comprada em mais de um PO (5 UN viram 1 + 1 + 3), e
+ * repetir a quantidade cheia da ME5A em cada linha faz parecer que se comprou
+ * o múltiplo do que foi solicitado. Sem PO, é a quantidade solicitada.
+ */
+const qtdDaLinha = (r: EnrichedSAPRecord): { qtd: number | undefined; un: string } => (
+  r.status_requisicao === 'Processado' && r.qtd_po !== undefined && r.qtd_po !== null
+    ? { qtd: r.qtd_po, un: r.unidade_po || r.unidade_medida || '' }
+    : { qtd: r.qtd_requisicao, un: r.unidade_medida || '' }
+);
 
 // Componente local de cópia rápida reutilizável
 const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) => {
@@ -425,8 +438,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     items: QuoteItemEntry[];
   } | null>(null);
 
-  // Seleção múltipla de itens para envio de cotação em lote (checkbox na
+  // Seleção múltipla de LINHAS para envio de cotação em lote (checkbox na
   // tabela e nos cards, compartilhada entre os dois modos de visualização).
+  // Guarda `ri_po` (item de RM + pedido), não `ri`: um item comprado em mais de
+  // um PO rende uma linha por pedido, e marcar uma não pode marcar as outras.
   const [selectedRis, setSelectedRis] = useState<Set<string>>(new Set());
 
   const toggleSelectRi = useCallback((ri: string) => {
@@ -473,7 +488,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
   const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>(poFilterInicial || 'Todos');
-  const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos'>('Todos');
+  const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos' | 'Parciais'>('Todos');
+  // Consumo x Projeto: item de projeto é o material que começa em 100000 (mesma
+  // regra do Rastreio Compras, em `isProjetoItem`). Começa em "todos" — aqui,
+  // diferente do Rastreio, o comprador cota os dois tipos no mesmo lugar.
+  const [tipoItemFilter, setTipoItemFilter] = useState<TipoItemFilter>('todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
   const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
 
@@ -556,7 +575,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode]);
+  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -641,7 +660,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const supplierByCod = new Map<string, FornecedorMaterialRow>();
     rawRmGroups.forEach(g => {
       g.items.forEach(it => {
-        if (!selectedRis.has(it.record.ri)) return;
+        if (!selectedRis.has(it.record.ri_po)) return;
         items.push({ record: it.record, rm: g.rm });
         it.fornecedores.forEach(f => {
           if (f.email && f.email !== '—' && f.cod_forn && f.cod_forn !== '—') {
@@ -674,7 +693,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const linhas: string[] = ['RM\tMaterial\tDescrição\tQuantidade'];
     rawRmGroups.forEach(g => {
       g.items.forEach(it => {
-        if (!selectedRis.has(it.record.ri)) return;
+        if (!selectedRis.has(it.record.ri_po)) return;
         const r = it.record;
         linhas.push([g.rm || '—', r.material_code || '—', r.texto_breve || '—', r.qtd_requisicao ?? '—'].join('\t'));
       });
@@ -701,7 +720,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const itens: CotacaoProcessoItemDraft[] = [];
     rawRmGroups.forEach(g => {
       g.items.forEach(it => {
-        if (!selectedRis.has(it.record.ri)) return;
+        if (!selectedRis.has(it.record.ri_po)) return;
         const r = it.record;
         itens.push({
           ri: r.ri,
@@ -736,17 +755,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const handleApplyBulkFields = () => {
     if (selectedRis.size === 0 || (!bulkStatusValue && !bulkDateValue)) return;
 
+    // Status e promessa de entrega são do ITEM da RM, não do pedido: a seleção
+    // vem em `ri_po` e é convertida de volta para os `ri` correspondentes
+    // (marcar dois POs do mesmo item edita esse item uma vez só).
+    const risSelecionados = new Set<string>();
+    rawRmGroups.forEach(g => g.items.forEach(it => {
+      if (selectedRis.has(it.record.ri_po)) risSelecionados.add(it.record.ri);
+    }));
+
     if (bulkStatusValue) {
       setStatusInputState(prev => {
         const next = { ...prev };
-        selectedRis.forEach(ri => { next[ri] = bulkStatusValue; });
+        risSelecionados.forEach(ri => { next[ri] = bulkStatusValue; });
         return next;
       });
     }
     if (bulkDateValue) {
       setDateInputState(prev => {
         const next = { ...prev };
-        selectedRis.forEach(ri => { next[ri] = bulkDateValue; });
+        risSelecionados.forEach(ri => { next[ri] = bulkDateValue; });
         return next;
       });
     }
@@ -1303,6 +1330,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         if (statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
         if (alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
         if (grupoMercFilter.size > 0 && !grupoMercFilter.has(grupoMercDe(r))) return false;
+        if (tipoItemFilter !== 'todos') {
+          const eProjeto = isProjetoItem(r.material_code);
+          if (tipoItemFilter === 'projeto' && !eProjeto) return false;
+          if (tipoItemFilter === 'consumo' && eProjeto) return false;
+        }
         if (prioridadeFilter.size > 0) {
           const nivel = prioridadesMap.get(r.ri)?.nivel;
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
@@ -1329,7 +1361,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter]);
+  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1349,6 +1381,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           const lvl = alertLevel(r.alerta || '');
           return lvl === 'critico' || lvl === 'atencao';
         }
+        if (kpiFilter === 'Parciais' && !temDivergenciaDeEntrega(r)) return false;
         return true;
       });
       if (items.length > 0) {
@@ -1455,7 +1488,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const expand = !allExpanded;
     filteredGroups.forEach(g => {
       nextRMs[g.rm] = expand;
-      g.items.forEach(it => { nextItems[it.record.ri] = expand; });
+      g.items.forEach(it => { nextItems[it.record.ri_po] = expand; });
     });
     setExpandedRMs(nextRMs);
     setExpandedItems(nextItems);
@@ -1476,10 +1509,24 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           'Código do Material': r.material_code || '—',
           'Descrição': r.texto_breve || '—',
           'Texto Técnico': materialsByCode.get(normalizeCode(r.material_code)) || '—',
-          'Qtd.': r.qtd_requisicao ?? '—',
-          'Un.': r.unidade_medida || '—',
+          'Qtd.': qtdDaLinha(r).qtd ?? '—',
+          'Un.': qtdDaLinha(r).un || '—',
+          'Qtd. da RM': r.qtd_requisicao ?? '—',
+          'Qtd. Fornecida': r.qtd_fornecida_po ?? '—',
+          'Entrega': (() => {
+            const entrega = avaliarEntregaParcial(r);
+            if (!entrega) return '—';
+            if (entrega.parcial) return `Parcial (faltam ${entrega.faltando})`;
+            if (entrega.excedente) return `A maior (${-entrega.faltando} a mais)`;
+            return 'Completa';
+          })(),
+          '% Atendido': (() => {
+            const entrega = avaliarEntregaParcial(r);
+            return entrega ? Math.round(entrega.percentual) : '—';
+          })(),
           'Grupo Comprador': r.grupo_comprador || '—',
           'Grupo de Materiais': grupoMercDe(r) || '—',
+          'Tipo do Item': isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo',
           'Natureza': r.natureza || '—',
           'Status': r.status_atualizado || '—',
           'Alerta': r.alerta || '—',
@@ -1578,12 +1625,58 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   );
 
   // Badge de identificação visual: item já possui PO emitida vs. ainda em aberto (Sem PO)
+  /**
+   * Selo de entrega parcial: pedido colocado, mas o fornecedor entregou menos
+   * (ou mais) do que a RM pediu. Mostra o saldo, que é o que o comprador cobra.
+   */
+  const renderEntregaParcialBadge = (r: EnrichedSAPRecord) => {
+    const entrega = avaliarEntregaParcial(r);
+    if (!entrega || (!entrega.parcial && !entrega.excedente)) return null;
+    const un = r.unidade_po || r.unidade_medida || '';
+    // Percentual arredondado, mas sem deixar uma entrega quase completa virar
+    // "100%" nem uma quase nula virar "0%" — nos dois casos o selo mentiria.
+    const pct = Math.min(99, Math.max(1, Math.round(entrega.percentual)));
+    return entrega.parcial ? (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50"
+        title={`Entrega parcial: fornecidos ${formatInt(entrega.fornecido)} de ${formatInt(entrega.solicitado)} ${un} — faltam ${formatInt(entrega.faltando)}`}
+      >
+        <AlertTriangle className="h-3 w-3 shrink-0" />
+        Parcial {pct}%
+      </span>
+    ) : (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+        title={`Fornecido a mais: ${formatInt(entrega.fornecido)} contra ${formatInt(entrega.solicitado)} ${un} pedidos na RM`}
+      >
+        <AlertTriangle className="h-3 w-3 shrink-0" />
+        A maior {Math.round(entrega.percentual)}%
+      </span>
+    );
+  };
+
   const renderPOBadge = (r: EnrichedSAPRecord) => {
     const hasPO = r.status_requisicao === 'Processado';
     if (hasPO) {
       const dataMigo = r.data_migo;
+      // Item de contrato: o fornecimento vem de um contrato guarda-chuva, não
+      // de um pedido a colocar. Mostra o selo "Contrato" (com o número do
+      // pedido do ME5A quando existe) e não cobra MIGO — não há carga a chegar.
+      const eContrato = !!r.is_contrato;
       return (
         <div className="inline-flex flex-wrap items-center gap-1.5">
+          {eContrato ? (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+              title="Item de contrato (categoria D no SAP): fornecimento amarrado a contrato, sem pedido a colocar"
+            >
+              <Check className="h-3 w-3 shrink-0" />
+              <span className="flex flex-col leading-tight">
+                <span>Contrato</span>
+                {(r.documento_compra || r.pedido) && <span>{r.documento_compra || r.pedido}</span>}
+              </span>
+            </span>
+          ) : (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
             title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
@@ -1594,7 +1687,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
             </span>
           </span>
-          {!dataMigo && (
+          )}
+          {!dataMigo && !eContrato && (
             <span
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-amber-100 dark:bg-amber-955/40 text-amber-700 dark:text-amber-450 border border-amber-250 dark:border-amber-900/50"
               title="Item comprado mas sem registro de entrada física/nota fiscal (Sem MIGO)"
@@ -1602,13 +1696,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               Sem MIGO
             </span>
           )}
-          {!dataMigo && chegadasMap.has(r.ri) && (
+          {!dataMigo && !eContrato && chegadasMap.has(r.ri_po) && (
             <span
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-250 dark:border-emerald-900/50"
-              title={`Registrado por ${chegadasMap.get(r.ri)!.registrado_por_nome}`}
+              title={`Registrado por ${chegadasMap.get(r.ri_po)!.registrado_por_nome}`}
             >
               <PackageCheck className="h-3 w-3 shrink-0" />
-              Chegou no almoxarifado {formatDateBR(chegadasMap.get(r.ri)!.data_chegada)}
+              Chegou no almoxarifado {formatDateBR(chegadasMap.get(r.ri_po)!.data_chegada)}
             </span>
           )}
         </div>
@@ -1626,7 +1720,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow) => (
     <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="font-extrabold text-slate-850 dark:text-slate-200">PO {r.documento_compra || '—'}</span>
+        <span className="font-extrabold text-slate-850 dark:text-slate-200">
+          {r.is_contrato
+            ? `Contrato${r.documento_compra || r.pedido ? ` ${r.documento_compra || r.pedido}` : ''}`
+            : `PO ${r.documento_compra || '—'}`}
+        </span>
         {r.item_pedido && (
           <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-500 dark:text-slate-400">
             Item {r.item_pedido}
@@ -1672,7 +1770,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         </div>
       )}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-        {renderMigoInfo(r.data_migo || undefined)}
+        {/* Contrato não tem carga a chegar, então não cobra MIGO. */}
+        {r.is_contrato ? <span /> : renderMigoInfo(r.data_migo || undefined)}
         {r.criado_por_pedido && (
           <span className="text-slate-400 dark:text-slate-500 font-semibold">Comprador: {r.criado_por_pedido}</span>
         )}
@@ -1693,7 +1792,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const kpis = useMemo(() => {
     let rmsSet = new Set<string>();
     let itens = 0;
-    let com = 0, sem = 0, criticos = 0;
+    let com = 0, sem = 0, criticos = 0, parciais = 0;
     filteredGroupsWithoutKpi.forEach(g => g.items.forEach(it => {
       if (poFilter === 'Sem PO' && it.record.status_requisicao !== 'Sem PO') return;
       if (poFilter === 'Sem MIGO') {
@@ -1706,8 +1805,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (it.encontrado) com++; else sem++;
       const lvl = alertLevel(it.record.alerta || '');
       if (lvl === 'critico' || lvl === 'atencao') criticos++;
+      if (temDivergenciaDeEntrega(it.record)) parciais++;
     }));
-    return { rms: rmsSet.size, itens, com, sem, criticos };
+    return { rms: rmsSet.size, itens, com, sem, criticos, parciais };
   }, [filteredGroupsWithoutKpi, poFilter]);
 
   // Lista com as opções de status
@@ -1887,7 +1987,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3.5">
           {/* Card 1: RMs em aberto / Total RMs (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
@@ -1966,6 +2066,24 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-amber-50 text-amber-650 dark:bg-amber-955/20">Filtro Ativo</span>
             )}
           </div>
+
+          {/* Card 6: Itens Parciais — pedido colocado, mas o fornecedor entregou
+              menos (ou mais) do que a RM pediu. É o recorte de cobrança de saldo. */}
+          <div
+            onClick={() => setKpiFilter('Parciais')}
+            className={`rounded-xl border bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] select-none ${
+              kpiFilter === 'Parciais'
+                ? 'border-orange-500 ring-1 ring-orange-500/20'
+                : 'border-slate-200/80 dark:border-slate-850'
+            }`}
+          >
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-orange-500 dark:bg-orange-600" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">Itens Parciais</span>
+            <p className="text-3xl font-black text-orange-600 dark:text-orange-500 mt-1">{kpis.parciais}</p>
+            {kpiFilter === 'Parciais' && (
+              <span className="absolute right-3 top-3 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-orange-50 text-orange-600 dark:bg-orange-950/40">Filtro Ativo</span>
+            )}
+          </div>
         </div>
       )}
       {/* Filtros */}
@@ -2037,6 +2155,20 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               onChange={setGrupoMercFilter}
               className="shrink-0 w-[160px] lg:w-auto lg:min-w-[160px]"
             />
+            {/* Consumo x Projeto — material 100000… é item de projeto. */}
+            <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]">
+              <Boxes className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={tipoItemFilter}
+                onChange={(e) => setTipoItemFilter(e.target.value as TipoItemFilter)}
+                aria-label="Filtrar por tipo de item"
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="todos">Tipo: Todos</option>
+                <option value="consumo">Consumo</option>
+                <option value="projeto">Projeto</option>
+              </select>
+            </div>
             <MultiSelectFilter
               label="Prioridade"
               icon={Flag}
@@ -2202,7 +2334,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                 const alertStyle = ALERT_STYLE[ilvl];
                 const itemSaveStatus = saveStatus[r.ri] || 'idle';
                 return (
-                  <div key={r.ri} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
+                  <div key={r.ri_po} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
                     {/* Card Top */}
                     <div className="p-4 space-y-3 flex-1">
                       {/* Meta header */}
@@ -2210,8 +2342,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <div className="flex items-center gap-1.5">
                           <input
                             type="checkbox"
-                            checked={selectedRis.has(r.ri)}
-                            onChange={() => toggleSelectRi(r.ri)}
+                            checked={selectedRis.has(r.ri_po)}
+                            onChange={() => toggleSelectRi(r.ri_po)}
                             className="cursor-pointer"
                             aria-label={`Selecionar item ${r.item_reqc}`}
                           />
@@ -2228,6 +2360,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             <Info className="h-4.5 w-4.5" />
                           </button>
                           {renderPOBadge(r)}
+                          {renderEntregaParcialBadge(r)}
                           {r.status_requisicao !== 'Processado' && r.alerta && (
                             <span className={`px-2 py-0.5 rounded text-[9px] font-black tracking-wide uppercase ${alertStyle.chip}`}>
                               {r.alerta}
@@ -2249,7 +2382,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                       {/* Technical Specs Tags */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-450 dark:text-slate-500 font-bold bg-slate-55 dark:bg-slate-955 p-2 rounded-xl border border-slate-150 dark:border-slate-900">
-                        <span>Qtd: {r.qtd_requisicao} {r.unidade_medida}</span>
+                        <span>Qtd: {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}</span>
+                        {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined && (
+                          <>
+                            <span>•</span>
+                            <span>Fornecido: {formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
+                          </>
+                        )}
                         <span>•</span>
                         <span>Comprador: Grupo {r.grupo_comprador || '—'}</span>
                         <span>•</span>
@@ -2264,6 +2403,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             </span>
                           </>
                         )}
+                        <span>•</span>
+                        <span>{isProjetoItem(r.material_code) ? 'Projeto' : 'Consumo'}</span>
                         {grupoMercDe(r) && (
                           <>
                             <span>•</span>
@@ -2471,7 +2612,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
           {/* VIEW: TABLE (Flat spreadsheet mode) */}
           {(() => {
-            const visibleTableRis = Array.from(new Set(flatTableItems.map(x => x.item.record.ri)));
+            const visibleTableRis = Array.from(new Set(flatTableItems.map(x => x.item.record.ri_po)));
             const allTableRisSelected = visibleTableRis.length > 0 && visibleTableRis.every(ri => selectedRis.has(ri));
             const someTableRisSelected = visibleTableRis.some(ri => selectedRis.has(ri));
             const toggleSelectAllTable = () => {
@@ -2509,6 +2650,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   <Th label="Material" />
                   <Th label="Descrição" />
                   <Th label="Qtd / Un" />
+                  <Th label="Qtd Fornecida" />
                   {/* "Informações do PO" (Sem MIGO) saiu daqui — essa visão agora é a
                       tabela de Diligenciamento, renderizada antes deste bloco. */}
                   {!tableShowSupplierFirst && <Th label="Histórico Fornecedores" />}
@@ -2525,7 +2667,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                       // borda esquerda além do fundo: o tingimento sozinho era
                       // fraco demais para achar a alteração numa lista longa.
                       <tr
-                        key={`${r.ri}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`}
+                        key={`${r.ri_po}-${selectedSupplier ? selectedSupplier.cod_forn : 'none'}`}
                         className="align-top transition-colors duration-150 hover:bg-[var(--surface-raised)]"
                         style={{
                           borderColor: 'var(--hairline)',
@@ -2540,8 +2682,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <td className="py-3 px-3">
                           <input
                             type="checkbox"
-                            checked={selectedRis.has(r.ri)}
-                            onChange={() => toggleSelectRi(r.ri)}
+                            checked={selectedRis.has(r.ri_po)}
+                            onChange={() => toggleSelectRi(r.ri_po)}
                             className="cursor-pointer"
                             aria-label={`Selecionar item ${r.item_reqc}`}
                           />
@@ -2666,7 +2808,20 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
                         {/* Qtd */}
                         <td className="py-3 px-3 whitespace-nowrap font-bold">
-                          {r.qtd_requisicao} {r.unidade_medida}
+                          {qtdDaLinha(r).qtd} {qtdDaLinha(r).un}
+                        </td>
+
+                        {/* Qtd fornecida (ZL0132) — só faz sentido com pedido
+                            colocado; o selo aparece quando não fecha com a RM. */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {r.status_requisicao === 'Processado' && r.qtd_fornecida_po !== undefined ? (
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="font-bold">{formatInt(r.qtd_fornecida_po)} {qtdDaLinha(r).un}</span>
+                              {renderEntregaParcialBadge(r)}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-600">—</span>
+                          )}
                         </td>
 
                         {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) */}

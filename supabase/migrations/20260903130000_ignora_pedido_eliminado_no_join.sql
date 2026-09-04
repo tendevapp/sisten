@@ -1,0 +1,17 @@
+-- Ja aplicada no projeto remoto (via MCP), registrada aqui para o repositorio
+-- refletir o schema. Ver a migration `ignora_linhas_de_pedido_eliminadas_no_join`
+-- no historico do Supabase para o corpo completo da view.
+--
+-- Linha de pedido eliminada no SAP (eflag_e = 'L') nao pode virar uma linha na
+-- tela. Antes do desmembramento por PO ela era absorvida pelo DISTINCT ON, que
+-- preferia o pedido ativo; com uma linha por pedido, ela reaparecia como item
+-- fantasma "Sem PO" ao lado do pedido verdadeiro (RM 1100321297 item 200:
+-- PO 4100441941 eliminado + PO 4100442484 entregue).
+--
+-- O filtro fica na condicao do LEFT JOIN, nao no WHERE: o item cujo UNICO
+-- pedido foi eliminado continua aparecendo uma vez, como "Sem PO" -- que e a
+-- situacao real dele.
+--
+--   left join public.mv_pedidos_por_ri p
+--     on p.ri = r.ri
+--    and coalesce(upper(btrim(p.eflag_e)), '') <> 'L'

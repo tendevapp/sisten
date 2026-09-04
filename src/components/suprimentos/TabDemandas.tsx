@@ -5,7 +5,7 @@ import {
   classifyTipoDemanda, classifyCriticidadeNatureza, resolveDataCorte, bucketDate, Granularidade,
   CompradorInfo, Criticidade, CRITICIDADE_LABEL,
 } from '../../lib/demandas';
-import { calcSpend } from '../../lib/suprimentos';
+import { calcSpend, temPO } from '../../lib/suprimentos';
 import { formatInt, formatPctInt, formatPct, formatBRLCompacto } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
@@ -16,6 +16,7 @@ import {
 import RequisitadoVsPedidoChart from '../demandas/RequisitadoVsPedidoChart';
 import CriticidadeChart from '../demandas/CriticidadeChart';
 import AreaSolicitanteChart from '../demandas/AreaSolicitanteChart';
+import ValorPedidosChart from '../demandas/ValorPedidosChart';
 
 const TIPO_LABEL_TO_CLASS: Record<string, 'material' | 'servico'> = {
   Materiais: 'material',
@@ -81,6 +82,10 @@ export default function TabDemandas({ records, allRecords, granularidade, compra
     () => records.filter(r => classifyTipoDemanda(r.requisicao_de_compra) === 'servico'),
     [records]
   );
+
+  // Só itens com PO: o gráfico de valor e seu drill-down falam do dinheiro
+  // efetivamente colocado em pedido no período.
+  const pedidos = useMemo(() => records.filter(temPO), [records]);
 
   // Considera todo o período do ano de 2026 para os cartões de KPI
   const records2026 = useMemo(() => {
@@ -194,6 +199,14 @@ export default function TabDemandas({ records, allRecords, granularidade, compra
         title="Demandas de Serviço (RI 17)"
         subtitle="Serviços requisitados x pedidos colocados, com volume acumulado no período"
         onSelecionarPeriodo={key => abrirModalPeriodo(servicos, 'Demandas de Serviço', key)}
+      />
+
+      <ValorPedidosChart
+        records={records}
+        granularidade={granularidade}
+        title="Valor dos Pedidos Colocados"
+        subtitle="Soma do valor dos pedidos efetivados em cada período, com valor acumulado"
+        onSelecionarPeriodo={key => abrirModalPeriodo(pedidos, 'Valor dos Pedidos Colocados', key)}
       />
 
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">

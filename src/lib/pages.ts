@@ -176,7 +176,7 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'form_rh',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
     label: 'Formulários: RH & Dep. Pessoal (ASE)',
-    defaultRoles: '*',
+    defaultRoles: ['admin', 'gestor'],
   },
   {
     id: 'form_almoxarifado',
@@ -185,10 +185,22 @@ export const FEATURE_FLAGS: PageDef[] = [
     defaultRoles: '*',
   },
   {
+    id: 'form_ssma',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: SSMA (Saúde, Segurança e Meio Ambiente)',
+    defaultRoles: '*',
+  },
+  {
     id: 'rh_ase_ver_todas',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
     label: 'ASE: Ver todas as solicitações (se desmarcado, vê apenas as próprias)',
     defaultRoles: ['admin', 'gestor', 'coordenador_suprimentos'],
+  },
+  {
+    id: 'ssma_rid_editar_todas',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'RID: Editar todos os desvios (se desmarcado, edita apenas os criados pelo próprio usuário)',
+    defaultRoles: ['admin'],
   },
 ];
 
@@ -220,13 +232,20 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     grupoId: 'rh',
     label: 'RH & Departamento Pessoal',
     descricao: 'Autorização de Serviços Extraordinários (ASE - Hora Extra)',
-    defaultRoles: '*',
+    defaultRoles: ['admin', 'gestor'],
   },
   {
     id: 'form_almoxarifado',
     grupoId: 'almoxarifado',
     label: 'Almoxarifado',
     descricao: 'Formulários operacionais do almoxarifado (em breve)',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_ssma',
+    grupoId: 'ssma',
+    label: 'SSMA - Saúde, Segurança e Meio Ambiente',
+    descricao: 'Registro de Identificação de Desvio (RID) e relatórios preventivos',
     defaultRoles: '*',
   },
 ];
@@ -290,7 +309,9 @@ export function canAccessFormGroup(user: Profile, grupoId: string): boolean {
     return user.page_access['rh_ase_hora_extra'];
   }
 
-  return true;
+  // Se nao houver override explicito, respeita as roles padrao da subpermissao
+  if (sub.defaultRoles === '*') return true;
+  return sub.defaultRoles.some(r => user.roles.includes(r));
 }
 
 /**
@@ -304,6 +325,48 @@ export function canViewAllAse(user: Profile): boolean {
   const override = user.page_access?.['rh_ase_ver_todas'];
   if (override !== undefined) return override;
   return user.roles.some(r => ['gestor', 'coordenador_suprimentos'].includes(r));
+}
+
+/**
+ * Determina se o usuário pode editar/alterar um registro de desvio RID.
+ * Regra: todos os usuários podem ver todas as RIDs, mas editar apenas as que ele próprio criou.
+ * Administradores e usuários com override 'ssma_rid_editar_todas' podem editar qualquer RID.
+ */
+export function canEditDesvioRid(
+  user: Profile,
+  desvio: { criado_por?: string | null; matricula_informante?: string | null }
+): boolean {
+  if (user.roles.includes('admin')) return true;
+  const override = user.page_access?.['ssma_rid_editar_todas'];
+  if (override !== undefined) {
+    if (override) return true;
+    return !!(desvio.criado_por && desvio.criado_por === user.id);
+  }
+  // Padrão: autor do registro
+  if (desvio.criado_por && desvio.criado_por === user.id) return true;
+  // Compatibilidade com registros legados
+  if (
+    !desvio.criado_por &&
+    desvio.matricula_informante &&
+    user.matricula &&
+    desvio.matricula_informante === user.matricula
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Determina se o usuário pode excluir ou restaurar um registro de desvio RID.
+ */
+export function canDeleteDesvioRid(
+  user: Profile,
+  desvio: { criado_por?: string | null }
+): boolean {
+  if (user.roles.includes('admin')) return true;
+  const override = user.page_access?.['ssma_rid_editar_todas'];
+  if (override) return true;
+  return !!(desvio.criado_por && desvio.criado_por === user.id);
 }
 
 export function pageIdForPath(path: string): string | undefined {

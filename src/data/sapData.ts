@@ -53,6 +53,8 @@ export function generateSAPSeedData(): { requisicoes: SAPRequisicao[]; pedidos: 
 
     requisicoes.push({
       ri,
+      // Semente: um PO por item, então a chave de linha é o próprio par ri+PO.
+      ri_po: `${ri}-SEM-PO`,
       requisicao_de_compra: reqNo,
       item_reqc: itemNo,
       material_code: material.material_code,

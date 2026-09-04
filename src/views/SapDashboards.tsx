@@ -306,7 +306,9 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
           onReset={resetarFiltros}
           areas={areas}
           compradores={compradores}
-          totalFiltrado={filtrados.length}
+          // Conta ITENS DE RM, não linhas: um item comprado em dois POs vira
+          // duas linhas, e "N requisições" não pode dobrar por causa disso.
+          totalFiltrado={new Set(filtrados.map(r => r.ri)).size}
           mostrarGranularidade={aba === 'demandas' || aba === 'carteira'}
         />
       )}

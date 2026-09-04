@@ -319,13 +319,16 @@ class LocalDatabase {
           ['buyer_groups', () => this.syncBuyerGroups()],
           ['sup_compradores', () => this.syncSimpleTable('sup_compradores', this.compradoresKey, true, undefined, 'grupo_compras')],
           ['sup_rastreio_prioridades', () => this.syncSimpleTable('sup_rastreio_prioridades', this.prioridadesKey, true, undefined, 'id')],
-          ['almoxarifado_chegadas', () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri')],
+          ['almoxarifado_chegadas', () => this.syncSimpleTable('almoxarifado_chegadas', this.chegadasAlmoxarifadoKey, true, undefined, 'ri_po')],
           ['sup_fretes', () => this.syncSimpleTable('sup_fretes', this.tabelaFreteKey, true, undefined, 'id')],
           // 'materials' saiu da sincronização geral: o catálogo tem ~172k linhas e é
           // consultado direto no Supabase por toda tela que precisa dele (busca,
           // autocomplete). Baixar o catálogo inteiro para o cache local a cada sessão
           // era o maior consumidor de egress do projeto.
-          ['vw_sap_requisicoes_enriquecidas', gated('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri'))],
+          // Ordena por `ri_po`, não por `ri`: um item de RM com dois pedidos tem duas
+          // linhas com o mesmo `ri`, e ordenar por coluna não única pode pular ou
+          // repetir linhas entre páginas de 1000.
+          ['vw_sap_requisicoes_enriquecidas', gated('requisicoes', () => this.syncSimpleTable('vw_sap_requisicoes_enriquecidas', this.requisicoesKey, true, q => q.gte('data_da_solicitacao', '2026-01-01'), 'ri_po'))],
           ['vw_sap_pedidos_enriquecidos', gated('pedidos', () => this.syncSimpleTable('vw_sap_pedidos_enriquecidos', this.pedidosKey, true, q => q.gte('data_rc', '2026-01-01'), 'ri'))],
           // Estas três fazem merge em vez de substituir: o motor de solicitações
           // ainda é local-first (só a criação sobe; status, atendente e
@@ -1629,8 +1632,11 @@ class LocalDatabase {
     return this.getStorageItem<AlmoxarifadoChegada[]>(this.chegadasAlmoxarifadoKey, []);
   }
 
+  // Indexado por `ri_po` (item de RM + pedido): a chegada é do pedido, então
+  // dois POs do mesmo item chegam — e são marcados — separadamente. Linhas
+  // gravadas antes da quebra por PO caem no fallback `<ri>-SEM-PO`.
   public getAlmoxarifadoChegadasMap(): Map<string, AlmoxarifadoChegada> {
-    return new Map(this.getAlmoxarifadoChegadas().map(c => [c.ri, c]));
+    return new Map(this.getAlmoxarifadoChegadas().map(c => [c.ri_po || `${c.ri}-SEM-PO`, c]));
   }
 
   public getBuyerGroupsForUser(userId: string): UserBuyerGroup[] {
@@ -2499,63 +2505,73 @@ class LocalDatabase {
     return row;
   }
 
-  // Marca em lote a chegada física no almoxarifado de 1+ itens (mesma data
-  // para todos). Upsert por `ri`: marcar de novo um item já chegado apenas
-  // atualiza a data. Ver db/sql/tables/almoxarifado_chegadas.sql.
-  public async setAlmoxarifadoChegada(ris: string[], dataChegada: string): Promise<void> {
+  // Marca em lote a chegada física no almoxarifado de 1+ linhas (mesma data
+  // para todos). A identidade é `ri_po` — item de RM + pedido: uma RM comprada
+  // em dois POs chega em dois momentos, e marcar um não marca o outro. Upsert:
+  // marcar de novo uma linha já chegada apenas atualiza a data.
+  // Ver db/sql/tables/almoxarifado_chegadas.sql.
+  public async setAlmoxarifadoChegada(riPos: string[], dataChegada: string): Promise<void> {
     if (!supabase) throw new Error('Sem conexão com o servidor.');
-    if (ris.length === 0) return;
+    if (riPos.length === 0) return;
     const user = this.getCurrentUser();
     if (!user) throw new Error('Usuário não autenticado.');
 
-    const rmByRi = new Map(this.getEnrichedSAPRequisicoes().map(r => [r.ri, r.requisicao_de_compra]));
+    const porRiPo = new Map(this.getEnrichedSAPRequisicoes().map(r => [r.ri_po, r]));
     const now = new Date().toISOString();
-    const rows: AlmoxarifadoChegada[] = ris.map(ri => ({
-      ri,
-      rm: rmByRi.get(ri),
-      data_chegada: dataChegada,
-      registrado_por_id: user.id,
-      registrado_por_nome: user.name,
-      created_at: now,
-      updated_at: now,
-    }));
+    const rows: AlmoxarifadoChegada[] = riPos.map(riPo => {
+      const reg = porRiPo.get(riPo);
+      return {
+        ri_po: riPo,
+        // Sem registro em cache (recorte filtrado), o `ri` sai da própria chave:
+        // `ri_po` é `<ri>-<PO>` e o `ri` nunca contém hífen.
+        ri: reg?.ri || riPo.split('-')[0],
+        doc_compra: reg?.documento_compra || null,
+        rm: reg?.requisicao_de_compra,
+        data_chegada: dataChegada,
+        registrado_por_id: user.id,
+        registrado_por_nome: user.name,
+        created_at: now,
+        updated_at: now,
+      };
+    });
 
     const { error } = await supabase.from('almoxarifado_chegadas').upsert(
       rows.map(r => ({
-        ri: r.ri, rm: r.rm ?? null, data_chegada: r.data_chegada,
+        ri_po: r.ri_po, ri: r.ri, doc_compra: r.doc_compra ?? null,
+        rm: r.rm ?? null, data_chegada: r.data_chegada,
         registrado_por_id: r.registrado_por_id, registrado_por_nome: r.registrado_por_nome,
         updated_at: r.updated_at,
       })),
-      { onConflict: 'ri' }
+      { onConflict: 'ri_po' }
     );
     if (error) throw error;
 
     // Atualiza o cache local imediatamente, sem esperar o próximo sync.
     const cached = this.getAlmoxarifadoChegadas();
-    const byRi = new Map(cached.map(c => [c.ri, c]));
-    rows.forEach(r => byRi.set(r.ri, { ...byRi.get(r.ri), ...r, created_at: byRi.get(r.ri)?.created_at ?? r.created_at }));
-    this.setStorageItem(this.chegadasAlmoxarifadoKey, Array.from(byRi.values()));
+    const porChave = new Map(cached.map(c => [c.ri_po || `${c.ri}-SEM-PO`, c]));
+    rows.forEach(r => porChave.set(r.ri_po, { ...porChave.get(r.ri_po), ...r, created_at: porChave.get(r.ri_po)?.created_at ?? r.created_at }));
+    this.setStorageItem(this.chegadasAlmoxarifadoKey, Array.from(porChave.values()));
 
     this.logActivity(
       user.id, 'Rastreio Compras', 'Marcar Chegada Almoxarifado',
-      `${user.name} marcou chegada em ${dataChegada} para ${ris.length} item(ns): ${ris.join(', ')}.`
+      `${user.name} marcou chegada em ${dataChegada} para ${riPos.length} item(ns): ${riPos.join(', ')}.`
     );
   }
 
-  // Desfaz a marcação de chegada de um item (ex.: marcado por engano).
-  public async removeAlmoxarifadoChegada(ri: string): Promise<void> {
+  // Desfaz a marcação de chegada de uma linha (ex.: marcada por engano).
+  public async removeAlmoxarifadoChegada(riPo: string): Promise<void> {
     if (!supabase) throw new Error('Sem conexão com o servidor.');
     const user = this.getCurrentUser();
     if (!user) throw new Error('Usuário não autenticado.');
-    const { error } = await supabase.from('almoxarifado_chegadas').delete().eq('ri', ri);
+    const { error } = await supabase.from('almoxarifado_chegadas').delete().eq('ri_po', riPo);
     if (error) throw error;
 
-    const cached = this.getAlmoxarifadoChegadas().filter(c => c.ri !== ri);
+    const cached = this.getAlmoxarifadoChegadas().filter(c => (c.ri_po || `${c.ri}-SEM-PO`) !== riPo);
     this.setStorageItem(this.chegadasAlmoxarifadoKey, cached);
 
     this.logActivity(
       user.id, 'Rastreio Compras', 'Desfazer Chegada Almoxarifado',
-      `${user.name} desfez a chegada no almoxarifado do item ${ri}.`
+      `${user.name} desfez a chegada no almoxarifado do item ${riPo}.`
     );
   }
 
@@ -3439,6 +3455,9 @@ class LocalDatabase {
       ...r,
       requisicao_de_compra: r.requisicao_de_compra || '',
       item_reqc: r.item_reqc || '',
+      // Cache gravado antes da quebra por PO (e as sementes offline) não têm
+      // `ri_po`; deriva do par ri+PO para a identidade de linha nunca faltar.
+      ri_po: r.ri_po || `${r.ri || ''}-${String(r.documento_compra || r.doc_compra || '').trim() || 'SEM-PO'}`,
       material_code: r.material_code || r.material || '',
       texto_breve: r.texto_breve || '',
       qtd_requisicao: r.qtd_requisicao !== undefined ? Number(r.qtd_requisicao) : Number(r.qtd_solicitada || 0),
@@ -4039,16 +4058,23 @@ class LocalDatabase {
     //              (b) manter mapa de pedidosForn ativo por RI para fallback offline e dados financeiros.
     const rawPedsForn = this.getStorageItem<any[]>(this.pedidosFornKey, []);
     const eliminatedCompositeKeys = new Set<string>();
-    const pedsFornByRi = new Map<string, any>(); // PO ativo mais recente por RI
+    // Indexado por RI+PO, não só por RI: um item de RM pode ter vários pedidos,
+    // e cada linha da tela precisa do SEU pedido (fornecedor, quantidade,
+    // preço), não do mais recente do item.
+    const pedsFornByRiDoc = new Map<string, any>();
+    // Fallback offline: o PO mais recente do RI, para quando o servidor não
+    // trouxe `documento_compra` na linha (cache de semente).
+    const pedsFornByRi = new Map<string, any>();
 
     rawPedsForn.forEach(pf => {
       const eflag = String(pf.eflag_e || pf.campos_extras?.eflag_e || pf['E'] || pf['E.'] || '').trim().toUpperCase();
+      const doc = String(pf.doc_compra || pf.documento_compra || '').trim();
+      const ri = String(pf.ri || '').trim();
       if (eflag === 'L') {
-        const doc = String(pf.doc_compra || pf.documento_compra || '').trim();
-        if (pf.ri && doc) eliminatedCompositeKeys.add(String(pf.ri).trim() + '_' + doc);
+        if (ri && doc) eliminatedCompositeKeys.add(ri + '_' + doc);
       } else {
+        if (ri && doc) pedsFornByRiDoc.set(ri + '_' + doc, pf);
         // Manter o registro mais recente por RI (data_doc DESC)
-        const ri = String(pf.ri || '').trim();
         if (ri) {
           const existing = pedsFornByRi.get(ri);
           const pfDate = String(pf.data_doc || '');
@@ -4078,27 +4104,67 @@ class LocalDatabase {
       // por último, para RM de serviço, o número de pedido informado no próprio ME5A.
       const docCompra = rawDocCompra || localDocCompra || pedidoME5A;
 
-      // Verificação de eliminação: eflag_e = 'L' na pedidosForn é a única fonte de verdade.
-      // Escopo por RI+doc — eflag_e é por linha do pedido, não pelo PO inteiro,
-      // e um mesmo número de PO pode ter itens ativos e itens cancelados.
-      const isDocEliminated = docCompra
+      // Verificação de eliminação: eflag_e = 'L' na pedidosForn (por RI+doc —
+      // eflag_e é por linha do pedido, não pelo PO inteiro, e um mesmo número
+      // de PO pode ter itens ativos e itens cancelados).
+      //
+      // Só vale para o PO vindo do fallback local: o servidor já descarta as
+      // linhas eliminadas no JOIN da view. Reaplicar o teste sobre o PO que ele
+      // mandou transformava a linha num item fantasma "Sem PO" ao lado do
+      // pedido verdadeiro, em vez de simplesmente não existir.
+      const isDocEliminated = docCompra && !rawDocCompra
         ? !!(r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra))
         : false;
 
-      const hasPO = !!docCompra
+      // Item de contrato (categoria_do_item = 'D'): o fornecimento já está
+      // amarrado a um contrato guarda-chuva. Não é RM esperando pedido nem
+      // item a cotar, então entra como atendido — a tela mostra "Contrato" no
+      // lugar do número do PO (que na ZL0132 muitas vezes nem existe).
+      const isContrato = String(raw.categoria_do_item || '').trim().toUpperCase() === 'D';
+
+      const hasPO = isContrato || (!!docCompra
         && docCompra !== '—' && docCompra !== '0'
         && docCompra !== 'undefined' && docCompra !== 'null'
-        && !isDocEliminated;
+        && !isDocEliminated);
 
-      // Dados financeiros do cache 'pedidosforn' local (não vêm em `vw_sap_requisicoes_enriquecidas`)
-      const activePf = hasPO ? localPf : undefined;
-      const preco_unitario = activePf ? this.precoUnitarioDoPedido(this.normalizePedidoFornRow(activePf)) : undefined;
-      const valor_total = activePf
-        ? (activePf.valor_em_brl !== undefined && activePf.valor_em_brl !== null
-            ? Number(activePf.valor_em_brl)
-            : activePf.valor_liquido !== undefined && activePf.valor_liquido !== null
-              ? Number(activePf.valor_liquido)
-              : undefined)
+      // Para contrato sem pedido casado, não há linha de PO de onde tirar
+      // preço/quantidade — os campos financeiros ficam vazios, como já ficavam.
+      const temDocReal = hasPO && !!docCompra && !isDocEliminated;
+
+      // Dados do pedido DESTA linha. A view já traz preço/quantidade do PO
+      // (preco_unit_po, valor_po, qtd_po); o cache local da ZL0132, casado por
+      // RI+PO, cobre o modo offline e as linhas de semente.
+      const activePf = temDocReal
+        ? (pedsFornByRiDoc.get(String(r.ri || '').trim() + '_' + docCompra) || localPf)
+        : undefined;
+      const precoUnitDaView = raw.preco_unit_po !== undefined && raw.preco_unit_po !== null
+        ? this.precoUnitarioDoPedido({ preco_liquido: Number(raw.preco_unit_po), por: raw.por_po } as any)
+        : undefined;
+      const preco_unitario = hasPO
+        ? (precoUnitDaView ?? (activePf ? this.precoUnitarioDoPedido(this.normalizePedidoFornRow(activePf)) : undefined))
+        : undefined;
+      const valorDaView = raw.valor_po !== undefined && raw.valor_po !== null ? Number(raw.valor_po) : undefined;
+      const valor_total = hasPO
+        ? (valorDaView ?? (activePf
+            ? (activePf.valor_em_brl !== undefined && activePf.valor_em_brl !== null
+                ? Number(activePf.valor_em_brl)
+                : activePf.valor_liquido !== undefined && activePf.valor_liquido !== null
+                  ? Number(activePf.valor_liquido)
+                  : undefined)
+            : undefined))
+        : undefined;
+      const qtd_po = hasPO
+        ? (raw.qtd_po !== undefined && raw.qtd_po !== null
+            ? Number(raw.qtd_po)
+            : (activePf?.qtd_pedido !== undefined && activePf?.qtd_pedido !== null ? Number(activePf.qtd_pedido) : undefined))
+        : undefined;
+      // Entrega parcial: a ZL0132 diz quanto de cada pedido já foi fornecido.
+      // Vem como string do PostgREST (numeric), então converte aqui — comparar
+      // string com número marcaria item completo como parcial.
+      const numeroOuIndef = (v: any): number | undefined =>
+        v === undefined || v === null || v === '' ? undefined : Number(v);
+      const qtd_fornecida_po = hasPO
+        ? (numeroOuIndef(raw.qtd_fornecida_po) ?? numeroOuIndef(activePf?.qtd_fornecida))
         : undefined;
 
       if (raw.status_requisicao === 'Sem PO' || raw.status_requisicao === 'Processado') {
@@ -4114,11 +4180,18 @@ class LocalDatabase {
           fornecedor_name: hasPO ? (raw.fornecedor_name || activePf?.fornecedor_nome || undefined) : undefined,
           data_pedido: hasPO ? (raw.data_pedido || activePf?.data_doc || undefined) : undefined,
           data_entrega_sap: hasPO ? (raw.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
-          documento_compra: hasPO ? docCompra : null,
+          documento_compra: temDocReal ? docCompra : null,
+          is_contrato: isContrato,
           criado_por_pedido: hasPO ? (raw.criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
           data_migo: hasPO ? (raw.data_migo || activePf?.data_migo || undefined) : undefined,
           preco_unitario,
           valor_total,
+          qtd_po,
+          qtd_fornecida_po,
+          qtd_pedida_total: numeroOuIndef(raw.qtd_pedida_total),
+          qtd_fornecida_total: numeroOuIndef(raw.qtd_fornecida_total),
+          unidade_po: hasPO ? (raw.unidade_po || activePf?.unidade_medida_pedido || undefined) : undefined,
+          total_pos: typeof raw.total_pos === 'number' ? raw.total_pos : (hasPO ? 1 : 0),
           natureza: raw.natureza,
           status_requisicao,
           lead_time_compras_meta: raw.lead_time_compras_meta,
@@ -4231,11 +4304,18 @@ class LocalDatabase {
         fornecedor_name: hasPO ? (p.fornecedor_name || activePf?.fornecedor_nome || undefined) : undefined,
         data_pedido: hasPO ? (p.data_pedido || activePf?.data_doc || undefined) : undefined,
         data_entrega_sap: hasPO ? (p.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
-        documento_compra: hasPO ? docCompra : null,
+        documento_compra: temDocReal ? docCompra : null,
+        is_contrato: isContrato,
         criado_por_pedido: hasPO ? ((p as any).criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
         data_migo,
         preco_unitario,
         valor_total: hasPO ? (p.valor_brl || valor_total) : undefined,
+        qtd_po,
+        qtd_fornecida_po,
+        qtd_pedida_total: numeroOuIndef(raw.qtd_pedida_total),
+        qtd_fornecida_total: numeroOuIndef(raw.qtd_fornecida_total),
+        unidade_po: hasPO ? (raw.unidade_po || activePf?.unidade_medida_pedido || undefined) : undefined,
+        total_pos: typeof raw.total_pos === 'number' ? raw.total_pos : (hasPO ? 1 : 0),
         natureza,
         status_requisicao,
         lead_time_compras_meta,

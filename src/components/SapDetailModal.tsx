@@ -289,6 +289,22 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
                 <span className="text-slate-400 dark:text-slate-500 block">Qtd. Solicitada</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.qtd_requisicao} {record.unidade_medida}</span>
               </div>
+              {/* A RM pode ter sido comprada em mais de um PO: com pedido, a
+                  quantidade dele fica ao lado da solicitada, para a diferença
+                  entre o que se pediu e o que se comprou nesta linha ficar à vista. */}
+              {record.status_requisicao === 'Processado' && record.qtd_po !== undefined && record.qtd_po !== null && (
+                <div className="space-y-0.5">
+                  <span className="text-slate-400 dark:text-slate-500 block">Qtd. do Pedido</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {record.qtd_po} {record.unidade_po || record.unidade_medida}
+                    {record.total_pos !== undefined && record.total_pos > 1 && (
+                      <span className="ml-1 font-semibold text-amber-600 dark:text-amber-400">
+                        ({record.total_pos} POs nesta RM/item)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
               <div className="space-y-0.5">
                 <span className="text-slate-400 dark:text-slate-500 block">Natureza (Doc)</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">{record.natureza} ({record.tipo_documento || '—'})</span>

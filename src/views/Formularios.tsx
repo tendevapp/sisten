@@ -19,7 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   DoorOpen, Boxes, PackageCheck, Truck, Clock, ArrowRight,
   Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck,
-  Building2, Sparkles, ChevronRight, FileText
+  Building2, Sparkles, ChevronRight, FileText, ShieldAlert
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { canAccessPage, canAccessFormGroup } from '../lib/pages';
@@ -97,6 +97,23 @@ const MODULOS: ModuloFormulario[] = [
       'ASE - Hora Extra (FRM.RHU-0007)',
       'Controle por Setor e Turno',
       'Exportação em PDF e Planilhas',
+    ],
+  },
+  {
+    id: 'ssma',
+    label: 'SSMA - Saúde, Segurança & Meio Ambiente',
+    codigo: 'MÓDULO DE SEGURANÇA & MEIO AMBIENTE',
+    icon: ShieldAlert,
+    desc: 'Registro de Identificação de Desvio (RID), classificação de riscos comportamentais e condições inseguras, evidências fotográficas e ações preventivas.',
+    path: '/formularios/ssma',
+    badge: '1 Formulário Ativo',
+    badgeCor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
+    corIcone: 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-500/20 shadow-lg',
+    corBordaHover: 'hover:border-emerald-500/50 hover:shadow-emerald-500/10',
+    itensResumo: [
+      'RID - Identificação de Desvio (FRM.SSMA-0001)',
+      'Classificação de Riscos & Evidências',
+      'Acompanhamento e Histórico de Ações',
     ],
   },
   {

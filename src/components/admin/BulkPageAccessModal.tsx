@@ -30,6 +30,9 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
   // Subpermissão ASE escopo ('keep' | 'own' | 'all' | 'reset')
   const [aseScopeAction, setAseScopeAction] = useState<'keep' | 'own' | 'all' | 'reset'>('keep');
 
+  // Subpermissão SSMA RID escopo de edição ('keep' | 'own' | 'all' | 'reset')
+  const [ridEditAction, setRidEditAction] = useState<'keep' | 'own' | 'all' | 'reset'>('keep');
+
   const groups = useMemo(
     () => getPageGroups().filter(g => g.group !== 'SUBPERMISSÕES DE FORMULÁRIOS'),
     []
@@ -56,10 +59,19 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
       next[sub.id] = action;
     }
     setActions(next);
-    if (action === 'allow') setAseScopeAction('all');
-    else if (action === 'block') setAseScopeAction('own');
-    else if (action === 'reset') setAseScopeAction('reset');
-    else setAseScopeAction('keep');
+    if (action === 'allow') {
+      setAseScopeAction('all');
+      setRidEditAction('all');
+    } else if (action === 'block') {
+      setAseScopeAction('own');
+      setRidEditAction('own');
+    } else if (action === 'reset') {
+      setAseScopeAction('reset');
+      setRidEditAction('reset');
+    } else {
+      setAseScopeAction('keep');
+      setRidEditAction('keep');
+    }
   };
 
   const handleToggleFormSubgroups = (action: BulkActionType) => {
@@ -70,18 +82,28 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
       }
       return next;
     });
-    if (action === 'allow') setAseScopeAction('all');
-    else if (action === 'block') setAseScopeAction('own');
-    else if (action === 'reset') setAseScopeAction('reset');
-    else setAseScopeAction('keep');
+    if (action === 'allow') {
+      setAseScopeAction('all');
+      setRidEditAction('all');
+    } else if (action === 'block') {
+      setAseScopeAction('own');
+      setRidEditAction('own');
+    } else if (action === 'reset') {
+      setAseScopeAction('reset');
+      setRidEditAction('reset');
+    } else {
+      setAseScopeAction('keep');
+      setRidEditAction('keep');
+    }
   };
 
   // Quantidade de regras modificadas
   const totalModificacoes = useMemo(() => {
     let count = Object.values(actions).filter(a => a !== 'keep').length;
     if (aseScopeAction !== 'keep') count += 1;
+    if (ridEditAction !== 'keep') count += 1;
     return count;
-  }, [actions, aseScopeAction]);
+  }, [actions, aseScopeAction, ridEditAction]);
 
   const handleSalvar = async () => {
     if (nonAdminUsers.length === 0) {
@@ -111,6 +133,14 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
         updates['rh_ase_ver_todas'] = false;
       } else if (aseScopeAction === 'reset') {
         updates['rh_ase_ver_todas'] = null;
+      }
+
+      if (ridEditAction === 'all') {
+        updates['ssma_rid_editar_todas'] = true;
+      } else if (ridEditAction === 'own') {
+        updates['ssma_rid_editar_todas'] = false;
+      } else if (ridEditAction === 'reset') {
+        updates['ssma_rid_editar_todas'] = null;
       }
 
       const userIds = nonAdminUsers.map(u => u.id);
@@ -375,6 +405,66 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                             onClick={() => setAseScopeAction('reset')}
                                             className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
                                               aseScopeAction === 'reset'
+                                                ? 'bg-blue-600 text-white shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                            }`}
+                                          >
+                                            Padrão
+                                          </button>
+                                        </div>
+                                       </div>
+                                    )}
+
+                                    {sub.id === 'form_ssma' && (
+                                      <div className="mt-2 ml-5 p-2 rounded-lg bg-white/70 border border-slate-200 flex items-center justify-between dark:bg-slate-900/60 dark:border-slate-800">
+                                        <div>
+                                          <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+                                            Edição RID:
+                                          </p>
+                                          <p className="text-[10px] text-slate-400">
+                                            Permissão de edição nos registros de desvio RID (ver todas é liberado)
+                                          </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg dark:bg-slate-800">
+                                          <button
+                                            type="button"
+                                            onClick={() => setRidEditAction('keep')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                                              ridEditAction === 'keep'
+                                                ? 'bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                            }`}
+                                          >
+                                            Manter
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setRidEditAction('own')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                                              ridEditAction === 'own'
+                                                ? 'bg-amber-500 text-white shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                            }`}
+                                          >
+                                            Apenas Próprios
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setRidEditAction('all')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                                              ridEditAction === 'all'
+                                                ? 'bg-emerald-600 text-white shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                            }`}
+                                          >
+                                            Editar Todos
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setRidEditAction('reset')}
+                                            className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                                              ridEditAction === 'reset'
                                                 ? 'bg-blue-600 text-white shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
                                             }`}

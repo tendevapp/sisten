@@ -49,6 +49,8 @@ const Sobre = lazy(() => import('./views/Sobre'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
+const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
+const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
 const PendenciasProcessamento = lazy(() => import('./views/PendenciasProcessamento'));
 const PortariaHub = lazy(() => import('./views/portaria/PortariaHub'));
@@ -589,6 +591,19 @@ export default function App() {
       case '/formularios/rh-ase-hora-extra':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'rh')) {
           return <RhAseHoraExtra user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/ssma':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
+          return <SsmaHub user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/ssma-rid':
+      case '/formularios/ssma/rid':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
+          return <SsmaRidView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

@@ -7,7 +7,7 @@ import {
 } from './diligenciamento';
 
 function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
-  return {
+  const base = {
     ri: 'r1', requisicao_de_compra: '3000123', item_reqc: '00010',
     material_code: 'MAT-1', texto_breve: 'Parafuso', qtd_requisicao: 10, unidade_medida: 'UN',
     grupo_comprador: '314', data_solicitacao: '2026-08-01', data_remessa: '',
@@ -20,6 +20,8 @@ function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
     dias_em_aberto: 0, atraso_comprador: 0, faixa_atraso: '', alerta: '', status_atualizado: '',
     ...over,
   } as EnrichedSAPRecord;
+  // A chave da linha é item de RM + pedido; nos testes ela sai do par, como a view faz.
+  return { ...base, ri_po: over.ri_po || `${base.ri}-${base.documento_compra || 'SEM-PO'}` };
 }
 
 const semDiligenciamento = new Map<string, DiligenciamentoItem>();
@@ -35,9 +37,9 @@ describe('normalização de transportadora', () => {
 
   it('dedupa transportadoras já digitadas, mantendo a grafia mais recente', () => {
     const itens: DiligenciamentoItem[] = [
-      { ri: 'a', transportadora: 'braspress', updated_at: '2026-08-01T00:00:00Z' },
-      { ri: 'b', transportadora: 'Braspress', updated_at: '2026-08-05T00:00:00Z' },
-      { ri: 'c', transportadora: 'Jamef', updated_at: '2026-08-02T00:00:00Z' },
+      { ri_po: 'a-1', ri: 'a', transportadora: 'braspress', updated_at: '2026-08-01T00:00:00Z' },
+      { ri_po: 'b-1', ri: 'b', transportadora: 'Braspress', updated_at: '2026-08-05T00:00:00Z' },
+      { ri_po: 'c-1', ri: 'c', transportadora: 'Jamef', updated_at: '2026-08-02T00:00:00Z' },
     ];
     expect(transportadorasConhecidas(itens)).toEqual(['Braspress', 'Jamef']);
   });
@@ -134,20 +136,46 @@ describe('montarItens', () => {
 
   it('previsão manual sobrepõe a calculada', () => {
     const prazos: PrazoTransporte[] = [{ id: '1', uf: '', transportadora: '', dias_corridos: 8 }];
-    const dilig = new Map<string, DiligenciamentoItem>([['r1', { ri: 'r1', previsao_manual: '2026-09-01' }]]);
+    const dilig = new Map<string, DiligenciamentoItem>([
+      ['r1-4500001', { ri_po: 'r1-4500001', ri: 'r1', previsao_manual: '2026-09-01' }],
+    ]);
     const [item] = montarItens([registro()], dilig, semChegadas, semCidades, semRegiao, prazos);
     expect(item.previsaoCalculada).toBe('2026-08-18');
     expect(item.previsaoEfetiva).toBe('2026-09-01');
     expect(item.motivoSemPrevisao).toBeUndefined();
   });
 
-  it('marca chegou quando existe registro em almoxarifado_chegadas para a RI', () => {
+  it('marca chegou quando existe registro em almoxarifado_chegadas para a linha', () => {
     const chegadas = new Map<string, AlmoxarifadoChegada>([
-      ['r1', { ri: 'r1', data_chegada: '2026-08-12' } as AlmoxarifadoChegada],
+      ['r1-4500001', { ri_po: 'r1-4500001', ri: 'r1', data_chegada: '2026-08-12' } as AlmoxarifadoChegada],
     ]);
     const [item] = montarItens([registro()], semDiligenciamento, chegadas, semCidades, semRegiao, []);
     expect(item.chegou).toBe(true);
     expect(item.dataChegada).toBe('2026-08-12');
+  });
+
+  it('mesmo item de RM comprado em dois POs rende uma linha por pedido', () => {
+    const registros = [
+      registro({ ri_po: 'r1-4500001', documento_compra: '4500001', qtd_po: 1, valor_total: 100 }),
+      registro({ ri_po: 'r1-4500002', documento_compra: '4500002', qtd_po: 4, valor_total: 400 }),
+    ];
+    const itens = montarItens(registros, semDiligenciamento, semChegadas, semCidades, semRegiao, []);
+    expect(itens.map(i => i.docCompra)).toEqual(['4500001', '4500002']);
+    // Quantidade é a do pedido, não a da RM inteira.
+    expect(itens.map(i => i.quantidade)).toEqual([1, 4]);
+    expect(agruparPorPo(itens).map(p => p.docCompra)).toEqual(['4500001', '4500002']);
+  });
+
+  it('chegada de um PO não marca o outro PO do mesmo item de RM', () => {
+    const registros = [
+      registro({ ri_po: 'r1-4500001', documento_compra: '4500001' }),
+      registro({ ri_po: 'r1-4500002', documento_compra: '4500002' }),
+    ];
+    const chegadas = new Map<string, AlmoxarifadoChegada>([
+      ['r1-4500001', { ri_po: 'r1-4500001', ri: 'r1', data_chegada: '2026-08-12' } as AlmoxarifadoChegada],
+    ]);
+    const itens = montarItens(registros, semDiligenciamento, chegadas, semCidades, semRegiao, []);
+    expect(itens.map(i => i.chegou)).toEqual([true, false]);
   });
 });
 
@@ -169,7 +197,7 @@ describe('agruparPorPo', () => {
 
   it('estado do pedido é pendente/parcial/chegou conforme os itens', () => {
     const chegadas = new Map<string, AlmoxarifadoChegada>([
-      ['i1', { ri: 'i1', data_chegada: '2026-08-12' } as AlmoxarifadoChegada],
+      ['i1-4500001', { ri_po: 'i1-4500001', ri: 'i1', data_chegada: '2026-08-12' } as AlmoxarifadoChegada],
     ]);
     const registros = [registro({ ri: 'i1' }), registro({ ri: 'i2' })];
     const itens = montarItens(registros, semDiligenciamento, chegadas, semCidades, semRegiao, []);
@@ -178,7 +206,10 @@ describe('agruparPorPo', () => {
 
     const [poTudoChegou] = agruparPorPo(
       montarItens(registros, semDiligenciamento,
-        new Map([['i1', chegadas.get('i1')!], ['i2', { ri: 'i2', data_chegada: '2026-08-13' } as AlmoxarifadoChegada]]),
+        new Map([
+          ['i1-4500001', chegadas.get('i1-4500001')!],
+          ['i2-4500001', { ri_po: 'i2-4500001', ri: 'i2', data_chegada: '2026-08-13' } as AlmoxarifadoChegada],
+        ]),
         semCidades, semRegiao, []),
     );
     expect(poTudoChegou.estadoChegada).toBe('chegou');
@@ -225,7 +256,9 @@ describe('pedidoVencido', () => {
   });
 
   it('não é vencido depois de confirmada a chegada', () => {
-    const chegadas = new Map<string, AlmoxarifadoChegada>([['r1', { ri: 'r1', data_chegada: '2026-08-05' } as AlmoxarifadoChegada]]);
+    const chegadas = new Map<string, AlmoxarifadoChegada>([
+      ['r1-4500001', { ri_po: 'r1-4500001', ri: 'r1', data_chegada: '2026-08-05' } as AlmoxarifadoChegada],
+    ]);
     const [po] = agruparPorPo(montarItens(
       [registro({ data_entrega_sap: '2026-08-01' })], semDiligenciamento, chegadas, semCidades, semRegiao,
       [{ id: '1', uf: '', transportadora: '', dias_corridos: 1 }],
