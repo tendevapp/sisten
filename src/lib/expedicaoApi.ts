@@ -23,6 +23,7 @@ import type {
   ExpedicaoCarregamentoResumo, ExpedicaoFoto, ExpedicaoLogEnvio, ExpedicaoTramo, Tramo,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
+import { comprimirImagemUpload } from './imageCompression';
 
 const BUCKET = 'expedicao-fotos';
 
@@ -294,39 +295,10 @@ export async function restaurarTramo(id: string): Promise<void> {
 // Fotos
 // =====================================================================
 
-/**
- * Reduz a foto antes de subir. Uma câmera de celular entrega 3–8 MB por
- * imagem, e o formulário é preenchido no pátio, com a rede que houver — sem
- * isso, anexar três fotos de um tramo vira minutos de espera. 1600px no maior
- * lado preserva a leitura de placa e de painel de relógio, que é o que estas
- * fotos precisam provar.
- */
-async function comprimirImagem(file: File): Promise<Blob> {
-  const LADO_MAXIMO = 1600;
-
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-
-  const escala = Math.min(1, LADO_MAXIMO / Math.max(bitmap.width, bitmap.height));
-  const largura = Math.round(bitmap.width * escala);
-  const altura = Math.round(bitmap.height * escala);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = largura;
-  canvas.height = altura;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, largura, altura);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>(resolve => {
-    canvas.toBlob(resolve, 'image/jpeg', 0.82);
-  });
-
-  // Se a compressão não rendeu (imagem já pequena, formato exótico), sobe o
-  // original em vez de arriscar entregar um arquivo pior que o de origem.
-  return blob && blob.size < file.size ? blob : file;
-}
+// A compressao e unica no app (ver src/lib/imageCompression.ts): 1600px no
+// maior lado preserva a leitura de placa e de painel de relogio, que e o que
+// estas fotos precisam provar.
+const comprimirImagem = (file: File) => comprimirImagemUpload(file);
 
 export async function enviarFoto(params: {
   file: File;

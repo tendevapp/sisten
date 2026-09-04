@@ -5,7 +5,7 @@
  * Modal de Detalhes e Gestão de um Registro de Identificação de Desvio (RID)
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   ShieldAlert,
@@ -26,9 +26,16 @@ import {
   Send,
   Loader2,
   Lock,
+  Camera,
+  Paperclip,
+  History,
 } from 'lucide-react';
-import type { Profile, SsmaRidDesvio, SsmaRidStatus } from '../../types';
-import { atualizarStatusDesvioRid } from '../../lib/ssmaApi';
+import type {
+  Profile, SsmaRidDesvio, SsmaRidStatus, SsmaRidFoto, SsmaRidAtualizacao,
+} from '../../types';
+import {
+  atualizarStatusDesvioRid, listarAtualizacoesRid, registrarAtualizacaoRid,
+} from '../../lib/ssmaApi';
 import { canEditDesvioRid, canDeleteDesvioRid } from '../../lib/pages';
 import { useToast } from '../ui/Toast';
 import ConfirmDialog from '../ui/ConfirmDialog';
@@ -40,6 +47,8 @@ interface SsmaRidDetalhesModalProps {
   onDelete?: (id: string) => void;
   onRestore?: (id: string) => void;
   onStatusChange?: (id: string, novoStatus: SsmaRidStatus) => void;
+  /** Avisa a lista que o RID mudou (fotos novas, tratamento em andamento). */
+  onAtualizacaoLancada?: (id: string) => void;
 }
 
 export default function SsmaRidDetalhesModal({
@@ -49,6 +58,7 @@ export default function SsmaRidDetalhesModal({
   onDelete,
   onRestore,
   onStatusChange,
+  onAtualizacaoLancada,
 }: SsmaRidDetalhesModalProps) {
   const toast = useToast();
   const [fotoAmpliada, setFotoAmpliada] = useState<{ url: string; tipo?: 'antes' | 'depois' } | null>(null);
@@ -57,6 +67,103 @@ export default function SsmaRidDetalhesModal({
   const [novoStatus, setNovoStatus] = useState<SsmaRidStatus>(desvio.status);
   const [parecerTexto, setParecerTexto] = useState(desvio.parecer_ssma || '');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+
+  // --- Acompanhamento do desvio não sanado de imediato ---
+  // Só faz sentido para o RID aberto como NÃO sanado: é ele que fica em aberto
+  // esperando a correção. O sanado na hora já nasce com o "depois" registrado.
+  const emAcompanhamento = !desvio.sanado_imediato && !desvio.excluido_em && desvio.status !== 'CANCELADO';
+
+  const [atualizacoes, setAtualizacoes] = useState<SsmaRidAtualizacao[]>([]);
+  const [carregandoAtualizacoes, setCarregandoAtualizacoes] = useState(false);
+  const [textoAtualizacao, setTextoAtualizacao] = useState('');
+  const [enviandoAtualizacao, setEnviandoAtualizacao] = useState(false);
+  // Fotos que subiram nesta sessão do modal: `desvio` é prop e não se atualiza
+  // sozinho, então elas entram aqui para a galeria e a linha do tempo já as
+  // mostrarem sem fechar e reabrir a ficha.
+  const [fotosLocais, setFotosLocais] = useState<SsmaRidFoto[]>([]);
+
+  interface FotoPendente { file: File; preview: string; tipo: 'antes' | 'depois' }
+  const [fotosPendentes, setFotosPendentes] = useState<FotoPendente[]>([]);
+
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galeriaRef = useRef<HTMLInputElement>(null);
+  const tipoEscolhidoRef = useRef<'antes' | 'depois'>('depois');
+
+  const fotos = useMemo<SsmaRidFoto[]>(
+    () => [...(desvio.fotos || []), ...fotosLocais],
+    [desvio.fotos, fotosLocais],
+  );
+
+  useEffect(() => {
+    if (!emAcompanhamento) return;
+    setCarregandoAtualizacoes(true);
+    listarAtualizacoesRid(desvio.id)
+      .then(setAtualizacoes)
+      .catch((err) => console.warn('Falha ao carregar atualizações do RID:', err))
+      .finally(() => setCarregandoAtualizacoes(false));
+  }, [desvio.id, emAcompanhamento]);
+
+  // Os previews são object URLs: sem revogar, cada foto anexada e removida
+  // deixa um blob preso na memória da aba.
+  useEffect(() => () => { fotosPendentes.forEach((f) => URL.revokeObjectURL(f.preview)); }, [fotosPendentes]);
+
+  const anexarFotos = (files: FileList | null, tipo: 'antes' | 'depois') => {
+    if (!files || files.length === 0) return;
+    const novas = Array.from(files)
+      .filter((f) => f.type.startsWith('image/'))
+      .map((file) => ({ file, preview: URL.createObjectURL(file), tipo }));
+    setFotosPendentes((prev) => [...prev, ...novas]);
+  };
+
+  const alternarTipoPendente = (idx: number) => {
+    setFotosPendentes((prev) => prev.map((f, i) => (
+      i === idx ? { ...f, tipo: f.tipo === 'antes' ? 'depois' : 'antes' } : f
+    )));
+  };
+
+  const removerPendente = (idx: number) => {
+    setFotosPendentes((prev) => {
+      const alvo = prev[idx];
+      if (alvo) URL.revokeObjectURL(alvo.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const abrirSeletor = (origem: 'camera' | 'galeria', tipo: 'antes' | 'depois') => {
+    tipoEscolhidoRef.current = tipo;
+    (origem === 'camera' ? cameraRef : galeriaRef).current?.click();
+  };
+
+  const handleLancarAtualizacao = async () => {
+    const texto = textoAtualizacao.trim();
+    if (!texto) {
+      toast.warning('Descreva o que mudou antes de lançar a atualização.');
+      return;
+    }
+    setEnviandoAtualizacao(true);
+    try {
+      // As fotos são comprimidas no upload (ver `comprimirFoto` em ssmaApi).
+      const { atualizacao, fotos: fotosSubidas } = await registrarAtualizacaoRid({
+        desvioId: desvio.id,
+        texto,
+        autorId: user.id,
+        autorNome: user.name,
+        fotos: fotosPendentes.map((f) => ({ file: f.file, tipo: f.tipo })),
+      });
+      setAtualizacoes((prev) => [...prev, atualizacao]);
+      setFotosLocais((prev) => [...prev, ...fotosSubidas]);
+      fotosPendentes.forEach((f) => URL.revokeObjectURL(f.preview));
+      setFotosPendentes([]);
+      setTextoAtualizacao('');
+      const comFoto = fotosSubidas.length > 0 ? ` ${fotosSubidas.length} foto(s) anexada(s).` : '';
+      toast.success(`Atualização lançada no RID.${comFoto}`);
+      if (onAtualizacaoLancada) onAtualizacaoLancada(desvio.id);
+    } catch (err: any) {
+      toast.error(`Falha ao lançar a atualização: ${err.message}`);
+    } finally {
+      setEnviandoAtualizacao(false);
+    }
+  };
 
   const podeEditar = canEditDesvioRid(user, desvio);
   const podeExcluir = canDeleteDesvioRid(user, desvio);
@@ -303,15 +410,15 @@ export default function SsmaRidDetalhesModal({
           </div>
 
           {/* Fotos e Evidências (Antes e Depois) */}
-          {desvio.fotos && desvio.fotos.length > 0 && (() => {
-            const fotosAntes = desvio.fotos.filter((f) => f.tipo !== 'depois');
-            const fotosDepois = desvio.fotos.filter((f) => f.tipo === 'depois');
+          {fotos.length > 0 && (() => {
+            const fotosAntes = fotos.filter((f) => f.tipo !== 'depois');
+            const fotosDepois = fotos.filter((f) => f.tipo === 'depois');
 
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Evidências Fotográficas ({desvio.fotos.length})
+                    Evidências Fotográficas ({fotos.length})
                   </h4>
                   <div className="flex items-center gap-2 text-[11px]">
                     {fotosAntes.length > 0 && (
@@ -413,6 +520,229 @@ export default function SsmaRidDetalhesModal({
               </div>
             );
           })()}
+
+          {/* Acompanhamento do desvio não sanado: linha do tempo + lançamento */}
+          {emAcompanhamento && (
+            <div className="rounded-2xl border border-blue-200/70 bg-blue-50/30 p-4 dark:border-blue-900/40 dark:bg-blue-950/15 space-y-4">
+              <div className="flex items-center justify-between border-b border-blue-100 pb-2 dark:border-blue-900/40">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center rounded-lg bg-blue-600 p-1 text-white">
+                    <History className="h-3.5 w-3.5" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-blue-900 dark:text-blue-200">
+                      Acompanhamento do Desvio
+                    </h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Este RID foi aberto como NÃO sanado de imediato — lance aqui o que já foi feito.
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                  {atualizacoes.length} lançamento(s)
+                </span>
+              </div>
+
+              {/* Linha do tempo do que já foi lançado */}
+              {carregandoAtualizacoes ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando atualizações...
+                </div>
+              ) : atualizacoes.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-blue-200 p-3 text-center text-[11px] text-slate-500 dark:border-blue-900/40 dark:text-slate-400">
+                  Nenhuma atualização lançada até agora.
+                </p>
+              ) : (
+                <ol className="space-y-3">
+                  {atualizacoes.map((at) => {
+                    const fotosDoLancamento = fotos.filter((f) => at.foto_ids?.includes(f.id));
+                    return (
+                      <li
+                        key={at.id}
+                        className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                      >
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                          <Clock className="h-3 w-3" />
+                          <span>{new Date(at.created_at).toLocaleString('pt-BR')}</span>
+                          {at.criado_por_nome && (
+                            <>
+                              <span aria-hidden>·</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{at.criado_por_nome}</span>
+                            </>
+                          )}
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-xs text-slate-800 dark:text-slate-200">{at.texto}</p>
+                        {fotosDoLancamento.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {fotosDoLancamento.map((foto) => (
+                              <button
+                                key={foto.id}
+                                type="button"
+                                onClick={() => foto.preview_url && setFotoAmpliada({ url: foto.preview_url, tipo: foto.tipo })}
+                                className="relative h-16 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800 cursor-pointer"
+                              >
+                                {foto.preview_url ? (
+                                  <img src={foto.preview_url} alt={foto.name} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="flex h-full w-full items-center justify-center text-[9px] text-slate-400">sem preview</span>
+                                )}
+                                <span
+                                  className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[8px] font-bold uppercase text-white ${
+                                    foto.tipo === 'depois' ? 'bg-emerald-600/90' : 'bg-amber-600/90'
+                                  }`}
+                                >
+                                  {foto.tipo === 'depois' ? 'Depois' : 'Antes'}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+
+              {/* Novo lançamento */}
+              {podeEditar ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 space-y-3">
+                  <label htmlFor="rid-atualizacao" className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Lançar atualização <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    id="rid-atualizacao"
+                    rows={3}
+                    value={textoAtualizacao}
+                    onChange={(e) => setTextoAtualizacao(e.target.value)}
+                    placeholder="O que foi feito desde a abertura? (ação executada, prazo, responsável...)"
+                    className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+
+                  {/* Entradas de arquivo: o tipo (antes/depois) vem do botão clicado */}
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => { anexarFotos(e.target.files, tipoEscolhidoRef.current); e.target.value = ''; }}
+                    className="hidden"
+                  />
+                  <input
+                    ref={galeriaRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => { anexarFotos(e.target.files, tipoEscolhidoRef.current); e.target.value = ''; }}
+                    className="hidden"
+                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/30 p-2.5 dark:border-emerald-900/40 dark:bg-emerald-950/15">
+                      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-emerald-900 dark:text-emerald-200">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Evidência do DEPOIS
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => abrirSeletor('camera', 'depois')}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-300/80 bg-white py-2 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-800 dark:text-emerald-300 transition-colors cursor-pointer"
+                        >
+                          <Camera className="h-3.5 w-3.5" /> Tirar Foto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirSeletor('galeria', 'depois')}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition-colors cursor-pointer"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" /> Galeria
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-amber-200/80 bg-amber-50/30 p-2.5 dark:border-amber-900/40 dark:bg-amber-950/15">
+                      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Evidência do ANTES
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => abrirSeletor('camera', 'antes')}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-300/80 bg-white py-2 text-[11px] font-bold text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-slate-800 dark:text-amber-300 transition-colors cursor-pointer"
+                        >
+                          <Camera className="h-3.5 w-3.5" /> Tirar Foto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => abrirSeletor('galeria', 'antes')}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition-colors cursor-pointer"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" /> Galeria
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {fotosPendentes.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {fotosPendentes.map((f, idx) => (
+                        <div
+                          key={`${f.preview}-${idx}`}
+                          className="group relative h-20 w-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+                        >
+                          <img src={f.preview} alt={f.file.name} className="h-full w-full object-cover" />
+                          <div className="absolute right-1 top-1 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => alternarTipoPendente(idx)}
+                              title={f.tipo === 'antes' ? "Marcar como 'Depois'" : "Marcar como 'Antes'"}
+                              className="flex h-5 w-5 items-center justify-center rounded bg-slate-900/75 text-white hover:bg-blue-600 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="h-2.5 w-2.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerPendente(idx)}
+                              title="Remover foto"
+                              className="flex h-5 w-5 items-center justify-center rounded bg-rose-600/90 text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                          <span
+                            className={`absolute bottom-0 left-0 right-0 px-1 py-0.5 text-[8px] font-bold uppercase text-white ${
+                              f.tipo === 'depois' ? 'bg-emerald-600/90' : 'bg-amber-600/90'
+                            }`}
+                          >
+                            {f.tipo === 'depois' ? 'Depois' : 'Antes'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] text-slate-400">
+                      As fotos são comprimidas antes do envio (máx. 1600px, JPEG).
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleLancarAtualizacao}
+                      disabled={enviandoAtualizacao || !textoAtualizacao.trim()}
+                      className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      {enviandoAtualizacao ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      {enviandoAtualizacao ? 'Enviando...' : 'Lançar atualização'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <Lock className="h-3.5 w-3.5 shrink-0" />
+                  Só o autor do registro ou um administrador pode lançar atualizações.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Tratamento SSMA / Atualização de Status */}
           {podeEditar ? (

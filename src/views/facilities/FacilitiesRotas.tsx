@@ -27,6 +27,12 @@ import Pagination from '../../components/ui/Pagination';
 interface Props {
   user: Profile;
   onNavigate: (path: string) => void;
+  /**
+   * Para onde o botão "voltar" leva. A mesma tela é servida em dois módulos —
+   * Facilities (transporte fretado) e RH (cadastro de rotas do colaborador) —,
+   * e o usuário precisa voltar para o hub de onde entrou.
+   */
+  voltarPara?: { path: string; label: string };
 }
 
 type FiltroStatus = 'TODOS' | 'ATIVOS' | 'INATIVOS';
@@ -46,7 +52,10 @@ const FORM_VAZIO: FormState = {
   funcionario: '', ponto_embarque: '', horario: '', contato: '', rota: '', ativo: true,
 };
 
-export default function FacilitiesRotas({ onNavigate }: Props) {
+export default function FacilitiesRotas({
+  onNavigate,
+  voltarPara = { path: '/facilities', label: 'Facilities' },
+}: Props) {
   const toast = useToast();
 
   const [rotas, setRotas] = useState<RhRota[]>([]);
@@ -308,9 +317,9 @@ export default function FacilitiesRotas({ onNavigate }: Props) {
         <div className="flex items-start gap-3">
           <button
             type="button"
-            onClick={() => onNavigate('/facilities')}
+            onClick={() => onNavigate(voltarPara.path)}
             className="mt-0.5 shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
-            aria-label="Voltar para Facilities"
+            aria-label={`Voltar para ${voltarPara.label}`}
           >
             <ArrowLeft className="h-4 w-4" />
           </button>

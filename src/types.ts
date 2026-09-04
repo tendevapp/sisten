@@ -1600,12 +1600,27 @@ export interface RhTurno {
 
 export interface RhPessoa {
   id: string;
+  /** MATRÍCULA na planilha do RH; chave natural do cadastro. */
   registro: string;
+  /** COLABORADOR. */
   nome: string;
+  /** CHAVE DO NOME — nome curto usado nas planilhas do RH. */
+  chave_nome: string | null;
+  macroarea: string | null;
+  area: string | null;
+  subsetor: string | null;
   cargo: string | null;
+  /** LIDERANÇA — quem responde pela pessoa. */
+  lideranca: string | null;
+  /** TURNO como texto da planilha (não é FK para `rh_turnos`). */
+  turno: string | null;
+  /** SITUAÇÃO como veio da planilha; `ativo` é o booleano derivado dela. */
+  situacao: string | null;
   ativo: boolean;
   created_at: string;
   updated_at: string;
+  /** Quem fez a última edição na tela de cadastro; nulo quando veio da carga. */
+  atualizado_por: string | null;
 }
 
 export interface RhRota {
@@ -2178,6 +2193,21 @@ export interface SsmaRidDesvio {
   updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
+}
+
+/**
+ * Lançamento de acompanhamento de um RID não sanado de imediato: o que foi
+ * feito depois da abertura. As fotos ficam em `SsmaRidDesvio.fotos`; aqui só
+ * os ids das que entraram neste lançamento.
+ */
+export interface SsmaRidAtualizacao {
+  id: string;
+  desvio_id: string;
+  texto: string;
+  foto_ids: string[];
+  criado_por: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
 }
 
 export interface SsmaRidFiltros {

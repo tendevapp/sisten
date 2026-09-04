@@ -48,8 +48,15 @@ export function avaliarEntregaParcial(r: EnrichedSAPRecord): EntregaParcial | nu
   if (r.is_contrato) return null;
   if (String(r.requisicao_de_compra || '').trim().startsWith('17')) return null;
 
-  const fornecido = r.qtd_fornecida_total ?? r.qtd_fornecida_po;
-  const solicitado = r.qtd_requisicao;
+  // Quando a linha possui quantidade de pedido especifica (visao por PO / ri_po),
+  // a entrega parcial avalia o fornecimento daquele pedido (qtd_fornecida_po vs qtd_po).
+  // Se a linha nao tiver qtd_po (ex: visao agregada por RM), compara com a RM.
+  const temQtdPo = typeof r.qtd_po === 'number' && r.qtd_po > 0;
+  const solicitado = temQtdPo ? r.qtd_po : r.qtd_requisicao;
+  const fornecido = temQtdPo
+    ? (typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : r.qtd_fornecida_total)
+    : (r.qtd_fornecida_total ?? r.qtd_fornecida_po);
+
   if (fornecido === undefined || fornecido === null) return null;
   if (!solicitado || solicitado <= 0) return null;
   if (fornecido <= EPSILON) return null;

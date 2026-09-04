@@ -33,6 +33,7 @@ import {
   importarRhPessoas, importarRhSetores, importarRhHoraExtra,
   listarRhSetores, criarRhSetor, atualizarRhSetor, alternarStatusRhSetor, excluirRhSetor,
 } from '../lib/rhApi';
+import { mapearPlanilhaPessoas } from '../lib/rhPessoasImport';
 import UsersByModuleView from '../components/admin/UsersByModuleView';
 
 interface AdminPanelProps {
@@ -3903,7 +3904,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
               <span className="h-2 w-2 rounded-full bg-emerald-500" /> Colaboradores (rh_pessoas)
             </h4>
-            <p className="text-[10px] text-slate-400">REGISTRO, NOME DO EMPREGADO, DESCRIÇÃO DO CARGO. Linhas existentes (mesmo REGISTRO) são atualizadas.</p>
+            <p className="text-[10px] text-slate-400">
+              MATRÍCULA, COLABORADOR, CHAVE DO NOME, MACROÁREA, ÁREA, SUBSETOR, CARGO, LIDERANÇA, TURNO, SITUAÇÃO.
+              Só MATRÍCULA e COLABORADOR são obrigatórias. Linhas existentes (mesma MATRÍCULA) são atualizadas.
+            </p>
             <div className="border border-dashed border-slate-200 hover:bg-slate-50/50 rounded-lg p-6 text-center cursor-pointer relative">
               <input
                 type="file"
@@ -3931,22 +3935,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                           rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
                         }
 
-                        if (rawRows.length < 2) throw new Error('Planilha vazia ou sem linhas de dados.');
-                        const headers = rawRows[0].map(sanitizeSAPHeader);
-                        const registroIdx = headers.findIndex(h => h === 'registro' || h === 'matricula');
-                        const nomeIdx = headers.findIndex(h => h === 'nomedoempregado' || h === 'nome' || h === 'funcionario' || h === 'empregado');
-                        const cargoIdx = headers.findIndex(h => h === 'descricaodocargo' || h === 'cargo' || h === 'funcao' || h === 'descricaocargo');
-                        if (registroIdx === -1 || nomeIdx === -1) {
-                          throw new Error('Colunas obrigatórias não encontradas. Esperado: "REGISTRO" e "NOME DO EMPREGADO" (a coluna "DESCRIÇÃO DO CARGO" é opcional).');
-                        }
-                        const itens = rawRows.slice(1)
-                          .map(row => ({
-                            registro: String(row[registroIdx] ?? '').trim(),
-                            nome: String(row[nomeIdx] ?? '').trim(),
-                            cargo: cargoIdx !== -1 ? String(row[cargoIdx] ?? '').trim() : undefined,
-                          }))
-                          .filter(it => it.registro && it.nome);
-                        if (itens.length === 0) throw new Error('Nenhuma linha válida encontrada na planilha.');
+                        // Leitura de cabeçalho e linhas em lib/rhPessoasImport.ts
+                        // (com testes): a tela só entrega a matriz crua.
+                        const itens = mapearPlanilhaPessoas(rawRows);
 
                         importarRhPessoas(itens).then(result => {
                           toast.success(`Colaboradores: ${result.inseridos} novo(s), ${result.atualizados} atualizado(s).`);

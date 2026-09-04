@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
   AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
-  Calendar, User, Filter, Users, Eye, Sparkles,
+  Calendar, User, Filter, Eye, Sparkles,
 } from 'lucide-react';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
@@ -45,6 +45,7 @@ import {
 } from '../components/ui/ExcluidosControls';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import SeletorColaboradoresModal from '../components/rh/SeletorColaboradoresModal';
 
 interface Props {
   user: Profile;
@@ -707,6 +708,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [setores, setSetores] = useState<RhSetor[]>([]);
   const [turnos, setTurnos] = useState<RhTurno[]>([]);
   const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
+  const [salvandoSelecao, setSalvandoSelecao] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -720,7 +722,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const [processando, setProcessando] = useState(false);
 
   const [modoEdicao, setModoEdicao] = useState(false);
-  const [carregandoLote, setCarregandoLote] = useState(false);
 
   // Estados para campos de preenchimento em lote no cabecalho dos colaboradores
   const [loteHoraEntrada, setLoteHoraEntrada] = useState('');
@@ -749,55 +750,6 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   const algunsTransp = Boolean(totalItens && dados?.itens.some(it => it.transporte));
   const todosRefeicao = Boolean(totalItens && dados?.itens.every(it => it.refeicao));
   const algunsRefeicao = Boolean(totalItens && dados?.itens.some(it => it.refeicao));
-
-  const carregarColaboradoresProducao = useCallback(async (dadosBase?: AseHoraExtraCompleta) => {
-    const alvo = dadosBase || dados;
-    if (!alvo || somenteLeitura) return;
-    const colabsProducao = pessoas.filter(p => p.ativo && api.isCargoProducao(p.cargo));
-    const existentesPessoaIds = new Set(alvo.itens.map(it => it.pessoa_id).filter(Boolean));
-    const existentesRegistros = new Set(alvo.itens.map(it => it.registro).filter(Boolean));
-    const faltantes = colabsProducao.filter(
-      p => !existentesPessoaIds.has(p.id) && !existentesRegistros.has(p.registro)
-    );
-
-    if (faltantes.length === 0) {
-      toast.info('Todos os colaboradores da Produção já foram adicionados.');
-      return;
-    }
-
-    setCarregandoLote(true);
-    try {
-      let percentualSugerido: number | null = null;
-      try {
-        percentualSugerido = await api.buscarPercentualHE(alvo.data_execucao);
-      } catch {
-        // Sem calendario cadastrado para a data: segue sem sugestao
-      }
-
-      const novosItensPayload = faltantes.map(p => ({
-        pessoa_id: p.id,
-        registro: p.registro,
-        nome: p.nome,
-        cargo: p.cargo,
-        transporte: false,
-        refeicao: false,
-        hora_entrada: '',
-        hora_saida: '',
-        intervalo_minutos: 0,
-        percentual_he: percentualSugerido,
-        total_horas: 0,
-        observacao: null,
-      }));
-
-      const novosItens = await api.adicionarItensLoteASE(alvo.id, novosItensPayload);
-      setDados(d => (d ? { ...d, itens: [...d.itens, ...novosItens] } : d));
-      toast.success(`${novosItens.length} colaboradores da Produção adicionados à ASE.`);
-    } catch (e) {
-      toast.error(`Falha ao adicionar colaboradores da Produção: ${(e as Error).message}`);
-    } finally {
-      setCarregandoLote(false);
-    }
-  }, [dados, pessoas, somenteLeitura, toast]);
 
   useEffect(() => {
     let ativo = true;
@@ -889,24 +841,34 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     }
   }, [dados, toast]);
 
-  const adicionarColaborador = async (pessoa: RhPessoa) => {
-    if (!dados) return;
-    if (dados.itens.some(it => it.pessoa_id === pessoa.id)) {
-      toast.warning(`${pessoa.nome} já está nesta ASE.`);
+  /**
+   * Confirma o "carrinho" do seletor: grava todos os escolhidos de uma vez.
+   * O percentual de HE é buscado uma vez só — é o mesmo para a data inteira.
+   */
+  const adicionarColaboradoresEmLote = async (escolhidos: RhPessoa[]) => {
+    if (!dados || escolhidos.length === 0) return;
+    const jaNaAse = new Set(dados.itens.map(it => it.pessoa_id).filter(Boolean));
+    const novos = escolhidos.filter(p => !jaNaAse.has(p.id));
+    if (novos.length === 0) {
+      toast.info('Os colaboradores selecionados já estão nesta ASE.');
+      setBuscaAberta(false);
       return;
     }
-    let percentualSugerido: number | null = null;
+
+    setSalvandoSelecao(true);
     try {
-      percentualSugerido = await api.buscarPercentualHE(dados.data_execucao);
-    } catch {
-      // Sem calendário cadastrado para a data: segue sem sugestão, o campo fica editável.
-    }
-    try {
-      const novo = await api.adicionarItemASE(dados.id, {
-        pessoa_id: pessoa.id,
-        registro: pessoa.registro,
-        nome: pessoa.nome,
-        cargo: pessoa.cargo,
+      let percentualSugerido: number | null = null;
+      try {
+        percentualSugerido = await api.buscarPercentualHE(dados.data_execucao);
+      } catch {
+        // Sem calendário para a data: segue sem sugestão, o campo fica editável.
+      }
+
+      const itensNovos = await api.adicionarItensLoteASE(dados.id, novos.map(p => ({
+        pessoa_id: p.id,
+        registro: p.registro,
+        nome: p.nome,
+        cargo: p.cargo,
         transporte: false,
         refeicao: false,
         hora_entrada: '',
@@ -915,11 +877,15 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         percentual_he: percentualSugerido,
         total_horas: 0,
         observacao: null,
-      });
-      setDados(d => (d ? { ...d, itens: [...d.itens, novo] } : d));
+      })));
+
+      setDados(d => (d ? { ...d, itens: [...d.itens, ...itensNovos] } : d));
       setBuscaAberta(false);
+      toast.success(`${itensNovos.length} colaborador(es) adicionado(s) à ASE.`);
     } catch (e) {
-      toast.error(`Não foi possível adicionar o colaborador: ${(e as Error).message}`);
+      toast.error(`Não foi possível adicionar os colaboradores: ${(e as Error).message}`);
+    } finally {
+      setSalvandoSelecao(false);
     }
   };
 
@@ -994,8 +960,18 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
   const enviar = async () => {
     if (!dados) return;
-    if (!dados.setor_id || !dados.turno_id) {
-      toast.warning('Selecione o setor e o turno antes de enviar.');
+    // Setor, turno e data do expediente identificam a ASE — sem eles o e-mail
+    // ao RH sai com "-" no lugar do que define a autorização.
+    const faltando = [
+      !dados.setor_id && 'o setor',
+      !dados.turno_id && 'o turno',
+      !dados.data_execucao && 'a data do expediente',
+    ].filter(Boolean) as string[];
+    if (faltando.length > 0) {
+      const lista = faltando.length === 1
+        ? faltando[0]
+        : `${faltando.slice(0, -1).join(', ')} e ${faltando[faltando.length - 1]}`;
+      toast.warning(`Preencha ${lista} antes de enviar.`);
       return;
     }
     if (dados.itens.length === 0) {
@@ -1153,6 +1129,11 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     );
   }
 
+  // Obrigatório e ainda vazio: a borda âmbar mostra o que falta sem esperar o
+  // clique em Enviar. Some em modo somente leitura, onde não há o que corrigir.
+  const pendente = (vazio: boolean) =>
+    vazio && !somenteLeitura ? 'border-amber-400 dark:border-amber-600' : '';
+
   const inputBase = 'h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50';
 
   return (
@@ -1248,13 +1229,15 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label htmlFor="setor" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Setor</label>
+            <label htmlFor="setor" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Setor *</label>
             <select
               id="setor"
               value={dados.setor_id || ''}
               disabled={somenteLeitura}
+              required
+              aria-required
               onChange={e => alterarCabecalho({ setor_id: e.target.value || null })}
-              className={`mt-1.5 ${inputBase}`}
+              className={`mt-1.5 ${inputBase} ${pendente(!dados.setor_id)}`}
             >
               <option value="">Selecione...</option>
               {setores
@@ -1267,13 +1250,15 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             </select>
           </div>
           <div>
-            <label htmlFor="turno" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Turno</label>
+            <label htmlFor="turno" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Turno *</label>
             <select
               id="turno"
               value={dados.turno_id || ''}
               disabled={somenteLeitura}
+              required
+              aria-required
               onChange={e => alterarCabecalho({ turno_id: e.target.value || null })}
-              className={`mt-1.5 ${inputBase}`}
+              className={`mt-1.5 ${inputBase} ${pendente(!dados.turno_id)}`}
             >
               <option value="">Selecione...</option>
               {turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
@@ -1281,15 +1266,17 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </div>
           <div>
             <label htmlFor="data" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Data do Expediente {dados.data_execucao && `(${diaDaSemana(dados.data_execucao)})`}
+              Data do Expediente * {dados.data_execucao && `(${diaDaSemana(dados.data_execucao)})`}
             </label>
             <input
               id="data"
               type="date"
               value={dados.data_execucao}
               disabled={somenteLeitura}
+              required
+              aria-required
               onChange={e => alterarCabecalho({ data_execucao: e.target.value })}
-              className={`mt-1.5 ${inputBase}`}
+              className={`mt-1.5 ${inputBase} ${pendente(!dados.data_execucao)}`}
             />
           </div>
           <div className="sm:col-span-3">
@@ -1312,45 +1299,17 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Colaboradores ({dados.itens.length})</h2>
-            {carregandoLote && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
-                <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
-                Adicionando produção...
-              </span>
-            )}
           </div>
           {!somenteLeitura && (
             <div className="flex flex-wrap items-center gap-2">
-              {api.isSetorProducao(setores.find(s => s.id === dados.setor_id)?.nome || dados.setor_nome) && (
-                <button
-                  type="button"
-                  onClick={() => carregarColaboradoresProducao()}
-                  disabled={carregandoLote}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50 cursor-pointer"
-                  title="Carregar todos os colaboradores da Produção que ainda não constam nesta ASE"
-                >
-                  {carregandoLote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
-                  Carregar Produção
-                </button>
-              )}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setBuscaAberta(v => !v)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar colaborador
-                </button>
-                {buscaAberta && (
-                  <BuscaColaborador
-                    pessoas={pessoas}
-                    onSelecionar={adicionarColaborador}
-                    onAdicionarManual={adicionarColaboradorManual}
-                    onFechar={() => setBuscaAberta(false)}
-                  />
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setBuscaAberta(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar colaborador
+              </button>
             </div>
           )}
         </div>
@@ -1782,6 +1741,17 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </div>
       </div>
 
+      {buscaAberta && !somenteLeitura && (
+        <SeletorColaboradoresModal
+          pessoas={pessoas}
+          jaAdicionados={new Set(dados.itens.map(it => it.pessoa_id).filter(Boolean) as string[])}
+          onConfirmar={adicionarColaboradoresEmLote}
+          onAdicionarManual={adicionarColaboradorManual}
+          onFechar={() => setBuscaAberta(false)}
+          salvando={salvandoSelecao}
+        />
+      )}
+
       {confirmacao?.tipo === 'remover-item' && (
         <ConfirmDialog
           titulo={`Remover ${confirmacao.nome}?`}
@@ -2109,141 +2079,3 @@ function LinhaColaborador({
   );
 }
 
-// =====================================================================
-// Busca de colaborador
-// =====================================================================
-
-function BuscaColaborador({
-  pessoas, onSelecionar, onAdicionarManual, onFechar,
-}: {
-  pessoas: RhPessoa[];
-  onSelecionar: (p: RhPessoa) => void;
-  onAdicionarManual: (dados: { nome: string; registro: string; cargo: string }) => void;
-  onFechar: () => void;
-}) {
-  const [termo, setTermo] = useState('');
-  const [modo, setModo] = useState<'busca' | 'manual'>('busca');
-  const [manual, setManual] = useState({ nome: '', registro: '', cargo: '' });
-
-  const resultados = useMemo(() => {
-    const q = termo.trim().toLowerCase();
-    const base = pessoas.filter(p => p.ativo);
-    if (!q) return base.slice(0, 30);
-    return base
-      .filter(p => p.nome.toLowerCase().includes(q) || p.registro.toLowerCase().includes(q))
-      .slice(0, 30);
-  }, [pessoas, termo]);
-
-  const campoManual = 'h-9 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs uppercase text-slate-900 placeholder:normal-case focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50';
-
-  if (modo === 'manual') {
-    const nomeOk = manual.nome.trim().length > 0;
-    return (
-      <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Colaborador não cadastrado</span>
-          <button type="button" onClick={onFechar} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="mt-3 space-y-2">
-          <div>
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Nome *</label>
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- popover só abre por clique explícito */}
-            <input
-              type="text"
-              autoFocus
-              value={manual.nome}
-              onChange={e => setManual(m => ({ ...m, nome: e.target.value.toUpperCase() }))}
-              placeholder="Nome completo"
-              className={campoManual}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Registro</label>
-              <input
-                type="text"
-                value={manual.registro}
-                onChange={e => setManual(m => ({ ...m, registro: e.target.value.toUpperCase() }))}
-                placeholder="Opcional"
-                className={campoManual}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Função</label>
-              <input
-                type="text"
-                value={manual.cargo}
-                onChange={e => setManual(m => ({ ...m, cargo: e.target.value.toUpperCase() }))}
-                placeholder="Opcional"
-                className={campoManual}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 flex items-center justify-between">
-          <button type="button" onClick={() => setModo('busca')} className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
-            ← Voltar à busca
-          </button>
-          <button
-            type="button"
-            disabled={!nomeOk}
-            onClick={() => onAdicionarManual({ nome: manual.nome.trim(), registro: manual.registro.trim(), cargo: manual.cargo.trim() })}
-            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
-          >
-            Adicionar
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-          {/* eslint-disable-next-line jsx-a11y/no-autofocus -- popover só abre por clique explícito */}
-          <input
-            type="text"
-            autoFocus
-            value={termo}
-            onChange={e => setTermo(e.target.value)}
-            placeholder="Nome ou registro..."
-            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-8 pr-2 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-          />
-        </div>
-        <button type="button" onClick={onFechar} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <ul className="mt-2 max-h-64 overflow-y-auto">
-        {resultados.length === 0 ? (
-          <li className="px-2 py-4 text-center text-xs text-slate-400">Nenhum colaborador encontrado.</li>
-        ) : (
-          resultados.map(p => (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => onSelecionar(p)}
-                className="flex w-full flex-col items-start rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/30"
-              >
-                <span className="text-xs font-semibold text-slate-900 dark:text-slate-50">{p.nome}</span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">{p.registro}{p.cargo ? ` · ${p.cargo}` : ''}</span>
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
-      <button
-        type="button"
-        onClick={() => setModo('manual')}
-        className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-blue-600 dark:hover:bg-blue-950/30"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Outro — colaborador não cadastrado
-      </button>
-    </div>
-  );
-}

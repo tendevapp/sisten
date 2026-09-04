@@ -19,6 +19,7 @@ import type {
   RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTurno,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
+import { situacaoParaAtivo, type PessoaImportada } from './rhPessoasImport';
 
 export interface RhImportSummary {
   lidos: number;
@@ -228,6 +229,145 @@ export async function buscarPercentualHE(dia: string): Promise<number | null> {
   return null;
 }
 
+/**
+ * Cria um turno. A tabela guarda só o nome — a faixa de horário fica no nome
+ * mesmo ("2º TURNO 15:00-23:00"), que é como o RH escreve na ASE.
+ */
+export async function criarRhTurno(nome: string): Promise<RhTurno> {
+  const nomeLimpo = nome.trim().toUpperCase();
+  if (!nomeLimpo) throw new Error('Nome do turno é obrigatório.');
+
+  const { data, error } = await supabase
+    .from('rh_turnos')
+    .insert({ nome: nomeLimpo })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error(`Já existe um turno chamado "${nomeLimpo}".`);
+    }
+    throw new Error(error.message);
+  }
+  return data as RhTurno;
+}
+
+export async function atualizarRhTurno(id: string, nome: string): Promise<RhTurno> {
+  const nomeLimpo = nome.trim().toUpperCase();
+  if (!nomeLimpo) throw new Error('Nome do turno não pode ser vazio.');
+
+  const { data, error } = await supabase
+    .from('rh_turnos')
+    .update({ nome: nomeLimpo })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error('Já existe outro turno com este nome.');
+    }
+    throw new Error(error.message);
+  }
+  return data as RhTurno;
+}
+
+/**
+ * Exclui um turno. Turno sem coluna `ativo`: quando há ASE vinculada, a
+ * exclusão é barrada em vez de apagar em cascata o histórico.
+ */
+export async function excluirRhTurno(id: string): Promise<void> {
+  const { count, error: countErr } = await supabase
+    .from('rh_ase_solicitacoes')
+    .select('*', { count: 'exact', head: true })
+    .eq('turno_id', id);
+
+  if (countErr) throw new Error(countErr.message);
+  if (count && count > 0) {
+    throw new Error(
+      `Este turno está vinculado a ${count} solicitação(ões) de ASE e não pode ser excluído.`,
+    );
+  }
+
+  const { error } = await supabase.from('rh_turnos').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Cadastra o percentual de hora extra de uma data (`YYYY-MM-DD`). */
+export async function criarRhHoraExtra(dia: string, percentual: number): Promise<RhHoraExtra> {
+  if (!dia) throw new Error('Informe a data.');
+  if (!Number.isFinite(percentual) || percentual < 0) throw new Error('Percentual inválido.');
+
+  const { data, error } = await supabase
+    .from('rh_hora_extra')
+    .insert({ dia, percentual_he: percentual })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error('Já existe percentual cadastrado para esta data.');
+    }
+    throw new Error(error.message);
+  }
+  return { ...(data as any), percentual_he: Number((data as any).percentual_he) } as RhHoraExtra;
+}
+
+export async function atualizarRhHoraExtra(id: string, percentual: number): Promise<void> {
+  if (!Number.isFinite(percentual) || percentual < 0) throw new Error('Percentual inválido.');
+  const { error } = await supabase
+    .from('rh_hora_extra')
+    .update({ percentual_he: percentual })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function excluirRhHoraExtra(id: string): Promise<void> {
+  const { error } = await supabase.from('rh_hora_extra').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Cadastra um colaborador pela tela de RH (fora da importação de planilha).
+ * A matrícula é a chave natural, então duplicidade vira mensagem de negócio.
+ */
+export async function criarRhPessoa(dados: {
+  registro: string;
+  nome: string;
+  chave_nome?: string | null;
+  macroarea?: string | null;
+  area?: string | null;
+  subsetor?: string | null;
+  cargo?: string | null;
+  lideranca?: string | null;
+  turno?: string | null;
+  situacao?: string | null;
+}): Promise<RhPessoa> {
+  const registro = dados.registro.trim();
+  const nome = dados.nome.trim();
+  if (!registro) throw new Error('A matrícula é obrigatória.');
+  if (!nome) throw new Error('O nome do colaborador é obrigatório.');
+
+  const { data, error } = await (supabase as any)
+    .from('rh_pessoas')
+    .insert({
+      ...dados,
+      registro,
+      nome,
+      ativo: situacaoParaAtivo(dados.situacao),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505' || error.message.includes('unique')) {
+      throw new Error(`Já existe um colaborador com a matrícula ${registro}.`);
+    }
+    throw new Error(error.message);
+  }
+  return data as RhPessoa;
+}
+
 export async function listarRhRotas(filtroRota?: string, incluirExcluidos = false): Promise<RhRota[]> {
   let query = (supabase as any).from('rh_rotas').select('*').order('rota').order('horario');
   if (filtroRota) {
@@ -343,22 +483,55 @@ export async function importarRhSetores(
 }
 
 export async function importarRhPessoas(
-  itens: { registro: string; nome: string; cargo?: string }[],
+  itens: PessoaImportada[],
   onProgress?: (percent: number, message?: string) => void,
 ): Promise<RhImportSummary> {
-  const dedupedMap = new Map<string, { registro: string; nome: string; cargo: string | null; ativo: boolean; updated_at: string }>();
+  // Dedup pela matrícula: a planilha do RH costuma repetir a pessoa em mais de
+  // uma linha (uma por rota, por exemplo), e o upsert falharia com chave
+  // duplicada no mesmo lote. Vence a última ocorrência.
+  const dedupedMap = new Map<string, Record<string, any>>();
+
   itens.forEach(it => {
     const registro = String(it.registro || '').trim();
     if (!registro) return;
+
+    // `undefined` some no JSON e deixaria a coluna intocada no upsert; `null`
+    // limpa de verdade o campo quando a planilha nova vem sem o valor.
+    const ou = (valor?: string) => valor?.trim() || null;
+
     dedupedMap.set(registro, {
       registro,
       nome: String(it.nome || '').trim(),
-      cargo: it.cargo?.trim() || null,
-      ativo: true,
+      chave_nome: ou(it.chave_nome),
+      macroarea: ou(it.macroarea),
+      area: ou(it.area),
+      subsetor: ou(it.subsetor),
+      cargo: ou(it.cargo),
+      lideranca: ou(it.lideranca),
+      turno: ou(it.turno),
+      situacao: ou(it.situacao),
+      ativo: situacaoParaAtivo(it.situacao),
       updated_at: new Date().toISOString(),
     });
   });
+
   return upsertEmLotes('rh_pessoas', Array.from(dedupedMap.values()), 'registro', l => l.registro, onProgress);
+}
+
+/**
+ * Atualiza um colaborador pela tela de cadastro. `updated_at` é do gatilho no
+ * banco (`trg_rh_pessoas_updated_at`), então não vai no payload.
+ */
+export async function atualizarRhPessoa(
+  id: string,
+  campos: Partial<Omit<RhPessoa, 'id' | 'created_at' | 'updated_at'>>,
+  atualizadoPor?: string | null,
+): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('rh_pessoas')
+    .update({ ...campos, atualizado_por: atualizadoPor || null })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 export async function importarRhHoraExtra(

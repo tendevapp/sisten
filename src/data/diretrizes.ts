@@ -40,6 +40,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-04',
+    resumo: 'Suprimentos > Central de Compras e Rastreio / Correcao da Avaliacao de Entrega Parcial (`entregaParcial.ts`, `Compras.tsx`, `entregaParcial.test.ts`): 1. Corrigida a funcao `avaliarEntregaParcial` na visao por pedido (`ri_po`), avaliando a quantidade do pedido (`qtd_po`) e o fornecido deste pedido (`qtd_fornecida_po`), em vez de comparar cegamente com a quantidade original da RM; 2. Eliminado falso positivo de badge "PARCIAL 50%" em pedidos de 1 UN que ja foram 100% entregues com MIGO mas cuja RM solicitava quantidade maior (ex: RM encerrada no SAP com compra menor); 3. Mantida a comparacao consolidada com a RM apenas para registros agregados sem `qtd_po`; 4. Atualizada a suite de testes unitarios `entregaParcial.test.ts` com cobertura para pedidos 100% concluidos com RM maior e entregas parciais reais de PO.',
+  },
+  {
+    data: '2026-09-04',
+    resumo: 'Regras do App / Compressao de imagem e codigo de formulario (`CLAUDE.md`, `imageCompression.ts`, `codigosFormulario.ts`, `expedicaoApi.ts`, `ssmaApi.ts`, `diretrizes.ts`): 1. Formalizadas duas regras obrigatorias para todo modulo, novo ou existente: toda foto ou captura de camera deve ser comprimida antes do upload, e todo formulario deve identificar seus registros no padrao `MODULO-DDMMYY-INDICE`; 2. Criada a funcao unica `comprimirImagemUpload` em `imageCompression.ts` (1600px no maior lado, JPEG 0,82, com retorno do original quando comprimir nao compensa) e eliminadas as duas implementacoes duplicadas que existiam em `expedicaoApi.ts` e `ssmaApi.ts`; 3. Criado `src/lib/codigosFormulario.ts` com `gerarCodigoFormulario`, `proximoIndiceCodigo` e `formatarDataDDMMYY` (imune a deslocamento de fuso), assumindo a implementacao antes hospedada no modulo de SSMA, que passa a delegar; 4. Regras documentadas em `CLAUDE.md` na raiz do repositorio e nesta pagina de Diretrizes; 5. Nova suite de testes `codigosFormulario.test.ts`.',
+  },
+  {
+    data: '2026-09-04',
     resumo: 'Formulários > Módulo SSMA / Fotos do Antes e Depois no RID (`SsmaRidForm.tsx`, `SsmaRidDetalhesModal.tsx`, `ssmaApi.ts`, `types.ts`, `ssmaRidFotos.test.ts`): 1. Adicionado suporte completo para tirar foto na hora (câmera traseira nativa) ou anexar imagens da galeria separadas para o ANTES (desvio observado) e para o DEPOIS (situação corrigida/ação imediata); 2. Na interface do formulário RID, a seção de evidências fotográficas conta agora com duas zonas organizadas em cards dedicados com badges temáticos, botões de disparo de câmera e galeria, e miniaturas com botão de exclusão e alternador rápido entre Antes e Depois com 1 clique; 3. Persistência estruturada com metadado tipo (\'antes\' | \'depois\') no JSONB e bucket ssma-desvios, mantendo total retrocompatibilidade com registros legados; 4. Modal de detalhes do RID atualizado para agrupar e exibir separadamente as fotos do Antes e do Depois com ampliação em tela cheia; 5. Criada nova suíte de testes unitários automatizados cobrindo a segregação e manipulação das fotos.',
   },
   {
@@ -317,6 +325,33 @@ export const DIRETRIZES: DiretrizesDominio[] = [
     resumo:
       'Regras reutilizadas por muitas páginas diferentes. Documentadas uma única vez aqui; as seções de cada página abaixo só referenciam este bloco em vez de repetir a explicação.',
     paginas: [
+      {
+        id: 'regras-do-app',
+        nome: 'Regras do app — valem para todo módulo',
+        arquivo: 'CLAUDE.md · src/lib/imageCompression.ts · src/lib/codigosFormulario.ts',
+        secoes: [
+          {
+            titulo: 'Foto e câmera sempre comprimem antes de subir',
+            itens: [
+              'Regra obrigatória: qualquer tela que aceite imagem — anexo, upload de galeria ou captura de câmera — comprime o arquivo ANTES de enviar ao Storage. Vale para módulo novo e para módulo existente que for alterado. Nunca suba o arquivo cru da câmera.',
+              'Implementação única, não escreva outra: `comprimirImagemUpload(file)` (`src/lib/imageCompression.ts`) para API de módulo que sobe direto ao Storage; `prepareAttachment(file)` (mesmo arquivo) para input de anexo na UI, que já valida, aceita PDF e devolve preview.',
+              'Padrão aplicado: 1600px no maior lado, JPEG qualidade 0,82. Devolve o arquivo original quando o navegador não decodifica o formato (HEIC fora do Safari) ou quando comprimir deixaria o arquivo maior. Parâmetros ajustáveis no segundo argumento, mas sempre pela função única.',
+              'Motivo: a foto vem de celular em campo, com 3–8 MB cada. Sem reduzir, anexar três fotos vira minutos de espera na rede do pátio, e o egress do Supabase paga a conta.',
+              'Já seguem a regra: Expedição (`expedicaoApi.enviarFoto`), SSMA/RID (`ssmaApi.uploadFotoStorage`, incluindo as fotos lançadas nas atualizações de desvio não sanado) e os anexos de solicitações (`prepareAttachment`).'
+            ]
+          },
+          {
+            titulo: 'Código de registro de formulário: MODULO-DDMMYY-INDICE',
+            itens: [
+              'Regra obrigatória: todo formulário identifica seus registros no formato `MODULO-DDMMYY-INDICE` — sigla do módulo, data em DDMMYY e índice sequencial com no mínimo dois dígitos. Ex.: `RID-030926-01`, `ASE-270826-12`.',
+              'Implementação única em `src/lib/codigosFormulario.ts`: `gerarCodigoFormulario(prefixo, dataISO, indice)` monta o código, `proximoIndiceCodigo(prefixo, codigosExistentes)` calcula o próximo índice a partir do que já está gravado e `formatarDataDDMMYY(dataISO)` formata a data.',
+              '`formatarDataDDMMYY` fatia a string ISO em vez de usar `new Date`: `new Date(\'2026-09-01\')` é meia-noite UTC e volta como 31/08 em UTC-3, o que geraria código com a data errada.',
+              'O recorte do índice (reinicia por dia ou por mês) é decisão de cada módulo — o RID reinicia por mês (`obterProximoNumeroRegistroRid`). Documente a escolha junto da função que consulta o banco.',
+              'Módulos legados com variação própria (`SUP-DDMMAA-NN` por dia, `ASE-DDMMAA-SETOR`, protocolos de portaria com sufixo aleatório) permanecem como estão: o código já está impresso em registro de produção e renumerar quebraria o histórico.'
+            ]
+          }
+        ]
+      },
       {
         id: 'motor-enriquecimento-sap',
         nome: 'Motor de status SAP — localDb.getEnrichedSAPRequisicoes()',

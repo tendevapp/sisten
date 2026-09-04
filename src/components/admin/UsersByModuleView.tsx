@@ -10,7 +10,7 @@ import {
   AlertCircle, Eye, CheckCircle2, XCircle, RotateCcw, UserPlus, Info, ExternalLink
 } from 'lucide-react';
 import { Profile, Sector } from '../../types';
-import { canAccessPage, getPageGroups, PageDef, isUserAdriano } from '../../lib/pages';
+import { canAccessPage, getPageGroups, PageDef, isUserAdriano, isUserSetorRh } from '../../lib/pages';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
 
@@ -137,6 +137,7 @@ export default function UsersByModuleView({
       const isAdmin = p.roles.includes('admin');
       const overrideVal = p.page_access?.[selectedPage.id];
       const isAdriano = isUserAdriano(p);
+      const ehDoRh = isUserSetorRh(p);
 
       let accessType: UserAccessType = 'no_access';
       let accessLabel = 'Sem Acesso';
@@ -153,6 +154,9 @@ export default function UsersByModuleView({
       } else if (selectedPage.group === 'FACILITIES' && isAdriano) {
         accessType = 'role';
         accessLabel = 'Responsável Facilities';
+      } else if (selectedPage.group === 'RH' && ehDoRh) {
+        accessType = 'role';
+        accessLabel = 'Setor de RH';
       } else if (hasAccess) {
         accessType = 'role';
         accessLabel = selectedPage.defaultRoles === '*' ? 'Acesso Universal' : 'Papel Padrão';

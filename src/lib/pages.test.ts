@@ -7,6 +7,8 @@ import {
   canDeleteDesvioRid,
   FORMULARIO_SUBPERMISSOES,
   getPageGroups,
+  GROUP_ORDER,
+  PAGES,
 } from './pages';
 import type { Profile } from '../types';
 
@@ -242,6 +244,59 @@ describe('pages.ts - Controle de Acesso', () => {
     });
   });
 
+  describe('Módulo RH — admin e setor de RH', () => {
+    // `sector_id` '1' é o setor RH em core_setores.
+    const doRh = (extra: Partial<Profile> = {}) =>
+      mockUser({ roles: ['requisitante'], sector_id: '1', ...extra });
+
+    it('libera o módulo para quem é do setor de RH', () => {
+      const user = doRh();
+      expect(canAccessPage(user, 'rh')).toBe(true);
+      expect(canAccessPage(user, 'rh_colaboradores')).toBe(true);
+      expect(canAccessPage(user, 'rh_percentual_he')).toBe(true);
+    });
+
+    it('libera o módulo para administradores de qualquer setor', () => {
+      const admin = mockUser({ roles: ['admin'], sector_id: '5' });
+      expect(canAccessPage(admin, 'rh')).toBe(true);
+      expect(canAccessPage(admin, 'rh_turnos_cad')).toBe(true);
+    });
+
+    it('bloqueia quem não é do RH nem admin', () => {
+      const forasteiro = mockUser({ roles: ['comprador'], sector_id: '5' });
+      expect(canAccessPage(forasteiro, 'rh')).toBe(false);
+      expect(canAccessPage(forasteiro, 'rh_colaboradores')).toBe(false);
+    });
+
+    it('respeita bloqueio página a página feito pelo admin', () => {
+      const user = doRh({ page_access: { rh_percentual_he: false } });
+      expect(canAccessPage(user, 'rh')).toBe(true);
+      expect(canAccessPage(user, 'rh_percentual_he')).toBe(false);
+    });
+
+    it('não libera o módulo por override quando o usuário não é do RH', () => {
+      // O override refina o acesso de quem já é do setor; não é porta de entrada.
+      const forasteiro = mockUser({ roles: ['comprador'], sector_id: '5', page_access: { rh: true } });
+      expect(canAccessPage(forasteiro, 'rh')).toBe(false);
+    });
+  });
+
+  describe('GROUP_ORDER — ordem dos módulos no menu', () => {
+    it('cobre todos os grupos de PAGES', () => {
+      // Grupo fora desta lista simplesmente não é renderizado no Sidebar, sem
+      // erro nenhum — foi assim que o módulo de RH nasceu invisível no menu.
+      const gruposDasPaginas = Array.from(new Set(PAGES.map(p => p.group)));
+      const faltando = gruposDasPaginas.filter(g => !GROUP_ORDER.includes(g as any));
+      expect(faltando).toEqual([]);
+    });
+
+    it('não lista grupo que não existe em PAGES', () => {
+      const gruposDasPaginas = new Set(PAGES.map(p => p.group));
+      const sobrando = GROUP_ORDER.filter(g => !gruposDasPaginas.has(g));
+      expect(sobrando).toEqual([]);
+    });
+  });
+
   describe('FORMULARIO_SUBPERMISSOES & getPageGroups', () => {
     it('deve definir os 5 grupos essenciais de formulários incluindo SSMA', () => {
       const grupos = FORMULARIO_SUBPERMISSOES.map(s => s.grupoId);
@@ -258,8 +313,15 @@ describe('pages.ts - Controle de Acesso', () => {
       const geral = groups.find(g => g.group === 'GERAL');
       expect(geral).toBeDefined();
       expect(geral?.pages.some(p => p.id === 'formularios')).toBe(true);
-      // O grupo RH legado isolado não deve mais existir em getPageGroups
-      expect(groups.some(g => g.group === 'RH')).toBe(false);
+
+      // O grupo RH agora é o módulo de RH (hub + cadastros das tabelas), não a
+      // página solta do formulário legado — esta continua fora de qualquer
+      // grupo próprio, sob "Formulários".
+      const rh = groups.find(g => g.group === 'RH');
+      expect(rh).toBeDefined();
+      expect(rh?.pages.some(p => p.id === 'rh')).toBe(true);
+      expect(rh?.pages.some(p => p.id === 'rh_colaboradores')).toBe(true);
+      expect(rh?.pages.some(p => p.id === 'rh_ase_hora_extra')).toBe(false);
     });
   });
 });

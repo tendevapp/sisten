@@ -13,11 +13,14 @@ import type {
   SsmaRidFoto,
   SsmaRidMetricas,
   SsmaRidStatus,
+  SsmaRidAtualizacao,
   SsmaFormConfig,
   SsmaFormOpcoesConfig,
   SsmaFormPerguntaConfig,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
+import { comprimirImagemUpload } from './imageCompression';
+import { formatarDataDDMMYY, gerarCodigoFormulario } from './codigosFormulario';
 
 const BUCKET = 'ssma-desvios';
 
@@ -174,50 +177,17 @@ export function calcularSemanaDoMes(dataIso: string): string {
   return '5ª SEMANA';
 }
 
-/**
- * Formata data ISO (YYYY-MM-DD) para DDMMYY (ex: 2026-09-03 -> 030926).
- */
-export function formatarDataDDMMYY(dataISO?: string | null): string {
-  if (!dataISO) {
-    const agora = new Date();
-    const d = String(agora.getDate()).padStart(2, '0');
-    const m = String(agora.getMonth() + 1).padStart(2, '0');
-    const y = String(agora.getFullYear()).slice(-2);
-    return `${d}${m}${y}`;
-  }
-  const partes = dataISO.split('-');
-  if (partes.length === 3) {
-    const [y, m, d] = partes;
-    return `${d.slice(0, 2).padStart(2, '0')}${m.padStart(2, '0')}${y.slice(-2)}`;
-  }
-  const dObj = new Date(dataISO);
-  if (isNaN(dObj.getTime())) {
-    const agora = new Date();
-    const d = String(agora.getDate()).padStart(2, '0');
-    const m = String(agora.getMonth() + 1).padStart(2, '0');
-    const y = String(agora.getFullYear()).slice(-2);
-    return `${d}${m}${y}`;
-  }
-  const d = String(dObj.getDate()).padStart(2, '0');
-  const m = String(dObj.getMonth() + 1).padStart(2, '0');
-  const y = String(dObj.getFullYear()).slice(-2);
-  return `${d}${m}${y}`;
-}
+// O padrao `MODULO-DDMMYY-INDICE` e do app inteiro, nao do SSMA: a
+// implementacao mora em src/lib/codigosFormulario.ts. Os nomes antigos
+// seguem exportados daqui porque o formulario do RID ja os importa.
+export { formatarDataDDMMYY };
 
-/**
- * Regra padrão de protocolo para todos os formulários criados:
- * Formato: [PREFIXO]-DDMMYY-[INDICE_MES]
- * Exemplo: RID-030926-01
- */
 export function gerarCodigoRegistroFormulario(
   prefixo = 'RID',
   dataISO?: string | null,
   indice: number | string = 1
 ): string {
-  const dataFormatada = formatarDataDDMMYY(dataISO);
-  const numIndice = typeof indice === 'number' ? indice : parseInt(String(indice), 10) || 1;
-  const indiceFormatado = String(Math.max(1, numIndice)).padStart(2, '0');
-  return `${prefixo.toUpperCase()}-${dataFormatada}-${indiceFormatado}`;
+  return gerarCodigoFormulario(prefixo, dataISO, indice);
 }
 
 /**
@@ -283,29 +253,9 @@ export async function obterProximoNumeroRegistroRid(
 // COMPRESSÃO & GESTÃO DE IMAGENS
 // =====================================================================
 
-async function comprimirFoto(file: File): Promise<Blob> {
-  const LADO_MAXIMO = 1600;
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-
-  const escala = Math.min(1, LADO_MAXIMO / Math.max(bitmap.width, bitmap.height));
-  const largura = Math.round(bitmap.width * escala);
-  const altura = Math.round(bitmap.height * escala);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = largura;
-  canvas.height = altura;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, largura, altura);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, 'image/jpeg', 0.82);
-  });
-
-  return blob && blob.size < file.size ? blob : file;
-}
+// Compressao unica do app (ver src/lib/imageCompression.ts). Foto de desvio
+// precisa continuar legivel depois de reduzida: 1600px no maior lado.
+const comprimirFoto = (file: File) => comprimirImagemUpload(file);
 
 export async function uploadFotoStorage(
   desvioId: string,
@@ -589,6 +539,59 @@ export async function adicionarFotosDesvioRid(
   return fotosUp;
 }
 
+
+// =====================================================================
+// ACOMPANHAMENTO DE UM RID NÃO SANADO
+// =====================================================================
+
+const dbAtualizacoes = () => (supabase.from as any)('ssma_rid_atualizacoes');
+
+/** Lançamentos de acompanhamento de um RID, do mais antigo para o mais novo. */
+export async function listarAtualizacoesRid(desvioId: string): Promise<SsmaRidAtualizacao[]> {
+  const { data, error } = await dbAtualizacoes()
+    .select('*')
+    .eq('desvio_id', desvioId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data as SsmaRidAtualizacao[]) || [];
+}
+
+/**
+ * Lança uma atualização no RID: texto do que foi feito e, opcionalmente,
+ * fotos novas.
+ *
+ * As fotos sobem por `adicionarFotosDesvioRid`, então passam pela mesma
+ * compressão da abertura (redimensiona para 1600px e reencoda em JPEG 0,82 —
+ * ver `comprimirFoto`) e entram na galeria do desvio. O texto sem foto é
+ * válido: nem toda atualização traz evidência.
+ */
+export async function registrarAtualizacaoRid(params: {
+  desvioId: string;
+  texto: string;
+  autorId?: string | null;
+  autorNome?: string | null;
+  fotos?: { file: File; tipo: 'antes' | 'depois' }[];
+}): Promise<{ atualizacao: SsmaRidAtualizacao; fotos: SsmaRidFoto[] }> {
+  const fotosNovas = params.fotos?.length
+    ? await adicionarFotosDesvioRid(params.desvioId, params.fotos)
+    : [];
+
+  const { data, error } = await dbAtualizacoes()
+    .insert({
+      desvio_id: params.desvioId,
+      texto: params.texto,
+      foto_ids: fotosNovas.map((f) => f.id),
+      criado_por: params.autorId || null,
+      criado_por_nome: params.autorNome || null,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return { atualizacao: data as SsmaRidAtualizacao, fotos: fotosNovas };
+}
 
 export async function atualizarStatusDesvioRid(
   id: string,

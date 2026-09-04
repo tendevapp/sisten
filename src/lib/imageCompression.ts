@@ -96,6 +96,52 @@ async function comprimirImagem(file: File): Promise<{ blob: Blob; mimeType: stri
 }
 
 /**
+ * Compressão de foto para upload direto ao Storage.
+ *
+ * REGRA DO APP: nenhum módulo sobe foto ou captura de câmera sem passar por
+ * aqui. Uma câmera de celular entrega 3–8 MB por imagem e o formulário costuma
+ * ser preenchido em campo, na rede que houver; sem reduzir, anexar três fotos
+ * vira minutos de espera e o egress do Supabase paga a conta.
+ *
+ * Diferente de `prepareAttachment`, devolve só o blob e não cria preview — é o
+ * que as APIs de módulo (expedição, SSMA/RID) precisam antes do `upload()`.
+ * Devolve o próprio arquivo quando o navegador não decodifica o formato (HEIC
+ * fora do Safari) ou quando o resultado ficaria maior que o original.
+ *
+ * O padrão de 1600px em JPEG 0,82 é o das fotos de evidência, onde ainda é
+ * preciso ler placa, painel e etiqueta na imagem reduzida.
+ */
+export async function comprimirImagemUpload(
+  file: File,
+  opcoes: { maxDimensao?: number; qualidade?: number } = {},
+): Promise<Blob> {
+  const maxDimensao = opcoes.maxDimensao ?? 1600;
+  const qualidade = opcoes.qualidade ?? 0.82;
+
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return file;
+
+  try {
+    const escala = Math.min(1, maxDimensao / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * escala));
+    canvas.height = Math.max(1, Math.round(bitmap.height * escala));
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', qualidade);
+    });
+
+    return blob && blob.size < file.size ? blob : file;
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
  * Valida e prepara um arquivo para upload.
  *
  * PDF passa sem tocar nos bytes. Imagem é redimensionada e recodificada, com

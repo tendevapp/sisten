@@ -555,6 +555,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
             setDesvioSelecionado(null);
           }}
           onStatusChange={handleStatusChange}
+          onAtualizacaoLancada={() => carregarDados()}
         />
       )}
 

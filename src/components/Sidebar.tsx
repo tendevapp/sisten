@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Menu, X, Sun, Moon, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
-import { PAGES, canAccessPage } from '../lib/pages';
+import { PAGES, canAccessPage, GROUP_ORDER } from '../lib/pages';
 import SistenLogo from './SistenLogo';
 
 const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
@@ -19,11 +19,18 @@ const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
  * `base` é o prefixo de rota do módulo — usado só para acender o cabeçalho
  * enquanto o usuário navega por qualquer subpágina.
  */
-const GROUP_HOME: Record<string, { path: string; base: string }> = {
+/**
+ * Módulos com tela inicial própria. `apenasHub` deixa no menu só o botão do
+ * módulo: as subpáginas existem e continuam acessíveis, mas quem escolhe entre
+ * elas é o hub, não o menu — evita repetir a mesma grade de cards em dois
+ * lugares num módulo cuja porta de entrada natural é a tela inicial.
+ */
+const GROUP_HOME: Record<string, { path: string; base: string; apenasHub?: boolean }> = {
   'SOLICITAÇÕES': { path: '/solicitacoes', base: '/solicitacoes' },
   'SUPRIMENTOS': { path: '/suprimentos', base: '/suprimentos' },
   'ALMOXARIFADO': { path: '/almoxarifado', base: '/almoxarifado' },
   'FACILITIES': { path: '/facilities', base: '/facilities' },
+  'RH': { path: '/rh', base: '/rh', apenasHub: true },
   'FINANCEIRO': { path: '/financeiro', base: '/financeiro' },
   'HELPDESK': { path: '/helpdesk/inicio', base: '/helpdesk' },
   'ADMINISTRAÇÃO': { path: '/admin', base: '/admin' },
@@ -64,8 +71,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
     return localDb.getSectors().filter(s => s.helpdesk_enabled);
   };
 
-  const groupOrder = ['GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO'];
-  const navItems = groupOrder.map(group => ({
+  const navItems = GROUP_ORDER.map(group => ({
     group,
     items: PAGES.filter(p => p.group === group),
   }));
@@ -150,9 +156,14 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
           const home = GROUP_HOME[group.group];
           const homePath = home?.path;
           const homeItem = homePath ? visibleItems.find(i => i.path === homePath) : undefined;
-          const listItems = homePath && !collapsed
-            ? visibleItems.filter(i => i.path !== homePath)
-            : visibleItems;
+          const apenasHub = !!home?.apenasHub;
+          // No trilho recolhido não há cabeçalho de módulo, então o hub precisa
+          // continuar na lista — é o único ícone do módulo ali.
+          const listItems = apenasHub
+            ? (collapsed ? visibleItems.filter(i => i.path === homePath) : [])
+            : homePath && !collapsed
+              ? visibleItems.filter(i => i.path !== homePath)
+              : visibleItems;
 
           // Só mostra o cabeçalho do módulo quando há alguma subpágina real
           // liberada para o usuário — o hub sozinho não abre um módulo vazio.
@@ -193,17 +204,19 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
                     {HomeIcon && <HomeIcon className="h-4 w-4 shrink-0" />}
                     <span className="truncate">{group.group}</span>
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.group)}
-                    className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-white transition-colors"
-                    aria-label={isGroupCollapsed ? `Expandir subpáginas de ${group.group}` : `Recolher subpáginas de ${group.group}`}
-                    aria-expanded={!isGroupCollapsed}
-                  >
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform duration-200 ${isGroupCollapsed ? '-rotate-90' : ''}`}
-                    />
-                  </button>
+                  {!apenasHub && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group.group)}
+                      className="rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-white transition-colors"
+                      aria-label={isGroupCollapsed ? `Expandir subpáginas de ${group.group}` : `Recolher subpáginas de ${group.group}`}
+                      aria-expanded={!isGroupCollapsed}
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform duration-200 ${isGroupCollapsed ? '-rotate-90' : ''}`}
+                      />
+                    </button>
+                  )}
                 </div>
               )}
               {!collapsed && !homePath && (

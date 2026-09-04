@@ -2672,30 +2672,54 @@ export type Database = {
       }
       rh_pessoas: {
         Row: {
+          area: string | null
           ativo: boolean
+          atualizado_por: string | null
           cargo: string | null
+          chave_nome: string | null
           created_at: string
           id: string
+          lideranca: string | null
+          macroarea: string | null
           nome: string
           registro: string
+          situacao: string | null
+          subsetor: string | null
+          turno: string | null
           updated_at: string
         }
         Insert: {
+          area?: string | null
           ativo?: boolean
+          atualizado_por?: string | null
           cargo?: string | null
+          chave_nome?: string | null
           created_at?: string
           id?: string
+          lideranca?: string | null
+          macroarea?: string | null
           nome: string
           registro: string
+          situacao?: string | null
+          subsetor?: string | null
+          turno?: string | null
           updated_at?: string
         }
         Update: {
+          area?: string | null
           ativo?: boolean
+          atualizado_por?: string | null
           cargo?: string | null
+          chave_nome?: string | null
           created_at?: string
           id?: string
+          lideranca?: string | null
+          macroarea?: string | null
           nome?: string
           registro?: string
+          situacao?: string | null
+          subsetor?: string | null
+          turno?: string | null
           updated_at?: string
         }
         Relationships: []

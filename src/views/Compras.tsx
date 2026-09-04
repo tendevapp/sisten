@@ -1655,7 +1655,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     ) : (
       <span
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
-        title={`Fornecido a mais: ${formatInt(entrega.fornecido)} contra ${formatInt(entrega.solicitado)} ${un} pedidos na RM`}
+        title={`Fornecido a mais: ${formatInt(entrega.fornecido)} contra ${formatInt(entrega.solicitado)} ${un} pedidos`}
       >
         <AlertTriangle className="h-3 w-3 shrink-0" />
         A maior {Math.round(entrega.percentual)}%

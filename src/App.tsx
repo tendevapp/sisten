@@ -65,6 +65,11 @@ const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
 const FacilitiesMateriais = lazy(() => import('./views/facilities/FacilitiesMateriais'));
 const FacilitiesServicos = lazy(() => import('./views/facilities/FacilitiesServicos'));
+const RhHome = lazy(() => import('./views/rh/RhHome'));
+const RhColaboradores = lazy(() => import('./views/rh/RhColaboradores'));
+const RhSetores = lazy(() => import('./views/rh/RhSetores'));
+const RhTurnos = lazy(() => import('./views/rh/RhTurnos'));
+const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
@@ -84,6 +89,7 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
   '/financeiro',
   '/admin',
   '/facilities',
+  '/rh',
   '/helpdesk/inicio',
 ]);
 
@@ -864,6 +870,52 @@ export default function App() {
       case '/facilities/servicos':
         if (canAccessPage(user, 'facilities_servicos')) {
           return <FacilitiesServicos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Módulo RH — hub + cadastros das tabelas de RH. O relatório do módulo é
+      // o próprio formulário de ASE, em /formularios/rh-ase-hora-extra.
+      case '/rh':
+        if (canAccessPage(user, 'rh')) {
+          return <RhHome user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/colaboradores':
+        if (canAccessPage(user, 'rh_colaboradores')) {
+          return <RhColaboradores user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/setores':
+        if (canAccessPage(user, 'rh_setores_cad')) {
+          return <RhSetores user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/turnos':
+        if (canAccessPage(user, 'rh_turnos_cad')) {
+          return <RhTurnos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Mesma tela de rotas do Facilities: o cadastro é um só (`rh_rotas`), e
+      // os dois módulos precisam dele. Muda só para onde o "voltar" leva.
+      case '/rh/rotas':
+        if (canAccessPage(user, 'rh_rotas_cad')) {
+          return (
+            <FacilitiesRotas
+              user={user}
+              onNavigate={handleNavigate}
+              voltarPara={{ path: '/rh', label: 'RH' }}
+            />
+          );
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/percentual-he':
+        if (canAccessPage(user, 'rh_percentual_he')) {
+          return <RhPercentualHE user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

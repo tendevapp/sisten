@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
-  FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench,
+  FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -81,6 +81,16 @@ export const PAGES: PageDef[] = [
   { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin'] },
   { id: 'facilities_servicos', group: 'FACILITIES', label: 'Lista de Serviços', path: '/facilities/servicos', icon: Wrench, defaultRoles: ['admin'] },
+
+  // Módulo RH — mesmo desenho do Facilities: o nome do grupo abre o hub e as
+  // subpáginas são os cadastros das tabelas de RH. Acesso restrito a
+  // administradores e a quem é do setor de RH (ver `canAccessPage`).
+  { id: 'rh', group: 'RH', label: 'RH', path: '/rh', icon: UserCog, defaultRoles: ['admin'] },
+  { id: 'rh_colaboradores', group: 'RH', label: 'Colaboradores', path: '/rh/colaboradores', icon: Users, defaultRoles: ['admin'] },
+  { id: 'rh_setores_cad', group: 'RH', label: 'Setores do RH', path: '/rh/setores', icon: Map, defaultRoles: ['admin'] },
+  { id: 'rh_turnos_cad', group: 'RH', label: 'Turnos', path: '/rh/turnos', icon: Clock, defaultRoles: ['admin'] },
+  { id: 'rh_rotas_cad', group: 'RH', label: 'Rotas de Transporte', path: '/rh/rotas', icon: Route, defaultRoles: ['admin'] },
+  { id: 'rh_percentual_he', group: 'RH', label: 'Percentual de Hora Extra', path: '/rh/percentual-he', icon: Percent, defaultRoles: ['admin'] },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
@@ -268,11 +278,28 @@ export function isUserAdriano(user: Profile): boolean {
   );
 }
 
+/** Setor "RH" em `core_setores` — dono do módulo de RH. */
+export const SETOR_RH_ID = '1';
+
+/** O usuário pertence ao setor de RH? */
+export function isUserSetorRh(user: Profile): boolean {
+  return user.sector_id === SETOR_RH_ID;
+}
+
 export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
 
   const def = BY_ID[pageId];
   if (!def) return false;
+
+  // Módulo RH: administradores e o pessoal do setor de RH. O admin pode ainda
+  // liberar ou bloquear página a página pelo painel de Módulos de Acesso.
+  if (def.group === 'RH') {
+    if (!isUserSetorRh(user)) return false;
+    const override = user.page_access?.[pageId];
+    if (override !== undefined) return override;
+    return true;
+  }
 
   // Módulo Facilities: restrito estritamente a Administradores e ao Adriano
   if (def.group === 'FACILITIES' || pageId.startsWith('facilities')) {
@@ -373,6 +400,19 @@ export function canDeleteDesvioRid(
 export function pageIdForPath(path: string): string | undefined {
   return PAGES.find(p => p.path === path)?.id;
 }
+
+/**
+ * Ordem dos módulos no menu lateral.
+ *
+ * Mora aqui, e não no Sidebar, porque é a mesma fonte da verdade das páginas:
+ * quando essa lista vivia dentro do componente, um módulo novo em `PAGES`
+ * simplesmente não aparecia no menu, sem erro nenhum. O teste
+ * `pages.test.ts` garante que todo grupo de `PAGES` esteja listado.
+ */
+export const GROUP_ORDER = [
+  'GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'RH',
+  'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
+] as const;
 
 export function getPageGroups(): { group: string; pages: PageDef[] }[] {
   const groups: { group: string; pages: PageDef[] }[] = [];

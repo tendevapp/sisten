@@ -74,7 +74,7 @@ const CHIP_TONE: Record<string, string> = {
 /** IDs de página (lib/pages.ts) que compõem o mapa de módulos da tela. */
 const MODULE_IDS = [
   'solicitacoes_home', 'suprimentos_home', 'almoxarifado_home', 'facilities',
-  'financeiro_home', 'helpdesk_home', 'admin_home',
+  'rh', 'financeiro_home', 'helpdesk_home', 'admin_home',
   'formularios', 'materiais_busca', 'rastreio', 'relatorios',
 ];
 
