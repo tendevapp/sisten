@@ -39,6 +39,7 @@ import { localDb } from '../../db/localDb';
 import { AlmoxarifadoChegada, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatDateBR } from '../../lib/format';
+import { numeroContratoPO } from '../../lib/contratoPedido';
 import { TableBody, TableEmpty, TableHeadRow, TableShell, TableSkeleton, Td, Th, Tr } from '../ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
@@ -523,6 +524,18 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                           <span className="mt-0.5 block text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
                             RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
                           </span>
+                          {/* PO nascido de contrato guarda-chuva: a cobrança
+                              muda de interlocutor (gestor do contrato, não
+                              cotação), então o número aparece junto do PO. */}
+                          {reg && numeroContratoPO(reg) && (
+                            <span
+                              className="mt-0.5 block text-[11px] font-semibold"
+                              style={{ color: 'var(--series-5)' }}
+                              title={`Pedido colocado por referência ao contrato ${numeroContratoPO(reg)}`}
+                            >
+                              Contrato {numeroContratoPO(reg)}
+                            </span>
+                          )}
                         </Td>
                         <Td mono>{item.material}</Td>
                         <Td truncate title={item.descricao}>{item.descricao}</Td>

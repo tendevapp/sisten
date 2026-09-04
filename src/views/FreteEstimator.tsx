@@ -204,7 +204,8 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     }
 
     // 2. Ad Valorem
-    const adValoresPct = Number(rotaAtiva.ad_valores) || 0;
+    const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
+    const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
     const adValoresValor = (vMerc * adValoresPct) / 100;
 
     // 3. Pedágio por fração de 100kg
@@ -222,7 +223,8 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
 
     // 6. ICMS
     const icmsCleanStr = String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
-    const icmsPct = parseFloat(icmsCleanStr) || 0;
+    const rawIcms = parseFloat(icmsCleanStr) || 0;
+    const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
     
     let totalComIcms = subtotalSemIcms;
     let valorIcms = 0;
@@ -265,12 +267,15 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     else if (pesoKg <= 100) fBaseFrac = Number(rotaAtiva.kg_71_100) || 0;
     else fBaseFrac = (Number(rotaAtiva.kg_acima_100) || 0) * pesoKg;
 
-    const adVal = (valorMercadoria * (Number(rotaAtiva.ad_valores) || 0)) / 100;
+    const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
+    const adValPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
+    const adVal = (valorMercadoria * adValPct) / 100;
     const pedag = Math.ceil(pesoKg / 100) * (Number(rotaAtiva.pedagio_fracao_100kg) || 0);
     const taxas = (Number(rotaAtiva.cat) || 0) + (Number(rotaAtiva.itr_tas) || 0) + (Number(rotaAtiva.taxa_fixa_itr_redespacho) || 0);
     const subtotalFrac = fBaseFrac + adVal + pedag + taxas;
 
-    const icmsPct = parseFloat(String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.')) || 0;
+    const rawIcms = parseFloat(String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.')) || 0;
+    const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
     const totalFrac = icmsPct > 0 ? subtotalFrac / (1 - (icmsPct / 100)) : subtotalFrac;
 
     const fiorinoBase = Number(rotaAtiva.fiorino) || 0;

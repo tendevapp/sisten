@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   History, Search, FileSpreadsheet, AlertCircle, Phone, Mail, Calendar,
-  RefreshCw, Filter, MapPin, Package, DollarSign, Layers,
+  RefreshCw, Filter, MapPin, Package, DollarSign, Layers, FileText,
   Copy, Check, ChevronDown, Users, SlidersHorizontal, Clock, BarChart3, Scale
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -16,6 +16,7 @@ import AuditoriaPrecos from '../components/historico/AuditoriaPrecos';
 import { porTipoItem } from '../lib/historicoAnalytics';
 
 import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
+import { normalizaContrato } from '../lib/contratoPedido';
 import {
   TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
@@ -54,6 +55,8 @@ interface Row {
   valor_total?: number;
   /** Entrega ainda não fechou (0 < qtd_fornecida < qtd_pedido no SAP). */
   pedido_parcial?: boolean;
+  /** Contrato guarda-chuva do pedido (EKPO-KONNR); vazio = compra spot. */
+  contrato?: string;
 }
 
 type SortDir = 'asc' | 'desc';
@@ -176,6 +179,11 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   // Compras) — analisá-las juntas distorce ticket médio e concentração.
   const [tipoItemInput, setTipoItemInput] = useState<'Todos' | 'Consumo' | 'Projeto'>('Todos');
   const [tipoItemFilter, setTipoItemFilter] = useState<'Todos' | 'Consumo' | 'Projeto'>('Todos');
+  // Contrato x spot: o preço de um call-off já estava negociado, então
+  // comparar as duas populações na mesma lista embaralha "quanto custou" com
+  // "quanto foi negociado lá atrás".
+  const [origemInput, setOrigemInput] = useState<'Todos' | 'Contrato' | 'Spot'>('Todos');
+  const [origemFilter, setOrigemFilter] = useState<'Todos' | 'Contrato' | 'Spot'>('Todos');
 
   const handleApplyFilters = useCallback(() => {
     setSearchQuery(searchInput);
@@ -184,7 +192,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
     setYearFilter(yearInput);
     setGrupoFilter(grupoInput);
     setTipoItemFilter(tipoItemInput);
-  }, [searchInput, ufInput, classInput, yearInput, grupoInput, tipoItemInput]);
+    setOrigemFilter(origemInput);
+  }, [searchInput, ufInput, classInput, yearInput, grupoInput, tipoItemInput, origemInput]);
 
   const handleKeyDownSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -251,6 +260,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
         preco_unit: l.preco_liquido_unit ?? undefined,
         valor_total: l.valor_liquido ?? undefined,
         pedido_parcial: l.pedido_parcial ?? false,
+        contrato: normalizaContrato(l.contrato) || undefined,
       };
     });
   }, []);
@@ -325,6 +335,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
       if (yearFilter !== 'Todos' && yearOf(r.data_doc) !== yearFilter) return false;
       if (grupoFilter !== 'Todos' && r.grp_mercads_desc !== grupoFilter) return false;
       if (tipoItemFilter !== 'Todos' && r.tipo_item !== tipoItemFilter) return false;
+      if (origemFilter === 'Contrato' && !r.contrato) return false;
+      if (origemFilter === 'Spot' && r.contrato) return false;
       if (q) {
         const hit =
           r.material.toLowerCase().includes(q) ||
@@ -334,12 +346,13 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
           r.cnpj.toLowerCase().includes(q) ||
           r.cod_forn.toLowerCase().includes(q) ||
           r.rm.toLowerCase().includes(q) ||
-          r.doc_compra.toLowerCase().includes(q);
+          r.doc_compra.toLowerCase().includes(q) ||
+          (r.contrato || '').toLowerCase().includes(q);
         if (!hit) return false;
       }
       return true;
     });
-  }, [rows, searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter]);
+  }, [rows, searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, origemFilter]);
 
   // Ordenação: por coluna quando ativa; caso contrário material asc + data desc.
   const sortedRows = useMemo(() => {
@@ -443,6 +456,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
       'Nº Pedido': r.doc_compra,
       'Data Pedido': formatDateBR(r.data_doc),
       'Pedido Parcial': r.pedido_parcial ? 'Sim' : 'Não',
+      'Contrato': r.contrato || '—',
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -643,6 +657,19 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                 <option value="Projeto">Projeto</option>
               </select>
             </div>
+            <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
+              <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={origemInput}
+                onChange={(e) => setOrigemInput(e.target.value as 'Todos' | 'Contrato' | 'Spot')}
+                className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+                title="Call-off de contrato tem preço negociado antes; compra spot passou por cotação"
+              >
+                <option value="Todos">Origem: Todas</option>
+                <option value="Contrato">Contrato</option>
+                <option value="Spot">Spot</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -744,6 +771,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                     <div className="flex items-center gap-2 min-w-0">
                       <p className="font-mono text-[11px] font-bold truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
                       {r.doc_compra !== '—' && <p className="font-mono text-[11px] truncate" style={{ color: 'var(--ink-muted)' }}>· PO {r.doc_compra}</p>}
+                      {r.contrato && <p className="font-mono text-[11px] truncate" style={{ color: 'var(--series-5)' }}>· contrato {r.contrato}</p>}
                     </div>
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-sm font-semibold leading-snug line-clamp-2 min-w-0" style={{ color: 'var(--ink-primary)' }}>{r.txt_breve}</p>
@@ -880,6 +908,15 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
                                     style={{ color: 'var(--status-warning)', background: 'color-mix(in srgb, var(--status-warning) 14%, transparent)' }}
                                   >
                                     pedido parcial
+                                  </span>
+                                )}
+                                {r.contrato && (
+                                  <span
+                                    title={`Pedido colocado por referência ao contrato ${r.contrato} — preço já negociado, não passou por cotação`}
+                                    className="ml-1.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-bold whitespace-nowrap align-middle"
+                                    style={{ color: 'var(--series-5)', background: 'color-mix(in srgb, var(--series-5) 14%, transparent)' }}
+                                  >
+                                    contrato {r.contrato}
                                   </span>
                                 )}
                               </Td>

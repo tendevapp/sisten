@@ -6,7 +6,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer } from 'recharts';
 import { Warehouse } from 'lucide-react';
-import { Agregado, formatBRL, formatBRLCompacto, formatQtd } from '../../lib/almoxarifado';
+import { Agregado, formatBRL, formatBRLCompacto, formatQtd, formatDeposito } from '../../lib/almoxarifado';
 import { formatInt } from '../../lib/format';
 import { useChartConfig } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
@@ -24,7 +24,7 @@ function TooltipConteudo({ active, payload }: any) {
   return (
     <div className="space-y-1">
       <ChartTooltip
-        title={`Depósito ${row.chave}`}
+        title={`Depósito ${formatDeposito(row.chave)}`}
         rows={[
           { label: 'Valor', value: formatBRL(row.valor) },
           { label: 'Itens', value: formatInt(row.itens) },

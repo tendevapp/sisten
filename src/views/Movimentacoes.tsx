@@ -34,7 +34,7 @@ import {
   resumirEstoqueMorto, formatCobertura, faixaIdadeDe, conciliarComZl0024,
   FAIXAS_COBERTURA, FAIXAS_PERMANENCIA, SituacaoCobertura,
 } from '../lib/giroEstoque';
-import { formatBRL, formatQtd, isProjetoItem } from '../lib/almoxarifado';
+import { formatBRL, formatQtd, isProjetoItem, descricaoDeposito, formatDeposito } from '../lib/almoxarifado';
 import { formatDateBR, formatInt, formatPct } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
 import MovimentacoesKpis from '../components/almoxarifado/MovimentacoesKpis';
@@ -571,7 +571,10 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                     options={opcoes.depositos}
                     selected={depositoFiltro}
                     onChange={setDepositoFiltro}
+                    renderOption={formatDeposito}
+                    searchable
                     className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
+                    panelClassName="w-80 sm:w-96"
                   />
                   <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
                     <option value="Todos">Categoria: Todas</option>
@@ -713,7 +716,16 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                               {m.texto_breve_material ? ` — ${m.texto_breve_material}` : ''}
                             </Td>
                             <Td mono>{m.doc_material}{m.item ? `/${m.item}` : ''}</Td>
-                            <Td>{m.deposito || '—'}</Td>
+                            <Td title={formatDeposito(m.deposito)}>
+                              {m.deposito ? (
+                                <div className="min-w-0">
+                                  <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{m.deposito}</span>
+                                  {descricaoDeposito(m.deposito) && (
+                                    <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{descricaoDeposito(m.deposito)}</p>
+                                  )}
+                                </div>
+                              ) : '—'}
+                            </Td>
                             <Td>{m.centro || '—'}</Td>
                             <Td align="right" numeric>
                               {formatQtd(m.qtd_um_registro)} {m.unid_medida_basica || ''}

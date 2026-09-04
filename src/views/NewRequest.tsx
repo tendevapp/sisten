@@ -48,6 +48,7 @@ import {
   CLASSIF_RECORRENCIA,
 } from '../lib/supPendenciasProcessamento';
 import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
+import { listarNomesServicosFacilities, SERVICOS_FACILITIES_PADRAO } from '../lib/facilitiesApi';
 import ImagesPasteInput from '../components/ui/ImagesPasteInput';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
@@ -240,7 +241,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const tour = usePageTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
   const [sectorId, setSectorId] = useState('');
-  const [compradorId, setCompradorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
   // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
   // livre e o bloco de busca some inteiro em vez de oferecer um campo morto.
@@ -401,9 +401,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [uploadProgress, setUploadProgress] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
 
-  // Lista de compradores responsáveis vem da tabela compradores (grupo_compras/nome_comprador),
-  // resolvendo o usuário do sistema vinculado via buyer_groups para manter o comprador_id
-  // apontando para um profile válido (usado nos painéis "Minhas Solicitações" do comprador).
+  // Lista de compradores (grupo_compras/nome_comprador). Serve ao seletor
+  // opcional do "Ajuste de Pedido"; a solicitação de compra não escolhe mais
+  // comprador responsável — ver `comprador_id` no payload.
   const [compradoresList, setCompradoresList] = useState<{ grupo_compras: string; nome_comprador: string }[]>([]);
   useEffect(() => {
     supabase.from('sup_compradores').select('*').order('nome_comprador').then(({ data, error }) => {
@@ -415,11 +415,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     });
   }, []);
 
-  const buyerGroups = localDb.getBuyerGroups();
-  const buyerOptions = compradoresList.map(c => {
-    const bg = buyerGroups.find(b => b.group_code === c.grupo_compras);
-    return { code: c.grupo_compras, label: c.nome_comprador, profileId: bg?.user_id };
-  });
+  // Categorias do chamado de Facilities: cadastro editável em
+  // "Facilities > Lista de Serviços" (`fac_servicos`). Enquanto a consulta não
+  // volta — e se ela falhar —, vale a lista padrão, para o select nunca ficar
+  // vazio no meio de uma abertura de chamado.
+  const [servicosFacilities, setServicosFacilities] = useState<string[]>(SERVICOS_FACILITIES_PADRAO);
+  useEffect(() => {
+    listarNomesServicosFacilities().then(setServicosFacilities);
+  }, []);
+
   // Nomes de comprador únicos, para o seletor opcional do "Ajuste de Pedido".
   const compradorNomes = Array.from(
     new Set(compradoresList.map(c => c.nome_comprador).filter(Boolean)),
@@ -454,7 +458,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setCriticality(req.criticality);
     setSectorId(req.solicitante_sector_id || '');
     setJustificativa(req.justificativa || '');
-    if (req.comprador_id) setCompradorId(req.comprador_id);
     if (req.tipo_compra) setTipoCompra(req.tipo_compra);
     if (req.data_necessidade) setDataNecessidade(req.data_necessidade);
     if (req.registration_type) setRegistrationType(req.registration_type);
@@ -531,7 +534,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         const parsed = JSON.parse(saved);
         if (parsed.activeTab) setActiveTab(parsed.activeTab);
         if (parsed.sectorId) setSectorId(parsed.sectorId);
-        if (parsed.compradorId) setCompradorId(parsed.compradorId);
         if (parsed.tipoCompra) setTipoCompra(parsed.tipoCompra);
         if (parsed.criticality !== undefined && parsed.criticality !== null) setCriticality(parsed.criticality);
         if (parsed.dataNecessidade) setDataNecessidade(parsed.dataNecessidade);
@@ -596,7 +598,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     return () => clearTimeout(timeout);
   }, [
-    activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
+    activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
     items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
@@ -613,7 +615,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     setAutosaveStatus('saving');
     const draftData = {
-      activeTab, sectorId, compradorId, tipoCompra, criticality, dataNecessidade, justificativa,
+      activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
       // Anexos ficam de fora: `Blob` vira `{}` no JSON e `previewUrl` vira um
       // object URL morto, o que reencheria o rascunho de chips quebrados.
       items: items.map(({ attachments, ...resto }) => resto),
@@ -644,7 +646,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     draftLoadedRef.current = true;
     setActiveTab('compra');
     setSectorId('');
-    setCompradorId('');
     setTipoCompra('Estoque');
     setCriticality(null);
     setDataNecessidade('');
@@ -756,7 +757,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (secId === '9') { // TI
       return ['Acesso/Senha', 'Equipamento', 'Software', 'Rede', 'E-mail', 'Outro'];
     } else if (secId === '3') { // Facilities
-      return ['Elétrica', 'Hidráulica', 'Climatização', 'Mobiliário', 'Limpeza', 'Chaves/Acesso', 'Outro'];
+      return servicosFacilities;
     } else if (isJuridicoSector(sectors.find(s => s.id === secId))) {
       return [...TIPOS_CHAMADO_JURIDICO];
     } else if (isSuprimentosSector(sectors.find(s => s.id === secId))) {
@@ -867,7 +868,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // SAP — mailto: não leva anexos, por isso vai a contagem e o link do SISTEN.
   const buildCompraServicoEmailBody = (reqId: string, reqNumero: string): string => {
     const setorNome = sectors.find(sec => sec.id === sectorId)?.name || '—';
-    const compradorNome = buyerOptions.find(b => (b.profileId || b.code) === compradorId)?.label || '—';
     const totalAnexos = items.reduce(
       (acc, it) => acc + (it.attachments?.length || 0) + (it.reusedAttachments?.length || 0),
       0,
@@ -881,7 +881,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       `Número da solicitação: #${reqNumero}`,
       `Solicitante: ${user.name}${user.cargo ? ` (${user.cargo})` : ''}`,
       `Setor: ${setorNome}`,
-      `Comprador responsável: ${compradorNome}`,
       `Criticidade: ${criticality ?? '—'}`,
       `Data de necessidade: ${dataNecessidade ? dataNecessidade.split('-').reverse().join('/') : '—'}`,
       '',
@@ -1001,7 +1000,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         payload = {
           ...payload,
           solicitante_sector_id: sectorId,
-          comprador_id: compradorId || buyerOptions[0]?.profileId || buyerOptions[0]?.code,
+          // Sem comprador definido na abertura: a compra entra na fila comum e
+          // um comprador a assume depois (ver "Assumir a compra" em
+          // lib/solicitacoesCentral.ts).
+          comprador_id: null,
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
           items: items.map(it => ({
@@ -1239,7 +1241,14 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     }
   };
 
-  const activeCategoryList = getHelpdeskCategories(helpdeskSectorId);
+  // A categoria já escolhida entra na lista mesmo que tenha saído do cadastro
+  // (serviço inativado ou excluído depois): ao reabrir um rascunho ou editar um
+  // chamado antigo, o select mostraria "Selecione..." e o valor se perderia no
+  // primeiro submit.
+  const categoriasDoDestino = getHelpdeskCategories(helpdeskSectorId);
+  const activeCategoryList = helpdeskCategory && !categoriasDoDestino.includes(helpdeskCategory)
+    ? [...categoriasDoDestino, helpdeskCategory]
+    : categoriasDoDestino;
 
   const CHANNELS: { id: RequestType; icon: React.ComponentType<{ className?: string }>; label: string; hint: string }[] = [
     { id: 'compra', icon: ShoppingBag, label: 'Compra', hint: 'Solicitar compra de itens' },
@@ -1360,24 +1369,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     <option value="">Selecione seu setor...</option>
                     {sectors.map(s => (
                       <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className={labelClass} style={labelStyle}>Comprador responsável *</label>
-                  <select
-                    value={compradorId}
-                    onChange={(e) => setCompradorId(e.target.value)}
-                    required
-                    className={`${fieldClass} cursor-pointer`}
-                    style={fieldStyle}
-                  >
-                    <option value="">Selecione um comprador...</option>
-                    {buyerOptions.map(b => (
-                      <option key={b.code} value={b.profileId || b.code}>
-                        {b.label} ({b.code})
-                      </option>
                     ))}
                   </select>
                 </div>

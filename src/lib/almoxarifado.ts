@@ -25,6 +25,54 @@ export const CLASSE_ABC_COR: Record<ClasseAbc, string> = {
 };
 
 /**
+ * Descrição funcional de cada depósito de estoque.
+ *
+ * Espelho da tabela `public.deposito_estoque` (ver db/sql/tables/deposito_estoque.sql).
+ * Fica estático no cliente porque a lista é curta e praticamente imutável — os
+ * relatórios do SAP trazem só o código de quatro dígitos, e uma ida ao banco a
+ * cada tela para traduzir doze chaves não se paga. Ao mexer num depósito,
+ * atualize os dois lugares.
+ */
+export const DEPOSITO_DESCRICAO: Record<string, string> = {
+  '0001': 'Consumíveis Solda',
+  '0002': 'EPIs + Consumíveis',
+  '0003': 'Projeto Atual (Goldwing)',
+  '0004': 'Manutenção',
+  '0005': 'Kits Montados (Materiais de Projeto)',
+  '0006': 'Inventário (Ajuste Sistêmico do estoque)',
+  '0050': 'Recebimento Compra direta',
+  '0090': 'CAPS - Depósito Virtual de faturamento dos Tramo (Contabilidade)',
+  '0105': 'Transferência Produção (Material consumo)',
+  '0200': 'Químicos',
+  '0300': 'Segregados (materiais com validade vencidas ou materiais segregados)',
+  '1000': 'Recebimento Materiais Estoque',
+};
+
+// Códigos numéricos chegam de planilhas diferentes ora como '0004', ora como
+// '4' (o Excel come o zero à esquerda). O cadastro usa sempre quatro dígitos.
+function chaveDeposito(cod?: string | null): string {
+  const s = String(cod ?? '').trim();
+  if (!s) return '';
+  return /^\d+$/.test(s) ? s.padStart(4, '0') : s.toUpperCase();
+}
+
+/** Descrição do depósito, ou string vazia se o código não está cadastrado. */
+export function descricaoDeposito(cod?: string | null): string {
+  return DEPOSITO_DESCRICAO[chaveDeposito(cod)] || '';
+}
+
+/**
+ * Rótulo de exibição do depósito: "0004 - Manutenção". Depósito sem descrição
+ * cadastrada aparece só com o código; sem código, com o travessão de vazio.
+ */
+export function formatDeposito(cod?: string | null, vazio = '—'): string {
+  const s = String(cod ?? '').trim();
+  if (!s) return vazio;
+  const desc = descricaoDeposito(s);
+  return desc ? `${s} - ${desc}` : s;
+}
+
+/**
  * Verifica se um código de material pertence a item de projeto
  * (códigos que começam com 100000, ignorando zeros à esquerda).
  */

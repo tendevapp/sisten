@@ -10,10 +10,11 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { Building2, Receipt, Users, Wallet } from 'lucide-react';
+import { Building2, FileText, Receipt, Users, Wallet } from 'lucide-react';
 import { EnrichedSAPRecord } from '../../types';
 import { CompradorInfo } from '../../lib/demandas';
 import { calcFornecedores, concentracaoTop, calcSpend, cobertura, temPO } from '../../lib/suprimentos';
+import { calcSpendContratado } from '../../lib/contratoPedido';
 import { formatInt, formatPctInt, formatBRLCompacto } from '../../lib/format';
 import KpiCard from '../charts/KpiCard';
 import { ComposicaoModalConfig } from '../charts/ComposicaoModal';
@@ -33,6 +34,10 @@ interface TabFornecedoresProps {
 export default function TabFornecedores({ records, compradores, onAbrirComposicao }: TabFornecedoresProps) {
   const linhas = useMemo(() => calcFornecedores(records), [records]);
   const spend = useMemo(() => calcSpend(records), [records]);
+  // Quanto do dinheiro do período saiu por contrato guarda-chuva (call-off) em
+  // vez de compra spot: é a parte do spend que não passa por cotação e cujo
+  // preço já estava negociado.
+  const contratado = useMemo(() => calcSpendContratado(records), [records]);
 
   const colunas = useMemo(() => colunasEnrichedSAPRecord(compradores), [compradores]);
   const filtros = useMemo(() => filtrosEnrichedSAPRecord(compradores), [compradores]);
@@ -76,7 +81,7 @@ export default function TabFornecedores({ records, compradores, onAbrirComposica
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-4 stagger">
+      <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-5 stagger">
         <KpiCard
           label="Spend no Período"
           value={kpis.totalSpend}
@@ -108,6 +113,19 @@ export default function TabFornecedores({ records, compradores, onAbrirComposica
           detail="Valor médio por item pedido"
           icon={Receipt}
           accent="var(--series-3)"
+        />
+        <KpiCard
+          label="Spend Contratado"
+          value={contratado.valor}
+          format={formatBRLCompacto}
+          detail={
+            contratado.itens === 0
+              ? 'Nenhum item de contrato no período'
+              : `${formatPctInt(contratado.participacao * 100)} do spend · ${formatInt(contratado.itens)} itens em ${formatInt(contratado.contratos)} contratos`
+          }
+          icon={FileText}
+          accent="var(--series-5)"
+          share={contratado.participacao}
         />
         <KpiCard
           label="Concentração Top 10"

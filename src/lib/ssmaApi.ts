@@ -307,12 +307,16 @@ async function comprimirFoto(file: File): Promise<Blob> {
   return blob && blob.size < file.size ? blob : file;
 }
 
-export async function uploadFotoStorage(desvioId: string, file: File): Promise<SsmaRidFoto> {
+export async function uploadFotoStorage(
+  desvioId: string,
+  file: File,
+  tipo: 'antes' | 'depois' = 'antes'
+): Promise<SsmaRidFoto> {
   const blob = await comprimirFoto(file);
   const ehJpeg = blob !== file;
   const extensao = ehJpeg ? 'jpg' : (file.name.split('.').pop() || 'jpg').toLowerCase();
   const fileId = Math.random().toString(36).substring(2, 9);
-  const path = `${desvioId}/${fileId}.${extensao}`;
+  const path = `${desvioId}/${tipo}_${fileId}.${extensao}`;
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
@@ -338,9 +342,11 @@ export async function uploadFotoStorage(desvioId: string, file: File): Promise<S
     size: blob.size,
     mime_type: ehJpeg ? 'image/jpeg' : file.type,
     preview_url: previewUrl,
+    tipo,
     created_at: new Date().toISOString(),
   };
 }
+
 
 /**
  * Resolve as URLs assinadas de leitura das fotos de um ou mais desvios
@@ -494,17 +500,21 @@ export type NovoDesvioRidInput = Omit<
   'id' | 'created_at' | 'updated_at' | 'fotos' | 'excluido_em' | 'excluido_por'
 >;
 
+export type FotoRidItem = { file: File; tipo: 'antes' | 'depois' } | File;
+
 export async function criarDesvioRid(
   input: NovoDesvioRidInput,
-  fotosFiles: File[] = []
+  fotosFiles: FotoRidItem[] = []
 ): Promise<SsmaRidDesvio> {
   const idTemp = crypto.randomUUID();
   const fotosUp: SsmaRidFoto[] = [];
 
   // Faz upload das fotos comprimidas se houver
-  for (const f of fotosFiles) {
+  for (const item of fotosFiles) {
+    const file = item instanceof File ? item : item.file;
+    const tipo = item instanceof File ? 'antes' : item.tipo;
     try {
-      const foto = await uploadFotoStorage(idTemp, f);
+      const foto = await uploadFotoStorage(idTemp, file, tipo);
       fotosUp.push(foto);
     } catch (err) {
       console.warn('Falha no upload de foto anexada ao RID:', err);
@@ -535,6 +545,50 @@ export async function criarDesvioRid(
 
   return data as SsmaRidDesvio;
 }
+
+/**
+ * Adiciona novas fotos a um RID já existente (ex: fotos do 'depois' ao concluir)
+ */
+export async function adicionarFotosDesvioRid(
+  desvioId: string,
+  novasFotos: { file: File; tipo: 'antes' | 'depois' }[]
+): Promise<SsmaRidFoto[]> {
+  const fotosUp: SsmaRidFoto[] = [];
+
+  for (const item of novasFotos) {
+    try {
+      const foto = await uploadFotoStorage(desvioId, item.file, item.tipo);
+      fotosUp.push(foto);
+    } catch (err) {
+      console.warn('Falha no upload de foto adicional ao RID:', err);
+    }
+  }
+
+  if (fotosUp.length === 0) return [];
+
+  // Busca desvio atual para anexar ao array
+  const { data: atual, error: getErr } = await dbDesvios()
+    .select('fotos')
+    .eq('id', desvioId)
+    .single();
+
+  if (getErr) throw new Error(getErr.message);
+
+  const fotosAtuais = (atual?.fotos || []) as SsmaRidFoto[];
+  const fotosCombinadas = [...fotosAtuais, ...fotosUp];
+
+  const { error: updErr } = await dbDesvios()
+    .update({
+      fotos: fotosCombinadas,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', desvioId);
+
+  if (updErr) throw new Error(updErr.message);
+
+  return fotosUp;
+}
+
 
 export async function atualizarStatusDesvioRid(
   id: string,
@@ -754,12 +808,13 @@ export const CONFIG_PERGUNTAS_PADRAO_RID: SsmaFormPerguntaConfig[] = [
     id: 'fotos',
     numero: 14,
     campo: 'fotos',
-    titulo: '14. Registro Fotográfico / Evidências',
-    subtitulo: 'Tire uma foto na hora ou anexe imagens da galeria',
+    titulo: '14. Registro Fotográfico (Antes e Depois)',
+    subtitulo: 'Tire fotos na hora ou anexe imagens da situação antes e depois da correção',
     obrigatorio: false,
     ativo: true,
     tipo: 'fotos',
   },
+
   {
     id: 'comportamentos_inseguros',
     numero: 15,

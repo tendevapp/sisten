@@ -64,6 +64,7 @@ const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
 const FacilitiesMateriais = lazy(() => import('./views/facilities/FacilitiesMateriais'));
+const FacilitiesServicos = lazy(() => import('./views/facilities/FacilitiesServicos'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
@@ -857,6 +858,12 @@ export default function App() {
       case '/facilities/materiais':
         if (canAccessPage(user, 'facilities_materiais')) {
           return <FacilitiesMateriais user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/facilities/servicos':
+        if (canAccessPage(user, 'facilities_servicos')) {
+          return <FacilitiesServicos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

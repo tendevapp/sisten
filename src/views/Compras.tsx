@@ -22,6 +22,7 @@ import {
 
 import { latestPriorityByRi, priorityMeta, grupoMercadoriaDesc, isProjetoItem, type TipoItemFilter } from '../lib/rastreio';
 import { avaliarEntregaParcial, temDivergenciaDeEntrega } from '../lib/entregaParcial';
+import { ehItemDeContrato, numeroContratoPO, itemContratoPO } from '../lib/contratoPedido';
 import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
@@ -38,7 +39,7 @@ interface ComprasProps {
   user: Profile;
   onNavigate: (path: string) => void;
   /** Abre já no filtro indicado — usado pela rota histórica `/suprimentos/diligenciamento`. */
-  poFilterInicial?: 'Todos' | 'Sem PO' | 'Sem MIGO';
+  poFilterInicial?: 'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato';
 }
 
 interface ItemNode {
@@ -487,7 +488,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
   const [grupoMercFilter, setGrupoMercFilter] = useState<Set<string>>(new Set());
-  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO'>(poFilterInicial || 'Todos');
+  const [poFilter, setPoFilter] = useState<'Todos' | 'Sem PO' | 'Sem MIGO' | 'Contrato'>(poFilterInicial || 'Todos');
   const [kpiFilter, setKpiFilter] = useState<'Todos' | 'Com Fornecedor' | 'Sem Histórico' | 'Críticos' | 'Parciais'>('Todos');
   // Consumo x Projeto: item de projeto é o material que começa em 100000 (mesma
   // regra do Rastreio Compras, em `isProjetoItem`). Começa em "todos" — aqui,
@@ -593,6 +594,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         });
         return { rm: g.rm, items };
       }).filter(g => g.items.length > 0);
+    }
+    // Call-off de contrato: item cujo PO nasceu amarrado a um contrato
+    // guarda-chuva (ou item categoria D no ME5A). É o oposto de compra spot —
+    // não passa por cotação, então some do trabalho de cotar do comprador.
+    if (poFilter === 'Contrato') {
+      return rawRmGroups.map(g => ({ rm: g.rm, items: g.items.filter(it => ehItemDeContrato(it.record)) }))
+        .filter(g => g.items.length > 0);
     }
     return rawRmGroups;
   }, [rawRmGroups, poFilter]);
@@ -1663,6 +1671,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       // de um pedido a colocar. Mostra o selo "Contrato" (com o número do
       // pedido do ME5A quando existe) e não cobra MIGO — não há carga a chegar.
       const eContrato = !!r.is_contrato;
+      const contratoPO = numeroContratoPO(r);
+      const itemContrato = itemContratoPO(r);
       return (
         <div className="inline-flex flex-wrap items-center gap-1.5">
           {eContrato ? (
@@ -1687,6 +1697,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
             </span>
           </span>
+          )}
+          {/* PO criado por referência a contrato guarda-chuva (EKPO-KONNR).
+              Diferente de `is_contrato` (categoria D no ME5A): aqui existe
+              pedido de verdade, ele é que nasceu amarrado ao contrato. */}
+          {!eContrato && contratoPO && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-400 border border-violet-200 dark:border-violet-900/50"
+              title={`Pedido colocado por referência ao contrato ${contratoPO}${itemContrato ? `, item ${itemContrato}` : ''} — não passou por cotação`}
+            >
+              <FileText className="h-3 w-3 shrink-0" />
+              Contrato {contratoPO}
+            </span>
           )}
           {!dataMigo && !eContrato && (
             <span
@@ -1759,6 +1781,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           )}
         </div>
       )}
+      {numeroContratoPO(r) && (
+        <p className="text-violet-700 dark:text-violet-400 font-bold">
+          Contrato {numeroContratoPO(r)}{itemContratoPO(r) ? ` · item ${itemContratoPO(r)}` : ''}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500 dark:text-slate-450 font-semibold">
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Pedido: {formatDateBR(r.data_pedido)}</span>
         <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Entrega SAP: {formatDateBR(r.data_entrega_sap)}</span>
@@ -1800,6 +1827,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         const hasMigo = !!it.record.data_migo;
         if (!hasPO || hasMigo || isServicoRM(it.record.requisicao_de_compra)) return;
       }
+      if (poFilter === 'Contrato' && !ehItemDeContrato(it.record)) return;
       rmsSet.add(g.rm);
       itens++;
       if (it.encontrado) com++; else sem++;
@@ -1925,6 +1953,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             >
               Sem MIGO
             </button>
+            <button
+              onClick={() => setPoFilter('Contrato')}
+              className={`px-3 py-1.5 rounded-lg transition-all text-xs font-bold cursor-pointer ${poFilter === 'Contrato' ? 'bg-white dark:bg-slate-850 text-[#0056c6] dark:text-[#0056c6] shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+              title="Exibir apenas itens atendidos por contrato guarda-chuva (pedido criado com referência a contrato, ou item categoria D no ME5A) — não passam por cotação"
+            >
+              Contrato
+            </button>
           </div>
 
           {/* View Toggles */}
@@ -1992,7 +2027,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-              {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : 'Total RMs'}
+              {poFilter === 'Sem MIGO' ? 'RMs sem MIGO' : poFilter === 'Sem PO' ? 'RMs em aberto' : poFilter === 'Contrato' ? 'RMs de contrato' : 'Total RMs'}
             </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.rms}</p>
           </div>
@@ -2008,7 +2043,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           >
             <div className="absolute top-0 left-0 w-1.5 h-full bg-[#0056c6]" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-              {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : 'Total Itens'}
+              {poFilter === 'Sem MIGO' ? 'Itens Sem MIGO' : poFilter === 'Sem PO' ? 'Itens Sem PO' : poFilter === 'Contrato' ? 'Itens de Contrato' : 'Total Itens'}
             </span>
             <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-1">{kpis.itens}</p>
             {kpiFilter === 'Todos' && (

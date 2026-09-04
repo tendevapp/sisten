@@ -14,7 +14,7 @@ import {
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
-  FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText,
+  FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -80,6 +80,7 @@ export const PAGES: PageDef[] = [
   { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin'] },
   { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin'] },
+  { id: 'facilities_servicos', group: 'FACILITIES', label: 'Lista de Serviços', path: '/facilities/servicos', icon: Wrench, defaultRoles: ['admin'] },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },

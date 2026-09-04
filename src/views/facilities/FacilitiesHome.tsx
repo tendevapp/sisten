@@ -14,7 +14,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Route, ArrowRight, Clock, DoorOpen, Timer, ClipboardList,
-  BusFront, BarChart3, Shield,
+  BusFront, BarChart3, Shield, Wrench,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -64,6 +64,16 @@ const SECOES: Secao[] = [
         path: '/facilities/rotas',
         gateId: 'facilities_rotas',
         fonte: 'Base rh_rotas',
+      },
+      {
+        id: 'servicos',
+        label: 'Lista de Serviços',
+        icon: Wrench,
+        desc: 'Serviços atendidos pelo Facilities. Alimenta a categoria do chamado em Nova Solicitação — cadastre, edite, reordene e inative sem depender de deploy.',
+        cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
+        path: '/facilities/servicos',
+        gateId: 'facilities_servicos',
+        fonte: 'Base fac_servicos',
       },
       {
         id: 'materiais_vigilancia',

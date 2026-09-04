@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X, Info, Search, ArrowUp, ArrowDown, ArrowUpDown, ChevronRight, ChevronDown, ChevronsUpDown, Warehouse } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro, formatBRL, formatQtd, isProjetoItem } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro, formatBRL, formatQtd, isProjetoItem, formatDeposito } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
@@ -217,7 +217,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
   const abrirModalDeposito = useCallback((dep: string) => {
     const items = filtrados.filter(r => r.deposito === dep);
     setSelectedModalData({
-      title: `Itens no Depósito ${dep}`,
+      title: `Itens no Depósito ${formatDeposito(dep)}`,
       badge: `Depósito ${dep}`,
       items,
       filterQuery: `deposito=${encodeURIComponent(dep)}`,
@@ -374,7 +374,10 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
                 options={opcoes.depositos}
                 selected={depositoFiltro}
                 onChange={setDepositoFiltro}
+                renderOption={formatDeposito}
+                searchable
                 className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
+                panelClassName="w-80 sm:w-96"
               />
 
               <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
@@ -708,7 +711,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
                                                 <td className="px-3 py-2 text-slate-700 dark:text-slate-300 whitespace-normal break-words max-w-md" title={item.txt_breve_material || ''}>
                                                   {item.txt_breve_material || '—'}
                                                 </td>
-                                                <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{item.deposito || '—'}</td>
+                                                <td className="px-3 py-2 text-slate-700 dark:text-slate-300" title={formatDeposito(item.deposito)}>{item.deposito || '—'}</td>
                                                 <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{item.tipo_material || '—'}</td>
                                                 <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{item.class_item || '—'}</td>
                                                 <td className="px-3 py-2 text-right font-mono text-slate-800 dark:text-slate-200 font-medium">{formatQtd(item.quantidade)}</td>

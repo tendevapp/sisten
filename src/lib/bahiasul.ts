@@ -6,7 +6,7 @@
  * para a tabela `sup_bahiasul_entregas`.
  */
 
-import { BahiaSulEntrega, SAPPedido } from '../types';
+import { BahiaSulEntrega, SAPPedido, TabelaFrete, FreteCalculadoDetalhes, StatusAuditoriaFrete } from '../types';
 
 export interface ColumnDefinition {
   field: keyof BahiaSulEntrega;
@@ -320,6 +320,7 @@ export interface BahiaSulEnriquecida extends BahiaSulEntrega {
   pedidoEncontrado: boolean;
   statusPrazo: 'entregue' | 'no_prazo' | 'atrasado' | 'sem_previsao';
   diasAtraso?: number;
+  freteCalculado?: FreteCalculadoDetalhes;
 }
 
 export interface BahiaSulKpis {
@@ -329,6 +330,12 @@ export interface BahiaSulKpis {
   entregues: number;
   outrosStatus: number;
   totalFreteCobrado: number;
+  totalFreteCalculado: number;
+  divergenciaLiquida: number;
+  qtdSobrepreco: number;
+  qtdConforme: number;
+  qtdDesconto: number;
+  qtdSemRota: number;
   totalPesoReal: number;
   totalPesoCubado: number;
   totalVolumes: number;
@@ -339,15 +346,256 @@ export interface BahiaSulKpis {
 }
 
 /**
- * Normaliza número de pedido de compras SAP para comparação sem zeros à esquerda e sem sufixos
+ * Normaliza numero de pedido de compras SAP para comparacao sem zeros a esquerda e sem sufixos
  */
 export function normalizePoNumber(val: unknown): string {
   if (val === null || val === undefined) return '';
   const s = String(val).trim();
   if (!s) return '';
-  // Se contiver barra ou traço (ex: 4500123456/1), pega a primeira parte
+  // Se contiver barra ou traco (ex: 4500123456/1), pega a primeira parte
   const base = s.split(/[\/\- ]/)[0].trim();
   return base.replace(/^0+/, '');
+}
+
+/**
+ * Normaliza localidade extraindo nome da cidade e UF
+ */
+export function normalizarLocalidade(str: unknown): { cidade: string; uf: string } {
+  if (!str) return { cidade: '', uf: '' };
+  const raw = String(str).trim().toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const partes = raw.split(/[\/\-]/);
+  if (partes.length >= 2) {
+    const cid = partes[0].trim().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ');
+    const uf = partes[1].trim().replace(/[^A-Z]/g, '').slice(0, 2);
+    return { cidade: cid, uf };
+  }
+
+  return { cidade: raw.replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' '), uf: '' };
+}
+
+/**
+ * Localiza a rota correspondente na tabela de frete
+ */
+export function matchRotaTabelaFrete(
+  orgCidade: unknown,
+  dstCidade: unknown,
+  tabelaList: TabelaFrete[]
+): TabelaFrete | null {
+  if (!tabelaList || tabelaList.length === 0) return null;
+
+  const orgNorm = normalizarLocalidade(orgCidade);
+  const dstNorm = normalizarLocalidade(dstCidade);
+
+  if (!orgNorm.cidade) return null;
+
+  // Destino padrao da fabrica/obra TEN e Jacobina
+  const destAlvo = dstNorm.cidade === 'TEN' || !dstNorm.cidade ? 'JACOBINA' : dstNorm.cidade;
+
+  // 1. Casamento exato por cidade de origem, UF e destino
+  const exato = tabelaList.find(r => {
+    const rOrg = normalizarLocalidade(r.origem).cidade;
+    const rDst = normalizarLocalidade(r.destino).cidade;
+    const rUf = (r.uf || '').toUpperCase().trim();
+
+    const matchOrigem = rOrg === orgNorm.cidade;
+    const matchUf = !orgNorm.uf || !rUf || rUf === orgNorm.uf;
+    const matchDest = !destAlvo || rDst === destAlvo || (destAlvo === 'JACOBINA' && rDst.includes('JACOBINA'));
+
+    return matchOrigem && matchUf && matchDest;
+  });
+  if (exato) return exato;
+
+  // 2. Casamento exato por cidade de origem e UF (independente do destino registrado na tabela)
+  const exatoOrigemUf = tabelaList.find(r => {
+    const rOrg = normalizarLocalidade(r.origem).cidade;
+    const rUf = (r.uf || '').toUpperCase().trim();
+    return rOrg === orgNorm.cidade && (!orgNorm.uf || !rUf || rUf === orgNorm.uf);
+  });
+  if (exatoOrigemUf) return exatoOrigemUf;
+
+  // 3. Casamento por inclusao parcial (substring)
+  const parcial = tabelaList.find(r => {
+    const rOrg = normalizarLocalidade(r.origem).cidade;
+    const rUf = (r.uf || '').toUpperCase().trim();
+    const matchUf = !orgNorm.uf || !rUf || rUf === orgNorm.uf;
+    return matchUf && (rOrg.includes(orgNorm.cidade) || orgNorm.cidade.includes(rOrg));
+  });
+  if (parcial) return parcial;
+
+  // 4. Se for rota de retorno (ex: Jacobina para Sorocaba), tenta inverter
+  if (orgNorm.cidade === 'JACOBINA') {
+    const inverso = tabelaList.find(r => {
+      const rOrg = normalizarLocalidade(r.origem).cidade;
+      const rUf = (r.uf || '').toUpperCase().trim();
+      const matchDest = dstNorm.cidade ? rOrg === dstNorm.cidade : false;
+      const matchUf = !dstNorm.uf || !rUf || rUf === dstNorm.uf;
+      return matchDest && matchUf;
+    });
+    if (inverso) return inverso;
+  }
+
+  return null;
+}
+
+/**
+ * Calcula o frete contratual com base nos criterios do simulador de frete
+ */
+export function calcularFreteContratual(
+  entrega: BahiaSulEntrega,
+  tabelaFreteList: TabelaFrete[]
+): FreteCalculadoDetalhes {
+  const rota = matchRotaTabelaFrete(entrega.org_cidade, entrega.dst_cidade, tabelaFreteList);
+  const frtCobrado = Number(entrega.frt_cobrado) || 0;
+
+  // Peso tarifado: maior valor entre real, cubado e declarado
+  const peso = Math.max(
+    0,
+    Number(entrega.kgs_real) || 0,
+    Number(entrega.kgs_cubado) || 0,
+    Number(entrega.kgs_declarado) || 0
+  );
+  const vMerc = Math.max(0, Number(entrega.vlr_mercadoria) || 0);
+
+  if (!rota) {
+    return {
+      rotaEncontrada: null,
+      pesoConsiderado: peso,
+      vlrMercadoria: vMerc,
+      modalidade: 'fracionado',
+      faixaDesc: 'Rota nao localizada na tabela',
+      freteBase: 0,
+      adValoresPct: 0,
+      adValoresValor: 0,
+      pedagioTotal: 0,
+      fracoes100kg: 0,
+      cat: 0,
+      itrTas: 0,
+      taxaFixa: 0,
+      subtotalSemIcms: 0,
+      icmsPct: 0,
+      valorIcms: 0,
+      totalComIcms: 0,
+      frtCobrado,
+      diferenca: 0,
+      diferencaPct: 0,
+      statusAuditoria: frtCobrado > 0 ? 'sem_rota' : 'sem_cobranca',
+    };
+  }
+
+  // Modalidade de transporte
+  const isDedicado = (entrega.tpo_embarque || '').toUpperCase().includes('DEDICADO');
+  const modalidade: 'fracionado' | 'dedicado' = isDedicado ? 'dedicado' : 'fracionado';
+
+  // 1. Frete Base / Frete Peso
+  let freteBase = 0;
+  let faixaDesc = '';
+
+  if (modalidade === 'fracionado') {
+    if (peso <= 10) {
+      freteBase = Number(rota.kg_1_10) || 0;
+      faixaDesc = 'Faixa 1 - 10 kg';
+    } else if (peso <= 20) {
+      freteBase = Number(rota.kg_11_20) || 0;
+      faixaDesc = 'Faixa 11 - 20 kg';
+    } else if (peso <= 30) {
+      freteBase = Number(rota.kg_21_30) || 0;
+      faixaDesc = 'Faixa 21 - 30 kg';
+    } else if (peso <= 50) {
+      freteBase = Number(rota.kg_31_50) || 0;
+      faixaDesc = 'Faixa 31 - 50 kg';
+    } else if (peso <= 70) {
+      freteBase = Number(rota.kg_51_70) || 0;
+      faixaDesc = 'Faixa 51 - 70 kg';
+    } else if (peso <= 100) {
+      freteBase = Number(rota.kg_71_100) || 0;
+      faixaDesc = 'Faixa 71 - 100 kg';
+    } else {
+      const taxaExcedente = Number(rota.kg_acima_100) || 0;
+      if (taxaExcedente > 0) {
+        freteBase = taxaExcedente * peso;
+        faixaDesc = `Acima de 100 kg (R$ ${taxaExcedente.toFixed(2)}/kg x ${peso.toFixed(1)}kg)`;
+      } else {
+        freteBase = Number(rota.kg_71_100) || 0;
+        faixaDesc = 'Acima de 100 kg (Teto 100kg)';
+      }
+    }
+  } else {
+    freteBase = Number(rota.fiorino) || 0;
+    faixaDesc = 'Veiculo Dedicado';
+  }
+
+  // 2. Ad Valorem (taxa sobre o valor da carga)
+  const rawAdVal = Number(rota.ad_valores) || 0;
+  const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? Number((rawAdVal * 100).toFixed(4)) : rawAdVal;
+  const adValoresValor = (vMerc * adValoresPct) / 100;
+
+  // 3. Pedagio por fracao de 100kg
+  const taxaPedagioFracao = Number(rota.pedagio_fracao_100kg) || 0;
+  const fracoes100kg = Math.ceil(peso / 100) || 1;
+  const pedagioTotal = fracoes100kg * taxaPedagioFracao;
+
+  // 4. Taxas fixas e contratuais
+  const cat = Number(rota.cat) || 0;
+  const itrTas = Number(rota.itr_tas) || 0;
+  const taxaFixa = Number(rota.taxa_fixa_itr_redespacho) || 0;
+
+  // 5. Subtotal Sem ICMS
+  const subtotalSemIcms = freteBase + adValoresValor + pedagioTotal + cat + itrTas + taxaFixa;
+
+  // 6. ICMS (calculo por dentro)
+  const icmsCleanStr = String(rota.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
+  const rawIcms = parseFloat(icmsCleanStr) || 0;
+  const icmsPct = rawIcms <= 1 && rawIcms > 0 ? Number((rawIcms * 100).toFixed(4)) : rawIcms;
+
+  let totalComIcms = subtotalSemIcms;
+  let valorIcms = 0;
+
+  if (icmsPct > 0 && icmsPct < 100) {
+    totalComIcms = subtotalSemIcms / (1 - (icmsPct / 100));
+    valorIcms = totalComIcms - subtotalSemIcms;
+  }
+
+  // 7. Comparativo e Auditoria
+  const diferenca = frtCobrado > 0 ? frtCobrado - totalComIcms : 0;
+  const diferencaPct = totalComIcms > 0 && frtCobrado > 0 ? ((frtCobrado - totalComIcms) / totalComIcms) * 100 : 0;
+
+  let statusAuditoria: StatusAuditoriaFrete = 'conforme';
+  if (frtCobrado <= 0) {
+    statusAuditoria = 'sem_cobranca';
+  } else if (diferenca > 1.00 && diferencaPct > 1.5) {
+    statusAuditoria = 'sobrepreco';
+  } else if (diferenca < -1.00 && diferencaPct < -1.5) {
+    statusAuditoria = 'desconto';
+  } else {
+    statusAuditoria = 'conforme';
+  }
+
+  return {
+    rotaEncontrada: rota,
+    pesoConsiderado: peso,
+    vlrMercadoria: vMerc,
+    modalidade,
+    faixaDesc,
+    freteBase,
+    adValoresPct,
+    adValoresValor,
+    pedagioTotal,
+    fracoes100kg,
+    cat,
+    itrTas,
+    taxaFixa,
+    subtotalSemIcms,
+    icmsPct,
+    valorIcms,
+    totalComIcms,
+    frtCobrado,
+    diferenca,
+    diferencaPct,
+    statusAuditoria,
+  };
 }
 
 /**
@@ -383,11 +631,12 @@ export function getStatusPrazo(entrega: BahiaSulEntrega, hojeStr?: string): { st
 }
 
 /**
- * Cruza a base de entregas da Bahia Sul com a lista de pedidos do SAP
+ * Cruza a base de entregas da Bahia Sul com a lista de pedidos do SAP e a tabela de frete contratual
  */
 export function enriquecerEntregasComPedidos(
   entregas: BahiaSulEntrega[],
-  pedidosSap: SAPPedido[]
+  pedidosSap: SAPPedido[],
+  tabelaFreteList: TabelaFrete[] = []
 ): BahiaSulEnriquecida[] {
   // Cria mapa de pedidos por PO normalizado
   const mapPedidos = new Map<string, SAPPedido>();
@@ -414,6 +663,7 @@ export function enriquecerEntregasComPedidos(
     }
 
     const { status: statusPrazo, diasAtraso } = getStatusPrazo(ent);
+    const freteCalculado = calcularFreteContratual(ent, tabelaFreteList);
 
     return {
       ...ent,
@@ -421,12 +671,13 @@ export function enriquecerEntregasComPedidos(
       pedidoEncontrado,
       statusPrazo,
       diasAtraso,
+      freteCalculado,
     };
   });
 }
 
 /**
- * Calcula os indicadores executivos e KPIs da base Bahia Sul
+ * Calcula os indicadores executivos e KPIs da base Bahia Sul incluindo auditoria de frete
  */
 export function calcularKpisBahiaSul(entregas: BahiaSulEnriquecida[]): BahiaSulKpis {
   let emTransito = 0;
@@ -434,12 +685,17 @@ export function calcularKpisBahiaSul(entregas: BahiaSulEnriquecida[]): BahiaSulK
   let entregues = 0;
   let outrosStatus = 0;
   let totalFreteCobrado = 0;
+  let totalFreteCalculado = 0;
   let totalPesoReal = 0;
   let totalPesoCubado = 0;
   let totalVolumes = 0;
   let totalValorMercadoria = 0;
   let vinculadosSap = 0;
   let atrasados = 0;
+  let qtdSobrepreco = 0;
+  let qtdConforme = 0;
+  let qtdDesconto = 0;
+  let qtdSemRota = 0;
 
   entregas.forEach(it => {
     const sit = (it.situacao || '').toUpperCase();
@@ -466,10 +722,27 @@ export function calcularKpisBahiaSul(entregas: BahiaSulEnriquecida[]): BahiaSulK
     totalPesoCubado += it.kgs_cubado || 0;
     totalVolumes += it.qtd_volumes || 0;
     totalValorMercadoria += it.vlr_mercadoria || 0;
+
+    if (it.freteCalculado) {
+      if (it.freteCalculado.statusAuditoria === 'sobrepreco') {
+        qtdSobrepreco++;
+      } else if (it.freteCalculado.statusAuditoria === 'conforme') {
+        qtdConforme++;
+      } else if (it.freteCalculado.statusAuditoria === 'desconto') {
+        qtdDesconto++;
+      } else if (it.freteCalculado.statusAuditoria === 'sem_rota') {
+        qtdSemRota++;
+      }
+
+      if (it.freteCalculado.rotaEncontrada) {
+        totalFreteCalculado += it.freteCalculado.totalComIcms;
+      }
+    }
   });
 
   const totalCte = entregas.length;
   const taxaVinculoPct = totalCte > 0 ? Math.round((vinculadosSap / totalCte) * 100) : 0;
+  const divergenciaLiquida = totalFreteCobrado - totalFreteCalculado;
 
   return {
     totalCte,
@@ -478,6 +751,12 @@ export function calcularKpisBahiaSul(entregas: BahiaSulEnriquecida[]): BahiaSulK
     entregues,
     outrosStatus,
     totalFreteCobrado,
+    totalFreteCalculado,
+    divergenciaLiquida,
+    qtdSobrepreco,
+    qtdConforme,
+    qtdDesconto,
+    qtdSemRota,
     totalPesoReal,
     totalPesoCubado,
     totalVolumes,

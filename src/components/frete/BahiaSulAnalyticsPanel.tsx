@@ -8,11 +8,13 @@ import {
   Truck, Search, Filter, RefreshCw, Upload, FileSpreadsheet,
   Calendar, CheckCircle2, Clock, AlertTriangle, ChevronRight,
   ExternalLink, Package, ArrowRight, ShieldCheck, MapPin,
-  Scale, DollarSign, X, Edit2, Check, HelpCircle
+  Scale, DollarSign, X, Edit2, Check, HelpCircle,
+  Calculator, TrendingUp, TrendingDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../../db/localDb';
-import { BahiaSulEntrega, SAPPedido, Profile } from '../../types';
+import { supabase } from '../../db/supabaseClient';
+import { BahiaSulEntrega, SAPPedido, Profile, TabelaFrete, StatusAuditoriaFrete } from '../../types';
 import {
   enriquecerEntregasComPedidos,
   calcularKpisBahiaSul,
@@ -34,6 +36,7 @@ export default function BahiaSulAnalyticsPanel({
   const toast = useToast();
   const [entregas, setEntregas] = useState<BahiaSulEntrega[]>([]);
   const [pedidosSap, setPedidosSap] = useState<SAPPedido[]>([]);
+  const [tabelaFreteList, setTabelaFreteList] = useState<TabelaFrete[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<BahiaSulEnriquecida | null>(null);
@@ -42,6 +45,7 @@ export default function BahiaSulAnalyticsPanel({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'TRANSITO' | 'A ENTREGAR' | 'ENTREGUE'>('todos');
   const [vinculoFilter, setVinculoFilter] = useState<'todos' | 'vinculado' | 'sem_vinculo'>('todos');
+  const [auditoriaFilter, setAuditoriaFilter] = useState<'todos' | 'sobrepreco' | 'conforme' | 'desconto' | 'sem_rota'>('todos');
 
   // Manual PO linking edit
   const [editingPoChave, setEditingPoChave] = useState<string | null>(null);
@@ -55,6 +59,19 @@ export default function BahiaSulAnalyticsPanel({
   const loadData = async () => {
     setLoading(true);
     try {
+      let listFretes: TabelaFrete[] = localDb.getTabelaFrete();
+      if (!listFretes || listFretes.length === 0) {
+        try {
+          const { data: dbFretes } = await supabase.from('sup_fretes').select('*');
+          if (dbFretes && dbFretes.length > 0) {
+            listFretes = dbFretes as TabelaFrete[];
+          }
+        } catch (err) {
+          console.warn('Fallback de busca em sup_fretes:', err);
+        }
+      }
+      setTabelaFreteList(listFretes || []);
+
       const [listEntregas, listPedidos] = await Promise.all([
         localDb.getBahiaSulEntregas(),
         Promise.resolve(localDb.getPedidos())
@@ -69,10 +86,10 @@ export default function BahiaSulAnalyticsPanel({
     }
   };
 
-  // Enriquecimento das entregas com os pedidos SAP
+  // Enriquecimento das entregas com os pedidos SAP e cálculo contratual de frete
   const entregasEnriquecidas = useMemo(() => {
-    return enriquecerEntregasComPedidos(entregas, pedidosSap);
-  }, [entregas, pedidosSap]);
+    return enriquecerEntregasComPedidos(entregas, pedidosSap, tabelaFreteList);
+  }, [entregas, pedidosSap, tabelaFreteList]);
 
   // Indicadores (KPIs)
   const kpis: BahiaSulKpis = useMemo(() => {
@@ -82,7 +99,7 @@ export default function BahiaSulAnalyticsPanel({
   // Lista filtrada
   const entregasFiltradas = useMemo(() => {
     return entregasEnriquecidas.filter(item => {
-      // Filtro de status
+      // Filtro de status operacional
       if (statusFilter !== 'todos') {
         const sit = (item.situacao || '').toUpperCase();
         if (!sit.includes(statusFilter)) return false;
@@ -94,6 +111,15 @@ export default function BahiaSulAnalyticsPanel({
       }
       if (vinculoFilter === 'sem_vinculo' && (item.pedidoEncontrado || Boolean(item.nro_pedido))) {
         return false;
+      }
+
+      // Filtro de auditoria de frete
+      if (auditoriaFilter !== 'todos') {
+        const auditStatus = item.freteCalculado?.statusAuditoria;
+        if (auditoriaFilter === 'sobrepreco' && auditStatus !== 'sobrepreco') return false;
+        if (auditoriaFilter === 'conforme' && auditStatus !== 'conforme') return false;
+        if (auditoriaFilter === 'desconto' && auditStatus !== 'desconto') return false;
+        if (auditoriaFilter === 'sem_rota' && auditStatus !== 'sem_rota') return false;
       }
 
       // Busca textual
@@ -114,7 +140,7 @@ export default function BahiaSulAnalyticsPanel({
 
       return true;
     });
-  }, [entregasEnriquecidas, statusFilter, vinculoFilter, searchTerm]);
+  }, [entregasEnriquecidas, statusFilter, vinculoFilter, auditoriaFilter, searchTerm]);
 
   // Salva o vínculo manual com PO
   const handleSavePo = async (chaveUnica: string) => {
@@ -163,9 +189,15 @@ export default function BahiaSulAnalyticsPanel({
       'Status Prazo': it.statusPrazo,
       'Peso Real (kg)': it.kgs_real,
       'Peso Cubado (kg)': it.kgs_cubado,
+      'Peso Tarifado (kg)': it.freteCalculado?.pesoConsiderado ?? (it.kgs_real ?? 0),
       'Volumes': it.qtd_volumes,
       'Valor Mercadoria (R$)': it.vlr_mercadoria,
-      'Frete Cobrado (R$)': it.frt_cobrado,
+      'Frete Cobrado (R$)': it.frt_cobrado ?? '',
+      'Frete Calculado (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.totalComIcms : '',
+      'Diferença Auditoria (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.diferenca : '',
+      'Diferença Auditoria (%)': it.freteCalculado?.rotaEncontrada ? `${it.freteCalculado.diferencaPct.toFixed(1)}%` : '',
+      'Status Auditoria': it.freteCalculado?.statusAuditoria ?? 'sem_rota',
+      'Rota Contratual': it.freteCalculado?.rotaEncontrada ? `${it.freteCalculado.rotaEncontrada.origem} (${it.freteCalculado.rotaEncontrada.uf}) ➔ ${it.freteCalculado.rotaEncontrada.destino}` : 'Rota não localizada',
       'Observações': it.obs_diversos,
     }));
 
@@ -296,6 +328,106 @@ export default function BahiaSulAnalyticsPanel({
         </div>
       </div>
 
+      {/* Card de Auditoria & Divergência de Frete (Cobrado vs Simulador Contratual) */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-100 shrink-0">
+            <Calculator className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Auditoria de Frete Contratual
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">
+                Simulador Ativo
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Confronto em tempo real entre o frete cobrado nos CTes e o valor contratual calculado pelo simulador.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
+          <div>
+            <span className="text-[10px] text-slate-400 font-semibold block">Frete Calculado</span>
+            <span className="text-sm font-black text-slate-800">
+              {kpis.totalFreteCalculado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-400 font-semibold block">Divergência Líquida</span>
+            <span className={`text-sm font-black flex items-center gap-1 ${
+              kpis.divergenciaLiquida > 10 ? 'text-rose-600' : kpis.divergenciaLiquida < -10 ? 'text-cyan-700' : 'text-emerald-600'
+            }`}>
+              {kpis.divergenciaLiquida > 10 ? <TrendingUp className="h-3.5 w-3.5" /> : kpis.divergenciaLiquida < -10 ? <TrendingDown className="h-3.5 w-3.5" /> : null}
+              <span>
+                {kpis.divergenciaLiquida > 0 ? '+' : ''}
+                {kpis.divergenciaLiquida.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+            </span>
+          </div>
+
+          <div className="h-8 w-px bg-slate-200 hidden sm:block" />
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setAuditoriaFilter(auditoriaFilter === 'sobrepreco' ? 'todos' : 'sobrepreco')}
+              className={`text-center px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                auditoriaFilter === 'sobrepreco'
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                  : 'bg-rose-50 border-rose-100 hover:bg-rose-100/70 text-rose-700'
+              }`}
+              title="Filtrar fretes com sobrepreço"
+            >
+              <span className="text-xs font-black block">{kpis.qtdSobrepreco}</span>
+              <span className="text-[9px] font-bold uppercase">Sobrepreço</span>
+            </button>
+
+            <button
+              onClick={() => setAuditoriaFilter(auditoriaFilter === 'conforme' ? 'todos' : 'conforme')}
+              className={`text-center px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                auditoriaFilter === 'conforme'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                  : 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100/70 text-emerald-700'
+              }`}
+              title="Filtrar fretes conformes"
+            >
+              <span className="text-xs font-black block">{kpis.qtdConforme}</span>
+              <span className="text-[9px] font-bold uppercase">Conforme</span>
+            </button>
+
+            <button
+              onClick={() => setAuditoriaFilter(auditoriaFilter === 'desconto' ? 'todos' : 'desconto')}
+              className={`text-center px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                auditoriaFilter === 'desconto'
+                  ? 'bg-cyan-600 text-white border-cyan-600 shadow-2xs'
+                  : 'bg-cyan-50 border-cyan-100 hover:bg-cyan-100/70 text-cyan-700'
+              }`}
+              title="Filtrar fretes abaixo da tabela"
+            >
+              <span className="text-xs font-black block">{kpis.qtdDesconto}</span>
+              <span className="text-[9px] font-bold uppercase">Abaixo</span>
+            </button>
+
+            <button
+              onClick={() => setAuditoriaFilter(auditoriaFilter === 'sem_rota' ? 'todos' : 'sem_rota')}
+              className={`text-center px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                auditoriaFilter === 'sem_rota'
+                  ? 'bg-slate-700 text-white border-slate-700 shadow-2xs'
+                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200/70 text-slate-600'
+              }`}
+              title="Filtrar fretes sem rota mapeada"
+            >
+              <span className="text-xs font-black block">{kpis.qtdSemRota}</span>
+              <span className="text-[9px] font-bold uppercase">Sem Rota</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Input de Busca */}
@@ -385,6 +517,46 @@ export default function BahiaSulAnalyticsPanel({
               Sem Pedido SAP
             </button>
           </div>
+
+          {/* Filtro de Auditoria de Frete */}
+          <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
+            <button
+              onClick={() => setAuditoriaFilter('todos')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                auditoriaFilter === 'todos' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Todas as auditorias"
+            >
+              Auditoria: Todos
+            </button>
+            <button
+              onClick={() => setAuditoriaFilter('sobrepreco')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                auditoriaFilter === 'sobrepreco' ? 'bg-rose-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Frete cobrado maior que o simulador"
+            >
+              Sobrepreço ({kpis.qtdSobrepreco})
+            </button>
+            <button
+              onClick={() => setAuditoriaFilter('conforme')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                auditoriaFilter === 'conforme' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Frete confere com a tabela"
+            >
+              Conforme ({kpis.qtdConforme})
+            </button>
+            <button
+              onClick={() => setAuditoriaFilter('desconto')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                auditoriaFilter === 'desconto' ? 'bg-cyan-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Frete cobrado abaixo da tabela"
+            >
+              Abaixo ({kpis.qtdDesconto})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -427,6 +599,7 @@ export default function BahiaSulAnalyticsPanel({
                   <th className="py-3 px-4">Pedido SAP (PO)</th>
                   <th className="py-3 px-4">NFs Embarcadas</th>
                   <th className="py-3 px-4 text-right">Frete Cobrado</th>
+                  <th className="py-3 px-4 text-right">Frete Calculado</th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -610,6 +783,62 @@ export default function BahiaSulAnalyticsPanel({
                           <p className="text-[10px] text-slate-400">
                             Merc: {item.vlr_mercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </p>
+                        )}
+                      </td>
+
+                      {/* Frete Calculado (Contrato / Simulador) */}
+                      <td className="py-3.5 px-4 text-right">
+                        {item.freteCalculado?.rotaEncontrada ? (
+                          <div className="space-y-1">
+                            <p className="font-bold text-slate-900">
+                              {item.freteCalculado.totalComIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            </p>
+
+                            {item.freteCalculado.statusAuditoria === 'sobrepreco' && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                title={`Cobrança a maior em ${item.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (+${item.freteCalculado.diferencaPct.toFixed(1)}%) em relação à tabela`}
+                              >
+                                <TrendingUp className="h-3 w-3 text-rose-600 shrink-0" />
+                                <span>+{item.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({item.freteCalculado.diferencaPct > 0 ? `+${item.freteCalculado.diferencaPct.toFixed(0)}%` : ''})</span>
+                              </span>
+                            )}
+
+                            {item.freteCalculado.statusAuditoria === 'conforme' && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                title="Valor cobrado confere com o cálculo contratual"
+                              >
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span>Conforme</span>
+                              </span>
+                            )}
+
+                            {item.freteCalculado.statusAuditoria === 'desconto' && (
+                              <span
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200"
+                                title={`Economia de ${Math.abs(item.freteCalculado.diferenca).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${item.freteCalculado.diferencaPct.toFixed(1)}%) abaixo da tabela`}
+                              >
+                                <TrendingDown className="h-3 w-3 text-cyan-600 shrink-0" />
+                                <span>{item.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({item.freteCalculado.diferencaPct.toFixed(0)}%)</span>
+                              </span>
+                            )}
+
+                            {item.freteCalculado.statusAuditoria === 'sem_cobranca' && (
+                              <span className="text-[10px] text-slate-400">Sem cobrança</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-slate-400">—</p>
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-500"
+                              title="Origem não encontrada na tabela contratual"
+                            >
+                              <HelpCircle className="h-2.5 w-2.5 text-slate-400 shrink-0" />
+                              <span>Sem rota</span>
+                            </span>
+                          </div>
                         )}
                       </td>
 
@@ -804,6 +1033,122 @@ export default function BahiaSulAnalyticsPanel({
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Auditoria & Comparativo de Frete Contratual (Simulador vs Cobrado) */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <Calculator className="h-4 w-4 text-cyan-600" />
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Auditoria de Frete (Simulador Contratual vs Cobrado)
+                  </h4>
+                </div>
+                {selectedItem.freteCalculado?.statusAuditoria === 'sobrepreco' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                    <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                    Sobrepreço: +{selectedItem.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (+{selectedItem.freteCalculado.diferencaPct.toFixed(1)}%)
+                  </span>
+                )}
+                {selectedItem.freteCalculado?.statusAuditoria === 'conforme' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    Valor Conforme com a Tabela
+                  </span>
+                )}
+                {selectedItem.freteCalculado?.statusAuditoria === 'desconto' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                    <TrendingDown className="h-3.5 w-3.5 text-cyan-600" />
+                    Abaixo da Tabela: {selectedItem.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ({selectedItem.freteCalculado.diferencaPct.toFixed(1)}%)
+                  </span>
+                )}
+                {selectedItem.freteCalculado?.statusAuditoria === 'sem_rota' && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    Rota Origem Não Localizada
+                  </span>
+                )}
+              </div>
+
+              {selectedItem.freteCalculado?.rotaEncontrada ? (
+                <div className="space-y-3">
+                  {/* Resumo em 3 Blocos */}
+                  <div className="grid grid-cols-3 gap-3 p-3 bg-white rounded-xl border border-slate-200/80 text-center">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Frete Cobrado</span>
+                      <span className="text-base font-black text-slate-800">
+                        {selectedItem.frt_cobrado ? selectedItem.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Frete Calculado (Tabela)</span>
+                      <span className="text-base font-black text-cyan-700">
+                        {selectedItem.freteCalculado.totalComIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-semibold block">Divergência / Desvio</span>
+                      <span className={`text-base font-black ${
+                        selectedItem.freteCalculado.diferenca > 1 ? 'text-rose-600' : selectedItem.freteCalculado.diferenca < -1 ? 'text-cyan-700' : 'text-emerald-600'
+                      }`}>
+                        {selectedItem.freteCalculado.diferenca > 0 ? '+' : ''}
+                        {selectedItem.freteCalculado.diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tabela de Memória de Cálculo Decomposta */}
+                  <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden text-xs">
+                    <div className="px-3 py-2 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between text-[11px] font-bold text-slate-600">
+                      <span>Memória de Cálculo (Critérios do Simulador)</span>
+                      <span className="text-slate-400 font-normal">
+                        Rota: <strong>{selectedItem.freteCalculado.rotaEncontrada.origem} ({selectedItem.freteCalculado.rotaEncontrada.uf}) ➔ {selectedItem.freteCalculado.rotaEncontrada.destino}</strong> • Código: <strong>{selectedItem.freteCalculado.rotaEncontrada.rotas || 'Padrão'}</strong>
+                      </span>
+                    </div>
+                    <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block">Peso Tarifado:</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.pesoConsiderado.toFixed(2)} kg</strong>
+                        <span className="text-[10px] text-slate-400 block">{selectedItem.freteCalculado.faixaDesc}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Frete Base (Peso):</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.freteBase.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Ad Valorem ({selectedItem.freteCalculado.adValoresPct}%):</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.adValoresValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                        <span className="text-[10px] text-slate-400 block">Merc: {selectedItem.freteCalculado.vlrMercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Pedágio ({selectedItem.freteCalculado.fracoes100kg} fr. 100kg):</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.pedagioTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Taxa CAT:</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.cat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">ITR / TAS:</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.itrTas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Taxa Fixa / Redespacho:</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.taxaFixa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">ICMS ({selectedItem.freteCalculado.icmsPct}%):</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.valorIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                        <span className="text-[10px] text-slate-400 block">Subtotal: {selectedItem.freteCalculado.subtotalSemIcms.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic p-3 bg-white rounded-xl border border-slate-200/80">
+                  Não foi encontrada rota correspondente para a origem "{selectedItem.org_cidade}" na tabela de frete cadastrada.
+                </p>
+              )}
             </div>
 
             {/* Observações e Cubagem */}

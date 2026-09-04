@@ -4137,6 +4137,15 @@ class LocalDatabase {
       const activePf = temDocReal
         ? (pedsFornByRiDoc.get(String(r.ri || '').trim() + '_' + docCompra) || localPf)
         : undefined;
+      // Contrato guarda-chuva do PO (EKPO-KONNR). A view enriquecida expõe
+      // `contrato_po`; enquanto a migration que a alimenta não estiver
+      // aplicada, o valor vem da própria linha da ZL0132 no cache local, que
+      // sempre carregou a coluna. `'0'`/vazio significam "sem contrato" e são
+      // normalizados em `src/lib/contratoPedido.ts`.
+      const contrato_po = hasPO ? (raw.contrato_po ?? activePf?.contrato ?? undefined) : undefined;
+      const item_contrato_po = hasPO ? (raw.item_contrato_po ?? activePf?.item_contrato ?? undefined) : undefined;
+      const tipo_doc_po = hasPO ? (raw.tipo_doc_po ?? activePf?.tipo_doc_compra ?? undefined) : undefined;
+
       const precoUnitDaView = raw.preco_unit_po !== undefined && raw.preco_unit_po !== null
         ? this.precoUnitarioDoPedido({ preco_liquido: Number(raw.preco_unit_po), por: raw.por_po } as any)
         : undefined;
@@ -4182,6 +4191,9 @@ class LocalDatabase {
           data_entrega_sap: hasPO ? (raw.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
           documento_compra: temDocReal ? docCompra : null,
           is_contrato: isContrato,
+          contrato_po,
+          item_contrato_po,
+          tipo_doc_po,
           criado_por_pedido: hasPO ? (raw.criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
           data_migo: hasPO ? (raw.data_migo || activePf?.data_migo || undefined) : undefined,
           preco_unitario,
@@ -4306,6 +4318,9 @@ class LocalDatabase {
         data_entrega_sap: hasPO ? (p.data_entrega_sap || activePf?.dt_remessa || undefined) : undefined,
         documento_compra: temDocReal ? docCompra : null,
         is_contrato: isContrato,
+        contrato_po,
+        item_contrato_po,
+        tipo_doc_po,
         criado_por_pedido: hasPO ? ((p as any).criado_por_pedido || activePf?.criado_por_pedido || undefined) : undefined,
         data_migo,
         preco_unitario,

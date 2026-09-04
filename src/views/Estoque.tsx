@@ -12,7 +12,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem } from '../types';
-import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode } from '../lib/almoxarifado';
+import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode, descricaoDeposito, formatDeposito } from '../lib/almoxarifado';
 import { formatBRL, formatQtd, formatDateTimeBR, formatInt } from '../lib/format';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
@@ -277,6 +277,7 @@ export default function Estoque({ user }: EstoqueProps) {
       'Classe ABC': mapaAbc.get(normalizeCode(r.material)) || 'C',
       'Centro': r.centro ?? '',
       'Depósito': r.deposito ?? '',
+      'Descrição do Depósito': descricaoDeposito(r.deposito),
       'Tipo de Material': r.tipo_material ?? '',
       'Material': r.material ?? '',
       'Referência Fabricante': r.referencia_fabricante ?? '',
@@ -315,6 +316,18 @@ export default function Estoque({ user }: EstoqueProps) {
           >
             {classe}
           </span>
+        );
+      }
+      case 'deposito': {
+        // Código e descrição em linhas separadas: a coluna é estreita e o
+        // código é o que o usuário procura ao varrer a tabela.
+        const desc = descricaoDeposito(r.deposito);
+        if (!r.deposito) return '—';
+        return (
+          <div className="min-w-0" title={formatDeposito(r.deposito)}>
+            <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{r.deposito}</span>
+            {desc && <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{desc}</p>}
+          </div>
         );
       }
       case 'quantidade':
@@ -446,7 +459,10 @@ export default function Estoque({ user }: EstoqueProps) {
               options={depositoOptions}
               selected={depositoFilter}
               onChange={setDepositoFilter}
+              renderOption={formatDeposito}
+              searchable
               className="shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]"
+              panelClassName="w-80 sm:w-96"
             />
             <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
@@ -639,6 +655,9 @@ export default function Estoque({ user }: EstoqueProps) {
                           >
                             Dep {r.deposito}
                           </span>
+                        )}
+                        {descricaoDeposito(r.deposito) && (
+                          <span className="truncate">{descricaoDeposito(r.deposito)}</span>
                         )}
                       </div>
                     </div>

@@ -134,10 +134,18 @@ export default function SsmaRidForm({
   const [condicoesInseguras, setCondicoesInseguras] = useState<string[]>([]);
   const [classificacaoOutro, setClassificacaoOutro] = useState('');
 
-  // Fotos e Anexos
-  const [fotosArquivos, setFotosArquivos] = useState<{ file: File; preview: string }[]>([]);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
+  // Fotos e Anexos (Antes e Depois)
+  interface FotoItemForm {
+    file: File;
+    preview: string;
+    tipo: 'antes' | 'depois';
+  }
+  const [fotosArquivos, setFotosArquivos] = useState<FotoItemForm[]>([]);
+  const cameraAntesInputRef = useRef<HTMLInputElement>(null);
+  const galleryAntesInputRef = useRef<HTMLInputElement>(null);
+  const cameraDepoisInputRef = useRef<HTMLInputElement>(null);
+  const galleryDepoisInputRef = useRef<HTMLInputElement>(null);
+
 
   // Estado de envio
   const [enviando, setEnviando] = useState(false);
@@ -235,14 +243,23 @@ export default function SsmaRidForm({
     setDropdownAberto(true);
   };
 
-  // Adicionar arquivos de foto
-  const processarArquivos = (files: FileList | null) => {
+  // Adicionar arquivos de foto com tipo (antes ou depois)
+  const processarArquivos = (files: FileList | null, tipo: 'antes' | 'depois') => {
     if (!files || files.length === 0) return;
-    const novos = Array.from(files).map((f) => ({
+    const novos: FotoItemForm[] = Array.from(files).map((f) => ({
       file: f,
       preview: URL.createObjectURL(f),
+      tipo,
     }));
     setFotosArquivos((prev) => [...prev, ...novos]);
+  };
+
+  const alternarTipoFoto = (index: number) => {
+    setFotosArquivos((prev) =>
+      prev.map((f, i) =>
+        i === index ? { ...f, tipo: f.tipo === 'antes' ? 'depois' : 'antes' } : f
+      )
+    );
   };
 
   const removerFoto = (index: number) => {
@@ -252,6 +269,7 @@ export default function SsmaRidForm({
       return prev.filter((_, i) => i !== index);
     });
   };
+
 
   // Alternadores de múltipla escolha para classificações
   const toggleComportamento = (item: string) => {
@@ -372,8 +390,9 @@ export default function SsmaRidForm({
           parecer_ssma: null,
           criado_por: user?.id || null,
         },
-        fotosArquivos.map((f) => f.file)
+        fotosArquivos.map((f) => ({ file: f.file, tipo: f.tipo }))
       );
+
 
       toast.success(`Desvio registrado com sucesso sob código ${novoDesvio.numero_registro}!`);
       resetarFormulario();
@@ -389,6 +408,10 @@ export default function SsmaRidForm({
   const areasFiltradas = areasDisponiveis.filter((a) =>
     a.toLowerCase().includes(filtroArea.toLowerCase())
   );
+
+  const fotosAntes = fotosArquivos.filter((f) => f.tipo === 'antes');
+  const fotosDepois = fotosArquivos.filter((f) => f.tipo === 'depois');
+
 
   return (
     <form onSubmit={handleSubmit} className="mx-auto max-w-4xl space-y-6 pb-16">
@@ -1257,102 +1280,267 @@ export default function SsmaRidForm({
         </div>
       </div>
 
-      {/* SEÇÃO 5: Registro Fotográfico & Evidências (Visível se ativo) */}
+      {/* SEÇÃO 5: Registro Fotográfico & Evidências (Antes e Depois) */}
       {getPergunta('fotos')?.ativo !== false && (
         <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800 gap-2">
             <div className="flex items-center gap-2">
               <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-100 text-xs font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
                 5
               </span>
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  {getPergunta('fotos')?.titulo || '14. Registro Fotográfico / Evidências'}
+                  {getPergunta('fotos')?.titulo || '14. Registro Fotográfico (Antes e Depois)'}
                 </h3>
                 {getPergunta('fotos')?.subtitulo && (
                   <p className="text-[11px] text-slate-400">{getPergunta('fotos')?.subtitulo}</p>
                 )}
               </div>
             </div>
-            <span className="text-xs text-slate-400">
-              {fotosArquivos.length} foto(s) anexada(s)
-            </span>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-500 dark:text-slate-400">
+                {fotosArquivos.length} foto(s)
+              </span>
+              <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                {fotosAntes.length} Antes
+              </span>
+              <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                {fotosDepois.length} Depois
+              </span>
+            </div>
           </div>
 
-          {/* Inputs ocultos para Câmera Nativa e Galeria */}
+          {/* Inputs ocultos para Câmera e Galeria (Antes e Depois) */}
           <input
-            ref={cameraInputRef}
+            ref={cameraAntesInputRef}
             type="file"
             accept="image/*"
             capture="environment"
             onChange={(e) => {
-              processarArquivos(e.target.files);
+              processarArquivos(e.target.files, 'antes');
               e.target.value = '';
             }}
             className="hidden"
           />
           <input
-            ref={galleryInputRef}
+            ref={galleryAntesInputRef}
             type="file"
             accept="image/*"
             multiple
             onChange={(e) => {
-              processarArquivos(e.target.files);
+              processarArquivos(e.target.files, 'antes');
+              e.target.value = '';
+            }}
+            className="hidden"
+          />
+          <input
+            ref={cameraDepoisInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              processarArquivos(e.target.files, 'depois');
+              e.target.value = '';
+            }}
+            className="hidden"
+          />
+          <input
+            ref={galleryDepoisInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => {
+              processarArquivos(e.target.files, 'depois');
               e.target.value = '';
             }}
             className="hidden"
           />
 
-          {/* Botões de Ação para Fotos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-teal-300 bg-teal-50/50 p-4 text-xs font-bold text-teal-800 hover:bg-teal-100/60 dark:border-teal-800 dark:bg-teal-950/20 dark:text-teal-300 transition-all cursor-pointer"
-            >
-              <Camera className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-              <span>Tirar Foto com a Câmera</span>
-            </button>
+          {/* Grid com as duas Zonas: ANTES e DEPOIS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ZONA 1: FOTOS DO ANTES */}
+            <div className="rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/20 p-4 dark:border-amber-900/40 dark:from-amber-950/20 dark:via-slate-900 dark:to-orange-950/10 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center rounded-lg bg-amber-500 text-white p-1 text-xs shadow-xs">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                        Evidências do ANTES
+                      </h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Condição insegura ou desvio observado
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                    {fotosAntes.length} anexada(s)
+                  </span>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 transition-all cursor-pointer"
-            >
-              <Paperclip className="h-5 w-5 text-slate-500" />
-              <span>Anexar Fotos da Galeria</span>
-            </button>
-          </div>
-
-          {/* Preview das Fotos Selecionadas */}
-          {fotosArquivos.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-              {fotosArquivos.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="group relative aspect-square overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-800"
-                >
-                  <img
-                    src={item.preview}
-                    alt={`Evidência ${idx + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+                {/* Botões do Antes */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   <button
                     type="button"
-                    onClick={() => removerFoto(idx)}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-xl bg-rose-600/90 text-white shadow-md hover:bg-rose-700 transition-colors cursor-pointer"
+                    onClick={() => cameraAntesInputRef.current?.click()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-amber-300/80 bg-white py-2.5 px-2 text-xs font-bold text-amber-800 shadow-xs hover:bg-amber-50 dark:border-amber-800 dark:bg-slate-800 dark:text-amber-300 transition-all cursor-pointer"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Camera className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <span>Tirar Foto</span>
                   </button>
-                  <div className="absolute bottom-1 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-mono text-white">
-                    Foto {idx + 1}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => galleryAntesInputRef.current?.click()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 px-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition-all cursor-pointer"
+                  >
+                    <Paperclip className="h-4 w-4 text-slate-500" />
+                    <span>Galeria</span>
+                  </button>
                 </div>
-              ))}
+
+                {/* Previews do Antes */}
+                {fotosAntes.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {fotosArquivos.map((item, originalIdx) => {
+                      if (item.tipo !== 'antes') return null;
+                      return (
+                        <div
+                          key={originalIdx}
+                          className="group relative aspect-4/3 overflow-hidden rounded-xl border border-amber-200/80 bg-slate-100 shadow-xs dark:border-amber-900/40 dark:bg-slate-800"
+                        >
+                          <img
+                            src={item.preview}
+                            alt="Evidência Antes"
+                            className="h-full w-full object-cover"
+                          />
+                          <span className="absolute top-1.5 left-1.5 rounded-md bg-amber-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
+                            Antes
+                          </span>
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => alternarTipoFoto(originalIdx)}
+                              title="Mover para 'Depois'"
+                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/75 text-white hover:bg-emerald-600 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerFoto(originalIdx)}
+                              title="Excluir foto"
+                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-600/90 text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-amber-200/70 p-4 text-center text-[11px] text-amber-800/70 dark:border-amber-900/30 dark:text-amber-400/60">
+                    Nenhuma foto do "Antes" anexada.
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* ZONA 2: FOTOS DO DEPOIS */}
+            <div className="rounded-2xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/20 p-4 dark:border-emerald-900/40 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/10 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white p-1 text-xs shadow-xs">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </span>
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 dark:text-emerald-200">
+                        Evidências do DEPOIS
+                      </h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Situação corrigida ou ação imediata
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                    {fotosDepois.length} anexada(s)
+                  </span>
+                </div>
+
+                {/* Botões do Depois */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => cameraDepoisInputRef.current?.click()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300/80 bg-white py-2.5 px-2 text-xs font-bold text-emerald-800 shadow-xs hover:bg-emerald-50 dark:border-emerald-800 dark:bg-slate-800 dark:text-emerald-300 transition-all cursor-pointer"
+                  >
+                    <Camera className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Tirar Foto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => galleryDepoisInputRef.current?.click()}
+                    className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 px-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition-all cursor-pointer"
+                  >
+                    <Paperclip className="h-4 w-4 text-slate-500" />
+                    <span>Galeria</span>
+                  </button>
+                </div>
+
+                {/* Previews do Depois */}
+                {fotosDepois.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {fotosArquivos.map((item, originalIdx) => {
+                      if (item.tipo !== 'depois') return null;
+                      return (
+                        <div
+                          key={originalIdx}
+                          className="group relative aspect-4/3 overflow-hidden rounded-xl border border-emerald-200/80 bg-slate-100 shadow-xs dark:border-emerald-900/40 dark:bg-slate-800"
+                        >
+                          <img
+                            src={item.preview}
+                            alt="Evidência Depois"
+                            className="h-full w-full object-cover"
+                          />
+                          <span className="absolute top-1.5 left-1.5 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-xs">
+                            Depois
+                          </span>
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => alternarTipoFoto(originalIdx)}
+                              title="Mover para 'Antes'"
+                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-900/75 text-white hover:bg-amber-600 transition-colors cursor-pointer"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerFoto(originalIdx)}
+                              title="Excluir foto"
+                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-600/90 text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-emerald-200/70 p-4 text-center text-[11px] text-emerald-800/70 dark:border-emerald-900/30 dark:text-emerald-400/60">
+                    Nenhuma foto do "Depois" anexada.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
+
 
       {/* Barra Inferior de Envio */}
       <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">

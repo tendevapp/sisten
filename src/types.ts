@@ -420,6 +420,15 @@ export interface EnrichedSAPRecord extends SAPRequisicao {
   /** Item de contrato (`categoria_do_item = 'D'`): entra como atendido, com o
    *  selo "Contrato" no lugar do número do pedido. */
   is_contrato?: boolean;
+  /** Contrato guarda-chuva que originou o PO (`EKPO-KONNR`, coluna "Contr." da
+   *  ZL0132). Preenchido = call-off de contrato; vazio = compra spot. Sinal
+   *  diferente de `is_contrato`, que vem da categoria do item no ME5A —
+   *  ver `src/lib/contratoPedido.ts`. */
+  contrato_po?: string | null;
+  /** Item do contrato correspondente a `contrato_po` (vem `'0'` quando não há). */
+  item_contrato_po?: string | null;
+  /** Tipo do documento de compra do PO (ZP01 Compra Local, ZP06 Serviço, ...). */
+  tipo_doc_po?: string | null;
   natureza: string;
   status_requisicao: 'Sem PO' | 'Processado';
   lead_time_compras_meta: number;
@@ -555,6 +564,10 @@ export interface HistoricoPedidoView {
   valor_liquido?: number;
   /** Preço unitário em BRL (valor_liquido / qtd_pedido). */
   preco_liquido_unit?: number;
+  /** Contrato guarda-chuva do pedido (EKPO-KONNR). `null` = compra spot. */
+  contrato?: string | null;
+  /** Tipo do documento de compra (ZP01 Compra Local, ZP06 Serviço, ...). */
+  tipo_doc_compra?: string | null;
   por?: string; // base de preço do SAP; unitário = preco_liquido_unit / por (vazio = 1)
   // Enriquecidos a partir do JOIN com contatos e cidadeforn.
   telefone?: string;
@@ -2088,6 +2101,32 @@ export interface BahiaSulEntrega {
   updated_at?: string;
 }
 
+export type StatusAuditoriaFrete = 'conforme' | 'sobrepreco' | 'desconto' | 'sem_rota' | 'sem_cobranca';
+
+export interface FreteCalculadoDetalhes {
+  rotaEncontrada: TabelaFrete | null;
+  pesoConsiderado: number;
+  vlrMercadoria: number;
+  modalidade: 'fracionado' | 'dedicado';
+  faixaDesc: string;
+  freteBase: number;
+  adValoresPct: number;
+  adValoresValor: number;
+  pedagioTotal: number;
+  fracoes100kg: number;
+  cat: number;
+  itrTas: number;
+  taxaFixa: number;
+  subtotalSemIcms: number;
+  icmsPct: number;
+  valorIcms: number;
+  totalComIcms: number;
+  frtCobrado: number;
+  diferenca: number; // frtCobrado - totalComIcms (positivo = sobrepreço cobrado a maior)
+  diferencaPct: number; // ((frtCobrado - totalComIcms) / totalComIcms) * 100
+  statusAuditoria: StatusAuditoriaFrete;
+}
+
 // =====================================================================
 // ---------- MÓDULO SSMA: REGISTRO DE IDENTIFICAÇÃO DE DESVIO (RID) ----------
 // =====================================================================
@@ -2103,6 +2142,7 @@ export interface SsmaRidFoto {
   size: number;
   mime_type: string;
   preview_url?: string;
+  tipo?: 'antes' | 'depois';
   created_at: string;
 }
 
@@ -2189,3 +2229,24 @@ export interface SsmaFormConfig {
 }
 
 
+
+// ---------------------------------------------------------------------
+// Facilities — cadastros do módulo
+// ---------------------------------------------------------------------
+
+/**
+ * Serviço prestado pelo Facilities. Alimenta o select "Categoria do
+ * incidente/pedido" do chamado com destino Facilities em Nova Solicitação;
+ * cadastrado em Facilities > Cadastros > Lista de Serviços.
+ */
+export interface FacServico {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  ordem: number;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}

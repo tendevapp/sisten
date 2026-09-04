@@ -51,8 +51,9 @@ export default function SsmaRidDetalhesModal({
   onStatusChange,
 }: SsmaRidDetalhesModalProps) {
   const toast = useToast();
-  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
+  const [fotoAmpliada, setFotoAmpliada] = useState<{ url: string; tipo?: 'antes' | 'depois' } | null>(null);
   const [salvandoStatus, setSalvandoStatus] = useState(false);
+
   const [novoStatus, setNovoStatus] = useState<SsmaRidStatus>(desvio.status);
   const [parecerTexto, setParecerTexto] = useState(desvio.parecer_ssma || '');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
@@ -301,38 +302,117 @@ export default function SsmaRidDetalhesModal({
             )}
           </div>
 
-          {/* Fotos e Evidências */}
-          {desvio.fotos && desvio.fotos.length > 0 && (
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
-                Evidências Fotográficas ({desvio.fotos.length})
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {desvio.fotos.map((foto, idx) => (
-                  <div
-                    key={foto.id || idx}
-                    onClick={() => setFotoAmpliada(foto.preview_url || null)}
-                    className="group relative aspect-4/3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 cursor-pointer dark:border-slate-800 dark:bg-slate-950"
-                  >
-                    {foto.preview_url ? (
-                      <img
-                        src={foto.preview_url}
-                        alt={`Evidência ${idx + 1}`}
-                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
-                        Foto {idx + 1}
-                      </div>
+          {/* Fotos e Evidências (Antes e Depois) */}
+          {desvio.fotos && desvio.fotos.length > 0 && (() => {
+            const fotosAntes = desvio.fotos.filter((f) => f.tipo !== 'depois');
+            const fotosDepois = desvio.fotos.filter((f) => f.tipo === 'depois');
+
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Evidências Fotográficas ({desvio.fotos.length})
+                  </h4>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    {fotosAntes.length > 0 && (
+                      <span className="rounded-md bg-amber-50 px-2 py-0.5 font-bold text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                        {fotosAntes.length} Antes
+                      </span>
                     )}
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                      Ampliar
-                    </div>
+                    {fotosDepois.length > 0 && (
+                      <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                        {fotosDepois.length} Depois
+                      </span>
+                    )}
                   </div>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Bloco Antes */}
+                  {fotosAntes.length > 0 && (
+                    <div className="rounded-2xl border border-amber-200/80 bg-amber-50/20 p-3.5 dark:border-amber-900/40 dark:bg-amber-950/10">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <span className="inline-flex items-center justify-center rounded-md bg-amber-500 text-white p-0.5 text-[10px]">
+                          <AlertTriangle className="h-3 w-3" />
+                        </span>
+                        <h5 className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                          Antes da Intervenção ({fotosAntes.length})
+                        </h5>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {fotosAntes.map((foto, idx) => (
+                          <div
+                            key={foto.id || idx}
+                            onClick={() => foto.preview_url && setFotoAmpliada({ url: foto.preview_url, tipo: 'antes' })}
+                            className="group relative aspect-4/3 overflow-hidden rounded-xl border border-amber-200 bg-slate-100 cursor-pointer dark:border-amber-900/50 dark:bg-slate-900 shadow-xs"
+                          >
+                            {foto.preview_url ? (
+                              <img
+                                src={foto.preview_url}
+                                alt={`Antes ${idx + 1}`}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                                Foto indisponível
+                              </div>
+                            )}
+                            <span className="absolute top-1.5 left-1.5 rounded bg-amber-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white shadow-xs">
+                              Antes
+                            </span>
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                              Ampliar
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bloco Depois */}
+                  {fotosDepois.length > 0 && (
+                    <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/20 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/10">
+                      <div className="flex items-center gap-1.5 mb-2.5">
+                        <span className="inline-flex items-center justify-center rounded-md bg-emerald-600 text-white p-0.5 text-[10px]">
+                          <CheckCircle2 className="h-3 w-3" />
+                        </span>
+                        <h5 className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                          Depois da Ação ({fotosDepois.length})
+                        </h5>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {fotosDepois.map((foto, idx) => (
+                          <div
+                            key={foto.id || idx}
+                            onClick={() => foto.preview_url && setFotoAmpliada({ url: foto.preview_url, tipo: 'depois' })}
+                            className="group relative aspect-4/3 overflow-hidden rounded-xl border border-emerald-200 bg-slate-100 cursor-pointer dark:border-emerald-900/50 dark:bg-slate-900 shadow-xs"
+                          >
+                            {foto.preview_url ? (
+                              <img
+                                src={foto.preview_url}
+                                alt={`Depois ${idx + 1}`}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-slate-400">
+                                Foto indisponível
+                              </div>
+                            )}
+                            <span className="absolute top-1.5 left-1.5 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white shadow-xs">
+                              Depois
+                            </span>
+                            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
+                              Ampliar
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Tratamento SSMA / Atualização de Status */}
           {podeEditar ? (
@@ -441,16 +521,24 @@ export default function SsmaRidDetalhesModal({
           onClick={() => setFotoAmpliada(null)}
         >
           <div className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl">
-            <img src={fotoAmpliada} alt="Foto Ampliada" className="h-full w-full object-contain" />
+            <img src={fotoAmpliada.url} alt="Foto Ampliada" className="h-full w-full object-contain" />
+            <span
+              className={`absolute top-3 left-3 rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-md ${
+                fotoAmpliada.tipo === 'depois' ? 'bg-emerald-600' : 'bg-amber-600'
+              }`}
+            >
+              {fotoAmpliada.tipo === 'depois' ? 'Depois da Ação' : 'Antes da Intervenção'}
+            </span>
             <button
               onClick={() => setFotoAmpliada(null)}
-              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black"
+              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
         </div>
       )}
+
 
       {/* Confirmação de Exclusão */}
       {confirmarExclusao && (
