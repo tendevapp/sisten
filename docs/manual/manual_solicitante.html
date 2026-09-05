@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>SISTEN — Manual do Usuário | Guia do Solicitante</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    :root {
+      --primary: #0047AB;
+      --primary-dark: #003080;
+      --primary-light: #EBF2FF;
+      --accent: #0284C7;
+      --success: #059669;
+      --success-light: #ECFDF5;
+      --warning: #D97706;
+      --warning-light: #FFFBEB;
+      --danger: #DC2626;
+      --danger-light: #FEF2F2;
+      --text-dark: #0F172A;
+      --text-muted: #475569;
+      --border-color: #E2E8F0;
+      --bg-light: #F8FAFC;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text-dark);
+      background-color: #F1F5F9;
+      line-height: 1.55;
+      font-size: 13.5px;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Container de Documento A4 */
+    .document-page {
+      background: white;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      padding: 20mm 18mm 20mm 18mm;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      position: relative;
+    }
+
+    @media print {
+      body {
+        background: transparent;
+      }
+      .document-page {
+        margin: 0;
+        width: 100%;
+        min-height: 100vh;
+        box-shadow: none;
+        padding: 16mm 14mm 16mm 14mm;
+        page-break-after: always;
+        break-after: page;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+    }
+
+    /* Topo e Rodapé das Páginas */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1.5px solid var(--primary-light);
+      padding-bottom: 8px;
+      margin-bottom: 22px;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .page-header .brand {
+      color: var(--primary);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .page-footer {
+      position: absolute;
+      bottom: 12mm;
+      left: 18mm;
+      right: 18mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border-color);
+      padding-top: 8px;
+      font-size: 9.5px;
+      color: var(--text-muted);
+    }
+
+    @media print {
+      .page-footer {
+        left: 14mm;
+        right: 14mm;
+        bottom: 10mm;
+      }
+    }
+
+    /* Estilos de Capa */
+    .cover-page {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: linear-gradient(145deg, #07152B 0%, #0C2340 50%, #0047AB 100%);
+      color: white;
+      padding: 30mm 22mm 25mm 22mm;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #93C5FD;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      width: fit-content;
+      margin-bottom: 24px;
+    }
+
+    .cover-title {
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1.2;
+      color: #FFFFFF;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .cover-subtitle {
+      font-size: 17px;
+      font-weight: 400;
+      color: #BAE6FD;
+      line-height: 1.4;
+      margin-bottom: 25px;
+    }
+
+    .cover-divider {
+      width: 60px;
+      height: 4px;
+      background: #38BDF8;
+      border-radius: 2px;
+      margin-bottom: 30px;
+    }
+
+    .cover-highlights {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+
+    .cover-highlight-card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .cover-highlight-card h4 {
+      font-size: 12px;
+      color: #67E8F9;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .cover-highlight-card p {
+      font-size: 11px;
+      color: #E2E8F0;
+      line-height: 1.35;
+    }
+
+    .cover-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      padding-top: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 11px;
+      color: #94A3B8;
+    }
+
+    .cover-footer strong {
+      color: #FFFFFF;
+      font-size: 12px;
+    }
+
+    /* Tipografia de Seções */
+    h1.chapter-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    h1.chapter-title .ch-num {
+      background: var(--primary);
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    h2.section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1E293B;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    h2.section-title::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h3.subsection-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+
+    p {
+      color: #334155;
+      margin-bottom: 10px;
+      font-size: 12.5px;
+      text-align: justify;
+    }
+
+    ul, ol {
+      margin-left: 18px;
+      margin-bottom: 12px;
+      color: #334155;
+      font-size: 12.5px;
+    }
+
+    li {
+      margin-bottom: 5px;
+    }
+
+    /* Estilo de Imagens com Moldura */
+    figure.screen-shot {
+      margin: 14px 0 16px 0;
+      background: #FFFFFF;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    figure.screen-shot img {
+      width: 100%;
+      height: auto;
+      border-radius: 5px;
+      display: block;
+      border: 1px solid #EEF2F6;
+    }
+
+    figcaption {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-align: center;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    figcaption strong {
+      color: var(--primary);
+    }
+
+    /* Caixas de Destaque (Callouts) */
+    .callout {
+      border-radius: 7px;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .callout-icon {
+      font-size: 15px;
+      line-height: 1;
+      margin-top: 2px;
+      font-weight: bold;
+    }
+
+    .callout-tip {
+      background: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      color: #1E3A8A;
+    }
+
+    .callout-warning {
+      background: var(--warning-light);
+      border-left: 4px solid var(--warning);
+      color: #92400E;
+    }
+
+    .callout-success {
+      background: var(--success-light);
+      border-left: 4px solid var(--success);
+      color: #065F46;
+    }
+
+    .callout-danger {
+      background: var(--danger-light);
+      border-left: 4px solid var(--danger);
+      color: #991B1B;
+    }
+
+    .callout-body {
+      flex: 1;
+      line-height: 1.45;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 3px;
+      font-size: 12px;
+    }
+
+    /* Tabelas de Campos e Elementos */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 11.5px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    table.data-table th {
+      background: #0F172A;
+      color: white;
+      padding: 7px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 11px;
+      border: 1px solid #1E293B;
+    }
+
+    table.data-table td {
+      padding: 6px 10px;
+      border: 1px solid var(--border-color);
+      color: #334155;
+      vertical-align: top;
+    }
+
+    table.data-table tr:nth-child(even) {
+      background-color: #F8FAFC;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .badge-primary { background: #DBEAFE; color: #1D4ED8; }
+    .badge-success { background: #D1FAE5; color: #047857; }
+    .badge-warning { background: #FEF3C7; color: #B45309; }
+    .badge-danger { background: #FEE2E2; color: #B91C1C; }
+    .badge-neutral { background: #F1F5F9; color: #475569; }
+
+    /* Sumário */
+    .toc-container {
+      background: #F8FAFC;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 15px;
+    }
+
+    .toc-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+      border-bottom: 1px dashed #CBD5E1;
+      font-size: 12px;
+      color: #1E293B;
+    }
+
+    .toc-item:last-child {
+      border-bottom: none;
+    }
+
+    .toc-item .num {
+      font-weight: 700;
+      color: var(--primary);
+      margin-right: 8px;
+    }
+
+    .toc-item .desc {
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .toc-item .pag {
+      font-weight: 600;
+      color: var(--text-muted);
+      padding-left: 10px;
+    }
+
+    /* Grid de Cards */
+    .step-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 12px 0;
+      break-inside: avoid;
+    }
+
+    .step-card {
+      background: #F8FAFC;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .step-card h4 {
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .step-card p {
+      font-size: 11px;
+      color: #475569;
+      margin: 0;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 1: CAPA                                                      -->
+  <!-- =================================================================== -->
+  <div class="document-page cover-page">
+    <div>
+      <div class="cover-badge">Manual Operacional Oficial • SISTEN 2026</div>
+      <h1 class="cover-title">GUIA DO SOLICITANTE</h1>
+      <div class="cover-subtitle">Manual Prático de Abertura de Pedidos, Consulta ao Catálogo SAP, Acompanhamento Logístico e Formulários Operacionais</div>
+      <div class="cover-divider"></div>
+
+      <div class="cover-highlights">
+        <div class="cover-highlight-card">
+          <h4>📦 Abertura de Solicitações</h4>
+          <p>Passo a passo detalhado para compra de materiais com ou sem código SAP, contratação de serviços e chamados de suporte.</p>
+        </div>
+        <div class="cover-highlight-card">
+          <h4>🔍 Catálogo & Estoque</h4>
+          <p>Pesquisa ágil no banco de dados corporativo e checagem de saldo imediato no Almoxarifado central.</p>
+        </div>
+        <div class="cover-highlight-card">
+          <h4>🚚 Rastreio Integrado</h4>
+          <p>Visibilidade total da emissão da PO pelo comprador até o transporte, nota fiscal e chegada física na fábrica.</p>
+        </div>
+        <div class="cover-highlight-card">
+          <h4>📋 Formulários de Campo</h4>
+          <p>Emissão simplificada do RID de Segurança (SSMA), solicitações de portaria e autorizações operacionais.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cover-footer">
+      <div>
+        <strong>Torres Eólicas do Nordeste (TEN) — Jacobina / BA</strong><br>
+        Andrade Gutierrez Engenharia S.A.<br>
+        Sistema de Informação TEN (SISTEN)
+      </div>
+      <div style="text-align: right;">
+        <strong>Documento:</strong> MAN.TEN-SIS-001<br>
+        <strong>Versão:</strong> 1.0 (Setembro / 2026)<br>
+        <strong>Público-Alvo:</strong> Requisitantes & Colaboradores
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 2: SUMÁRIO & INTRODUÇÃO                                      -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>SUMÁRIO & APRESENTAÇÃO</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">i</span>
+      Sumário Executivo & Boas-Vindas
+    </h1>
+
+    <p>O <strong>SISTEN (Sistema de Informação TEN)</strong> é a plataforma integrada corporativa das Torres Eólicas do Nordeste para gestão unificada de suprimentos, compras, catálogo de materiais, almoxarifado, helpdesk, formulários operacionais e rastreabilidade logística.</p>
+
+    <p>Este manual foi elaborado para orientar você, colaborador solicitante, em todas as etapas do seu dia a dia na fábrica ou escritório — desde a identificação da sua necessidade operacional até o recebimento físico do item no almoxarifado.</p>
+
+    <div class="callout callout-tip">
+      <span class="callout-icon">💡</span>
+      <div class="callout-body">
+        <div class="callout-title">Acesso Rápido ao Sistema</div>
+        O SISTEN pode ser acessado em qualquer computador ou dispositivo móvel conectado à rede corporativa ou via internet pelo endereço <strong>https://sisten.site</strong> ou pelo endereço da rede local configurado pela TI.
+      </div>
+    </div>
+
+    <div class="toc-container">
+      <h3 style="margin-bottom: 12px; color: var(--primary-dark); font-size: 13px; font-weight: 700; text-transform: uppercase;">Conteúdo Programático do Manual</h3>
+      
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 1</span> Acesso ao SISTEN & Visão Geral da Interface</span>
+        <span class="pag">Pág. 3</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 2</span> Catálogo de Materiais SAP & Consulta de Estoque</span>
+        <span class="pag">Pág. 4</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 3</span> Como Abrir uma Nova Solicitação de Compra</span>
+        <span class="pag">Pág. 5</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 4</span> Escala de Criticidade & Prazos de Atendimento</span>
+        <span class="pag">Pág. 6</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 5</span> Central de Solicitações: Acompanhamento & Histórico</span>
+        <span class="pag">Pág. 7</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 6</span> Rastreio de Compras & Previsão de Entrega (Lead Time)</span>
+        <span class="pag">Pág. 8</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 7</span> Hub de Formulários Operacionais & RID (SSMA)</span>
+        <span class="pag">Pág. 9</span>
+      </div>
+      <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 8</span> Boas Práticas, Perguntas Frequentes & Suporte</span>
+        <span class="pag">Pág. 10</span>
+      </div>
+    </div>
+
+    <h2 class="section-title">Papel do Solicitante no Fluxo Operacional</h2>
+    <p>O solicitante é o responsável por iniciar a cadeia de suprimentos. Um pedido bem preenchido, com especificações claras e justificativa sólida, reduz em até <strong>70% o tempo total de compra</strong> e elimina atrasos por dúvidas do comprador ou erros de cotação.</p>
+
+    <div class="step-grid">
+      <div class="step-card">
+        <h4>1. Identificar com Clareza</h4>
+        <p>Verifique sempre se o material já existe no catálogo SAP e se há saldo disponível no estoque antes de pedir nova compra.</p>
+      </div>
+      <div class="step-card">
+        <h4>2. Justificar com Precisão</h4>
+        <p>Informe onde o material será aplicado (máquina, obra, setor) e o impacto caso o item não esteja disponível na data.</p>
+      </div>
+      <div class="step-card">
+        <h4>3. Acompanhar a Central</h4>
+        <p>Consulte periodicamente a aba "Precisa de Mim" na Central de Solicitações para responder dúvidas técnicas dos compradores.</p>
+      </div>
+      <div class="step-card">
+        <h4>4. Confirmar o Recebimento</h4>
+        <p>Acompanhe o Rastreio de Compras para saber o dia em que o caminhão descarregará o item no Almoxarifado central.</p>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 2 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 3: CAPÍTULO 1 - ACESSO AO SISTEMA                            -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 1: ACESSO AO SISTEMA</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">1</span>
+      Acesso ao SISTEN & Visão Geral da Interface
+    </h1>
+
+    <h2 class="section-title">1.1 Tela de Login & Autenticação</h2>
+    <p>O acesso ao SISTEN é individual e protegido por credenciais corporativas. Ao acessar a aplicação, você verá a tela de boas-vindas com a imagem da unidade TEN de Jacobina/BA.</p>
+
+    <figure class="screen-shot">
+      <img src="images/01_login.png" alt="Tela de Login do SISTEN">
+      <figcaption><strong>Figura 1.1:</strong> Tela de Login do SISTEN com autenticação por e-mail corporativo e senha.</figcaption>
+    </figure>
+
+    <h3 class="subsection-title">Passo a Passo para Entrar no Sistema:</h3>
+    <ol>
+      <li>No campo <strong>E-mail</strong>, informe seu endereço corporativo completo (ex.: <code>seu.nome@ten.ind.br</code> ou <code>seu.nome@agnet.com.br</code>).</li>
+      <li>Digite sua <strong>Senha</strong> de acesso.</li>
+      <li>(Opcional) Marque a opção <strong>"Lembrar meu acesso"</strong> para manter a sessão ativa neste computador.</li>
+      <li>Clique no botão azul <strong>"Entrar"</strong>.</li>
+    </ol>
+
+    <div class="callout callout-warning">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-body">
+        <div class="callout-title">Esqueceu sua Senha ou Primeiro Acesso?</div>
+        Caso não lembre de sua senha, clique no link <strong>"Esqueci minha senha"</strong> logo acima do campo de senha. Informe seu e-mail corporativo cadastrado e você receberá instantaneamente um link seguro em sua caixa de entrada para criar uma nova senha pessoal.
+      </div>
+    </div>
+
+    <h2 class="section-title">1.2 Tela Início (Dashboard do Solicitante)</h2>
+    <p>Após a autenticação bem-sucedida, você é direcionado à tela <strong>Início</strong>, personalizada com o seu nome, cargo e setor.</p>
+
+    <figure class="screen-shot">
+      <img src="images/02_inicio.png" alt="Tela Inicial do Solicitante">
+      <figcaption><strong>Figura 1.2:</strong> Painel Início do Solicitante com notificações, métricas e menu de navegação.</figcaption>
+    </figure>
+
+    <p><strong>Destaques da Tela Início:</strong></p>
+    <ul>
+      <li><strong>Contador de Solicitações em Aberto:</strong> Mostra rapidamente quantas demandas suas estão em andamento.</li>
+      <li><strong>Mural de Notificações:</strong> Alertas importantes sobre aprovações, cotações finalizadas e pedidos emitidos.</li>
+      <li><strong>Minhas Solicitações Recentes:</strong> Atalho com as últimas requisições criadas por você.</li>
+      <li><strong>Menu Lateral (Sidebar):</strong> Permite navegar com um clique para <em>Formulários, Catálogo SAP, Rastreio Compras e Nova Solicitação</em>.</li>
+    </ul>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 3 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 4: CAPÍTULO 2 - CATÁLOGO DE MATERIAIS SAP                    -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 2: CATÁLOGO SAP & ESTOQUE</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">2</span>
+      Catálogo de Materiais SAP & Consulta de Estoque
+    </h1>
+
+    <p>Antes de redigir qualquer solicitação de compra, a primeira etapa recomendada é consultar o <strong>Catálogo de Materiais SAP</strong>. Essa consulta garante o uso do código correto (8 dígitos) e permite conferir se o material já está disponível nas prateleiras do Almoxarifado Central.</p>
+
+    <figure class="screen-shot">
+      <img src="images/03_catalogo_sap.png" alt="Catálogo de Materiais SAP">
+      <figcaption><strong>Figura 2.1:</strong> Interface de pesquisa no Catálogo SAP com filtros combinados e chips de busca.</figcaption>
+    </figure>
+
+    <h2 class="section-title">2.1 Como Realizar Buscas Eficientes</h2>
+    <p>A barra de busca do SISTEN utiliza um mecanismo de busca por palavras-chave inteligentes. Para encontrar itens com rapidez:</p>
+    <ul>
+      <li><strong>Por Descrição Técnica:</strong> Digite termos essenciais separados por espaço. Exemplo: <code>PARAFUSO SEXTAVADO M12</code> ou <code>LUVAS VAQUETA</code>.</li>
+      <li><strong>Por Código SAP:</strong> Se você já souber o número SAP de 8 dígitos (ex.: <code>10024560</code>), digite-o diretamente na barra de pesquisa.</li>
+      <li><strong>Filtro por Unidade de Medida:</strong> Permite filtrar apenas itens medidos em PC (Peça), UN (Unidade), KG (Quilograma), M (Metro), etc.</li>
+      <li><strong>Filtro de Categoria e TMAT:</strong> Restringe a pesquisa entre consumíveis, insumos produtivos, EPIs ou peças de manutenção.</li>
+    </ul>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 25%;">Coluna / Campo</th>
+          <th style="width: 35%;">O que indica?</th>
+          <th style="width: 40%;">Orientação para o Solicitante</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>CÓDIGO SAP</strong></td>
+          <td>Código oficial de 8 dígitos cadastrado no SAP da TEN.</td>
+          <td>Copie este código para colar no formulário da sua solicitação de compra.</td>
+        </tr>
+        <tr>
+          <td><strong>DESCRIÇÃO SAP</strong></td>
+          <td>Texto técnico padronizado com medidas, normas e especificações.</td>
+          <td>Verifique se atende com exatidão a sua necessidade de campo.</td>
+        </tr>
+        <tr>
+          <td><strong>UNIDADE (UN)</strong></td>
+          <td>Unidade de controle de estoque (PC, CX, PAR, ROLO).</td>
+          <td>Sua solicitação deve ser feita sempre na mesma unidade oficial do item.</td>
+        </tr>
+        <tr>
+          <td><strong>STATUS SAP</strong></td>
+          <td>Indica se o material está Ativo, Bloqueado ou Obsoleto.</td>
+          <td>Itens bloqueados necessitam de liberação prévia com a equipe de Suprimentos.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-success">
+      <span class="callout-icon">✅</span>
+      <div class="callout-body">
+        <div class="callout-title">Por que usar o Código SAP?</div>
+        Quando você abre uma solicitação informando o Código SAP correto, o comprador não precisa pesquisar cotações do zero: o histórico de fornecedores homologados e os últimos preços praticados já são carregados automaticamente pelo sistema, acelerando a compra!
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 4 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 5: CAPÍTULO 3 - COMO ABRIR UMA NOVA SOLICITAÇÃO             -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 3: NOVA SOLICITAÇÃO</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">3</span>
+      Como Abrir uma Nova Solicitação de Compra
+    </h1>
+
+    <p>Para abrir um novo pedido, clique no menu lateral em <strong>Nova Solicitação</strong> ou no botão <strong>"+ Nova Solicitação"</strong> no topo da tela.</p>
+
+    <figure class="screen-shot">
+      <img src="images/04_nova_solicitacao.png" alt="Formulário de Nova Solicitação">
+      <figcaption><strong>Figura 3.1:</strong> Formulário de Nova Solicitação com seleção de canal, dados de itens, prazo e criticidade.</figcaption>
+    </figure>
+
+    <h2 class="section-title">3.1 Escolha o Tipo de Solicitação</h2>
+    <p>No topo da tela, você deve selecionar uma entre as 3 opções disponíveis:</p>
+    <ul>
+      <li><strong>🛒 Compra:</strong> Para adquirir materiais físicos (ferramentas, consumíveis, EPIs, peças) ou contratar serviços de terceiros.</li>
+      <li><strong>📝 Cadastro SAP:</strong> Para pedir o cadastramento de um novo item que não existe no catálogo SAP, ou homologar um novo fornecedor.</li>
+      <li><strong>🎧 Chamado:</strong> Para registrar chamados de suporte interno (TI, Facilities predial, Jurídico ou Suprimentos).</li>
+    </ul>
+
+    <h2 class="section-title">3.2 Preenchimento dos Campos Obrigatórios</h2>
+    
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 28%;">Campo</th>
+          <th style="width: 14%;">Obrigatório?</th>
+          <th style="width: 58%;">Como preencher?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Setor Solicitante</strong></td>
+          <td><span class="badge badge-danger">SIM</span></td>
+          <td>Selecione o seu setor (ex.: <em>Operações, Qualidade, Manutenção, SSMA, Facilities</em>). Esse setor define o centro de custo de cobrança.</td>
+        </tr>
+        <tr>
+          <td><strong>Tipo de Compra</strong></td>
+          <td><span class="badge badge-danger">SIM</span></td>
+          <td>Escolha entre <strong>ESTOQUE</strong> (itens de almoxarifado), <strong>DIRETA</strong> (aplicação imediata) ou <strong>SERVIÇO</strong> (mão de obra).</td>
+        </tr>
+        <tr>
+          <td><strong>Código / Busca SAP</strong></td>
+          <td><span class="badge badge-primary">RECOMENDADO</span></td>
+          <td>Digite o nome ou código e tecle Enter ou clique em <strong>"Buscar"</strong> para selecionar o item na janela de catálogo integrada.</td>
+        </tr>
+        <tr>
+          <td><strong>Item Genérico</strong></td>
+          <td><span class="badge badge-neutral">OPÇÃO</span></td>
+          <td>Marque este checkbox apenas caso o item <strong>não exista no SAP</strong>. Nesse caso, digite uma descrição minuciosa e anexe foto/orçamento.</td>
+        </tr>
+        <tr>
+          <td><strong>Quantidade & Unidade</strong></td>
+          <td><span class="badge badge-danger">SIM</span></td>
+          <td>Informe o volume exato necessário (ex.: <code>10</code>) e a unidade correspondente (ex.: <code>UN</code>, <code>PC</code>, <code>KG</code>).</td>
+        </tr>
+        <tr>
+          <td><strong>Fabricante / Referência</strong></td>
+          <td><span class="badge badge-neutral">OPCIONAL</span></td>
+          <td>Indique a marca de preferência ou cole o link do site do fabricante (ex.: catálogo técnico ou distribuidor autorizado).</td>
+        </tr>
+        <tr>
+          <td><strong>Justificativa Técnica</strong></td>
+          <td><span class="badge badge-danger">SIM</span></td>
+          <td>Explique o motivo da compra e onde o material será aplicado. Exemplo: <em>"Substituição preventiva dos rolamentos da esteira 03 da linha de solda."</em></td>
+        </tr>
+        <tr>
+          <td><strong>Anexar Foto ou PDF</strong></td>
+          <td><span class="badge badge-neutral">RECOMENDADO</span></td>
+          <td>Anexe cotações recebidas, orçamentos, desenhos técnicos ou fotos da peça danificada para facilitar a compra.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 5 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 6: CAPÍTULO 4 - CRITICIDADE & PRAZOS DE COMPRA               -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 4: CRITICIDADE & PRAZOS</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">4</span>
+      Escala de Criticidade & Prazos de Atendimento
+    </h1>
+
+    <p>Para equilibrar as prioridades de compra de toda a fábrica, o SISTEN conta com uma régua de criticidade em 5 níveis no painel lateral do formulário. A escolha correta do grau garante que demandas urgentes recebam tratamento imediato sem prejudicar as compras planejadas.</p>
+
+    <h2 class="section-title">4.1 Os 5 Graus de Criticidade</h2>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 15%;">Grau</th>
+          <th style="width: 25%;">Classificação</th>
+          <th style="width: 35%;">Quando utilizar?</th>
+          <th style="width: 25%;">Prazo Sugerido</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-neutral">Grau 1</span></td>
+          <td><strong>Planejada</strong></td>
+          <td>Demandas rotineiras, reposição periódica sem pressão de prazo.</td>
+          <td>Acima de 30 dias</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-primary">Grau 2</span></td>
+          <td><strong>Normal com Fôlego</strong></td>
+          <td>Necessidade de médio prazo com folga para cotação e negociação.</td>
+          <td>De 2 a 4 semanas</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-warning">Grau 3</span></td>
+          <td><strong>Atenção / Começa a Apertar</strong></td>
+          <td>Estoque próximo ao ponto de reposição ou evento agendado.</td>
+          <td>De 1 a 2 semanas</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-warning" style="background:#FED7AA; color:#9A3412;">Grau 4</span></td>
+          <td><strong>Situação Crítica</strong></td>
+          <td>Risco iminente de impacto na produção ou parada programada próxima.</td>
+          <td>Menos de 7 dias</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-danger">Grau 5</span></td>
+          <td><strong>Emergência / Parada</strong></td>
+          <td>Produção já parada ou risco grave e imediato à integridade física/segurança.</td>
+          <td>Imediato (Urgente)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-danger">
+      <span class="callout-icon">🚨</span>
+      <div class="callout-body">
+        <div class="callout-title">Atenção ao Uso do Grau 4 e Grau 5</div>
+        Solicitações marcadas como Grau 4 ou Grau 5 disparam alertas de alta prioridade para o gestor e para a coordenação de Suprimentos. A justificativa técnica deve detalhar expressamente o motivo do risco ou da emergência. Solicitações urgentes sem justificativa plausível são devolvidas para adequação de prazo.
+      </div>
+    </div>
+
+    <h2 class="section-title">4.2 Data Limite de Necessidade no Almoxarifado</h2>
+    <p>No campo <strong>"Pra quando? Data Limite de Necessidade no Almoxarifado"</strong>, indique a data em que o material precisa impreterivelmente estar fisicamente guardado e liberado para retirada.</p>
+    
+    <p>Lembre-se sempre de considerar a composição do tempo total (<em>Lead Time</em>):</p>
+    <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin: 10px 0; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--primary);">
+      [ Aprovação do Gestor ] ➜ [ Cotação de Preços ] ➜ [ Emissão da PO ] ➜ [ Fabricação/Despacho ] ➜ [ Frete Rodoviário ] ➜ [ Entrada MIGO no Almoxarifado ]
+    </div>
+
+    <h2 class="section-title">4.3 Salvamento Automático como Rascunho</h2>
+    <p>O SISTEN conta com o recurso <strong>"Rascunho Salvo"</strong>. Caso você esteja preenchendo uma solicitação extensa e precise pausar ou fechar o navegador, seus dados são preservados automaticamente na memória local, permitindo retomar exatamente de onde parou ao reabrir a tela.</p>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 6 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 7: CAPÍTULO 5 - CENTRAL DE SOLICITAÇÕES                     -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 5: CENTRAL DE SOLICITAÇÕES</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">5</span>
+      Central de Solicitações: Acompanhamento & Histórico
+    </h1>
+
+    <p>A <strong>Central de Solicitações</strong> (menu <em>Solicitações</em>) é o cockpit onde você gerencia todas as suas requisições, verifica o andamento em tempo real e interage diretamente com os compradores.</p>
+
+    <figure class="screen-shot">
+      <img src="images/05_central_solicitacoes.png" alt="Central de Solicitações">
+      <figcaption><strong>Figura 5.1:</strong> Central de Solicitações com abas de escopo, filtros de categoria e fila de pendências.</figcaption>
+    </figure>
+
+    <h2 class="section-title">5.1 As Abas da Central de Solicitações</h2>
+    <ul>
+      <li><strong>🎯 Aba "Precisa de Mim":</strong> É a aba mais importante para o solicitante! Mostra solicitações em que o comprador ou gestor solicitou esclarecimentos adicionais, como validação de marca alternativa, orçamento complementar ou detalhes técnicos.</li>
+      <li><strong>📂 Aba "Minhas":</strong> Contém todas as solicitações abertas por você (ativas, em cotação, concluídas ou rejeitadas).</li>
+      <li><strong>👥 Aba "Todas":</strong> Fila geral de solicitações da fábrica, permitindo consultar pedidos de colegas do mesmo setor para evitar duplicidades.</li>
+    </ul>
+
+    <h2 class="section-title">5.2 Ciclo de Vida & Status da Solicitação</h2>
+    <p>Ao clicar sobre qualquer solicitação na lista, o painel lateral abre exibindo a linha do tempo completa e os dados dos itens:</p>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 25%;">Status</th>
+          <th style="width: 25%;">Etapa Atual</th>
+          <th style="width: 50%;">O que significa?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-warning">Aguardando Aprovação</span></td>
+          <td>Gestor Imediato</td>
+          <td>A solicitação aguarda o aceite do gestor do centro de custo para seguir a compras.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-primary">Em Cotação</span></td>
+          <td>Comprador</td>
+          <td>O setor de Suprimentos está consultando fornecedores e coletando propostas de preço.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-primary" style="background:#E0E7FF; color:#4338CA;">Pedido Emitido (PO)</span></td>
+          <td>Fornecedor</td>
+          <td>O Pedido de Compra foi fechado e enviado ao fornecedor para faturamento e despacho.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-warning" style="background:#FEF3C7; color:#B45309;">Em Trânsito</span></td>
+          <td>Transportadora</td>
+          <td>A mercadoria foi despachada com Nota Fiscal e está em rota com destino a Jacobina/BA.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-success">Recebido / Concluído</span></td>
+          <td>Almoxarifado</td>
+          <td>O material foi conferido fisicamente e deu entrada no estoque (MIGO gerada).</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-danger">Rejeitado</span></td>
+          <td>Cancelada</td>
+          <td>O gestor ou comprador reprovou o pedido, registrando o motivo formal no histórico.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-tip">
+      <span class="callout-icon">💬</span>
+      <div class="callout-body">
+        <div class="callout-title">Conversa com o Comprador</div>
+        Dentro dos detalhes de cada solicitação, há um campo de comentários. Você pode enviar mensagens diretamente para o comprador responsável para esclarecer especificações ou anexar novas propostas sem precisar enviar e-mails externos.
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 7 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 8: CAPÍTULO 6 - RASTREIO DE COMPRAS                         -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 6: RASTREIO DE COMPRAS</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">6</span>
+      Rastreio de Compras & Previsão de Entrega
+    </h1>
+
+    <p>O <strong>Rastreio Compras</strong> (menu <em>Rastreio Compras</em>) oferece ao solicitante total transparência sobre o andamento dos pedidos colocados no SAP da TEN, eliminando a necessidade de ligar para o setor de compras ou para o almoxarifado para saber se uma peça chegou.</p>
+
+    <figure class="screen-shot">
+      <img src="images/06_rastreio_compras.png" alt="Tela de Rastreio de Compras">
+      <figcaption><strong>Figura 6.1:</strong> Painel de Rastreio Compras com métricas de pontualidade, filtros por setor e tabela de pedidos.</figcaption>
+    </figure>
+
+    <h2 class="section-title">6.1 Indicadores de Desempenho no Topo da Tela</h2>
+    <p>Logo ao abrir a página, quatro cards coloridos resumem a situação das compras:</p>
+    <ul>
+      <li><strong>📦 REGISTROS:</strong> Quantidade total de itens monitorados no período.</li>
+      <li><strong>🕒 NO PRAZO:</strong> Pedidos em rota de entrega dentro da data acordada com o fornecedor.</li>
+      <li><strong>⚠️ ATRASADOS:</strong> Pedidos com entrega expirada aguardando cobrança do comprador.</li>
+      <li><strong>✅ ENTREGUES:</strong> Volume de compras já descarregadas e conferidas com sucesso.</li>
+    </ul>
+
+    <h2 class="section-title">6.2 Como Consultar o seu Pedido</h2>
+    <p>Na barra de pesquisa da tabela, você pode localizar sua compra através de qualquer um dos seguintes dados:</p>
+    <ul>
+      <li><strong>Número da RM (Requisição de Material):</strong> Ex.: <code>1100319476</code>.</li>
+      <li><strong>Número do Pedido de Compra (PO):</strong> Ex.: <code>4100438000</code>.</li>
+      <li><strong>Nome do Fornecedor:</strong> Ex.: <code>SOLO NETWORK</code>, <code>CARNEIRO E SILVA</code>.</li>
+      <li><strong>Descrição do Item ou Código SAP:</strong> Ex.: <code>DIPIRONA</code> ou código <code>1407544</code>.</li>
+    </ul>
+
+    <h2 class="section-title">6.3 Visualização por Cronograma (Gantt)</h2>
+    <p>Além da tradicional visualização em <strong>Tabela</strong>, você pode clicar na aba <strong>Cronograma</strong>. O sistema desenhará um gráfico visual no calendário mostrando as semanas em que cada fornecedor está programado para entregar cargas na portaria da TEN.</p>
+
+    <div class="callout callout-tip">
+      <span class="callout-icon">📥</span>
+      <div class="callout-body">
+        <div class="callout-title">Exportação em PDF e Excel</div>
+        Você pode exportar a lista de compras do seu setor a qualquer momento clicando nos botões <strong>PDF</strong> ou <strong>Excel</strong> localizados no canto superior direito da tela de Rastreio, ideal para reuniões operacionais de planejamento semanal.
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 8 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 9: CAPÍTULO 7 - FORMULÁRIOS OPERACIONAIS & RID              -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 7: FORMULÁRIOS & SSMA RID</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">7</span>
+      Hub de Formulários Operacionais & RID (SSMA)
+    </h1>
+
+    <p>O SISTEN centraliza formulários operacionais das áreas de apoio à fábrica. No menu <strong>Formulários</strong>, você tem acesso aos módulos de <em>Segurança Patrimonial (Portaria), Logística & Expedição e SSMA</em>.</p>
+
+    <figure class="screen-shot">
+      <img src="images/07_formularios_hub.png" alt="Hub de Formulários Operacionais">
+      <figcaption><strong>Figura 7.1:</strong> Hub Operacional com os módulos de formulários ativos no SISTEN.</figcaption>
+    </figure>
+
+    <h2 class="section-title">7.1 Módulo de SSMA & Registro de Desvio (RID)</h2>
+    <p>A segurança é o valor prioritário na TEN. O formulário <strong>RID (Registro de Identificação de Desvio - FRM.SSMA-0001)</strong> permite que qualquer colaborador reporte desvios comportamentais, condições inseguras no chão de fábrica e oportunidades de melhoria preventiva.</p>
+
+    <figure class="screen-shot">
+      <img src="images/08_formulario_ssma.png" alt="Módulo SSMA">
+      <figcaption><strong>Figura 7.2:</strong> Painel de SSMA com contagem de desvios, status de resolução e acesso ao formulário RID.</figcaption>
+    </figure>
+
+    <h3 class="subsection-title">Como Preencher um RID no SISTEN:</h3>
+    <ol>
+      <li>No Hub de Formulários, clique em <strong>Acessar</strong> no card de <em>SSMA - Saúde, Segurança & Meio Ambiente</em>.</li>
+      <li>Selecione o formulário <strong>"RID - Registro de Identificação de Desvio"</strong>.</li>
+      <li>Indique o <strong>Setor / Área</strong> onde o desvio foi constatado (ex.: Galpão de Solda, Jateamento, Almoxarifado, Pátio externo).</li>
+      <li>Classifique o tipo de desvio: <em>Condição Insegura</em> ou <em>Ato Inseguro</em>.</li>
+      <li>Descreva com precisão o que você observou e informe se a situação foi <strong>"Sanada no Ato"</strong> (resolvida imediatamente por você) ou se <strong>"Aguarda Ação Corretiva"</strong> da equipe técnica.</li>
+      <li>Anexe uma fotografia da condição identificada para comprovação e clique em <strong>Salvar RID</strong>.</li>
+    </ol>
+
+    <h2 class="section-title">7.2 Formulários de Portaria & Logística</h2>
+    <ul>
+      <li><strong>Equipamentos de Terceiros (FRM.SGP-0011):</strong> Para registrar a entrada de ferramentas e máquinas de prestadores de serviço, garantindo a liberação na saída.</li>
+      <li><strong>Passagem de Plantão (FRM.SGP-0010):</strong> Registro de ocorrências no turno da vigilância patrimonial.</li>
+    </ul>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 9 de 10</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 10: CAPÍTULO 8 - BOAS PRÁTICAS & FAQ                        -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 8: BOAS PRÁTICAS & FAQ</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">8</span>
+      Boas Práticas, Perguntas Frequentes & Suporte
+    </h1>
+
+    <h2 class="section-title">8.1 5 Regras de Ouro para um Pedido Perfeito</h2>
+    <div class="step-grid">
+      <div class="step-card">
+        <h4>1. Sempre Consulte o Catálogo</h4>
+        <p>Mais de 80% dos materiais de uso corrente na fábrica já possuem código SAP cadastrado. Usar o código reduz o prazo pela metade.</p>
+      </div>
+      <div class="step-card">
+        <h4>2. Anexe Desenhos ou Fotos</h4>
+        <p>Para peças usinadas, ferramentas especiais ou cabos elétricos, fotos da placa de identificação evitam erros na compra.</p>
+      </div>
+      <div class="step-card">
+        <h4>3. Planeje com Antecedência</h4>
+        <p>Evite usar Criticidade Grau 4 ou 5 para itens previsíveis. O frete de emergência onera os custos e pode atrasar o fluxo padrão.</p>
+      </div>
+      <div class="step-card">
+        <h4>4. Detalhe a Justificativa</h4>
+        <p>Informações como "Troca na esteira 02" ou "EPI para novos contratados" facilitam a aprovação rápida pelo seu gestor.</p>
+      </div>
+    </div>
+
+    <h2 class="section-title">8.2 Perguntas Frequentes (FAQ)</h2>
+
+    <div style="margin-bottom: 10px;">
+      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Posso editar uma solicitação depois de enviada?</h3>
+      <p style="margin-bottom: 8px;">Sim! Enquanto a solicitação estiver com status <em>"Aguardando Aprovação"</em>, você pode abrir o pedido e editar itens ou anexos. Se ela já tiver sido aprovada e estiver com o comprador, envie uma mensagem pelo campo de comentários interno.</p>
+    </div>
+
+    <div style="margin-bottom: 10px;">
+      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">O que fazer se o material não tiver código SAP?</h3>
+      <p style="margin-bottom: 8px;">Selecione o canal <strong>"Cadastro SAP"</strong> no topo da tela de Nova Solicitação para solicitar a criação do código ao time de cadastros, ou marque o checkbox <strong>"Item Genérico"</strong> na solicitação de compra descrevendo a marca e modelo.</p>
+    </div>
+
+    <div style="margin-bottom: 10px;">
+      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Como sei que o material chegou no Almoxarifado?</h3>
+      <p style="margin-bottom: 8px;">Na tela <strong>Rastreio Compras</strong>, o status do item mudará para <em>"Entregue"</em> com a data de entrada (MIGO) preenchida. Você também receberá um alerta na sua aba de Notificações da tela Início.</p>
+    </div>
+
+    <h2 class="section-title">8.3 Contatos & Suporte ao SISTEN</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Área de Atendimento</th>
+          <th>Responsável / Ramal</th>
+          <th>Tipo de Dúvida</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Suprimentos & Compras</strong></td>
+          <td>Equipe de Compradores TEN</td>
+          <td>Dúvidas de prazos, cotações e marcas alternativas.</td>
+        </tr>
+        <tr>
+          <td><strong>Almoxarifado Central</strong></td>
+          <td>Equipe de Recebimento Físico</td>
+          <td>Saldo em prateleira, conferência de carga e retirada.</td>
+        </tr>
+        <tr>
+          <td><strong>Suporte Técnico SISTEN (TI)</strong></td>
+          <td>Helpdesk Interno / ramal TI</td>
+          <td>Acesso, primeiro login, recuperação de senha e bugs.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-tip" style="margin-top: 20px;">
+      <span class="callout-icon">⭐</span>
+      <div class="callout-body">
+        <div class="callout-title">SISTEN — Tecnologia a Serviço da Eficiência</div>
+        Este manual foi gerado em conformidade com as diretrizes operacionais de 2026 das Torres Eólicas do Nordeste (TEN). Mantenha este documento salvo para consulta rápida e consulte sempre as versões atualizadas no menu "Sobre o SISTEN".
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 10 de 10</div>
+    </div>
+  </div>
+
+</body>
+</html>

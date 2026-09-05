@@ -815,6 +815,50 @@ export async function listarSolicitacoesASE(incluirExcluidos = false): Promise<A
   })) as AseHoraExtraCompleta[];
 }
 
+/**
+ * Solicitações de um intervalo de datas de execução, para o relatório.
+ *
+ * `listarSolicitacoesASE` existe para a lista de trabalho e corta em 300
+ * registros recentes; um relatório de "este ano" passaria muito disso e
+ * mostraria número errado sem avisar. Aqui o recorte é por data no servidor,
+ * com teto bem mais alto.
+ */
+export async function listarSolicitacoesASEPeriodo(
+  de?: string | null,
+  ate?: string | null,
+  incluirExcluidos = false,
+): Promise<AseHoraExtraCompleta[]> {
+  const rotasMapPromise = carregarMapaRotas();
+  let query = supabase
+    .from('rh_ase_solicitacoes')
+    .select(`
+      *,
+      setor:rh_setores (nome),
+      turno:rh_turnos (nome),
+      solicitante:profiles!rh_ase_solicitacoes_solicitante_id_fkey (name),
+      itens:rh_ase_itens (*)
+    `)
+    .order('data_execucao', { ascending: false })
+    .limit(5000);
+
+  if (de) query = query.gte('data_execucao', de);
+  if (ate) query = query.lte('data_execucao', ate);
+
+  query = apenasVigentes(query, incluirExcluidos);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const rotasMap = await rotasMapPromise;
+
+  return (data || []).map((row: any) => ({
+    ...row,
+    setor_nome: row.setor?.nome ?? null,
+    turno_nome: row.turno?.nome ?? null,
+    solicitante_nome: row.solicitante?.name ?? null,
+    itens: semExcluidos(row.itens, incluirExcluidos).map((it: any) => normalizarItem(it, rotasMap)),
+  })) as AseHoraExtraCompleta[];
+}
+
 export async function obterSolicitacaoASE(id: string, incluirExcluidos = false): Promise<AseHoraExtraCompleta | null> {
   const rotasMapPromise = carregarMapaRotas();
   const { data, error } = await supabase

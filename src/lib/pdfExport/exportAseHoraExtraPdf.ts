@@ -10,6 +10,7 @@ import { rgb } from 'pdf-lib';
 import type { AseHoraExtraCompleta, AseHoraExtraItem } from '../../types';
 import { createDoc, PdfTextWriter, downloadPdf, sanitizeText, MARGIN, PAGE_HEIGHT, PAGE_WIDTH } from './core';
 import { diaDaSemana } from '../rhApi';
+import type { GrupoAse, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
 
 function formatDataBR(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -1392,4 +1393,177 @@ export function exportAseConsolidadoDiaExcel(solicitacoes: AseHoraExtraCompleta[
   XLSX.utils.book_append_sheet(wb, wsRefeicao, 'Refeição');
 
   XLSX.writeFile(wb, `ase-consolidado-${dataExecucao}.xlsx`);
+}
+/* ------------------------------------------------------------------ */
+/* Relatório gerencial de ASE (tela RhAseRelatorio)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Exporta em Excel exatamente o que o relatório está mostrando: os mesmos
+ * agregados dos gráficos, cada um em uma aba, mais a lista de ASEs e o
+ * detalhe por colaborador que sustentam os números.
+ *
+ * Os agregados chegam prontos da tela (calculados em `aseRelatorio.ts`) em
+ * vez de serem recalculados aqui — se a planilha refizesse a conta por conta
+ * própria, um dia divergiria do painel.
+ */
+export function exportAseRelatorioExcel(params: {
+  solicitacoes: AseHoraExtraCompleta[];
+  linhas: LinhaColaboradorAse[];
+  resumo: ResumoAse;
+  serie: PontoDiario[];
+  porSetor: GrupoAse[];
+  porTurno: GrupoAse[];
+  porSolicitante: GrupoAse[];
+  porColaborador: GrupoAse[];
+  rotas: GrupoAse[];
+  descricaoFiltro: string;
+}): void {
+  const {
+    solicitacoes, linhas, resumo, serie,
+    porSetor, porTurno, porSolicitante, porColaborador, rotas, descricaoFiltro,
+  } = params;
+
+  const h2 = (v: number) => Number(v.toFixed(2));
+  const wb = XLSX.utils.book_new();
+
+  // Aba 1: Resumo (filtros aplicados + indicadores do topo da tela)
+  const resumoRows: (string | number)[][] = [
+    ['RELATÓRIO DE ASE - HORA EXTRA (FRM.RHU-0007)'],
+    [`Gerado em: ${new Date().toLocaleString('pt-BR')}`],
+    [descricaoFiltro],
+    [],
+    ['INDICADORES', ''],
+    ['ASEs no período', resumo.ases],
+    ['Autorizações de colaborador', resumo.colaboradores],
+    ['Colaboradores distintos', resumo.pessoasDistintas],
+    ['Total de horas extras (h)', h2(resumo.horas)],
+    ['Média de horas por colaborador (h)', h2(resumo.mediaHorasPorColaborador)],
+    ['Média de colaboradores por ASE', h2(resumo.mediaColaboradoresPorAse)],
+    ['Transportes', resumo.transportes],
+    ['Refeições', resumo.refeicoes],
+    ['Dias com ASE', resumo.diasComAse],
+  ];
+  const wsResumo = XLSX.utils.aoa_to_sheet(resumoRows);
+  wsResumo['!cols'] = [{ wch: 38 }, { wch: 18 }];
+  XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+
+  // Aba 2: série diária (gráfico de evolução)
+  const diaRows: (string | number)[][] = [
+    ['EVOLUÇÃO DIÁRIA'],
+    [],
+    ['Data', 'ASEs', 'Colaboradores', 'Horas (h)', 'Transportes', 'Refeições'],
+    ...serie.map(p => [formatDataBR(p.dia), p.ases, p.colaboradores, h2(p.horas), p.transportes, p.refeicoes]),
+  ];
+  const wsDia = XLSX.utils.aoa_to_sheet(diaRows);
+  wsDia['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsDia, 'Por dia');
+
+  // Abas 3-6: os recortes de barras, todos com o mesmo cabeçalho
+  const grupoSheet = (
+    titulo: string,
+    aba: string,
+    rotuloChave: string,
+    dados: GrupoAse[],
+    larguraChave = 32,
+  ) => {
+    const rows: (string | number)[][] = [
+      [titulo],
+      [],
+      [rotuloChave, 'Horas (h)', 'Colaboradores', 'ASEs', 'Transportes', 'Refeições'],
+      ...dados.map(g => [g.nome, h2(g.horas), g.colaboradores, g.ases, g.transportes, g.refeicoes]),
+      [],
+      [
+        'TOTAL',
+        h2(dados.reduce((a, g) => a + g.horas, 0)),
+        dados.reduce((a, g) => a + g.colaboradores, 0),
+        '',
+        dados.reduce((a, g) => a + g.transportes, 0),
+        dados.reduce((a, g) => a + g.refeicoes, 0),
+      ],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: larguraChave }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws, aba);
+  };
+
+  grupoSheet('HORAS EXTRAS POR SETOR', 'Por setor', 'Setor', porSetor);
+  grupoSheet('HORAS EXTRAS POR TURNO', 'Por turno', 'Turno', porTurno, 24);
+  grupoSheet('HORAS EXTRAS POR SOLICITANTE', 'Por solicitante', 'Solicitante', porSolicitante);
+  grupoSheet('HORAS EXTRAS POR COLABORADOR', 'Por colaborador', 'Matrícula - Colaborador', porColaborador, 38);
+  if (rotas.length > 0) {
+    grupoSheet('TRANSPORTE POR ROTA', 'Por rota', 'Rota', rotas, 20);
+  }
+
+  // Aba 7: as ASEs da seleção
+  const aseRows: (string | number)[][] = [
+    ['ASEs DA SELEÇÃO'],
+    [],
+    ['Protocolo', 'Data', 'Dia da semana', 'Setor', 'Turno', 'Solicitante', 'Status', 'Colaboradores', 'Horas (h)', 'Transportes', 'Refeições', 'Justificativa'],
+    ...solicitacoes.map(s => {
+      const horas = s.itens.reduce((a, it) => a + (it.total_horas || 0), 0);
+      return [
+        s.numero_protocolo,
+        formatDataBR(s.data_execucao),
+        diaDaSemana(s.data_execucao),
+        s.setor_nome || '-',
+        s.turno_nome || '-',
+        s.solicitante_nome || '-',
+        STATUS_LABELS[s.status] || s.status,
+        s.itens.length,
+        h2(horas),
+        s.itens.filter(it => it.transporte).length,
+        s.itens.filter(it => it.refeicao).length,
+        s.justificativa || '',
+      ];
+    }),
+  ];
+  const wsAses = XLSX.utils.aoa_to_sheet(aseRows);
+  wsAses['!cols'] = [
+    { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 24 },
+    { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 13 }, { wch: 12 }, { wch: 40 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsAses, 'ASEs');
+
+  // Aba 8: o detalhe linha a linha, base de tudo que está acima
+  const colabRows: (string | number)[][] = [
+    ['COLABORADORES AUTORIZADOS'],
+    [],
+    ['Data', 'Protocolo', 'Setor', 'Turno', 'Solicitante', 'Status', 'Matrícula', 'Colaborador', 'Cargo / Função',
+      'Hora Entrada', 'Hora Saída', 'Intervalo (min)', '% Hora Extra', 'Horas (h)', 'Transporte', 'Refeição',
+      'Rota', 'Ponto de Embarque', 'Contato', 'Observação'],
+    ...linhas.map(l => [
+      formatDataBR(l.data_execucao),
+      l.protocolo,
+      l.setor,
+      l.turno,
+      l.solicitante,
+      STATUS_LABELS[l.status] || l.status,
+      l.registro,
+      l.nome,
+      l.cargo,
+      l.hora_entrada,
+      l.hora_saida,
+      l.intervalo_minutos,
+      l.percentual_he != null ? `${l.percentual_he}%` : '',
+      h2(l.horas),
+      l.transporte ? 'SIM' : 'NÃO',
+      l.refeicao ? 'SIM' : 'NÃO',
+      l.rota,
+      l.ponto_embarque,
+      l.contato,
+      l.observacao,
+    ]),
+    [],
+    ['TOTAL', `${linhas.length} autorização(ões)`, '', '', '', '', '', '', '', '', '', '', '', h2(resumo.horas), '', '', '', '', '', ''],
+  ];
+  const wsColab = XLSX.utils.aoa_to_sheet(colabRows);
+  wsColab['!cols'] = [
+    { wch: 12 }, { wch: 20 }, { wch: 22 }, { wch: 16 }, { wch: 24 }, { wch: 12 }, { wch: 12 },
+    { wch: 30 }, { wch: 24 }, { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 13 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 30 }, { wch: 16 }, { wch: 34 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsColab, 'Colaboradores');
+
+  XLSX.writeFile(wb, `ase-relatorio-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

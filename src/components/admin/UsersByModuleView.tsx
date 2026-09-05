@@ -10,7 +10,10 @@ import {
   AlertCircle, Eye, CheckCircle2, XCircle, RotateCcw, UserPlus, Info, ExternalLink
 } from 'lucide-react';
 import { Profile, Sector } from '../../types';
-import { canAccessPage, getPageGroups, PageDef, isUserAdriano, isUserSetorRh } from '../../lib/pages';
+import {
+  canAccessPage, canAccessFormGroup, getPageGroups, PageDef, isUserAdriano, isUserSetorRh,
+  FORMULARIO_SUBPERMISSOES,
+} from '../../lib/pages';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
 
@@ -50,6 +53,7 @@ export default function UsersByModuleView({
   const [accessFilter, setAccessFilter] = useState<'all' | 'with_access' | 'without_access' | 'overrides'>('with_access');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
 
   // Mapeamento de setores
   const sectorMap = useMemo(() => {
@@ -58,10 +62,22 @@ export default function UsersByModuleView({
     return map;
   }, [sectors]);
 
-  // Lista de todos os grupos e páginas do sistema
-  const pageGroups = useMemo(() => {
-    return getPageGroups().filter(g => g.group !== 'SUBPERMISSÕES DE FORMULÁRIOS');
-  }, []);
+  // Lista de todos os grupos e páginas do sistema, incluindo as subpermissões
+  // de formulário — elas são o que decide quem enxerga cada grupo de
+  // formulários, e antes ficavam de fora desta auditoria.
+  const pageGroups = useMemo(() => getPageGroups(), []);
+
+  /**
+   * Acesso efetivo do usuário ao item selecionado.
+   *
+   * Para grupo de formulário a regra não é `canAccessPage`: além do override,
+   * ela depende do acesso à página "Formulários" e do fallback do sinalizador
+   * legado — tudo isso mora em `canAccessFormGroup`.
+   */
+  const temAcesso = (p: Profile, pageId: string): boolean => {
+    const sub = FORMULARIO_SUBPERMISSOES.find(f => f.id === pageId);
+    return sub ? canAccessFormGroup(p, sub.grupoId) : canAccessPage(p, pageId);
+  };
 
   // Lista linear de todas as páginas
   const allPages = useMemo(() => {
@@ -92,7 +108,7 @@ export default function UsersByModuleView({
       let overrides = 0;
 
       activeProfiles.forEach(p => {
-        const has = canAccessPage(p, page.id);
+        const has = temAcesso(p, page.id);
         if (has) withAccess++;
         if (p.page_access?.[page.id] !== undefined) overrides++;
       });
@@ -133,7 +149,7 @@ export default function UsersByModuleView({
     if (!selectedPage) return [];
 
     return activeProfiles.map(p => {
-      const hasAccess = canAccessPage(p, selectedPage.id);
+      const hasAccess = temAcesso(p, selectedPage.id);
       const isAdmin = p.roles.includes('admin');
       const overrideVal = p.page_access?.[selectedPage.id];
       const isAdriano = isUserAdriano(p);
@@ -237,6 +253,47 @@ export default function UsersByModuleView({
       toast.error('Erro ao restaurar permissão padrão.');
     } finally {
       setUpdatingUserId(null);
+    }
+  };
+
+  /**
+   * Aplica a mesma decisão a todos os colaboradores da lista filtrada.
+   *
+   * É o caso de uso que trouxe esta tela: "liberar o formulário da Portaria
+   * para todo o setor X" era um clique por pessoa. Administradores ficam de
+   * fora — o acesso deles é global e um override não mudaria nada.
+   */
+  const handleAplicarEmMassa = async (decisao: boolean | null) => {
+    if (!selectedPage) return;
+    const alvos = filteredUserStatuses
+      .map(item => item.user)
+      .filter(u => !u.roles.includes('admin'));
+
+    if (alvos.length === 0) {
+      toast.info('Nenhum colaborador na lista atual (administradores não entram na ação em massa).');
+      return;
+    }
+
+    const rotulo = decisao === true ? 'liberar' : decisao === false ? 'bloquear' : 'restaurar a regra padrão de';
+    const confirmado = window.confirm(
+      `Deseja ${rotulo} "${selectedPage.label}" para os ${alvos.length} colaboradores da lista atual?`,
+    );
+    if (!confirmado) return;
+
+    setAplicandoEmMassa(true);
+    try {
+      await localDb.updateBulkPageAccess(alvos.map(u => u.id), { [selectedPage.id]: decisao });
+      toast.success(
+        decisao === null
+          ? `Regra padrão restaurada para ${alvos.length} colaborador(es).`
+          : `Acesso ${decisao ? 'liberado' : 'bloqueado'} para ${alvos.length} colaborador(es).`,
+      );
+      onChanged();
+    } catch (err) {
+      console.error('Falha na edição em massa de permissões:', err);
+      toast.error('Erro ao aplicar a alteração em massa.');
+    } finally {
+      setAplicandoEmMassa(false);
     }
   };
 
@@ -414,6 +471,12 @@ export default function UsersByModuleView({
                         ? `🔒 Regra padrão: Liberado para papéis: ${selectedPage.defaultRoles.join(', ')}.`
                         : '🔒 Regra personalizada ou exclusiva.'}
                     </p>
+                    {FORMULARIO_SUBPERMISSOES.some(f => f.id === selectedPage.id) && (
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Subpermissão de formulário: além desta regra, o colaborador precisa ter
+                        acesso à página "Formulários".
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -503,6 +566,50 @@ export default function UsersByModuleView({
                       className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-1.5 pl-8 pr-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Ação em massa sobre a lista filtrada: o mesmo que os botões
+                  de cada linha, aplicado a todos de uma vez. */}
+              <div className="mb-3 flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-2 text-xs text-emerald-900">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                  <p>
+                    <strong>Edição em massa:</strong> aplica a decisão a todos os{' '}
+                    <strong>{filteredUserStatuses.filter(u => !u.user.roles.includes('admin')).length}</strong>{' '}
+                    colaboradores da lista atual (respeitando busca e filtros). Administradores não
+                    entram — o acesso deles já é global.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={aplicandoEmMassa}
+                    onClick={() => handleAplicarEmMassa(true)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-emerald-600 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Unlock className="h-3.5 w-3.5" />
+                    Liberar todos
+                  </button>
+                  <button
+                    type="button"
+                    disabled={aplicandoEmMassa}
+                    onClick={() => handleAplicarEmMassa(false)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 transition-colors hover:bg-rose-50 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Bloquear todos
+                  </button>
+                  <button
+                    type="button"
+                    disabled={aplicandoEmMassa}
+                    onClick={() => handleAplicarEmMassa(null)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                    title="Remove o override e volta à regra padrão do papel"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Restaurar padrão
+                  </button>
                 </div>
               </div>
 

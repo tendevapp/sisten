@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, FileText } from 'lucide-react';
 import { Request, RequestItem, Sector, SupPendenciaProcessamentoNF } from '../types';
 import { formatBRL, formatDateBR, formatDateTimeBR, EMPTY } from '../lib/format';
 import { rotuloTipo, rotuloCriticidade } from '../lib/solicitacoes';
@@ -79,14 +79,19 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
     return () => { vivo = false; };
   }, [r.id, r.type, r.category_id]);
 
-  const [imagensAjusteUrls, setImagensAjusteUrls] = useState<string[]>([]);
+  const [imagensAjusteUrls, setImagensAjusteUrls] = useState<{ url: string; path: string }[]>([]);
   useEffect(() => {
     const linha = pendencias.find(p => p.modelo === 'ajuste_pedido');
     const paths = linha?.imagem_paths?.length ? linha.imagem_paths : (linha?.imagem_path ? [linha.imagem_path] : []);
     if (paths.length === 0) { setImagensAjusteUrls([]); return; }
     let vivo = true;
     Promise.all(paths.map(p => localDb.getAttachmentUrl(p))).then(urls => {
-      if (vivo) setImagensAjusteUrls(urls.filter((u): u is string => !!u));
+      if (!vivo) return;
+      // O caminho acompanha a URL assinada: é a extensão dele que diz se o
+      // anexo é PDF (a URL assinada não carrega o tipo).
+      setImagensAjusteUrls(
+        urls.map((url, i) => ({ url: url || '', path: paths[i] })).filter(a => a.url),
+      );
     });
     return () => { vivo = false; };
   }, [pendencias]);
@@ -290,20 +295,34 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                     </div>
                     {p.modelo === 'ajuste_pedido' && imagensAjusteUrls.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {imagensAjusteUrls.map((url, i) => (
-                          <a key={url} href={url} target="_blank" rel="noreferrer">
-                            <img
-                              src={url}
-                              alt={`Imagem ${i + 1} do ajuste de pedido`}
-                              className="max-h-40 rounded-lg border object-contain"
-                              style={{ borderColor: 'var(--hairline)' }}
-                            />
-                          </a>
+                        {imagensAjusteUrls.map(({ url, path }, i) => (
+                          path.toLowerCase().endsWith('.pdf') ? (
+                            <a
+                              key={url}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"
+                              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                            >
+                              <FileText className="h-4 w-4" style={{ color: 'var(--status-critical)' }} />
+                              {path.split('/').pop()}
+                            </a>
+                          ) : (
+                            <a key={url} href={url} target="_blank" rel="noreferrer">
+                              <img
+                                src={url}
+                                alt={`Anexo ${i + 1} do ajuste de pedido`}
+                                className="max-h-40 rounded-lg border object-contain"
+                                style={{ borderColor: 'var(--hairline)' }}
+                              />
+                            </a>
+                          )
                         ))}
                       </div>
                     )}
                     {p.modelo === 'ajuste_pedido' && imagensAjusteUrls.length === 0 && (p.imagem_paths?.length || p.imagem_path) && (
-                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando imagens…</p>
+                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando anexos…</p>
                     )}
                   </div>
                 ))}

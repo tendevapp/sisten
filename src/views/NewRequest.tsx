@@ -16,7 +16,7 @@ import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
-import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
+import { type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
 import MaterialSearchModal from '../components/MaterialSearchModal';
@@ -67,13 +67,13 @@ const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
     target: 'novasol-formulario',
     icon: Search,
     title: 'Preencha os dados do pedido',
-    description: 'Em Compra, digite o código SAP ou a descrição para buscar no catálogo — os campos são preenchidos automaticamente ao selecionar um resultado.',
+    description: 'Em Compra, o item começa pela busca no catálogo SAP: escolha o material e código, descrição e ficha técnica vêm preenchidos.',
   },
   {
     target: 'novasol-descricao-busca',
     icon: Search,
-    title: 'Digite ou busque no catálogo',
-    description: 'Digite a descrição para ver sugestões do catálogo SAP aparecerem logo abaixo, ou clique em "Buscar" para abrir a janela de pesquisa e procurar com calma.',
+    title: 'Busque o material no catálogo',
+    description: 'O item começa pelo botão "Buscar no catálogo SAP": a janela abre com a lista inteira à vista e, ao escolher, código e descrição vêm preenchidos. Material que não existe no catálogo não vira texto livre — o link abaixo leva à solicitação de Cadastro SAP.',
   },
   {
     target: 'novasol-item-generico',
@@ -271,90 +271,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
 
-  // SAP catalog autocomplete states — busca direto no Supabase (catálogo tem
-  // 180k+ linhas, não cabe em memória/localStorage), com debounce por item ativo.
-  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
-  const [activeSearchResults, setActiveSearchResults] = useState<MaterialResultado[]>([]);
-  const [erroBusca, setErroBusca] = useState(false);
-  const [isSearchingCatalog, setIsSearchingCatalog] = useState(false);
-  // Incrementado pelo botão "Tentar de novo" para forçar o efeito de busca a
-  // reexecutar mesmo quando índice e termo não mudaram.
-  const [tentativaBusca, setTentativaBusca] = useState(0);
-  /** Item cujo modal de busca ampliada está aberto, ou null. */
+  /** Item cujo modal de busca no catálogo está aberto, ou null. */
   const [buscaModalIndex, setBuscaModalIndex] = useState<number | null>(null);
-  const dropdownRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchRequestIdRef = useRef(0);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const clickedInsideDropdown = dropdownRefs.current.some(
-        ref => ref && ref.contains(event.target as Node)
-      );
-      if (!clickedInsideDropdown) {
-        setActiveSearchIndex(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const activeItemForSearch = activeSearchIndex !== null ? items[activeSearchIndex] : null;
-  const activeDescriptionTerm = activeItemForSearch?.description.trim() || '';
-  const activeSapCodeTerm = activeItemForSearch?.sap_code.trim() || '';
-
-  useEffect(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-
-    if (activeSearchIndex === null || ehServico) {
-      setActiveSearchResults([]);
-      setErroBusca(false);
-      return;
-    }
-
-    // Código tem precedência: quem digitou o código sabe o que quer.
-    const termo = activeSapCodeTerm || activeDescriptionTerm;
-
-    // O piso da lib é 3 caracteres (limite do índice trigram). Aqui exigimos
-    // 4, porque este caminho dispara sozinho: com 3 letras a sugestão quase
-    // nunca é útil e o request sai a cada palavra começada. Quem quer buscar
-    // com pouco texto usa o botão — lá a intenção é explícita.
-    if (!activeSapCodeTerm && termo.length < 4) {
-      setActiveSearchResults([]);
-      setIsSearchingCatalog(false);
-      return;
-    }
-
-    searchDebounceRef.current = setTimeout(async () => {
-      const thisRequestId = ++searchRequestIdRef.current;
-      setIsSearchingCatalog(true);
-      setErroBusca(false);
-      try {
-        const achados = await buscarMateriais(termo, {
-          areaUsuario: areaUsuario,
-          limite: 20,
-        });
-        if (searchRequestIdRef.current === thisRequestId) setActiveSearchResults(achados);
-      } catch (err) {
-        console.error('Erro ao buscar materiais no catálogo SAP:', err);
-        if (searchRequestIdRef.current === thisRequestId) {
-          setActiveSearchResults([]);
-          // Sem isto, falha de rede e "não achei nada" ficam
-          // indistinguíveis — os dois mostravam a mesma lista vazia.
-          setErroBusca(true);
-        }
-      } finally {
-        if (searchRequestIdRef.current === thisRequestId) setIsSearchingCatalog(false);
-      }
-      // 600ms em vez de 300: numa descrição de catálogo a pessoa digita várias
-      // palavras seguidas, e a pausa curta transformava cada uma delas num
-      // request cuja resposta ninguém chegava a ler.
-    }, 600);
-
-    return () => {
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    };
-  }, [activeSearchIndex, activeDescriptionTerm, activeSapCodeTerm, areaUsuario, tentativaBusca, ehServico]);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -542,7 +460,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         // preenchimento o item iria para o banco sem identidade e o anexo
         // perderia a que se prender.
         if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-          setItems(parsed.items.map((it: PurchaseItemState) => ({ ...it, id: it.id || novoItemId() })));
+          setItems(parsed.items.map((it: PurchaseItemState) => ({
+            ...it,
+            id: it.id || novoItemId(),
+          })));
         }
         if (parsed.registrationType) setRegistrationType(parsed.registrationType);
         if (parsed.sapRegName) setSapRegName(parsed.sapRegName);
@@ -681,13 +602,50 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setAjusteFornecedor('');
     setAjusteComprador('');
     setAjusteImagens([]);
-    setActiveSearchIndex(null);
-    setActiveSearchResults([]);
-    setErroBusca(false);
     setBuscaModalIndex(null);
     setAutosaveStatus('idle');
 
     toast.info('Formulario reiniciado e rascunho apagado.');
+  };
+
+  /** Atualiza um item pelo índice, sem passar pelo `handleItemChange`. */
+  const patchItem = (index: number, patch: Partial<PurchaseItemState>) => {
+    setItems(prev => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+  };
+
+  /** Escolha de um material — vem da janela do catálogo. */
+  const selecionarMaterial = (index: number, mat: MaterialResultado, chips: SinalChip[]) => {
+    // Unidade não é autopreenchida — fica em "Selecione..." até o usuário confirmar.
+    patchItem(index, {
+      description: mat.description,
+      sap_code: mat.materialCode,
+      technical_text: mat.technicalText || '',
+      sinais: chips,
+    });
+  };
+
+  /** Descarta o material escolhido e volta o item ao estado de busca. */
+  const trocarMaterial = (index: number) => {
+    patchItem(index, { sap_code: '', description: '', technical_text: '', sinais: [] });
+  };
+
+  /**
+   * Material que não existe no catálogo não vira texto livre na compra: vira
+   * pedido de cadastro. Leva o usuário para o canal "Cadastro SAP" com o
+   * mesmo formulário aberto — o rascunho da compra continua guardado no
+   * estado, então dá para voltar depois que o item existir.
+   */
+  const solicitarCadastroSap = (index: number) => {
+    const ok = window.confirm(
+      'Material fora do catálogo precisa ser cadastrado no SAP antes de ser comprado. '
+      + 'Abrir a solicitação de Cadastro SAP agora? Os itens já preenchidos nesta compra ficam guardados.',
+    );
+    if (!ok) return;
+    setRegistrationType('Item');
+    setActiveTab('cadastro_sap');
+    setCriticality(null);
+    // Sobe para o topo: o formulário do canal novo começa lá.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddItem = () => {
@@ -707,29 +665,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       [key]: val
     };
     setItems(updated);
-
-    // Auto-fill descrição/unidade só com o código completo (7 dígitos): todo
-    // material_code do catálogo tem exatamente 7 dígitos, então disparar a
-    // cada tecla a partir de 4 só gera 3 requisições descartadas por código.
-    if (key === 'sap_code' && String(val).trim().length === 7) {
-      const code = String(val).trim();
-      buscarMateriais(code, { limite: 1 })
-        .then(([achado]) => {
-          if (!achado || achado.materialCode !== code) return;
-          setItems(prev => prev.map((item, i) => {
-            if (i !== index || item.sap_code.trim() !== code) return item; // usuário já mudou o campo
-            // Unidade não é autopreenchida — fica em "Selecione..." até o
-            // usuário confirmar, mesmo quando o catálogo já sabe a unidade.
-            return {
-              ...item,
-              description: achado.description,
-              technical_text: achado.technicalText || '',
-              sinais: resumoSinais(achado),
-            };
-          }));
-        })
-        .catch(err => console.error('Falha ao autopreencher pelo código SAP:', err));
-    }
   };
 
   // Criticality selector details
@@ -969,6 +904,20 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return;
     }
 
+    // Item sem material escolhido: no modo de busca não existe campo
+    // `required` que o HTML segure, então a checagem é aqui.
+    if (activeTab === 'compra') {
+      const semDescricao = items.findIndex(it => !it.description.trim());
+      if (semDescricao !== -1) {
+        alert(
+          ehServico
+            ? `Serviço ${semDescricao + 1}: descreva o serviço antes de enviar.`
+            : `Item ${semDescricao + 1}: busque o material no catálogo SAP (ou marque "Item Genérico" e descreva) antes de enviar.`,
+        );
+        return;
+      }
+    }
+
     if (activeTab === 'chamado' && isDestinoSuprimentos && !helpdeskCategory) {
       alert('Selecione a categoria do chamado.');
       return;
@@ -978,7 +927,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       return;
     }
     if (activeTab === 'chamado' && isAjustePedido && !ajustePronto) {
-      alert('Preencha a demanda, o número da NF, o número do pedido, o fornecedor e anexe a imagem.');
+      alert('Preencha a demanda, o número da NF, o número do pedido, o fornecedor e anexe ao menos uma imagem ou PDF.');
       return;
     }
 
@@ -1385,7 +1334,6 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           // O que veio do catálogo SAP não vale para serviço —
                           // sai da tela e do payload junto com os campos.
                           if (type === 'Serviço') {
-                            setActiveSearchIndex(null);
                             setBuscaModalIndex(null);
                             setItems(prev => prev.map(it => ({
                               ...it,
@@ -1444,7 +1392,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           <input
                             type="checkbox"
                             checked={it.is_generic || false}
-                            onChange={(e) => handleItemChange(index, 'is_generic', e.target.checked)}
+                            onChange={(e) => {
+                              // Genérico e material de catálogo são excludentes:
+                              // manter o código do SAP escondido atrás da
+                              // descrição livre mandaria os dois no payload.
+                              const generico = e.target.checked;
+                              patchItem(index, generico
+                                ? { is_generic: true, sap_code: '', technical_text: '', sinais: undefined }
+                                : { is_generic: false, description: '' });
+                            }}
                             className="rounded cursor-pointer"
                             style={{ accentColor: 'var(--brand)' }}
                           />
@@ -1466,169 +1422,94 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      {/* Código SAP + Descrição — busca bidirecional no catálogo SAP */}
-                      <div className="sm:col-span-8 relative" ref={(el) => { dropdownRefs.current[index] = el; }}>
-                        <div className="flex gap-3">
-                          {!ehServico && (
-                            <div className="w-28 shrink-0">
-                              <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Código SAP</label>
-                              <input
-                                type="text"
-                                placeholder="8 dígitos"
-                                maxLength={8}
-                                value={it.sap_code}
-                                onChange={(e) => {
-                                  handleItemChange(index, 'sap_code', e.target.value);
-                                  setActiveSearchIndex(index);
-                                }}
-                                onFocus={() => setActiveSearchIndex(index)}
-                                className="w-full rounded border py-1 px-2 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                                style={fieldStyle}
-                              />
-                            </div>
-                          )}
-                          <div data-tour="novasol-descricao-busca" className="flex-1">
+                      {/* Escolha do material — só pela janela do catálogo.
+                          Digitar aqui e ver sugestões aparecendo embaixo
+                          convidava a inventar descrição em vez de escolher o
+                          item que existe no SAP; agora a busca acontece num
+                          lugar só, com a lista inteira à vista. Material que
+                          não existe no catálogo não vira texto livre: vira
+                          pedido de cadastro. */}
+                      <div className="sm:col-span-8">
+                        {ehServico ? (
+                          <div>
                             <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                              {ehServico ? 'Descrição do serviço *' : 'Descrição *'}
+                              Descrição do serviço *
                             </label>
-                            <div className="flex gap-1.5">
-                              <div className="relative flex-1">
-                                {!ehServico && (
-                                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
-                                )}
-                                <input
-                                  type="text"
-                                  required
-                                  placeholder={ehServico ? 'Ex: Manutenção preventiva da ponte rolante' : 'Digite para buscar no catálogo SAP...'}
-                                  value={it.description}
-                                  onChange={(e) => {
-                                    handleItemChange(index, 'description', e.target.value);
-                                    if (!ehServico) setActiveSearchIndex(index);
-                                  }}
-                                  onFocus={() => { if (!ehServico) setActiveSearchIndex(index); }}
-                                  className={`w-full rounded border py-1 ${ehServico ? 'pl-2' : 'pl-7'} pr-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1`}
-                                  style={fieldStyle}
-                                />
-                              </div>
-                              {/* Escape para o caso difícil: termo genérico, muita
-                                  quase-duplicata, decisão que pede ler a lista
-                                  inteira em vez de espiar um dropdown de 60px. */}
-                              {!ehServico && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveSearchIndex(null);
-                                    setBuscaModalIndex(index);
-                                  }}
-                                  title="Abrir o catálogo SAP para buscar com calma"
-                                  className="shrink-0 rounded border px-2.5 text-[11px] font-bold transition-colors hover:bg-[var(--surface-raised)]"
-                                  style={{ borderColor: 'var(--hairline)', color: 'var(--brand)' }}
-                                >
-                                  Buscar
-                                </button>
-                              )}
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ex: Manutenção preventiva da ponte rolante"
+                              value={it.description}
+                              onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                              className="w-full rounded border py-1 px-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                              style={fieldStyle}
+                            />
+                          </div>
+                        ) : it.is_generic ? (
+                          /* Item genérico: por definição não está no catálogo,
+                             então aqui a descrição é digitada. */
+                          <div>
+                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
+                              Descrição do item genérico *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Descreva o material — detalhe as especificações na Observação"
+                              value={it.description}
+                              onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                              className="w-full rounded border py-1 px-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                              style={fieldStyle}
+                            />
+                          </div>
+                        ) : it.sap_code ? (
+                          /* Material escolhido: ficha compacta. */
+                          <div
+                            className="rounded-lg border p-2.5"
+                            style={{ borderColor: 'var(--brand)', background: 'var(--brand-wash)' }}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span
+                                className="font-mono px-1.5 py-0.5 rounded font-bold text-[11px] shrink-0"
+                                style={{ background: 'var(--surface-card)', color: 'var(--ink-secondary)' }}
+                              >
+                                {it.sap_code}
+                              </span>
+                              <p className="flex-1 min-w-0 text-sm font-semibold leading-snug" style={{ color: 'var(--ink-primary)' }}>
+                                {it.description || '—'}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => trocarMaterial(index)}
+                                className="shrink-0 text-[11px] font-bold underline cursor-pointer"
+                                style={{ color: 'var(--brand-strong)' }}
+                              >
+                                Trocar
+                              </button>
                             </div>
                           </div>
-                        </div>
-
-                        {/* Autocomplete Dropdown list */}
-                        {!ehServico && activeSearchIndex === index && (
-                          <div
-                            className="absolute left-0 right-0 top-full mt-1 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto divide-y border animate-fade-in"
-                            style={{ background: 'var(--chart-tooltip-bg)', borderColor: 'var(--chart-tooltip-border)', boxShadow: 'var(--chart-tooltip-shadow)' }}
-                          >
-                            <div
-                              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between sticky top-0 border-b"
-                              style={{ background: 'var(--surface-raised)', color: 'var(--ink-muted)', borderColor: 'var(--hairline)' }}
+                        ) : (
+                          <div data-tour="novasol-descricao-busca" className="space-y-2">
+                            <label className="text-[11px] font-bold block" style={{ color: 'var(--ink-muted)' }}>
+                              Material *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setBuscaModalIndex(index)}
+                              className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 cursor-pointer"
+                              style={{ background: 'var(--brand)' }}
                             >
-                              <span>Resultados do Catálogo SAP</span>
-                              <span className="flex items-center gap-2">
-                                <span className="font-bold px-1.5 py-0.5 rounded tabular" style={{ background: 'var(--brand-wash)', color: 'var(--brand-strong)' }}>
-                                  {isSearchingCatalog ? '...' : `${activeSearchResults.length} itens`}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setActiveSearchIndex(null)}
-                                  className="cursor-pointer"
-                                  style={{ color: 'var(--ink-muted)' }}
-                                  aria-label="Fechar resultados"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </span>
-                            </div>
-                            {erroBusca ? (
-                              <div className="p-3 text-sm text-center" style={{ color: 'var(--status-serious)' }}>
-                                Não foi possível buscar no catálogo.
-                                <button
-                                  type="button"
-                                  onClick={() => setTentativaBusca(n => n + 1)}
-                                  className="block mx-auto mt-1 font-bold underline cursor-pointer"
-                                  style={{ color: 'var(--brand)' }}
-                                >
-                                  Tentar de novo
-                                </button>
-                              </div>
-                            ) : isSearchingCatalog ? (
-                              <div className="p-3 text-sm text-center" style={{ color: 'var(--ink-muted)' }}>Buscando no catálogo SAP...</div>
-                            ) : activeSearchResults.length === 0 ? (
-                              <div className="p-3 text-sm text-center" style={{ color: 'var(--ink-muted)' }}>
-                                Nenhum item correspondente no catálogo.
-                                <div className="text-[11px] mt-0.5">
-                                  Você pode digitar livremente para cadastrar um item novo.
-                                </div>
-                              </div>
-                            ) : (
-                              activeSearchResults.map((mat) => {
-                                const chips = resumoSinais(mat);
-                                return (
-                                <button
-                                  key={mat.materialCode}
-                                  type="button"
-                                  onClick={() => {
-                                    // Unidade não é autopreenchida — fica em
-                                    // "Selecione..." até o usuário confirmar.
-                                    const updated = [...items];
-                                    updated[index] = {
-                                      ...updated[index],
-                                      description: mat.description,
-                                      sap_code: mat.materialCode,
-                                      technical_text: mat.technicalText || '',
-                                      sinais: chips,
-                                    };
-                                    setItems(updated);
-                                    setActiveSearchIndex(null);
-                                    setActiveSearchResults([]);
-                                  }}
-                                  className="w-full text-left px-3 py-2 transition-colors duration-150 flex items-start gap-2 text-sm hover:bg-[var(--surface-raised)]"
-                                >
-                                  <span
-                                    className="font-mono px-1.5 py-0.5 rounded font-bold text-[10px] shrink-0 mt-0.5"
-                                    style={{ background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
-                                  >
-                                    {mat.materialCode}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate" style={{ color: 'var(--ink-primary)' }} title={mat.description}>
-                                      {mat.description}
-                                    </div>
-                                    {mat.technicalText && (
-                                      <div className="text-[11px] truncate mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-                                        {mat.technicalText}
-                                      </div>
-                                    )}
-                                    <SinalChips chips={chips} className="mt-1" />
-                                  </div>
-                                  <span
-                                    className="text-[11px] font-mono px-1 rounded uppercase shrink-0 self-center"
-                                    style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
-                                  >
-                                    {mat.unit}
-                                  </span>
-                                </button>
-                                );
-                              })
-                            )}
+                              <Search className="h-4 w-4" />
+                              Buscar no catálogo SAP
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => solicitarCadastroSap(index)}
+                              className="text-[11px] font-bold underline cursor-pointer"
+                              style={{ color: 'var(--ink-muted)' }}
+                            >
+                              Não encontrei o material — solicitar cadastro no SAP
+                            </button>
                           </div>
                         )}
                       </div>
@@ -2332,11 +2213,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   {renderClassificacao(false)}
 
                   <div>
-                    <label className={labelClass} style={labelStyle}>Imagens do pedido / print da divergência *</label>
+                    <label className={labelClass} style={labelStyle}>Anexos do pedido — imagem, print ou PDF *</label>
                     <ImagesPasteInput
                       value={ajusteImagens}
                       onChange={setAjusteImagens}
-                      hint="As imagens são comprimidas automaticamente e aparecem no chamado, na página de Pendências do Suprimentos. Você pode adicionar mais de uma."
+                      hint="Aceita imagem (comprimida automaticamente) e PDF — a NF ou o pedido do fornecedor podem ir como vieram. Os anexos aparecem no chamado, na página de Pendências do Suprimentos."
                     />
                   </div>
 
@@ -2532,21 +2413,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
       {buscaModalIndex !== null && (
         <MaterialSearchModal
+          // Leva o que já foi digitado na busca do item: quem clicou em
+          // "Buscar" não deveria redigitar as palavras.
           termoInicial={items[buscaModalIndex]?.description || ''}
           areaUsuario={areaUsuario}
           onClose={() => setBuscaModalIndex(null)}
-          onSelect={(mat, chips) => {
-            // Mesmo preenchimento do dropdown, inclusive deixando a unidade
-            // para o usuário confirmar.
-            const idx = buscaModalIndex;
-            setItems(atual => atual.map((it, i) => i === idx ? {
-              ...it,
-              description: mat.description,
-              sap_code: mat.materialCode,
-              technical_text: mat.technicalText || '',
-              sinais: chips,
-            } : it));
-          }}
+          onSelect={(mat, chips) => selecionarMaterial(buscaModalIndex, mat, chips)}
         />
       )}
 

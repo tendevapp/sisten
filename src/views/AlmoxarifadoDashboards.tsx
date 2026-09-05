@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { LayoutDashboard, RefreshCw, AlertCircle, Boxes, Filter, X, Info, Search, ArrowUp, ArrowDown, ArrowUpDown, ChevronRight, ChevronDown, ChevronsUpDown, Warehouse } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem, EstoqueAnalise, EnrichedSAPRecord } from '../types';
-import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro, formatBRL, formatQtd, isProjetoItem, formatDeposito } from '../lib/almoxarifado';
+import { calcularKpis, classifyABC, resumirAbc, agregarPor, topN, ClasseAbc, normalizeCode, acharCompraEvitavel, acharDivergenciaPmm, acharLacunasCadastro, formatBRL, formatQtd, isProjetoItem, formatDeposito, ordenarDepositos } from '../lib/almoxarifado';
 import EstoqueKpis from '../components/almoxarifado/EstoqueKpis';
 import CurvaAbcChart from '../components/almoxarifado/CurvaAbcChart';
 import ValorPorDepositoChart from '../components/almoxarifado/ValorPorDepositoChart';
@@ -156,7 +156,8 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
       if (r.grupo_mercadorias) grupos.add(r.grupo_mercadorias);
     });
     const ordenar = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    return { depositos: ordenar(depositos), tipos: ordenar(tipos), classes: ordenar(classes), grupos: ordenar(grupos) };
+    // Depósitos de Exclusão continuam selecionáveis, mas ao final da lista.
+    return { depositos: ordenarDepositos(depositos), tipos: ordenar(tipos), classes: ordenar(classes), grupos: ordenar(grupos) };
   }, [rows]);
 
   const filtrados = useMemo(() => rows.filter(r => {
@@ -405,7 +406,7 @@ export default function AlmoxarifadoDashboards({ user, onNavigate }: Almoxarifad
               <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
                 <option value="Todos">Item: Todos</option>
                 <option value="projeto">Projeto (100000...)</option>
-                <option value="consumo">Consumo</option>
+                <option value="consumo">Outros</option>
               </select>
 
               {filtroAtivo && (

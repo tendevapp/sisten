@@ -37,6 +37,7 @@ import {
   CheckSquare,
   Square,
   CheckCheck,
+  FileText,
 } from 'lucide-react';
 import type { Profile, SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
@@ -74,7 +75,11 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
 };
 
-/** Miniaturas das imagens do chamado "Ajuste de Pedido" — busca as URLs assinadas e abre em tamanho real ao clicar. */
+/**
+ * Anexos do chamado "Ajuste de Pedido" — busca as URLs assinadas e abre em
+ * tamanho real ao clicar. PDF não tem miniatura: vira um cartão com o nome do
+ * arquivo, que abre em outra aba.
+ */
 function ImagensAjustePedido({ paths }: { paths: string[] }) {
   const [urls, setUrls] = useState<(string | null)[]>([]);
   useEffect(() => {
@@ -90,16 +95,30 @@ function ImagensAjustePedido({ paths }: { paths: string[] }) {
     <div className="flex flex-wrap gap-2">
       {paths.map((p, i) => (
         urls[i] ? (
-          <a key={p} href={urls[i] as string} target="_blank" rel="noreferrer" className="inline-block">
-            <img
-              src={urls[i] as string}
-              alt={`Imagem ${i + 1} do ajuste de pedido`}
-              className="max-h-40 rounded-lg border object-contain"
-              style={{ borderColor: 'var(--hairline)' }}
-            />
-          </a>
+          p.toLowerCase().endsWith('.pdf') ? (
+            <a
+              key={p}
+              href={urls[i] as string}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <FileText className="h-4 w-4" style={{ color: 'var(--status-critical)' }} />
+              {p.split('/').pop()}
+            </a>
+          ) : (
+            <a key={p} href={urls[i] as string} target="_blank" rel="noreferrer" className="inline-block">
+              <img
+                src={urls[i] as string}
+                alt={`Anexo ${i + 1} do ajuste de pedido`}
+                className="max-h-40 rounded-lg border object-contain"
+                style={{ borderColor: 'var(--hairline)' }}
+              />
+            </a>
+          )
         ) : (
-          <span key={p} className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando imagem…</span>
+          <span key={p} className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando anexo…</span>
         )
       ))}
     </div>

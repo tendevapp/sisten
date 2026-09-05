@@ -252,7 +252,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
               <select value={tipoItem} onChange={e => setTipoItem(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
                 <option value="Todos">Item: Todos</option>
                 <option value="projeto">Projeto (100000…)</option>
-                <option value="consumo">Consumo</option>
+                <option value="consumo">Outros</option>
               </select>
 
               <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`}>

@@ -25,6 +25,7 @@ const Dashboard = lazy(() => import('./views/Dashboard'));
 const Materials = lazy(() => import('./views/Materials'));
 const NewRequest = lazy(() => import('./views/NewRequest'));
 const SolicitacoesCentral = lazy(() => import('./views/SolicitacoesCentral'));
+const Aprovacoes = lazy(() => import('./views/Aprovacoes'));
 const SapDashboards = lazy(() => import('./views/SapDashboards'));
 const Helpdesk = lazy(() => import('./views/Helpdesk'));
 const AdminPanel = lazy(() => import('./views/AdminPanel'));
@@ -636,7 +637,10 @@ export default function App() {
         );
 
       case '/solicitacoes/aprovacoes':
-        return <SolicitacoesCentral user={user} onNavigate={handleNavigate} escopoInicial="acao" />;
+        if (canAccessPage(user, 'sol_aprovacoes')) {
+          return <Aprovacoes user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/dashboards':
         if (canAccessPage(user, 'sup_dashboards')) {

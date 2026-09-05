@@ -46,6 +46,7 @@ export const PAGES: PageDef[] = [
   // `sol_minhas`, `sol_todas` e `sol_aprovacoes` sobrevivem como permissões
   // (ver FEATURE_FLAGS): agora liberam abas, não páginas.
   { id: 'solicitacoes_home', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes', icon: ClipboardList, defaultRoles: '*' },
+  { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin', 'coordenador_suprimentos'] },
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -139,12 +140,6 @@ export const FEATURE_FLAGS: PageDef[] = [
     group: 'SOLICITAÇÕES',
     label: 'Solicitações: aba "Todas" (fila coletiva)',
     defaultRoles: ['requisitante', 'gestor', 'comprador', 'coordenador_suprimentos', 'admin'],
-  },
-  {
-    id: 'sol_aprovacoes',
-    group: 'SOLICITAÇÕES',
-    label: 'Solicitações: aprovar compras',
-    defaultRoles: ['gestor', 'admin'],
   },
   {
     id: 'rastreio_valores',
@@ -311,6 +306,11 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
 
   const override = user.page_access?.[pageId];
   if (override !== undefined && !def.alwaysAdmin) return override;
+
+  // Aprovador de compras: libera tambem se o usuario tiver setores sob aprovacao
+  if (pageId === 'sol_aprovacoes' && (user.aprovador_setores?.length ?? 0) > 0) {
+    return true;
+  }
 
   if (def.defaultRoles === '*') return true;
   return def.defaultRoles.some(r => user.roles.includes(r));

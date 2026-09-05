@@ -129,9 +129,10 @@ export async function criarAjustePedido(
 }
 
 /**
- * Sobe as imagens já comprimidas para o bucket privado e grava os caminhos na
- * linha (`imagem_paths`, e o primeiro em `imagem_path` por compat). Uma falha
- * aqui não desfaz o chamado — o usuário pode reenviar pela página de Pendências.
+ * Sobe os anexos já preparados (imagem comprimida ou PDF como veio) para o
+ * bucket privado e grava os caminhos na linha (`imagem_paths`, e o primeiro em
+ * `imagem_path` por compat). Uma falha aqui não desfaz o chamado — o usuário
+ * pode reenviar pela página de Pendências.
  */
 export async function salvarImagensAjuste(
   rowId: string,
@@ -143,7 +144,10 @@ export async function salvarImagensAjuste(
   const paths: string[] = [];
   for (let i = 0; i < arquivos.length; i++) {
     const { blob, mimeType } = arquivos[i];
-    const ext = mimeType.includes('webp') ? 'webp' : mimeType.includes('png') ? 'png' : 'jpg';
+    const ext = mimeType.includes('pdf') ? 'pdf'
+      : mimeType.includes('webp') ? 'webp'
+      : mimeType.includes('png') ? 'png'
+      : 'jpg';
     const path = `${requestId}/ajuste-pedido/${rowId}-${i + 1}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from(BUCKET_ANEXOS)

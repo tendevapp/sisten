@@ -18,11 +18,11 @@
  * sobreviver a fechar a aba no meio do preenchimento.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
   AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
-  Calendar, User, Filter, Eye, Sparkles,
+  Calendar, User, Filter, Eye, Sparkles, BarChart3,
 } from 'lucide-react';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
@@ -46,6 +46,10 @@ import {
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import SeletorColaboradoresModal from '../components/rh/SeletorColaboradoresModal';
+
+// Carregado sob demanda: o relatorio traz o Recharts junto, e quem só vai
+// preencher uma ASE não deveria pagar esse download.
+const RhAseRelatorio = lazy(() => import('./rh/RhAseRelatorio'));
 
 interface Props {
   user: Profile;
@@ -155,6 +159,7 @@ Enviado através do SISTEN - Sistema Integrado TEN`;
 
 export default function RhAseHoraExtra({ user, onNavigate }: Props) {
   const [solicitacaoId, setSolicitacaoId] = useState<string | null>(null);
+  const [verRelatorio, setVerRelatorio] = useState(false);
 
   useEffect(() => {
     const hash = window.location.hash || '';
@@ -167,9 +172,32 @@ export default function RhAseHoraExtra({ user, onNavigate }: Props) {
     }
   }, []);
 
-  return solicitacaoId
-    ? <Edicao user={user} id={solicitacaoId} onVoltar={() => setSolicitacaoId(null)} />
-    : <Lista user={user} onAbrir={setSolicitacaoId} onNavigate={onNavigate} />;
+  if (solicitacaoId) {
+    return <Edicao user={user} id={solicitacaoId} onVoltar={() => setSolicitacaoId(null)} />;
+  }
+
+  if (verRelatorio) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center py-20 text-slate-500">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        }
+      >
+        <RhAseRelatorio user={user} onVoltar={() => setVerRelatorio(false)} />
+      </Suspense>
+    );
+  }
+
+  return (
+    <Lista
+      user={user}
+      onAbrir={setSolicitacaoId}
+      onNavigate={onNavigate}
+      onRelatorio={() => setVerRelatorio(true)}
+    />
+  );
 }
 
 // =====================================================================
@@ -183,7 +211,12 @@ const STATUS_CLASSES: Record<string, string> = {
   CANCELADO: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
 };
 
-function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
+function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
+  user: Profile;
+  onAbrir: (id: string) => void;
+  onNavigate: (p: string) => void;
+  onRelatorio: () => void;
+}) {
   const toast = useToast();
   const podeVerTodas = canViewAllAse(user);
   const isAdmin = Boolean(user.roles?.includes('admin'));
@@ -380,15 +413,26 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={novo}
-          disabled={criando}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
-        >
-          {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Nova ASE
-        </button>
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={onRelatorio}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 sm:w-auto cursor-pointer"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Relatório
+          </button>
+
+          <button
+            type="button"
+            onClick={novo}
+            disabled={criando}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto"
+          >
+            {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Nova ASE
+          </button>
+        </div>
       </div>
 
       {/* Barra de Filtros & Abas */}

@@ -167,7 +167,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
   }
   const chips: Chip[] = ([
     { id: 'notif', label: 'Notificações', value: unread.length, icon: Bell, tone: 'blue', hideWhenZero: true },
-    { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes?escopo=acao'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
+    { id: 'aprov', label: 'Aguardando aprovação', value: pendingApprovals.length, icon: FileCheck, tone: 'amber', show: canApprove, onClick: () => onNavigate('/solicitacoes/aprovacoes'), hint: highCritApprovals ? `${highCritApprovals} crítica(s)` : 'no seu setor' },
     { id: 'minhas', label: 'Minhas em aberto', value: myOpen, icon: List, tone: 'indigo', onClick: () => onNavigate('/solicitacoes?escopo=minhas') },
     { id: 'rasc', label: 'Rascunhos', value: myDrafts, icon: FileEdit, tone: 'slate', hideWhenZero: true, onClick: () => onNavigate('/solicitacoes?escopo=minhas') },
     { id: 'sap', label: 'Requisições sem PO', value: openSapCount, icon: Database, tone: 'sky', show: canCentralCompras, onClick: () => onNavigate('/suprimentos/compras') },
@@ -307,8 +307,8 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </div>
           <button
             type="button"
-            onClick={() => onNavigate('/solicitacoes?escopo=acao')}
-            className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-700"
+            onClick={() => onNavigate('/solicitacoes/aprovacoes')}
+            className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-700 cursor-pointer"
           >
             Ir para aprovações
           </button>

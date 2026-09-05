@@ -40,6 +40,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-04',
+    resumo: 'Solicitações > Aprovações de Compras para Gestores (`Aprovacoes.tsx`, `pages.ts`, `App.tsx`, `Dashboard.tsx`, `diretrizes.ts`): 1. Criada a página dedicada e oficial de Aprovações de Compras para Gestores em `/solicitacoes/aprovacoes`, acessível pelo menu lateral sob SOLICITAÇÕES para gestores, administradores, coordenadores e usuários com setores em `aprovador_setores`; 2. Cockpit executivo Master-Detail de alta produtividade com KPIs de topo (total pendente, valor em análise em R$, solicitações críticas/urgentes e decisões do mês); 3. Triagem por abas de status (Pendentes, Aprovadas, Em Revisão, Rejeitadas, Todas), filtros de busca textual, setor solicitante, criticidade e faixa de valor; 4. Inspeção profunda com justificativa, itens com chips de sinais do catálogo SAP (alerta de saldo em estoque no almoxarifado e RMs abertas), anexos e histórico de pareceres; 5. Suporte a decisão ágil individual (Aprovar, Devolver p/ Revisão, Rejeitar), alteração de decisão prévia e aprovação em lote para múltiplas requisições selecionadas; 6. Exportação direta para PDF oficial executivo FRM.SUP-0001 e planilha Excel.',
+  },
+  {
+    data: '2026-09-04',
     resumo: 'Suprimentos > Central de Compras e Rastreio / Correcao da Avaliacao de Entrega Parcial (`entregaParcial.ts`, `Compras.tsx`, `entregaParcial.test.ts`): 1. Corrigida a funcao `avaliarEntregaParcial` na visao por pedido (`ri_po`), avaliando a quantidade do pedido (`qtd_po`) e o fornecido deste pedido (`qtd_fornecida_po`), em vez de comparar cegamente com a quantidade original da RM; 2. Eliminado falso positivo de badge "PARCIAL 50%" em pedidos de 1 UN que ja foram 100% entregues com MIGO mas cuja RM solicitava quantidade maior (ex: RM encerrada no SAP com compra menor); 3. Mantida a comparacao consolidada com a RM apenas para registros agregados sem `qtd_po`; 4. Atualizada a suite de testes unitarios `entregaParcial.test.ts` com cobertura para pedidos 100% concluidos com RM maior e entregas parciais reais de PO.',
   },
   {

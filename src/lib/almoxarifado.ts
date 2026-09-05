@@ -46,7 +46,53 @@ export const DEPOSITO_DESCRICAO: Record<string, string> = {
   '0200': 'Químicos',
   '0300': 'Segregados (materiais com validade vencidas ou materiais segregados)',
   '1000': 'Recebimento Materiais Estoque',
+  // Depósitos marcados como "Exclusão" no SAP (ver DEPOSITOS_INATIVOS).
+  '0030': 'Dep. Refeitório',
+  '0070': 'EPI\u00b4S',
+  '0080': 'CAP Acabados',
+  '0100': 'Serviços Gerais',
+  '0110': 'Mat.Proj.GE101',
+  '0120': 'Mat.Proj.GE302',
+  '0126': 'Mat.Proj.GE126',
+  '0201': 'Mat. Elaboração',
+  '0202': 'MAT.Elab.Vestas',
+  '0203': 'MAT.Elab.Gamesa',
+  '0210': 'Ferramentaria',
 };
+
+/**
+ * Depósitos com status "Exclusão" no cadastro do SAP: não recebem material
+ * novo e não devem ser oferecidos como destino.
+ *
+ * Inativo não é sinônimo de inexistente — 0202, 0120, 0100 e 0030 têm
+ * movimentação histórica na MB51, e apagá-la mudaria totais já divulgados.
+ * Por isso as linhas continuam nos dados e nos indicadores; o que muda é o
+ * rótulo (marcado como inativo em filtro, tooltip e tabela) e a ordem das
+ * listas de filtro, onde eles vão para o fim.
+ */
+export const DEPOSITOS_INATIVOS: ReadonlySet<string> = new Set([
+  '0030', '0070', '0080', '0100', '0110', '0120', '0126', '0201', '0202', '0203', '0210',
+]);
+
+/** `true` para depósito marcado como Exclusão no SAP. */
+export function isDepositoInativo(cod?: string | null): boolean {
+  const chave = chaveDeposito(cod);
+  return chave !== '' && DEPOSITOS_INATIVOS.has(chave);
+}
+
+/**
+ * Ordena códigos de depósito para as listas de filtro: ativos primeiro, em
+ * ordem alfabética, e os inativos ao final — eles ainda podem ser escolhidos
+ * (o histórico está lá), só não competem com os depósitos em uso.
+ */
+export function ordenarDepositos(codigos: Iterable<string>): string[] {
+  return Array.from(codigos).sort((a, b) => {
+    const ia = isDepositoInativo(a) ? 1 : 0;
+    const ib = isDepositoInativo(b) ? 1 : 0;
+    if (ia !== ib) return ia - ib;
+    return a.localeCompare(b, 'pt-BR');
+  });
+}
 
 // Códigos numéricos chegam de planilhas diferentes ora como '0004', ora como
 // '4' (o Excel come o zero à esquerda). O cadastro usa sempre quatro dígitos.
@@ -64,12 +110,14 @@ export function descricaoDeposito(cod?: string | null): string {
 /**
  * Rótulo de exibição do depósito: "0004 - Manutenção". Depósito sem descrição
  * cadastrada aparece só com o código; sem código, com o travessão de vazio.
+ * Depósito de Exclusão sai marcado: "0202 - MAT.Elab.Vestas (inativo)".
  */
 export function formatDeposito(cod?: string | null, vazio = '—'): string {
   const s = String(cod ?? '').trim();
   if (!s) return vazio;
   const desc = descricaoDeposito(s);
-  return desc ? `${s} - ${desc}` : s;
+  const base = desc ? `${s} - ${desc}` : s;
+  return isDepositoInativo(s) ? `${base} (inativo)` : base;
 }
 
 /**

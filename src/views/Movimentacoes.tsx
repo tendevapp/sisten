@@ -34,7 +34,7 @@ import {
   resumirEstoqueMorto, formatCobertura, faixaIdadeDe, conciliarComZl0024,
   FAIXAS_COBERTURA, FAIXAS_PERMANENCIA, SituacaoCobertura,
 } from '../lib/giroEstoque';
-import { formatBRL, formatQtd, isProjetoItem, descricaoDeposito, formatDeposito } from '../lib/almoxarifado';
+import { formatBRL, formatQtd, isProjetoItem, descricaoDeposito, formatDeposito, isDepositoInativo, ordenarDepositos } from '../lib/almoxarifado';
 import { formatDateBR, formatInt, formatPct } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
 import MovimentacoesKpis from '../components/almoxarifado/MovimentacoesKpis';
@@ -172,7 +172,8 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     const ordenar = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return {
       centros: ordenar(centros),
-      depositos: ordenar(depositos),
+      // Depósitos de Exclusão ficam ao final: o histórico deles continua aqui.
+      depositos: ordenarDepositos(depositos),
       tipos: Array.from(tipos.entries()).sort((a, b) => a[0].localeCompare(b[0])),
       categorias: ordenar(categorias),
     };
@@ -644,7 +645,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
               <select value={tipoItemFiltro} onChange={e => setTipoItemFiltro(e.target.value as any)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
                 <option value="Todos">Item: Todos</option>
                 <option value="projeto">Projeto (100000…)</option>
-                <option value="consumo">Consumo</option>
+                <option value="consumo">Outros</option>
               </select>
 
               <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[180px] lg:w-auto truncate`}>
@@ -720,6 +721,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                               {m.deposito ? (
                                 <div className="min-w-0">
                                   <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{m.deposito}</span>
+                                  {isDepositoInativo(m.deposito) && (
+                                    <span
+                                      className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
+                                      style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
+                                    >
+                                      inativo
+                                    </span>
+                                  )}
                                   {descricaoDeposito(m.deposito) && (
                                     <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{descricaoDeposito(m.deposito)}</p>
                                   )}
@@ -908,7 +917,18 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                         {paginar(camadasIdade).map((c, idx) => (
                           <Tr key={`${c.material}-${c.data_entrada ?? 'legado'}-${idx}`}
                               accent={c.legado ? 'var(--ink-muted)' : undefined}>
-                            <Td mono strong>{c.material}</Td>
+                            {/* Código e descrição juntos: só o código obriga a
+                                consultar outra tela para saber o que está parado. */}
+                            <Td strong title={descricaoPorMaterial.get(c.material) || c.material}>
+                              <div className="min-w-0">
+                                <span className="font-mono font-bold whitespace-nowrap">{c.material}</span>
+                                {descricaoPorMaterial.get(c.material) && (
+                                  <p className="text-[10px] leading-tight truncate font-normal" style={{ color: 'var(--ink-muted)' }}>
+                                    {descricaoPorMaterial.get(c.material)}
+                                  </p>
+                                )}
+                              </div>
+                            </Td>
                             <Td>
                               {c.legado ? (
                                 <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>

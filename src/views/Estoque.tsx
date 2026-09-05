@@ -12,8 +12,9 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, EstoqueItem } from '../types';
-import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode, descricaoDeposito, formatDeposito } from '../lib/almoxarifado';
-import { formatBRL, formatQtd, formatDateTimeBR, formatInt } from '../lib/format';
+import { classifyABC, ClasseAbc, CLASSE_ABC_COR, normalizeCode, descricaoDeposito, formatDeposito, isDepositoInativo, isProjetoItem, ordenarDepositos } from '../lib/almoxarifado';
+import { calcularPmmMovimentado, variacaoPmm, type PmmMovimentadoItem } from '../lib/pmmMovimentado';
+import { formatBRL, formatQtd, formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
@@ -25,7 +26,9 @@ interface EstoqueProps {
 
 type SortDir = 'asc' | 'desc';
 
-type ColumnId = keyof EstoqueItem | 'classe_abc';
+// 'classe_abc' e 'pmm_movimentado' são colunas calculadas na tela: não
+// existem em EstoqueItem, saem da curva ABC e da MB51.
+type ColumnId = keyof EstoqueItem | 'classe_abc' | 'pmm_movimentado';
 
 interface ColumnOption {
   id: ColumnId;
@@ -45,6 +48,9 @@ const COLUMNS: (ColumnOption & { defaultVisible: boolean })[] = [
   { id: 'quantidade', label: 'Quantidade', align: 'right', sortable: true, numeric: true, defaultVisible: true },
   { id: 'umb', label: 'UMB', sortable: true, defaultVisible: true },
   { id: 'preco_medio', label: 'Preço Médio', align: 'right', sortable: true, numeric: true, defaultVisible: true },
+  // PMM recalculado pelas entradas da MB51 (ver lib/pmmMovimentado.ts). Fica ao
+  // lado do PMM do SAP de propósito: a diferença entre os dois é informação.
+  { id: 'pmm_movimentado', label: 'PMM Mov.', align: 'right', sortable: true, numeric: true, defaultVisible: true },
   { id: 'valor_total', label: 'Valor Total', align: 'right', sortable: true, numeric: true, defaultVisible: true },
   { id: 'centro', label: 'Centro', sortable: true, defaultVisible: false },
   { id: 'tipo_material', label: 'Tipo Material', sortable: true, defaultVisible: false },
@@ -77,6 +83,10 @@ export default function Estoque({ user }: EstoqueProps) {
   const [searchQuery, setSearchQuery] = useState('');
   // Depósito aceita seleção múltipla: vazio = todos.
   const [depositoFilter, setDepositoFilter] = useState<Set<string>>(new Set());
+  // Item de projeto (código iniciado em 100000) x demais. Mesmo recorte de
+  // Movimentações, Dashboards e Consumo Semanal: as duas naturezas têm
+  // política de estoque diferente e misturá-las distorce a leitura.
+  const [tipoItemFilter, setTipoItemFilter] = useState<'Todos' | 'projeto' | 'consumo'>('Todos');
   const [tipoFilter, setTipoFilter] = useState('Todos');
   const [classFilter, setClassFilter] = useState('Todos');
   const [abcFilter, setAbcFilter] = useState<'Todos' | ClasseAbc>('Todos');
@@ -102,6 +112,8 @@ export default function Estoque({ user }: EstoqueProps) {
   }, [visibleColumns]);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // PMM recalculado pelas entradas da MB51, por material normalizado.
+  const [pmmMov, setPmmMov] = useState<Map<string, PmmMovimentadoItem>>(new Map());
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
@@ -109,6 +121,11 @@ export default function Estoque({ user }: EstoqueProps) {
     try {
       const data = await localDb.fetchEstoque(force);
       setRows(data);
+      // A MB51 vem depois e sem travar a tela: ela só alimenta a coluna de PMM
+      // movimentado, e a posição de estoque é o que o usuário veio ver.
+      localDb.fetchMb51(force)
+        .then(movs => setPmmMov(calcularPmmMovimentado(movs)))
+        .catch(() => setPmmMov(new Map()));
     } catch (e: any) {
       console.error('Erro ao carregar a posição de estoque:', e);
       setError('Falha ao carregar o estoque. Tente atualizar novamente.');
@@ -169,7 +186,8 @@ export default function Estoque({ user }: EstoqueProps) {
   const depositoOptions = useMemo(() => {
     const s = new Set<string>();
     rows.forEach(r => { if (r.deposito) s.add(r.deposito); });
-    return Array.from(s).sort();
+    // Depósitos de Exclusão vão para o fim da lista (ver ordenarDepositos).
+    return ordenarDepositos(s);
   }, [rows]);
 
   const tipoOptions = useMemo(() => {
@@ -195,6 +213,11 @@ export default function Estoque({ user }: EstoqueProps) {
     const q = searchQuery.trim().toLowerCase();
     return rows.filter(r => {
       if (depositoFilter.size > 0 && !depositoFilter.has(r.deposito)) return false;
+      if (tipoItemFilter !== 'Todos') {
+        const eProjeto = isProjetoItem(r.material);
+        if (tipoItemFilter === 'projeto' && !eProjeto) return false;
+        if (tipoItemFilter === 'consumo' && eProjeto) return false;
+      }
       if (tipoFilter !== 'Todos' && r.tipo_material !== tipoFilter) return false;
       if (classFilter !== 'Todos' && r.class_item !== classFilter) return false;
       if (abcFilter !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFilter) return false;
@@ -208,7 +231,12 @@ export default function Estoque({ user }: EstoqueProps) {
       }
       return true;
     });
-  }, [rows, searchQuery, depositoFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
+  }, [rows, searchQuery, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
+
+  const pmmMovDe = useCallback(
+    (material?: string | null) => pmmMov.get(normalizeCode(material)) ?? null,
+    [pmmMov],
+  );
 
   // Ordenação: por coluna quando ativa; caso contrário material asc.
   const sortedRows = useMemo(() => {
@@ -217,6 +245,11 @@ export default function Estoque({ user }: EstoqueProps) {
     if (sortColumn && colDef) {
       const dir = sortDir === 'asc' ? 1 : -1;
       arr.sort((a, b) => {
+        if (sortColumn === 'pmm_movimentado') {
+          const va = pmmMovDe(a.material)?.pmm ?? -Infinity;
+          const vb = pmmMovDe(b.material)?.pmm ?? -Infinity;
+          return (va - vb) * dir;
+        }
         if (colDef.numeric) {
           const va = (a[sortColumn as keyof EstoqueItem] as number) ?? -Infinity;
           const vb = (b[sortColumn as keyof EstoqueItem] as number) ?? -Infinity;
@@ -238,12 +271,12 @@ export default function Estoque({ user }: EstoqueProps) {
       arr.sort((a, b) => normalizeCode(a.material).localeCompare(normalizeCode(b.material), 'pt-BR', { numeric: true }));
     }
     return arr;
-  }, [filteredRows, sortColumn, sortDir, mapaAbc]);
+  }, [filteredRows, sortColumn, sortDir, mapaAbc, pmmMovDe]);
 
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
 
   const handleSearch = () => setSearchQuery(searchInput.trim());
   const handleClearSearch = () => { setSearchInput(''); setSearchQuery(''); };
@@ -278,6 +311,7 @@ export default function Estoque({ user }: EstoqueProps) {
       'Centro': r.centro ?? '',
       'Depósito': r.deposito ?? '',
       'Descrição do Depósito': descricaoDeposito(r.deposito),
+      'Situação do Depósito': r.deposito ? (isDepositoInativo(r.deposito) ? 'Inativo' : 'Ativo') : '',
       'Tipo de Material': r.tipo_material ?? '',
       'Material': r.material ?? '',
       'Referência Fabricante': r.referencia_fabricante ?? '',
@@ -285,6 +319,12 @@ export default function Estoque({ user }: EstoqueProps) {
       'Quantidade': r.quantidade ?? '',
       'UMB': r.umb ?? '',
       'Preço Médio': r.preco_medio ?? '',
+      'PMM Movimentado': pmmMovDe(r.material)?.pmm ?? '',
+      'Entradas na MB51': pmmMovDe(r.material)?.entradas ?? '',
+      'Variação PMM Mov. vs SAP (%)': (() => {
+        const v = variacaoPmm(r.preco_medio, pmmMovDe(r.material)?.pmm);
+        return v === null ? '' : Number((v * 100).toFixed(1));
+      })(),
       'Valor Total': r.valor_total ?? '',
       'GrpMercad': r.grp_mercad ?? '',
       'Class. Item': r.class_item ?? '',
@@ -326,6 +366,14 @@ export default function Estoque({ user }: EstoqueProps) {
         return (
           <div className="min-w-0" title={formatDeposito(r.deposito)}>
             <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{r.deposito}</span>
+            {isDepositoInativo(r.deposito) && (
+              <span
+                className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
+                style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
+              >
+                inativo
+              </span>
+            )}
             {desc && <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{desc}</p>}
           </div>
         );
@@ -334,6 +382,32 @@ export default function Estoque({ user }: EstoqueProps) {
         return formatQtd(r.quantidade);
       case 'preco_medio':
         return formatPreco(r.preco_medio);
+      case 'pmm_movimentado': {
+        const p = pmmMovDe(r.material);
+        if (!p) {
+          return (
+            <span
+              title="Sem entrada registrada na MB51 desde a reabertura: só existe o PMM contábil do SAP."
+              style={{ color: 'var(--ink-muted)' }}
+            >
+              —
+            </span>
+          );
+        }
+        const variacao = variacaoPmm(r.preco_medio, p.pmm);
+        const destoa = variacao !== null && Math.abs(variacao) >= 0.2;
+        return (
+          <span
+            className="whitespace-nowrap"
+            title={`${p.entradas} entrada(s), ${formatQtd(p.quantidade)} un, ${formatPreco(p.valor)}`
+              + (p.ultimaEntrada ? ` · última em ${formatDateBR(p.ultimaEntrada)}` : '')
+              + (variacao !== null ? ` · ${variacao > 0 ? '+' : ''}${(variacao * 100).toFixed(1)}% vs PMM do SAP` : '')}
+            style={destoa ? { color: 'var(--status-warning)', fontWeight: 700 } : undefined}
+          >
+            {formatPreco(p.pmm)}
+          </span>
+        );
+      }
       case 'valor_total':
         return <span className="font-bold text-emerald-600 dark:text-emerald-450 whitespace-nowrap">{formatPreco(r.valor_total)}</span>;
       default:
@@ -464,6 +538,18 @@ export default function Estoque({ user }: EstoqueProps) {
               className="shrink-0 w-[168px] lg:w-auto lg:min-w-[140px]"
               panelClassName="w-80 sm:w-96"
             />
+            <div className="relative shrink-0 w-[150px] lg:w-auto lg:min-w-[140px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={tipoItemFilter}
+                onChange={(e) => setTipoItemFilter(e.target.value as 'Todos' | 'projeto' | 'consumo')}
+                className="w-full h-9 pl-8 pr-8 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Item: Todos</option>
+                <option value="projeto">Projeto (100000…)</option>
+                <option value="consumo">Outros</option>
+              </select>
+            </div>
             <div className="relative shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
               <select
