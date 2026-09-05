@@ -6,6 +6,7 @@
  * Cockpit executivo para triagem rapida, analise profunda de itens,
  * verificacao de sinais do catalogo SAP (saldo em estoque, RM aberta)
  * e decisao (aprovar, devolver para revisao, rejeitar e aprovacao em lote).
+ * Totalmente compativel com modo claro (light) e modo escuro (dark).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -487,21 +488,21 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-[1680px] mx-auto p-3 sm:p-5 space-y-4 animate-fade-in overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-4.5rem)] max-w-[1680px] mx-auto p-3 sm:p-5 space-y-4 animate-fade-in overflow-hidden">
       
       {/* 1. Header Executivo e KPIs de Decisao */}
       <header className="shrink-0 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 text-white rounded-xl p-4 sm:p-5 shadow-lg border border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl p-4 sm:p-5 shadow-xs border border-slate-200 dark:border-slate-800 transition-colors">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center p-2 rounded-lg bg-emerald-700/80 text-emerald-100 ring-1 ring-emerald-500/40">
-                <ShieldCheck className="w-5 h-5" />
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center justify-center p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800 ring-1 ring-emerald-500/20">
+                <ShieldCheck className="w-6 h-6" />
               </span>
               <div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                   Aprovações de Compras
                 </h1>
-                <p className="text-xs text-slate-300">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Painel de decisão gerencial · Análise orçamentária e liberação para cotação
                 </p>
               </div>
@@ -512,7 +513,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
             {abaAtiva === 'pendentes' && selecionadasLote.size > 0 && (
               <button
                 onClick={() => setModalLoteAberta(true)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Aprovar Selecionadas ({selecionadasLote.size})</span>
@@ -522,15 +523,15 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
             <button
               onClick={exportarPlanilha}
               title="Exportar dados visíveis para planilha Excel"
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:hover:text-white text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span className="hidden md:inline">Exportar Excel</span>
             </button>
 
             <button
               onClick={() => onNavigate('/solicitacoes')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
             >
               <span>Central Geral</span>
               <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
@@ -541,17 +542,17 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
         {/* Grid de KPIs de Alto Impacto */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* KPI 1: Pendentes */}
-          <div className="rounded-xl p-3.5 bg-slate-900 border border-slate-800 text-white shadow-xs">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+          <div className="rounded-xl p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
               <span>Aguardando Minha Aprovação</span>
               <Clock className="w-4 h-4 text-amber-500" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-amber-500">
+              <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400">
                 {kpis.totalPendentes}
               </span>
               {kpis.pendentesCriticas > 0 && (
-                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-400 border border-amber-800">
+                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/80 dark:text-rose-400 dark:border-rose-800">
                   {kpis.pendentesCriticas} urgente(s)
                 </span>
               )}
@@ -559,45 +560,45 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
           </div>
 
           {/* KPI 2: Volume Financeiro */}
-          <div className="rounded-xl p-3.5 bg-slate-900 border border-slate-800 text-white shadow-xs">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+          <div className="rounded-xl p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
               <span>Montante em Análise</span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
+              <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="mt-2 flex items-baseline">
-              <span className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight">
+              <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
                 {formatBRL(kpis.valorPendente)}
               </span>
             </div>
           </div>
 
           {/* KPI 3: Críticas / Prazo Proximo */}
-          <div className="rounded-xl p-3.5 bg-slate-900 border border-slate-800 text-white shadow-xs">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+          <div className="rounded-xl p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
               <span>Prazo & Criticidade Alta</span>
-              <AlertTriangle className="w-4 h-4 text-rose-400" />
+              <AlertTriangle className="w-4 h-4 text-rose-500" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-rose-400">
+              <span className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400">
                 {kpis.pendentesCriticas}
               </span>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 necessitam prioridade
               </span>
             </div>
           </div>
 
           {/* KPI 4: Decididas no Mes */}
-          <div className="rounded-xl p-3.5 bg-slate-900 border border-slate-800 text-white shadow-xs">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+          <div className="rounded-xl p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
               <span>Decisões Tomadas no Mês</span>
-              <CheckCircle2 className="w-4 h-4 text-sky-400" />
+              <CheckCircle2 className="w-4 h-4 text-sky-500" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-white">
+              <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
                 {kpis.decididasMes}
               </span>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 ({kpis.totalAprovadas} aprovadas no total)
               </span>
             </div>
@@ -606,7 +607,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
       </header>
 
       {/* 2. Barra de Filtros e Abas de Status */}
-      <section className="shrink-0 bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2 shadow-xs">
+      <section className="shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2 shadow-xs transition-colors">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
           {/* Abas com Badges */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
@@ -614,14 +615,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               onClick={() => setAbaAtiva('pendentes')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'pendentes'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <span>Pendentes de Decisão</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  abaAtiva === 'pendentes' ? 'bg-amber-800 text-white' : 'bg-slate-800 text-slate-400'
+                  abaAtiva === 'pendentes'
+                    ? 'bg-amber-700 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {kpis.totalPendentes}
@@ -632,14 +635,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               onClick={() => setAbaAtiva('aprovadas')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'aprovadas'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <span>Já Aprovadas</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  abaAtiva === 'aprovadas' ? 'bg-emerald-900 text-white' : 'bg-slate-800 text-slate-400'
+                  abaAtiva === 'aprovadas'
+                    ? 'bg-emerald-800 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {kpis.totalAprovadas}
@@ -650,14 +655,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               onClick={() => setAbaAtiva('revisao')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'revisao'
-                  ? 'bg-orange-700 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-orange-500 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <span>Em Revisão</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  abaAtiva === 'revisao' ? 'bg-orange-950 text-white' : 'bg-slate-800 text-slate-400'
+                  abaAtiva === 'revisao'
+                    ? 'bg-orange-700 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {kpis.totalEmRevisao}
@@ -668,14 +675,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               onClick={() => setAbaAtiva('rejeitadas')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'rejeitadas'
-                  ? 'bg-rose-800 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <span>Rejeitadas</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  abaAtiva === 'rejeitadas' ? 'bg-rose-950 text-white' : 'bg-slate-800 text-slate-400'
+                  abaAtiva === 'rejeitadas'
+                    ? 'bg-rose-800 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {kpis.totalRejeitadas}
@@ -686,14 +695,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               onClick={() => setAbaAtiva('todas')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'todas'
-                  ? 'bg-slate-700 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <span>Todas</span>
               <span
                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  abaAtiva === 'todas' ? 'bg-slate-900 text-white' : 'bg-slate-800 text-slate-400'
+                  abaAtiva === 'todas'
+                    ? 'bg-slate-950 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                 }`}
               >
                 {kpis.totalGeral}
@@ -711,12 +722,12 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                 value={busca}
                 onChange={e => setBusca(e.target.value)}
                 placeholder="Buscar por #, solicitante, item..."
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full pl-8 pr-7 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
               />
               {busca && (
                 <button
                   onClick={() => setBusca('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -727,7 +738,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
             <select
               value={filtroSetor}
               onChange={e => setFiltroSetor(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todos">Todos os Setores</option>
               {setoresAprovados.map(s => (
@@ -741,7 +752,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
             <select
               value={filtroCriticidade}
               onChange={e => setFiltroCriticidade(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todas">Criticidade: Todas</option>
               <option value="5">5 - Impeditiva</option>
@@ -755,7 +766,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
             <select
               value={filtroFaixaValor}
               onChange={e => setFiltroFaixaValor(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="todas">Valor: Todos</option>
               <option value="ate5k">Até R$ 5.000</option>
@@ -770,46 +781,47 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
         
         {/* PAINEL ESQUERDO: Lista de Triagem de Solicitacoes (col-span-5) */}
-        <section className="lg:col-span-5 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <section className="lg:col-span-5 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs transition-colors">
           {/* Header da Lista com Selecao em Lote */}
-          <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
-            <div className="flex items-center gap-2">
+          <div className="p-3 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-2.5">
               {abaAtiva === 'pendentes' && (
                 <button
                   type="button"
                   onClick={alternarTodasLote}
-                  className="text-slate-400 hover:text-white flex items-center gap-1.5 cursor-pointer select-none"
+                  className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1.5 cursor-pointer select-none"
                   title="Selecionar todas as pendentes filtradas"
                 >
                   {solicitacoesFiltradas.length > 0 &&
                   selecionadasLote.size ===
                     solicitacoesFiltradas.filter(r => r.status === 'pendente').length ? (
-                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                    <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   ) : (
                     <Square className="w-4 h-4" />
                   )}
                   <span className="font-semibold">Selecionar Tudo</span>
                 </button>
               )}
-              <span className="font-mono text-[11px] text-slate-500">
+              {abaAtiva === 'pendentes' && <span className="text-slate-300 dark:text-slate-700">·</span>}
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Exibindo {solicitacoesFiltradas.length} solicitação(ões)
               </span>
             </div>
 
             {selecionadasLote.size > 0 && (
-              <span className="text-emerald-400 font-bold text-[11px]">
+              <span className="text-emerald-700 dark:text-emerald-400 font-bold text-[11px]">
                 {selecionadasLote.size} selecionada(s)
               </span>
             )}
           </div>
 
           {/* Fila de Cards Rolavel */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/80 p-2 space-y-1.5">
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/80 p-2 space-y-1.5">
             {solicitacoesFiltradas.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
-                <CheckCircle2 className="w-12 h-12 text-slate-700 mb-2" />
-                <p className="font-bold text-sm text-slate-300">Nenhuma solicitação encontrada</p>
-                <p className="text-xs text-slate-400 mt-1 max-w-xs">
+              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500">
+                <CheckCircle2 className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-2" />
+                <p className="font-bold text-sm text-slate-700 dark:text-slate-300">Nenhuma solicitação encontrada</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
                   {abaAtiva === 'pendentes'
                     ? 'Parabéns! Você não possui compras pendentes de aprovação no momento.'
                     : 'Nenhum registro corresponde aos filtros selecionados.'}
@@ -828,9 +840,11 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                 // Destaque de criticidade
                 const crit = req.criticality || 1;
                 const critCor =
-                  crit >= 4 ? 'text-rose-400 bg-rose-950/70 border-rose-800' :
-                  crit === 3 ? 'text-amber-400 bg-amber-950/70 border-amber-800' :
-                  'text-slate-300 bg-slate-800 border-slate-700';
+                  crit >= 4
+                    ? 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-950/70 dark:border-rose-800'
+                    : crit === 3
+                    ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/70 dark:border-amber-800'
+                    : 'text-slate-600 bg-slate-100 border-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:border-slate-700';
 
                 return (
                   <div
@@ -838,8 +852,8 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                     onClick={() => setSelecionadaId(req.id)}
                     className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
                       isSelected
-                        ? 'bg-slate-800 border-emerald-500 shadow-md ring-1 ring-emerald-500/50'
-                        : 'bg-slate-950/60 hover:bg-slate-800/60 border-slate-800/80 hover:border-slate-700'
+                        ? 'bg-emerald-50/60 dark:bg-slate-800 border-emerald-500 shadow-sm ring-1 ring-emerald-500/30'
+                        : 'bg-white dark:bg-slate-950/60 hover:bg-slate-50 dark:hover:bg-slate-800/60 border-slate-200 dark:border-slate-800/80 shadow-2xs'
                     }`}
                   >
                     {/* Topo do Card */}
@@ -849,16 +863,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                           <button
                             type="button"
                             onClick={e => alternarSelecaoLote(req.id, e)}
-                            className="text-slate-400 hover:text-white cursor-pointer mt-0.5"
+                            className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer mt-0.5"
                           >
                             {isChecked ? (
-                              <CheckSquare className="w-4 h-4 text-emerald-400" />
+                              <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                             ) : (
                               <Square className="w-4 h-4" />
                             )}
                           </button>
                         )}
-                        <span className="font-mono text-xs font-black text-white">
+                        <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
                           #{req.number}
                         </span>
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${critCor}`}>
@@ -867,29 +881,29 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs font-mono font-black text-emerald-400">
+                        <span className="text-xs font-mono font-black text-emerald-700 dark:text-emerald-400">
                           {formatBRL(totalReq)}
                         </span>
                       </div>
                     </div>
 
                     {/* Solicitante e Setor */}
-                    <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
                       <div className="flex items-center gap-1.5 truncate">
                         <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span className="font-semibold truncate">{req.solicitante_name}</span>
-                        <span className="text-slate-500">·</span>
-                        <span className="text-slate-400 truncate">{nomeSetor(req.solicitante_sector_id)}</span>
+                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-500 dark:text-slate-400 truncate">{nomeSetor(req.solicitante_sector_id)}</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 shrink-0 ml-2">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 ml-2">
                         {tempoAguardando(req.created_at)}
                       </span>
                     </div>
 
                     {/* Resumo de Itens e Data de Necessidade */}
-                    <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800/60 pt-1.5">
-                      <div className="flex items-center gap-1 truncate text-slate-400">
-                        <Layers className="w-3 h-3 text-slate-500 shrink-0" />
+                    <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/60 pt-1.5">
+                      <div className="flex items-center gap-1 truncate text-slate-500 dark:text-slate-400">
+                        <Layers className="w-3 h-3 text-slate-400 shrink-0" />
                         <span className="truncate">
                           {itensReq.length} {itensReq.length === 1 ? 'item' : 'itens'}:{' '}
                           {itensReq.slice(0, 2).map(it => it.description).join(', ')}
@@ -898,8 +912,8 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       </div>
 
                       {req.data_necessidade && (
-                        <div className="flex items-center gap-1 shrink-0 ml-2 font-mono text-[10px] text-slate-400">
-                          <Calendar className="w-3 h-3 text-slate-500" />
+                        <div className="flex items-center gap-1 shrink-0 ml-2 font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                          <Calendar className="w-3 h-3 text-slate-400" />
                           <span>Para {formatDateBR(req.data_necessidade)}</span>
                         </div>
                       )}
@@ -912,33 +926,33 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
         </section>
 
         {/* PAINEL DIREITO: Inspecao Profunda & Estacao de Decisao (col-span-7) */}
-        <section className="lg:col-span-7 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+        <section className="lg:col-span-7 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs transition-colors">
           {solicitacaoAtiva ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               
               {/* Header da Inspecao */}
-              <div className="p-4 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-white font-mono tracking-tight">
+                      <h2 className="text-lg font-black text-slate-900 dark:text-white font-mono tracking-tight">
                         #{solicitacaoAtiva.number}
                       </h2>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                        solicitacaoAtiva.status === 'aprovada' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
-                        solicitacaoAtiva.status === 'pendente' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
-                        solicitacaoAtiva.status === 'em_revisao' ? 'bg-orange-950 text-orange-400 border border-orange-800' :
-                        'bg-slate-800 text-slate-300'
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                        solicitacaoAtiva.status === 'aprovada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' :
+                        solicitacaoAtiva.status === 'pendente' ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800' :
+                        solicitacaoAtiva.status === 'em_revisao' ? 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800' :
+                        'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                       }`}>
                         {rotuloStatus(solicitacaoAtiva)}
                       </span>
                       {solicitacaoAtiva.tipo_compra && (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
                           {solicitacaoAtiva.tipo_compra}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Criada em {formatDateTimeBR(solicitacaoAtiva.created_at)} por {solicitacaoAtiva.solicitante_name}
                     </p>
                   </div>
@@ -949,16 +963,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                     onClick={exportarPdfSolicitacao}
                     disabled={gerandoPdf}
                     title="Exportar documento oficial FRM.SUP-0001 em PDF"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
                   >
-                    <FileText className="w-3.5 h-3.5 text-rose-400" />
+                    <FileText className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
                     <span>{gerandoPdf ? 'Gerando...' : 'PDF Oficial'}</span>
                   </button>
 
                   <button
                     onClick={() => onNavigate(`/solicitacoes?id=${solicitacaoAtiva.id}`)}
                     title="Abrir detalhes completos na Central de Solicitações"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-colors cursor-pointer"
                   >
                     <span>Ver na Central</span>
                     <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
@@ -970,52 +984,52 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 
                 {/* Cartao: Solicitante & Logistica */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl text-xs">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Setor Solicitante</span>
-                    <p className="font-bold text-slate-200 mt-0.5">{nomeSetor(solicitacaoAtiva.solicitante_sector_id)}</p>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Setor Solicitante</span>
+                    <p className="font-bold text-slate-900 dark:text-slate-200 mt-0.5">{nomeSetor(solicitacaoAtiva.solicitante_sector_id)}</p>
                   </div>
 
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Data Limite de Entrega</span>
-                    <p className="font-bold text-slate-200 mt-0.5 flex items-center gap-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Data Limite de Entrega</span>
+                    <p className="font-bold text-slate-900 dark:text-slate-200 mt-0.5 flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-amber-500" />
                       {solicitacaoAtiva.data_necessidade ? formatDateBR(solicitacaoAtiva.data_necessidade) : 'Não estipulada'}
                     </p>
                   </div>
 
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Valor Estimado Total</span>
-                    <p className="font-mono font-black text-emerald-400 text-sm mt-0.5">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Valor Estimado Total</span>
+                    <p className="font-mono font-black text-emerald-700 dark:text-emerald-400 text-sm mt-0.5">
                       {formatBRL(valorTotalAtivo)}
                     </p>
                   </div>
                 </div>
 
                 {/* Cartao: Justificativa e Aplicacao */}
-                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                  <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
                     <span>Justificativa e Aplicação da Compra</span>
                   </h3>
-                  <p className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
+                  <p className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                     {solicitacaoAtiva.justificativa || 'Nenhuma justificativa detalhada foi fornecida.'}
                   </p>
                 </div>
 
                 {/* Cartao: Itens Solicitados com Sinais SAP */}
-                <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-slate-500" />
+                <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-slate-400" />
                       <span>Itens Solicitados ({itensAtivos.length})</span>
                     </h3>
-                    <span className="text-xs font-mono font-bold text-emerald-400">
+                    <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">
                       Subtotal: {formatBRL(valorTotalAtivo)}
                     </span>
                   </div>
 
-                  <div className="divide-y divide-slate-800/80">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800/80">
                     {itensAtivos.map((it, idx) => {
                       const sinais = sinaisPorItem[it.id];
                       const totalItem = (it.estimated_value || 0) * (it.quantity || 1);
@@ -1024,16 +1038,16 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                         <div key={it.id} className="py-3 flex flex-col gap-1.5 text-xs">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
-                              <p className="font-bold text-slate-200">
+                              <p className="font-bold text-slate-900 dark:text-slate-200">
                                 {idx + 1}. {it.description}
                                 {it.is_generic && (
-                                  <span className="ml-2 text-[10px] bg-slate-800 text-amber-400 font-bold px-1.5 py-0.5 rounded border border-amber-800/40">
+                                  <span className="ml-2 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 dark:bg-slate-800 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded dark:border-amber-800/40">
                                     Item Genérico
                                   </span>
                                 )}
                               </p>
 
-                              <p className="font-mono text-[11px] text-slate-400 mt-0.5">
+                              <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                                 {it.sap_code ? `Código SAP: ${it.sap_code}` : 'Sem código SAP vinculado'}
                                 {it.brand && ` · Marca/Fabricante: ${it.brand}`}
                                 {it.is_similar_allowed && ' (Aceita similar)'}
@@ -1051,7 +1065,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                               )}
 
                               {it.observation && (
-                                <p className="text-[11px] text-slate-400 italic mt-1">
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic mt-1">
                                   Observação: {it.observation}
                                 </p>
                               )}
@@ -1061,7 +1075,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                                   href={it.reference_link.startsWith('http') ? it.reference_link : `https://${it.reference_link}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 hover:underline mt-1 cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 hover:underline mt-1 cursor-pointer"
                                 >
                                   <ExternalLink className="w-3 h-3" />
                                   <span>Link de Referência / Catálogo</span>
@@ -1070,14 +1084,14 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                             </div>
 
                             <div className="text-right shrink-0">
-                              <p className="font-bold text-slate-200">
+                              <p className="font-bold text-slate-800 dark:text-slate-200">
                                 {it.quantity} {it.unit}
                               </p>
-                              <p className="text-slate-400 text-[11px]">
+                              <p className="text-slate-500 dark:text-slate-400 text-[11px]">
                                 {it.estimated_value > 0 ? `un: ${formatBRL(it.estimated_value)}` : 'Sem estimativa'}
                               </p>
                               {totalItem > 0 && (
-                                <p className="font-mono font-bold text-emerald-400 text-xs mt-0.5">
+                                <p className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs mt-0.5">
                                   {formatBRL(totalItem)}
                                 </p>
                               )}
@@ -1091,9 +1105,9 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
                 {/* Cartao: Anexos e Cotacoes */}
                 {anexosAtivos.length > 0 && (
-                  <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5 text-slate-400" />
                       <span>Anexos e Documentos ({anexosAtivos.length})</span>
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -1103,10 +1117,10 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                           href={att.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 hover:bg-slate-850 text-xs text-slate-200 transition-colors"
+                          className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 text-xs text-slate-700 dark:text-slate-200 transition-colors shadow-2xs"
                         >
                           <div className="flex items-center gap-2 truncate">
-                            <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                             <span className="truncate font-semibold">{att.name}</span>
                           </div>
                           <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
@@ -1118,20 +1132,20 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
                 {/* Cartao: Historico e Decisoes Anteriores */}
                 {historicoAtivo.length > 0 && (
-                  <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-slate-500" />
+                  <div className="p-4 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
                       <span>Histórico de Decisões & Trâmite</span>
                     </h3>
                     <div className="space-y-2 pt-1 text-xs">
                       {historicoAtivo.map(h => (
-                        <div key={h.id} className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 flex items-start justify-between gap-2">
+                        <div key={h.id} className="p-2.5 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-start justify-between gap-2 shadow-2xs">
                           <div>
-                            <p className="font-semibold text-slate-200">
-                              Mudança para <strong className="text-emerald-400">{h.to_status}</strong> por {h.user_name}
+                            <p className="font-semibold text-slate-800 dark:text-slate-200">
+                              Mudança para <strong className="text-emerald-700 dark:text-emerald-400">{h.to_status}</strong> por {h.user_name}
                             </p>
                             {h.comment && (
-                              <p className="text-slate-400 mt-1 italic whitespace-pre-wrap">
+                              <p className="text-slate-600 dark:text-slate-400 mt-1 italic whitespace-pre-wrap">
                                 &quot;{h.comment}&quot;
                               </p>
                             )}
@@ -1147,21 +1161,21 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               </div>
 
               {/* DOCK FIXO DE DECISAO DO GESTOR */}
-              <div className="p-4 bg-slate-950 border-t border-slate-800 shrink-0 space-y-3">
+              <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shrink-0 space-y-3 transition-colors">
                 {solicitacaoAtiva.status === 'pendente' ? (
                   <>
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         <span>Estação de Decisão do Gestor</span>
                       </h4>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
                         Parecer obrigatório para devolução ou rejeição
                       </span>
                     </div>
 
                     {erroDecisao && (
-                      <div className="p-2.5 rounded-lg bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
+                      <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 dark:bg-rose-950/80 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span>{erroDecisao}</span>
                       </div>
@@ -1174,7 +1188,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                           key={i}
                           type="button"
                           onClick={() => setParecer(frase)}
-                          className="text-[11px] px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+                          className="text-[11px] px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-300 dark:border-slate-800 transition-colors cursor-pointer shadow-2xs"
                         >
                           {frase}
                         </button>
@@ -1186,7 +1200,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       value={parecer}
                       onChange={e => setParecer(e.target.value)}
                       placeholder="Insira o parecer técnico de aprovação ou a justificativa caso esteja devolvendo para revisão ou rejeitando a compra..."
-                      className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors shadow-2xs"
                     />
 
                     {/* Botoes de Acao */}
@@ -1194,7 +1208,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       <button
                         onClick={() => executarDecisao('aprovar')}
                         disabled={processandoAcao}
-                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Aprovar Compra</span>
@@ -1203,7 +1217,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       <button
                         onClick={() => executarDecisao('revisar')}
                         disabled={processandoAcao}
-                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-amber-950 hover:bg-amber-900 border border-amber-800 active:scale-[0.98] text-amber-300 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 active:scale-[0.98] text-amber-900 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 dark:border-amber-800 dark:text-amber-200 font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <RefreshCw className="w-4 h-4" />
                         <span>Devolver p/ Revisão</span>
@@ -1212,7 +1226,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                       <button
                         onClick={() => executarDecisao('rejeitar')}
                         disabled={processandoAcao}
-                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-rose-950 hover:bg-rose-900 border border-rose-800 active:scale-[0.98] text-rose-300 font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="flex-1 min-w-[140px] py-2.5 px-4 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-300 active:scale-[0.98] text-rose-800 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 dark:border-rose-800 dark:text-rose-200 font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <XCircle className="w-4 h-4" />
                         <span>Rejeitar</span>
@@ -1220,9 +1234,9 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                     </div>
                   </>
                 ) : (
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs">
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-2xs">
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       <span>
                         Esta solicitação já foi decidida com status <strong>{rotuloStatus(solicitacaoAtiva)}</strong>.
                       </span>
@@ -1231,7 +1245,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                     {podeAlterarDecisao(solicitacaoAtiva, user) && (
                       <button
                         onClick={abrirModalRedecisao}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                       >
                         Alterar Decisão
                       </button>
@@ -1241,10 +1255,10 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
-              <FileText className="w-16 h-16 text-slate-700 mb-3" />
-              <p className="font-bold text-base text-slate-300">Nenhuma solicitação selecionada</p>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 dark:text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-3" />
+              <p className="font-bold text-base text-slate-700 dark:text-slate-300">Nenhuma solicitação selecionada</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm">
                 Selecione uma solicitação na lista ao lado para inspecionar os detalhes, verificar os sinais do catálogo SAP e emitir seu parecer.
               </p>
             </div>
@@ -1256,33 +1270,33 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
       {modalLoteAberta && (
         <Modal onClose={() => setModalLoteAberta(false)} maxWidth="max-w-lg">
           <ModalHeader onClose={() => setModalLoteAberta(false)}>
-            <div className="flex items-center gap-2 text-white">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center gap-2 text-slate-900 dark:text-white">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               <h3 className="font-bold text-base">Aprovação em Lote ({selecionadasLote.size} solicitações)</h3>
             </div>
           </ModalHeader>
           <ModalBody>
             <div className="space-y-4 text-xs">
-              <p className="text-slate-300">
-                Você está prestes a aprovar <strong className="text-white">{selecionadasLote.size} solicitações</strong> de compra simultaneamente. O status será alterado para <strong>Aprovada</strong> e os compradores serão notificados para cotação.
+              <p className="text-slate-700 dark:text-slate-300">
+                Você está prestes a aprovar <strong className="text-slate-900 dark:text-white">{selecionadasLote.size} solicitações</strong> de compra simultaneamente. O status será alterado para <strong>Aprovada</strong> e os compradores serão notificados para cotação.
               </p>
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-300">Parecer Coletivo (Opcional):</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Parecer Coletivo (Opcional):</label>
                 <input
                   type="text"
                   value={parecerLote}
                   onChange={e => setParecerLote(e.target.value)}
                   placeholder="Ex.: Aprovado em lote pela gerência conforme demanda programada."
-                  className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setModalLoteAberta(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1290,7 +1304,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                   type="button"
                   onClick={confirmarAprovacaoLote}
                   disabled={processandoLote}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {processandoLote ? 'Aprovando...' : `Confirmar Aprovação (${selecionadasLote.size})`}
                 </button>
@@ -1304,25 +1318,25 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
       {modalRedecidirAberta && (
         <Modal onClose={() => setModalRedecidirAberta(false)} maxWidth="max-w-md">
           <ModalHeader onClose={() => setModalRedecidirAberta(false)}>
-            <div className="flex items-center gap-2 text-white">
-              <RefreshCw className="w-5 h-5 text-amber-400" />
+            <div className="flex items-center gap-2 text-slate-900 dark:text-white">
+              <RefreshCw className="w-5 h-5 text-amber-500" />
               <h3 className="font-bold text-base">Alterar Decisão da Compra</h3>
             </div>
           </ModalHeader>
           <ModalBody>
             <form onSubmit={salvarRedecisao} className="space-y-4 text-xs">
               {erroRedecidir && (
-                <div className="p-2.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300">
+                <div className="p-2.5 rounded bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300">
                   {erroRedecidir}
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-300">Novo Status:</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Novo Status:</label>
                 <select
                   value={novoStatusDecisao}
                   onChange={e => setNovoStatusDecisao(e.target.value as RequestStatus)}
-                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs focus:outline-none focus:border-emerald-500"
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs focus:outline-none focus:border-emerald-500"
                 >
                   <option value="aprovada">Aprovada</option>
                   <option value="em_revisao">Devolver para Revisão</option>
@@ -1331,29 +1345,29 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-bold text-slate-300">Motivo da Alteração da Decisão:</label>
+                <label className="font-bold text-slate-700 dark:text-slate-300">Motivo da Alteração da Decisão:</label>
                 <textarea
                   rows={3}
                   required
                   value={justificativaRedecidir}
                   onChange={e => setJustificativaRedecidir(e.target.value)}
                   placeholder="Explique detalhadamente o motivo da reavaliação..."
-                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setModalRedecidirAberta(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={processandoRedecisao}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
                 >
                   {processandoRedecisao ? 'Salvando...' : 'Salvar Nova Decisão'}
                 </button>
