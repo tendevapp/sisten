@@ -6,12 +6,16 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
   Search, BookOpen, ShoppingCart, Package, Truck, ClipboardList, Wallet, ShieldCheck,
-  UploadCloud, History, ChevronRight, X, AlertTriangle, Database, FileText
+  UploadCloud, History, ChevronRight, X, AlertTriangle, Database, FileText,
+  Shield, ShieldAlert, Building2, UserCog, Users, Activity, FileSpreadsheet, Boxes,
+  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus
 } from 'lucide-react';
 import { DIRETRIZES, CHANGELOG, DiretrizesDominio, DiretrizesPagina } from '../../data/diretrizes';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  BookOpen, ShoppingCart, Package, Truck, ClipboardList, Wallet, ShieldCheck, UploadCloud
+  BookOpen, ShoppingCart, Package, Truck, ClipboardList, Wallet, ShieldCheck, UploadCloud,
+  Shield, ShieldAlert, Building2, UserCog, Users, Activity, FileSpreadsheet, Boxes,
+  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus
 };
 
 function normalize(s: string): string {

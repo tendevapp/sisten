@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-07',
+    resumo: 'Diretrizes do Sistema — Cobertura Integral de Todos os Módulos do SISTEN (`diretrizes.ts`, `Diretrizes.tsx`): 1. Atualização completa do manual técnico das Diretrizes incluindo todos os domínios e páginas ativas do sistema; 2. Novos domínios cadastrados: Logística & Expedição (carregamento de tramos, 3 horários, auto-save e fotos), RH & Departamento Pessoal (ASE de Horas Extras, relatório gerencial e tabelas mestre), SSMA (desvios RID, classificação de risco e tratativas) e Facilities (hub, rotas de transporte, materiais da vigilância e serviços); 3. Inclusão de páginas faltantes em domínios existentes: Almoxarifado > Abrir RM (tradução SAP, depósitos 0001/0050, itens genéricos e lotes de exportação), Suprimentos > Análise de Cotações, Histórico de Preços, Vínculos & Auditoria de Cotações e Pendências de Processamento, Solicitações > Painel de Aprovações e Governança, e Administração > Cadastros Gerais (Vigilantes, E-mails Outlook, Níveis de Mercadorias e Lead Time) e Gestão de APIs & IA; 4. Expansão do módulo Portaria com cobertura detalhada de todos os 6 formulários (Hub com métricas ao vivo, Passagem de Plantão, Transportes, Ferramental de Terceiros, Carretas de Chapas, Ocorrências e Briefing); 5. Registro de novos ícones temáticos Lucide no componente de renderização das diretrizes.',
+  },
+  {
+    data: '2026-09-07',
     resumo: 'Almoxarifado > Abrir RM — Conclusão de Ajuste no SAP e Liberação para Reexportar (`AbrirRm.tsx`, `almoxarifadoRmApi.ts`, `almoxarifadoRmApi.test.ts`, `almox_rm_exportacao_solicitacoes`, `diretrizes.ts`): 1. Ações dedicadas para o grupo "Editar no SAP" (`concluirAjusteSapRm` e `liberarParaExportarRm`) quando uma solicitação é editada após ter sido exportada em lote de RM; 2. "Concluir ajuste": permite ao almoxarife/comprador confirmar que a correção foi realizada diretamente no SAP, finalizando a pendência sem gerar nova linha na planilha, com registro auditável de quem e quando concluiu (`concluido_em`, `concluido_por_id`, `concluido_por_nome`); 3. "Habilitar Exportar": para solicitações cuja RM ainda não havia sido criada no SAP, remove o registro do grupo "Editar no SAP" e o devolve para a fila ativa de exportação da planilha (`liberado_exportar_em`, `liberado_exportar_por_id`, `liberado_exportar_por_nome`), mantendo todo o histórico de reabertura; 4. Tabela `almox_rm_exportacao_solicitacoes` no Supabase atualizada com as novas colunas de controle e suíte de testes unitários com 100% de cobertura.',
   },
   {
@@ -830,6 +834,104 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: ['`requests` filtrado por `type="cadastro_sap"`; `sectors`; anexos via tabela de attachments.']
           }
         ]
+      },
+      {
+        id: 'sup-analise-cotacoes',
+        nome: 'Análise de Cotações & Comparativo de Propostas',
+        arquivo: 'src/views/AnaliseCotacoes.tsx · src/lib/cotacoesApi.ts · src/lib/mapaCotacao.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral e extração por inteligência artificial',
+            itens: [
+              'Módulo para registro, equalização e tomada de decisão comercial sobre propostas de fornecedores concorrentes.',
+              'Suporta conversão e extração automatizada de propostas em PDF/imagem para Markdown estruturado via Edge Function `extrair-cotacao`, populando automaticamente itens, quantidades, valores unitários, impostos e condições comerciais.',
+              'Fluxo em duas etapas no conversor: carregar arquivos → conferir pré-visualização lado a lado → acionar extração em lote.'
+            ]
+          },
+          {
+            titulo: 'Regras de negócio e equalização comercial',
+            itens: [
+              'Equalização comparativa: calcula e destaca o menor preço unitário por item e menor valor global da proposta.',
+              'Composição de custos: adiciona frete estimado (CIF vs FOB), impostos não recuperáveis (ICMS, IPI, ISS) e condições de pagamento (dias para vencimento) no custo final equalizado.',
+              'Código do processo de cotação: gerado no padrão `COT-DDMMYY-INDICE` com controle sequencial via `codigosFormulario.ts`.',
+              'Itens genéricos: anexos e orçamentos vinculados a itens com a flag de genérico são rotulados com a tag "Uso Genérico" na galeria e banco de imagens.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`cotacao_processos`, `cotacao_processo_itens`, `cotacao_propostas`, `cotacao_proposta_itens`; bucket privado de anexos de cotação.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'sup-historico-cotacoes',
+        nome: 'Histórico & Inteligência de Preços de Cotações',
+        arquivo: 'src/views/HistoricoCotacoes.tsx · src/lib/cotacoesHistoricoApi.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral e pesquisa histórica',
+            itens: [
+              'Repositório unificado de propostas comerciais e orçamentos recebidos ao longo do tempo.',
+              'Pesquisa multifacetada por descrição do material, número de cotação, código de processo, CNPJ ou razão social do fornecedor.'
+            ]
+          },
+          {
+            titulo: 'Análise de tendências e preços passados',
+            itens: [
+              'Exibe a evolução histórica de preços unitários praticados por fornecedor para cada família de materiais.',
+              'Auxilia compradores e auditores a identificar variações atípicas de mercado e a fundamentar contrapropostas em negociações críticas.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`cotacao_propostas`, `cotacao_proposta_itens`, `cotacao_processos`.']
+          }
+        ]
+      },
+      {
+        id: 'sup-vinculos-cotacoes',
+        nome: 'Vínculos & Auditoria de Cotações',
+        arquivo: 'src/views/CotacaoVinculos.tsx · src/lib/cotacaoVinculosApi.ts',
+        secoes: [
+          {
+            titulo: 'Rastreabilidade ponta a ponta',
+            itens: [
+              'Amarração entre propostas de cotação extraídas e os registros oficiais de suprimentos: solicitações internas (`requests`), requisições de compra do SAP (`me5a_itens`) e pedidos de compra emitidos (`zl0132_compras`).',
+              'Permite auditar se o item cotado corresponde à especificação da requisição aprovada e se a ordem de compra manteve as condições negociadas.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`cotacao_vinculos`, `cotacao_propostas`, `requests`, `me5a_itens`, `zl0132_compras`.']
+          }
+        ]
+      },
+      {
+        id: 'sup-pendencias-processamento',
+        nome: 'Pendências de Processamento de Compras',
+        arquivo: 'src/views/PendenciasProcessamento.tsx · src/lib/supPendenciasApi.ts · src/lib/supPendenciasProcessamento.ts',
+        secoes: [
+          {
+            titulo: 'Monitoramento de gargalos operacionais',
+            itens: [
+              'Painel analítico para acompanhar Requisições de Materiais (ME5A) que foram aprovadas mas ainda não tiveram cotação iniciada ou Pedido de Compra (PO) emitido.',
+              'Mede o tempo decorrido desde a liberação da RM e classifica o envelhecimento da demanda em faixas de criticidade (dias úteis sem atendimento).'
+            ]
+          },
+          {
+            titulo: 'Gestão por comprador e SLA',
+            itens: [
+              'Distribuição das pendências por grupo de comprador SAP e grupo de mercadorias.',
+              'Disparo de lembretes e cobrança operacional para agilizar a emissão das ordens de compra antes do prazo limite de entrega.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`me5a_itens`, `sup_grupos_comprador`, `sup_grupo_comprador_mercadorias`, `import_logs`.']
+          }
+        ]
       }
     ]
   },
@@ -993,6 +1095,37 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             itens: [
               '`mb51_mov_estoque` (via `localDb.fetchMb51()`).',
               '`vw_estoque_giro` (para cruzamento de Grupo de Mercadorias).'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'almox-abrir-rm',
+        nome: 'Abrir RM — Tradução e Exportação SAP',
+        arquivo: 'src/views/AbrirRm.tsx · src/lib/almoxarifadoRm.ts · src/lib/almoxarifadoRmApi.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral e fluxo de abertura',
+            itens: [
+              'Converte solicitações de compra já aprovadas em planilhas padronizadas de abertura de Requisição de Materiais (RM) prontas para processamento no SAP.',
+              'Gera arquivo XLSX com layout posicional exato: ID Req, Classificação, Item, Material (MATNR), Quantidade (MENGE), Depósito (LGOBE), Centro (NAME1), Grupo Compras (EKGRP).'
+            ]
+          },
+          {
+            titulo: 'Regras de conversão e campos padrão',
+            itens: [
+              'Depósito (LGOBE): "0001" para materiais com destino a estoque; "0050" para compras diretas e itens de serviço.',
+              'Centro operacional (NAME1): fixado em "TEN2" (unidade fabril única). Categoria de remessa (ELPEI): fixada em "D".',
+              'Grupo de Compras (EKGRP): atribuído dinamicamente pelo vínculo de grupo de mercadorias x comprador responsável (`sup_grupo_comprador_mercadorias`). Em caso de ausência de vínculo ou item fora de catálogo, aplica o fallback padrão "575" com aviso prévio em tela.',
+              'Tratamento de itens genéricos: se o item foi sinalizado como genérico, o código SAP selecionado como referência é mantido na coluna MATNR e o texto técnico/observação recebe o prefixo obrigatório "ITEM GENÉRICO: [OBS]", alertando a equipe de compras sobre a especificação sob medida sem invalidar a linha no SAP.'
+            ]
+          },
+          {
+            titulo: 'Auditoria de exportações e tabelas do banco',
+            itens: [
+              'Cada lote gerado é registrado na tabela `almox_rm_exportacoes` e as solicitações vinculadas são gravadas em `almox_rm_exportacao_solicitacoes`.',
+              'Permite filtrar em tela solicitações "Apenas não exportadas" para evitar duplicidade de abertura no SAP, além de manter histórico de data, hora e responsável pela exportação.',
+              'Tabelas: `almox_rm_exportacoes`, `almox_rm_exportacao_solicitacoes`, `requests`, `request_items`, `sup_grupo_comprador_mercadorias`.'
             ]
           }
         ]
@@ -1266,6 +1399,38 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Tabelas do banco (Supabase)',
             itens: ['`vw_materials_stats`, `materials`; `requests` (via `getRequests()`).']
+          }
+        ]
+      },
+      {
+        id: 'sol-aprovacoes',
+        nome: 'Painel de Aprovações & Governança de Compras',
+        arquivo: 'src/views/Aprovacoes.tsx · src/lib/aprovacoes.ts',
+        secoes: [
+          {
+            titulo: 'Alçada e hierarquia de aprovação',
+            itens: [
+              'Workflow multinível para liberação orçamentária de solicitações de compra antes do envio a Suprimentos.',
+              'Governança por alçada: gestores de setor aprovam solicitações originadas nos setores configurados em seu perfil (`aprovador_setores`). Usuários com perfis "admin" e "coordenador_suprimentos" possuem visão global de todas as aprovações pendentes.'
+            ]
+          },
+          {
+            titulo: 'Destaque visual de itens genéricos e validações',
+            itens: [
+              'Itens sinalizados como genéricos são destacados com badge vermelho evidente ("Genérico") e alerta visual no card da solicitação e na tabela expandida.',
+              'Obrigatória a conferência da observação detalhada justificada ("ITEM GENÉRICO: [OBS]") e dos anexos/orçamentos de referência pelo aprovador antes da deliberação.'
+            ]
+          },
+          {
+            titulo: 'Deliberação, devolução e notificações',
+            itens: [
+              'Ações disponíveis: Aprovar (avança a solicitação para a fila de Suprimentos / Almoxarifado), Devolver (retorna ao status "em_revisao" com exigência de justificativa para adequação pelo solicitante) e Rejeitar (encerra a solicitação como "rejeitada").',
+              'Cada ação dispara notificações automáticas no sino in-app e sincronização em tempo real no Supabase.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`requests`, `request_items`, `request_attachments`, `sectors`, `profiles`, `notifications`.']
           }
         ]
       }
@@ -1579,6 +1744,78 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           }
         ]
       },
+      {
+        id: 'admin-cadastros',
+        nome: 'Cadastros Gerais (Vigilantes, E-mails Outlook, Níveis de Mercadoria, Prazos de Entrega)',
+        arquivo: 'src/views/CadastrosAdmin.tsx · src/lib/emailConfigApi.ts · src/lib/portariaApi.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral e centralização',
+            itens: [
+              'Página administrativa `/admin/cadastros` para gestão de tabelas mestres, listas suspensas e configurações de disparo de mensagens.'
+            ]
+          },
+          {
+            titulo: 'Vigilantes da Portaria',
+            itens: [
+              'Cadastro e controle de status de vigilantes (tabela `port_vigilantes`), matrículas, turnos e empresas contratadas.',
+              'Abastece automaticamente o componente `VigilanteSelect` utilizado em todos os 6 formulários da Portaria e na passagem de plantão.'
+            ]
+          },
+          {
+            titulo: 'Destinatários de e-mails (Outlook)',
+            itens: [
+              'Gestão de gatilhos na tabela `config_envio_emails` com definição de destinatários principais (Para), cópias (CC, CCO) e assuntos padronizados.',
+              'Cobre os fluxos de Solicitação de Cadastro SAP, Expedição de Tramos (Chegada e Carga Completa), Relatório de Portaria, Chamados do Jurídico e Autorização de Horas Extras (ASE).',
+              'Permite testar e disparar abertura direta de rascunhos no Outlook via protocolo mailto.'
+            ]
+          },
+          {
+            titulo: 'Níveis de mercadoria & lead time',
+            itens: [
+              'Hierarquia dos 5 níveis de mercadorias SAP (`sup_niveis_mercadorias`) e associação direta a compradores responsáveis.',
+              'Parametrização de prazos de transporte e lead time em dias úteis por estado de origem e transportadora parceira (`sup_prazos_transporte`).'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`port_vigilantes`, `config_envio_emails`, `sup_niveis_mercadorias`, `sup_grupos_comprador`, `sup_prazos_transporte`, `sup_transportadoras`.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'admin-apis',
+        nome: 'Gestão de APIs & Inteligência Artificial',
+        arquivo: 'src/components/admin/ApiManagement.tsx · src/lib/geminiApi.ts · src/lib/apiUsageApi.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral e arquitetura serverless',
+            itens: [
+              'Painel de monitoramento e auditoria de todas as Edge Functions do SISTEN (`gemini-generate`, `converter-markdown`, `extrair-cotacao`).',
+              'Execução segura de chamadas de inteligência artificial através de proxy na Edge Function, mantendo chaves de API restritas ao ambiente Supabase Secrets.'
+            ]
+          },
+          {
+            titulo: 'Auditoria de consumo e custos por usuário',
+            itens: [
+              'Rastreia métricas de latência em milissegundos, taxa de sucesso/erro e volume de tokens processados.',
+              'Identifica nominalmente qual usuário/sessão gerou cada requisição para auditoria de custos e prevenção de abuso.'
+            ]
+          },
+          {
+            titulo: 'Playground de teste e diagnósticos',
+            itens: [
+              'Ambiente interativo para testar prompts, avaliar payloads JSON de retorno e checar o status operacional das chaves Gemini e OCR em tempo real.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`api_usage_logs`, `ia_prompts`; Edge Functions Supabase.']
+          }
+        ]
+      }
     ]
   },
 
@@ -1831,15 +2068,56 @@ export const DIRETRIZES: DiretrizesDominio[] = [
     id: 'portaria',
     nome: 'Portaria & Segurança Patrimonial',
     icone: 'Shield',
-    resumo: 'Controle de acessos de veículos, visitantes, transportes, carretas de chapas, saída de colaboradores, rondas patrimoniais e listas de presença de briefing de segurança.',
+    resumo: 'Hub operacional e 6 formulários de controle de acessos de veículos, visitantes, transportes, carretas de chapas, ferramentas de terceiros, passagem de plantão e listas de presença de briefing de segurança.',
     paginas: [
+      {
+        id: 'portaria-hub',
+        nome: 'Hub Geral da Portaria & Métricas em Tempo Real',
+        arquivo: 'src/views/portaria/PortariaHub.tsx · src/components/portaria/PortariaMetricsBar.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral e painel operacional',
+            itens: [
+              'Centraliza os 6 formulários operacionais de controle de acesso e segurança patrimonial da fábrica.',
+              'Barra de métricas ao vivo com atualização automática a cada 15 segundos: contagem de plantões abertos, relatórios abertos, transportes no pátio, ferramentas de terceiros sob custódia, carretas ativas e briefings realizados no dia.',
+              'Acesso rápido aos formulários com indicação de pendências e contadores instantâneos.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`port_passagem_plantao`, `port_relatorio_portaria`, `port_registro_transportes`, `port_controle_equipamentos`, `port_controle_carretas`, `port_briefing_sessoes`.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'portaria-passagem',
+        nome: 'Passagem de Plantão & Custódia de Segurança (FRM.SGP-0010)',
+        arquivo: 'src/views/portaria/PortariaPassagemPlantao.tsx',
+        secoes: [
+          {
+            titulo: 'Transferência de turno e custódia patrimonial',
+            itens: [
+              'Formaliza a transição de posto entre a equipe de vigilância que sai e a equipe que assume o plantão (diurno ou noturno).',
+              'Conferência obrigatória dos materiais patrimoniais da guarita: rádios transmissores (HT), celulares corporativos de ronda, lanternas táticas, detectores de metais, chaves de veículos da frota e chaves mestras de prédios.',
+              'Registro de ocorrências em andamento, veículos que pernoitam no pátio e pendências a serem acompanhadas pelo próximo turno.',
+              'Termo declaratório de responsabilidade assinado digitalmente por ambos os vigilantes.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`port_passagem_plantao`, `port_passagem_materiais`, `port_vigilantes`.']
+          }
+        ]
+      },
       {
         id: 'portaria-relatorio',
         nome: 'Relatório de Portaria e Ocorrências (FRM.SGP-0010)',
         arquivo: 'src/views/portaria/PortariaRelatorio.tsx',
         secoes: [
           {
-            titulo: 'Regras de Lançamento e Tipos de Ocorrência',
+            titulo: 'Regras de lançamento e tipos de ocorrência',
             itens: [
               'Suporta 6 tipos de registro: Entrada de Veículo, Entrada de Visitante, Saída de Colaborador, Ronda Patrimonial, Ocorrência/Incidente e Outro Registro.',
               'Conversão automática para maiúsculas em todos os campos de texto.',
@@ -1848,7 +2126,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             ]
           },
           {
-            titulo: 'Saída de Colaboradores (Integração com rh_pessoas)',
+            titulo: 'Saída de colaboradores (integração com rh_pessoas)',
             itens: [
               'Autocompletar inteligente por Nome ou Matrícula/Registro conectado à tabela `rh_pessoas`.',
               'Preenchimento automático do nome, matrícula, cargo/função e vínculo com a empresa TEN.',
@@ -1857,7 +2135,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             ]
           },
           {
-            titulo: 'Validação de Briefing de Segurança (Validade: 30 dias)',
+            titulo: 'Validação de briefing de segurança (validade: 30 dias)',
             itens: [
               'Validade estrita de 30 dias para treinamentos de integração/briefing.',
               'Botão "Checar Briefing" individual por visitante e botão geral "Checar Validade de Todos".',
@@ -1869,12 +2147,70 @@ export const DIRETRIZES: DiretrizesDominio[] = [
         ]
       },
       {
+        id: 'portaria-transportes',
+        nome: 'Registro de Chegada de Transportes (FRM.SGP-0009)',
+        arquivo: 'src/views/portaria/PortariaTransportes.tsx',
+        secoes: [
+          {
+            titulo: 'Controle de entrada e saída de veículos de transporte',
+            itens: [
+              'Registro de ônibus, micro-ônibus, vans, automóveis executivos e utilitários que transportam colaboradores e terceirizados para os turnos da fábrica.',
+              'Campos controlados: placa do veículo, transportadora contratada, nome do motorista, turno de atendimento, horário exato de chegada, horário de liberação/saída e número total de passageiros.',
+              'Integração direta com o cadastro de rotas de transporte gerenciado pelo módulo Facilities.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`port_registro_transportes`, `port_vigilantes`, `fac_rotas`.']
+          }
+        ]
+      },
+      {
+        id: 'portaria-equipamentos',
+        nome: 'Controle de Equipamentos e Ferramentas de Terceiros (FRM.SGP-0011)',
+        arquivo: 'src/views/portaria/PortariaEquipamentos.tsx',
+        secoes: [
+          {
+            titulo: 'Entrada e devolução de ferramental',
+            itens: [
+              'Controle patrimonial rigoroso para entrada de máquinas de solda, lixadeiras, geradores, instrumentos de medição e caixas de ferramentas trazidas por prestadores de serviço.',
+              'Registro de empresa prestadora, responsável pelo porte, nota fiscal de remessa ou documento de propriedade, número de série e descrição técnica.',
+              'Anexo obrigatório de fotos dos equipamentos comprimidas via `comprimirImagemUpload` antes do envio ao storage.',
+              'Baixa no momento da saída com conferência item a item para evitar extravio ou saída não autorizada de ativos.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`port_controle_equipamentos`, `port_controle_equipamentos_fotos`, `port_vigilantes`; bucket privado de fotos.']
+          }
+        ]
+      },
+      {
+        id: 'portaria-carretas',
+        nome: 'Controle de Chegada e Saída de Carretas de Chapas (FRM.SGP-0020)',
+        arquivo: 'src/views/portaria/PortariaCarretas.tsx',
+        secoes: [
+          {
+            titulo: 'Recebimento de aço e chapas pesadas',
+            itens: [
+              'Acompanhamento do fluxo de carretas dedicadas ao fornecimento de chapas de aço para caldeiraria e produção de torres eólicas.',
+              'Registro detalhado: transportadora, placas do cavalo e semirreboque, CPF e nome do motorista, número da Nota Fiscal e peso líquido/bruto faturado.',
+              'Cronometria das etapas no pátio: registro de horários de chegada na guarita, entrada no pátio fabril, início e término do descarregamento pela ponte rolante e saída do veículo.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`port_controle_carretas`, `port_vigilantes`.']
+          }
+        ]
+      },
+      {
         id: 'portaria-briefing',
         nome: 'Briefing de Segurança & Lista de Presença (FRM.SGP-0013)',
         arquivo: 'src/views/portaria/PortariaBriefing.tsx',
         secoes: [
           {
-            titulo: 'Coleta de Assinaturas e Finalização',
+            titulo: 'Coleta de assinaturas e finalização',
             itens: [
               'Geração automática de sessões de briefing a partir dos lançamentos de ocorrências com "Fará Briefing" ativo.',
               'Modal de assinatura digital via canvas com registro de horário exato e finalização automática ao colher 100% das assinaturas.',
@@ -1882,12 +2218,293 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             ]
           },
           {
-            titulo: 'Exportação em PDF Individual e Consolidado',
+            titulo: 'Exportação em PDF individual e consolidado',
             itens: [
               'Suporte à multi-seleção de sessões na listagem.',
               'Exportação em PDF consolidado com cada turma em página A4 dedicada.',
               'Renderização visual das assinaturas digitais colhidas dentro do quadro de presença do PDF oficial.'
             ]
+          }
+        ]
+      }
+    ]
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    id: 'logistica',
+    nome: 'Logística & Expedição',
+    icone: 'Truck',
+    resumo: 'Controle operacional de expedição e carregamento de tramos de torres eólicas, marcação de horários nas etapas, fotos comprobatórias com compressão, salvamento contínuo em segundo plano (auto-save) e disparo de notificações por e-mail.',
+    paginas: [
+      {
+        id: 'logistica-expedicao',
+        nome: 'Carregamento de Tramos & Expedição (FRM.LOG-0001)',
+        arquivo: 'src/views/LogisticaExpedicao.tsx · src/lib/expedicaoApi.ts · src/lib/expedicaoEmail.ts',
+        secoes: [
+          {
+            titulo: 'Três etapas operacionais e UX de campo',
+            itens: [
+              'Desenhado para operação móvel (smartphones e tablets) no pátio e guarita em três momentos distintos do dia: 1) Chegada na Portaria; 2) Entrada no Pátio; 3) Expedição/Saída da Carga.',
+              'Campos de data e hora individuais por etapa na tabela `expedicao_tramos`, acompanhados de botões rápidos "Hoje" e "Agora".',
+              'Diálogo modal de confirmação para alteração ou limpeza de horários já preenchidos, prevenindo toques acidentais na tela sensível ao toque.',
+              'Design mobile-first com cards recolhíveis por tramo (T1 a T5), campos de placa ampliados e câmera traseira integrada (`capture="environment"`).'
+            ]
+          },
+          {
+            titulo: 'Fotos comprobatórias e compressão obrigatória',
+            itens: [
+              'Registro fotográfico obrigatório de cada tramo e amarração de carga antes da liberação final.',
+              'Todas as imagens passam por compressão automática via `comprimirImagemUpload` (máx. 1600px, JPEG 0.82) antes de subir para o bucket privado `expedicao-fotos`, economizando pacote de dados e tráfego de rede no pátio.'
+            ]
+          },
+          {
+            titulo: 'Auto-save contínuo em segundo plano',
+            itens: [
+              'Salvamento automático contínuo (debounce de 800ms) a cada alteração de campo, com indicador visual de estado ("Salvando rascunho...", "Rascunho salvo").',
+              'Elimina o risco de perda de apontamentos caso a página seja recarregada ou a conexão sofra instabilidade.'
+            ]
+          },
+          {
+            titulo: 'Comunicação por e-mail (aviso parcial e fechamento)',
+            itens: [
+              'Botão "Enviar chegada por e-mail" com animação pulsante (`animate-pulse`) assim que a portaria é preenchida, disparando o rascunho de notificação prévia.',
+              'Fechamento de expedição: valida se todos os tramos do veículo possuem o horário de expedição preenchido para liberar o envio final.',
+              'Gera corpo de e-mail estruturado via protocolo mailto ou integração com Outlook, contendo dados completos do motorista, veículo e links de fotos com URL assinada válida por 90 dias.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`expedicao_carregamentos`, `expedicao_tramos`, `expedicao_fotos`, `expedicao_logs_envio`; bucket privado `expedicao-fotos`.'
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    id: 'rh',
+    nome: 'RH & Departamento Pessoal',
+    icone: 'UserCog',
+    resumo: 'Gestão de pessoas, jornadas e turnos, setores da fábrica, rotas de transporte fretado, autorizações de serviços extraordinários (ASE - Hora Extra) e relatórios gerenciais consolidados.',
+    paginas: [
+      {
+        id: 'rh-hub',
+        nome: 'Hub Central do RH',
+        arquivo: 'src/views/rh/RhHome.tsx',
+        secoes: [
+          {
+            titulo: 'Estrutura e controle de acesso',
+            itens: [
+              'Painel de entrada do módulo RH para acesso às tabelas mestre (Colaboradores, Setores, Turnos, Rotas, Percentuais de HE) e relatórios.',
+              'Acesso estrito a usuários administradores e colaboradores pertencentes ao Setor de RH (`sector_id = "1"`), com granularidade por subpermissão configurável em Módulos de Acesso.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'rh-ase',
+        nome: 'Autorização de Serviços Extraordinários (ASE - FRM.RHU-0007)',
+        arquivo: 'src/views/RhAseHoraExtra.tsx · src/lib/rhApi.ts · src/lib/codigosFormulario.ts',
+        secoes: [
+          {
+            titulo: 'Código único e formatação',
+            itens: [
+              'Código identificador padronizado no formato `ASE-DDMMYY-INDICE` gerado por `gerarCodigoFormulario` em `src/lib/codigosFormulario.ts`.'
+            ]
+          },
+          {
+            titulo: 'Lançamento de horas extras e validações',
+            itens: [
+              'Seleção de colaboradores ativos da tabela `rh_pessoas` com preenchimento automático de matrícula, cargo, setor e turno habitual.',
+              'Cálculo automático de horas extras diurnas, noturnas e adicionais conforme parametrização de percentuais vigentes (`rh_percentuais_he`).',
+              'Apontamento obrigatório da justificativa operacional, necessidade de transporte fretado extra (com rota associada) e fornecimento de refeição/lanche.'
+            ]
+          },
+          {
+            titulo: 'Governança e permissões',
+            itens: [
+              'Usuários comuns enxergam somente as ASEs de sua própria autoria. Administradores, gestores e usuários com a permissão `rh_ase_ver_todas` visualizam todas as solicitações da fábrica.',
+              'Exportação oficial da ASE em PDF formatado para assinatura e arquivo do Departamento Pessoal.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`rh_ase_solicitacoes`, `rh_ase_itens`, `rh_pessoas`, `rh_setores`, `rh_turnos`, `rh_percentuais_he`, `rh_rotas`.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'rh-ase-relatorio',
+        nome: 'Relatório Gerencial de Horas Extras (ASE)',
+        arquivo: 'src/views/rh/RhAseRelatorio.tsx · src/lib/aseRelatorio.ts',
+        secoes: [
+          {
+            titulo: 'Indicadores e consolidação',
+            itens: [
+              'Painel analítico para gestão de custos com serviços extraordinários por centro de custo, setor e período.',
+              'Totalizador de horas extras 50%, 60%, 100%, adicional noturno e contagem de refeições e vagas de transporte demandadas.',
+              'Exportação consolidada em planilha para integração com sistemas de folha de pagamento.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'rh-cadastros',
+        nome: 'Tabelas Mestre de RH (Colaboradores, Turnos, Setores e Rotas)',
+        arquivo: 'src/views/rh/RhColaboradores.tsx · RhTurnos.tsx · RhSetores.tsx · RhPercentualHE.tsx',
+        secoes: [
+          {
+            titulo: 'Gestão cadastral',
+            itens: [
+              'Colaboradores (`rh_pessoas`): cadastro completo com matrícula, nome, cargo, status ativo/inativo e suporte a importação em lote via planilha com upsert automático.',
+              'Turnos (`rh_turnos`): jornadas diurnas, noturnas e revezamentos, horários de início, término e intervalos de refeição.',
+              'Setores (`rh_setores`): cadastro de áreas produtivas e de apoio administrativo.',
+              'Percentuais de HE (`rh_percentuais_he`): faixas adicionais para dias úteis, sábados, domingos e feriados nacionais/locais.'
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    id: 'ssma',
+    nome: 'SSMA — Saúde, Segurança & Meio Ambiente',
+    icone: 'ShieldAlert',
+    resumo: 'Registro de Identificação de Desvio (RID), classificação de riscos comportamentais e condições inseguras, evidências fotográficas, tratativas preventivas e acompanhamento da pirâmide de segurança.',
+    paginas: [
+      {
+        id: 'ssma-hub',
+        nome: 'Hub SSMA & Pirâmide de Segurança',
+        arquivo: 'src/views/ssma/SsmaHub.tsx',
+        secoes: [
+          {
+            titulo: 'Visão preventiva',
+            itens: [
+              'Acompanhamento estatístico dos desvios reportados na fábrica por setor, tipo e grau de severidade.',
+              'Gráfico de pirâmide de desvios, taxa de resolução de ações corretivas e indicadores de segurança proativa.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'ssma-rid',
+        nome: 'Registro de Identificação de Desvio (RID - FRM.SSMA-0001)',
+        arquivo: 'src/views/ssma/SsmaRidView.tsx · src/lib/ssmaApi.ts · src/components/ssma/SsmaRidForm.tsx',
+        secoes: [
+          {
+            titulo: 'Identificação e código do registro',
+            itens: [
+              'Código padronizado `RID-DDMMYY-INDICE` gerado automaticamente a partir da data de ocorrência e índice sequencial mensal via `codigosFormulario.ts`.'
+            ]
+          },
+          {
+            titulo: 'Classificação do desvio e severidade',
+            itens: [
+              'Tipificação estruturada: Desvio Comportamental (ato inseguro do colaborador) ou Condição Insegura (instalação, máquina, EPI ou ambiente inadequado).',
+              'Grau de severidade: Crítico, Alto, Médio e Baixo, com direcionamento prioritário aos responsáveis pelo setor.',
+              'Setor do desvio selecionado a partir da lista oficial da fábrica (Produção, Manutenção, Almoxarifado, Suprimentos, SSMA, Facilities, etc.).'
+            ]
+          },
+          {
+            titulo: 'Fotos e compressão obrigatória',
+            itens: [
+              'Upload de fotos de evidência do desvio (antes e depois da intervenção) com passagem obrigatória por `comprimirImagemUpload` antes do envio ao bucket `ssma-desvios`.'
+            ]
+          },
+          {
+            titulo: 'Ações corretivas e governança',
+            itens: [
+              'Registro da ação imediata aplicada no ato do desvio e recomendações de melhorias estruturais.',
+              'Regra de edição: qualquer colaborador pode abrir e consultar RIDs; a edição é permitida ao criador do registro e administradores com a permissão `ssma_rid_editar_todas`.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`ssma_desvios`, `ssma_desvio_fotos`, `ssma_form_config`; bucket privado `ssma-desvios`.'
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    id: 'facilities',
+    nome: 'Facilities',
+    icone: 'Building2',
+    resumo: 'Gestão patrimonial e predial da fábrica TEN, rotas de transporte de funcionários, inventário de equipamentos da vigilância privada e catálogo de serviços prediais.',
+    paginas: [
+      {
+        id: 'facilities-hub',
+        nome: 'Hub de Facilities',
+        arquivo: 'src/views/facilities/FacilitiesHome.tsx',
+        secoes: [
+          {
+            titulo: 'Visão geral e controle de acesso',
+            itens: [
+              'Centralizador de gestão predial, infraestrutura e apoio operacional da fábrica.',
+              'Acesso restrito a administradores e ao gestor responsável de Facilities (`isUserAdriano`), com controle de permissão por tela em `lib/pages.ts`.'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'facilities-rotas',
+        nome: 'Cadastro de Rotas de Transporte',
+        arquivo: 'src/views/facilities/FacilitiesRotas.tsx · src/lib/facilitiesApi.ts',
+        secoes: [
+          {
+            titulo: 'Gestão de transporte fretado',
+            itens: [
+              'Mapeamento de itinerários de ônibus e vans para transporte de colaboradores das cidades e bairros vizinhos até a fábrica.',
+              'Cadastro de empresa transportadora, placa, capacidade de passageiros, turnos de atendimento e paradas intermediárias.',
+              'Alimenta os seletores de rotas utilizados no formulário de ASE (Horas Extras) e no registro de transportes da portaria.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`fac_rotas`.']
+          }
+        ]
+      },
+      {
+        id: 'facilities-materiais',
+        nome: 'Materiais e Equipamentos da Vigilância',
+        arquivo: 'src/views/facilities/FacilitiesMateriais.tsx',
+        secoes: [
+          {
+            titulo: 'Custódia e ativos de segurança',
+            itens: [
+              'Inventário mestre de materiais entregues à empresa terceirizada de segurança patrimonial: rádios comunicadores HT, lanternas recarregáveis, detectores portáteis e coletes.',
+              'Controle de números de série, estado de conservação e localização na guarita ou rondas.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`fac_materiais_vigilancia`.']
+          }
+        ]
+      },
+      {
+        id: 'facilities-servicos',
+        nome: 'Lista de Serviços Prediais',
+        arquivo: 'src/views/facilities/FacilitiesServicos.tsx',
+        secoes: [
+          {
+            titulo: 'Catálogo de prestação de serviços',
+            itens: [
+              'Catálogo de contratos de manutenção predial civil, limpeza e conservação, jardinagem, controle de pragas e manutenção de climatização/ar condicionado.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`fac_servicos`.']
           }
         ]
       }
