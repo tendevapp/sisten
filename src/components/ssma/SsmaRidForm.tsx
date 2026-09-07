@@ -34,7 +34,12 @@ import {
   Square,
   AlertOctagon,
   SlidersHorizontal,
+  Bug,
+  Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../help/TourSpotlight';
+import { usePageTour } from '../help/TourRegistryContext';
+import type { TourStep } from '../help/types';
 import type { Profile, SsmaFormConfig } from '../../types';
 import {
   SETORES_SSMA,
@@ -53,6 +58,7 @@ import {
   type ColaboradorRhSugestao,
 } from '../../lib/ssmaApi';
 import { useToast } from '../ui/Toast';
+import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface SsmaRidFormProps {
   user: Profile;
@@ -62,6 +68,85 @@ interface SsmaRidFormProps {
   onCancel?: () => void;
 }
 
+const SSMA_RID_PREENCHIMENTO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldAlert,
+    title: 'Preenchimento do RID — Registro de Desvio',
+    description:
+      'Formulário oficial FRM.SSMA-0001 para relatar condições inseguras e práticas de risco na fábrica com ações corretivas e evidências fotográficas.',
+  },
+  {
+    target: 'rid-form-identificacao',
+    icon: UserCheck,
+    title: '1. Identificação do Informante & Empresa',
+    description:
+      'Busque seu nome na base oficial do RH ou digite livremente. O setor, função e turno são preenchidos automaticamente. Indique se o desvio envolve a TEN ou empresa contratada.',
+  },
+  {
+    target: 'rid-form-local-desvio',
+    icon: MapPin,
+    title: '2. Área / Local do Desvio na Fábrica',
+    description:
+      'Selecione o local exato da ocorrência (ordem alfabética A-Z com filtro de busca rápida, ex: Calandra, Pátio de Chapas, Jateamento, Almoxarifado).',
+  },
+  {
+    target: 'rid-form-descricao-desvio',
+    icon: FileText,
+    title: '3. Descrição Detalhada do Desvio',
+    description:
+      'Descreva a situação observada, equipamentos envolvidos e o potencial de risco. O texto é convertido automaticamente em maiúsculas.',
+  },
+  {
+    target: 'rid-form-acao-imediata',
+    icon: CheckCircle2,
+    title: '4. Ações Imediatas & Comunicação',
+    description:
+      'Indique se o desvio já foi sanado na hora (Sim/Não). Se sim, descreva a ação corretiva realizada; se não, aponte a proposta de solução e o responsável comunicado.',
+  },
+  {
+    target: 'rid-form-classificacao',
+    icon: AlertTriangle,
+    title: '5. Classificação do Risco',
+    description:
+      'Selecione as práticas de Comportamento Inseguro e as Condições Inseguras observadas para alimentar as estatísticas preventivas de segurança.',
+  },
+  {
+    target: 'rid-form-fotos',
+    icon: Camera,
+    title: '6. Evidências Fotográficas (Antes e Depois)',
+    description:
+      'Anexe fotos comprobatórias com a câmera do celular ou upload da galeria. Você pode registrar fotos do "Antes" (situação de risco) e do "Depois" (situação corrigida).',
+  },
+  {
+    target: 'rid-form-botoes',
+    icon: Send,
+    title: '7. Gravação e Envio do RID',
+    description:
+      'Clique em "REGISTRAR DESVIO (RID)" para protocolar a ocorrência. O código oficial RID-DDMMYY-INDICE é gerado no banco com rastreabilidade total.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida sobre os campos? Clique no botão de ajuda no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para relatar qualquer instabilidade técnica diretamente ao time de suporte.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" para propor ideias e otimizações para o formulário de SSMA.',
+  },
+];
+
 export default function SsmaRidForm({
   user,
   config,
@@ -69,6 +154,7 @@ export default function SsmaRidForm({
   onSuccess,
   onCancel,
 }: SsmaRidFormProps) {
+  const tour = usePageTour('form-ssma-rid-preenchimento', SSMA_RID_PREENCHIMENTO_TOUR_STEPS.length);
   const toast = useToast();
   const ehAdmin = user.roles.includes('admin');
   const cfg = config || CONFIG_FORM_PADRAO_RID;
@@ -141,6 +227,7 @@ export default function SsmaRidForm({
     tipo: 'antes' | 'depois';
   }
   const [fotosArquivos, setFotosArquivos] = useState<FotoItemForm[]>([]);
+  const [fotoParaRemover, setFotoParaRemover] = useState<number | null>(null);
   const cameraAntesInputRef = useRef<HTMLInputElement>(null);
   const galleryAntesInputRef = useRef<HTMLInputElement>(null);
   const cameraDepoisInputRef = useRef<HTMLInputElement>(null);
@@ -262,12 +349,29 @@ export default function SsmaRidForm({
     );
   };
 
-  const removerFoto = (index: number) => {
-    setFotosArquivos((prev) => {
-      const item = prev[index];
-      if (item?.preview) URL.revokeObjectURL(item.preview);
-      return prev.filter((_, i) => i !== index);
-    });
+  const confirmarRemoverFoto = () => {
+    if (fotoParaRemover === null) return;
+    const idx = fotoParaRemover;
+    const item = fotosArquivos[idx];
+    if (!item) {
+      setFotoParaRemover(null);
+      return;
+    }
+    setFotosArquivos((prev) => prev.filter((_, i) => i !== idx));
+    setFotoParaRemover(null);
+
+    toast.undo(
+      'Foto removida com sucesso.',
+      () => {
+        setFotosArquivos((prev) => {
+          const copia = [...prev];
+          copia.splice(idx, 0, item);
+          return copia;
+        });
+        toast.success('Foto restaurada!');
+      },
+      6000
+    );
   };
 
 
@@ -441,6 +545,15 @@ export default function SsmaRidForm({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+            <button
+              type="button"
+              onClick={() => tour.open()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 shadow-2xs hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors cursor-pointer"
+              title="Iniciar tour explicativo dos campos deste formulário"
+            >
+              <HelpCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              Dicas de Preenchimento
+            </button>
             {ehAdmin && onAbrirEditor && (
               <button
                 type="button"
@@ -474,7 +587,7 @@ export default function SsmaRidForm({
       </div>
 
       {/* SEÇÃO 1: Identificação do Informante & Empresa */}
-      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="rid-form-identificacao" className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-100 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
@@ -778,7 +891,7 @@ export default function SsmaRidForm({
 
         <div className="space-y-4">
           {/* Campo Área / Local (Em Ordem Alfabética) */}
-          <div className="relative" ref={dropdownAreaRef}>
+          <div data-tour="rid-form-local-desvio" className="relative" ref={dropdownAreaRef}>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 {getPergunta('area_desvio')?.titulo || '6. ÁREA / LOCAL DO DESVIO'}{' '}
@@ -865,7 +978,7 @@ export default function SsmaRidForm({
           </div>
 
           {/* Campo Descrição do Desvio (SEMPRE MAIÚSCULO) */}
-          <div>
+          <div data-tour="rid-form-descricao-desvio">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 {getPergunta('descricao_desvio')?.titulo || '7. DESCRIÇÃO DO DESVIO (O QUE?)'}{' '}
@@ -900,7 +1013,7 @@ export default function SsmaRidForm({
       </div>
 
       {/* SEÇÃO 3: Ações Imediatas & Comunicação (Botões Sim e Não SEPARADOS) */}
-      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="rid-form-acao-imediata" className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             3
@@ -1126,7 +1239,7 @@ export default function SsmaRidForm({
       </div>
 
       {/* SEÇÃO 4: Classificação do Desvio (VISUALIZAÇÃO APRIMORADA 15 E 16) */}
-      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="rid-form-classificacao" className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-100 text-xs font-bold text-rose-700 dark:bg-rose-950 dark:text-rose-300">
             4
@@ -1282,7 +1395,7 @@ export default function SsmaRidForm({
 
       {/* SEÇÃO 5: Registro Fotográfico & Evidências (Antes e Depois) */}
       {getPergunta('fotos')?.ativo !== false && (
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div data-tour="rid-form-fotos" className="rounded-3xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800 gap-2">
             <div className="flex items-center gap-2">
               <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-100 text-xs font-bold text-teal-700 dark:bg-teal-950 dark:text-teal-300">
@@ -1429,7 +1542,7 @@ export default function SsmaRidForm({
                             </button>
                             <button
                               type="button"
-                              onClick={() => removerFoto(originalIdx)}
+                              onClick={() => setFotoParaRemover(originalIdx)}
                               title="Excluir foto"
                               className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-600/90 text-white hover:bg-rose-700 transition-colors cursor-pointer"
                             >
@@ -1519,7 +1632,7 @@ export default function SsmaRidForm({
                             </button>
                             <button
                               type="button"
-                              onClick={() => removerFoto(originalIdx)}
+                              onClick={() => setFotoParaRemover(originalIdx)}
                               title="Excluir foto"
                               className="flex h-6 w-6 items-center justify-center rounded-lg bg-rose-600/90 text-white hover:bg-rose-700 transition-colors cursor-pointer"
                             >
@@ -1543,7 +1656,7 @@ export default function SsmaRidForm({
 
 
       {/* Barra Inferior de Envio */}
-      <div className="sticky bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
+      <div data-tour="rid-form-botoes" className="sticky bottom-4 z-20 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-xl backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/95">
         <div className="hidden sm:block text-xs text-slate-500 dark:text-slate-400">
           Todos os campos com <span className="text-rose-500">*</span> são obrigatórios.
         </div>
@@ -1578,6 +1691,28 @@ export default function SsmaRidForm({
           </button>
         </div>
       </div>
+
+      {fotoParaRemover !== null && (
+        <ConfirmDialog
+          titulo="Remover Foto Anexada"
+          mensagem="Deseja realmente remover esta foto da lista de evidências do desvio?"
+          confirmarLabel="Sim, remover"
+          cancelarLabel="Cancelar"
+          variante="perigo"
+          onConfirmar={confirmarRemoverFoto}
+          onCancelar={() => setFotoParaRemover(null)}
+        />
+      )}
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={SSMA_RID_PREENCHIMENTO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
     </form>
   );
 }

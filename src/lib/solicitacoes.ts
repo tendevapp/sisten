@@ -12,7 +12,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { Profile, Request, RequestStatus, RequestType, Sector } from '../types';
+import { Profile, Request, RequestAttachment, RequestItem, RequestStatus, RequestStatusHistory, RequestType, Sector } from '../types';
 import { localDb } from '../db/localDb';
 import { formatDateBR, formatDateTimeBR } from './format';
 import { isChamadoSuprimentosPendencia } from './supPendenciasProcessamento';
@@ -133,6 +133,71 @@ export function podeEditar(r: Request, user: Profile): boolean {
  */
 export const statusAposEdicao = (tipo: RequestType): RequestStatus =>
   tipo === 'compra' ? 'pendente' : 'aberto';
+
+/**
+ * Indica se a solicitacao foi editada pelo solicitante apos ja ter sido aprovada anteriormente.
+ * Casos em que deve retornar true:
+ * - A solicitacao esta em processo de aprovacao (pendente ou em_revisao)
+ * - Em algum momento de seu historico, ela ja passou por aprovacao (to_status === 'aprovada' ou from_status === 'aprovada')
+ * - E ocorreu uma edicao registrada pelo solicitante (comentario indicando edicao ou transicao de aprovada para pendente)
+ */
+export function foiEditadaAposAprovacao(
+  req: Pick<Request, 'status'>,
+  historico: RequestStatusHistory[]
+): boolean {
+  if (!['pendente', 'em_revisao'].includes(req.status)) return false;
+  if (!historico || historico.length === 0) return false;
+
+  const ordenados = [...historico].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  let aprovadaAntes = false;
+  for (const h of ordenados) {
+    if (h.to_status === 'aprovada' || h.from_status === 'aprovada') {
+      aprovadaAntes = true;
+    }
+    const c = (h.comment || '').toLowerCase();
+    const ehEdicao =
+      c.includes('editada pelo solicitante') ||
+      c.includes('solicitação editada') ||
+      c.includes('solicitacao editada') ||
+      (h.from_status === 'aprovada' && h.to_status === 'pendente');
+
+    if (aprovadaAntes && ehEdicao) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Formata a observacao de item generico para sempre iniciar com "ITEM GENÉRICO: [OBS]".
+ * Preserva o texto digitado pelo usuario, garantindo que o prefixo padrao
+ * esteja presente e em caixa alta.
+ */
+export function formatarObservacaoItemGenerico(obs?: string | null): string {
+  const texto = (obs || '').trim();
+  if (!texto) {
+    return 'ITEM GENÉRICO: ';
+  }
+  if (/^item\s+gen[eé]rico\s*:/i.test(texto)) {
+    const semPrefixo = texto.replace(/^item\s+gen[eé]rico\s*:\s*/i, '').trim();
+    return semPrefixo ? `ITEM GENÉRICO: ${semPrefixo}` : 'ITEM GENÉRICO: ';
+  }
+  return `ITEM GENÉRICO: ${texto}`;
+}
+
+/**
+ * Remove o prefixo "ITEM GENÉRICO:" caso o usuario desmarque a opcao de item generico.
+ */
+export function desformatarObservacaoItemGenerico(obs?: string | null): string {
+  const texto = (obs || '').trim();
+  if (!texto) return '';
+  return texto.replace(/^item\s+gen[eé]rico\s*:\s*/i, '').trim();
+}
+
 
 export type TipoEventoHistorico =
   | 'abertura'

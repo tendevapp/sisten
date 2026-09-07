@@ -4,7 +4,7 @@ import {
   parseDataBR, parseValidade, parsePrazoDias, parseCidadeUF, parseFreteModalidade,
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
-  repararJsonTruncado,
+  repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao,
 } from './cotacoes';
 import type {
   CotacaoPropostaDraft, CotacaoPropostaItemDraft, CotacaoProcessoItem,
@@ -264,7 +264,7 @@ function propostaDraft(overrides: Partial<CotacaoPropostaDraft> = {}): CotacaoPr
     cliente_razao_social: null, cliente_cnpj: null, cliente_inscricao_estadual: null, cliente_cidade: null, cliente_uf: null,
     condicao_pagamento: '30/60/90', forma_pagamento: null, prazo_entrega_texto: '15 dias', prazo_entrega_dias: 15,
     frete_modalidade: 'CIF', transportadora_indicada: null, faturamento_minimo: null, dados_bancarios_pix: null,
-    valor_total_orcamento: 1000, observacoes_gerais: null,
+    valor_total_orcamento: 1000, valor_frete: null, observacoes_gerais: null,
     campos_faltantes: [], revisado: false, extracao_id: null, extraido_raw: {} as any,
     itens: [itemDraft()],
     ...overrides,
@@ -419,3 +419,36 @@ describe('repararJsonTruncado', () => {
     expect(() => repararJsonTruncado('{"propostas":[{"Numero')).toThrow();
   });
 });
+
+describe('Código de cotação — COT-DDMMYY-INDICE', () => {
+  it('gera código no formato COT-DDMMYY-INDICE com 2 dígitos mínimos', () => {
+    expect(gerarCodigoCotacao('2026-09-04', 1)).toBe('COT-040926-01');
+    expect(gerarCodigoCotacao('2026-09-04', 15)).toBe('COT-040926-15');
+    expect(gerarCodigoCotacao('2026-12-31', '3')).toBe('COT-311226-03');
+  });
+
+  it('calcula o próximo índice no mês acumulado', () => {
+    const existentes = ['COT-010926-01', 'COT-030926-02', 'COT-040926-03'];
+    expect(proximoIndiceCotacao(existentes, '2026-09-05')).toBe(4);
+  });
+
+  it('ignora códigos de outros meses ao calcular o próximo índice', () => {
+    const existentes = ['COT-010826-01', 'COT-250826-02', 'COT-010926-01'];
+    // Para setembro, só COT-010926-01 conta
+    expect(proximoIndiceCotacao(existentes, '2026-09-04')).toBe(2);
+    // Para agosto, COT-010826-01 e COT-250826-02 contam
+    expect(proximoIndiceCotacao(existentes, '2026-08-26')).toBe(3);
+    // Para outubro (sem registros ainda), começa em 1
+    expect(proximoIndiceCotacao(existentes, '2026-10-01')).toBe(1);
+  });
+
+  it('ignora códigos legados fora do padrão', () => {
+    const existentes = ['COT-2026-5WD82', 'COT-2026-YGXGZ', 'COT-2026-N42L8'];
+    expect(proximoIndiceCotacao(existentes, '2026-09-04')).toBe(1);
+  });
+
+  it('começa em 1 quando lista está vazia', () => {
+    expect(proximoIndiceCotacao([], '2026-09-04')).toBe(1);
+  });
+});
+

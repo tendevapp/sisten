@@ -94,12 +94,25 @@ export default function RhPercentualHE({ onNavigate }: Props) {
 
   const excluir = async () => {
     if (!paraExcluir) return;
+    const itemRemovido = { ...paraExcluir };
     setExcluindo(true);
     try {
-      await api.excluirRhHoraExtra(paraExcluir.id);
-      toast.success(`Percentual de ${formatarData(paraExcluir.dia)} excluído.`);
+      await api.excluirRhHoraExtra(itemRemovido.id);
       setParaExcluir(null);
       await carregar();
+      toast.undo(
+        `Percentual de ${formatarData(itemRemovido.dia)} excluído.`,
+        async () => {
+          try {
+            await api.criarRhHoraExtra(itemRemovido.dia, itemRemovido.percentual_he);
+            await carregar();
+            toast.success(`Percentual de ${formatarData(itemRemovido.dia)} restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar percentual: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir.');
     } finally {

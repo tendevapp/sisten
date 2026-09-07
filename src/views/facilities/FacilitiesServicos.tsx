@@ -160,11 +160,24 @@ export default function FacilitiesServicos({ user, onNavigate }: Props) {
 
   const handleConfirmarExclusao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirServicoFacilities(itemParaExcluir.id, user.id);
-      toast.success(`Serviço "${itemParaExcluir.nome}" excluído.`);
+      await api.excluirServicoFacilities(item.id, user.id);
       setItemParaExcluir(null);
       await carregarServicos();
+      toast.undo(
+        `Serviço "${item.nome}" excluído.`,
+        async () => {
+          try {
+            await api.restaurarServicoFacilities(item.id);
+            toast.success(`Serviço "${item.nome}" restaurado com sucesso.`);
+            await carregarServicos();
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir o serviço: ' + (err.message || ''));
     }

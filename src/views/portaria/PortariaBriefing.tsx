@@ -13,8 +13,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Search, FileDown, CheckCircle2,
   Trash2, Loader2, ShieldCheck, UserCheck, Check, AlertCircle, Clock,
-  PenTool, CheckCheck, CheckSquare, Square, Files
+  PenTool, CheckCheck, CheckSquare, Square, Files,
+  HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type {
   Profile, PortBriefingSessao, PortBriefingParticipante
 } from '../../types';
@@ -31,7 +35,66 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const PORTARIA_BRIEFING_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldCheck,
+    title: 'Lista de Presença — Briefing de Segurança',
+    description:
+      'Formulário oficial FRM.SGP-0013 para controle de treinamento de integração e segurança de visitantes e prestadores de serviços.',
+  },
+  {
+    target: 'briefing-header',
+    icon: FileDown,
+    title: 'Cabeçalho e Ações da Lista',
+    description:
+      'Acesse as sessões geradas automaticamente pela portaria e imprima ou exporte a lista de presença individual ou consolidada em PDF.',
+  },
+  {
+    target: 'briefing-consulta-cpf',
+    icon: UserCheck,
+    title: 'Consulta Rápida de Validade por CPF',
+    description:
+      'Digite o CPF de qualquer visitante para checar instantaneamente se ele já possui briefing de segurança ativo e dentro do prazo de validade.',
+  },
+  {
+    target: 'briefing-sessoes',
+    icon: Clock,
+    title: 'Sessões e Turmas Realizadas',
+    description:
+      'Navegue pela lista de turmas por data e tema. Selecione várias sessões com as caixas de seleção para gerar PDF consolidado.',
+  },
+  {
+    target: 'briefing-participantes',
+    icon: PenTool,
+    title: 'Participantes e Assinatura Digital',
+    description:
+      'Confira os participantes da turma selecionada e colete a assinatura digital na tela (touch screen ou mouse) de cada visitante.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaBriefing({ user, onNavigate }: Props) {
+  const tour = usePageTour('portaria-briefing', PORTARIA_BRIEFING_TOUR_STEPS.length);
   const toast = useToast();
   const [sessoes, setSessoes] = useState<PortBriefingSessao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +111,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   // Modais de Assinatura e Exclusão
   const [modalAssinaturaAberto, setModalAssinaturaAberto] = useState(false);
   const [participanteParaAssinar, setParticipanteParaAssinar] = useState<PortBriefingParticipante | null>(null);
+  const [participanteParaRemover, setParticipanteParaRemover] = useState<PortBriefingParticipante | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortBriefingSessao | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -106,14 +170,31 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
     }
   };
 
-  const handleRemoverParticipante = async (participanteId: string) => {
-    if (!sessaoAtiva) return;
+  const handleConfirmarRemoverParticipante = async () => {
+    if (!participanteParaRemover || !sessaoAtiva) return;
+    const part = participanteParaRemover;
+    const sessaoId = sessaoAtiva.id;
     try {
-      await api.removerParticipanteBriefing(participanteId);
-      toast.success('Participante removido da lista.');
-      const sessaoAtualizada = await api.obterSessaoBriefing(sessaoAtiva.id);
+      await api.removerParticipanteBriefing(part.id, user.id);
+      setParticipanteParaRemover(null);
+      const sessaoAtualizada = await api.obterSessaoBriefing(sessaoId);
       if (sessaoAtualizada) setSessaoAtiva(sessaoAtualizada);
-      carregarSessoes(sessaoAtiva.id);
+      carregarSessoes(sessaoId);
+      toast.undo(
+        `Participante ${part.nome} removido.`,
+        async () => {
+          try {
+            await api.restaurarParticipanteBriefing(part.id);
+            toast.success(`Participante ${part.nome} restaurado com sucesso.`);
+            const sRec = await api.obterSessaoBriefing(sessaoId);
+            if (sRec) setSessaoAtiva(sRec);
+            carregarSessoes(sessaoId);
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao remover participante: ${(e as Error).message}`);
     }
@@ -135,13 +216,26 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
 
   const handleExcluirSessao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirSessaoBriefing(itemParaExcluir.id);
-      toast.success('Sessão de briefing excluída.');
-      if (sessaoAtiva?.id === itemParaExcluir.id) setSessaoAtiva(null);
-      setSessoesSelecionadasIds((prev) => prev.filter((id) => id !== itemParaExcluir.id));
+      await api.excluirSessaoBriefing(item.id, user.id);
+      if (sessaoAtiva?.id === item.id) setSessaoAtiva(null);
+      setSessoesSelecionadasIds((prev) => prev.filter((id) => id !== item.id));
       setItemParaExcluir(null);
       carregarSessoes();
+      toast.undo(
+        `Sessão de briefing ${item.numero_protocolo} excluída.`,
+        async () => {
+          try {
+            await api.restaurarSessaoBriefing(item.id);
+            toast.success(`Sessão ${item.numero_protocolo} restaurada com sucesso.`);
+            carregarSessoes(item.id);
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     }
@@ -188,7 +282,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="briefing-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <button
             type="button"
@@ -214,6 +308,15 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={tour.startTour}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            title="Dicas de preenchimento e lista de presença do briefing"
+          >
+            <HelpCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Dicas do Formulário</span>
+          </button>
           {sessoesSelecionadasIds.length > 0 ? (
             <>
               <button
@@ -248,7 +351,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
       </div>
 
       {/* Instant CPF Validator Box for Portaria */}
-      <div className="rounded-2xl border border-slate-200 bg-linear-to-r from-blue-50/50 to-indigo-50/40 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/60">
+      <div data-tour="briefing-consulta-cpf" className="rounded-2xl border border-slate-200 bg-linear-to-r from-blue-50/50 to-indigo-50/40 p-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/60">
         <form onSubmit={handleConsultarCpf} className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 shrink-0">
             <UserCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -300,7 +403,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
       {/* Main Grid: Left = Sessions / Right = Session Details & Attendance Sheet */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Sessions list */}
-        <div className="space-y-3 lg:col-span-4">
+        <div data-tour="briefing-sessoes" className="space-y-3 lg:col-span-4">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <button
@@ -391,7 +494,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
         </div>
 
         {/* Right Column: Attendance List for Active Session */}
-        <div className="lg:col-span-8">
+        <div data-tour="briefing-participantes" className="lg:col-span-8">
           {sessaoAtiva ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900 flex flex-col">
               {/* Header Box */}
@@ -546,7 +649,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
                               {podeEditarSessao && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoverParticipante(p.id)}
+                                  onClick={() => setParticipanteParaRemover(p)}
                                   className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
                                   title="Remover participante"
                                 >
@@ -588,7 +691,7 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
         subtitle="Termo de responsabilidade e ciência do Briefing de Segurança (FRM.SGP-0013)"
       />
 
-      {/* Confirm Dialog Excluir */}
+      {/* Confirm Dialog Excluir Sessao */}
       {itemParaExcluir && (
         <ConfirmDialog
           titulo="Excluir Sessão de Briefing"
@@ -597,6 +700,27 @@ export default function PortariaBriefing({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleExcluirSessao}
           onCancelar={() => setItemParaExcluir(null)}
+        />
+      )}
+
+      {/* Confirm Dialog Remover Participante */}
+      {participanteParaRemover && (
+        <ConfirmDialog
+          titulo="Remover Participante"
+          mensagem={`Deseja remover o participante ${participanteParaRemover.nome} (CPF: ${participanteParaRemover.cpf || '—'}) desta sessão de briefing?`}
+          confirmarLabel="Sim, Remover"
+          variante="perigo"
+          onConfirmar={handleConfirmarRemoverParticipante}
+          onCancelar={() => setParticipanteParaRemover(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_BRIEFING_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

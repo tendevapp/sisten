@@ -33,8 +33,8 @@
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       color: var(--text-dark);
       background-color: #F1F5F9;
-      line-height: 1.55;
-      font-size: 13.5px;
+      line-height: 1.5;
+      font-size: 13px;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
@@ -45,7 +45,7 @@
       width: 210mm;
       min-height: 297mm;
       margin: 20px auto;
-      padding: 20mm 18mm 20mm 18mm;
+      padding: 18mm 16mm 18mm 16mm;
       box-shadow: 0 4px 15px rgba(0,0,0,0.08);
       position: relative;
     }
@@ -59,7 +59,7 @@
         width: 100%;
         min-height: 100vh;
         box-shadow: none;
-        padding: 16mm 14mm 16mm 14mm;
+        padding: 15mm 13mm 15mm 13mm;
         page-break-after: always;
         break-after: page;
       }
@@ -75,11 +75,11 @@
       justify-content: space-between;
       align-items: center;
       border-bottom: 1.5px solid var(--primary-light);
-      padding-bottom: 8px;
-      margin-bottom: 22px;
-      font-size: 10px;
+      padding-bottom: 7px;
+      margin-bottom: 18px;
+      font-size: 9.5px;
       color: var(--text-muted);
-      font-weight: 500;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -94,23 +94,23 @@
 
     .page-footer {
       position: absolute;
-      bottom: 12mm;
-      left: 18mm;
-      right: 18mm;
+      bottom: 11mm;
+      left: 16mm;
+      right: 16mm;
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-top: 1px solid var(--border-color);
-      padding-top: 8px;
-      font-size: 9.5px;
+      padding-top: 7px;
+      font-size: 9px;
       color: var(--text-muted);
     }
 
     @media print {
       .page-footer {
-        left: 14mm;
-        right: 14mm;
-        bottom: 10mm;
+        left: 13mm;
+        right: 13mm;
+        bottom: 9mm;
       }
     }
 
@@ -121,7 +121,7 @@
       justify-content: space-between;
       background: linear-gradient(145deg, #07152B 0%, #0C2340 50%, #0047AB 100%);
       color: white;
-      padding: 30mm 22mm 25mm 22mm;
+      padding: 28mm 20mm 22mm 20mm;
     }
 
     .cover-badge {
@@ -129,46 +129,46 @@
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.25);
       color: #93C5FD;
-      padding: 6px 14px;
+      padding: 5px 12px;
       border-radius: 20px;
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 600;
       letter-spacing: 1px;
       text-transform: uppercase;
       width: fit-content;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
 
     .cover-title {
-      font-size: 34px;
+      font-size: 32px;
       font-weight: 800;
       line-height: 1.2;
       color: #FFFFFF;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       letter-spacing: -0.5px;
     }
 
     .cover-subtitle {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 400;
       color: #BAE6FD;
       line-height: 1.4;
-      margin-bottom: 25px;
+      margin-bottom: 22px;
     }
 
     .cover-divider {
-      width: 60px;
+      width: 55px;
       height: 4px;
       background: #38BDF8;
       border-radius: 2px;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
 
     .cover-highlights {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 40px;
+      gap: 12px;
+      margin-bottom: 35px;
     }
 
     .cover-highlight-card {
@@ -193,52 +193,52 @@
 
     .cover-footer {
       border-top: 1px solid rgba(255, 255, 255, 0.18);
-      padding-top: 18px;
+      padding-top: 16px;
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      font-size: 11px;
+      font-size: 10.5px;
       color: #94A3B8;
     }
 
     .cover-footer strong {
       color: #FFFFFF;
-      font-size: 12px;
+      font-size: 11.5px;
     }
 
     /* Tipografia de Seções */
     h1.chapter-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       color: var(--primary-dark);
       display: flex;
       align-items: center;
       gap: 10px;
       border-bottom: 2px solid var(--primary);
-      padding-bottom: 8px;
-      margin-bottom: 16px;
+      padding-bottom: 7px;
+      margin-bottom: 14px;
       letter-spacing: -0.3px;
     }
 
     h1.chapter-title .ch-num {
       background: var(--primary);
       color: white;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       border-radius: 6px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
     }
 
     h2.section-title {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       color: #1E293B;
-      margin-top: 18px;
-      margin-bottom: 8px;
+      margin-top: 14px;
+      margin-bottom: 7px;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -248,44 +248,44 @@
       content: '';
       display: inline-block;
       width: 4px;
-      height: 14px;
+      height: 13px;
       background: var(--accent);
       border-radius: 2px;
     }
 
     h3.subsection-title {
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       color: #334155;
-      margin-top: 14px;
-      margin-bottom: 6px;
+      margin-top: 12px;
+      margin-bottom: 5px;
     }
 
     p {
       color: #334155;
-      margin-bottom: 10px;
-      font-size: 12.5px;
+      margin-bottom: 8px;
+      font-size: 12px;
       text-align: justify;
     }
 
     ul, ol {
-      margin-left: 18px;
-      margin-bottom: 12px;
+      margin-left: 17px;
+      margin-bottom: 10px;
       color: #334155;
-      font-size: 12.5px;
+      font-size: 12px;
     }
 
     li {
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
     /* Estilo de Imagens com Moldura */
     figure.screen-shot {
-      margin: 14px 0 16px 0;
+      margin: 10px 0 12px 0;
       background: #FFFFFF;
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 6px;
+      padding: 5px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.04);
       break-inside: avoid;
       page-break-inside: avoid;
@@ -299,10 +299,35 @@
       border: 1px solid #EEF2F6;
     }
 
+    /* Variações de Tamanho de Imagem */
+    figure.screen-shot-xs img {
+      max-height: 165px;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
+    figure.screen-shot-sm img {
+      max-height: 195px;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
+    figure.screen-shot-md img {
+      max-height: 250px;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
+    figure.screen-shot-modal img {
+      max-height: 270px;
+      object-fit: contain;
+      margin: 0 auto;
+    }
+
     figcaption {
-      font-size: 10px;
+      font-size: 9.5px;
       color: var(--text-muted);
-      margin-top: 6px;
+      margin-top: 5px;
       text-align: center;
       font-weight: 500;
       display: flex;
@@ -315,21 +340,30 @@
       color: var(--primary);
     }
 
+    /* Layout Lado a Lado */
+    .two-cols-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 10px 0;
+      align-items: start;
+    }
+
     /* Caixas de Destaque (Callouts) */
     .callout {
       border-radius: 7px;
-      padding: 10px 14px;
-      margin: 12px 0;
-      font-size: 12px;
+      padding: 9px 12px;
+      margin: 10px 0;
+      font-size: 11.5px;
       display: flex;
-      gap: 10px;
+      gap: 9px;
       align-items: flex-start;
       break-inside: avoid;
       page-break-inside: avoid;
     }
 
     .callout-icon {
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1;
       margin-top: 2px;
       font-weight: bold;
@@ -361,21 +395,21 @@
 
     .callout-body {
       flex: 1;
-      line-height: 1.45;
+      line-height: 1.4;
     }
 
     .callout-title {
       font-weight: 700;
-      margin-bottom: 3px;
-      font-size: 12px;
+      margin-bottom: 2px;
+      font-size: 11.5px;
     }
 
     /* Tabelas de Campos e Elementos */
     table.data-table {
       width: 100%;
       border-collapse: collapse;
-      margin: 12px 0 16px 0;
-      font-size: 11.5px;
+      margin: 10px 0 12px 0;
+      font-size: 11px;
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -383,15 +417,15 @@
     table.data-table th {
       background: #0F172A;
       color: white;
-      padding: 7px 10px;
+      padding: 6px 9px;
       text-align: left;
       font-weight: 600;
-      font-size: 11px;
+      font-size: 10.5px;
       border: 1px solid #1E293B;
     }
 
     table.data-table td {
-      padding: 6px 10px;
+      padding: 5px 9px;
       border: 1px solid var(--border-color);
       color: #334155;
       vertical-align: top;
@@ -403,9 +437,9 @@
 
     .badge {
       display: inline-block;
-      padding: 2px 7px;
+      padding: 2px 6px;
       border-radius: 12px;
-      font-size: 9.5px;
+      font-size: 9px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -422,17 +456,17 @@
       background: #F8FAFC;
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 16px;
-      margin-top: 15px;
+      padding: 14px 16px;
+      margin: 12px 0;
     }
 
     .toc-item {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      padding: 6px 0;
+      padding: 5px 0;
       border-bottom: 1px dashed #CBD5E1;
-      font-size: 12px;
+      font-size: 11.5px;
       color: #1E293B;
     }
 
@@ -461,8 +495,8 @@
     .step-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin: 12px 0;
+      gap: 9px;
+      margin: 10px 0;
       break-inside: avoid;
     }
 
@@ -470,24 +504,121 @@
       background: #F8FAFC;
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 10px;
+      padding: 9px 11px;
     }
 
     .step-card h4 {
       color: var(--primary);
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .step-card p {
+      font-size: 10.5px;
+      color: #475569;
+      margin: 0;
+      text-align: left;
+    }
+
+    /* Visual Stepper de Status */
+    .status-stepper-box {
+      background: #F8FAFC;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 10px 0 12px 0;
+    }
+
+    .stepper-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    .step-card p {
-      font-size: 11px;
-      color: #475569;
-      margin: 0;
-      text-align: left;
+    .stepper-steps {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .stepper-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      flex: 1;
+      position: relative;
+      z-index: 2;
+    }
+
+    .stepper-circle {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .stepper-node.done .stepper-circle {
+      background: #059669;
+      color: white;
+    }
+
+    .stepper-node.active .stepper-circle {
+      background: #0047AB;
+      color: white;
+      box-shadow: 0 0 0 3px #DBEAFE;
+    }
+
+    .stepper-node.pending .stepper-circle {
+      background: #E2E8F0;
+      color: #64748B;
+    }
+
+    .stepper-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #1E293B;
+      line-height: 1.2;
+    }
+
+    .stepper-sub {
+      font-size: 8.5px;
+      color: var(--text-muted);
+    }
+
+    /* Linha conectora entre steps */
+    .stepper-bar-line {
+      position: absolute;
+      top: 11px;
+      left: 8%;
+      right: 8%;
+      height: 2.5px;
+      background: #E2E8F0;
+      z-index: 1;
+    }
+
+    .stepper-bar-progress {
+      position: absolute;
+      top: 11px;
+      left: 8%;
+      width: 50%;
+      height: 2.5px;
+      background: #059669;
+      z-index: 1;
     }
   </style>
 </head>
@@ -500,25 +631,25 @@
     <div>
       <div class="cover-badge">Manual Operacional Oficial • SISTEN 2026</div>
       <h1 class="cover-title">GUIA DO SOLICITANTE</h1>
-      <div class="cover-subtitle">Manual Prático de Abertura de Pedidos, Consulta ao Catálogo SAP, Acompanhamento Logístico e Formulários Operacionais</div>
+      <div class="cover-subtitle">Manual Prático de Abertura de Pedidos, Catálogo SAP, Gestão de Chamados, Acompanhamento Logístico e Formulários Operacionais</div>
       <div class="cover-divider"></div>
 
       <div class="cover-highlights">
         <div class="cover-highlight-card">
-          <h4>📦 Abertura de Solicitações</h4>
-          <p>Passo a passo detalhado para compra de materiais com ou sem código SAP, contratação de serviços e chamados de suporte.</p>
+          <h4>📦 Abertura de Solicitações Integradas</h4>
+          <p>Passo a passo completo para compras de materiais com/sem código SAP, solicitações de cadastro e abertura de chamados técnicos.</p>
         </div>
         <div class="cover-highlight-card">
-          <h4>🔍 Catálogo & Estoque</h4>
-          <p>Pesquisa ágil no banco de dados corporativo e checagem de saldo imediato no Almoxarifado central.</p>
+          <h4>🔍 Catálogo SAP & Estoque</h4>
+          <p>Pesquisa refinada por termos múltiplos (chips cumulativos), verificação de saldo e aplicação correta do código de 8 dígitos.</p>
         </div>
         <div class="cover-highlight-card">
-          <h4>🚚 Rastreio Integrado</h4>
-          <p>Visibilidade total da emissão da PO pelo comprador até o transporte, nota fiscal e chegada física na fábrica.</p>
+          <h4>📊 Acompanhamento & Stepper de Status</h4>
+          <p>Rastreamento visual de cada fase (aprovação, cotação, PO emitida, entrega), histórico auditável e chat com os compradores.</p>
         </div>
         <div class="cover-highlight-card">
-          <h4>📋 Formulários de Campo</h4>
-          <p>Emissão simplificada do RID de Segurança (SSMA), solicitações de portaria e autorizações operacionais.</p>
+          <h4>💡 Suporte Flutuante & Formulários</h4>
+          <p>Tour guiado passo a passo em todas as telas, reporte ágil de bugs e sugestões, além do preenchimento simplificado do RID SSMA.</p>
         </div>
       </div>
     </div>
@@ -531,7 +662,7 @@
       </div>
       <div style="text-align: right;">
         <strong>Documento:</strong> MAN.TEN-SIS-001<br>
-        <strong>Versão:</strong> 1.0 (Setembro / 2026)<br>
+        <strong>Versão:</strong> 2.0 (Setembro / 2026)<br>
         <strong>Público-Alvo:</strong> Requisitantes & Colaboradores
       </div>
     </div>
@@ -551,20 +682,20 @@
       Sumário Executivo & Boas-Vindas
     </h1>
 
-    <p>O <strong>SISTEN (Sistema de Informação TEN)</strong> é a plataforma integrada corporativa das Torres Eólicas do Nordeste para gestão unificada de suprimentos, compras, catálogo de materiais, almoxarifado, helpdesk, formulários operacionais e rastreabilidade logística.</p>
+    <p>O <strong>SISTEN (Sistema de Informação TEN)</strong> é a plataforma integrada corporativa das Torres Eólicas do Nordeste desenvolvida para unificar e acelerar toda a cadeia de suprimentos, compras, catálogo de materiais, almoxarifado, helpdesk, formulários operacionais e rastreabilidade logística.</p>
 
-    <p>Este manual foi elaborado para orientar você, colaborador solicitante, em todas as etapas do seu dia a dia na fábrica ou escritório — desde a identificação da sua necessidade operacional até o recebimento físico do item no almoxarifado.</p>
+    <p>Este manual foi elaborado para orientar você, colaborador solicitante, em todas as etapas do seu dia a dia na fábrica ou escritório — desde a identificação da sua necessidade operacional até o acompanhamento em tempo real da entrega física do item no almoxarifado.</p>
 
     <div class="callout callout-tip">
-      <span class="callout-icon">💡</span>
+      <span class="callout-icon">🌐</span>
       <div class="callout-body">
         <div class="callout-title">Acesso Rápido ao Sistema</div>
-        O SISTEN pode ser acessado em qualquer computador ou dispositivo móvel conectado à rede corporativa ou via internet pelo endereço <strong>https://sisten.site</strong> ou pelo endereço da rede local configurado pela TI.
+        O SISTEN pode ser acessado em qualquer computador, tablet ou smartphone conectado à rede corporativa ou via internet pelo endereço oficial <strong>https://sisten.site</strong>.
       </div>
     </div>
 
     <div class="toc-container">
-      <h3 style="margin-bottom: 12px; color: var(--primary-dark); font-size: 13px; font-weight: 700; text-transform: uppercase;">Conteúdo Programático do Manual</h3>
+      <h3 style="margin-bottom: 10px; color: var(--primary-dark); font-size: 12px; font-weight: 700; text-transform: uppercase;">Conteúdo Programático do Manual</h3>
       
       <div class="toc-item">
         <span class="desc"><span class="num">Capítulo 1</span> Acesso ao SISTEN & Visão Geral da Interface</span>
@@ -575,56 +706,56 @@
         <span class="pag">Pág. 4</span>
       </div>
       <div class="toc-item">
-        <span class="desc"><span class="num">Capítulo 3</span> Como Abrir uma Nova Solicitação de Compra</span>
-        <span class="pag">Pág. 5</span>
+        <span class="desc"><span class="num">Capítulo 3</span> Nova Solicitação: Compra de Materiais, Cadastro SAP e Chamados</span>
+        <span class="pag">Págs. 5 e 6</span>
       </div>
       <div class="toc-item">
         <span class="desc"><span class="num">Capítulo 4</span> Escala de Criticidade & Prazos de Atendimento</span>
-        <span class="pag">Pág. 6</span>
-      </div>
-      <div class="toc-item">
-        <span class="desc"><span class="num">Capítulo 5</span> Central de Solicitações: Acompanhamento & Histórico</span>
         <span class="pag">Pág. 7</span>
       </div>
       <div class="toc-item">
+        <span class="desc"><span class="num">Capítulo 5</span> Central de Solicitações: Gestão & Acompanhamento de Status em Tempo Real</span>
+        <span class="pag">Págs. 8 e 9</span>
+      </div>
+      <div class="toc-item">
         <span class="desc"><span class="num">Capítulo 6</span> Rastreio de Compras & Previsão de Entrega (Lead Time)</span>
-        <span class="pag">Pág. 8</span>
+        <span class="pag">Pág. 10</span>
       </div>
       <div class="toc-item">
         <span class="desc"><span class="num">Capítulo 7</span> Hub de Formulários Operacionais & RID (SSMA)</span>
-        <span class="pag">Pág. 9</span>
+        <span class="pag">Pág. 11</span>
       </div>
       <div class="toc-item">
-        <span class="desc"><span class="num">Capítulo 8</span> Boas Práticas, Perguntas Frequentes & Suporte</span>
-        <span class="pag">Pág. 10</span>
+        <span class="desc"><span class="num">Capítulo 8</span> Boas Práticas, FAQ & Botão Flutuante de Ajuda & Suporte</span>
+        <span class="pag">Pág. 12</span>
       </div>
     </div>
 
-    <h2 class="section-title">Papel do Solicitante no Fluxo Operacional</h2>
-    <p>O solicitante é o responsável por iniciar a cadeia de suprimentos. Um pedido bem preenchido, com especificações claras e justificativa sólida, reduz em até <strong>70% o tempo total de compra</strong> e elimina atrasos por dúvidas do comprador ou erros de cotação.</p>
+    <h2 class="section-title">Papel do Solicitante no Sucesso da Cadeia de Suprimentos</h2>
+    <p>O solicitante é o ponto de partida de toda a cadeia operacional. Uma solicitação bem estruturada, contendo especificações técnicas completas, imagens nítidas e justificativa fundamentada, reduz em até <strong>70% o tempo total do processo de compra</strong> e elimina retrabalhos causados por dúvidas e devoluções.</p>
 
     <div class="step-grid">
       <div class="step-card">
-        <h4>1. Identificar com Clareza</h4>
-        <p>Verifique sempre se o material já existe no catálogo SAP e se há saldo disponível no estoque antes de pedir nova compra.</p>
+        <h4>1. Identificar com Precisão</h4>
+        <p>Consulte sempre o Catálogo SAP antes de abrir o pedido para aproveitar códigos já homologados e verificar saldos no almoxarifado.</p>
       </div>
       <div class="step-card">
-        <h4>2. Justificar com Precisão</h4>
-        <p>Informe onde o material será aplicado (máquina, obra, setor) e o impacto caso o item não esteja disponível na data.</p>
+        <h4>2. Escolher o Canal Correto</h4>
+        <p>Use a aba Compra para aquisição de materiais, Cadastro SAP para itens/fornecedores inéditos e Chamado para demandas de apoio.</p>
       </div>
       <div class="step-card">
         <h4>3. Acompanhar a Central</h4>
-        <p>Consulte periodicamente a aba "Precisa de Mim" na Central de Solicitações para responder dúvidas técnicas dos compradores.</p>
+        <p>Verifique com frequência a aba "Precisa de Mim" na Central de Solicitações para responder questionamentos dos compradores.</p>
       </div>
       <div class="step-card">
-        <h4>4. Confirmar o Recebimento</h4>
-        <p>Acompanhe o Rastreio de Compras para saber o dia em que o caminhão descarregará o item no Almoxarifado central.</p>
+        <h4>4. Utilizar o Tour de Ajuda</h4>
+        <p>Em qualquer dúvida operacional sobre um campo, clique no botão verde flutuante no canto inferior para iniciar o tour guiado da página.</p>
       </div>
     </div>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 2 de 10</div>
+      <div>Página 2 de 12</div>
     </div>
   </div>
 
@@ -642,49 +773,48 @@
       Acesso ao SISTEN & Visão Geral da Interface
     </h1>
 
-    <h2 class="section-title">1.1 Tela de Login & Autenticação</h2>
-    <p>O acesso ao SISTEN é individual e protegido por credenciais corporativas. Ao acessar a aplicação, você verá a tela de boas-vindas com a imagem da unidade TEN de Jacobina/BA.</p>
+    <div class="two-cols-grid">
+      <div>
+        <h2 class="section-title" style="margin-top: 0;">1.1 Tela de Login & Vitrine</h2>
+        <p>O acesso ao SISTEN é protegido por credenciais corporativas. Ao acessar <strong>sisten.site</strong>, você visualiza a vitrine institucional com acesso direto:</p>
 
-    <figure class="screen-shot">
-      <img src="images/01_login.png" alt="Tela de Login do SISTEN">
-      <figcaption><strong>Figura 1.1:</strong> Tela de Login do SISTEN com autenticação por e-mail corporativo e senha.</figcaption>
-    </figure>
+        <figure class="screen-shot">
+          <img src="images/01_login.png" alt="Tela de Apresentação e Login do SISTEN">
+          <figcaption><strong>Figura 1.1:</strong> Vitrine no portal <em>sisten.site</em>.</figcaption>
+        </figure>
 
-    <h3 class="subsection-title">Passo a Passo para Entrar no Sistema:</h3>
-    <ol>
-      <li>No campo <strong>E-mail</strong>, informe seu endereço corporativo completo (ex.: <code>seu.nome@ten.ind.br</code> ou <code>seu.nome@agnet.com.br</code>).</li>
-      <li>Digite sua <strong>Senha</strong> de acesso.</li>
-      <li>(Opcional) Marque a opção <strong>"Lembrar meu acesso"</strong> para manter a sessão ativa neste computador.</li>
-      <li>Clique no botão azul <strong>"Entrar"</strong>.</li>
-    </ol>
+        <h3 class="subsection-title">Como Entrar:</h3>
+        <ol>
+          <li>Clique no botão <strong>"ACESSE AGORA"</strong>.</li>
+          <li>Digite seu <strong>E-mail</strong> corporativo (<code>@ten.ind.br</code>).</li>
+          <li>Informe sua <strong>Senha</strong> secreta.</li>
+          <li>(Opcional) Marque <strong>"Lembrar meu acesso"</strong>.</li>
+          <li>Clique em <strong>"Entrar"</strong>. Se esqueceu a senha, clique em <em>"Esqueci minha senha"</em>.</li>
+        </ol>
+      </div>
 
-    <div class="callout callout-warning">
-      <span class="callout-icon">⚠️</span>
-      <div class="callout-body">
-        <div class="callout-title">Esqueceu sua Senha ou Primeiro Acesso?</div>
-        Caso não lembre de sua senha, clique no link <strong>"Esqueci minha senha"</strong> logo acima do campo de senha. Informe seu e-mail corporativo cadastrado e você receberá instantaneamente um link seguro em sua caixa de entrada para criar uma nova senha pessoal.
+      <div>
+        <h2 class="section-title" style="margin-top: 0;">1.2 Dashboard do Solicitante</h2>
+        <p>Após a autenticação, a tela <strong>Início</strong> reúne em tempo real todas as demandas e avisos importantes para você:</p>
+
+        <figure class="screen-shot">
+          <img src="images/02_inicio.png" alt="Painel Início do Solicitante">
+          <figcaption><strong>Figura 1.2:</strong> Painel Início com métricas e notificações.</figcaption>
+        </figure>
+
+        <p><strong>Destaques da Página Inicial:</strong></p>
+        <ul>
+          <li><strong>Cards de Métricas:</strong> Notificações pendentes, contagem de <em>Minhas em Aberto</em> e pedidos sem PO.</li>
+          <li><strong>Mural de Notificações:</strong> Alertas em tempo real de aprovações, cotações e entregas.</li>
+          <li><strong>Acesso Rápido:</strong> Favoritos e módulos mais utilizados.</li>
+          <li><strong>Botão de Suporte:</strong> Ícone verde no canto inferior direito para ajuda e tour guiado.</li>
+        </ul>
       </div>
     </div>
 
-    <h2 class="section-title">1.2 Tela Início (Dashboard do Solicitante)</h2>
-    <p>Após a autenticação bem-sucedida, você é direcionado à tela <strong>Início</strong>, personalizada com o seu nome, cargo e setor.</p>
-
-    <figure class="screen-shot">
-      <img src="images/02_inicio.png" alt="Tela Inicial do Solicitante">
-      <figcaption><strong>Figura 1.2:</strong> Painel Início do Solicitante com notificações, métricas e menu de navegação.</figcaption>
-    </figure>
-
-    <p><strong>Destaques da Tela Início:</strong></p>
-    <ul>
-      <li><strong>Contador de Solicitações em Aberto:</strong> Mostra rapidamente quantas demandas suas estão em andamento.</li>
-      <li><strong>Mural de Notificações:</strong> Alertas importantes sobre aprovações, cotações finalizadas e pedidos emitidos.</li>
-      <li><strong>Minhas Solicitações Recentes:</strong> Atalho com as últimas requisições criadas por você.</li>
-      <li><strong>Menu Lateral (Sidebar):</strong> Permite navegar com um clique para <em>Formulários, Catálogo SAP, Rastreio Compras e Nova Solicitação</em>.</li>
-    </ul>
-
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 3 de 10</div>
+      <div>Página 3 de 12</div>
     </div>
   </div>
 
@@ -702,159 +832,220 @@
       Catálogo de Materiais SAP & Consulta de Estoque
     </h1>
 
-    <p>Antes de redigir qualquer solicitação de compra, a primeira etapa recomendada é consultar o <strong>Catálogo de Materiais SAP</strong>. Essa consulta garante o uso do código correto (8 dígitos) e permite conferir se o material já está disponível nas prateleiras do Almoxarifado Central.</p>
+    <p>Antes de solicitar qualquer compra, consulte sempre o <strong>Catálogo de Materiais SAP</strong> (menu <em>Catálogo SAP</em>). Esta pesquisa assegura que você utilize o código de 8 dígitos oficial da TEN, evitando compras duplicadas e aproveitando saldos já existentes no Almoxarifado Central.</p>
 
-    <figure class="screen-shot">
+    <figure class="screen-shot screen-shot-md">
       <img src="images/03_catalogo_sap.png" alt="Catálogo de Materiais SAP">
-      <figcaption><strong>Figura 2.1:</strong> Interface de pesquisa no Catálogo SAP com filtros combinados e chips de busca.</figcaption>
+      <figcaption><strong>Figura 2.1:</strong> Catálogo SAP com pesquisa por chips múltiplos (AND), filtros combinados e tabela técnica detalhada.</figcaption>
     </figure>
 
-    <h2 class="section-title">2.1 Como Realizar Buscas Eficientes</h2>
-    <p>A barra de busca do SISTEN utiliza um mecanismo de busca por palavras-chave inteligentes. Para encontrar itens com rapidez:</p>
-    <ul>
-      <li><strong>Por Descrição Técnica:</strong> Digite termos essenciais separados por espaço. Exemplo: <code>PARAFUSO SEXTAVADO M12</code> ou <code>LUVAS VAQUETA</code>.</li>
-      <li><strong>Por Código SAP:</strong> Se você já souber o número SAP de 8 dígitos (ex.: <code>10024560</code>), digite-o diretamente na barra de pesquisa.</li>
-      <li><strong>Filtro por Unidade de Medida:</strong> Permite filtrar apenas itens medidos em PC (Peça), UN (Unidade), KG (Quilograma), M (Metro), etc.</li>
-      <li><strong>Filtro de Categoria e TMAT:</strong> Restringe a pesquisa entre consumíveis, insumos produtivos, EPIs ou peças de manutenção.</li>
-    </ul>
+    <h2 class="section-title">2.1 Busca Inteligente por Chips Cumulativos (AND)</h2>
+    <p>A barra de busca do SISTEN permite refinar itens combinando palavras-chave. Ao digitar uma palavra e teclar <kbd>Enter</kbd> (ou clicar em <em>Adicionar</em>), ela se transforma em uma etiqueta (chip verde). O sistema filtra apenas os itens que contêm <strong>todos os termos simultaneamente</strong> (exemplo: <code>bota</code> + <code>biq</code>).</p>
 
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 25%;">Coluna / Campo</th>
-          <th style="width: 35%;">O que indica?</th>
-          <th style="width: 40%;">Orientação para o Solicitante</th>
+          <th style="width: 22%;">Coluna / Filtro</th>
+          <th style="width: 38%;">O que representa?</th>
+          <th style="width: 40%;">Instrução para o Solicitante</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><strong>CÓDIGO SAP</strong></td>
-          <td>Código oficial de 8 dígitos cadastrado no SAP da TEN.</td>
-          <td>Copie este código para colar no formulário da sua solicitação de compra.</td>
+          <td>Identificador numérico exclusivo de 8 dígitos no SAP corporativo.</td>
+          <td>Clique no ícone de cópia para colar o código diretamente no formulário de compra.</td>
         </tr>
         <tr>
           <td><strong>DESCRIÇÃO SAP</strong></td>
-          <td>Texto técnico padronizado com medidas, normas e especificações.</td>
-          <td>Verifique se atende com exatidão a sua necessidade de campo.</td>
+          <td>Nome técnico padronizado com termos de pesquisa grifados em amarelo.</td>
+          <td>Confira se o tamanho, voltagem e características correspondem à necessidade.</td>
         </tr>
         <tr>
-          <td><strong>UNIDADE (UN)</strong></td>
-          <td>Unidade de controle de estoque (PC, CX, PAR, ROLO).</td>
-          <td>Sua solicitação deve ser feita sempre na mesma unidade oficial do item.</td>
+          <td><strong>TEXTO TÉCNICO</strong></td>
+          <td>Especificação detalhada de engenharia, normas e certificados requeridos.</td>
+          <td>Clique em <em>"Ver mais"</em> para inspecionar todas as propriedades técnicas do material.</td>
         </tr>
         <tr>
           <td><strong>STATUS SAP</strong></td>
-          <td>Indica se o material está Ativo, Bloqueado ou Obsoleto.</td>
-          <td>Itens bloqueados necessitam de liberação prévia com a equipe de Suprimentos.</td>
+          <td>Indicação de disponibilidade cadastral (Ativo, Obsoleto ou Bloqueado).</td>
+          <td>Materiais com status <em>Obsoleto</em> não podem ser comprados sem atualização prévia.</td>
+        </tr>
+        <tr>
+          <td><strong>UNIDADE (UN)</strong></td>
+          <td>Unidade de movimentação de estoque (PAR, UN, PC, KG, L, M, M²).</td>
+          <td>Sua solicitação deve ser expressa exatamente na mesma unidade oficial cadastrada.</td>
         </tr>
       </tbody>
     </table>
 
     <div class="callout callout-success">
-      <span class="callout-icon">✅</span>
+      <span class="callout-icon">💡</span>
       <div class="callout-body">
-        <div class="callout-title">Por que usar o Código SAP?</div>
-        Quando você abre uma solicitação informando o Código SAP correto, o comprador não precisa pesquisar cotações do zero: o histórico de fornecedores homologados e os últimos preços praticados já são carregados automaticamente pelo sistema, acelerando a compra!
+        <div class="callout-title">Vantagem Operacional do Código SAP</div>
+        Solicitações com Código SAP válido pulam a etapa de busca de fornecedores do zero: os preços históricos, prazos de entrega habituais e fornecedores homologados são puxados automaticamente, reduzindo significativamente o prazo de atendimento!
       </div>
     </div>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 4 de 10</div>
+      <div>Página 4 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 5: CAPÍTULO 3 - COMO ABRIR UMA NOVA SOLICITAÇÃO             -->
+  <!-- PÁGINA 5: CAPÍTULO 3 - NOVA SOLICITAÇÃO (COMPRA DE MATERIAIS)       -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
       <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
-      <div>CAPÍTULO 3: NOVA SOLICITAÇÃO</div>
+      <div>CAPÍTULO 3: NOVA SOLICITAÇÃO (COMPRAS)</div>
     </div>
 
     <h1 class="chapter-title">
       <span class="ch-num">3</span>
-      Como Abrir uma Nova Solicitação de Compra
+      Como Abrir uma Nova Solicitação (Canais & Compra)
     </h1>
 
-    <p>Para abrir um novo pedido, clique no menu lateral em <strong>Nova Solicitação</strong> ou no botão <strong>"+ Nova Solicitação"</strong> no topo da tela.</p>
+    <p>Para abrir qualquer demanda no SISTEN, clique em <strong>Nova Solicitação</strong> no menu lateral ou no botão verde <strong>"+ Nova Solicitação"</strong> presente no topo de diversas telas. O sistema centraliza 3 canais operacionais em uma única interface intuitiva.</p>
 
-    <figure class="screen-shot">
-      <img src="images/04_nova_solicitacao.png" alt="Formulário de Nova Solicitação">
-      <figcaption><strong>Figura 3.1:</strong> Formulário de Nova Solicitação com seleção de canal, dados de itens, prazo e criticidade.</figcaption>
+    <figure class="screen-shot screen-shot-sm">
+      <img src="images/04_nova_solicitacao.png" alt="Formulário de Nova Solicitação - Canal Compra">
+      <figcaption><strong>Figura 3.1:</strong> Formulário de Compra com busca integrada ao catálogo SAP, itens múltiplos e seleção de prazo.</figcaption>
     </figure>
 
-    <h2 class="section-title">3.1 Escolha o Tipo de Solicitação</h2>
-    <p>No topo da tela, você deve selecionar uma entre as 3 opções disponíveis:</p>
-    <ul>
-      <li><strong>🛒 Compra:</strong> Para adquirir materiais físicos (ferramentas, consumíveis, EPIs, peças) ou contratar serviços de terceiros.</li>
-      <li><strong>📝 Cadastro SAP:</strong> Para pedir o cadastramento de um novo item que não existe no catálogo SAP, ou homologar um novo fornecedor.</li>
-      <li><strong>🎧 Chamado:</strong> Para registrar chamados de suporte interno (TI, Facilities predial, Jurídico ou Suprimentos).</li>
-    </ul>
+    <h2 class="section-title">3.1 Os Três Canais da Nova Solicitação</h2>
+    <div class="step-grid">
+      <div class="step-card">
+        <h4>🛒 1. Compra de Itens</h4>
+        <p>Para solicitar materiais de almoxarifado, ferramentas, EPIs, peças de reposição ou contratação de serviços técnicos terceirizados.</p>
+      </div>
+      <div class="step-card">
+        <h4>📝 2. Cadastro SAP</h4>
+        <p>Para solicitar a inclusão de um material inexistente no catálogo ou a homologação comercial de um novo fornecedor.</p>
+      </div>
+      <div class="step-card" style="grid-column: span 2;">
+        <h4>🎧 3. Chamado de Suporte Interno</h4>
+        <p>Para registrar ordens de serviço de Facilities (manutenção predial), TI (sistemas/computadores), Jurídico ou Suprimentos.</p>
+      </div>
+    </div>
 
-    <h2 class="section-title">3.2 Preenchimento dos Campos Obrigatórios</h2>
-    
+    <h2 class="section-title">3.2 Preenchimento dos Dados de Compra</h2>
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 28%;">Campo</th>
-          <th style="width: 14%;">Obrigatório?</th>
-          <th style="width: 58%;">Como preencher?</th>
+          <th style="width: 25%;">Campo</th>
+          <th style="width: 15%;">Obrigatório?</th>
+          <th style="width: 60%;">Instrução de Preenchimento</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><strong>Setor Solicitante</strong></td>
           <td><span class="badge badge-danger">SIM</span></td>
-          <td>Selecione o seu setor (ex.: <em>Operações, Qualidade, Manutenção, SSMA, Facilities</em>). Esse setor define o centro de custo de cobrança.</td>
+          <td>Selecione o seu setor (ex.: <em>Operações, Manutenção, SSMA, Qualidade</em>). Define o centro de custo de apropriação.</td>
         </tr>
         <tr>
           <td><strong>Tipo de Compra</strong></td>
           <td><span class="badge badge-danger">SIM</span></td>
-          <td>Escolha entre <strong>ESTOQUE</strong> (itens de almoxarifado), <strong>DIRETA</strong> (aplicação imediata) ou <strong>SERVIÇO</strong> (mão de obra).</td>
+          <td>Escolha entre <strong>Estoque</strong> (reposição de almoxarifado), <strong>Direta</strong> (uso imediato) ou <strong>Serviço</strong>.</td>
         </tr>
         <tr>
-          <td><strong>Código / Busca SAP</strong></td>
+          <td><strong>Busca no Catálogo SAP</strong></td>
           <td><span class="badge badge-primary">RECOMENDADO</span></td>
-          <td>Digite o nome ou código e tecle Enter ou clique em <strong>"Buscar"</strong> para selecionar o item na janela de catálogo integrada.</td>
+          <td>Clique em <em>"Buscar no catálogo SAP"</em>: selecione o item na janela modal para carregar código e descrição automaticamente.</td>
         </tr>
         <tr>
           <td><strong>Item Genérico</strong></td>
-          <td><span class="badge badge-neutral">OPÇÃO</span></td>
-          <td>Marque este checkbox apenas caso o item <strong>não exista no SAP</strong>. Nesse caso, digite uma descrição minuciosa e anexe foto/orçamento.</td>
+          <td><span class="badge badge-warning">OPÇÃO</span></td>
+          <td>Marque apenas se o material não possuir código no SAP. O campo de observações técnicas torna-se obrigatório.</td>
         </tr>
         <tr>
           <td><strong>Quantidade & Unidade</strong></td>
           <td><span class="badge badge-danger">SIM</span></td>
-          <td>Informe o volume exato necessário (ex.: <code>10</code>) e a unidade correspondente (ex.: <code>UN</code>, <code>PC</code>, <code>KG</code>).</td>
-        </tr>
-        <tr>
-          <td><strong>Fabricante / Referência</strong></td>
-          <td><span class="badge badge-neutral">OPCIONAL</span></td>
-          <td>Indique a marca de preferência ou cole o link do site do fabricante (ex.: catálogo técnico ou distribuidor autorizado).</td>
+          <td>Informe o valor exato (ex.: <code>5</code>) e escolha a unidade compatível na lista suspensa (ex.: <code>UN</code>, <code>KG</code>, <code>PC</code>).</td>
         </tr>
         <tr>
           <td><strong>Justificativa Técnica</strong></td>
           <td><span class="badge badge-danger">SIM</span></td>
-          <td>Explique o motivo da compra e onde o material será aplicado. Exemplo: <em>"Substituição preventiva dos rolamentos da esteira 03 da linha de solda."</em></td>
+          <td>Explique com clareza o motivo e o local de aplicação (ex.: <em>"Troca do rolamento da esteira 02 na linha de solda"</em>).</td>
         </tr>
         <tr>
-          <td><strong>Anexar Foto ou PDF</strong></td>
+          <td><strong>Anexar Arquivos</strong></td>
           <td><span class="badge badge-neutral">RECOMENDADO</span></td>
-          <td>Anexe cotações recebidas, orçamentos, desenhos técnicos ou fotos da peça danificada para facilitar a compra.</td>
+          <td>Anexe orçamentos prévios, fotos da placa de identificação ou desenhos técnicos para orientar o comprador.</td>
         </tr>
       </tbody>
     </table>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 5 de 10</div>
+      <div>Página 5 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 6: CAPÍTULO 4 - CRITICIDADE & PRAZOS DE COMPRA               -->
+  <!-- PÁGINA 6: CAPÍTULO 3 (CONT.) - CADASTRO SAP & CHAMADOS              -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 3: CADASTRO SAP & CHAMADOS</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">3b</span>
+      Cadastro SAP & Chamados: Funções Também Abertas Aqui!
+    </h1>
+
+    <p style="margin-bottom: 12px;">O formulário de <strong>Nova Solicitação</strong> unifica todas as entradas operacionais da fábrica. Pedidos de <strong>Cadastro SAP</strong> e aberturas de <strong>Chamado</strong> devem ser realizados diretamente pelas abas superiores desta mesma tela:</p>
+
+    <div class="two-cols-grid">
+      <div>
+        <h2 class="section-title" style="margin-top: 0;">3.3 Aba "Cadastro SAP"</h2>
+        <p>Para incluir itens inéditos ou homologar parceiros comerciais:</p>
+
+        <figure class="screen-shot">
+          <img src="images/04b_solicitacao_cadastrosap.png" alt="Formulário de Cadastro SAP no SISTEN">
+          <figcaption><strong>Figura 3.2:</strong> Aba Cadastro SAP (Item ou Fornecedor).</figcaption>
+        </figure>
+
+        <ul style="font-size: 11px;">
+          <li><strong>ITEM ou FORNECEDOR:</strong> Escolha entre material físico ou empresa.</li>
+          <li><strong>Descrição / Razão Social:</strong> Nome técnico preliminar ou CNPJ.</li>
+          <li><strong>Fabricante & Parceiro:</strong> Marca recomendada e contatos.</li>
+          <li><strong>Especificações Técnicas:</strong> Normas, medidas e certificados.</li>
+          <li><strong>Justificativa:</strong> Motivo pelo qual nenhum item similar atende.</li>
+        </ul>
+      </div>
+
+      <div>
+        <h2 class="section-title" style="margin-top: 0;">3.4 Aba "Chamado"</h2>
+        <p>Para suporte, manutenção predial, contratos ou pendências:</p>
+
+        <figure class="screen-shot">
+          <img src="images/04c_solicitacao_chamado.png" alt="Formulário de Chamado no SISTEN">
+          <figcaption><strong>Figura 3.3:</strong> Aba Chamado (Ordens de serviço internas).</figcaption>
+        </figure>
+
+        <ul style="font-size: 11px;">
+          <li><strong>🏢 Facilities:</strong> Climatização, civil, elétrica predial e limpeza.</li>
+          <li><strong>⚖️ Jurídico:</strong> Minutas contratuais, aditivos e pareceres.</li>
+          <li><strong>📦 Suprimentos:</strong> Pendências de NF e ajustes de pedidos.</li>
+          <li><strong>💻 TI:</strong> Computadores, impressoras, redes e sistemas.</li>
+          <li><strong>Criticidade & Local:</strong> Indique o galpão/área e a urgência.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 6 de 12</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 7: CAPÍTULO 4 - CRITICIDADE & PRAZOS DE COMPRA               -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
@@ -867,48 +1058,47 @@
       Escala de Criticidade & Prazos de Atendimento
     </h1>
 
-    <p>Para equilibrar as prioridades de compra de toda a fábrica, o SISTEN conta com uma régua de criticidade em 5 níveis no painel lateral do formulário. A escolha correta do grau garante que demandas urgentes recebam tratamento imediato sem prejudicar as compras planejadas.</p>
+    <p>No painel lateral direito de qualquer solicitação (Compra, Cadastro ou Chamado), você deve indicar a <strong>Criticidade</strong> da necessidade. A precisão nessa escolha garante que emergências reais recebam resposta prioritária sem comprometer o fluxo das compras rotineiras da fábrica.</p>
 
-    <h2 class="section-title">4.1 Os 5 Graus de Criticidade</h2>
-
+    <h2 class="section-title">4.1 Os 5 Níveis de Criticidade</h2>
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 15%;">Grau</th>
-          <th style="width: 25%;">Classificação</th>
-          <th style="width: 35%;">Quando utilizar?</th>
-          <th style="width: 25%;">Prazo Sugerido</th>
+          <th style="width: 14%;">Grau</th>
+          <th style="width: 26%;">Classificação</th>
+          <th style="width: 40%;">Quando deve ser selecionado?</th>
+          <th style="width: 20%;">Prazo Médio</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><span class="badge badge-neutral">Grau 1</span></td>
-          <td><strong>Planejada</strong></td>
-          <td>Demandas rotineiras, reposição periódica sem pressão de prazo.</td>
+          <td><strong>Demanda Planejada</strong></td>
+          <td>Reposicão regular de estoque de segurança sem pressa imediata.</td>
           <td>Acima de 30 dias</td>
         </tr>
         <tr>
           <td><span class="badge badge-primary">Grau 2</span></td>
           <td><strong>Normal com Fôlego</strong></td>
-          <td>Necessidade de médio prazo com folga para cotação e negociação.</td>
-          <td>De 2 a 4 semanas</td>
+          <td>Necessidade de médio prazo com tempo confortável para negociação.</td>
+          <td>2 a 4 semanas</td>
         </tr>
         <tr>
           <td><span class="badge badge-warning">Grau 3</span></td>
-          <td><strong>Atenção / Começa a Apertar</strong></td>
-          <td>Estoque próximo ao ponto de reposição ou evento agendado.</td>
-          <td>De 1 a 2 semanas</td>
+          <td><strong>Começa a Apertar</strong></td>
+          <td>Estoque próximo ao limite de reposição ou manutenção já agendada.</td>
+          <td>1 a 2 semanas</td>
         </tr>
         <tr>
           <td><span class="badge badge-warning" style="background:#FED7AA; color:#9A3412;">Grau 4</span></td>
           <td><strong>Situação Crítica</strong></td>
-          <td>Risco iminente de impacto na produção ou parada programada próxima.</td>
+          <td>Risco real de atraso na produção ou parada programada iminente.</td>
           <td>Menos de 7 dias</td>
         </tr>
         <tr>
           <td><span class="badge badge-danger">Grau 5</span></td>
           <td><strong>Emergência / Parada</strong></td>
-          <td>Produção já parada ou risco grave e imediato à integridade física/segurança.</td>
+          <td>Linha de produção parada ou risco grave à integridade física de pessoas.</td>
           <td>Imediato (Urgente)</td>
         </tr>
       </tbody>
@@ -918,29 +1108,28 @@
       <span class="callout-icon">🚨</span>
       <div class="callout-body">
         <div class="callout-title">Atenção ao Uso do Grau 4 e Grau 5</div>
-        Solicitações marcadas como Grau 4 ou Grau 5 disparam alertas de alta prioridade para o gestor e para a coordenação de Suprimentos. A justificativa técnica deve detalhar expressamente o motivo do risco ou da emergência. Solicitações urgentes sem justificativa plausível são devolvidas para adequação de prazo.
+        Demandas marcadas como Grau 4 ou 5 geram notificações de alta prioridade automáticas para os gestores e para a coordenação de compras. É obrigatório fundamentar minuciosamente na justificativa técnica o risco ou a causa da parada. Solicitações urgentes sem respaldo são reclassificadas.
       </div>
     </div>
 
-    <h2 class="section-title">4.2 Data Limite de Necessidade no Almoxarifado</h2>
-    <p>No campo <strong>"Pra quando? Data Limite de Necessidade no Almoxarifado"</strong>, indique a data em que o material precisa impreterivelmente estar fisicamente guardado e liberado para retirada.</p>
+    <h2 class="section-title">4.2 Composição do Lead Time (Tempo Total de Atendimento)</h2>
+    <p>Ao definir a <strong>"Data Limite de Necessidade no Almoxarifado"</strong>, planeje levando em conta a soma dos tempos de todas as fases operacionais:</p>
     
-    <p>Lembre-se sempre de considerar a composição do tempo total (<em>Lead Time</em>):</p>
-    <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin: 10px 0; text-align: center; font-size: 11.5px; font-weight: 600; color: var(--primary);">
-      [ Aprovação do Gestor ] ➜ [ Cotação de Preços ] ➜ [ Emissão da PO ] ➜ [ Fabricação/Despacho ] ➜ [ Frete Rodoviário ] ➜ [ Entrada MIGO no Almoxarifado ]
+    <div style="background: var(--bg-light); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; margin: 10px 0; text-align: center; font-size: 11px; font-weight: 600; color: var(--primary);">
+      [ Aprovação Gestor ] ➜ [ Cotação de Preços ] ➜ [ Emissão da PO ] ➜ [ Fabricação / Despacho ] ➜ [ Frete Rodoviário ] ➜ [ Recebimento Almoxarifado (MIGO) ]
     </div>
 
-    <h2 class="section-title">4.3 Salvamento Automático como Rascunho</h2>
-    <p>O SISTEN conta com o recurso <strong>"Rascunho Salvo"</strong>. Caso você esteja preenchendo uma solicitação extensa e precise pausar ou fechar o navegador, seus dados são preservados automaticamente na memória local, permitindo retomar exatamente de onde parou ao reabrir a tela.</p>
+    <h2 class="section-title">4.3 Salvamento Automático como Rascunho (Autosave)</h2>
+    <p>O SISTEN conta com mecanismo de salvamento de rascunhos em segundo plano a cada 30 segundos. Caso você precise fechar o navegador ou buscar novas informações técnicas com um fornecedor, seus dados preenchidos permanecem protegidos na memória local para continuação posterior.</p>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 6 de 10</div>
+      <div>Página 7 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 7: CAPÍTULO 5 - CENTRAL DE SOLICITAÇÕES                     -->
+  <!-- PÁGINA 8: CAPÍTULO 5 - CENTRAL DE SOLICITAÇÕES                     -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
@@ -950,84 +1139,120 @@
 
     <h1 class="chapter-title">
       <span class="ch-num">5</span>
-      Central de Solicitações: Acompanhamento & Histórico
+      Central de Solicitações: Gestão & Acompanhamento
     </h1>
 
-    <p>A <strong>Central de Solicitações</strong> (menu <em>Solicitações</em>) é o cockpit onde você gerencia todas as suas requisições, verifica o andamento em tempo real e interage diretamente com os compradores.</p>
+    <p>A <strong>Central de Solicitações</strong> (menu lateral <em>Solicitações</em>) é o centro de controle onde você acompanha a evolução de todos os seus pedidos de compra, cadastros SAP e chamados, interagindo diretamente com os responsáveis.</p>
 
-    <figure class="screen-shot">
-      <img src="images/05_central_solicitacoes.png" alt="Central de Solicitações">
-      <figcaption><strong>Figura 5.1:</strong> Central de Solicitações com abas de escopo, filtros de categoria e fila de pendências.</figcaption>
+    <figure class="screen-shot screen-shot-md">
+      <img src="images/05_central_solicitacoes.png" alt="Central de Solicitações do SISTEN">
+      <figcaption><strong>Figura 5.1:</strong> Painel da Central de Solicitações com abas de escopo, chips de filtragem e lista de pendências.</figcaption>
     </figure>
 
-    <h2 class="section-title">5.1 As Abas da Central de Solicitações</h2>
+    <h2 class="section-title">5.1 As Quatro Abas de Gestão</h2>
     <ul>
-      <li><strong>🎯 Aba "Precisa de Mim":</strong> É a aba mais importante para o solicitante! Mostra solicitações em que o comprador ou gestor solicitou esclarecimentos adicionais, como validação de marca alternativa, orçamento complementar ou detalhes técnicos.</li>
-      <li><strong>📂 Aba "Minhas":</strong> Contém todas as solicitações abertas por você (ativas, em cotação, concluídas ou rejeitadas).</li>
-      <li><strong>👥 Aba "Todas":</strong> Fila geral de solicitações da fábrica, permitindo consultar pedidos de colegas do mesmo setor para evitar duplicidades.</li>
+      <li><strong>🎯 Aba "Precisa de Mim" (Destaque Principal):</strong> Lista as solicitações que dependem exclusivamente de uma ação ou resposta sua — como responder a uma dúvida técnica do comprador, validar uma marca alternativa ou complementar dados.</li>
+      <li><strong>📂 Aba "Minhas":</strong> Exibe o histórico de todos os pedidos criados pelo seu usuário (em andamento, aprovados, entregues ou concluídos).</li>
+      <li><strong>👥 Aba "Do meu setor":</strong> Permite visualizar as solicitações abertas pelos colegas do seu mesmo departamento, prevenindo a duplicação de pedidos iguais.</li>
+      <li><strong>🌐 Aba "Todas":</strong> Visão consolidada de todas as demandas da fábrica para consulta rápida.</li>
     </ul>
 
-    <h2 class="section-title">5.2 Ciclo de Vida & Status da Solicitação</h2>
-    <p>Ao clicar sobre qualquer solicitação na lista, o painel lateral abre exibindo a linha do tempo completa e os dados dos itens:</p>
-
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th style="width: 25%;">Status</th>
-          <th style="width: 25%;">Etapa Atual</th>
-          <th style="width: 50%;">O que significa?</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><span class="badge badge-warning">Aguardando Aprovação</span></td>
-          <td>Gestor Imediato</td>
-          <td>A solicitação aguarda o aceite do gestor do centro de custo para seguir a compras.</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-primary">Em Cotação</span></td>
-          <td>Comprador</td>
-          <td>O setor de Suprimentos está consultando fornecedores e coletando propostas de preço.</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-primary" style="background:#E0E7FF; color:#4338CA;">Pedido Emitido (PO)</span></td>
-          <td>Fornecedor</td>
-          <td>O Pedido de Compra foi fechado e enviado ao fornecedor para faturamento e despacho.</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-warning" style="background:#FEF3C7; color:#B45309;">Em Trânsito</span></td>
-          <td>Transportadora</td>
-          <td>A mercadoria foi despachada com Nota Fiscal e está em rota com destino a Jacobina/BA.</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-success">Recebido / Concluído</span></td>
-          <td>Almoxarifado</td>
-          <td>O material foi conferido fisicamente e deu entrada no estoque (MIGO gerada).</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-danger">Rejeitado</span></td>
-          <td>Cancelada</td>
-          <td>O gestor ou comprador reprovou o pedido, registrando o motivo formal no histórico.</td>
-        </tr>
-      </tbody>
-    </table>
+    <h2 class="section-title">5.2 Chips de Filtro Rápido por Canal</h2>
+    <p>Abaixo da barra de busca por número ou justificativa, você pode filtrar a lista com um único clique:</p>
+    <ul>
+      <li><strong>🛒 Compras:</strong> Filtra somente solicitações de aquisição de materiais e serviços.</li>
+      <li><strong>📝 Cadastros SAP:</strong> Filtra apenas pedidos de criação de novos materiais ou homologação de fornecedores.</li>
+      <li><strong>🎧 Chamados:</strong> Restringe a visualização a chamados técnicos de apoio interno.</li>
+    </ul>
 
     <div class="callout callout-tip">
-      <span class="callout-icon">💬</span>
+      <span class="callout-icon">🔍</span>
       <div class="callout-body">
-        <div class="callout-title">Conversa com o Comprador</div>
-        Dentro dos detalhes de cada solicitação, há um campo de comentários. Você pode enviar mensagens diretamente para o comprador responsável para esclarecer especificações ou anexar novas propostas sem precisar enviar e-mails externos.
+        <div class="callout-title">Como Abrir os Detalhes de um Pedido?</div>
+        Basta clicar sobre o card de qualquer solicitação na lista (exemplo: requisição <strong>#4000005</strong> na imagem acima) para abrir a janela modal de acompanhamento minucioso detalhada na página seguinte.
       </div>
     </div>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 7 de 10</div>
+      <div>Página 8 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 8: CAPÍTULO 6 - RASTREIO DE COMPRAS                         -->
+  <!-- PÁGINA 9: CAPÍTULO 5 (CONT.) - DETALHES & STEPPER DE STATUS         -->
+  <!-- =================================================================== -->
+  <div class="document-page">
+    <div class="page-header">
+      <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
+      <div>CAPÍTULO 5: DETALHES & STATUS DO PEDIDO</div>
+    </div>
+
+    <h1 class="chapter-title">
+      <span class="ch-num">5b</span>
+      Acompanhamento do Status da Solicitação em Tempo Real
+    </h1>
+
+    <p>O acompanhamento da sua solicitação deve ser feito sempre na <strong>página Solicitações</strong>. Ao clicar em um pedido na lista, abre-se a janela completa de detalhes demonstrada abaixo:</p>
+
+    <figure class="screen-shot screen-shot-modal">
+      <img src="images/exemplosol.png" alt="Janela de Detalhes da Solicitação com Stepper">
+      <figcaption><strong>Figura 5.2:</strong> Janela modal de acompanhamento da solicitação (#4000005) com barra visual de status (stepper) e chat integrado.</figcaption>
+    </figure>
+
+    <h2 class="section-title">5.3 O Stepper Visual de Status (Ciclo de Vida da Compra)</h2>
+    <p>No topo da janela, a régua de progresso indica com exatidão em qual etapa o seu pedido se encontra:</p>
+
+    <div class="status-stepper-box">
+      <div class="stepper-header">Fluxo Oficial de Acompanhamento no SISTEN:</div>
+      <div class="stepper-steps">
+        <div class="stepper-bar-line"></div>
+        <div class="stepper-bar-progress"></div>
+        
+        <div class="stepper-node done">
+          <div class="stepper-circle">✓</div>
+          <div class="stepper-label">Aprovação Gestor</div>
+          <div class="stepper-sub">Aprovada</div>
+        </div>
+        <div class="stepper-node active">
+          <div class="stepper-circle">2</div>
+          <div class="stepper-label">Fila Suprimentos</div>
+          <div class="stepper-sub">Triagem</div>
+        </div>
+        <div class="stepper-node pending">
+          <div class="stepper-circle">3</div>
+          <div class="stepper-label">Em Cotação</div>
+          <div class="stepper-sub">Comprador</div>
+        </div>
+        <div class="stepper-node pending">
+          <div class="stepper-circle">4</div>
+          <div class="stepper-label">Pedido Emitido</div>
+          <div class="stepper-sub">PO no SAP</div>
+        </div>
+        <div class="stepper-node pending">
+          <div class="stepper-circle">5</div>
+          <div class="stepper-label">Entregue</div>
+          <div class="stepper-sub">Almoxarifado</div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section-title">5.4 Abas e Recursos da Janela de Solicitação</h2>
+    <ul>
+      <li><strong>Aba "Detalhes":</strong> Apresenta a justificativa técnica, centro de custo, número da RM vinculada no SAP (ex.: <code>1200093904</code>), data limite de necessidade e a listagem de todos os itens solicitados com fotos, código SAP e quantidades.</li>
+      <li><strong>Aba "Conversa":</strong> Canal direto de comunicação por chat entre o solicitante e o comprador responsável. Permite tirar dúvidas técnicas, confirmar substituição de marcas e enviar novas cotações sem precisar de trocas de e-mails externos.</li>
+      <li><strong>Aba "Histórico":</strong> Registro cronológico e auditável de cada movimentação (horário de aprovação pelo gestor, reatribuições de compradores e alterações).</li>
+      <li><strong>Botões de Ação:</strong> Botão <strong>"PDF"</strong> para baixar o espelho formal do pedido, <strong>"Cancelar"</strong> (caso não seja mais necessário) e <strong>"Copiar itens"</strong> para duplicar rapidamente uma lista.</li>
+    </ul>
+
+    <div class="page-footer">
+      <div>SISTEN • Torres Eólicas do Nordeste</div>
+      <div>Página 9 de 12</div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- PÁGINA 10: CAPÍTULO 6 - RASTREIO DE COMPRAS                         -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
@@ -1040,50 +1265,53 @@
       Rastreio de Compras & Previsão de Entrega
     </h1>
 
-    <p>O <strong>Rastreio Compras</strong> (menu <em>Rastreio Compras</em>) oferece ao solicitante total transparência sobre o andamento dos pedidos colocados no SAP da TEN, eliminando a necessidade de ligar para o setor de compras ou para o almoxarifado para saber se uma peça chegou.</p>
+    <p>O <strong>Rastreio Compras</strong> (menu lateral <em>Rastreio Compras</em>) oferece ao solicitante visibilidade completa sobre o status físico e fiscal de todos os pedidos emitidos no SAP da TEN, eliminando a necessidade de contatar compradores ou o almoxarifado por telefone.</p>
 
-    <figure class="screen-shot">
+    <figure class="screen-shot screen-shot-md">
       <img src="images/06_rastreio_compras.png" alt="Tela de Rastreio de Compras">
-      <figcaption><strong>Figura 6.1:</strong> Painel de Rastreio Compras com métricas de pontualidade, filtros por setor e tabela de pedidos.</figcaption>
+      <figcaption><strong>Figura 6.1:</strong> Painel de Rastreio Compras com indicadores de pontualidade, filtros por setor e tabela de pedidos.</figcaption>
     </figure>
 
     <h2 class="section-title">6.1 Indicadores de Desempenho no Topo da Tela</h2>
-    <p>Logo ao abrir a página, quatro cards coloridos resumem a situação das compras:</p>
-    <ul>
-      <li><strong>📦 REGISTROS:</strong> Quantidade total de itens monitorados no período.</li>
-      <li><strong>🕒 NO PRAZO:</strong> Pedidos em rota de entrega dentro da data acordada com o fornecedor.</li>
-      <li><strong>⚠️ ATRASADOS:</strong> Pedidos com entrega expirada aguardando cobrança do comprador.</li>
-      <li><strong>✅ ENTREGUES:</strong> Volume de compras já descarregadas e conferidas com sucesso.</li>
-    </ul>
-
-    <h2 class="section-title">6.2 Como Consultar o seu Pedido</h2>
-    <p>Na barra de pesquisa da tabela, você pode localizar sua compra através de qualquer um dos seguintes dados:</p>
-    <ul>
-      <li><strong>Número da RM (Requisição de Material):</strong> Ex.: <code>1100319476</code>.</li>
-      <li><strong>Número do Pedido de Compra (PO):</strong> Ex.: <code>4100438000</code>.</li>
-      <li><strong>Nome do Fornecedor:</strong> Ex.: <code>SOLO NETWORK</code>, <code>CARNEIRO E SILVA</code>.</li>
-      <li><strong>Descrição do Item ou Código SAP:</strong> Ex.: <code>DIPIRONA</code> ou código <code>1407544</code>.</li>
-    </ul>
-
-    <h2 class="section-title">6.3 Visualização por Cronograma (Gantt)</h2>
-    <p>Além da tradicional visualização em <strong>Tabela</strong>, você pode clicar na aba <strong>Cronograma</strong>. O sistema desenhará um gráfico visual no calendário mostrando as semanas em que cada fornecedor está programado para entregar cargas na portaria da TEN.</p>
-
-    <div class="callout callout-tip">
-      <span class="callout-icon">📥</span>
-      <div class="callout-body">
-        <div class="callout-title">Exportação em PDF e Excel</div>
-        Você pode exportar a lista de compras do seu setor a qualquer momento clicando nos botões <strong>PDF</strong> ou <strong>Excel</strong> localizados no canto superior direito da tela de Rastreio, ideal para reuniões operacionais de planejamento semanal.
+    <div class="step-grid">
+      <div class="step-card">
+        <h4>📦 REGISTROS</h4>
+        <p>Total de itens de compra ativos monitorados pelo sistema no período selecionado.</p>
+      </div>
+      <div class="step-card">
+        <h4>🕒 NO PRAZO</h4>
+        <p>Pedidos com entrega prevista rigorosamente dentro da data contratada com o fornecedor.</p>
+      </div>
+      <div class="step-card">
+        <h4>⚠️ ATRASADOS</h4>
+        <p>Pedidos cuja data de entrega acordada expirou e que estão sob cobrança diária de compras.</p>
+      </div>
+      <div class="step-card">
+        <h4>✅ ENTREGUES</h4>
+        <p>Materiais já descarregados fisicamente e conferidos no Almoxarifado Central (MIGO gerada).</p>
       </div>
     </div>
 
+    <h2 class="section-title">6.2 Localizando o seu Pedido com Agilidade</h2>
+    <p>A barra de busca rápida da tabela aceita múltiplos parâmetros de pesquisa:</p>
+    <ul>
+      <li><strong>Número da RM (Requisição de Material):</strong> Exemplo: <code>1100319476</code>.</li>
+      <li><strong>Número do Pedido de Compra (PO):</strong> Exemplo: <code>4100438000</code>.</li>
+      <li><strong>Razão Social do Fornecedor:</strong> Exemplo: <code>SOLO NETWORK</code>, <code>CARNEIRO E SILVA</code>.</li>
+      <li><strong>Código SAP ou Descrição do Item:</strong> Exemplo: <code>1407544</code> ou <code>DIPIRONA</code>.</li>
+    </ul>
+
+    <h2 class="section-title">6.3 Visualização por Cronograma & Exportação</h2>
+    <p>Você pode alternar entre a visão padrão em <strong>Tabela</strong> e a visão em <strong>Cronograma (Gantt)</strong> para visualizar no calendário as semanas de entrega previstas para os caminhões na portaria. Para gerar relatórios de reuniões de alinhamento, utilize os botões <strong>PDF</strong> e <strong>Excel</strong> no canto superior direito.</p>
+
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 8 de 10</div>
+      <div>Página 10 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 9: CAPÍTULO 7 - FORMULÁRIOS OPERACIONAIS & RID              -->
+  <!-- PÁGINA 11: CAPÍTULO 7 - FORMULÁRIOS OPERACIONAIS & RID              -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
@@ -1096,133 +1324,126 @@
       Hub de Formulários Operacionais & RID (SSMA)
     </h1>
 
-    <p>O SISTEN centraliza formulários operacionais das áreas de apoio à fábrica. No menu <strong>Formulários</strong>, você tem acesso aos módulos de <em>Segurança Patrimonial (Portaria), Logística & Expedição e SSMA</em>.</p>
+    <p>O menu <strong>Formulários</strong> centraliza formulários de apoio às rotinas operacionais e de fábrica da TEN, abrangendo módulos de <em>SSMA (Saúde, Segurança e Meio Ambiente), Segurança Patrimonial (Portaria) e Logística</em>.</p>
 
-    <figure class="screen-shot">
+    <figure class="screen-shot screen-shot-sm">
       <img src="images/07_formularios_hub.png" alt="Hub de Formulários Operacionais">
-      <figcaption><strong>Figura 7.1:</strong> Hub Operacional com os módulos de formulários ativos no SISTEN.</figcaption>
+      <figcaption><strong>Figura 7.1:</strong> Hub de Formulários do SISTEN com cards de acesso rápido aos módulos operacionais.</figcaption>
     </figure>
 
-    <h2 class="section-title">7.1 Módulo de SSMA & Registro de Desvio (RID)</h2>
-    <p>A segurança é o valor prioritário na TEN. O formulário <strong>RID (Registro de Identificação de Desvio - FRM.SSMA-0001)</strong> permite que qualquer colaborador reporte desvios comportamentais, condições inseguras no chão de fábrica e oportunidades de melhoria preventiva.</p>
+    <h2 class="section-title">7.1 Preenchimento do RID de SSMA (FRM.SSMA-0001)</h2>
+    <p>A segurança é o valor inegociável da TEN. O <strong>RID (Registro de Identificação de Desvio)</strong> permite que qualquer colaborador registre desvios comportamentais ou condições inseguras para prevenir acidentes antes que eles ocorram.</p>
 
-    <figure class="screen-shot">
-      <img src="images/08_formulario_ssma.png" alt="Módulo SSMA">
-      <figcaption><strong>Figura 7.2:</strong> Painel de SSMA com contagem de desvios, status de resolução e acesso ao formulário RID.</figcaption>
+    <figure class="screen-shot screen-shot-sm">
+      <img src="images/09_formulario_rid.png" alt="Formulário de Registro de Identificação de Desvio - RID SSMA">
+      <figcaption><strong>Figura 7.2:</strong> Formulário oficial do RID (FRM.SSMA-0001) para registro de desvios comportamentais ou condições inseguras.</figcaption>
     </figure>
 
-    <h3 class="subsection-title">Como Preencher um RID no SISTEN:</h3>
+    <h3 class="subsection-title">Passo a Passo para Registrar um RID:</h3>
     <ol>
-      <li>No Hub de Formulários, clique em <strong>Acessar</strong> no card de <em>SSMA - Saúde, Segurança & Meio Ambiente</em>.</li>
-      <li>Selecione o formulário <strong>"RID - Registro de Identificação de Desvio"</strong>.</li>
-      <li>Indique o <strong>Setor / Área</strong> onde o desvio foi constatado (ex.: Galpão de Solda, Jateamento, Almoxarifado, Pátio externo).</li>
-      <li>Classifique o tipo de desvio: <em>Condição Insegura</em> ou <em>Ato Inseguro</em>.</li>
-      <li>Descreva com precisão o que você observou e informe se a situação foi <strong>"Sanada no Ato"</strong> (resolvida imediatamente por você) ou se <strong>"Aguarda Ação Corretiva"</strong> da equipe técnica.</li>
-      <li>Anexe uma fotografia da condição identificada para comprovação e clique em <strong>Salvar RID</strong>.</li>
+      <li>No Hub de Formulários, acesse o módulo <strong>SSMA</strong> e selecione <strong>"RID Operacional"</strong>.</li>
+      <li><strong>Bloco 1 - Identificação do Informante:</strong> Seu nome e setor virão preenchidos automaticamente. Indique a matrícula e se atua pela <strong>TEN</strong> ou por empresa <strong>CONTRATADA</strong>.</li>
+      <li><strong>Bloco 2 - Localização & Ocorrência do Desvio:</strong> Selecione a área exata onde a situação foi observada (ex.: <em>Almoxarifado, Galpão de Solda, Jateamento, Pátio externo</em>).</li>
+      <li><strong>Descrição do Desvio:</strong> Relate em texto claro e objetivo o desvio presenciado.</li>
+      <li>Informe se a situação foi <strong>"Sanada no Ato"</strong> por você ou se necessita de intervenção corretiva dos técnicos de SSMA, anexe fotos comprobatórias e clique em <strong>"REGISTRAR DESVIO (RID)"</strong>.</li>
     </ol>
-
-    <h2 class="section-title">7.2 Formulários de Portaria & Logística</h2>
-    <ul>
-      <li><strong>Equipamentos de Terceiros (FRM.SGP-0011):</strong> Para registrar a entrada de ferramentas e máquinas de prestadores de serviço, garantindo a liberação na saída.</li>
-      <li><strong>Passagem de Plantão (FRM.SGP-0010):</strong> Registro de ocorrências no turno da vigilância patrimonial.</li>
-    </ul>
 
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 9 de 10</div>
+      <div>Página 11 de 12</div>
     </div>
   </div>
 
   <!-- =================================================================== -->
-  <!-- PÁGINA 10: CAPÍTULO 8 - BOAS PRÁTICAS & FAQ                        -->
+  <!-- PÁGINA 12: CAPÍTULO 8 - BOTÃO DE AJUDA, FAQ & SUPORTE              -->
   <!-- =================================================================== -->
   <div class="document-page">
     <div class="page-header">
       <div class="brand">SISTEN • MANUAL DO SOLICITANTE</div>
-      <div>CAPÍTULO 8: BOAS PRÁTICAS & FAQ</div>
+      <div>CAPÍTULO 8: BOTÃO DE AJUDA, FAQ & SUPORTE</div>
     </div>
 
     <h1 class="chapter-title">
       <span class="ch-num">8</span>
-      Boas Práticas, Perguntas Frequentes & Suporte
+      Botão de Ajuda, Perguntas Frequentes & Suporte
     </h1>
 
-    <h2 class="section-title">8.1 5 Regras de Ouro para um Pedido Perfeito</h2>
-    <div class="step-grid">
-      <div class="step-card">
-        <h4>1. Sempre Consulte o Catálogo</h4>
-        <p>Mais de 80% dos materiais de uso corrente na fábrica já possuem código SAP cadastrado. Usar o código reduz o prazo pela metade.</p>
+    <h2 class="section-title">8.1 Botão Flutuante de Ajuda & Suporte Integrado</h2>
+    <p>Em <strong>todas as páginas do SISTEN</strong>, você encontra um botão verde flutuante no canto inferior direito da tela. Ao clicar nele, um menu elegante e direto se abre com três ferramentas fundamentais de assistência:</p>
+
+    <div class="two-cols-grid">
+      <div>
+        <figure class="screen-shot">
+          <img src="images/reporte.png" alt="Menu do Botão de Suporte Flutuante">
+          <figcaption><strong>Figura 8.1:</strong> Menu suspenso do botão de ajuda com Tour, Reporte de Erro e Sugestões.</figcaption>
+        </figure>
       </div>
-      <div class="step-card">
-        <h4>2. Anexe Desenhos ou Fotos</h4>
-        <p>Para peças usinadas, ferramentas especiais ou cabos elétricos, fotos da placa de identificação evitam erros na compra.</p>
-      </div>
-      <div class="step-card">
-        <h4>3. Planeje com Antecedência</h4>
-        <p>Evite usar Criticidade Grau 4 ou 5 para itens previsíveis. O frete de emergência onera os custos e pode atrasar o fluxo padrão.</p>
-      </div>
-      <div class="step-card">
-        <h4>4. Detalhe a Justificativa</h4>
-        <p>Informações como "Troca na esteira 02" ou "EPI para novos contratados" facilitam a aprovação rápida pelo seu gestor.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div class="step-card" style="border-left: 4px solid var(--primary);">
+          <h4>❓ 1. Tour Guiado Desta Página</h4>
+          <p>Inicia uma navegação guiada interativa que destaca os campos e botões da página atual com holofote, explicando em linguagem simples para que serve cada recurso.</p>
+        </div>
+
+        <div class="step-card" style="border-left: 4px solid var(--danger);">
+          <h4>🐞 2. Reportar um Erro</h4>
+          <p>Encontrou uma tela travada ou comportamento inesperado? Descreva o problema; os dados técnicos da sessão vão direto para a equipe de desenvolvimento.</p>
+        </div>
+
+        <div class="step-card" style="border-left: 4px solid var(--warning);">
+          <h4>💡 3. Enviar Sugestão</h4>
+          <p>Canal aberto para propor melhorias, novos botões ou relatórios. Suas sugestões são analisadas continuamente para aprimorar o SISTEN.</p>
+        </div>
       </div>
     </div>
 
     <h2 class="section-title">8.2 Perguntas Frequentes (FAQ)</h2>
-
-    <div style="margin-bottom: 10px;">
-      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Posso editar uma solicitação depois de enviada?</h3>
-      <p style="margin-bottom: 8px;">Sim! Enquanto a solicitação estiver com status <em>"Aguardando Aprovação"</em>, você pode abrir o pedido e editar itens ou anexos. Se ela já tiver sido aprovada e estiver com o comprador, envie uma mensagem pelo campo de comentários interno.</p>
+    <div style="margin-bottom: 7px;">
+      <h3 style="font-size: 11.5px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Onde acompanho se minha solicitação está aprovada ou comprada?</h3>
+      <p style="margin-bottom: 5px;">Acompanhe sempre na página <strong>Solicitações</strong>. Ao clicar no pedido, o stepper visual de status mostrará se está na Aprovação do Gestor, na Fila de Suprimentos, Em Cotação ou com Pedido Emitido.</p>
     </div>
 
-    <div style="margin-bottom: 10px;">
-      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">O que fazer se o material não tiver código SAP?</h3>
-      <p style="margin-bottom: 8px;">Selecione o canal <strong>"Cadastro SAP"</strong> no topo da tela de Nova Solicitação para solicitar a criação do código ao time de cadastros, ou marque o checkbox <strong>"Item Genérico"</strong> na solicitação de compra descrevendo a marca e modelo.</p>
+    <div style="margin-bottom: 7px;">
+      <h3 style="font-size: 11.5px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Como pedir um material que não tem no catálogo ou homologar novo fornecedor?</h3>
+      <p style="margin-bottom: 5px;">Abra a tela <strong>Nova Solicitação</strong> e selecione a aba <strong>Cadastro SAP</strong> no topo. O time de cadastros e suprimentos receberá a ficha completa para inserção no SAP.</p>
     </div>
 
-    <div style="margin-bottom: 10px;">
-      <h3 style="font-size: 12px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Como sei que o material chegou no Almoxarifado?</h3>
-      <p style="margin-bottom: 8px;">Na tela <strong>Rastreio Compras</strong>, o status do item mudará para <em>"Entregue"</em> com a data de entrada (MIGO) preenchida. Você também receberá um alerta na sua aba de Notificações da tela Início.</p>
+    <div style="margin-bottom: 7px;">
+      <h3 style="font-size: 11.5px; color: var(--primary); font-weight: 700; margin-bottom: 2px;">Como registrar ordens de serviço prediais de Facilities ou de TI?</h3>
+      <p style="margin-bottom: 5px;">Na mesma tela de <strong>Nova Solicitação</strong>, selecione a aba <strong>Chamado</strong> e escolha o setor destino (Facilities, TI, Jurídico ou Suprimentos).</p>
     </div>
 
-    <h2 class="section-title">8.3 Contatos & Suporte ao SISTEN</h2>
-    <table class="data-table">
+    <h2 class="section-title">8.3 Contatos de Suporte Técnico</h2>
+    <table class="data-table" style="margin-bottom: 8px;">
       <thead>
         <tr>
           <th>Área de Atendimento</th>
-          <th>Responsável / Ramal</th>
-          <th>Tipo de Dúvida</th>
+          <th>Canal / Equipe</th>
+          <th>Tipo de Suporte</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><strong>Suprimentos & Compras</strong></td>
           <td>Equipe de Compradores TEN</td>
-          <td>Dúvidas de prazos, cotações e marcas alternativas.</td>
+          <td>Dúvidas sobre cotações, marcas equivalentes e pedidos emitidos.</td>
         </tr>
         <tr>
           <td><strong>Almoxarifado Central</strong></td>
-          <td>Equipe de Recebimento Físico</td>
-          <td>Saldo em prateleira, conferência de carga e retirada.</td>
+          <td>Recebimento Físico TEN</td>
+          <td>Saldo de estoque disponível, conferência de fretes e retiradas.</td>
         </tr>
         <tr>
-          <td><strong>Suporte Técnico SISTEN (TI)</strong></td>
-          <td>Helpdesk Interno / ramal TI</td>
-          <td>Acesso, primeiro login, recuperação de senha e bugs.</td>
+          <td><strong>Suporte SISTEN / TI</strong></td>
+          <td>Botão Flutuante / Ramal TI</td>
+          <td>Tour guiado, reporte de erros, sugestões e primeiro acesso.</td>
         </tr>
       </tbody>
     </table>
 
-    <div class="callout callout-tip" style="margin-top: 20px;">
-      <span class="callout-icon">⭐</span>
-      <div class="callout-body">
-        <div class="callout-title">SISTEN — Tecnologia a Serviço da Eficiência</div>
-        Este manual foi gerado em conformidade com as diretrizes operacionais de 2026 das Torres Eólicas do Nordeste (TEN). Mantenha este documento salvo para consulta rápida e consulte sempre as versões atualizadas no menu "Sobre o SISTEN".
-      </div>
-    </div>
-
     <div class="page-footer">
       <div>SISTEN • Torres Eólicas do Nordeste</div>
-      <div>Página 10 de 10</div>
+      <div>Página 12 de 12</div>
     </div>
   </div>
 

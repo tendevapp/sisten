@@ -28,6 +28,8 @@ import {
 } from '../../lib/imageCompression';
 import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatFileSize } from '../../lib/format';
+import ConfirmDialog from './ConfirmDialog';
+import { useToast } from './Toast';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
 
@@ -38,17 +40,41 @@ const ehImagem = (mime?: string) => !!mime && mime.startsWith('image/');
 /* Banco de imagens — reaproveitar anexo já enviado para o mesmo material */
 /* --------------------------------------------------------------------- */
 
+/**
+ * Identidade de arquivo, não de linha: cada reaproveitamento grava uma linha
+ * nova em `request_attachments` apontando pro mesmo `storage_path` (não
+ * reenvia bytes — ver `linkExistingAttachments` em `db/localDb.ts`), então o
+ * banco de imagens acumula uma linha por uso. Sem agrupar por aqui, a mesma
+ * foto aparecia mais de uma vez na lista — cada linha, uma miniatura idêntica.
+ */
+const chaveArquivo = (a: RequestAttachment): string => a.storage_path || a.url;
+
+/** Uma linha por arquivo físico, mantendo a mais recente (a lista já chega ordenada assim). */
+function deduplicarPorArquivo(anexos: RequestAttachment[]): RequestAttachment[] {
+  const vistos = new Set<string>();
+  const unicos: RequestAttachment[] = [];
+  for (const a of anexos) {
+    const chave = chaveArquivo(a);
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    unicos.push(a);
+  }
+  return unicos;
+}
+
 interface ImageBankModalProps {
   materialCode: string;
-  /** ids já vinculados neste item, para não oferecer de novo. */
+  /** Arquivos já vinculados neste item (chave = storage_path/url, não o id da linha — reaproveitar de novo cria outra linha para o mesmo arquivo). */
   jaAdicionados: Set<string>;
   onSelect: (anexo: RequestAttachment) => void;
   onClose: () => void;
 }
 
 function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: ImageBankModalProps) {
-  const [candidatos] = useState<RequestAttachment[]>(
-    () => localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type))
+  const [candidatos] = useState<RequestAttachment[]>(() =>
+    deduplicarPorArquivo(
+      localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type) || ehPdf(a.mime_type))
+    )
   );
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
@@ -58,8 +84,10 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
     (async () => {
       const resolvidas: Record<string, string> = {};
       for (const a of candidatos) {
-        const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
-        if (url) resolvidas[a.id] = url;
+        if (ehImagem(a.mime_type)) {
+          const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+          if (url) resolvidas[a.id] = url;
+        }
       }
       if (!cancelado) {
         setUrls(resolvidas);
@@ -106,24 +134,44 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
           ) : (
             <ul className="grid grid-cols-3 gap-2.5">
               {candidatos.map(a => {
-                const jaTem = jaAdicionados.has(a.id);
+                const jaTem = jaAdicionados.has(chaveArquivo(a));
+                const ehGenerico = localDb.isAttachmentFromGenericItem(a);
+                const nomeExibicao = ehGenerico ? 'Uso Genérico' : a.name;
+                const ehArquivoPdf = ehPdf(a.mime_type);
+
                 return (
-                  <li key={a.id}>
+                  <li key={a.id} className="flex flex-col">
                     <button
                       type="button"
                       disabled={jaTem}
-                      onClick={() => onSelect(a)}
-                      title={jaTem ? 'Já adicionada a este item' : `Usar "${a.name}"`}
-                      className="relative w-full aspect-square rounded-lg border overflow-hidden cursor-pointer transition-opacity disabled:cursor-default group"
-                      style={{ borderColor: 'var(--hairline)' }}
+                      onClick={() => onSelect(ehGenerico ? { ...a, name: 'Uso Genérico' } : a)}
+                      title={jaTem ? 'Já adicionada a este item' : `Usar "${nomeExibicao}"`}
+                      className={`relative w-full aspect-square rounded-lg border overflow-hidden cursor-pointer transition-all disabled:cursor-default group ${
+                        ehGenerico ? 'border-rose-400 dark:border-rose-600 ring-1 ring-rose-500/20' : ''
+                      }`}
+                      style={{ borderColor: ehGenerico ? undefined : 'var(--hairline)' }}
                     >
-                      {urls[a.id] ? (
-                        <img src={urls[a.id]} alt={a.name} className="h-full w-full object-cover" />
+                      {ehGenerico && (
+                        <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-white shadow-xs">
+                          Uso Genérico
+                        </span>
+                      )}
+
+                      {ehArquivoPdf ? (
+                        <div className="flex flex-col h-full w-full items-center justify-center gap-1 p-2 text-center bg-slate-50 dark:bg-slate-800/60">
+                          <FileText className={`h-7 w-7 ${ehGenerico ? 'text-rose-600' : 'text-slate-500'}`} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            PDF
+                          </span>
+                        </div>
+                      ) : urls[a.id] ? (
+                        <img src={urls[a.id]} alt={nomeExibicao} className="h-full w-full object-cover" />
                       ) : (
                         <span className="flex h-full w-full items-center justify-center" style={{ color: 'var(--ink-muted)' }}>
                           <ImageIcon className="h-5 w-5 opacity-40" />
                         </span>
                       )}
+
                       <span
                         className="absolute inset-0 flex items-center justify-center transition-opacity"
                         style={{
@@ -139,6 +187,15 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
                         )}
                       </span>
                     </button>
+                    <p
+                      className={`mt-1 max-w-full truncate text-center text-[11px] leading-tight ${
+                        ehGenerico ? 'text-rose-600 dark:text-rose-400 font-bold' : 'font-medium'
+                      }`}
+                      style={!ehGenerico ? { color: 'var(--ink-secondary)' } : undefined}
+                      title={nomeExibicao}
+                    >
+                      {nomeExibicao}
+                    </p>
                   </li>
                 );
               })}
@@ -339,6 +396,10 @@ export function AttachmentPicker({
   };
 
   const selecionarDoBanco = (anexo: RequestAttachment) => {
+    // O botão do banco já vem desabilitado para arquivo repetido; a checagem
+    // aqui é só o cinto e suspensório contra chamada direta.
+    const chave = chaveArquivo(anexo);
+    if (reusedValue.some(a => chaveArquivo(a) === chave)) return;
     onReusedChange?.([...reusedValue, anexo]);
   };
 
@@ -459,7 +520,7 @@ export function AttachmentPicker({
       {bancoAberto && materialCode && (
         <ImageBankModal
           materialCode={materialCode}
-          jaAdicionados={new Set(reusedValue.map(a => a.id))}
+          jaAdicionados={new Set(reusedValue.map(chaveArquivo))}
           onSelect={selecionarDoBanco}
           onClose={() => setBancoAberto(false)}
         />
@@ -476,11 +537,19 @@ export function AttachmentPicker({
               <ReusedThumb anexo={a} />
 
               <div className="min-w-0">
-                <p className="max-w-[140px] truncate text-[11px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                <p
+                  className={`max-w-[140px] truncate text-[11px] font-semibold ${
+                    a.name === 'Uso Genérico' ? 'text-rose-600 dark:text-rose-400 font-bold' : ''
+                  }`}
+                  style={a.name !== 'Uso Genérico' ? { color: 'var(--ink-primary)' } : undefined}
+                >
                   {a.name}
                 </p>
-                <p className="text-[10px] font-semibold" style={{ color: 'var(--brand)' }}>
-                  Do banco de imagens
+                <p
+                  className="text-[10px] font-semibold"
+                  style={{ color: a.name === 'Uso Genérico' ? 'var(--status-critical, #e11d48)' : 'var(--brand)' }}
+                >
+                  {a.name === 'Uso Genérico' ? 'Uso Genérico (banco)' : 'Do banco de imagens'}
                 </p>
               </div>
 
@@ -576,6 +645,8 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
   const [anexos, setAnexos] = useState<RequestAttachment[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [anexoParaExcluir, setAnexoParaExcluir] = useState<RequestAttachment | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     const lista = localDb.getAttachments(requestId, itemId);
@@ -602,71 +673,104 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
     ) : null;
   }
 
+  const handleConfirmarExclusao = async () => {
+    if (!anexoParaExcluir || !onDelete) return;
+    const anexo = anexoParaExcluir;
+    setExcluindo(anexo.id);
+    try {
+      const erro = await onDelete(anexo.id);
+      if (erro) {
+        toast.error(erro);
+        return;
+      }
+      setAnexos(atuais => atuais.filter(x => x.id !== anexo.id));
+      setAnexoParaExcluir(null);
+      toast.undo(
+        `Anexo "${anexo.name}" excluído.`,
+        () => {
+          setAnexos(atuais => (atuais.some(x => x.id === anexo.id) ? atuais : [...atuais, anexo]));
+          toast.info('Para reanexar o arquivo após a exclusão do servidor, selecione-o novamente.');
+        },
+        6000
+      );
+    } catch (err: any) {
+      toast.error('Erro ao excluir anexo: ' + (err?.message || ''));
+    } finally {
+      setExcluindo(null);
+    }
+  };
+
   return (
-    <ul className="flex flex-wrap gap-2">
-      {anexos.map(a => {
-        const url = urls[a.id];
-        const conteudo = ehPdf(a.mime_type) ? (
-          <span
-            className="flex h-14 w-14 items-center justify-center rounded-lg border"
-            style={{ borderColor: 'var(--hairline)', background: 'var(--brand-wash)', color: 'var(--brand-strong)' }}
-          >
-            <FileText className="h-5 w-5" />
-          </span>
-        ) : url ? (
-          <img
-            src={url}
-            alt={a.name}
-            className="h-14 w-14 rounded-lg border object-cover"
-            style={{ borderColor: 'var(--hairline)' }}
-          />
-        ) : (
-          <span
-            className="flex h-14 w-14 items-center justify-center rounded-lg border"
-            style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
-          >
-            <ImageIcon className="h-5 w-5 opacity-40" />
-          </span>
-        );
-
-        return (
-          <li key={a.id} className="relative">
-            <a
-              href={url || undefined}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`${a.name} — ${formatFileSize(a.size)}`}
-              className="block cursor-pointer transition-opacity hover:opacity-80"
+    <>
+      <ul className="flex flex-wrap gap-2">
+        {anexos.map(a => {
+          const url = urls[a.id];
+          const conteudo = ehPdf(a.mime_type) ? (
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', background: 'var(--brand-wash)', color: 'var(--brand-strong)' }}
             >
-              {conteudo}
-            </a>
+              <FileText className="h-5 w-5" />
+            </span>
+          ) : url ? (
+            <img
+              src={url}
+              alt={a.name}
+              className="h-14 w-14 rounded-lg border object-cover"
+              style={{ borderColor: 'var(--hairline)' }}
+            />
+          ) : (
+            <span
+              className="flex h-14 w-14 items-center justify-center rounded-lg border"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              <ImageIcon className="h-5 w-5 opacity-40" />
+            </span>
+          );
 
-            {onDelete && (
-              <button
-                type="button"
-                disabled={excluindo === a.id}
-                aria-label={`Excluir ${a.name}`}
-                title="Excluir anexo"
-                onClick={async () => {
-                  // Definitiva e imediata — não espera o salvamento da edição.
-                  if (!window.confirm(`Excluir "${a.name}"? Esta ação não pode ser desfeita.`)) return;
-                  setExcluindo(a.id);
-                  const erro = await onDelete(a.id);
-                  setExcluindo(null);
-                  if (erro) { window.alert(erro); return; }
-                  setAnexos(atuais => atuais.filter(x => x.id !== a.id));
-                }}
-                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border text-white shadow-sm transition-opacity disabled:opacity-50"
-                style={{ background: '#dc2626', borderColor: '#fff' }}
+          return (
+            <li key={a.id} className="relative">
+              <a
+                href={url || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`${a.name} — ${formatFileSize(a.size)}`}
+                className="block cursor-pointer transition-opacity hover:opacity-80"
               >
-                {excluindo === a.id
-                  ? <Loader2 className="h-3 w-3 animate-spin" />
-                  : <X className="h-3 w-3" />}
-              </button>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+                {conteudo}
+              </a>
+
+              {onDelete && (
+                <button
+                  type="button"
+                  disabled={excluindo === a.id}
+                  aria-label={`Excluir ${a.name}`}
+                  title="Excluir anexo"
+                  onClick={() => setAnexoParaExcluir(a)}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border text-white shadow-sm transition-opacity disabled:opacity-50"
+                  style={{ background: '#dc2626', borderColor: '#fff' }}
+                >
+                  {excluindo === a.id
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <X className="h-3 w-3" />}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {anexoParaExcluir && (
+        <ConfirmDialog
+          titulo="Excluir anexo"
+          mensagem={`Tem certeza de que deseja excluir o anexo "${anexoParaExcluir.name}"?`}
+          confirmarLabel="Sim, excluir"
+          variante="perigo"
+          confirmando={excluindo === anexoParaExcluir.id}
+          onConfirmar={handleConfirmarExclusao}
+          onCancelar={() => setAnexoParaExcluir(null)}
+        />
+      )}
+    </>
   );
 }

@@ -19,16 +19,64 @@ import type { LucideIcon } from 'lucide-react';
 import {
   DoorOpen, Boxes, PackageCheck, Truck, Clock, ArrowRight,
   Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck,
-  Building2, Sparkles, ChevronRight, FileText, ShieldAlert
+  Building2, Sparkles, ChevronRight, FileText, ShieldAlert,
+  HelpCircle, Bug, Lightbulb, Search,
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { canAccessPage, canAccessFormGroup } from '../lib/pages';
 import { Profile } from '../types';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 
 interface FormulariosProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
+
+const FORMULARIOS_TOUR_STEPS: TourStep[] = [
+  {
+    icon: FileText,
+    title: 'Bem-vindo aos Formulários Operacionais',
+    description: 'Aqui você encontra os formulários setoriais, passagens de plantão, apontamentos de turno e procedimentos operacionais padronizados do SISTEN.',
+  },
+  {
+    target: 'formularios-header',
+    icon: FileText,
+    title: 'Hub Operacional por setor',
+    description: 'Apresenta a contagem de módulos autorizados para seu usuário e um resumo das rotinas disponíveis na fábrica e nos setores operacionais.',
+  },
+  {
+    target: 'formularios-filtros',
+    icon: Search,
+    title: 'Busca de rotinas e filtro de status',
+    description: 'Digite palavras-chave de procedimentos ou códigos de formulários (ex: ASE, RID, SGP) e filtre entre procedimentos já ativos ou em breve.',
+  },
+  {
+    target: 'formularios-grid',
+    icon: Boxes,
+    title: 'Módulos e formulários disponíveis',
+    description: 'Cada cartão representa uma área (Portaria & Segurança, Logística & Expedição, RH & Horas Extras, SSMA - RID, Almoxarifado). Clique no cartão para acessar o formulário desejado.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 interface ModuloFormulario {
   id: string;
@@ -135,6 +183,7 @@ const MODULOS: ModuloFormulario[] = [
 ];
 
 export default function Formularios({ user, onNavigate }: FormulariosProps) {
+  const tour = usePageTour('formularios-hub', FORMULARIOS_TOUR_STEPS.length);
   const toast = useToast();
   const [busca, setBusca] = React.useState('');
   const [filtroStatus, setFiltroStatus] = React.useState<'todos' | 'ativos' | 'em_breve'>('todos');
@@ -173,7 +222,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       {/* Header Compacto */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-200 pb-5 dark:border-slate-800">
+      <div data-tour="formularios-header" className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-200 pb-5 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
@@ -193,7 +242,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
         </div>
 
         {/* Barra de Filtro e Busca */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+        <div data-tour="formularios-filtros" className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           {/* Campo de Busca */}
           <div className="relative min-w-[220px]">
             <input
@@ -266,7 +315,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div data-tour="formularios-grid" className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {modulosFiltrados.map((modulo) => {
             const IconComponent = modulo.icon;
             const disponivel = Boolean(modulo.path);
@@ -344,6 +393,16 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
             );
           })}
         </div>
+      )}
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={FORMULARIOS_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
       )}
     </div>
   );

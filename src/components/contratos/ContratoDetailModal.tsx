@@ -22,6 +22,7 @@ import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatBRL, formatDateBR, formatFileSize } from '../../lib/format';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import {
   prepareAttachment, AnexoInvalidoError, PreparedAttachment, ACCEPT_ANEXO, MAX_ANEXOS,
 } from '../../lib/imageCompression';
@@ -287,13 +288,34 @@ function AnexosContrato({ documentoCompras }: { documentoCompras: string }) {
     setUploading(false);
   };
 
-  const handleDelete = async (anexo: ContratoAnexo) => {
-    if (!window.confirm(`Excluir "${anexo.name}"? Esta ação não pode ser desfeita.`)) return;
+  const [anexoParaExcluir, setAnexoParaExcluir] = useState<ContratoAnexo | null>(null);
+
+  const handleDelete = (anexo: ContratoAnexo) => {
+    setAnexoParaExcluir(anexo);
+  };
+
+  const handleConfirmarExclusao = async () => {
+    if (!anexoParaExcluir) return;
+    const anexo = anexoParaExcluir;
     setExcluindo(anexo.id);
-    const erro = await localDb.deleteContratoAnexo(anexo.id);
-    setExcluindo(null);
-    if (erro) { toast.error(erro); return; }
-    setAnexos(prev => prev.filter(a => a.id !== anexo.id));
+    try {
+      const erro = await localDb.deleteContratoAnexo(anexo.id);
+      if (erro) { toast.error(erro); return; }
+      setAnexos(prev => prev.filter(a => a.id !== anexo.id));
+      setAnexoParaExcluir(null);
+      toast.undo(
+        `Anexo "${anexo.name}" excluído.`,
+        () => {
+          setAnexos(prev => (prev.some(a => a.id === anexo.id) ? prev : [...prev, anexo]));
+          toast.info('Para reanexar o arquivo após a exclusão do servidor, selecione-o novamente.');
+        },
+        6000
+      );
+    } catch (err: any) {
+      toast.error('Erro ao excluir anexo: ' + (err?.message || ''));
+    } finally {
+      setExcluindo(null);
+    }
   };
 
   const cheio = anexos.length >= MAX_ANEXOS;
@@ -370,6 +392,18 @@ function AnexosContrato({ documentoCompras }: { documentoCompras: string }) {
       )}
       {anexos.length === 0 && (
         <p className="text-[11px] italic" style={{ color: 'var(--ink-secondary)' }}>Nenhum documento anexado.</p>
+      )}
+
+      {anexoParaExcluir && (
+        <ConfirmDialog
+          titulo="Excluir anexo"
+          mensagem={`Tem certeza de que deseja excluir o anexo "${anexoParaExcluir.name}"?`}
+          confirmarLabel="Sim, excluir"
+          variante="perigo"
+          confirmando={excluindo === anexoParaExcluir.id}
+          onConfirmar={handleConfirmarExclusao}
+          onCancelar={() => setAnexoParaExcluir(null)}
+        />
       )}
     </div>
   );

@@ -34,7 +34,7 @@ import { formatDateBR, formatDateTimeBR } from '../../lib/format';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import {
   avisoEdicao, classificarEventoHistorico, podeEditar,
-  rotuloCriticidade, rotuloStatus, rotuloTipo,
+  rotuloCriticidade, rotuloStatus, rotuloTipo, foiEditadaAposAprovacao,
 } from '../../lib/solicitacoes';
 import {
   Pendencia, ehOperador, podeAlterarDecisao, podeAprovar, podeCancelar, podeVerNotaInterna,
@@ -419,6 +419,15 @@ export default function RequestDetailPanel({
             aqui só gastaria a primeira linha do painel. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Selo texto={rotuloStatus(request)} tom="neutro" />
+          {foiEditadaAposAprovacao(request, historico) && (
+            <span
+              title="Esta solicitação já havia sido aprovada anteriormente e voltou para a fila após ser editada pelo solicitante"
+              className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-700 shadow-2xs"
+            >
+              <FileEdit className="w-3 h-3 text-amber-700 dark:text-amber-400" />
+              Editada
+            </span>
+          )}
           <Selo texto={rotuloCriticidade(request.criticality)} tom={request.criticality >= 4 ? 'alerta' : 'neutro'} />
           <span className="truncate text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
             {request.solicitante_name} · {nomeSetor(request.solicitante_sector_id)}
@@ -1238,20 +1247,37 @@ function ItemLinha({
   sinais?: SinalChip[];
   carregandoSinais: boolean;
 }) {
+  const ehGenerico = Boolean(item.is_generic);
+
   return (
-    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-start sm:justify-between">
+    <li
+      className={`flex flex-col gap-2 py-2.5 sm:flex-row sm:items-start sm:justify-between transition-colors ${
+        ehGenerico
+          ? 'my-2 rounded-xl border border-rose-300 dark:border-rose-900/70 bg-rose-50/70 dark:bg-rose-950/30 p-3 shadow-2xs'
+          : ''
+      }`}
+    >
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
-          {indice + 1}. {item.description}
-          {item.is_generic && (
-            <span className="ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold"
-                  style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
-              genérico
+        <p
+          className={`text-sm ${
+            ehGenerico
+              ? 'font-black uppercase tracking-wide text-rose-700 dark:text-rose-300'
+              : 'font-semibold'
+          }`}
+          style={ehGenerico ? {} : { color: 'var(--ink-primary)' }}
+        >
+          {indice + 1}. {ehGenerico ? item.description.toUpperCase() : item.description}
+          {ehGenerico && (
+            <span className="ml-2 rounded px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-2xs">
+              ITEM GENÉRICO
             </span>
           )}
         </p>
 
-        <p className="font-mono text-xs" style={{ color: 'var(--ink-muted)' }}>
+        <p
+          className="font-mono text-xs"
+          style={{ color: ehGenerico ? 'var(--status-critical)' : 'var(--ink-muted)' }}
+        >
           {item.sap_code
             ? `SAP ${item.sap_code}`
             : <><Info className="mr-0.5 inline h-3.5 w-3.5" /> sem código SAP</>}
@@ -1264,7 +1290,16 @@ function ItemLinha({
         )}
 
         {item.observation && (
-          <p className="text-xs italic" style={{ color: 'var(--ink-muted)' }}>Obs: {item.observation}</p>
+          <p
+            className={`text-xs ${
+              ehGenerico
+                ? 'font-bold uppercase text-rose-800 dark:text-rose-200 bg-rose-100/80 dark:bg-rose-900/40 p-2 rounded-lg border border-rose-200 dark:border-rose-800/60 leading-relaxed not-italic'
+                : 'italic'
+            }`}
+            style={ehGenerico ? {} : { color: 'var(--ink-muted)' }}
+          >
+            Obs: {ehGenerico ? item.observation.toUpperCase() : item.observation}
+          </p>
         )}
 
         {item.reference_link && (
@@ -1283,7 +1318,7 @@ function ItemLinha({
       </div>
 
       <div className="shrink-0 text-left sm:text-right">
-        <p className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
+        <p className="text-sm font-bold" style={{ color: ehGenerico ? 'var(--status-critical)' : 'var(--ink-primary)' }}>
           {item.quantity} {item.unit}
         </p>
         {item.estimated_value > 0 && (

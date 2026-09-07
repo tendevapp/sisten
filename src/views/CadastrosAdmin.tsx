@@ -24,6 +24,9 @@ import {
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import GestaoGrupoComprador from '../components/admin/GestaoGrupoComprador';
+import GestaoNiveisMercadorias from '../components/admin/GestaoNiveisMercadorias';
+import { supabase } from '../db/supabaseClient';
 
 interface Props {
   user: Profile;
@@ -32,7 +35,7 @@ interface Props {
 
 type TabType = 'portaria_vigilantes' | 'emails_envios' | 'suprimentos';
 /** Sub-cadastros do módulo Suprimentos (botões dentro da aba). */
-type SubSuprimentos = 'lead_time' | 'transportadoras';
+type SubSuprimentos = 'lead_time' | 'transportadoras' | 'grupos_compradores' | 'niveis_mercadorias';
 
 const SUGESTOES_GATILHOS = [
   { chave: 'cadastro_sap', nome: 'Solicitação de Cadastro SAP', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP' },
@@ -66,14 +69,22 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
     if (abaParamInicial === 'emails' || abaParamInicial === 'emails_envios' || abaParamInicial === 'outlook') {
       return 'emails_envios';
     }
-    if (['suprimentos', 'lead_time', 'prazos', 'transportadoras'].includes(abaParamInicial || '')) {
+    if (['suprimentos', 'lead_time', 'prazos', 'transportadoras', 'grupos_compradores', 'compradores', 'comprador', 'niveis_mercadorias', 'niveis', 'agrupamento_niveis', 'mercadorias'].includes(abaParamInicial || '')) {
       return 'suprimentos';
     }
     return 'portaria_vigilantes';
   });
-  const [subSuprimentos, setSubSuprimentos] = useState<SubSuprimentos>(
-    abaParamInicial === 'transportadoras' ? 'transportadoras' : 'lead_time',
-  );
+  const [subSuprimentos, setSubSuprimentos] = useState<SubSuprimentos>(() => {
+    if (['niveis_mercadorias', 'niveis', 'agrupamento_niveis', 'mercadorias'].includes(abaParamInicial || '')) {
+      return 'niveis_mercadorias';
+    }
+    if (['grupos_compradores', 'compradores', 'comprador'].includes(abaParamInicial || '')) {
+      return 'grupos_compradores';
+    }
+    return abaParamInicial === 'transportadoras' ? 'transportadoras' : 'lead_time';
+  });
+  const [totalGruposCompradores, setTotalGruposCompradores] = useState<number | null>(null);
+  const [totalNiveisMercadorias, setTotalNiveisMercadorias] = useState<number | null>(null);
 
   // ==========================================
   // ESTADO - VIGILANTES
@@ -224,11 +235,28 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
   const confirmarExcluirPrazo = async () => {
     if (!prazoParaExcluir) return;
+    const itemRemovido = { ...prazoParaExcluir };
     try {
-      await diligApi.excluirPrazoTransporte(prazoParaExcluir.id);
-      toast.success(`Prazo de ${prazoParaExcluir.uf} removido.`);
+      await diligApi.excluirPrazoTransporte(itemRemovido.id);
       setPrazoParaExcluir(null);
       await carregarPrazos();
+      toast.undo(
+        `Prazo de ${itemRemovido.uf} removido.`,
+        async () => {
+          try {
+            await diligApi.salvarPrazoTransporte(
+              itemRemovido.uf,
+              itemRemovido.transportadora || 'PADRÃO',
+              itemRemovido.dias_corridos
+            );
+            await carregarPrazos();
+            toast.success(`Prazo de ${itemRemovido.uf} restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar prazo: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Falha ao excluir: ' + (err.message || ''));
     }
@@ -327,11 +355,24 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
   const confirmarExcluirTransportadora = async () => {
     if (!transpParaExcluir) return;
+    const itemRemovido = { ...transpParaExcluir };
     try {
-      await diligApi.excluirTransportadora(transpParaExcluir.id);
-      toast.success(`"${transpParaExcluir.nome}" removida.`);
+      await diligApi.excluirTransportadora(itemRemovido.id);
       setTranspParaExcluir(null);
       await carregarTransportadoras();
+      toast.undo(
+        `"${itemRemovido.nome}" removida.`,
+        async () => {
+          try {
+            await diligApi.salvarTransportadora(itemRemovido.nome);
+            await carregarTransportadoras();
+            toast.success(`Transportadora "${itemRemovido.nome}" restaurada com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar transportadora: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Não foi possível remover: ' + (err.message || ''));
     }
@@ -378,6 +419,27 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
       carregarTransportadoras();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, subSuprimentos]);
+
+  // Contagem de grupos de compradores e níveis de mercadorias na aba Suprimentos
+  useEffect(() => {
+    if (activeTab === 'suprimentos') {
+      (supabase as any)
+        .from('sup_grupo_comprador_mercadorias')
+        .select('id', { count: 'exact', head: true })
+        .then(({ count }: any) => {
+          if (typeof count === 'number') setTotalGruposCompradores(count);
+        })
+        .catch(() => {});
+
+      (supabase as any)
+        .from('cadastro_grupo_mercadoria')
+        .select('codigo', { count: 'exact', head: true })
+        .then(({ count }: any) => {
+          if (typeof count === 'number') setTotalNiveisMercadorias(count);
+        })
+        .catch(() => {});
+    }
   }, [activeTab, subSuprimentos]);
 
   // -------------------------------------------------------------
@@ -474,11 +536,24 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
   const handleExcluirVigilante = async () => {
     if (!vigilanteParaExcluir) return;
+    const itemRemovido = { ...vigilanteParaExcluir };
     try {
-      await api.excluirVigilante(vigilanteParaExcluir.id);
-      setVigilantes((prev) => prev.filter((item) => item.id !== vigilanteParaExcluir.id));
-      toast.success(`Vigilante ${vigilanteParaExcluir.nome} excluído com sucesso!`);
+      await api.excluirVigilante(itemRemovido.id, user.id);
+      setVigilantes((prev) => prev.filter((item) => item.id !== itemRemovido.id));
       setVigilanteParaExcluir(null);
+      toast.undo(
+        `Vigilante ${itemRemovido.nome} excluído com sucesso!`,
+        async () => {
+          try {
+            await api.restaurarVigilante(itemRemovido.id);
+            await carregarVigilantes();
+            toast.success(`Vigilante ${itemRemovido.nome} restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar vigilante: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir vigilante: ' + (err.message || ''));
     }
@@ -594,11 +669,34 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
 
   const handleExcluirEmail = async () => {
     if (!configEmailParaExcluir) return;
+    const itemRemovido = { ...configEmailParaExcluir };
     try {
-      await emailApi.excluirConfigEmail(configEmailParaExcluir.id, configEmailParaExcluir.chave);
-      setConfigsEmail((prev) => prev.filter((item) => item.id !== configEmailParaExcluir.id));
-      toast.success(`Configuração "${configEmailParaExcluir.nome}" excluída com sucesso!`);
+      await emailApi.excluirConfigEmail(itemRemovido.id, itemRemovido.chave);
+      setConfigsEmail((prev) => prev.filter((item) => item.id !== itemRemovido.id));
       setConfigEmailParaExcluir(null);
+      toast.undo(
+        `Configuração "${itemRemovido.nome}" excluída com sucesso!`,
+        async () => {
+          try {
+            await emailApi.criarConfigEmail({
+              chave: itemRemovido.chave,
+              nome: itemRemovido.nome,
+              modulo: itemRemovido.modulo,
+              descricao: itemRemovido.descricao,
+              destinatarios: itemRemovido.destinatarios,
+              copia: itemRemovido.copia,
+              copia_oculta: itemRemovido.copia_oculta,
+              assunto_padrao: itemRemovido.assunto_padrao,
+              ativo: itemRemovido.ativo,
+            });
+            await carregarConfigsEmail();
+            toast.success(`Configuração "${itemRemovido.nome}" restaurada com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar configuração: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir configuração: ' + (err.message || ''));
     }
@@ -1323,6 +1421,8 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
             {([
               { chave: 'lead_time' as const, icone: Clock, rotulo: 'Lead Time de Entregas', contagem: totalUfSalvas },
               { chave: 'transportadoras' as const, icone: Truck, rotulo: 'Transportadoras', contagem: transportadoras.length },
+              { chave: 'grupos_compradores' as const, icone: Boxes, rotulo: 'Grupos Compradores', contagem: totalGruposCompradores ?? '123' },
+              { chave: 'niveis_mercadorias' as const, icone: Layers, rotulo: 'Níveis de Mercadorias', contagem: totalNiveisMercadorias ?? '1.404' },
             ]).map(({ chave, icone: Icone, rotulo, contagem }) => (
               <button
                 key={chave}
@@ -1621,6 +1721,14 @@ export default function CadastrosAdmin({ user, onNavigate }: Props) {
               )}
             </div>
           </div>
+          )}
+
+          {subSuprimentos === 'grupos_compradores' && (
+            <GestaoGrupoComprador user={user} />
+          )}
+
+          {subSuprimentos === 'niveis_mercadorias' && (
+            <GestaoNiveisMercadorias user={user} />
           )}
         </div>
       )}

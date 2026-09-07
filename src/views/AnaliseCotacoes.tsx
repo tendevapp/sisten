@@ -11,13 +11,15 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, PackageSearch, Loader2 } from 'lucide-react';
+import { ArrowLeft, PackageSearch, Loader2, LayoutGrid, ClipboardList } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { useToast } from '../components/ui/Toast';
 import ProcessosList from '../components/cotacoes/ProcessosList';
 import NovoProcessoPanel from '../components/cotacoes/NovoProcessoPanel';
 import ImportarPropostasPanel from '../components/cotacoes/ImportarPropostasPanel';
 import PropostaCard from '../components/cotacoes/PropostaCard';
+import MapaComparativo from '../components/cotacoes/MapaComparativo';
+import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao } from '../lib/cotacoes';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
@@ -33,7 +35,7 @@ interface AnaliseCotacoesProps {
   onNavigate: (path: string) => void;
 }
 
-type Fase = 'lista' | 'escopo' | 'processo';
+type Fase = 'lista' | 'escopo' | 'processo' | 'mapa' | 'pedidos';
 
 /** Converte uma proposta já salva (vinda do Supabase) no mesmo formato de rascunho usado pela grade, marcada como salva. */
 function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
@@ -54,6 +56,7 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
     prazo_entrega_texto: p.prazo_entrega_texto, prazo_entrega_dias: p.prazo_entrega_dias,
     frete_modalidade: p.frete_modalidade, transportadora_indicada: p.transportadora_indicada,
     faturamento_minimo: p.faturamento_minimo, dados_bancarios_pix: p.dados_bancarios_pix,
+    valor_frete: p.valor_frete,
     valor_total_orcamento: p.valor_total_orcamento, observacoes_gerais: p.observacoes_gerais,
     campos_faltantes: p.campos_faltantes, revisado: p.revisado, extracao_id: p.extracao_id,
     extraido_raw: p.extraido_raw as any,
@@ -65,6 +68,7 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
       quantidade: it.quantidade, preco_unitario: it.preco_unitario, preco_total_item: it.preco_total_item,
       aliquota_icms_pct: it.aliquota_icms_pct, aliquota_pis_pct: it.aliquota_pis_pct,
       aliquota_cofins_pct: it.aliquota_cofins_pct, aliquota_ipi_pct: it.aliquota_ipi_pct,
+      mapa_selecionado: it.mapa_selecionado ?? false,
       extraido_raw: it.extraido_raw as any,
     })),
   };
@@ -259,6 +263,38 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
+  const handleCarregarPropostas = async (novasPropostas: CotacaoPropostaDraft[]) => {
+    if (!processo) return;
+    const processadas: CotacaoPropostaDraft[] = [];
+
+    for (const draft of novasPropostas) {
+      const precisaVinculo = draft.itens.some(it => !it.processo_item_id);
+      if (precisaVinculo) {
+        try {
+          const sugestoes = await sugerirVinculos({
+            processoId: processo.id,
+            fornecedorCnpj: draft.fornecedor_cnpj,
+            descricoes: draft.itens.map((it, idx) => ({ idx, descricao: it.descricao_produto, codigoProduto: it.codigo_produto })),
+          });
+          draft.itens = aplicarSugestoes(draft.itens, sugestoes);
+        } catch (err) {
+          console.error('Falha ao buscar sugestões de vínculo ao carregar proposta:', err);
+        }
+      }
+      processadas.push(draft);
+    }
+
+    setPropostas(prev => {
+      const chavesExistentes = new Set(prev.map(p => p._key));
+      const aAdicionar = processadas.filter(np => !chavesExistentes.has(np._key));
+      if (aAdicionar.length === 0) {
+        toast.info('As propostas já estão presentes na lista de análise.');
+        return prev;
+      }
+      return [...prev, ...aAdicionar];
+    });
+  };
+
   const handleChangeProposta = (key: string, patch: Partial<CotacaoPropostaDraft>) => {
     setPropostas(prev => prev.map(p => (p._key === key ? { ...p, ...patch } : p)));
   };
@@ -362,6 +398,27 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     });
   };
 
+  const propostasSalvas = useMemo(() => propostas.filter(p => p._salvo).length, [propostas]);
+
+  /** Quantos itens já foram marcados para compra no mapa (`mapa_selecionado`), entre as propostas salvas — habilita o botão de revisão do pedido. */
+  const itensParaPedido = useMemo(
+    () => propostas.reduce((soma, p) => soma + (p._salvo ? p.itens.filter(it => it.mapa_selecionado).length : 0), 0),
+    [propostas],
+  );
+
+  /** A decisão do mapa já foi gravada no banco quando isto é chamado — só reflete no estado local para a revisão do pedido não depender de recarregar o processo. */
+  const handleDecisaoMapaSalva = (itensSelecionados: Set<string>) => {
+    setPropostas(prev => prev.map(p => ({
+      ...p,
+      itens: p.itens.map(it => ({ ...it, mapa_selecionado: itensSelecionados.has(it._key) })),
+    })));
+    setFase('pedidos');
+  };
+
+  const handleProcessoConcluido = () => {
+    setProcesso(prev => (prev ? { ...prev, status: 'concluido' } : prev));
+  };
+
   const propostasOrdenadas = useMemo(
     () => [...propostas].sort((a, b) => (b._extraido_em ?? '').localeCompare(a._extraido_em ?? '')),
     [propostas]
@@ -377,24 +434,30 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
   const tituloFase = useMemo(() => {
     if (fase === 'escopo') return 'Novo processo';
+    if (fase === 'mapa' && processo) return `Mapa comparativo — ${processo.numero}`;
+    if (fase === 'pedidos' && processo) return `Pedidos de compra — ${processo.numero}`;
     if (fase === 'processo' && processo) return processo.numero;
     return 'Processos de cotação';
   }, [fase, processo]);
+
+  const subtituloFase = fase === 'mapa'
+    ? 'Compare as propostas item a item, veja o custo com impostos e frete e marque de quem comprar cada item.'
+    : fase === 'pedidos'
+    ? 'Revise, por fornecedor, o pedido que vai ser colocado antes de baixar o PDF.'
+    : 'Envie os arquivos das propostas dos fornecedores, revise os campos extraídos pela IA e vincule aos itens da RM antes de salvar.';
 
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
           {fase !== 'lista' && (
-            <button type="button" onClick={voltarParaLista} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
+            <button type="button" onClick={fase === 'mapa' ? () => setFase('processo') : fase === 'pedidos' ? () => setFase('mapa') : voltarParaLista} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">{tituloFase}</h1>
         </div>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Envie os arquivos das propostas dos fornecedores, revise os campos extraídos pela IA e vincule aos itens da RM antes de salvar.
-        </p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtituloFase}</p>
       </div>
 
       {fase === 'lista' && (
@@ -404,6 +467,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           onAbrir={abrirProcesso}
           onNovoProcesso={() => onNavigate('/suprimentos/compras')}
           onCriarSemVinculo={() => { setEscopoRascunho([]); setFase('escopo'); }}
+          onAbrirHistorico={() => onNavigate('/suprimentos/cotacoes/historico')}
         />
       )}
 
@@ -416,6 +480,28 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         />
       )}
 
+      {fase === 'mapa' && processo && (
+        <MapaComparativo
+          processo={processo}
+          escopo={escopo}
+          propostas={propostas}
+          usuarioNome={user.name}
+          onVoltar={() => setFase('processo')}
+          onAtualizarProposta={handleChangeProposta}
+          onDecisaoSalva={handleDecisaoMapaSalva}
+        />
+      )}
+
+      {fase === 'pedidos' && processo && (
+        <RevisaoPedidoCompra
+          processo={processo}
+          escopo={escopo}
+          propostas={propostas}
+          onVoltar={() => setFase('mapa')}
+          onProcessoConcluido={handleProcessoConcluido}
+        />
+      )}
+
       {fase === 'processo' && (
         carregandoProcesso ? (
           <div className="flex items-center justify-center py-16 text-slate-400">
@@ -423,9 +509,31 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <PackageSearch className="h-3.5 w-3.5" />
               {escopo.length} {escopo.length === 1 ? 'item' : 'itens'} no escopo · {propostas.length} {propostas.length === 1 ? 'proposta' : 'propostas'}
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFase('pedidos')}
+                  disabled={itensParaPedido === 0}
+                  title={itensParaPedido === 0 ? 'Marque itens no mapa comparativo e salve a decisão para revisar o pedido' : 'Revisar o pedido de compra por fornecedor'}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  Pedidos de compra{itensParaPedido > 0 ? ` (${itensParaPedido})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFase('mapa')}
+                  disabled={propostasSalvas === 0}
+                  title={propostasSalvas === 0 ? 'Salve pelo menos uma proposta para montar o mapa' : 'Comparar as propostas salvas lado a lado'}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  Mapa comparativo{propostasSalvas > 0 ? ` (${propostasSalvas})` : ''}
+                </button>
+              </div>
             </div>
 
             <ImportarPropostasPanel
@@ -438,6 +546,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
               custoBrl={custoExtracaoBrl}
               onProcessar={handleProcessarMarkdown}
               onArquivosEnviados={handleArquivosEnviados}
+              onCarregarPropostas={handleCarregarPropostas}
             />
 
             {propostasOrdenadas.map(p => (

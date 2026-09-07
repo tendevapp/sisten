@@ -12,9 +12,10 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Home, Search, BarChart3, PlusCircle, List, FileCheck, Database,
   LayoutDashboard, Upload, Users, Shield, Map, Settings, KeyRound, Radio,
-  Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info,
+  Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
+  ClipboardCheck,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -51,24 +52,27 @@ export const PAGES: PageDef[] = [
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
-  // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
-  // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
-  { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // `id` é chave de `profiles.page_access` e não muda; só o endereço saiu de
   // `/suprimentos/fornecedores-sem-po` (nome do recorte inicial) para
   // `/suprimentos/compras`. O antigo é redirecionado em App.tsx.
   { id: 'sup_central_compras', group: 'SUPRIMENTOS', label: 'Central Compras', path: '/suprimentos/compras', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_analise_cotacoes', group: 'SUPRIMENTOS', label: 'Análise de Cotações', path: '/suprimentos/cotacoes', icon: FileSpreadsheet, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
+  // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
+  { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
+  { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'sup_historico_cotacoes', group: 'SUPRIMENTOS', label: 'Histórico de Cotações', path: '/suprimentos/cotacoes/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_vinculos_cotacoes', group: 'SUPRIMENTOS', label: 'Vínculos & Auditoria de Cotações', path: '/suprimentos/cotacoes/vinculos', icon: Link2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
-  { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
-  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
-  { id: 'sup_pendencias_processamento', group: 'SUPRIMENTOS', label: 'Pendências de Processamento', path: '/suprimentos/pendencias-processamento', icon: ReceiptText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Diligenciamento não tem página/permissão própria: é o filtro "Sem MIGO"
   // dentro de Central de Compras (sup_central_compras), em
   // components/suprimentos/DiligenciamentoSemMigoTable.tsx.
 
   { id: 'almoxarifado_home', group: 'ALMOXARIFADO', label: 'Almoxarifado', path: '/almoxarifado', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'almox_abrir_rm', group: 'ALMOXARIFADO', label: 'Abrir RM', path: '/almoxarifado/abrir-rm', icon: ClipboardCheck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_estoque', group: 'ALMOXARIFADO', label: 'Estoque', path: '/almoxarifado/estoque', icon: Boxes, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -353,6 +357,19 @@ export function canViewAllAse(user: Profile): boolean {
   const override = user.page_access?.['rh_ase_ver_todas'];
   if (override !== undefined) return override;
   return user.roles.some(r => ['gestor', 'coordenador_suprimentos'].includes(r));
+}
+
+/**
+ * Determina quem enxerga o relatório gerencial de ASE (horas extras, transporte
+ * e refeição consolidados).
+ *
+ * O relatório cruza dados de pessoal do efetivo inteiro, então não acompanha o
+ * formulário: quem só preenche ASE não o vê. Fica com o administrador e com
+ * quem tem o módulo RH liberado — o mesmo público das tabelas mestre de RH.
+ */
+export function canAccessAseRelatorio(user: Profile): boolean {
+  if (user.roles.includes('admin')) return true;
+  return canAccessPage(user, 'rh');
 }
 
 /**

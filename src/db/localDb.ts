@@ -25,6 +25,7 @@ import { INITIAL_SECTORS } from '../data/sectors';
 import { generateMaterials, getAutoCategory } from '../data/materials';
 import { generateSAPSeedData } from '../data/sapData';
 import { supabase, supabaseAdmin } from './supabaseClient';
+import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSemEmail';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
@@ -32,6 +33,8 @@ import { parseBahiaSulRows } from '../lib/bahiasul';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDomains';
+import { descreverAlteracoesCompra, resumoAlteracoes } from '../lib/solicitacoesDiff';
+import { reabrirSolicitacaoPorRequestId } from '../lib/almoxarifadoRmApi';
 import { entries as idbEntries, set as idbSet, del as idbDel } from 'idb-keyval';
 
 /** Bucket privado dos anexos de solicitação. Leitura só por URL assinada. */
@@ -1114,14 +1117,21 @@ class LocalDatabase {
     if (!supabase) return 'Supabase não inicializado';
     
     try {
+      // Quem não tem e-mail entra com o identificador `nome.sobrenome`; o
+      // domínio interno é colado aqui para o Auth, que só sabe autenticar por
+      // e-mail. Quem digitou um e-mail de verdade passa direto.
+      const identificador = emailDeLogin(email);
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase(),
+        email: identificador,
         password: pass,
       });
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
-          return 'E-mail corporativo ou senha incorretos.';
+          return ehEmailInterno(identificador)
+            ? 'Usuário ou senha incorretos.'
+            : 'E-mail corporativo ou senha incorretos.';
         }
         return error.message;
       }
@@ -1148,7 +1158,7 @@ class LocalDatabase {
         // Se o profile não foi criado pelo trigger, tentamos criar um perfil padrão ativo como visualizador
         const newProfile: Profile = {
           id: data.user.id,
-          email: data.user.email || email.toLowerCase(),
+          email: data.user.email || identificador,
           name: data.user.user_metadata?.name || 'Novo Usuário',
           cargo: data.user.user_metadata?.cargo || '',
           sector_id: data.user.user_metadata?.sector_id || '1',
@@ -1607,10 +1617,7 @@ class LocalDatabase {
       { grupo_compras: '602', nome_comprador: 'Jamille' },
       { grupo_compras: '610', nome_comprador: 'Giulia' }
     ]);
-    let filteredList = list.filter(c => c.grupo_compras !== '588');
-    if (!filteredList.some(c => c.grupo_compras === '602')) {
-      filteredList.push({ grupo_compras: '602', nome_comprador: 'Jamille' });
-    }
+    let filteredList = list.filter(c => c.grupo_compras !== '588' && c.grupo_compras !== '602');
     if (!filteredList.some(c => c.grupo_compras === '610')) {
       filteredList.push({ grupo_compras: '610', nome_comprador: 'Giulia' });
     }
@@ -2936,10 +2943,16 @@ class LocalDatabase {
     if (anterior.solicitante_id !== user.id) return 'Apenas quem abriu a solicitação pode editá-la.';
 
     const statusAnterior = anterior.status;
+    // Só para diff: item, quantidade e os demais campos monitorados por
+    // `descreverAlteracoesCompra` só existem em compra.
+    const itensAnteriores = anterior.type === 'compra' ? this.getRequestItems(reqId) : [];
+    // Remove campos agregados (ex: items) do objeto da solicitação, pois os itens
+    // são gerenciados e armazenados separadamente em requestItemsKey e core_solicitacoes_itens.
+    const { items: _payloadItems, ...camposLimpos } = (campos as Record<string, unknown>);
 
     const atualizada: Request = {
       ...anterior,
-      ...campos,
+      ...camposLimpos,
       status: novoStatus,
       updated_at: new Date().toISOString(),
     };
@@ -2957,10 +2970,21 @@ class LocalDatabase {
 
     if (itens) await this.reconciliarItens(atualizada, itens);
 
+    // O que mudou, em português — pronto tanto para o histórico de status
+    // quanto para a notificação de quem aprova e para a reabertura automática
+    // da exportação de RM, mais abaixo. Só compra tem os campos monitorados.
+    const mudancas = atualizada.type === 'compra'
+      ? descreverAlteracoesCompra(anterior, itensAnteriores, atualizada, itens || [])
+      : [];
+    const resumo = resumoAlteracoes(mudancas);
+    const tagAlteracao = `Alterada por ${user.name}: ${resumo}`;
+
     await this.publishRequestRow(atualizada);
     await this.logStatusChange(
       reqId, statusAnterior, novoStatus, user.id, user.name,
-      'Solicitação editada pelo solicitante.'
+      atualizada.type === 'compra'
+        ? `Solicitação editada pelo solicitante. ${tagAlteracao}`
+        : 'Solicitação editada pelo solicitante.'
     );
     this.logActivity(user.id, 'Solicitações', 'Editar Solicitação', `Editou a solicitação #${atualizada.number}.`);
 
@@ -2974,11 +2998,21 @@ class LocalDatabase {
       destinatarios.forEach(d => this.createNotification(
         d.id,
         `Solicitação aprovada foi editada: #${atualizada.number}`,
-        `${atualizada.solicitante_name} editou a solicitação e ela voltou para aprovação. Confira o que mudou antes de seguir.`,
+        `${tagAlteracao}. A solicitação voltou para aprovação — confira antes de seguir.`,
         'alert',
         atualizada.id,
         atualizada.number
       ));
+
+      // Se já tinha saído numa planilha de RM, essa exportação não vale mais:
+      // reabre sozinha e o almoxarife vê a solicitação no grupo "Editar no
+      // SAP" da fila, com o que mudou — sem isso ele veria "Exportada" numa
+      // solicitação que já não bate com o que foi para o SAP. `resumo` (sem
+      // o "Alterada por NOME:") porque quem reabriu e quando já são colunas
+      // próprias da marca; a tela remonta as duas coisas. Best-effort: falha
+      // aqui não pode impedir a edição, que já está salva.
+      reabrirSolicitacaoPorRequestId(reqId, { id: user.id, nome: user.name }, resumo)
+        .catch(err => console.warn('Não foi possível reabrir a exportação de RM após a edição:', err));
     } else if (novoStatus === 'pendente') {
       const gestores = this.getProfiles().filter(u =>
         u.aprovador_setores?.includes(atualizada.solicitante_sector_id)
@@ -2986,7 +3020,7 @@ class LocalDatabase {
       gestores.forEach(g => this.createNotification(
         g.id,
         `Solicitação editada aguarda aprovação: #${atualizada.number}`,
-        `${atualizada.solicitante_name} editou a solicitação #${atualizada.number}, que voltou para sua análise.`,
+        `${tagAlteracao}. A solicitação #${atualizada.number} voltou para sua análise.`,
         atualizada.criticality >= 4 ? 'critical' : 'info',
         atualizada.id,
         atualizada.number
@@ -3082,6 +3116,13 @@ class LocalDatabase {
    */
   private sanitizeRequestRow(request: Request): Record<string, unknown> {
     const row: Record<string, unknown> = { ...request };
+    // Campos que não existem na tabela core_solicitacoes (são tabelas separadas ou dados transientes)
+    delete row.items;
+    delete row.anexos;
+    delete row.attachments;
+    delete row.comments;
+    delete row.status_history;
+
     for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo']) {
       if (row[campo] === '') row[campo] = null;
     }
@@ -7819,6 +7860,124 @@ class LocalDatabase {
     return true;
   }
 
+  /**
+   * Cria acesso para quem não tem e-mail (Painel Admin > Usuários > Novo
+   * usuário). O identificador `nome.sobrenome` vira
+   * `nome.sobrenome@sisten.local` no Supabase Auth; nada é enviado por
+   * e-mail, o usuário já nasce ativo e com `must_change_password`, então a
+   * senha provisória digitada pelo admin só serve para o primeiro login.
+   *
+   * Depende da service_role (`supabaseAdmin`): a Admin API é o único caminho
+   * para criar usuário já confirmado, sem o fluxo de convite por e-mail.
+   */
+  public async criarUsuarioSemEmail(params: {
+    nome: string;
+    usuario: string;
+    senha: string;
+    cargo?: string;
+    sectorId?: string | null;
+    role?: string;
+  }): Promise<{ profile: Profile | null; erro: string | null }> {
+    if (!supabase) return { profile: null, erro: 'Supabase não inicializado.' };
+    if (!supabaseAdmin) {
+      return { profile: null, erro: 'Criação de usuário exige a chave service_role do Supabase configurada.' };
+    }
+
+    const nome = (params.nome || '').trim().toUpperCase();
+    const usuario = (params.usuario || '').trim().toLowerCase();
+    const senha = params.senha || '';
+
+    if (nome.length < 3) return { profile: null, erro: 'Informe o nome completo do usuário.' };
+    if (!usuarioLoginValido(usuario)) {
+      return { profile: null, erro: 'Identificador inválido. Use o padrão nome.sobrenome, só letras minúsculas, números e ponto.' };
+    }
+    if (senha.length < 6) return { profile: null, erro: 'A senha provisória deve ter pelo menos 6 caracteres.' };
+
+    const email = emailDeLogin(usuario);
+
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: senha,
+      // Sem caixa de e-mail não há como confirmar o endereço; confirmar na
+      // criação é o que permite o primeiro login acontecer.
+      email_confirm: true,
+      user_metadata: {
+        name: nome,
+        cargo: (params.cargo || '').trim(),
+        sector_id: params.sectorId ?? null,
+      },
+    });
+
+    if (error) {
+      console.error('Erro ao criar usuário sem e-mail via Admin API:', error);
+      const msg = error.message || '';
+      if (/already been registered|already exists|duplicate/i.test(msg)) {
+        return { profile: null, erro: `O identificador "${usuario}" já está em uso. Tente incluir o nome do meio.` };
+      }
+      const status = (error as any).status;
+      if (status === 401 || status === 403 || /not_admin|not allowed|service_role/i.test(msg)) {
+        return { profile: null, erro: 'Sem permissão para criar usuários. Verifique a chave service_role do Supabase.' };
+      }
+      return { profile: null, erro: msg || 'Falha ao criar o usuário no servidor.' };
+    }
+
+    const novoId = data.user?.id;
+    if (!novoId) return { profile: null, erro: 'O servidor não devolveu o usuário criado.' };
+
+    // O trigger `handle_new_user` já criou o perfil com papel padrão; aqui
+    // vale o que o admin escolheu na tela.
+    const perfil: Profile = {
+      id: novoId,
+      email,
+      name: nome,
+      cargo: (params.cargo || '').trim(),
+      sector_id: params.sectorId ?? null,
+      roles: [params.role || 'visualizador'],
+      page_access: {},
+      status: 'ativo',
+      must_change_password: true,
+      login_sem_email: true,
+      created_at: new Date().toISOString(),
+    } as Profile;
+
+    // Escrita pelo cliente de serviço, não pelo cliente do admin logado: a
+    // policy de INSERT em `core_perfis` é `auth.uid() = id` — cada um cria só
+    // o próprio perfil — e esta linha é de outra pessoa. Sem isso o PostgREST
+    // devolve 403 e o acesso nasce sem perfil.
+    const { error: perfilError } = await supabaseAdmin
+      .from('core_perfis')
+      .upsert(perfil as any, { onConflict: 'id' });
+
+    if (perfilError) {
+      console.error('Erro ao gravar perfil do usuário sem e-mail:', perfilError);
+      // O acesso existiria no Auth sem perfil correspondente — o login
+      // seguiria com um id órfão. Desfaz para não deixar meio-usuário.
+      //
+      // Apagar o usuário do Auth NÃO apaga a linha que o trigger
+      // `handle_new_user` já criou em `core_perfis`: sem a limpeza abaixo,
+      // cada tentativa falha deixava um perfil sem dono no diretório.
+      await supabaseAdmin.auth.admin.deleteUser(novoId).catch(() => undefined);
+      await supabaseAdmin.from('core_perfis').delete().eq('id', novoId).then(
+        () => undefined,
+        () => undefined,
+      );
+      return { profile: null, erro: 'Usuário criado no login, mas falhou ao gravar o perfil. Nada foi mantido; tente novamente.' };
+    }
+
+    const perfis = this.getProfiles();
+    perfis.push(perfil);
+    this.setStorageItem(this.profilesKey, perfis);
+
+    this.logActivity(
+      'admin',
+      'Administração',
+      'Novo Usuário',
+      `Acesso sem e-mail criado para ${nome} (${usuario}). Troca de senha obrigatória no primeiro login.`,
+    );
+
+    return { profile: perfil, erro: null };
+  }
+
   // Reset de senha forçado pelo admin (Painel de Administração > Usuários).
   // O admin define uma senha provisória; ela é gravada no Supabase Auth via
   // Admin API (requer service_role key — supabaseAdmin) e o perfil é marcado
@@ -8158,9 +8317,31 @@ class LocalDatabase {
    */
   public getAttachmentsByMaterialCode(materialCode: string): RequestAttachment[] {
     if (!materialCode) return [];
+    const allItems = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+    const itemsMap = new Map(allItems.map(i => [i.id, i]));
+
     return this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, [])
-      .filter(a => a.material_code === materialCode)
+      .filter(a => {
+        if (a.material_code === materialCode) return true;
+        if (a.request_item_id && itemsMap.get(a.request_item_id)?.sap_code === materialCode) return true;
+        return false;
+      })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  /**
+   * Indica se o anexo foi vinculado originalmente a um item marcado como generico.
+   */
+  public isAttachmentFromGenericItem(attachment: RequestAttachment): boolean {
+    if (attachment.name === 'Uso Genérico' || attachment.name.startsWith('Uso Genérico')) {
+      return true;
+    }
+    if (attachment.request_item_id) {
+      const allItems = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+      const item = allItems.find(i => i.id === attachment.request_item_id);
+      if (item?.is_generic) return true;
+    }
+    return false;
   }
 
   /**
@@ -8200,9 +8381,16 @@ class LocalDatabase {
 
     for (const { prepared, requestItemId } of entries) {
       try {
+        const itemVinculado = itensDaSolicitacao.find(i => i.id === requestItemId);
+        const materialCode = itemVinculado?.sap_code || undefined;
+        const ehGenerico = Boolean(itemVinculado?.is_generic) || prepared.name === 'Uso Genérico';
+
         // Prefixo por solicitação para que uma futura policy de Storage por dono
         // possa ser escrita sem precisar mover arquivo.
-        const ext = prepared.name.split('.').pop() || 'bin';
+        const extOriginal = prepared.name.includes('.')
+          ? prepared.name.split('.').pop()
+          : (prepared.mimeType === 'application/pdf' ? 'pdf' : 'jpg');
+        const ext = extOriginal || 'bin';
         const path = `${reqId}/${requestItemId || '_geral'}/${gerarUUID()}.${ext}`;
 
         const { error: upErr } = await supabase.storage
@@ -8210,14 +8398,12 @@ class LocalDatabase {
           .upload(path, prepared.blob, { contentType: prepared.mimeType, upsert: false });
         if (upErr) throw upErr;
 
-        const materialCode = itensDaSolicitacao.find(i => i.id === requestItemId)?.sap_code || undefined;
-
         const row: RequestAttachment = {
           id: 'att_' + gerarUUID(),
           request_id: reqId,
           request_item_id: requestItemId,
           material_code: materialCode,
-          name: prepared.name,
+          name: ehGenerico ? 'Uso Genérico' : prepared.name,
           url: path,
           storage_path: path,
           mime_type: prepared.mimeType,
@@ -8271,15 +8457,19 @@ class LocalDatabase {
 
     const user = this.getCurrentUser();
     const list = this.getStorageItem<RequestAttachment[]>(this.attachmentsKey, []);
+    const itensDaSolicitacao = this.getRequestItems(reqId);
 
     for (const { attachment: origem, requestItemId } of entries) {
       try {
+        const itemVinculado = itensDaSolicitacao.find(i => i.id === requestItemId);
+        const ehGenerico = Boolean(itemVinculado?.is_generic) || origem.name === 'Uso Genérico' || this.isAttachmentFromGenericItem(origem);
+
         const row: RequestAttachment = {
           id: 'att_' + gerarUUID(),
           request_id: reqId,
           request_item_id: requestItemId,
           material_code: origem.material_code,
-          name: origem.name,
+          name: ehGenerico ? 'Uso Genérico' : origem.name,
           url: origem.url,
           storage_path: origem.storage_path || origem.url,
           mime_type: origem.mime_type,

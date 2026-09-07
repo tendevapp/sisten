@@ -17,7 +17,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UploadCloud, Download, Trash2, PackageSearch, Timer, Coins, DollarSign, History,
-  Sparkles, Loader2, AlertCircle, Cpu,
+  Sparkles, Loader2, AlertCircle, Cpu, AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import ItemFilaRow, { type ItemFila } from '../markdown/ItemFilaRow';
@@ -27,14 +27,16 @@ import HistoricoConversoesModal from '../markdown/HistoricoConversoesModal';
 import ArquivoJaConvertidoModal, { type DuplicadoInfo } from '../markdown/ArquivoJaConvertidoModal';
 import ColarMarkdownPanel from './ColarMarkdownPanel';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   ACCEPT_CONVERSOR, detectarFormato, converterArquivoParaMarkdown, consolidarMarkdown,
   estimarTokens, ConversaoNaoSuportadaError,
 } from '../../lib/markdownConvert';
 import { converterComIA, registrarConversaoLocal, buscarUltimaConversaoPorArquivo } from '../../lib/converterMarkdownApi';
-import { buscarPropostasPorArquivo } from '../../lib/cotacoesApi';
+import { buscarPropostasPorArquivo, buscarPropostasPorNomeArquivo, type PropostaJaExtraida } from '../../lib/cotacoesApi';
+import { propostaParaDraft } from '../../lib/cotacoes';
 import { formatDuration, formatCustoBrl, formatModelo } from '../../lib/format';
-import type { Profile, ExtracaoUso } from '../../types';
+import type { Profile, ExtracaoUso, CotacaoProposta, CotacaoPropostaDraft } from '../../types';
 
 /** Item ainda não terminou e vai (ou está) sendo trabalhado. Um "pendente" sem `file` (recuperado de sessão anterior, aguardando reseleção) não conta. */
 const emAndamento = (i: ItemFila) => i.status === 'processando' || (i.status === 'pendente' && !!i.file);
@@ -74,9 +76,22 @@ interface ImportarPropostasPanelProps {
   onProcessar: (markdown: string, arquivoOrigem: string | null) => Promise<boolean>;
   /** Avisa quais arquivos (nome + File) foram mandados para extração, para o card da proposta poder oferecer "ver arquivo original" enquanto durar a sessão. */
   onArquivosEnviados?: (arquivos: { nome: string; file: File | null }[]) => void;
+  /** Carrega propostas já extraídas anteriormente diretamente na tela de análise, sem chamar IA novamente. */
+  onCarregarPropostas?: (propostas: CotacaoPropostaDraft[]) => void;
 }
 
-export default function ImportarPropostasPanel({ user, processoId, processando, erro, uso, modelo, custoBrl, onProcessar, onArquivosEnviados }: ImportarPropostasPanelProps) {
+export default function ImportarPropostasPanel({
+  user,
+  processoId,
+  processando,
+  erro,
+  uso,
+  modelo,
+  custoBrl,
+  onProcessar,
+  onArquivosEnviados,
+  onCarregarPropostas,
+}: ImportarPropostasPanelProps) {
   const toast = useToast();
   const lsKey = useMemo(() => `sisten:cotacoes:${processoId}:conversor:v1`, [processoId]);
 
@@ -86,7 +101,7 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
   const [duplicadosAviso, setDuplicadosAviso] = useState<DuplicadoInfo[] | null>(null);
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [modoManual, setModoManual] = useState(false);
-  const [confirmDuplicata, setConfirmDuplicata] = useState<string | null>(null);
+  const [confirmDuplicata, setConfirmDuplicata] = useState<{ nomes: string; jaExtraidas: PropostaJaExtraida[] } | null>(null);
   const [confirmLimparLista, setConfirmLimparLista] = useState(false);
   const [confirmRemoverItem, setConfirmRemoverItem] = useState<ItemFila | null>(null);
   // Ids explicitamente desmarcados pelo usuário — por padrão todo arquivo
@@ -220,6 +235,7 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
         const existente = itens.find(i => i.id === id || (i.nome === f.name && i.tamanho === f.size));
 
         if (existente && existente.status === 'concluido' && existente.resultado) {
+          const propostasSalvas = await buscarPropostasPorNomeArquivo(f.name).catch(() => [] as CotacaoProposta[]);
           duplicados.push({
             file: f,
             itemExistente: existente,
@@ -235,9 +251,13 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
             modelo: existente.resultado.modelo,
             markdown: existente.resultado.markdown,
             origem: 'sessao_local',
+            propostasSalvas: propostasSalvas.length > 0 ? propostasSalvas : null,
           });
         } else if (!itens.some(i => i.id === id)) {
-          const historico = await buscarUltimaConversaoPorArquivo(f.name, f.size);
+          const [historico, propostasSalvas] = await Promise.all([
+            buscarUltimaConversaoPorArquivo(f.name, f.size),
+            buscarPropostasPorNomeArquivo(f.name).catch(() => [] as CotacaoProposta[]),
+          ]);
           if (historico && historico.markdown) {
             duplicados.push({
               file: f,
@@ -254,6 +274,18 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
               modelo: historico.modelo,
               markdown: historico.markdown,
               origem: 'supabase',
+              propostasSalvas: propostasSalvas.length > 0 ? propostasSalvas : null,
+            });
+          } else if (propostasSalvas.length > 0) {
+            duplicados.push({
+              file: f,
+              nome: f.name,
+              tamanho: f.size,
+              convertidoEm: propostasSalvas[0]?.created_at,
+              usuarioNome: 'Supabase',
+              resumo: `${propostasSalvas.length} proposta(s) salva(s)`,
+              origem: 'supabase',
+              propostasSalvas,
             });
           } else {
             novosParaFila.push(f);
@@ -320,11 +352,11 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
   };
 
   const handleVerDuplicado = (dup: DuplicadoInfo) => {
-    setDuplicadosAviso(null);
     if (dup.itemExistente) {
       const atualizado = { ...dup.itemExistente, file: dup.file };
       setItens(prev => prev.map(i => (i.id === dup.itemExistente!.id ? atualizado : i)));
       setItemPreview(atualizado);
+      setDuplicadosAviso(null);
     } else if (dup.markdown) {
       const novoItem: ItemFila = {
         id: gerarId(dup.file),
@@ -347,13 +379,160 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
         },
       };
       setItens(prev => [novoItem, ...prev.filter(i => i.id !== novoItem.id)]);
-      setItemPreview(novoItem);
-      toast.success(`Arquivo "${dup.nome}" puxado do histórico compartilhado com sucesso!`);
+      toast.success(`Arquivo "${dup.nome}" puxado do histórico com sucesso!`);
+      setDuplicadosAviso(prev => {
+        if (!prev || prev.length <= 1) return null;
+        return prev.filter(d => d.nome !== dup.nome);
+      });
     }
   };
 
-  const handleReconverterDuplicado = (dup: DuplicadoInfo) => {
+  const handlePuxarTodos = () => {
+    if (!duplicadosAviso || duplicadosAviso.length === 0) return;
+    const novosItens: ItemFila[] = [];
+    const idsExistentes = new Set(itens.map(i => i.id));
+
+    for (const dup of duplicadosAviso) {
+      if (dup.itemExistente) {
+        setItens(prev => prev.map(i => (i.id === dup.itemExistente!.id ? { ...i, file: dup.file } : i)));
+      } else if (dup.markdown) {
+        const id = gerarId(dup.file);
+        if (!idsExistentes.has(id)) {
+          novosItens.push({
+            id,
+            nome: dup.nome,
+            tamanho: dup.tamanho,
+            formato: detectarFormato(dup.nome),
+            status: 'concluido',
+            file: dup.file,
+            concluidoEm: dup.convertidoEm ?? undefined,
+            usuarioNome: dup.usuarioNome ?? undefined,
+            resultado: {
+              markdown: dup.markdown,
+              duracaoMs: dup.duracaoMs ?? 0,
+              caracteres: dup.markdown.length,
+              tokensEstimados: dup.tokens ?? estimarTokens(dup.markdown),
+              tokensReais: dup.tokens ?? undefined,
+              custoUsd: dup.custoUsd,
+              modelo: dup.modelo ?? undefined,
+              resumo: dup.resumo ?? `${dup.markdown.length} carac.`,
+            },
+          });
+          idsExistentes.add(id);
+        }
+      }
+    }
+
+    if (novosItens.length > 0) {
+      setItens(prev => [...novosItens, ...prev]);
+    }
+    toast.success(`${duplicadosAviso.length} arquivo(s) puxado(s) para a fila com sucesso!`);
     setDuplicadosAviso(null);
+  };
+
+  const handleCarregarProposta = (dup: DuplicadoInfo) => {
+    if (!dup.propostasSalvas || dup.propostasSalvas.length === 0) return;
+    if (!onCarregarPropostas) {
+      toast.warning('Ação de carregar propostas não disponível nesta tela.');
+      return;
+    }
+    const drafts = dup.propostasSalvas.map(p => propostaParaDraft(p, { novoProcessoId: processoId }));
+    onCarregarPropostas(drafts);
+
+    if (dup.markdown) {
+      const id = gerarId(dup.file);
+      if (!itens.some(i => i.id === id)) {
+        setItens(prev => [
+          {
+            id,
+            nome: dup.nome,
+            tamanho: dup.tamanho,
+            formato: detectarFormato(dup.nome),
+            status: 'concluido',
+            file: dup.file,
+            concluidoEm: dup.convertidoEm ?? undefined,
+            usuarioNome: dup.usuarioNome ?? undefined,
+            resultado: {
+              markdown: dup.markdown,
+              duracaoMs: dup.duracaoMs ?? 0,
+              caracteres: dup.markdown.length,
+              tokensEstimados: dup.tokens ?? estimarTokens(dup.markdown),
+              tokensReais: dup.tokens ?? undefined,
+              custoUsd: dup.custoUsd,
+              modelo: dup.modelo ?? undefined,
+              resumo: dup.resumo ?? `${dup.markdown.length} carac.`,
+            },
+          },
+          ...prev,
+        ]);
+      }
+    }
+
+    onArquivosEnviados?.([{ nome: dup.nome, file: dup.file }]);
+    toast.success(`Proposta de "${dup.nome}" carregada com sucesso!`);
+
+    setDuplicadosAviso(prev => {
+      if (!prev || prev.length <= 1) return null;
+      return prev.filter(d => d.nome !== dup.nome);
+    });
+  };
+
+  const handleCarregarTodasPropostas = () => {
+    if (!duplicadosAviso || !onCarregarPropostas) return;
+    const todasPropostas: CotacaoPropostaDraft[] = [];
+    const arquivos: { nome: string; file: File | null }[] = [];
+    const novosItens: ItemFila[] = [];
+    const idsExistentes = new Set(itens.map(i => i.id));
+
+    for (const dup of duplicadosAviso) {
+      if (dup.propostasSalvas && dup.propostasSalvas.length > 0) {
+        dup.propostasSalvas.forEach(p => {
+          todasPropostas.push(propostaParaDraft(p, { novoProcessoId: processoId }));
+        });
+        arquivos.push({ nome: dup.nome, file: dup.file });
+
+        if (dup.markdown) {
+          const id = gerarId(dup.file);
+          if (!idsExistentes.has(id)) {
+            novosItens.push({
+              id,
+              nome: dup.nome,
+              tamanho: dup.tamanho,
+              formato: detectarFormato(dup.nome),
+              status: 'concluido',
+              file: dup.file,
+              concluidoEm: dup.convertidoEm ?? undefined,
+              usuarioNome: dup.usuarioNome ?? undefined,
+              resultado: {
+                markdown: dup.markdown,
+                duracaoMs: dup.duracaoMs ?? 0,
+                caracteres: dup.markdown.length,
+                tokensEstimados: dup.tokens ?? estimarTokens(dup.markdown),
+                tokensReais: dup.tokens ?? undefined,
+                custoUsd: dup.custoUsd,
+                modelo: dup.modelo ?? undefined,
+                resumo: dup.resumo ?? `${dup.markdown.length} carac.`,
+              },
+            });
+            idsExistentes.add(id);
+          }
+        }
+      }
+    }
+
+    if (novosItens.length > 0) {
+      setItens(prev => [...novosItens, ...prev]);
+    }
+
+    if (todasPropostas.length > 0) {
+      onCarregarPropostas(todasPropostas);
+      onArquivosEnviados?.(arquivos);
+      toast.success(`${todasPropostas.length} proposta(s) carregada(s) com sucesso!`);
+    }
+    setDuplicadosAviso(null);
+  };
+
+  const handleReconverterDuplicado = (dup: DuplicadoInfo) => {
     const novoId = gerarId(dup.file);
     const novoItem: ItemFila = {
       id: novoId,
@@ -368,6 +547,10 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
     setItens(prev => {
       const semAntigo = prev.filter(i => i.id !== (dup.itemExistente?.id ?? novoId));
       return [...semAntigo, novoItem];
+    });
+    setDuplicadosAviso(prev => {
+      if (!prev || prev.length <= 1) return null;
+      return prev.filter(d => d.nome !== dup.nome);
     });
   };
 
@@ -465,20 +648,49 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
   const handleExtrairCotacao = async () => {
     if (itensSelecionados.length === 0 || processando) return;
 
-    // Mesma ideia do aviso de arquivo já convertido (buscarUltimaConversaoPorArquivo),
-    // aplicada à extração: evita gastar IA e criar proposta duplicada no banco
-    // para um arquivo que já foi extraído e salvo neste processo.
+    // Mesma ideia do aviso de arquivo ja convertido (buscarUltimaConversaoPorArquivo),
+    // aplicada a extracao: evita gastar IA e criar proposta duplicada no banco
+    // para um arquivo que ja foi extraido e salvo neste processo.
     try {
       const jaExtraidas = await buscarPropostasPorArquivo(processoId, itensSelecionados.map(i => i.nome));
       if (jaExtraidas.length > 0) {
-        setConfirmDuplicata(jaExtraidas.map(p => `"${p.arquivo_origem}"`).join(', '));
+        setConfirmDuplicata({
+          nomes: jaExtraidas.map(p => `"${p.arquivo_origem}"`).join(', '),
+          jaExtraidas,
+        });
         return;
       }
     } catch (err) {
-      console.error('Falha ao checar propostas já extraídas:', err);
+      console.error('Falha ao checar propostas ja extraidas:', err);
     }
 
     await prosseguirExtracao();
+  };
+
+  const handleCarregarPropostasConfirmadas = async (jaExtraidas: PropostaJaExtraida[]) => {
+    if (!onCarregarPropostas) return;
+    try {
+      const arquivosNomes = Array.from(new Set(jaExtraidas.map(j => j.arquivo_origem).filter(Boolean)));
+      const propostasCarregar: CotacaoPropostaDraft[] = [];
+
+      for (const nome of arquivosNomes) {
+        const encontradas = await buscarPropostasPorNomeArquivo(nome);
+        for (const p of encontradas) {
+          propostasCarregar.push(propostaParaDraft(p, { novoProcessoId: processoId }));
+        }
+      }
+
+      if (propostasCarregar.length > 0) {
+        onCarregarPropostas(propostasCarregar);
+        toast.success(`${propostasCarregar.length} proposta(s) carregada(s) com sucesso!`);
+      } else {
+        toast.info('Nenhuma proposta completa encontrada para carregar.');
+      }
+    } catch (err) {
+      toast.error(`Falha ao carregar propostas: ${(err as Error).message}`);
+    } finally {
+      setConfirmDuplicata(null);
+    }
   };
 
   return (
@@ -703,18 +915,62 @@ export default function ImportarPropostasPanel({ user, processoId, processando, 
           onClose={() => setDuplicadosAviso(null)}
           onVerExistente={handleVerDuplicado}
           onReconverter={handleReconverterDuplicado}
+          onPuxarTodos={handlePuxarTodos}
+          onCarregarProposta={handleCarregarProposta}
+          onCarregarTodasPropostas={handleCarregarTodasPropostas}
         />
       )}
 
       {confirmDuplicata && (
-        <ConfirmDialog
-          titulo="Proposta já extraída neste processo"
-          mensagem={`Já existe proposta salva neste processo para ${confirmDuplicata}. Extrair mesmo assim pode criar uma duplicata.`}
-          confirmarLabel="Extrair mesmo assim"
-          variante="perigo"
-          onConfirmar={() => { setConfirmDuplicata(null); prosseguirExtracao(); }}
-          onCancelar={() => setConfirmDuplicata(null)}
-        />
+        <Modal onClose={() => setConfirmDuplicata(null)} maxWidth="max-w-md" ariaLabel="Proposta já extraída">
+          <ModalHeader onClose={() => setConfirmDuplicata(null)}>
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
+              <AlertTriangle className="h-5 w-5" />
+              Proposta já extraída neste processo
+            </div>
+          </ModalHeader>
+          <ModalBody className="space-y-3">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Já existe proposta salva neste processo para <strong className="text-slate-900 dark:text-slate-100">{confirmDuplicata.nomes}</strong>.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Você pode carregar os dados já extraídos diretamente sem consumir tokens de IA, ou forçar uma nova extração.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDuplicata(null)}
+                className="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmDuplicata(null);
+                    prosseguirExtracao();
+                  }}
+                  className="rounded-xl border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40 transition-colors"
+                >
+                  Extrair com IA mesmo assim
+                </button>
+                {onCarregarPropostas && (
+                  <button
+                    type="button"
+                    onClick={() => handleCarregarPropostasConfirmadas(confirmDuplicata.jaExtraidas)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-xs transition-colors"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Carregar dados
+                  </button>
+                )}
+              </div>
+            </div>
+          </ModalFooter>
+        </Modal>
       )}
 
       {confirmLimparLista && (

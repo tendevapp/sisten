@@ -12,8 +12,11 @@ import {
   ShieldCheck, Plus, Search, Filter, RefreshCw, Calendar, Clock,
   UserCheck, Shield, CheckCircle2, AlertTriangle, FileDown, X,
   Trash2, Eye, ArrowRight, ArrowLeft, Check, AlertCircle, Sparkles, Building2,
-  Lock, Loader2
+  Lock, Loader2, HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type {
   Profile,
   PortPassagemPlantao,
@@ -43,6 +46,136 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const PORTARIA_PASSAGEM_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldCheck,
+    title: 'Passagem de Plantão da Portaria',
+    description:
+      'Formulário oficial FRM.SGP-0010 para registro formal de troca de turno da vigilância, custódia de materiais de segurança e termo declaratório.',
+  },
+  {
+    target: 'passagem-header',
+    icon: Plus,
+    title: 'Abertura de Novo Plantão',
+    description:
+      'Clique em "Novo Plantão" para iniciar a escala, definir os vigilantes do posto e ronda, e transferir a responsabilidade patrimonial.',
+  },
+  {
+    target: 'passagem-filtros',
+    icon: Filter,
+    title: 'Filtros e busca rápida de plantões',
+    description:
+      'Localize registros anteriores por nome do vigilante, número de protocolo, turno trabalhado ou status (Em Andamento / Concluído).',
+  },
+  {
+    target: 'passagem-acoes-lote',
+    icon: FileDown,
+    title: 'Exportação consolidada em PDF',
+    description:
+      'Selecione múltiplos plantões na caixa de seleção para gerar um único relatório PDF oficial consolidado para auditoria patrimonial.',
+  },
+  {
+    target: 'passagem-lista',
+    icon: Shield,
+    title: 'Mural de plantões e custódia tátil',
+    description:
+      'Cada cartão resume a equipe escalada, horário e o checklist de armamentos, coletes balísticos, HTs e equipamentos conferidos.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
+const PORTARIA_PASSAGEM_NOVO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldCheck,
+    title: 'Abertura de Passagem de Plantão',
+    description:
+      'Preencha a assunção do posto de vigilância patrimonial (FRM.SGP-0010), registrando os vigilantes da escala e a conferência tátil dos equipamentos.',
+  },
+  {
+    target: 'passagem-form-preenchedor',
+    icon: UserCheck,
+    title: 'Vigilante Preenchedor',
+    description:
+      'Identifique o vigilante titular responsável pelo preenchimento deste registro de passagem.',
+  },
+  {
+    target: 'passagem-form-horarios',
+    icon: Clock,
+    title: 'Data, Turno e Horários',
+    description:
+      'Selecione a data, o turno de trabalho (Diurno/Noturno) e os horários previstos da escala.',
+  },
+  {
+    target: 'passagem-form-escala',
+    icon: Shield,
+    title: 'Escala de Vigilância do Turno',
+    description:
+      'Defina os vigilantes escalados para o posto da Portaria principal e as Rondas 01 e 02.',
+  },
+  {
+    target: 'passagem-form-anterior',
+    icon: RefreshCw,
+    title: 'Recebimento do Plantão Anterior',
+    description:
+      'Indique quem entregou o posto anterior. O sistema gera automaticamente o texto formal de declaração de custódia.',
+  },
+  {
+    target: 'passagem-form-custodia',
+    icon: CheckCircle2,
+    title: 'Conferência Tátil de Materiais',
+    description:
+      'Faça a checagem física de armamento, coletes balísticos, HTs e etilômetro. Qualquer item desmarcado exige justificativa obrigatória de falta ou avaria.',
+  },
+  {
+    target: 'passagem-form-salvar',
+    icon: Plus,
+    title: 'Salvar e Abrir Plantão',
+    description:
+      'Gera o número de protocolo oficial do plantão e inicia o monitoramento do turno.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const toast = useToast();
 
@@ -65,6 +198,9 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   // Modal Novo / Edição
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
+
+  const tour = usePageTour('portaria-passagem-plantao', PORTARIA_PASSAGEM_TOUR_STEPS.length, !modalNovoAberto);
+  const tourNovo = usePageTour('portaria-passagem-novo', PORTARIA_PASSAGEM_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
   // Modal Detalhes / Visualização
   const [plantaoVisualizando, setPlantaoVisualizando] = useState<PortPassagemPlantao | null>(null);
@@ -254,11 +390,24 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   // Confirmar Exclusão
   const handleConfirmarExclusao = async () => {
     if (!plantaoParaExcluir) return;
+    const plantao = plantaoParaExcluir;
     try {
-      await api.excluirPassagemPlantao(plantaoParaExcluir.id, user.id);
-      toast.success(`Plantão ${plantaoParaExcluir.numero_protocolo} excluído!`);
+      await api.excluirPassagemPlantao(plantao.id, user.id);
       setPlantaoParaExcluir(null);
       carregarDados();
+      toast.undo(
+        `Plantão ${plantao.numero_protocolo} excluído.`,
+        async () => {
+          try {
+            await api.restaurarPassagemPlantao(plantao.id);
+            toast.success(`Plantão ${plantao.numero_protocolo} restaurado com sucesso.`);
+            carregarDados();
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir plantão: ' + (err.message || ''));
     }
@@ -321,7 +470,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-1" />
           <span>Voltar para o Painel da Portaria</span>
         </button>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div data-tour="passagem-header" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm shadow-indigo-500/20">
               <ShieldCheck className="h-6 w-6" />
@@ -364,7 +513,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       </div>
 
       {/* Barra de Filtros e Busca */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="passagem-filtros" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="relative sm:col-span-2">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -418,7 +567,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
 
         {/* Barra de Seleção em Lote e Exportação Consolidada */}
         {plantoes.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div data-tour="passagem-acoes-lote" className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -469,7 +618,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       </div>
 
       {/* Grid de Plantões */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-tour="passagem-lista" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {plantoes.map((p) => {
           const isSelected = selecionadosIds.has(p.id);
           const totalItens = (p.itens_conferidos || []).length;
@@ -631,18 +780,29 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
       {modalNovoAberto && (
         <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-4xl">
           <ModalHeader onClose={() => setModalNovoAberto(false)}>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                Nova Passagem de Plantão — Portaria TEN
-              </h3>
-              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0010</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Nova Passagem de Plantão — Portaria TEN
+                </h3>
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0010</p>
+              </div>
+              <button
+                type="button"
+                onClick={tourNovo.startTour}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 shadow-2xs transition-colors hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300"
+                title="Dicas de preenchimento da passagem de plantão"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                Dicas de Preenchimento
+              </button>
             </div>
           </ModalHeader>
 
           <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-5">
               {/* 1. Vigilante Preenchedor */}
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+              <div data-tour="passagem-form-preenchedor" className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
                 <VigilanteSelect
                   label="Vigilante que está Preenchendo o Formulário"
                   required
@@ -652,7 +812,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
               </div>
 
               {/* 2. Dados do Turno e Horário */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div data-tour="passagem-form-horarios" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data do Plantão *
@@ -708,7 +868,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
               </div>
 
               {/* 3. Escala Recebedora (Portaria, Ronda 1, Ronda 2) */}
-              <div className="space-y-3">
+              <div data-tour="passagem-form-escala" className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
                   Escala de Vigilância do Turno
                 </h4>
@@ -744,7 +904,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
               </div>
 
               {/* 4. Plantão Anterior & Texto Declaratório */}
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+              <div data-tour="passagem-form-anterior" className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/50">
                 <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
                   Recebimento do Plantão Anterior
                 </h4>
@@ -775,7 +935,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
               </div>
 
               {/* 5. Checklist Tátil de Materiais de Segurança */}
-              <div className="space-y-3">
+              <div data-tour="passagem-form-custodia" className="space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                   <div>
                     <div className="flex items-center gap-2">
@@ -911,6 +1071,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
               <button
                 type="submit"
                 disabled={salvando}
+                data-tour="passagem-form-salvar"
                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -962,8 +1123,8 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
             <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs dark:border-slate-800 dark:bg-slate-950/60">
               <p className="font-bold text-slate-900 dark:text-slate-100 mb-1">Entregue por (Plantão Anterior):</p>
               <p className="text-slate-700 dark:text-slate-300">
-                {plantaoVisualizando.vigilante_anterior_01}
-                {plantaoVisualizando.vigilante_anterior_02 && ` e ${plantaoVisualizando.vigilante_anterior_02}`}
+                {plantaoVisualizando.vigilante_anterior01}
+                {plantaoVisualizando.vigilante_anterior02 && ` e ${plantaoVisualizando.vigilante_anterior02}`}
               </p>
               {plantaoVisualizando.texto_declaracao && (
                 <p className="mt-2 text-slate-600 dark:text-slate-400 italic bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
@@ -1088,6 +1249,24 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleConfirmarExclusao}
           onCancelar={() => setPlantaoParaExcluir(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_PASSAGEM_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+      {tourNovo.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_PASSAGEM_NOVO_TOUR_STEPS}
+          stepIndex={tourNovo.stepIndex}
+          onNext={tourNovo.next}
+          onBack={tourNovo.back}
+          onClose={tourNovo.close}
         />
       )}
     </div>

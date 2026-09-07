@@ -77,12 +77,25 @@ export default function RhTurnos({ onNavigate }: Props) {
 
   const excluir = async () => {
     if (!paraExcluir) return;
+    const itemRemovido = { ...paraExcluir };
     setExcluindo(true);
     try {
-      await api.excluirRhTurno(paraExcluir.id);
-      toast.success(`Turno ${paraExcluir.nome} excluído.`);
+      await api.excluirRhTurno(itemRemovido.id);
       setParaExcluir(null);
       await carregar();
+      toast.undo(
+        `Turno ${itemRemovido.nome} excluído.`,
+        async () => {
+          try {
+            await api.criarRhTurno(itemRemovido.nome);
+            await carregar();
+            toast.success(`Turno ${itemRemovido.nome} restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar o turno: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir o turno.');
     } finally {

@@ -4,17 +4,76 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2, Clock } from 'lucide-react';
+import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2, Clock, Bug, Lightbulb } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
 import { formatDateTimeBR } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { TableShell } from '../components/ui/DataTable';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 
 interface MaterialsProps {
   user: Profile;
 }
+
+const MATERIAIS_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Search,
+    title: 'Bem-vindo ao Catálogo de Materiais SAP',
+    description: 'Aqui você consulta mais de 450 mil materiais cadastrados no SAP, com códigos oficiais, descrições padronizadas, textos técnicos e unidades para compras precisas.',
+  },
+  {
+    target: 'catalogo-header',
+    icon: Download,
+    title: 'Visão geral e exportação CSV',
+    description: 'Acompanhe a base oficial e exporte para planilha CSV os registros filtrados na tela sempre que precisar analisar em planilhas.',
+  },
+  {
+    target: 'catalogo-busca',
+    icon: Search,
+    title: 'Busca inteligente cumulativa (chips AND)',
+    description: 'Digite um termo e pressione Enter para criar um chip. Cada chip adicionado refina a busca exigindo a presença simultânea de todas as palavras, eliminando ruídos nos resultados.',
+  },
+  {
+    target: 'catalogo-filtros',
+    icon: HelpCircle,
+    title: 'Filtros rápidos do SAP',
+    description: 'Refine por Status SAP (apenas ativos ou obsoletos Z1), Unidade de medida (UN, KG, M...), Tipo de Material TMAT (ZPEC, ZCON, ZENG...) e NCM / Código fiscal.',
+  },
+  {
+    target: 'catalogo-opcoes',
+    icon: Star,
+    title: 'Texto técnico e favoritos',
+    description: 'Marque "Incluir texto técnico na busca" quando a especificação detalhada só existir no texto longo, ou marque "Meus favoritos" para listar apenas seus itens fixados.',
+  },
+  {
+    target: 'catalogo-tabela',
+    icon: Copy,
+    title: 'Resultados, cópia e detalhes',
+    description: 'Copie o código SAP do material com um clique no botão de cópia. Clique na estrela para favoritar e clique na linha para abrir os detalhes técnicos e centros do SAP.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 const sanitizeTerm = (term: string) => term.trim();
 
@@ -76,6 +135,7 @@ const rowToMaterial = (r: any): Material => {
 };
 
 export default function Materials({ user }: MaterialsProps) {
+  const tour = usePageTour('catalogo-sap', MATERIAIS_TOUR_STEPS.length);
   // Carrega do cache se houver, senão usa os defaults
   const pageCache = localDb.getPageCache('materials', {
     queryInput: '',
@@ -334,7 +394,7 @@ export default function Materials({ user }: MaterialsProps) {
 
   return (
     <div className="space-y-6 text-left">
-      <div className="flex items-center justify-between">
+      <div data-tour="catalogo-header" className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-slate-900">Catálogo de Materiais SAP</h2>
           <p className="mt-1 text-sm text-slate-500">Busca no catálogo de materiais exportado do SAP. Use chips e filtros avançados para refinar.</p>
@@ -357,7 +417,7 @@ export default function Materials({ user }: MaterialsProps) {
       {/* Filter and Search Card */}
       <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm space-y-4">
         {/* Search bar input with enter trigger */}
-        <form onSubmit={handleAddChip} className="flex gap-2">
+        <form onSubmit={handleAddChip} className="flex gap-2" data-tour="catalogo-busca">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
               <Search className="h-5 w-5" />
@@ -401,7 +461,7 @@ export default function Materials({ user }: MaterialsProps) {
 
         {/* Filters Selectors Row */}
         <div className="pt-3 border-t border-slate-100 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+          <div data-tour="catalogo-filtros" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
             {/* Status SAP */}
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
@@ -515,7 +575,7 @@ export default function Materials({ user }: MaterialsProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-50 text-xs">
+          <div data-tour="catalogo-opcoes" className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-50 text-xs">
             <div className="flex flex-wrap items-center gap-4">
               <label
                 className="flex items-center text-xs font-semibold text-slate-700 cursor-pointer select-none"
@@ -568,7 +628,7 @@ export default function Materials({ user }: MaterialsProps) {
       )}
 
       {/* Materials Results Table */}
-      <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div data-tour="catalogo-tabela" className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         {/* Mobile: lista em cards */}
         <div className="lg:hidden divide-y divide-gray-100 dark:divide-slate-800">
           {isLoading ? (
@@ -836,6 +896,16 @@ export default function Materials({ user }: MaterialsProps) {
           </div>
         )}
       </div>
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={MATERIAIS_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
     </div>
   );
 }

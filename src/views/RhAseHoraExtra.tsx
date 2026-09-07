@@ -23,7 +23,11 @@ import {
   ArrowLeft, ChevronRight, Loader2, Plus, Save, Send, Trash2, Timer, AlertCircle,
   AlertTriangle, FileDown, FileSpreadsheet, RotateCcw, X, Search, Edit3, Mail, Check,
   Calendar, User, Filter, Eye, Sparkles, BarChart3,
+  HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, Profile, RhPessoa, RhSetor, RhTurno,
 } from '../types';
@@ -35,7 +39,7 @@ import {
   exportAseConsolidadoDiaExcel,
 } from '../lib/pdfExport/exportAseHoraExtraPdf';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
-import { canViewAllAse } from '../lib/pages';
+import { canAccessAseRelatorio, canViewAllAse } from '../lib/pages';
 import { podeEditarFormulario } from '../lib/permissoesFormularios';
 import {
   MostrarExcluidosToggle,
@@ -58,6 +62,64 @@ interface Props {
 
 const LIMITE_DIARIO_CLT_HORAS = 2;
 const ANTECEDENCIA_MINIMA_HORAS = 24;
+
+const RH_ASE_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Timer,
+    title: 'ASE — Autorização de Serviços Extraordinários',
+    description:
+      'Formulário oficial FRM.RHU-0007 para planejamento, autorização de horas extras, transporte e alimentação de colaboradores por setor e turno.',
+  },
+  {
+    target: 'ase-header',
+    icon: Timer,
+    title: 'Cabeçalho e Nova Solicitação',
+    description:
+      'Identificação da norma de RH e botão "Nova ASE" para abrir um novo rascunho de horas extras para sua equipe.',
+  },
+  {
+    target: 'ase-relatorio-toggle',
+    icon: BarChart3,
+    title: 'Relatório Analítico de Horas Extras',
+    description:
+      'Acesso direto aos gráficos e indicadores de volume de horas extras por setor, turnos e acompanhamento de limites da CLT.',
+  },
+  {
+    target: 'ase-filtros',
+    icon: Filter,
+    title: 'Filtros rápidos e busca de colaboradores',
+    description:
+      'Alterne entre "Todas as ASEs" e "Minhas ASEs", filtre por status (Rascunho, Enviado) e busque por nome, matrícula, protocolo ou cargo.',
+  },
+  {
+    target: 'ase-lista',
+    icon: Calendar,
+    title: 'Fila de ASEs agrupadas por data',
+    description:
+      'Acompanhe os pedidos organizados por dia de execução com totalizadores de horas, passageiros de transporte, refeições e exportação oficial em PDF consolidado.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 function hojeISO(): string {
   const d = new Date();
@@ -158,6 +220,7 @@ Enviado através do SISTEN - Sistema Integrado TEN`;
 }
 
 export default function RhAseHoraExtra({ user, onNavigate }: Props) {
+  const tour = usePageTour('form-rh-ase', RH_ASE_TOUR_STEPS.length);
   const [solicitacaoId, setSolicitacaoId] = useState<string | null>(null);
   const [verRelatorio, setVerRelatorio] = useState(false);
 
@@ -176,7 +239,9 @@ export default function RhAseHoraExtra({ user, onNavigate }: Props) {
     return <Edicao user={user} id={solicitacaoId} onVoltar={() => setSolicitacaoId(null)} />;
   }
 
-  if (verRelatorio) {
+  // O relatório é do módulo RH, não do formulário: quem não tem RH liberado
+  // não vê o botão nem alcança a tela por estado remanescente.
+  if (verRelatorio && canAccessAseRelatorio(user)) {
     return (
       <Suspense
         fallback={
@@ -191,12 +256,23 @@ export default function RhAseHoraExtra({ user, onNavigate }: Props) {
   }
 
   return (
-    <Lista
-      user={user}
-      onAbrir={setSolicitacaoId}
-      onNavigate={onNavigate}
-      onRelatorio={() => setVerRelatorio(true)}
-    />
+    <>
+      <Lista
+        user={user}
+        onAbrir={setSolicitacaoId}
+        onNavigate={onNavigate}
+        onRelatorio={canAccessAseRelatorio(user) ? () => setVerRelatorio(true) : undefined}
+      />
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={RH_ASE_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+    </>
   );
 }
 
@@ -215,7 +291,8 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
   user: Profile;
   onAbrir: (id: string) => void;
   onNavigate: (p: string) => void;
-  onRelatorio: () => void;
+  /** Ausente quando o usuário não tem acesso ao relatório: o botão some. */
+  onRelatorio?: () => void;
 }) {
   const toast = useToast();
   const podeVerTodas = canViewAllAse(user);
@@ -244,12 +321,25 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
 
   const handleConfirmarExclusao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     setExcluindo(true);
     try {
-      await api.excluirSolicitacaoASE(itemParaExcluir.id, user.id);
-      toast.success(`Solicitação ${itemParaExcluir.numero_protocolo} excluída.`);
+      await api.excluirSolicitacaoASE(item.id, user.id);
       setItemParaExcluir(null);
       void recarregar();
+      toast.undo(
+        `Solicitação ${item.numero_protocolo} excluída.`,
+        async () => {
+          try {
+            await api.restaurarSolicitacaoASE(item.id);
+            toast.success(`Solicitação ${item.numero_protocolo} restaurada com sucesso.`);
+            void recarregar();
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     } finally {
@@ -384,7 +474,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Cabeçalho */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="ase-header" className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <button
             type="button"
@@ -413,15 +503,17 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
           </p>
         </div>
 
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={onRelatorio}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 sm:w-auto cursor-pointer"
-          >
-            <BarChart3 className="h-4 w-4" />
-            Relatório
-          </button>
+        <div data-tour="ase-relatorio-toggle" className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          {onRelatorio && (
+            <button
+              type="button"
+              onClick={onRelatorio}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 sm:w-auto cursor-pointer"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Relatório
+            </button>
+          )}
 
           <button
             type="button"
@@ -436,7 +528,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
       </div>
 
       {/* Barra de Filtros & Abas */}
-      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="ase-filtros" className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Abas de Escopo (quando usuário pode ver todas) */}
           {podeVerTodas ? (
@@ -536,7 +628,7 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div data-tour="ase-lista" className="space-y-6">
           {gruposPorData.map(grupo => (
             <section key={grupo.dataExecucao} className="space-y-3">
               {/* Cabeçalho da Data de Execução com Totais e Ações de Exportação Consolidada */}
@@ -745,7 +837,80 @@ function Lista({ user, onAbrir, onNavigate, onRelatorio }: {
 // Edição
 // =====================================================================
 
+const RH_ASE_EDICAO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Timer,
+    title: 'Preenchimento da ASE — Horas Extras',
+    description:
+      'Formulário oficial FRM.RHU-0007 para autorização de serviços extraordinários, escalação de colaboradores, benefícios e cálculo automático de horas.',
+  },
+  {
+    target: 'ase-edicao-header',
+    icon: Timer,
+    title: 'Cabeçalho e Protocolo da ASE',
+    description:
+      'Acompanhe o número do protocolo oficial, a data de emissão e o status (Rascunho ou Enviado). Use a seta para voltar à listagem de ASEs.',
+  },
+  {
+    target: 'ase-edicao-dados',
+    icon: Calendar,
+    title: 'Data, Turno e Motivo da Solicitação',
+    description:
+      'Defina o dia da realização do serviço, o turno e o setor requisitante. A justificativa detalhada é essencial para o acompanhamento do DP e liderança.',
+  },
+  {
+    target: 'ase-edicao-adicionar',
+    icon: Plus,
+    title: 'Adicionar Colaboradores',
+    description:
+      'Clique em "Adicionar Colaborador" para selecionar múltiplos funcionários da fábrica diretamente da base integrada do RH.',
+  },
+  {
+    target: 'ase-edicao-lote',
+    icon: Sparkles,
+    title: 'Preenchimento em Lote da Equipe',
+    description:
+      'Agilize o preenchimento! Defina horários de entrada, saída, intervalo e marque transporte/refeição nesta barra para replicar instantaneamente para todos os colaboradores.',
+  },
+  {
+    target: 'ase-edicao-itens',
+    icon: User,
+    title: 'Grade de Horas da Equipe',
+    description:
+      'Ajuste horários específicos se necessário. O sistema calcula automaticamente o total de horas extras por colaborador e consolida o somatório da ASE.',
+  },
+  {
+    target: 'ase-edicao-acoes',
+    icon: Send,
+    title: 'Gravação, Envio e Emissão do PDF',
+    description:
+      'Salve como Rascunho para continuar depois ou clique em "Enviar ASE" para validar a autorização oficial e gerar o PDF executivo.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida sobre o preenchimento da ASE? Clique no botão no canto inferior e selecione "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, selecione "Reportar um erro" para abrir um chamado técnico direto com a telemetria do sistema.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" para propor melhorias para o formulário de horas extras.',
+  },
+];
+
 function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: () => void }) {
+  const tour = usePageTour('form-rh-ase-edicao', RH_ASE_EDICAO_TOUR_STEPS.length);
   const toast = useToast();
 
   const [dados, setDados] = useState<AseHoraExtraCompleta | null>(null);
@@ -987,13 +1152,41 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     setProcessando(true);
     try {
       if (confirmacao.tipo === 'remover-item') {
-        await api.removerItemASE(confirmacao.itemId, user.id);
-        setDados(d => (d ? { ...d, itens: d.itens.filter(it => it.id !== confirmacao.itemId) } : d));
+        const { itemId, nome } = confirmacao;
+        await api.removerItemASE(itemId, user.id);
+        setDados(d => (d ? { ...d, itens: d.itens.filter(it => it.id !== itemId) } : d));
         setConfirmacao(null);
+        toast.undo(
+          `Colaborador ${nome} removido da ASE.`,
+          async () => {
+            try {
+              await api.restaurarItemASE(itemId);
+              toast.success(`Colaborador ${nome} restaurado com sucesso.`);
+              const reloaded = await api.obterSolicitacaoASE(dados.id);
+              if (reloaded) setDados(reloaded);
+            } catch (err) {
+              toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+            }
+          },
+          6000
+        );
       } else if (confirmacao.tipo === 'excluir') {
-        await api.excluirSolicitacaoASE(dados.id, user.id);
-        toast.success('ASE excluída.');
+        const aseId = dados.id;
+        const aseProt = dados.numero_protocolo;
+        await api.excluirSolicitacaoASE(aseId, user.id);
         onVoltar();
+        toast.undo(
+          `ASE ${aseProt} excluída.`,
+          async () => {
+            try {
+              await api.restaurarSolicitacaoASE(aseId);
+              toast.success(`ASE ${aseProt} restaurada com sucesso.`);
+            } catch (err) {
+              toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+            }
+          },
+          6000
+        );
       }
     } catch (e) {
       toast.error(`Falha ao excluir: ${(e as Error).message}`);
@@ -1183,7 +1376,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   return (
     <div className="mx-auto max-w-5xl pb-24">
       {/* Cabeçalho */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-tour="ase-edicao-header" className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <button
             type="button"
@@ -1213,6 +1406,15 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={tour.startTour}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/50 px-3 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-400 dark:hover:bg-blue-900/50 cursor-pointer"
+            title="Ver tour explicativo dos campos desta ASE"
+          >
+            <HelpCircle className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+            Dicas de Preenchimento
+          </button>
           {podeEditar && dados.status === 'ENVIADO' && !modoEdicao && (
             <button
               type="button"
@@ -1270,7 +1472,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       )}
 
       {/* Dados gerais */}
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
+      <section data-tour="ase-edicao-dados" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label htmlFor="setor" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Setor *</label>
@@ -1345,7 +1547,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Colaboradores ({dados.itens.length})</h2>
           </div>
           {!somenteLeitura && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-tour="ase-edicao-adicionar" className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setBuscaAberta(true)}
@@ -1366,7 +1568,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           <>
             {/* Modo Mobile: Barra de Preenchimento em Lote (< md) */}
             {!somenteLeitura && totalItens > 0 && (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/80 p-3.5 space-y-3 dark:border-blue-900/60 dark:bg-blue-950/30 md:hidden shadow-xs">
+              <div data-tour="ase-edicao-lote" className="mt-4 rounded-xl border border-blue-200 bg-blue-50/80 p-3.5 space-y-3 dark:border-blue-900/60 dark:bg-blue-950/30 md:hidden shadow-xs">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-blue-800 dark:text-blue-300">
                   <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <span>Preencher todos os colaboradores ({totalItens})</span>
@@ -1461,7 +1663,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             </div>
 
             {/* Modo Desktop: Tabela Completa (>= md) */}
-            <div className="mt-4 hidden overflow-x-auto md:block max-h-[72vh] rounded-xl border border-slate-200 dark:border-slate-800">
+            <div data-tour="ase-edicao-itens" className="mt-4 hidden overflow-x-auto md:block max-h-[72vh] rounded-xl border border-slate-200 dark:border-slate-800">
               <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead className="sticky top-0 z-10 bg-white shadow-xs dark:bg-slate-900">
                   <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400">
@@ -1724,7 +1926,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           </div>
 
           {/* Ações de Estado / Salvamento */}
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <div data-tour="ase-edicao-acoes" className="flex items-center gap-2 w-full sm:w-auto justify-end">
             {!podeEditar ? (
               <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                 <Eye className="h-4 w-4" />
@@ -1830,6 +2032,16 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
           variante="perigo"
           onConfirmar={onVoltar}
           onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={RH_ASE_EDICAO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

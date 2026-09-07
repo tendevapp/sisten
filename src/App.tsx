@@ -4,7 +4,7 @@ import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
-import { canAccessPage, canAccessFormGroup, pageIdForPath } from './lib/pages';
+import { canAccessPage, canAccessFormGroup, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia } from './lib/sessaoDiaria';
 
 // Components
@@ -35,6 +35,7 @@ const CadastrosSap = lazy(() => import('./views/CadastrosSap'));
 const Reports = lazy(() => import('./views/Reports'));
 const Compras = lazy(() => import('./views/Compras'));
 const AnaliseCotacoes = lazy(() => import('./views/AnaliseCotacoes'));
+const HistoricoCotacoes = lazy(() => import('./views/HistoricoCotacoes'));
 const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
@@ -42,6 +43,7 @@ const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
+const AbrirRm = lazy(() => import('./views/AbrirRm'));
 const Estoque = lazy(() => import('./views/Estoque'));
 const Movimentacoes = lazy(() => import('./views/Movimentacoes'));
 const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
@@ -71,6 +73,8 @@ const RhColaboradores = lazy(() => import('./views/rh/RhColaboradores'));
 const RhSetores = lazy(() => import('./views/rh/RhSetores'));
 const RhTurnos = lazy(() => import('./views/rh/RhTurnos'));
 const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
+const RhAseRelatorio = lazy(() => import('./views/rh/RhAseRelatorio'));
+const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
@@ -677,6 +681,20 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/suprimentos/cotacoes/historico':
+        if (canAccessPage(user, 'sup_historico_cotacoes')) {
+          return <HistoricoCotacoes user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Curadoria dos vínculos item cotado → material SAP e a auditoria do
+      // pedido contra a cotação que o originou.
+      case '/suprimentos/cotacoes/vinculos':
+        if (canAccessPage(user, 'sup_vinculos_cotacoes')) {
+          return <CotacaoVinculos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/suprimentos/historico':
         if (canAccessPage(user, 'sup_historico')) {
           return <HistoricoPedidos user={user} onNavigate={handleNavigate} />;
@@ -760,6 +778,12 @@ export default function App() {
       case '/relatorios':
         if (canAccessPage(user, 'relatorios')) {
           return <Reports user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/abrir-rm':
+        if (canAccessPage(user, 'almox_abrir_rm')) {
+          return <AbrirRm user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -920,6 +944,21 @@ export default function App() {
       case '/rh/percentual-he':
         if (canAccessPage(user, 'rh_percentual_he')) {
           return <RhPercentualHE user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Relatório gerencial de ASE. Mesma tela alcançada pelo formulário, aqui
+      // como item de "Relatórios" do hub de RH — e restrita a admin e a quem
+      // tem o módulo RH liberado.
+      case '/rh/relatorio-ase':
+        if (canAccessAseRelatorio(user)) {
+          return (
+            <RhAseRelatorio
+              user={user}
+              onVoltar={() => handleNavigate('/rh')}
+              voltarLabel="Voltar para RH"
+            />
+          );
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

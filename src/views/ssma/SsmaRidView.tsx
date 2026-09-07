@@ -22,7 +22,13 @@ import {
   TrendingUp,
   FileSpreadsheet,
   SlidersHorizontal,
+  HelpCircle,
+  Bug,
+  Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type {
   Profile,
   SsmaRidDesvio,
@@ -53,7 +59,66 @@ interface SsmaRidViewProps {
   abaInicial?: 'novo' | 'historico';
 }
 
+const SSMA_RID_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldAlert,
+    title: 'RID — Registro de Identificação de Desvio',
+    description:
+      'Formulário oficial FRM.SSMA-0001 para comunicação e tratamento de desvios comportamentais e condições inseguras no ambiente de trabalho.',
+  },
+  {
+    target: 'rid-header',
+    icon: ShieldAlert,
+    title: 'Identificação e governança SSMA',
+    description:
+      'Cabeçalho oficial com identificação da norma, código do procedimento e botão de personalização de perguntas para administradores.',
+  },
+  {
+    target: 'rid-abas',
+    icon: PlusCircle,
+    title: 'Alternador de abas operacionais',
+    description:
+      'Alterne com facilidade entre "Novo Registro" (para relatar um desvio imediatamente) e "Histórico" (para acompanhar o tratamento dos desvios já abertos).',
+  },
+  {
+    target: 'rid-metricas',
+    icon: TrendingUp,
+    title: 'Indicadores operacionais de SSMA',
+    description:
+      'Acompanhe o total de desvios registrados, quantos foram sanados na hora, quantos estão pendentes de ação e o percentual de resolução da fábrica.',
+  },
+  {
+    target: 'rid-form-conteudo',
+    icon: Camera,
+    title: 'Preenchimento e fotos do desvio',
+    description:
+      'Selecione a data, setor e turno, informe se o desvio foi comportamental ou condição física, anexe fotos comprobatórias pela câmera ou galeria e registre se foi sanado.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: SsmaRidViewProps) {
+  const tour = usePageTour('form-ssma-rid', SSMA_RID_TOUR_STEPS.length);
   const toast = useToast();
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>(abaInicial);
 
@@ -122,8 +187,20 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
   const handleExcluir = async (id: string) => {
     try {
       await excluirDesvioRid(id, user.id);
-      toast.success('Registro de desvio excluído com sucesso.');
       carregarDados();
+      toast.undo(
+        'Registro de desvio excluído com sucesso.',
+        async () => {
+          try {
+            await restaurarDesvioRid(id);
+            carregarDados();
+            toast.success('Registro de desvio restaurado com sucesso!');
+          } catch (err: any) {
+            toast.error(`Erro ao restaurar: ${err.message}`);
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error(`Erro ao excluir: ${err.message}`);
     }
@@ -205,7 +282,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-16">
       {/* Topo / Barra de Retorno e Identidade */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 dark:border-slate-800">
+      <div data-tour="rid-header" className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5 dark:border-slate-800">
         <div>
           <button
             type="button"
@@ -242,7 +319,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
           )}
 
           {/* Alternador de Abas */}
-          <div className="flex rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800/80 shadow-inner">
+          <div data-tour="rid-abas" className="flex rounded-2xl bg-slate-100 p-1.5 dark:bg-slate-800/80 shadow-inner">
             <button
               type="button"
               onClick={() => setAbaAtiva('novo')}
@@ -273,7 +350,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
       </div>
 
       {/* Cards de Métricas Operacionais do RID */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+      <div data-tour="rid-metricas" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
           <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total de RIDs</span>
           <p className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-slate-100">
@@ -330,7 +407,7 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
 
       {/* Conteúdo da Aba 1: Formulário Novo RID */}
       {abaAtiva === 'novo' && (
-        <div>
+        <div data-tour="rid-form-conteudo">
           <SsmaRidForm
             user={user}
             config={configForm}
@@ -568,6 +645,15 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
           onSaved={(novaConfig) => {
             setConfigForm(novaConfig);
           }}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={SSMA_RID_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

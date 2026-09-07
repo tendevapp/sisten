@@ -29,11 +29,13 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Link2,
 } from 'lucide-react';
 import { supabase } from '../../db/supabaseClient';
 import { gerarConteudoGemini } from '../../lib/geminiApi';
 import { extrairCotacao } from '../../lib/cotacoesApi';
 import UsageAnalyticsSection from './UsageAnalyticsSection';
+import PromptsIaSection from './PromptsIaSection';
 
 interface ApiEndpointInfo {
   id: string;
@@ -92,6 +94,18 @@ const APIS_DISPONIVEIS: ApiEndpointInfo[] = [
     modelos: ['gpt-5.6-luna', 'deepseek/deepseek-v4-flash'],
     secrets: ['OPENAI_API_KEY', 'OPENROUTER_API_KEY'],
     finalidade: 'Etapa 2 do pipeline: popula itens, prazos, fretes e condições de pagamento na base.',
+  },
+  {
+    id: 'vincular-cotacao-ia',
+    nome: 'Vínculo de Cotação ao Material SAP',
+    funcaoSupabase: 'vincular-cotacao-ia',
+    provedor: 'Gemini (Primário) + OpenRouter (Fallback)',
+    descricao: 'Escolhe o material do catálogo SAP para os itens cotados que o casamento com pedidos não resolveu.',
+    icone: Link2,
+    cor: 'text-violet-600 bg-violet-50 border-violet-200',
+    modelos: ['gemini-3.6-flash', 'deepseek/deepseek-v4-flash'],
+    secrets: ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'OPENROUTER_API_KEY'],
+    finalidade: 'Alimenta a base de vínculos usada pela sugestão no mapa de cotação e pela auditoria cotação × pedido. Prompt editável em "Prompts de IA", abaixo.',
   },
   {
     id: 'atualizar-ipca',
@@ -210,6 +224,33 @@ Condição: 30 dias | Frete: CIF
           latencyMs: Math.round(fim - inicio),
           mensagem: `Operacional (${qtdPropostas} proposta(s) extraída(s) com sucesso)`,
           detalhes: JSON.stringify(resultado.propostas?.[0] ?? resultado, null, 2),
+        };
+      } else if (apiId === 'vincular-cotacao-ia') {
+        // Teste de fumaça: lote de 1 item. Se a fila estiver vazia a função
+        // responde SEM_PENDENCIAS — que também é sinal de "está no ar".
+        const { data, error } = await supabase.functions.invoke('vincular-cotacao-ia', { body: { limite: 1 } });
+        const fim = performance.now();
+
+        const corpoErro = (() => {
+          if (!error) return null;
+          const contexto = (error as any)?.context;
+          return typeof contexto?.json === 'function' ? contexto.json().catch(() => null) : null;
+        })();
+        const corpo = corpoErro ? await corpoErro : null;
+        const codigo = corpo?.erro?.codigo ?? (data as any)?.erro?.codigo;
+
+        if (error && codigo !== 'SEM_PENDENCIAS') {
+          throw new Error(corpo?.erro?.mensagem ?? error.message ?? 'Falha na resposta da Edge Function');
+        }
+
+        statusResultado = {
+          loading: false,
+          success: true,
+          latencyMs: Math.round(fim - inicio),
+          mensagem: codigo === 'SEM_PENDENCIAS'
+            ? 'Operacional (nenhum item na fila de análise)'
+            : `Operacional (${(data as any)?.analisados ?? 0} item(ns) analisado(s))`,
+          detalhes: JSON.stringify(corpo ?? data, null, 2),
         };
       } else if (apiId === 'atualizar-ipca') {
         const { data, error } = await supabase.functions.invoke('atualizar-ipca');
@@ -513,6 +554,9 @@ Condição: 30 dias | Frete: CIF
           })}
         </div>
       </div>
+
+      {/* Prompts editáveis das funções de IA */}
+      <PromptsIaSection />
 
       {/* Logs de Uso & Análise por Modelo */}
       <UsageAnalyticsSection nomesPorApiId={Object.fromEntries(APIS_DISPONIVEIS.map(api => [api.id, api.nome]))} />

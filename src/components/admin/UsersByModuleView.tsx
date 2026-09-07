@@ -16,6 +16,7 @@ import {
 } from '../../lib/pages';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
+import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface UsersByModuleViewProps {
   profiles: Profile[];
@@ -257,13 +258,10 @@ export default function UsersByModuleView({
   };
 
   /**
-   * Aplica a mesma decisão a todos os colaboradores da lista filtrada.
-   *
-   * É o caso de uso que trouxe esta tela: "liberar o formulário da Portaria
-   * para todo o setor X" era um clique por pessoa. Administradores ficam de
+   * Aplicação em massa na lista visível. Administradores são sempre deixados de
    * fora — o acesso deles é global e um override não mudaria nada.
    */
-  const handleAplicarEmMassa = async (decisao: boolean | null) => {
+  const handleAplicarEmMassa = (decisao: boolean | null) => {
     if (!selectedPage) return;
     const alvos = filteredUserStatuses
       .map(item => item.user)
@@ -275,11 +273,12 @@ export default function UsersByModuleView({
     }
 
     const rotulo = decisao === true ? 'liberar' : decisao === false ? 'bloquear' : 'restaurar a regra padrão de';
-    const confirmado = window.confirm(
-      `Deseja ${rotulo} "${selectedPage.label}" para os ${alvos.length} colaboradores da lista atual?`,
-    );
-    if (!confirmado) return;
+    setConfirmBulk({ decisao, rotulo, alvos });
+  };
 
+  const handleConfirmarBulk = async () => {
+    if (!confirmBulk || !selectedPage) return;
+    const { decisao, alvos } = confirmBulk;
     setAplicandoEmMassa(true);
     try {
       await localDb.updateBulkPageAccess(alvos.map(u => u.id), { [selectedPage.id]: decisao });
@@ -288,6 +287,7 @@ export default function UsersByModuleView({
           ? `Regra padrão restaurada para ${alvos.length} colaborador(es).`
           : `Acesso ${decisao ? 'liberado' : 'bloqueado'} para ${alvos.length} colaborador(es).`,
       );
+      setConfirmBulk(null);
       onChanged();
     } catch (err) {
       console.error('Falha na edição em massa de permissões:', err);
@@ -782,6 +782,17 @@ export default function UsersByModuleView({
         </div>
 
       </div>
+
+      {confirmBulk && selectedPage && (
+        <ConfirmDialog
+          titulo={`Aplicar permissão em massa`}
+          mensagem={`Deseja ${confirmBulk.rotulo} "${selectedPage.label}" para os ${confirmBulk.alvos.length} colaboradores da lista atual?`}
+          confirmarLabel="Sim, aplicar"
+          confirmando={aplicandoEmMassa}
+          onConfirmar={handleConfirmarBulk}
+          onCancelar={() => setConfirmBulk(null)}
+        />
+      )}
     </div>
   );
 }

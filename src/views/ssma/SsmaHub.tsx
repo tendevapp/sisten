@@ -18,7 +18,13 @@ import {
   ArrowRight,
   ArrowLeft,
   Sparkles,
+  HelpCircle,
+  Bug,
+  Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type { Profile, SsmaRidMetricas } from '../../types';
 import { obterMetricasRid } from '../../lib/ssmaApi';
 import SsmaMetricsBar from '../../components/ssma/SsmaMetricsBar';
@@ -31,7 +37,59 @@ interface SsmaHubProps {
   initialTab?: string;
 }
 
+const SSMA_HUB_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ShieldAlert,
+    title: 'Hub de SSMA — Segurança & Meio Ambiente',
+    description:
+      'Painel centralizador de normas, relatórios de desvios e formulários operacionais de prevenção de acidentes da TEN.',
+  },
+  {
+    target: 'ssma-hub-header',
+    icon: ShieldAlert,
+    title: 'Módulo de SSMA e Governança',
+    description:
+      'Apresenta o escopo de procedimentos de segurança do trabalho e botão de retorno para o hub geral de formulários.',
+  },
+  {
+    target: 'ssma-hub-metricas',
+    icon: Activity,
+    title: 'Métricas ao vivo da segurança',
+    description:
+      'Painel resumido de desvios registrados no mês, índice de desvios sanados na fábrica e link rápido para a gestão do RID.',
+  },
+  {
+    target: 'ssma-hub-grid',
+    icon: ClipboardCheck,
+    title: 'Catálogo de formulários SSMA',
+    description:
+      'Acesse o RID (FRM.SSMA-0001) já ativo e acompanhe os formulários planejados (Inspeção 5S, Quase Acidente, EPIs, Permissão de Trabalho e CPI).',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }: SsmaHubProps) {
+  const tour = usePageTour('hub-ssma', SSMA_HUB_TOUR_STEPS.length);
   const toast = useToast();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [metricas, setMetricas] = useState<SsmaRidMetricas | null>(null);
@@ -134,7 +192,7 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-16">
       {/* Header */}
-      <div>
+      <div data-tour="ssma-hub-header">
         <button
           type="button"
           onClick={() => onNavigate('/formularios')}
@@ -160,10 +218,12 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
       </div>
 
       {/* Metrics Bar */}
-      <SsmaMetricsBar metricas={metricas} onSelectTab={(tab) => tab === 'rid' && setActiveTab('rid')} />
+      <div data-tour="ssma-hub-metricas">
+        <SsmaMetricsBar metricas={metricas} onSelectTab={(tab) => tab === 'rid' && setActiveTab('rid')} />
+      </div>
 
       {/* Forms Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-tour="ssma-hub-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FORMULARIOS_SSMA.map((form) => {
           const Icon = form.icon;
           return (
@@ -229,6 +289,16 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
           );
         })}
       </div>
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={SSMA_HUB_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
     </div>
   );
 }

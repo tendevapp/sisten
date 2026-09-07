@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
+import { ehEmailInterno, emailDeLogin } from '../lib/loginSemEmail';
 
 interface LoginProps {
   onLoginSuccess: (user: Profile) => void;
@@ -100,6 +101,15 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
     e.preventDefault();
     setResetError('');
     setResetMessage('');
+    // Quem entra por identificador não tem caixa de e-mail: mandar "enviamos
+    // um link" seria mentira, e a pessoa ficaria esperando.
+    if (!resetEmail.includes('@') || ehEmailInterno(emailDeLogin(resetEmail))) {
+      setResetError(
+        'Seu acesso é por usuário, sem e-mail — não há para onde enviar o link. Peça ao administrador para redefinir sua senha.',
+      );
+      return;
+    }
+
     setResetLoading(true);
 
     try {
@@ -298,22 +308,29 @@ export default function Login({ onLoginSuccess, onNavigate }: LoginProps) {
                     <form onSubmit={handleSubmit} className="space-y-4 text-left login-stagger">
                       <div className="space-y-2">
                         <label htmlFor="email" className="text-sm font-semibold text-slate-700">
-                          E-mail
+                          E-mail ou usuário
                         </label>
                         <div className="relative group">
                           <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 transition-colors group-focus-within:text-[#0056c6]" />
+                          {/* `type="text"`: quem não tem e-mail entra com o
+                              identificador `nome.sobrenome`, que a validação
+                              nativa de e-mail do navegador rejeitaria. */}
                           <input
                             id="email"
-                            type="email"
-                            placeholder="seu.nome@ten.com.br"
+                            type="text"
+                            placeholder="seu.nome@ten.com.br ou nome.sobrenome"
                             className="w-full pl-11 h-11 bg-white/60 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#0056c6] focus:outline-none focus:ring-2 focus:ring-[#0056c6]/20 rounded-xl transition-all duration-300"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            autoComplete="email"
+                            autoComplete="username"
                             autoFocus
                           />
                         </div>
+                        <p className="text-[11px] text-slate-500">
+                          Sem e-mail corporativo? Use o usuário que o administrador criou (ex.:{' '}
+                          <span className="font-mono">jose.pereira</span>).
+                        </p>
                       </div>
 
                       <div className="space-y-2">

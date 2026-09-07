@@ -12,8 +12,10 @@
  * `src/**\/*.test.ts`, então esta é a única camada com cobertura de teste).
  */
 
+import { formatarDataDDMMYY, gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import type {
   CampoFaltante,
+  CotacaoProposta,
   CotacaoPropostaDraft,
   CotacaoPropostaItemDraft,
   CotacaoProcessoItem,
@@ -173,6 +175,41 @@ export function normalizarDescricao(bruto: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/**
+ * Qualificadores de tipo societário que aparecem no fim (às vezes no meio,
+ * antes de "LTDA") da razão social e não ajudam a reconhecer o fornecedor
+ * numa coluna estreita — só o nome de fantasia ajuda. Ordem importa: mais
+ * específico primeiro, para não sobrar "SOCIEDADE" de uma combinação maior.
+ */
+const SUFIXOS_SOCIETARIOS = [
+  'SOCIEDADE EMPRESARIA LIMITADA', 'SOCIEDADE UNIPESSOAL LIMITADA', 'SOCIEDADE UNIPESSOAL DE ADVOGADOS',
+  'SOCIEDADE UNIPESSOAL', 'SOCIEDADE LIMITADA', 'SOCIEDADE ANONIMA', 'SOCIEDADE SIMPLES',
+  'EMPRESA INDIVIDUAL DE RESPONSABILIDADE LIMITADA', 'EIRELI', 'LTDA\\.?', 'S/A', 'S\\.A\\.?', '\\bSA\\b',
+  '\\bME\\b', '\\bEPP\\b', '\\bMEI\\b',
+] as const;
+
+const RE_SUFIXO_SOCIETARIO = new RegExp(`\\s*(${SUFIXOS_SOCIETARIOS.join('|')})\\s*$`, 'i');
+
+/**
+ * Nome curto de exibição para coluna estreita (mapa comparativo): tira os
+ * qualificadores societários do fim da razão social, repetindo enquanto
+ * houver mais de um (ex.: "... SOCIEDADE UNIPESSOAL LTDA" tem dois). Nunca
+ * mexe no resto do nome — "COMERCIO", "IMPORTACAO" etc. costumam ser o que
+ * diferencia dois fornecedores parecidos, então ficam. Devolve a razão
+ * social original se a limpeza esvaziar tudo (nome só com sigla societária).
+ */
+export function nomeFornecedorCurto(razaoSocial: string | null | undefined): string {
+  const bruto = (razaoSocial ?? '').trim();
+  if (!bruto) return '';
+  let atual = bruto;
+  for (let i = 0; i < 4; i++) {
+    const cortado = atual.replace(RE_SUFIXO_SOCIETARIO, '').replace(/[-,]\s*$/, '').trim();
+    if (cortado === atual) break;
+    atual = cortado;
+  }
+  return atual || bruto;
+}
+
 // =====================================================================
 // Conversão do contrato da IA -> rascunho editável
 // =====================================================================
@@ -258,6 +295,9 @@ export function normalizarProposta(bruta: PropostaExtraida, ctx: { arquivoOrigem
     frete_modalidade: parseFreteModalidade(bruta.Frete_Modalidade),
     transportadora_indicada: bruta.Transportadora_Indicada ?? null,
     faturamento_minimo: parseMoeda(bruta.Faturamento_Minimo),
+    // O frete em reais não vem da IA (a proposta raramente destaca) — o
+    // comprador informa no mapa comparativo, onde ele muda a decisão.
+    valor_frete: null,
     dados_bancarios_pix: bruta.Dados_Bancarios_PIX ?? null,
     valor_total_orcamento: parseMoeda(bruta.Valor_Total_Orcamento),
     observacoes_gerais: bruta.Observacoes_Gerais ?? null,
@@ -268,6 +308,35 @@ export function normalizarProposta(bruta: PropostaExtraida, ctx: { arquivoOrigem
     extraido_raw: bruta,
 
     itens: (bruta.itens ?? []).map(itemParaDraft),
+  };
+}
+
+/**
+ * Converte uma CotacaoProposta salva no Supabase para CotacaoPropostaDraft,
+ * permitindo recarregar uma cotacao extraida anteriormente sem novo custo de IA.
+ */
+export function propostaParaDraft(
+  p: CotacaoProposta,
+  opts: { novoProcessoId?: string } = {}
+): CotacaoPropostaDraft {
+  const mesmoProcesso = !opts.novoProcessoId || opts.novoProcessoId === p.processo_id;
+  return {
+    ...p,
+    id: mesmoProcesso ? p.id : undefined,
+    processo_id: opts.novoProcessoId ?? p.processo_id,
+    _key: mesmoProcesso ? p.id : `proposta_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    _salvo: mesmoProcesso,
+    _extraido_em: p.created_at,
+    itens: (p.itens ?? []).map(i => ({
+      ...i,
+      id: mesmoProcesso ? i.id : undefined,
+      proposta_id: mesmoProcesso ? i.proposta_id : undefined,
+      _key: mesmoProcesso ? i.id : `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      valor_unitario: i.valor_unitario ?? null,
+      quantidade: i.quantidade ?? null,
+      ipi_percentual: i.ipi_percentual ?? null,
+      icms_percentual: i.icms_percentual ?? null,
+    })),
   };
 }
 
@@ -463,3 +532,39 @@ export function repararJsonTruncado(bruto: string): unknown {
   const fecho = pilha.reverse().map(c => (c === '{' ? '}' : ']')).join('');
   return JSON.parse(prefixo + fecho);
 }
+
+// =====================================================================
+// Codigo de Processo de Cotacao (Padrao COT-DDMMYY-INDICE)
+// =====================================================================
+
+/**
+ * Monta o codigo de cotacao no padrao obrigatorio do SISTEN: `COT-DDMMYY-INDICE`.
+ * Ex.: `COT-040926-01`, `COT-040926-02`.
+ */
+export function gerarCodigoCotacao(
+  dataISO?: string | null,
+  indice: number | string = 1,
+): string {
+  return gerarCodigoFormulario('COT', dataISO, indice);
+}
+
+/**
+ * Calcula o proximo indice sequencial para cotacoes no mes da data informada.
+ * Ignora codigos legados fora do padrao (ex.: `COT-2026-5WD82`) ou de outros meses.
+ */
+export function proximoIndiceCotacao(
+  codigosExistentes: (string | null | undefined)[],
+  dataISO?: string | null,
+): number {
+  const ddmmyy = formatarDataDDMMYY(dataISO);
+  const mmyy = ddmmyy.slice(2); // ex: '0926'
+  const regexMes = new RegExp(`^COT-\\d{2}${mmyy}-(\\d+)$`, 'i');
+
+  const codigosMes = (codigosExistentes || []).filter(c => {
+    if (!c) return false;
+    return regexMes.test(String(c).trim());
+  });
+
+  return proximoIndiceCodigo('COT', codigosMes);
+}
+

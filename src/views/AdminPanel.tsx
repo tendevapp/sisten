@@ -24,6 +24,8 @@ import { formatDateBR } from '../lib/format';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import PageAccessModal from '../components/admin/PageAccessModal';
+import NovoUsuarioSemEmailModal from '../components/admin/NovoUsuarioSemEmailModal';
+import { ehEmailInterno, rotuloIdentificador } from '../lib/loginSemEmail';
 import BulkPageAccessModal from '../components/admin/BulkPageAccessModal';
 import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal';
 import UserEditGovernanceModal from '../components/admin/UserEditGovernanceModal';
@@ -52,6 +54,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [pageAccessProfileId, setPageAccessProfileId] = useState<string | null>(null);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [bulkAccessModalOpen, setBulkAccessModalOpen] = useState(false);
+  // Cadastro manual de acesso para quem não tem e-mail corporativo.
+  const [novoUsuarioAberto, setNovoUsuarioAberto] = useState(false);
   const [resetPwdUserId, setResetPwdUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<string>('');
   const [syncing, setSyncing] = useState(false);
@@ -468,12 +472,25 @@ export default function AdminPanel({ user }: AdminPanelProps) {
 
   const handleConfirmarExcluirRhSetor = async () => {
     if (!confirmDeleteRhSetor) return;
+    const itemRemovido = { ...confirmDeleteRhSetor };
     setExcluindoRhSetor(true);
     try {
-      await excluirRhSetor(confirmDeleteRhSetor.id);
-      toast.success(`Setor "${confirmDeleteRhSetor.nome}" excluído com sucesso.`);
+      await excluirRhSetor(itemRemovido.id);
       setConfirmDeleteRhSetor(null);
       await carregarRhSetores();
+      toast.undo(
+        `Setor "${itemRemovido.nome}" excluído com sucesso.`,
+        async () => {
+          try {
+            await criarRhSetor(itemRemovido.nome);
+            await carregarRhSetores();
+            toast.success(`Setor "${itemRemovido.nome}" restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error(err.message || 'Erro ao restaurar o setor.');
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error(err.message || 'Não foi possível excluir o setor.');
     } finally {
@@ -1520,7 +1537,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="font-bold text-slate-900 text-xs truncate" title={p.name}>{p.name}</p>
-                          <p className="text-[11px] text-slate-500 truncate" title={p.email}>{p.email}</p>
+                          <p className="text-[11px] text-slate-500 truncate" title={p.email}>{rotuloIdentificador(p.email)}</p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-2">
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 truncate">
                               <Briefcase className="w-2.5 h-2.5 text-slate-500 shrink-0" />
@@ -1600,6 +1617,15 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setNovoUsuarioAberto(true)}
+                  title="Criar acesso para quem não tem e-mail corporativo (identificador nome.sobrenome)"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2 px-3.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Novo usuário
+                </button>
                 <button
                   type="button"
                   onClick={async () => {
@@ -1888,7 +1914,16 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5 truncate">{p.email}</p>
+                              {/* Usuário sem e-mail: mostrar `fulano@sisten.local`
+                                  sugeriria uma caixa que não existe. */}
+                              <p className="text-[11px] text-slate-500 mt-0.5 truncate flex items-center gap-1.5" title={rotuloIdentificador(p.email)}>
+                                {rotuloIdentificador(p.email)}
+                                {ehEmailInterno(p.email) && (
+                                  <span className="shrink-0 rounded border border-slate-200 bg-slate-100 px-1 py-0.2 text-[9px] font-bold text-slate-500">
+                                    SEM E-MAIL
+                                  </span>
+                                )}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -4861,6 +4896,21 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           />
         );
       })()}
+
+      {novoUsuarioAberto && (
+        <NovoUsuarioSemEmailModal
+          sectors={sectors}
+          onClose={() => setNovoUsuarioAberto(false)}
+          onCreated={async (perfil) => {
+            setNovoUsuarioAberto(false);
+            await loadData();
+            toast.success(`Acesso criado para ${perfil.name}. Defina os módulos que ele pode abrir.`);
+            // Emenda direto nas permissões: criar o acesso sem liberar
+            // módulo nenhum deixaria a pessoa presa na tela inicial.
+            setPageAccessProfileId(perfil.id);
+          }}
+        />
+      )}
 
       {bulkAccessModalOpen && selectedUserIds.length > 0 && (
         <BulkPageAccessModal

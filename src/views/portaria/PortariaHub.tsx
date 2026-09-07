@@ -8,8 +8,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   DoorOpen, Wrench, Bus, Truck, ClipboardList, ShieldCheck,
-  ArrowRight, ArrowLeft, Activity, Clock
+  ArrowRight, ArrowLeft, Activity, Clock,
+  HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type { Profile } from '../../types';
 import * as api from '../../lib/portariaApi';
 import type { PortariaMetricas } from '../../lib/portariaApi';
@@ -27,7 +31,59 @@ interface Props {
   initialTab?: string;
 }
 
+const PORTARIA_HUB_TOUR_STEPS: TourStep[] = [
+  {
+    icon: DoorOpen,
+    title: 'Hub de Portaria & Segurança Patrimonial',
+    description:
+      'Painel centralizador de controle de acessos, vigilância, fluxo de carretas de chapas, transportes e ferramentas de terceiros na TEN.',
+  },
+  {
+    target: 'portaria-hub-header',
+    icon: DoorOpen,
+    title: 'Módulo de Portaria e Governança',
+    description:
+      'Apresenta o escopo de procedimentos da Portaria TEN e botão de retorno para o hub geral de formulários.',
+  },
+  {
+    target: 'portaria-hub-metricas',
+    icon: Activity,
+    title: 'Métricas do pátio em tempo real',
+    description:
+      'Acompanhe indicadores ao vivo: plantões e relatórios em aberto, transportes e equipamentos no pátio, carretas ativas e briefings do dia.',
+  },
+  {
+    target: 'portaria-hub-grid',
+    icon: ClipboardList,
+    title: 'Catálogo de formulários da portaria',
+    description:
+      'Acesse rapidamente qualquer um dos 6 formulários operacionais (Passagem de Plantão, Ocorrências, Transportes, Equipamentos, Carretas e Briefing).',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaHub({ user, onNavigate, initialTab = 'visao_geral' }: Props) {
+  const tour = usePageTour('hub-portaria', PORTARIA_HUB_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState(initialTab);
   const [metricas, setMetricas] = useState<PortariaMetricas | null>(null);
 
@@ -131,7 +187,7 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div>
+      <div data-tour="portaria-hub-header">
         <button
           type="button"
           onClick={() => onNavigate('/formularios')}
@@ -156,10 +212,12 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
       </div>
 
       {/* Metrics Bar */}
-      <PortariaMetricsBar metricas={metricas} onSelectTab={setActiveTab} />
+      <div data-tour="portaria-hub-metricas">
+        <PortariaMetricsBar metricas={metricas} onSelectTab={setActiveTab} />
+      </div>
 
       {/* Forms Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-tour="portaria-hub-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FORMULARIOS_PORTARIA.map((form) => {
           const Icon = form.icon;
           return (
@@ -199,6 +257,16 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
           );
         })}
       </div>
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_HUB_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
     </div>
   );
 }

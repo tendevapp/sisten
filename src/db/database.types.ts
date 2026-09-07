@@ -22,7 +22,7 @@ export type Database = {
           registrado_por_id: string | null
           registrado_por_nome: string | null
           ri: string
-          ri_po: string | null
+          ri_po: string
           rm: string | null
           updated_at: string
         }
@@ -33,7 +33,7 @@ export type Database = {
           registrado_por_id?: string | null
           registrado_por_nome?: string | null
           ri: string
-          ri_po?: string | null
+          ri_po: string
           rm?: string | null
           updated_at?: string
         }
@@ -44,7 +44,7 @@ export type Database = {
           registrado_por_id?: string | null
           registrado_por_nome?: string | null
           ri?: string
-          ri_po?: string | null
+          ri_po?: string
           rm?: string | null
           updated_at?: string
         }
@@ -53,6 +53,7 @@ export type Database = {
       cadastro_grupo_mercadoria: {
         Row: {
           classificacao_nivel1: string | null
+          classificacao_nivel2: string | null
           codigo: string
           codigo_pai: string | null
           denominacao: string
@@ -60,6 +61,7 @@ export type Database = {
         }
         Insert: {
           classificacao_nivel1?: string | null
+          classificacao_nivel2?: string | null
           codigo: string
           codigo_pai?: string | null
           denominacao: string
@@ -67,6 +69,7 @@ export type Database = {
         }
         Update: {
           classificacao_nivel1?: string | null
+          classificacao_nivel2?: string | null
           codigo?: string
           codigo_pai?: string | null
           denominacao?: string
@@ -349,6 +352,7 @@ export type Database = {
           email: string
           grupo_compras: string | null
           id: string
+          login_sem_email: boolean
           must_change_password: boolean
           name: string
           notification_preferences: string | null
@@ -366,6 +370,7 @@ export type Database = {
           email: string
           grupo_compras?: string | null
           id: string
+          login_sem_email?: boolean
           must_change_password?: boolean
           name: string
           notification_preferences?: string | null
@@ -383,6 +388,7 @@ export type Database = {
           email?: string
           grupo_compras?: string | null
           id?: string
+          login_sem_email?: boolean
           must_change_password?: boolean
           name?: string
           notification_preferences?: string | null
@@ -846,6 +852,27 @@ export type Database = {
           },
         ]
       }
+      deposito_estoque: {
+        Row: {
+          created_at: string
+          deposito: string
+          descricao: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deposito: string
+          descricao: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deposito?: string
+          descricao?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       expedicao_carregamentos: {
         Row: {
           created_at: string
@@ -1091,6 +1118,57 @@ export type Database = {
           },
           {
             foreignKeyName: "expedicao_tramos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fac_servicos: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          descricao: string | null
+          excluido_em: string | null
+          excluido_por: string | null
+          id: string
+          nome: string
+          ordem: number
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          nome: string
+          ordem?: number
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          nome?: string
+          ordem?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fac_servicos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fac_servicos_excluido_por_fkey"
             columns: ["excluido_por"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -1347,6 +1425,66 @@ export type Database = {
           {
             foreignKeyName: "feedback_reports_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ops_ia_prompts: {
+        Row: {
+          ativo: boolean
+          atualizado_por: string | null
+          atualizado_por_nome: string | null
+          chave: string
+          created_at: string
+          descricao: string | null
+          modelo: string | null
+          parametros: Json
+          prompt: string
+          titulo: string
+          updated_at: string
+          versao: number
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_por?: string | null
+          atualizado_por_nome?: string | null
+          chave: string
+          created_at?: string
+          descricao?: string | null
+          modelo?: string | null
+          parametros?: Json
+          prompt: string
+          titulo: string
+          updated_at?: string
+          versao?: number
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_por?: string | null
+          atualizado_por_nome?: string | null
+          chave?: string
+          created_at?: string
+          descricao?: string | null
+          modelo?: string | null
+          parametros?: Json
+          prompt?: string
+          titulo?: string
+          updated_at?: string
+          versao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ops_ia_prompts_atualizado_por_fkey"
+            columns: ["atualizado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ops_ia_prompts_atualizado_por_fkey"
+            columns: ["atualizado_por"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -2722,7 +2860,22 @@ export type Database = {
           turno?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rh_pessoas_atualizado_por_fkey"
+            columns: ["atualizado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_pessoas_atualizado_por_fkey"
+            columns: ["atualizado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rh_rotas: {
         Row: {
@@ -3981,6 +4134,233 @@ export type Database = {
         }
         Relationships: []
       }
+      ssma_form_config: {
+        Row: {
+          atualizado_em: string
+          atualizado_por: string | null
+          descricao: string | null
+          id: string
+          opcoes: Json
+          perguntas: Json
+          titulo: string
+        }
+        Insert: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          descricao?: string | null
+          id: string
+          opcoes?: Json
+          perguntas?: Json
+          titulo?: string
+        }
+        Update: {
+          atualizado_em?: string
+          atualizado_por?: string | null
+          descricao?: string | null
+          id?: string
+          opcoes?: Json
+          perguntas?: Json
+          titulo?: string
+        }
+        Relationships: []
+      }
+      ssma_rid_atualizacoes: {
+        Row: {
+          created_at: string
+          criado_por: string | null
+          criado_por_nome: string | null
+          desvio_id: string
+          foto_ids: string[]
+          id: string
+          texto: string
+        }
+        Insert: {
+          created_at?: string
+          criado_por?: string | null
+          criado_por_nome?: string | null
+          desvio_id: string
+          foto_ids?: string[]
+          id?: string
+          texto: string
+        }
+        Update: {
+          created_at?: string
+          criado_por?: string | null
+          criado_por_nome?: string | null
+          desvio_id?: string
+          foto_ids?: string[]
+          id?: string
+          texto?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_rid_atualizacoes_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_atualizacoes_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_atualizacoes_desvio_id_fkey"
+            columns: ["desvio_id"]
+            isOneToOne: false
+            referencedRelation: "ssma_rid_desvios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ssma_rid_desvios: {
+        Row: {
+          acao_imediata: string | null
+          acao_proposta: string | null
+          area_desvio: string
+          area_desvio_outro: string | null
+          classificacao_outro: string | null
+          comportamentos_inseguros: string[] | null
+          comunicado_responsavel_area: boolean
+          comunicado_seguranca: boolean
+          condicoes_inseguras: string[] | null
+          created_at: string
+          criado_por: string | null
+          data_registro: string
+          descricao_desvio: string
+          empresa: string
+          empresa_contratada_nome: string | null
+          excluido_em: string | null
+          excluido_por: string | null
+          fotos: Json | null
+          id: string
+          matricula_informante: string | null
+          nome_informante: string
+          numero_registro: string
+          origem_informante: string
+          parecer_ssma: string | null
+          pessoa_id: string | null
+          responsavel_seguranca_informado: string | null
+          sanado_imediato: boolean
+          semana: string
+          setor: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          acao_imediata?: string | null
+          acao_proposta?: string | null
+          area_desvio: string
+          area_desvio_outro?: string | null
+          classificacao_outro?: string | null
+          comportamentos_inseguros?: string[] | null
+          comunicado_responsavel_area?: boolean
+          comunicado_seguranca?: boolean
+          condicoes_inseguras?: string[] | null
+          created_at?: string
+          criado_por?: string | null
+          data_registro?: string
+          descricao_desvio: string
+          empresa?: string
+          empresa_contratada_nome?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          fotos?: Json | null
+          id?: string
+          matricula_informante?: string | null
+          nome_informante: string
+          numero_registro: string
+          origem_informante?: string
+          parecer_ssma?: string | null
+          pessoa_id?: string | null
+          responsavel_seguranca_informado?: string | null
+          sanado_imediato?: boolean
+          semana: string
+          setor: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          acao_imediata?: string | null
+          acao_proposta?: string | null
+          area_desvio?: string
+          area_desvio_outro?: string | null
+          classificacao_outro?: string | null
+          comportamentos_inseguros?: string[] | null
+          comunicado_responsavel_area?: boolean
+          comunicado_seguranca?: boolean
+          condicoes_inseguras?: string[] | null
+          created_at?: string
+          criado_por?: string | null
+          data_registro?: string
+          descricao_desvio?: string
+          empresa?: string
+          empresa_contratada_nome?: string | null
+          excluido_em?: string | null
+          excluido_por?: string | null
+          fotos?: Json | null
+          id?: string
+          matricula_informante?: string | null
+          nome_informante?: string
+          numero_registro?: string
+          origem_informante?: string
+          parecer_ssma?: string | null
+          pessoa_id?: string | null
+          responsavel_seguranca_informado?: string | null
+          sanado_imediato?: boolean
+          semana?: string
+          setor?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssma_rid_desvios_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_desvios_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_desvios_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_desvios_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_desvios_pessoa_id_fkey"
+            columns: ["pessoa_id"]
+            isOneToOne: false
+            referencedRelation: "rh_pessoas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssma_rid_desvios_pessoa_id_fkey"
+            columns: ["pessoa_id"]
+            isOneToOne: false
+            referencedRelation: "vw_rh_rotas_colaboradores"
+            referencedColumns: ["pessoa_id"]
+          },
+        ]
+      }
       sup_bahiasul_entregas: {
         Row: {
           chave_unica: string
@@ -4251,6 +4631,154 @@ export type Database = {
         }
         Relationships: []
       }
+      sup_cotacao_item_vinculos: {
+        Row: {
+          candidatos: Json
+          confirmado_em: string | null
+          confirmado_por: string | null
+          confirmado_por_nome: string | null
+          created_at: string
+          id: string
+          material_code: string | null
+          material_descricao: string | null
+          observacao: string | null
+          origem: string
+          po_cnpj: string | null
+          po_data_doc: string | null
+          po_doc_compra: string | null
+          po_item: string | null
+          po_material: string | null
+          po_preco_unit: number | null
+          po_qtd: number | null
+          po_ri: string | null
+          po_txt_breve: string | null
+          proposta_item_id: string
+          rm_data: string | null
+          rm_item: string | null
+          rm_qtd: number | null
+          rm_requisicao: string | null
+          rm_requisitante: string | null
+          rm_ri: string | null
+          rm_texto_breve: string | null
+          rodada_id: string | null
+          score: number | null
+          sinais: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          candidatos?: Json
+          confirmado_em?: string | null
+          confirmado_por?: string | null
+          confirmado_por_nome?: string | null
+          created_at?: string
+          id?: string
+          material_code?: string | null
+          material_descricao?: string | null
+          observacao?: string | null
+          origem?: string
+          po_cnpj?: string | null
+          po_data_doc?: string | null
+          po_doc_compra?: string | null
+          po_item?: string | null
+          po_material?: string | null
+          po_preco_unit?: number | null
+          po_qtd?: number | null
+          po_ri?: string | null
+          po_txt_breve?: string | null
+          proposta_item_id: string
+          rm_data?: string | null
+          rm_item?: string | null
+          rm_qtd?: number | null
+          rm_requisicao?: string | null
+          rm_requisitante?: string | null
+          rm_ri?: string | null
+          rm_texto_breve?: string | null
+          rodada_id?: string | null
+          score?: number | null
+          sinais?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          candidatos?: Json
+          confirmado_em?: string | null
+          confirmado_por?: string | null
+          confirmado_por_nome?: string | null
+          created_at?: string
+          id?: string
+          material_code?: string | null
+          material_descricao?: string | null
+          observacao?: string | null
+          origem?: string
+          po_cnpj?: string | null
+          po_data_doc?: string | null
+          po_doc_compra?: string | null
+          po_item?: string | null
+          po_material?: string | null
+          po_preco_unit?: number | null
+          po_qtd?: number | null
+          po_ri?: string | null
+          po_txt_breve?: string | null
+          proposta_item_id?: string
+          rm_data?: string | null
+          rm_item?: string | null
+          rm_qtd?: number | null
+          rm_requisicao?: string | null
+          rm_requisitante?: string | null
+          rm_ri?: string | null
+          rm_texto_breve?: string | null
+          rodada_id?: string | null
+          score?: number | null
+          sinais?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_confirmado_por_fkey"
+            columns: ["confirmado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_confirmado_por_fkey"
+            columns: ["confirmado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_proposta_item_id_fkey"
+            columns: ["proposta_item_id"]
+            isOneToOne: true
+            referencedRelation: "cotacao_proposta_itens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_proposta_item_id_fkey"
+            columns: ["proposta_item_id"]
+            isOneToOne: true
+            referencedRelation: "sup_cotacao_proposta_itens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_proposta_item_id_fkey"
+            columns: ["proposta_item_id"]
+            isOneToOne: true
+            referencedRelation: "vw_cotacao_pedido_auditoria"
+            referencedColumns: ["proposta_item_id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_item_vinculos_rodada_id_fkey"
+            columns: ["rodada_id"]
+            isOneToOne: false
+            referencedRelation: "sup_cotacao_vinculo_rodadas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sup_cotacao_processo_itens: {
         Row: {
           centro: string | null
@@ -4368,6 +4896,7 @@ export type Database = {
           aliquota_icms_pct: number | null
           aliquota_ipi_pct: number | null
           aliquota_pis_pct: number | null
+          busca_norm: string | null
           campos_faltantes: string[]
           cfop: string | null
           codigo_produto: string | null
@@ -4390,12 +4919,16 @@ export type Database = {
           unidade_medida: string | null
           vinculo_origem: string
           vinculo_score: number | null
+          mapa_selecionado: boolean
+          mapa_selecionado_em: string | null
+          mapa_selecionado_por: string | null
         }
         Insert: {
           aliquota_cofins_pct?: number | null
           aliquota_icms_pct?: number | null
           aliquota_ipi_pct?: number | null
           aliquota_pis_pct?: number | null
+          busca_norm?: string | null
           campos_faltantes?: string[]
           cfop?: string | null
           codigo_produto?: string | null
@@ -4418,12 +4951,16 @@ export type Database = {
           unidade_medida?: string | null
           vinculo_origem?: string
           vinculo_score?: number | null
+          mapa_selecionado?: boolean
+          mapa_selecionado_em?: string | null
+          mapa_selecionado_por?: string | null
         }
         Update: {
           aliquota_cofins_pct?: number | null
           aliquota_icms_pct?: number | null
           aliquota_ipi_pct?: number | null
           aliquota_pis_pct?: number | null
+          busca_norm?: string | null
           campos_faltantes?: string[]
           cfop?: string | null
           codigo_produto?: string | null
@@ -4446,6 +4983,9 @@ export type Database = {
           unidade_medida?: string | null
           vinculo_origem?: string
           vinculo_score?: number | null
+          mapa_selecionado?: boolean
+          mapa_selecionado_em?: string | null
+          mapa_selecionado_por?: string | null
         }
         Relationships: [
           {
@@ -4476,11 +5016,19 @@ export type Database = {
             referencedRelation: "sup_cotacao_propostas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cotacao_proposta_itens_proposta_id_fkey"
+            columns: ["proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_cotacao_pedido_auditoria"
+            referencedColumns: ["proposta_id"]
+          },
         ]
       }
       sup_cotacao_propostas: {
         Row: {
           arquivo_origem: string | null
+          busca_norm: string | null
           campos_faltantes: string[]
           cliente_cidade: string | null
           cliente_cnpj: string | null
@@ -4522,9 +5070,11 @@ export type Database = {
           vendedor_email: string | null
           vendedor_nome: string | null
           vendedor_telefone: string | null
+          valor_frete: number | null
         }
         Insert: {
           arquivo_origem?: string | null
+          busca_norm?: string | null
           campos_faltantes?: string[]
           cliente_cidade?: string | null
           cliente_cnpj?: string | null
@@ -4566,9 +5116,11 @@ export type Database = {
           vendedor_email?: string | null
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
+          valor_frete?: number | null
         }
         Update: {
           arquivo_origem?: string | null
+          busca_norm?: string | null
           campos_faltantes?: string[]
           cliente_cidade?: string | null
           cliente_cnpj?: string | null
@@ -4610,6 +5162,7 @@ export type Database = {
           vendedor_email?: string | null
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
+          valor_frete?: number | null
         }
         Relationships: [
           {
@@ -4670,6 +5223,60 @@ export type Database = {
           },
         ]
       }
+      sup_cotacao_vinculo_rodadas: {
+        Row: {
+          created_at: string
+          executado_por: string | null
+          executado_por_nome: string | null
+          id: string
+          itens_analisados: number
+          parametros: Json
+          sem_candidato: number
+          sugestoes: number
+          tipo: string
+          vinculos_auto: number
+        }
+        Insert: {
+          created_at?: string
+          executado_por?: string | null
+          executado_por_nome?: string | null
+          id?: string
+          itens_analisados?: number
+          parametros?: Json
+          sem_candidato?: number
+          sugestoes?: number
+          tipo: string
+          vinculos_auto?: number
+        }
+        Update: {
+          created_at?: string
+          executado_por?: string | null
+          executado_por_nome?: string | null
+          id?: string
+          itens_analisados?: number
+          parametros?: Json
+          sem_candidato?: number
+          sugestoes?: number
+          tipo?: string
+          vinculos_auto?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sup_cotacao_vinculo_rodadas_executado_por_fkey"
+            columns: ["executado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_cotacao_vinculo_rodadas_executado_por_fkey"
+            columns: ["executado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sup_ddp: {
         Row: {
           ddp: string
@@ -4694,7 +5301,7 @@ export type Database = {
           doc_compra: string | null
           previsao_manual: string | null
           ri: string
-          ri_po: string | null
+          ri_po: string
           transportadora: string | null
           updated_at: string
         }
@@ -4706,7 +5313,7 @@ export type Database = {
           doc_compra?: string | null
           previsao_manual?: string | null
           ri: string
-          ri_po?: string | null
+          ri_po: string
           transportadora?: string | null
           updated_at?: string
         }
@@ -4718,7 +5325,7 @@ export type Database = {
           doc_compra?: string | null
           previsao_manual?: string | null
           ri?: string
-          ri_po?: string | null
+          ri_po?: string
           transportadora?: string | null
           updated_at?: string
         }
@@ -4960,6 +5567,45 @@ export type Database = {
           incoterms?: string
         }
         Relationships: []
+      }
+      sup_materiais_genericos: {
+        Row: {
+          created_at: string
+          marcado_por: string | null
+          marcado_por_nome: string | null
+          material_code: string
+          motivo: string | null
+        }
+        Insert: {
+          created_at?: string
+          marcado_por?: string | null
+          marcado_por_nome?: string | null
+          material_code: string
+          motivo?: string | null
+        }
+        Update: {
+          created_at?: string
+          marcado_por?: string | null
+          marcado_por_nome?: string | null
+          material_code?: string
+          motivo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sup_materiais_genericos_marcado_por_fkey"
+            columns: ["marcado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sup_materiais_genericos_marcado_por_fkey"
+            columns: ["marcado_por"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sup_pend_processamento_nf: {
         Row: {
@@ -5913,6 +6559,13 @@ export type Database = {
             referencedRelation: "sup_cotacao_propostas"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cotacao_proposta_itens_proposta_id_fkey"
+            columns: ["proposta_id"]
+            isOneToOne: false
+            referencedRelation: "vw_cotacao_pedido_auditoria"
+            referencedColumns: ["proposta_id"]
+          },
         ]
       }
       cotacao_propostas: {
@@ -6847,6 +7500,7 @@ export type Database = {
         Row: {
           cnpj: string | null
           cod_forn: string | null
+          contrato: string | null
           data_doc: string | null
           doc_compra: string | null
           fornecedor: string | null
@@ -6858,6 +7512,7 @@ export type Database = {
           qtd_pedido: number | null
           regiao_uf: string | null
           reqc: string | null
+          tipo_doc_compra: string | null
           tipo_item: string | null
           txt_breve: string | null
           valor_liquido: number | null
@@ -6899,6 +7554,7 @@ export type Database = {
       }
       mv_pedidos_por_ri: {
         Row: {
+          contrato: string | null
           criado_por_pedido: string | null
           data_doc: string | null
           data_migo: string | null
@@ -6909,12 +7565,15 @@ export type Database = {
           fornecedor_codigo: string | null
           fornecedor_nome: string | null
           item: string | null
+          item_contrato: string | null
           modificado_em: string | null
           por: string | null
           preco_liquido_unit: number | null
+          qtd_fornecida: number | null
           qtd_pedido: number | null
           ri: string | null
           status_entrega: string | null
+          tipo_doc_compra: string | null
           unidade_medida_pedido: string | null
           valor_em_brl: number | null
           valor_liquido: number | null
@@ -8475,6 +9134,55 @@ export type Database = {
         }
         Relationships: []
       }
+      vw_cotacao_pedido_auditoria: {
+        Row: {
+          cnpj_menor_preco: string | null
+          cnpj_pedido: string | null
+          custo_versus_menor: number | null
+          data_doc: string | null
+          data_proposta: string | null
+          delta_preco_unit: number | null
+          descricao_cotada: string | null
+          div_fornecedor: boolean | null
+          div_preco: boolean | null
+          div_quantidade: boolean | null
+          doc_compra: string | null
+          fornecedor_menor_preco: string | null
+          fornecedor_pedido: string | null
+          fornecedores_cotados: number | null
+          item: string | null
+          material: string | null
+          material_generico: boolean | null
+          menor_preco_cotado: number | null
+          motivo_generico: string | null
+          po_id: string | null
+          preco_cotado_fornecedor: number | null
+          preco_pedido: number | null
+          proposta_id: string | null
+          proposta_item_id: string | null
+          qtd_cotada: number | null
+          qtd_pedido: number | null
+          reqc: string | null
+          ri: string | null
+          txt_breve: string | null
+        }
+        Relationships: []
+      }
+      vw_cotacao_preco_por_material: {
+        Row: {
+          cotacoes: number | null
+          fornecedores: number | null
+          itens_distintos: number | null
+          maior_preco: number | null
+          material_code: string | null
+          material_descricao: string | null
+          material_generico: boolean | null
+          menor_preco: number | null
+          preco_medio: number | null
+          ultima_cotacao: string | null
+        }
+        Relationships: []
+      }
       vw_demandas: {
         Row: {
           alerta: string | null
@@ -8743,6 +9451,7 @@ export type Database = {
           cnpj: string | null
           cod_forn: string | null
           codigo_postal: string | null
+          contrato: string | null
           data_doc: string | null
           doc_compra: string | null
           estado_uf: string | null
@@ -8758,6 +9467,7 @@ export type Database = {
           regiao_uf: string | null
           reqc: string | null
           rua: string | null
+          tipo_doc_compra: string | null
           tipo_item: string | null
           txt_breve: string | null
           valor_liquido: number | null
@@ -9159,6 +9869,7 @@ export type Database = {
           codigo_de_liberacao: string | null
           concluida: string | null
           contrato_basico: string | null
+          contrato_po: string | null
           criado_por: string | null
           criado_por_pedido: string | null
           ctg_class_cont: string | null
@@ -9187,6 +9898,7 @@ export type Database = {
           grupo_de_compradores: string | null
           grupo_de_mercadorias: string | null
           it_contrato_superior: string | null
+          item_contrato_po: string | null
           item_do_pedido: string | null
           item_pedido: string | null
           item_reqc: string | null
@@ -9213,6 +9925,9 @@ export type Database = {
           por_po: string | null
           preco_unit_po: number | null
           presente_ultima_carga: boolean | null
+          qtd_fornecida_po: number | null
+          qtd_fornecida_total: number | null
+          qtd_pedida_total: number | null
           qtd_po: number | null
           qtd_solicitada: number | null
           quantidade_pedida: number | null
@@ -9232,6 +9947,7 @@ export type Database = {
           tipo_data_de_remessa: string | null
           tipo_de_documento: string | null
           tipo_de_transporte: string | null
+          tipo_doc_po: string | null
           total_pos: number | null
           unidade_de_medida: string | null
           unidade_po: string | null
@@ -9464,7 +10180,46 @@ export type Database = {
           unit: string
         }[]
       }
+      candidatos_ia_vinculo: {
+        Args: { p_limite?: number; p_top?: number; p_vinculo_ids?: string[] }
+        Returns: Json
+      }
+      casar_cotacao_pedidos: {
+        Args: {
+          p_desde?: string
+          p_executado_por?: string
+          p_executado_por_nome?: string
+          p_janela_dias?: number
+          p_score_auto?: number
+          p_simular?: boolean
+        }
+        Returns: Json
+      }
+      casar_cotacao_requisicoes: {
+        Args: {
+          p_desde?: string
+          p_executado_por?: string
+          p_executado_por_nome?: string
+          p_janela_antes?: number
+          p_janela_depois?: number
+          p_score_auto?: number
+          p_simular?: boolean
+        }
+        Returns: Json
+      }
+      confirmar_vinculo_cotacao: {
+        Args: {
+          p_aceitar: boolean
+          p_material_code?: string
+          p_observacao?: string
+          p_usuario_id?: string
+          p_usuario_nome?: string
+          p_vinculo_id: string
+        }
+        Returns: Json
+      }
       escapar_like: { Args: { t: string }; Returns: string }
+      f_norm_cotacao: { Args: { p_texto: string }; Returns: string }
       f_unaccent: { Args: { "": string }; Returns: string }
       has_role: { Args: { required_role: string }; Returns: boolean }
       ipca_fator: { Args: { p_data: string }; Returns: number }
@@ -9484,6 +10239,15 @@ export type Database = {
       refresh_benchmark_material: { Args: never; Returns: undefined }
       refresh_historico_pedidos: { Args: never; Returns: undefined }
       refresh_material_sinais: { Args: never; Returns: undefined }
+      registrar_vinculos_ia: {
+        Args: {
+          p_executado_por?: string
+          p_executado_por_nome?: string
+          p_modelo?: string
+          p_resultados: Json
+        }
+        Returns: Json
+      }
       salvar_processo_cotacao: { Args: { p_payload: Json }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

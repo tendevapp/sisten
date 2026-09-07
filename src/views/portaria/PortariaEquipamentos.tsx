@@ -8,8 +8,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2, AlertTriangle,
-  RotateCcw, Trash2, Edit3, X, Loader2, Wrench, Shield, Building, User, Calendar
+  RotateCcw, Trash2, Edit3, X, Loader2, Wrench, Shield, Building, User, Calendar,
+  HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleEquipamento, PortEquipamentoStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -26,6 +30,122 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const PORTARIA_EQUIPAMENTOS_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Wrench,
+    title: 'Equipamentos e Ferramentas de Terceiros',
+    description:
+      'Formulário oficial FRM.SGP-0011 para controle de entrada, permanência e devolução de ferramentas, máquinas e bens patrimoniais de terceiros.',
+  },
+  {
+    target: 'equipamentos-header',
+    icon: Plus,
+    title: 'Registrar Entrada de Ferramentas',
+    description:
+      'Ao entrar um prestador de serviços com equipamentos, clique em "Registrar Entrada" para listar itens, número de série, responsável e emitir o termo.',
+  },
+  {
+    target: 'equipamentos-filtros',
+    icon: Search,
+    title: 'Busca e Filtro de Status no Pátio',
+    description:
+      'Pesquise por empresa, colaborador ou ferramenta, e filtre rapidamente entre "No Pátio (Pendentes)", "Devolvidos" ou "Retidos".',
+  },
+  {
+    target: 'equipamentos-tabela',
+    icon: Wrench,
+    title: 'Controle de Custódia e Devolução',
+    description:
+      'Consulte a descrição dos materiais, data de entrada e acione a baixa de saída na coluna de ações para registrar a devolução com o vigilante conferente.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
+const PORTARIA_EQUIPAMENTOS_NOVO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Wrench,
+    title: 'Registrar Entrada de Ferramentas',
+    description:
+      'Formulário oficial FRM.SGP-0011 para controle patrimonial de bens e ferramentas trazidos por empresas terceirizadas.',
+  },
+  {
+    target: 'equipamentos-form-empresa',
+    icon: Building,
+    title: 'Empresa e Portador',
+    description:
+      'Informe a razão social da empresa prestadora e o nome do funcionário responsável pela posse física dos equipamentos.',
+  },
+  {
+    target: 'equipamentos-form-descricao',
+    icon: Wrench,
+    title: 'Relação de Ferramentas e Bens',
+    description:
+      'Discrimine detalhadamente cada ferramenta com quantidade, marca, modelo e número de série para conferência na devolução.',
+  },
+  {
+    target: 'equipamentos-form-horarios',
+    icon: Calendar,
+    title: 'Data, Hora e Vigilante',
+    description:
+      'Registre o momento da entrada e selecione o vigilante da portaria que realizou a vistoria inicial dos materiais.',
+  },
+  {
+    target: 'equipamentos-form-responsavel',
+    icon: User,
+    title: 'Acompanhante TEN e Observações',
+    description:
+      'Informe o colaborador interno da TEN responsável pelo serviço e detalhes da autorização de entrada.',
+  },
+  {
+    target: 'equipamentos-form-salvar',
+    icon: CheckCircle2,
+    title: 'Salvar Entrada',
+    description:
+      'Gera o registro de custódia com status "No Pátio". Quando o prestador for embora, basta clicar em "Registrar Devolução" para dar baixa.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const toast = useToast();
   const [itens, setItens] = useState<PortControleEquipamento[]>([]);
@@ -40,6 +160,9 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const [itemParaExcluir, setItemParaExcluir] = useState<PortControleEquipamento | null>(null);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  const tour = usePageTour('portaria-equipamentos', PORTARIA_EQUIPAMENTOS_TOUR_STEPS.length, !modalNovoAberto);
+  const tourNovo = usePageTour('portaria-equipamentos-novo', PORTARIA_EQUIPAMENTOS_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
   // Form states
   const [salvando, setSalvando] = useState(false);
@@ -142,11 +265,24 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
 
   const handleExcluir = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirEquipamento(itemParaExcluir.id, user.id);
-      toast.success('Registro excluído. Continua no banco e pode ser restaurado por um administrador.');
+      await api.excluirEquipamento(item.id, user.id);
       setItemParaExcluir(null);
       carregarDados();
+      toast.undo(
+        `Equipamento ${item.numero_protocolo} excluído.`,
+        async () => {
+          try {
+            await api.restaurarEquipamento(item.id);
+            toast.success(`Equipamento ${item.numero_protocolo} restaurado com sucesso.`);
+            carregarDados();
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     }
@@ -167,7 +303,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="equipamentos-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <button
             type="button"
@@ -203,7 +339,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="equipamentos-filtros" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
@@ -254,7 +390,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div data-tour="equipamentos-tabela" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50/75 text-xs font-bold uppercase tracking-wider text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
@@ -356,17 +492,28 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
       {modalNovoAberto && (
         <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-4xl">
           <ModalHeader onClose={() => setModalNovoAberto(false)}>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                Registrar Entrada de Equipamentos de Terceiros
-              </h3>
-              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0011</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Registrar Entrada de Equipamentos de Terceiros
+                </h3>
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0011</p>
+              </div>
+              <button
+                type="button"
+                onClick={tourNovo.startTour}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs transition-colors hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+                title="Dicas de preenchimento da entrada de equipamentos"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                Dicas de Preenchimento
+              </button>
             </div>
           </ModalHeader>
 
           <form onSubmit={handleSalvarEntrada} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+              <div data-tour="equipamentos-form-empresa" className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Nome da Empresa *
@@ -395,7 +542,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div>
+              <div data-tour="equipamentos-form-descricao">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Descrição dos Materiais e Ferramentas *
                 </label>
@@ -412,7 +559,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
+              <div data-tour="equipamentos-form-horarios" className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data de Entrada
@@ -445,7 +592,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+              <div data-tour="equipamentos-form-responsavel" className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Responsável / Acompanhante TEN (Opcional)
@@ -484,6 +631,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
               <button
                 type="submit"
                 disabled={salvando}
+                data-tour="equipamentos-form-salvar"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -592,6 +740,24 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleExcluir}
           onCancelar={() => setItemParaExcluir(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_EQUIPAMENTOS_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+      {tourNovo.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_EQUIPAMENTOS_NOVO_TOUR_STEPS}
+          stepIndex={tourNovo.stepIndex}
+          onNext={tourNovo.next}
+          onBack={tourNovo.back}
+          onClose={tourNovo.close}
         />
       )}
     </div>

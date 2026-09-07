@@ -8,8 +8,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2,
-  Trash2, X, Loader2, Truck, Clock, Calendar, User, FileText, PenTool
+  Trash2, X, Loader2, Truck, Clock, Calendar, User, FileText, PenTool,
+  HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type { Profile, PortControleCarreta, PortCarretaStatus } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -27,6 +31,129 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const PORTARIA_CARRETAS_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Truck,
+    title: 'Controle de Carretas de Chapas',
+    description:
+      'Formulário oficial FRM.SGP-0020 para controle de entrada, pesagem bruta, descarga de aço e saída com assinatura digital do motorista.',
+  },
+  {
+    target: 'carretas-header',
+    icon: Plus,
+    title: 'Registrar Chegada de Carreta',
+    description:
+      'Ao chegar a carreta de chapas de aço, clique em "Registrar Carreta" para cadastrar as placas (cavalo/carreta), transportadora, motorista, NF e peso.',
+  },
+  {
+    target: 'carretas-filtros',
+    icon: Search,
+    title: 'Busca e Filtro Operacional',
+    description:
+      'Pesquise por placa, NF ou transportadora e filtre entre "No Pátio (Descarregando)" e "Finalizadas (Saída Registrada)".',
+  },
+  {
+    target: 'carretas-tabela',
+    icon: Truck,
+    title: 'Acompanhamento e Liberação de Saída',
+    description:
+      'Consulte as carretas no pátio, confira o tempo de permanência e acione a baixa de saída com coleta de assinatura digital do motorista na tela.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
+const PORTARIA_CARRETAS_NOVO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Truck,
+    title: 'Registrar Entrada de Carreta de Chapas',
+    description:
+      'Formulário oficial FRM.SGP-0020 para controle de entrada, descarga de chapas de aço e rastreamento de peso bruto no pátio.',
+  },
+  {
+    target: 'carretas-form-empresa',
+    icon: Truck,
+    title: 'Transportadora e Fornecedor',
+    description:
+      'Informe a usina siderúrgica fornecedora (ex.: Usiminas, ArcelorMittal) e a transportadora rodoviária responsável pelo frete.',
+  },
+  {
+    target: 'carretas-form-placas',
+    icon: Truck,
+    title: 'Placas do Veículo',
+    description:
+      'Cadastre a placa do cavalo mecânico e a placa da carreta/semirreboque para conferência na balança.',
+  },
+  {
+    target: 'carretas-form-motorista',
+    icon: User,
+    title: 'Identificação do Motorista',
+    description:
+      'Informe o nome completo e o CPF/CNH do motorista condutor para termos de responsabilidade e autorização de acesso ao pátio.',
+  },
+  {
+    target: 'carretas-form-entrada',
+    icon: Calendar,
+    title: 'Horário e Vigilante da Entrada',
+    description:
+      'Confirme a data, o horário exato da passagem pela guarita e o vigilante que realizou a pesagem e liberação.',
+  },
+  {
+    target: 'carretas-form-nf-peso',
+    icon: FileText,
+    title: 'Nota Fiscal e Peso Bruto',
+    description:
+      'Registre o número da NF da chapa e a pesagem bruta inicial (em kg) realizada na balança da fábrica.',
+  },
+  {
+    target: 'carretas-form-salvar',
+    icon: CheckCircle2,
+    title: 'Salvar Entrada',
+    description:
+      'Gera o registro no pátio. No momento da saída, o sistema permite coletar a assinatura digital do motorista na tela para quitação de descarga.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaCarretas({ user, onNavigate }: Props) {
   const toast = useToast();
   const [itens, setItens] = useState<PortControleCarreta[]>([]);
@@ -43,6 +170,9 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
   const [salvando, setSalvando] = useState(false);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  const tour = usePageTour('portaria-carretas', PORTARIA_CARRETAS_TOUR_STEPS.length, !modalNovoAberto);
+  const tourNovo = usePageTour('portaria-carretas-novo', PORTARIA_CARRETAS_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
   const [formNovo, setFormNovo] = useState({
     empresa: '',
@@ -151,11 +281,24 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
 
   const handleExcluir = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirCarreta(itemParaExcluir.id, user.id);
-      toast.success('Registro ocultado. Mantido no banco e restaurável por um administrador.');
+      await api.excluirCarreta(item.id, user.id);
       setItemParaExcluir(null);
       carregarDados();
+      toast.undo(
+        `Registro da carreta ${item.placa_cavalo} excluído.`,
+        async () => {
+          try {
+            await api.restaurarCarreta(item.id);
+            toast.success(`Carreta ${item.placa_cavalo} restaurada com sucesso.`);
+            carregarDados();
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     }
@@ -174,7 +317,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="carretas-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <button
             type="button"
@@ -221,7 +364,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="carretas-filtros" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
@@ -266,7 +409,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div data-tour="carretas-tabela" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50/75 text-xs font-bold uppercase tracking-wider text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
@@ -378,17 +521,28 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
       {modalNovoAberto && (
         <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-4xl">
           <ModalHeader onClose={() => setModalNovoAberto(false)}>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                Registrar Entrada de Carreta de Chapas
-              </h3>
-              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0020</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Registrar Entrada de Carreta de Chapas
+                </h3>
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0020</p>
+              </div>
+              <button
+                type="button"
+                onClick={tourNovo.startTour}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs transition-colors hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+                title="Dicas de preenchimento da entrada de carreta"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                Dicas de Preenchimento
+              </button>
             </div>
           </ModalHeader>
 
           <form onSubmit={handleSalvarEntrada} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
-              <div>
+              <div data-tour="carretas-form-empresa">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Empresa / Transportadora / Fornecedor de Aço *
                 </label>
@@ -402,7 +556,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div data-tour="carretas-form-placas" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Placa Cavalo *
@@ -430,7 +584,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div data-tour="carretas-form-motorista" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Nome do Motorista *
@@ -446,19 +600,19 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    CNH do Motorista
+                    CPF / Documento do Motorista
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: 01234567890"
-                    value={formNovo.cnh_motorista}
-                    onChange={(e) => setFormNovo({ ...formNovo, cnh_motorista: e.target.value })}
+                    placeholder="Ex: 012.345.678-90"
+                    value={formNovo.cpf_motorista}
+                    onChange={(e) => setFormNovo({ ...formNovo, cpf_motorista: e.target.value })}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div data-tour="carretas-form-entrada" className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data de Entrada
@@ -467,7 +621,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="date"
                     value={formNovo.data_entrada}
                     onChange={(e) => setFormNovo({ ...formNovo, data_entrada: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -478,7 +632,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                     type="time"
                     value={formNovo.hora_entrada}
                     onChange={(e) => setFormNovo({ ...formNovo, hora_entrada: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
                 <div className="sm:col-span-1">
@@ -491,7 +645,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div data-tour="carretas-form-nf-peso" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Número da Nota Fiscal (NF)
@@ -530,6 +684,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
               <button
                 type="submit"
                 disabled={salvando}
+                data-tour="carretas-form-salvar"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -676,6 +831,24 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleExcluir}
           onCancelar={() => setItemParaExcluir(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_CARRETAS_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+      {tourNovo.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_CARRETAS_NOVO_TOUR_STEPS}
+          stepIndex={tourNovo.stepIndex}
+          onNext={tourNovo.next}
+          onBack={tourNovo.back}
+          onClose={tourNovo.close}
         />
       )}
     </div>

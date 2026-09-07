@@ -22,11 +22,12 @@ import { SinalChips } from '../components/ui/SinalChips';
 import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
-import { podeEditar, statusAposEdicao, avisoEdicao } from '../lib/solicitacoes';
+import { podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import { useToast } from '../components/ui/Toast';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 import {
   CATEGORIA_PENDENCIA_PROCESSAMENTO,
@@ -240,6 +241,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const toast = useToast();
   const tour = usePageTour('nova-solicitacao', NOVA_SOLICITACAO_TOUR_STEPS.length);
   const [activeTab, setActiveTab] = useState<RequestType>('compra');
+  const [itemParaRemover, setItemParaRemover] = useState<{ index: number; item: PurchaseItemState } | null>(null);
+  const [confirmLimparRascunho, setConfirmLimparRascunho] = useState(false);
+  const [confirmSolicitarCadastro, setConfirmSolicitarCadastro] = useState(false);
   const [sectorId, setSectorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
   // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
@@ -557,12 +561,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const handleResetForm = () => {
     if (editandoId) return;
+    setConfirmLimparRascunho(true);
+  };
 
-    const confirmed = window.confirm(
-      'Tem certeza de que deseja limpar todos os campos e apagar o rascunho para comecar uma nova solicitacao?'
-    );
-    if (!confirmed) return;
-
+  const confirmarResetForm = () => {
+    setConfirmLimparRascunho(false);
     clearDraft();
     draftLoadedRef.current = true;
     setActiveTab('compra');
@@ -605,7 +608,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setBuscaModalIndex(null);
     setAutosaveStatus('idle');
 
-    toast.info('Formulario reiniciado e rascunho apagado.');
+    toast.info('Formulário reiniciado e rascunho apagado.');
   };
 
   /** Atualiza um item pelo índice, sem passar pelo `handleItemChange`. */
@@ -616,8 +619,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   /** Escolha de um material — vem da janela do catálogo. */
   const selecionarMaterial = (index: number, mat: MaterialResultado, chips: SinalChip[]) => {
     // Unidade não é autopreenchida — fica em "Selecione..." até o usuário confirmar.
+    const itemAtual = items[index];
+    const ehGen = Boolean(itemAtual?.is_generic);
     patchItem(index, {
-      description: mat.description,
+      description: ehGen && itemAtual?.description?.trim()
+        ? itemAtual.description.toUpperCase()
+        : mat.description.toUpperCase(),
       sap_code: mat.materialCode,
       technical_text: mat.technicalText || '',
       sinais: chips,
@@ -626,7 +633,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   /** Descarta o material escolhido e volta o item ao estado de busca. */
   const trocarMaterial = (index: number) => {
-    patchItem(index, { sap_code: '', description: '', technical_text: '', sinais: [] });
+    const itemAtual = items[index];
+    patchItem(index, {
+      sap_code: '',
+      description: itemAtual?.is_generic ? itemAtual.description : '',
+      technical_text: '',
+      sinais: [],
+    });
   };
 
   /**
@@ -635,16 +648,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
    * mesmo formulário aberto — o rascunho da compra continua guardado no
    * estado, então dá para voltar depois que o item existir.
    */
-  const solicitarCadastroSap = (index: number) => {
-    const ok = window.confirm(
-      'Material fora do catálogo precisa ser cadastrado no SAP antes de ser comprado. '
-      + 'Abrir a solicitação de Cadastro SAP agora? Os itens já preenchidos nesta compra ficam guardados.',
-    );
-    if (!ok) return;
+  const solicitarCadastroSap = (_index: number) => {
+    setConfirmSolicitarCadastro(true);
+  };
+
+  const confirmarSolicitarCadastro = () => {
+    setConfirmSolicitarCadastro(false);
     setRegistrationType('Item');
     setActiveTab('cadastro_sap');
     setCriticality(null);
-    // Sobe para o topo: o formulário do canal novo começa lá.
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -654,15 +666,43 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   const handleRemoveItem = (index: number) => {
     if (items.length > 1) {
-      setItems(items.filter((_, i) => i !== index));
+      setItemParaRemover({ index, item: items[index] });
     }
+  };
+
+  const confirmarRemoverItem = () => {
+    if (!itemParaRemover) return;
+    const { index, item } = itemParaRemover;
+    setItems(prev => prev.filter((_, i) => i !== index));
+    setItemParaRemover(null);
+    toast.undo(
+      `Item #${index + 1} removido da solicitação.`,
+      () => {
+        setItems(prev => {
+          const proximo = [...prev];
+          proximo.splice(index, 0, item);
+          return proximo;
+        });
+        toast.info(`Item #${index + 1} restaurado.`);
+      },
+      6000
+    );
   };
 
   const handleItemChange = (index: number, key: keyof PurchaseItemState, val: any) => {
     const updated = [...items];
+    const current = updated[index];
+    let valorFinal = val;
+    if (current?.is_generic) {
+      if (key === 'attachments' && Array.isArray(val)) {
+        valorFinal = val.map((att: PreparedAttachment) => ({ ...att, name: 'Uso Genérico' }));
+      } else if (key === 'reusedAttachments' && Array.isArray(val)) {
+        valorFinal = val.map((att: RequestAttachment) => ({ ...att, name: 'Uso Genérico' }));
+      }
+    }
     updated[index] = {
-      ...updated[index],
-      [key]: val
+      ...current,
+      [key]: valorFinal
     };
     setItems(updated);
   };
@@ -955,23 +995,26 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           comprador_id: null,
           tipo_compra: tipoCompra,
           data_necessidade: dataNecessidade,
-          items: items.map(it => ({
-            // O id acompanha o item: na criação ele já nasceu no formulário,
-            // na edição veio do banco. É o que amarra os anexos.
-            id: it.id,
-            description: it.description,
-            sap_code: it.sap_code,
-            has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
-            is_generic: it.is_generic || false,
-            observation: it.observation || '',
-            reference_link: it.reference_link || '',
-            quantity: it.quantity,
-            unit: it.unit,
-            brand: it.brand,
-            is_similar_allowed: it.is_similar_allowed,
-            suggested_supplier: it.suggested_supplier,
-            estimated_value: it.estimated_value
-          }))
+          items: items.map(it => {
+            const ehGen = Boolean(it.is_generic);
+            return {
+              // O id acompanha o item: na criação ele já nasceu no formulário,
+              // na edição veio do banco. É o que amarra os anexos.
+              id: it.id,
+              description: ehGen ? (it.description || '').toUpperCase() : it.description,
+              sap_code: it.sap_code,
+              has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
+              is_generic: ehGen,
+              observation: ehGen ? formatarObservacaoItemGenerico(it.observation) : (it.observation || ''),
+              reference_link: it.reference_link || '',
+              quantity: it.quantity,
+              unit: it.unit,
+              brand: it.brand,
+              is_similar_allowed: it.is_similar_allowed,
+              suggested_supplier: it.suggested_supplier,
+              estimated_value: it.estimated_value
+            };
+          })
         };
       } else if (activeTab === 'cadastro_sap') {
         payload = {
@@ -1021,7 +1064,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // no formulário na criação, ou veio do banco na edição.
       const anexosDeItens = () => activeTab === 'compra'
         ? items.flatMap(item =>
-            (item.attachments || []).map(prepared => ({ prepared, requestItemId: item.id }))
+            (item.attachments || []).map(prepared => ({
+              prepared: item.is_generic ? { ...prepared, name: 'Uso Genérico' } : prepared,
+              requestItemId: item.id
+            }))
           )
         : sapAttachments.map(prepared => ({ prepared }));
 
@@ -1037,10 +1083,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       let reqNumero: string;
 
       if (editandoId) {
+        const { items: itensCompra, ...camposPayload } = payload;
         const erro = await localDb.saveRequestEdit(
           editandoId,
-          payload,
-          activeTab === 'compra' ? payload.items : undefined,
+          camposPayload,
+          activeTab === 'compra' ? itensCompra : undefined,
           statusAposEdicao(activeTab)
         );
         if (erro) {
@@ -1380,26 +1427,47 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 {items.map((it, index) => (
                   <div
                     key={index}
-                    className="relative rounded-xl border p-4 space-y-3"
-                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+                    className={`relative rounded-xl border p-4 space-y-3 transition-colors ${
+                      it.is_generic
+                        ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20'
+                        : ''
+                    }`}
+                    style={{
+                      ...(!it.is_generic ? { borderColor: 'var(--hairline)', background: 'var(--surface-raised)' } : {})
+                    }}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
-                        {ehServico ? 'Serviço' : 'Item'} {index + 1}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--ink-muted)' }}>
+                          {ehServico ? 'Serviço' : 'Item'} {index + 1}
+                        </span>
+                        {it.is_generic && (
+                          <span className="text-[10px] bg-rose-600 text-white font-black px-2 py-0.5 rounded uppercase tracking-wider shadow-2xs">
+                            ITEM GENÉRICO
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-3">
-                        <label data-tour="novasol-item-generico" className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: 'var(--ink-secondary)' }}>
+                        <label data-tour="novasol-item-generico" className="inline-flex items-center gap-1.5 text-sm font-semibold cursor-pointer select-none" style={{ color: it.is_generic ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
                           <input
                             type="checkbox"
                             checked={it.is_generic || false}
                             onChange={(e) => {
-                              // Genérico e material de catálogo são excludentes:
-                              // manter o código do SAP escondido atrás da
-                              // descrição livre mandaria os dois no payload.
                               const generico = e.target.checked;
-                              patchItem(index, generico
-                                ? { is_generic: true, sap_code: '', technical_text: '', sinais: undefined }
-                                : { is_generic: false, description: '' });
+                              if (generico) {
+                                patchItem(index, {
+                                  is_generic: true,
+                                  description: (it.description || '').toUpperCase(),
+                                  observation: formatarObservacaoItemGenerico(it.observation),
+                                  attachments: (it.attachments || []).map(att => ({ ...att, name: 'Uso Genérico' })),
+                                  reusedAttachments: (it.reusedAttachments || []).map(att => ({ ...att, name: 'Uso Genérico' })),
+                                });
+                              } else {
+                                patchItem(index, {
+                                  is_generic: false,
+                                  observation: desformatarObservacaoItemGenerico(it.observation),
+                                });
+                              }
                             }}
                             className="rounded cursor-pointer"
                             style={{ accentColor: 'var(--brand)' }}
@@ -1446,21 +1514,53 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                             />
                           </div>
                         ) : it.is_generic ? (
-                          /* Item genérico: por definição não está no catálogo,
-                             então aqui a descrição é digitada. */
-                          <div>
-                            <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                              Descrição do item genérico *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Descreva o material — detalhe as especificações na Observação"
-                              value={it.description}
-                              onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                              className="w-full rounded border py-1 px-2 text-sm font-medium transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                              style={fieldStyle}
-                            />
+                          /* Item genérico: usa o código SAP do item selecionado e descrição em caixa alta */
+                          <div className="space-y-2">
+                            {it.sap_code ? (
+                              <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60">
+                                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                                  Código SAP vinculado:
+                                </span>
+                                <span className="font-mono font-bold text-xs bg-white dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-700">
+                                  {it.sap_code}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setBuscaModalIndex(index)}
+                                  className="text-[11px] font-bold underline cursor-pointer text-rose-700 hover:text-rose-900 dark:text-rose-300 ml-auto"
+                                >
+                                  Trocar código SAP
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-rose-50/50 dark:bg-rose-950/30 border border-dashed border-rose-300 dark:border-rose-800">
+                                <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300">
+                                  Vincule o código SAP do material de referência:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setBuscaModalIndex(index)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition cursor-pointer"
+                                >
+                                  <Search className="h-3.5 w-3.5" />
+                                  Buscar código SAP
+                                </button>
+                              </div>
+                            )}
+
+                            <div>
+                              <label className="text-[11px] font-bold block mb-1 text-rose-700 dark:text-rose-300">
+                                Descrição do item genérico (Caixa Alta) *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="DESCREVA O MATERIAL GENÉRICO"
+                                value={it.description}
+                                onChange={(e) => handleItemChange(index, 'description', e.target.value.toUpperCase())}
+                                className="w-full rounded border py-1.5 px-2 text-sm font-bold uppercase transition-colors duration-150 focus:outline-2 focus:outline-offset-1 border-rose-300 dark:border-rose-800 bg-rose-50/30 dark:bg-rose-950/20 text-rose-950 dark:text-rose-100 placeholder:text-rose-300"
+                              />
+                            </div>
                           </div>
                         ) : it.sap_code ? (
                           /* Material escolhido: ficha compacta. */
@@ -1655,19 +1755,28 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         item genérico: sem código SAP nem ficha de catálogo,
                         é o único lugar onde o comprador sabe o que comprar. */}
                     <div>
-                      <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>
-                        {ehServico ? 'Escopo / Detalhamento do serviço *' : `Observação / Informações Técnicas${it.is_generic ? ' *' : ''}`}
+                      <label className="text-[11px] font-bold block mb-1" style={{ color: it.is_generic ? 'var(--status-critical)' : 'var(--ink-muted)' }}>
+                        {ehServico ? 'Escopo / Detalhamento do serviço *' : `Observação / Informações Técnicas${it.is_generic ? ' * (ITEM GENÉRICO)' : ''}`}
                       </label>
                       <textarea
                         rows={ehServico ? 3 : 2}
                         required={ehServico || it.is_generic || false}
                         placeholder={ehServico
                           ? 'O que será executado, onde, prazo, periodicidade, requisitos de segurança...'
-                          : 'Informações técnicas adicionais, observações ou especificações...'}
+                          : it.is_generic
+                            ? 'ITEM GENÉRICO: Detalhe as especificações técnicas, aplicação e requisitos do material...'
+                            : 'Informações técnicas adicionais, observações ou especificações...'}
                         value={it.observation || ''}
                         onChange={(e) => handleItemChange(index, 'observation', e.target.value)}
-                        className="w-full rounded border py-1.5 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                        style={fieldStyle}
+                        onBlur={() => {
+                          if (it.is_generic) {
+                            patchItem(index, { observation: formatarObservacaoItemGenerico(it.observation) });
+                          }
+                        }}
+                        className={`w-full rounded border py-1.5 px-2 text-sm transition-colors duration-150 focus:outline-2 focus:outline-offset-1 ${
+                          it.is_generic ? 'border-rose-300 dark:border-rose-800 font-semibold' : ''
+                        }`}
+                        style={it.is_generic ? {} : fieldStyle}
                       />
                     </div>
 
@@ -1694,7 +1803,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         onChange={(anexos) => handleItemChange(index, 'attachments', anexos)}
                         reusedValue={it.reusedAttachments || []}
                         onReusedChange={(anexos) => handleItemChange(index, 'reusedAttachments', anexos)}
-                        materialCode={it.sap_code.trim().length === 7 ? it.sap_code.trim() : undefined}
+                        materialCode={it.sap_code?.trim() ? it.sap_code.trim() : undefined}
                         label="Anexar foto ou PDF"
                       />
                     </div>
@@ -2429,6 +2538,42 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           onNext={tour.next}
           onBack={tour.back}
           onClose={tour.close}
+        />
+      )}
+
+      {confirmLimparRascunho && (
+        <ConfirmDialog
+          titulo="Limpar campos e apagar rascunho?"
+          mensagem="Tem certeza de que deseja limpar todos os campos e apagar o rascunho salvo para começar uma nova solicitação?"
+          confirmarLabel="Sim, limpar rascunho"
+          variante="perigo"
+          onConfirmar={confirmarResetForm}
+          onCancelar={() => setConfirmLimparRascunho(false)}
+        />
+      )}
+
+      {confirmSolicitarCadastro && (
+        <ConfirmDialog
+          titulo="Solicitar Cadastro SAP?"
+          mensagem="Material fora do catálogo precisa ser cadastrado no SAP antes de ser comprado. Deseja abrir a solicitação de Cadastro SAP agora? Os itens já preenchidos nesta compra ficam guardados no rascunho."
+          confirmarLabel="Abrir Cadastro SAP"
+          onConfirmar={confirmarSolicitarCadastro}
+          onCancelar={() => setConfirmSolicitarCadastro(false)}
+        />
+      )}
+
+      {itemParaRemover && (
+        <ConfirmDialog
+          titulo={`Remover item #${itemParaRemover.index + 1}?`}
+          mensagem={
+            <span>
+              Tem certeza de que deseja remover o item <strong>{itemParaRemover.item.description || `#${itemParaRemover.index + 1}`}</strong> da solicitação?
+            </span>
+          }
+          confirmarLabel="Sim, remover"
+          variante="perigo"
+          onConfirmar={confirmarRemoverItem}
+          onCancelar={() => setItemParaRemover(null)}
         />
       )}
     </div>

@@ -46,13 +46,15 @@ import {
 interface Props {
   user: Profile;
   onVoltar: () => void;
+  /** Texto do botão voltar — muda conforme a tela de origem (ASE ou hub RH). */
+  voltarLabel?: string;
 }
 
 const umaCasa = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const fmtHoras = (v: number) => `${umaCasa.format(v)} h`;
 const STATUS_OPCOES = ['RASCUNHO', 'ENVIADO', 'CANCELADO'];
 
-export default function RhAseRelatorio({ user, onVoltar }: Props) {
+export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar para a lista de ASEs' }: Props) {
   const toast = useToast();
   const podeVerTodas = canViewAllAse(user);
 
@@ -172,7 +174,7 @@ export default function RhAseRelatorio({ user, onVoltar }: Props) {
             className="group mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 shadow-xs transition-all hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 hover:shadow-sm active:scale-95 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4 text-slate-500 transition-transform group-hover:-translate-x-1 group-hover:text-blue-600 dark:text-slate-400 dark:group-hover:text-blue-400" />
-            <span>Voltar para a lista de ASEs</span>
+            <span>{voltarLabel}</span>
           </button>
           <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">

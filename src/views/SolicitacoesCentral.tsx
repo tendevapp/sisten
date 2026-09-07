@@ -15,18 +15,22 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ClipboardList, Download, FileSpreadsheet, Filter, Loader2, PlusCircle, Search,
+  ClipboardList, Clock, Download, FileEdit, FileSpreadsheet, Filter, Loader2, PlusCircle, Search,
+  HelpCircle, Bug, Lightbulb, Layers,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile, Request, Sector } from '../types';
+import { Profile, Request, RequestStatusHistory, Sector } from '../types';
 import { formatDateBR } from '../lib/format';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { TIPOS_EM_ORDEM, TIPO_VISUAL, type TipoVisual } from '../components/solicitacoes/tipoVisual';
 import { TableEmpty } from '../components/ui/DataTable';
 import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 import {
   baixarAnexos, contarAnexos, estaEmAberto, exportarSolicitacoes,
-  rotuloCriticidade, rotuloStatus, rotuloTipo,
+  foiEditadaAposAprovacao, rotuloCriticidade, rotuloStatus, rotuloTipo,
 } from '../lib/solicitacoes';
 import {
   Escopo, FAIXAS, Faixa, Novidade, Pendencia, escopoPadrao, escoposDisponiveis,
@@ -34,6 +38,68 @@ import {
   marcarLida, marcarTodasLidas, novidade, ordenarFila, ordenarPorRecencia,
   registrarVisita, universoVisivel,
 } from '../lib/solicitacoesCentral';
+
+const CENTRAL_SOLICITACOES_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ClipboardList,
+    title: 'Bem-vindo à Central de Solicitações',
+    description: 'Aqui você acompanha, responde e toma decisões sobre todos os pedidos de compra, cadastros no SAP e chamados de suporte em um só lugar.',
+  },
+  {
+    target: 'solicitacoes-header',
+    icon: PlusCircle,
+    title: 'Visão geral e nova solicitação',
+    description: 'Veja o escopo ativo e acione o botão "+ Nova solicitação" para abrir um novo pedido de compra, chamado ou cadastro SAP a qualquer momento.',
+  },
+  {
+    target: 'solicitacoes-abas',
+    icon: Layers,
+    title: 'Abas de escopo dinâmico',
+    description: 'Alterne entre "Precisa de mim" (suas pendências ativas de aprovação ou resposta), "Minhas solicitações" (pedidos criados por você), "Do meu setor" e "Todas".',
+  },
+  {
+    target: 'solicitacoes-busca',
+    icon: Search,
+    title: 'Busca instantânea',
+    description: 'Localize rapidamente qualquer solicitação digitando o número (ex: #123), o nome do solicitante ou palavras-chave da justificativa.',
+  },
+  {
+    target: 'solicitacoes-tipos',
+    icon: Filter,
+    title: 'Composição por tipo em chips',
+    description: 'Filtre instantaneamente apenas Compras, Cadastros SAP ou Chamados. A contagem em tempo real em cada chip mostra a distribuição da fila sem precisar abrir menus.',
+  },
+  {
+    target: 'solicitacoes-filtros',
+    icon: Filter,
+    title: 'Filtros de criticidade e setor',
+    description: 'Filtre por grau de criticidade (urgência) e setor responsável, ou marque para exibir solicitações já concluídas no histórico.',
+  },
+  {
+    target: 'solicitacoes-lista',
+    icon: ClipboardList,
+    title: 'Lista inteligente por faixas',
+    description: 'As solicitações são organizadas por urgência e recência. Clique em qualquer cartão para abrir a janela de detalhes completos, anexos e chat com o time.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 interface Props {
   user: Profile;
@@ -49,6 +115,7 @@ interface Linha {
 }
 
 export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }: Props) {
+  const tour = usePageTour('central-solicitacoes', CENTRAL_SOLICITACOES_TOUR_STEPS.length);
   const abas = useMemo(() => escoposDisponiveis(user), [user]);
 
   const cache = localDb.getPageCache('solicitacoes_central', {
@@ -144,6 +211,43 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   );
 
   const totalPendencias = pendencias.size;
+
+  const idsEditadasAposAprovacao = useMemo(() => {
+    const todosHistoricos = localDb.getAllRequestHistory();
+    const map = new Map<string, RequestStatusHistory[]>();
+    for (const h of todosHistoricos) {
+      let arr = map.get(h.request_id);
+      if (!arr) {
+        arr = [];
+        map.set(h.request_id, arr);
+      }
+      arr.push(h);
+    }
+
+    const editadas = new Set<string>();
+    for (const req of todas) {
+      if (['pendente', 'em_revisao'].includes(req.status)) {
+        const hist = map.get(req.id) || [];
+        if (foiEditadaAposAprovacao(req, hist)) {
+          editadas.add(req.id);
+        }
+      }
+    }
+    return editadas;
+  }, [todas]);
+
+  const idsComItemGenerico = useMemo(() => {
+    const set = new Set<string>();
+    for (const req of todas) {
+      if (req.type === 'compra') {
+        const itens = localDb.getRequestItems(req.id);
+        if (itens.some(it => it.is_generic)) {
+          set.add(req.id);
+        }
+      }
+    }
+    return set;
+  }, [todas]);
 
   /* Lista ------------------------------------------------------------------ */
 
@@ -258,7 +362,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   return (
     <div className="space-y-5 py-4 text-left">
       {/* Cabeçalho */}
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header data-tour="solicitacoes-header" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
             <ClipboardList className="h-6 w-6" style={{ color: 'var(--brand)' }} /> Solicitações
@@ -280,6 +384,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
       {/* Abas de escopo */}
       <nav
+        data-tour="solicitacoes-abas"
         className="flex flex-wrap gap-1 rounded-xl border p-1"
         style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
         aria-label="Recorte das solicitações"
@@ -315,7 +420,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
       {/* Filtros */}
       <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
-        <div className="relative max-w-md">
+        <div data-tour="solicitacoes-busca" className="relative max-w-md">
           <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
           <input
             type="text"
@@ -333,7 +438,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           era justamente a separação que se perdia numa lista de dez cartões
           quase idênticos. Aqui a composição da fila se lê sem abrir nada.
         */}
-        <div className="flex flex-wrap items-center gap-1.5 border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
+        <div data-tour="solicitacoes-tipos" className="flex flex-wrap items-center gap-1.5 border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
           <ChipTipo
             ativo={tipo === 'todos'}
             onClick={() => setTipo('todos')}
@@ -352,7 +457,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t pt-3 text-sm" style={{ borderColor: 'var(--hairline)' }}>
+        <div data-tour="solicitacoes-filtros" className="flex flex-wrap items-center gap-2 border-t pt-3 text-sm" style={{ borderColor: 'var(--hairline)' }}>
           <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--ink-secondary)' }}>
             <Filter className="h-4 w-4" /> Filtrar:
           </span>
@@ -419,7 +524,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         itens ficavam espremidas, e a lista perdia metade da tela mesmo quando
         nada estava selecionado.
       */}
-      <div className="min-w-0 space-y-6">
+      <div data-tour="solicitacoes-lista" className="min-w-0 space-y-6">
         {linhas.length === 0 ? (
           <TableEmpty
             icon={ClipboardList}
@@ -467,6 +572,8 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                       onSelecionar={() => alternarSelecao(linha.request.id)}
                       onAbrir={() => abrir(linha.request.id)}
                       nomeSetor={nomeSetor}
+                      ehEditadaAposAprovacao={idsEditadasAposAprovacao.has(linha.request.id)}
+                      temItemGenerico={idsComItemGenerico.has(linha.request.id)}
                     />
                   ))}
                 </ul>
@@ -480,16 +587,46 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
       {aberta && (
         <Modal onClose={fechar} maxWidth="max-w-4xl" ariaLabel={`Solicitação ${aberta.number}`}>
           <ModalHeader onClose={fechar}>
-            <div className="flex items-center gap-2.5">
-              <ChipTipoIcone tipo={aberta.type} />
-              <div className="min-w-0">
-                <h3 className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  #{aberta.number}
-                </h3>
-                <p className="truncate text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-                  {TIPO_VISUAL[aberta.type].rotulo} · aberta em {formatDateBR(aberta.created_at)}
-                </p>
+            <div className="flex flex-1 items-center justify-between gap-3 mr-6">
+              <div className="flex items-center gap-2.5">
+                <ChipTipoIcone
+                  tipo={aberta.type}
+                  apagado={aberta.type === 'compra' && (aberta.status === 'pendente' || aberta.status === 'em_revisao')}
+                />
+                <div className="min-w-0">
+                  <h3 className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>
+                    #{aberta.number}
+                  </h3>
+                  <p className="truncate text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+                    {TIPO_VISUAL[aberta.type].rotulo} · aberta em {formatDateBR(aberta.created_at)}
+                  </p>
+                </div>
               </div>
+
+              {aberta.type === 'compra' && aberta.status === 'pendente' && (
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80">
+                    <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                    Aguardando aprovação
+                  </span>
+                  {idsEditadasAposAprovacao.has(aberta.id) && (
+                    <span
+                      title="Esta solicitação já havia sido aprovada anteriormente e voltou para a fila após ser editada pelo solicitante"
+                      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-200 dark:border-amber-700/80"
+                    >
+                      <FileEdit className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
+                      Editada
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {aberta.type === 'compra' && aberta.status === 'em_revisao' && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80">
+                  <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                  Em revisão
+                </span>
+              )}
             </div>
           </ModalHeader>
           <ModalBody>
@@ -503,6 +640,16 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
             />
           </ModalBody>
         </Modal>
+      )}
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={CENTRAL_SOLICITACOES_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
       )}
     </div>
   );
@@ -536,7 +683,13 @@ function BotaoBarra({
 /* Tipo — ícone, cor e contagem --------------------------------------------- */
 
 /** Chip quadrado com o ícone do tipo. É o que se enxerga antes de ler o cartão. */
-function ChipTipoIcone({ tipo, tamanho = 'md' }: { tipo: Request['type']; tamanho?: 'sm' | 'md' }) {
+function ChipTipoIcone({
+  tipo, tamanho = 'md', apagado = false,
+}: {
+  tipo: Request['type'];
+  tamanho?: 'sm' | 'md';
+  apagado?: boolean;
+}) {
   const visual = TIPO_VISUAL[tipo];
   const Icone = visual.icone;
   const medida = tamanho === 'sm' ? 'h-6 w-6' : 'h-9 w-9';
@@ -544,8 +697,11 @@ function ChipTipoIcone({ tipo, tamanho = 'md' }: { tipo: Request['type']; tamanh
 
   return (
     <span
-      className={`flex ${medida} shrink-0 items-center justify-center rounded-lg`}
-      style={{ background: visual.fundo, color: visual.cor }}
+      className={`flex ${medida} shrink-0 items-center justify-center rounded-lg transition-colors`}
+      style={{
+        background: apagado ? 'color-mix(in srgb, var(--ink-muted) 12%, transparent)' : visual.fundo,
+        color: apagado ? 'var(--ink-muted)' : visual.cor,
+      }}
       title={visual.rotulo}
     >
       <Icone className={icone} />
@@ -623,7 +779,7 @@ const CORES_CRITICIDADE: Record<number, string> = {
 };
 
 function CartaoSolicitacao({
-  linha, ativa, selecionavel, selecionada, onSelecionar, onAbrir, nomeSetor,
+  linha, ativa, selecionavel, selecionada, onSelecionar, onAbrir, nomeSetor, ehEditadaAposAprovacao, temItemGenerico,
 }: {
   linha: Linha;
   ativa: boolean;
@@ -632,22 +788,42 @@ function CartaoSolicitacao({
   onSelecionar: () => void;
   onAbrir: () => void;
   nomeSetor: (id: string) => string;
+  ehEditadaAposAprovacao?: boolean;
+  temItemGenerico?: boolean;
 }) {
   const { request: r, pendencia, novidade: nova } = linha;
   const visual = TIPO_VISUAL[r.type];
   const corCriticidade = CORES_CRITICIDADE[r.criticality];
 
+  const ehCompraAguardandoAprovacao = r.type === 'compra' && r.status === 'pendente';
+  const ehCompraEmRevisao = r.type === 'compra' && r.status === 'em_revisao';
+  const ehCompraNaoAprovada = ehCompraAguardandoAprovacao || ehCompraEmRevisao;
+
   return (
     <li
-      className="flex min-w-0 items-stretch overflow-hidden rounded-xl border transition-colors"
+      className={`flex min-w-0 items-stretch overflow-hidden rounded-xl border transition-all duration-200 ${
+        ehCompraNaoAprovada ? 'opacity-85 hover:opacity-100 border-dashed' : ''
+      }`}
       style={{
-        borderColor: ativa ? visual.cor : 'var(--hairline)',
-        background: 'var(--surface-card)',
+        borderColor: ativa
+          ? visual.cor
+          : ehCompraNaoAprovada
+            ? 'var(--hairline-strong)'
+            : 'var(--hairline)',
+        background: ehCompraNaoAprovada ? 'var(--surface-sunken)' : 'var(--surface-card)',
       }}
     >
       {/* Faixa da cor do tipo: numa lista longa, dá para separar os blocos de
-          compra e de chamado sem ler nada. */}
-      <span aria-hidden className="w-1 shrink-0" style={{ background: visual.cor }} />
+          compra e de chamado sem ler nada. Suavizada quando a compra ainda não foi aprovada. */}
+      <span
+        aria-hidden
+        className="w-1 shrink-0"
+        style={{
+          background: ehCompraNaoAprovada
+            ? 'color-mix(in srgb, var(--series-1) 35%, var(--hairline-strong))'
+            : visual.cor,
+        }}
+      />
 
       {selecionavel && (
         <label className="flex items-center pl-3">
@@ -667,16 +843,58 @@ function CartaoSolicitacao({
         onClick={onAbrir}
         className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 p-4 text-left"
       >
-        <ChipTipoIcone tipo={r.type} />
+        <ChipTipoIcone tipo={r.type} apagado={ehCompraNaoAprovada} />
 
         <span className="min-w-0 flex-1 space-y-1">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <span className="font-mono text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
               #{r.number}
             </span>
-            <span className="text-xs font-bold uppercase tracking-wide" style={{ color: visual.cor }}>
+            <span
+              className="text-xs font-bold uppercase tracking-wide"
+              style={{ color: ehCompraNaoAprovada ? 'var(--ink-muted)' : visual.cor }}
+            >
               {visual.rotulo}
             </span>
+
+            {/* Status grande em destaque para compras ainda não aprovadas */}
+            {ehCompraAguardandoAprovacao && (
+              <>
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80"
+                >
+                  <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                  Aguardando aprovação
+                </span>
+                {ehEditadaAposAprovacao && (
+                  <span
+                    title="Esta solicitação já havia sido aprovada anteriormente e voltou para a fila após ser editada pelo solicitante"
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-200 dark:border-amber-700/80"
+                  >
+                    <FileEdit className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
+                    Editada
+                  </span>
+                )}
+              </>
+            )}
+
+            {temItemGenerico && (
+              <span
+                title="Esta solicitação possui item(ns) genérico(s)"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:border-rose-700/80"
+              >
+                Item Genérico
+              </span>
+            )}
+
+            {ehCompraEmRevisao && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80"
+              >
+                <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                Em revisão
+              </span>
+            )}
 
             {corCriticidade && (
               <span
@@ -712,7 +930,7 @@ function CartaoSolicitacao({
 
           <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
             <span>{r.solicitante_name} · {nomeSetor(r.solicitante_sector_id)}</span>
-            <span>{rotuloStatus(r)}</span>
+            {!ehCompraNaoAprovada && <span>{rotuloStatus(r)}</span>}
             <span className="tabular-nums">
               {estaEmAberto(r) ? `aberta em ${formatDateBR(r.created_at)}` : `encerrada em ${formatDateBR(r.updated_at)}`}
             </span>

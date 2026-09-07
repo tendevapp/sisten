@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck
+  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -26,6 +26,10 @@ import { ehItemDeContrato, numeroContratoPO, itemContratoPO } from '../lib/contr
 import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
+import {
+  buscarVinculoSistenRm, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
+  type VinculoSistenRm,
+} from '../lib/centralComprasSisten';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
@@ -34,6 +38,9 @@ import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import DateRangeFilter, { DateRangeValue } from '../components/ui/DateRangeFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 
 interface ComprasProps {
   user: Profile;
@@ -114,7 +121,16 @@ FINEZA, SEMPRE MANTER O NOSSO Nº DE COTAÇÃO NO ASSUNTO DO E-MAIL, BEM COMO MA
 
 // Monta a lista de itens em blocos rotulados (não em tabela de colunas alinhadas), pois o
 // Texto Técnico costuma ser longo demais para caber em uma coluna sem quebrar a leitura.
-const buildQuoteItemsTable = (items: QuoteItemEntry[], techTextByCode: Map<string, string>): string => {
+//
+// Item genérico com solicitação vinculada no SISTEN: o texto técnico do
+// catálogo é ignorado — um material genérico é um código guarda-chuva, não
+// descreve a compra — e entra a observação que o solicitante escreveu
+// (`textoTecnicoParaCotacao`, ver `lib/centralComprasSisten.ts`).
+const buildQuoteItemsTable = (
+  items: QuoteItemEntry[],
+  techTextByCode: Map<string, string>,
+  vinculosSistenPorRm: Map<string, VinculoSistenRm>,
+): string => {
   // Remove duplicatas exatas (mesmo material na mesma RM aparecendo mais de uma vez)
   const seen = new Set<string>();
   const dedupedItems = items.filter(({ record: r, rm }) => {
@@ -125,25 +141,36 @@ const buildQuoteItemsTable = (items: QuoteItemEntry[], techTextByCode: Map<strin
   });
 
   return dedupedItems.map(({ record: r, rm }, idx) => {
+    const vinculo = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
+    const textoGenerico = textoTecnicoParaCotacao(vinculo);
     const rawTech = techTextByCode.get(normalizeCode(r.material_code));
-    const techText = rawTech ? sanitizeTechnicalText(rawTech) : '—';
+    const techText = textoGenerico || (rawTech ? sanitizeTechnicalText(rawTech) : '—');
     return [
-      `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}`,
+      `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}${textoGenerico ? ' [ITEM GENÉRICO]' : ''}`,
       `   RM: ${rm || '—'}   |   Unidade: ${r.unidade_medida || '—'}   |   Quantidade: ${r.qtd_requisicao ?? '—'}`,
       `   Texto Técnico: ${techText}`
     ].join('\n');
   }).join('\n\n');
 };
 
-const buildQuoteText = (items: QuoteItemEntry[], techTextByCode: Map<string, string>): string => {
-  return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items, techTextByCode) + '\n' + CARTA_CONVITE_FOOTER;
+const buildQuoteText = (
+  items: QuoteItemEntry[],
+  techTextByCode: Map<string, string>,
+  vinculosSistenPorRm: Map<string, VinculoSistenRm>,
+): string => {
+  return CARTA_CONVITE_HEADER + buildQuoteItemsTable(items, techTextByCode, vinculosSistenPorRm) + '\n' + CARTA_CONVITE_FOOTER;
 };
 
 // Versão resumida para WhatsApp: saudação curta + RMs + tabela de itens, sem o texto
 // jurídico completo da Carta Convite (não cabe bem em mensagem de chat).
-const buildWhatsAppText = (items: QuoteItemEntry[], rms: string[], techTextByCode: Map<string, string>): string => {
+const buildWhatsAppText = (
+  items: QuoteItemEntry[],
+  rms: string[],
+  techTextByCode: Map<string, string>,
+  vinculosSistenPorRm: Map<string, VinculoSistenRm>,
+): string => {
   return `Prezado Fornecedor,\n\nA Empresa TORRES EÓLICAS DO NORDESTE S/A, inscrita no CNPJ nº 13.892.216/0002-31, convida V.S.ª a apresentar proposta para fornecimento dos materiais conforme especificados RM ${rms.join(', ')}\n\n` +
-    buildQuoteItemsTable(items, techTextByCode);
+    buildQuoteItemsTable(items, techTextByCode, vinculosSistenPorRm);
 };
 
 // Extrai o primeiro telefone válido do campo (pode vir com múltiplos números separados
@@ -407,12 +434,75 @@ const PROMESSA_TITLE: Record<PromessaEstado, string> = {
   confirmada: 'Data confirmada pelo comprador — visível no Rastreio Compras'
 };
 
+const COMPRAS_TOUR_STEPS: TourStep[] = [
+  {
+    icon: PackageSearch,
+    title: 'Central de Compras e Suprimentos',
+    description:
+      'Painel operacional avançado para gestão de requisições de compra, cotação com fornecedores homologados, acompanhamento de entregas e diligenciamento.',
+  },
+  {
+    target: 'compras-header',
+    icon: PackageSearch,
+    title: 'Visões operacionais e exportação',
+    description:
+      'Alterne com rapidez entre "Sem PO" (pendências de compra), "Sem MIGO" (pedidos já colocados aguardando recebimento), "Contrato" e "Todos". Alterne entre Tabela e Cards ou exporte os dados para Excel.',
+  },
+  {
+    target: 'compras-kpis',
+    icon: Tag,
+    title: 'Painel de indicadores operacionais',
+    description:
+      'Acompanhe o total de RMs em aberto, itens sem pedido, itens com fornecedores mapeados, itens críticos com prioridade máxima e itens com entregas parciais.',
+  },
+  {
+    target: 'compras-filtros',
+    icon: Filter,
+    title: 'Busca rápida e filtros combinados',
+    description:
+      'Pesquise por texto (material, código, RM ou fornecedor) e filtre por RM, Comprador Responsável, Grupo de Mercadorias, Alerta, Criticidade e Período de criação.',
+  },
+  {
+    target: 'compras-lista-rms',
+    icon: List,
+    title: 'Fila de itens, fornecedores e ações',
+    description:
+      'Examine o detalhamento dos materiais com histórico de compras no SAP, contatos diretos de fornecedores homologados, cotação por e-mail e registro de promessas de entrega.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function Compras({ user, onNavigate, poFilterInicial }: ComprasProps) {
+  const tour = usePageTour('central-compras', COMPRAS_TOUR_STEPS.length);
   const [loading, setLoading] = useState(true);
   const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
   // Texto técnico por código, buscado só para os materiais desta página (Sem PO),
   // não mais do catálogo inteiro em cache local.
   const [techTextByCode, setTechTextByCode] = useState<Map<string, string>>(new Map());
+  // Vínculo RM + material → solicitação/item do SISTEN (Abrir RM > Abertas).
+  // Local (não a base SAP inteira), então atualiza sozinho a cada mudança no
+  // localDb — vincular uma RM lá reflete aqui sem precisar de "Atualizar".
+  const [vinculosSistenPorRm, setVinculosSistenPorRm] = useState<Map<string, VinculoSistenRm>>(new Map());
   const [expandedRMs, setExpandedRMs] = useState<Record<string, boolean>>({});
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -631,7 +721,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       title: `Cotação — ${supplier.fornecedor}`,
       toSupplier: supplier,
       bccSuppliers: [],
-      text: buildQuoteText(items, techTextByCode),
+      text: buildQuoteText(items, techTextByCode, vinculosSistenPorRm),
       rms,
       items
     });
@@ -650,7 +740,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       title: `Cotação — RM ${rm} / Item ${record.item_reqc}`,
       toSupplier: undefined,
       bccSuppliers,
-      text: buildQuoteText(items, techTextByCode),
+      text: buildQuoteText(items, techTextByCode, vinculosSistenPorRm),
       rms: [rm],
       items
     });
@@ -683,7 +773,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       title: `Cotação — ${items.length} ${items.length === 1 ? 'item selecionado' : 'itens selecionados'}`,
       toSupplier: undefined,
       bccSuppliers: Array.from(supplierByCod.values()),
-      text: buildQuoteText(items, techTextByCode),
+      text: buildQuoteText(items, techTextByCode, vinculosSistenPorRm),
       rms,
       items
     });
@@ -1102,6 +1192,20 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   useEffect(() => {
     buildSuppliersData();
   }, [buildSuppliersData]);
+
+  // Vínculo RM + material → solicitação do SISTEN (Abrir RM > Abertas).
+  // Fonte local e pequena (não a base SAP), então recalcula a cada mudança
+  // no localDb — vincular uma RM em Abrir RM aparece aqui sem "Atualizar".
+  useEffect(() => {
+    const recalcularVinculos = () => {
+      const compras = localDb.getRequests().filter(r => r.type === 'compra' && r.linked_rm_number);
+      const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
+      setVinculosSistenPorRm(indexarVinculosSistenPorRm(compras, itensPorRequest));
+    };
+    recalcularVinculos();
+    const unsubscribe = localDb.subscribe(recalcularVinculos);
+    return () => unsubscribe();
+  }, []);
 
   // Função para salvar observações, data prevista e status
   const handleSaveFields = async (ri: string) => {
@@ -1914,7 +2018,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   return (
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+      <div data-tour="compras-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
         <div className="min-w-0">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <PackageSearch className="h-7 w-7 text-[#0056c6] dark:text-blue-500" />
@@ -2022,7 +2126,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       {/* KPIs Grid */}
       {!loading && !error && rmGroups.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3.5">
+        <div data-tour="compras-kpis" className="grid grid-cols-2 lg:grid-cols-6 gap-3.5">
           {/* Card 1: RMs em aberto / Total RMs (Info) */}
           <div className="rounded-xl border border-slate-200/80 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-slate-400 dark:bg-slate-700" />
@@ -2122,7 +2226,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         </div>
       )}
       {/* Filtros */}
-      <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
+      <div data-tour="compras-filtros" className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
         {/* Busca sempre em sua própria linha, sem disputar espaço com os
             filtros: um <div> flex-1 ao lado de uma trilha overflow-x-auto na
             mesma linha (flex-row) faz um dos dois encolher de forma
@@ -2253,7 +2357,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       {/* Content Layouts */}
       {!loading && !error && rmGroups.length > 0 && (
-        <div className="space-y-4">
+        <div data-tour="compras-lista-rms" className="space-y-4">
           {/* Summary / Expand Toggles */}
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
             <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
@@ -2368,6 +2472,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                 const ilvl = alertLevel(r.alerta || '');
                 const alertStyle = ALERT_STYLE[ilvl];
                 const itemSaveStatus = saveStatus[r.ri] || 'idle';
+                const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
                 return (
                   <div key={r.ri_po} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
                     {/* Card Top */}
@@ -2385,6 +2490,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
                           <span className="text-[10px] text-slate-350">•</span>
                           <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
+                          {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
+                          {vinculoSisten && (
+                            <>
+                              <span className="text-[10px] text-slate-350">•</span>
+                              <span
+                                className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                                title="Solicitação do SISTEN que abriu esta RM"
+                              >
+                                SISTEN #{vinculoSisten.requestNumber}
+                              </span>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -2413,6 +2530,22 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <p className="text-sm text-slate-700 dark:text-slate-250 mt-1 font-semibold leading-relaxed line-clamp-2">
                           {r.texto_breve || 'Descrição não cadastrada'}
                         </p>
+                        {/* Item genérico: o material do catálogo é um código
+                            guarda-chuva — a observação do SISTEN é que diz o
+                            que é de fato (ver `lib/centralComprasSisten.ts`). */}
+                        {vinculoSisten?.item.is_generic && (
+                          <div className="mt-1.5">
+                            <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                              <Tag className="h-2.5 w-2.5" />
+                              Item Genérico
+                            </span>
+                            {vinculoSisten.item.observation && (
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 italic mt-1 leading-relaxed">
+                                {vinculoSisten.item.observation}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Technical Specs Tags */}
@@ -2697,6 +2830,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                 <tbody className="divide-y" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
                   {flatTableItems.slice(0, visibleCount).map(({ rm, item: { record: r, encontrado, fornecedores, poFornecedor }, selectedSupplier }) => {
                     const itemSaveStatus = saveStatus[r.ri] || 'idle';
+                    // Solicitação do SISTEN que abriu esta RM, se a RM já
+                    // estiver vinculada em Abrir RM > Abertas — casada pela RM
+                    // e pelo código do material (ver `lib/centralComprasSisten.ts`).
+                    const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
                     return (
                       // Linha alterada e ainda não salva ganha uma faixa na
                       // borda esquerda além do fundo: o tingimento sozinho era
@@ -2787,6 +2924,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
                           <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
+                          {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
+                          {vinculoSisten && (
+                            <span
+                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block"
+                              title="Solicitação do SISTEN que abriu esta RM"
+                            >
+                              SISTEN #{vinculoSisten.requestNumber}
+                            </span>
+                          )}
                         </td>
 
                         {/* PO Status */}
@@ -2813,6 +2959,24 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           >
                             {r.texto_breve}
                           </button>
+                          {/* Item genérico: o material do catálogo é um código
+                              guarda-chuva, não descreve a compra — a observação
+                              que o solicitante escreveu no SISTEN é que diz o
+                              que é de fato (ver `lib/centralComprasSisten.ts`,
+                              também usada no texto técnico da cotação). */}
+                          {vinculoSisten?.item.is_generic && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                <Tag className="h-2.5 w-2.5" />
+                                Item Genérico
+                              </span>
+                              {vinculoSisten.item.observation && (
+                                <p className="text-[10px] text-slate-600 dark:text-slate-400 italic mt-1">
+                                  {vinculoSisten.item.observation}
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <div className="flex gap-2 items-center mt-1 text-[10px] text-slate-700 dark:text-slate-300 font-semibold flex-wrap">
                             {r.status_requisicao !== 'Processado' && (
                               <>
@@ -3339,7 +3503,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   <button
                     onClick={() => {
                       if (!waNumber) return;
-                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms, techTextByCode);
+                      const waText = buildWhatsAppText(quoteModal.items, quoteModal.rms, techTextByCode, vinculosSistenPorRm);
                       window.open(`https://api.whatsapp.com/send?phone=${waNumber}&text=${encodeURIComponent(waText)}`, '_blank', 'noopener,noreferrer');
                     }}
                     disabled={!waNumber}
@@ -3375,6 +3539,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           }
           onClose={() => setSelectedRecordForModal(null)}
           onUpdate={buildSuppliersData}
+        />
+      )}
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={COMPRAS_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
         />
       )}
     </div>

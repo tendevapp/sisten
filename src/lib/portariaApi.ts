@@ -17,6 +17,8 @@ import type {
   PortBriefingStatus,
   PortBriefingTipo,
   PortCarretaStatus,
+  PortControleCarreta,
+  PortControleEquipamento,
   PortItemConferido,
   PortLocalSetor,
   PortMaterialSeguranca,
@@ -1434,7 +1436,7 @@ export async function listarPassagensPlantao(filtros?: {
     console.error('Erro ao listar passagens de plantao:', error);
     throw new Error(error.message);
   }
-  return (data || []) as PortPassagemPlantao[];
+  return (data || []) as unknown as PortPassagemPlantao[];
 }
 
 export async function obterPassagemPlantao(id: string): Promise<PortPassagemPlantao | null> {
@@ -1448,7 +1450,7 @@ export async function obterPassagemPlantao(id: string): Promise<PortPassagemPlan
     console.error('Erro ao obter passagem de plantao:', error);
     throw new Error(error.message);
   }
-  return data as PortPassagemPlantao | null;
+  return (data as unknown as PortPassagemPlantao) || null;
 }
 
 export async function criarPassagemPlantao(
@@ -1478,7 +1480,7 @@ export async function criarPassagemPlantao(
 
   const { data, error } = await supabase
     .from('port_passagem_plantao')
-    .insert(payload)
+    .insert(payload as any)
     .select('*')
     .single();
 
@@ -1486,7 +1488,7 @@ export async function criarPassagemPlantao(
     console.error('Erro ao criar passagem de plantao:', error);
     throw new Error(error.message);
   }
-  return data as PortPassagemPlantao;
+  return data as unknown as PortPassagemPlantao;
 }
 
 export async function atualizarPassagemPlantao(
@@ -1498,7 +1500,7 @@ export async function atualizarPassagemPlantao(
     .update({
       ...dados,
       updated_at: new Date().toISOString(),
-    })
+    } as any)
     .eq('id', id)
     .select('*')
     .single();
@@ -1507,7 +1509,7 @@ export async function atualizarPassagemPlantao(
     console.error('Erro ao atualizar passagem de plantao:', error);
     throw new Error(error.message);
   }
-  return data as PortPassagemPlantao;
+  return data as unknown as PortPassagemPlantao;
 }
 
 export async function encerrarPassagemPlantao(

@@ -128,7 +128,7 @@ export default function TramoCard({
 
       {aberto && (
         <div className="border-t border-slate-100 px-3 pb-5 pt-4 sm:px-4 dark:border-slate-800">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" data-tour="expedicao-edicao-tramo">
             {/* Tipo do Tramo */}
             <div className="sm:col-span-1">
               <label htmlFor={`tramo-${tramo.id}`} className={rotuloClasse}>Tramo</label>
@@ -224,7 +224,7 @@ export default function TramoCard({
           </div>
 
           {/* Trilha de horários — o que é preenchido ao longo do dia */}
-          <div className="mt-6 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/40">
+          <div className="mt-6 rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/40" data-tour="expedicao-edicao-etapas">
             <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">
               Horários e fotos
             </p>

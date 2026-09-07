@@ -17,7 +17,7 @@ import {
   RefreshCw, MapPin, Clock, Phone, Filter, Loader2, Users,
 } from 'lucide-react';
 import type { Profile, RhRota } from '../../types';
-import { listarRhRotas, criarRhRota, atualizarRhRota, excluirRhRota } from '../../lib/rhApi';
+import { listarRhRotas, criarRhRota, atualizarRhRota, excluirRhRota, restaurarRhRota } from '../../lib/rhApi';
 import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -249,13 +249,26 @@ export default function FacilitiesRotas({
 
   const confirmarExclusao = async () => {
     if (!paraExcluir) return;
+    const item = paraExcluir;
     setExcluindo(true);
     try {
-      await excluirRhRota(paraExcluir.id);
-      setRotas(prev => prev.filter(x => x.id !== paraExcluir.id));
-      setSelecionados(prev => { const n = new Set(prev); n.delete(paraExcluir.id); return n; });
-      toast.success(`${paraExcluir.funcionario} removido do cadastro.`);
+      await excluirRhRota(item.id);
+      setRotas(prev => prev.filter(x => x.id !== item.id));
+      setSelecionados(prev => { const n = new Set(prev); n.delete(item.id); return n; });
       setParaExcluir(null);
+      toast.undo(
+        `${item.funcionario} removido do cadastro.`,
+        async () => {
+          try {
+            await restaurarRhRota(item.id);
+            setRotas(prev => (prev.some(x => x.id === item.id) ? prev : [...prev, item]));
+            toast.success(`${item.funcionario} restaurado com sucesso.`);
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (e: any) {
       toast.error('Falha ao excluir: ' + (e?.message || ''));
     } finally {

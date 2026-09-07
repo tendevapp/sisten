@@ -8,8 +8,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2,
-  Trash2, X, Loader2, Bus, Car, Truck, Clock, Calendar, User
+  Trash2, X, Loader2, Bus, Car, Truck, Clock, Calendar, User, Filter,
+  HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type { Profile, PortRegistroTransporte, PortTransporteStatus, PortTurno } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -44,6 +48,122 @@ const formTransporteVazio = () => ({
   observacoes: '',
 });
 
+const PORTARIA_TRANSPORTES_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Bus,
+    title: 'Registro de Chegada de Transportes',
+    description:
+      'Formulário oficial FRM.SGP-0009 para monitoramento de ônibus, vans e veículos de passageiros que atendem as rotas de funcionários da TEN.',
+  },
+  {
+    target: 'transportes-header',
+    icon: Plus,
+    title: 'Lançar Chegada e Exportação',
+    description:
+      'Ao chegar um transporte na guarita, clique em "Lançar Chegada" para preencher a placa, motorista, rota e ocupação. Exporte a folha diária em PDF.',
+  },
+  {
+    target: 'transportes-filtros',
+    icon: Filter,
+    title: 'Filtros por Data, Turno e Status',
+    description:
+      'Selecione a data de consulta, filtre por turno (Manhã, Tarde, Noite) ou confira quais transportes ainda estão dentro do pátio aguardando saída.',
+  },
+  {
+    target: 'transportes-tabela',
+    icon: Bus,
+    title: 'Quadro de Movimentação dos Transportes',
+    description:
+      'Acompanhe os horários de chegada e saída, empresa prestadora, rota e acione o botão "Registrar Saída" no momento em que o veículo deixar a fábrica.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
+const PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Bus,
+    title: 'Lançar Chegada de Transporte',
+    description:
+      'Registre a entrada de ônibus, vans e veículos de passageiros (FRM.SGP-0009) com autocompletar inteligente pelo histórico de placas.',
+  },
+  {
+    target: 'transportes-form-veiculo',
+    icon: Car,
+    title: 'Identificação do Veículo',
+    description:
+      'Escolha a categoria (Van, Ônibus, Carro, etc.) e informe a placa. O sistema sugere dados de viagens anteriores assim que você começa a digitar.',
+  },
+  {
+    target: 'transportes-form-motorista',
+    icon: User,
+    title: 'Empresa e Motorista',
+    description:
+      'Informe a razão social da transportadora e o nome completo do motorista condutor.',
+  },
+  {
+    target: 'transportes-form-horarios',
+    icon: Clock,
+    title: 'Data, Horário e Turno',
+    description:
+      'O sistema preenche automaticamente a data e hora do momento da chegada, além de sugerir o turno correto de plantão.',
+  },
+  {
+    target: 'transportes-form-passageiros',
+    icon: Bus,
+    title: 'Rota, Ocupação e Vigilante',
+    description:
+      'Selecione a rota atendida (R1, R2, R3 ou digitação livre), informe a quantidade estimada de passageiros ou motivo, e selecione o vigilante da portaria.',
+  },
+  {
+    target: 'transportes-form-salvar',
+    icon: CheckCircle2,
+    title: 'Salvar Chegada',
+    description:
+      'Grava a entrada no pátio com status Aberto. Ao sair da fábrica, a baixa é realizada com um único clique.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaTransportes({ user, onNavigate }: Props) {
   const toast = useToast();
   const [itens, setItens] = useState<PortRegistroTransporte[]>([]);
@@ -59,6 +179,9 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const [salvando, setSalvando] = useState(false);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  const tour = usePageTour('portaria-transportes', PORTARIA_TRANSPORTES_TOUR_STEPS.length, !modalNovoAberto);
+  const tourNovo = usePageTour('portaria-transportes-novo', PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
   const [formNovo, setFormNovo] = useState(formTransporteVazio);
   // Enquanto false, os dropdowns de sugestão ficam fechados — evita reabri-los
@@ -152,11 +275,24 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
   const handleExcluir = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirTransporte(itemParaExcluir.id, user.id);
-      toast.success('Registro ocultado. Mantido no banco e restaurável por um administrador.');
+      await api.excluirTransporte(item.id, user.id);
       setItemParaExcluir(null);
       carregarDados();
+      toast.undo(
+        `Transporte placa ${item.placa} excluído.`,
+        async () => {
+          try {
+            await api.restaurarTransporte(item.id);
+            toast.success(`Transporte placa ${item.placa} restaurado com sucesso.`);
+            carregarDados();
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     }
@@ -183,7 +319,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="transportes-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <button
             type="button"
@@ -230,7 +366,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       </div>
 
       {/* Filters Bar */}
-      <div className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4 dark:border-slate-800 dark:bg-slate-900">
+      <div data-tour="transportes-filtros" className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4 dark:border-slate-800 dark:bg-slate-900">
         <div>
           <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">Data</label>
           <input
@@ -303,7 +439,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div data-tour="transportes-tabela" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-100 bg-slate-50/75 text-xs font-bold uppercase tracking-wider text-slate-600 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
@@ -406,17 +542,28 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       {modalNovoAberto && (
         <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-3xl">
           <ModalHeader onClose={() => setModalNovoAberto(false)}>
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                Lançar Chegada de Transporte
-              </h3>
-              <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0009</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                  Lançar Chegada de Transporte
+                </h3>
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0009</p>
+              </div>
+              <button
+                type="button"
+                onClick={tourNovo.startTour}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs transition-colors hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+                title="Dicas de preenchimento da chegada de transporte"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                Dicas de Preenchimento
+              </button>
             </div>
           </ModalHeader>
 
           <form onSubmit={handleSalvar} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div data-tour="transportes-form-veiculo" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Tipo de Veículo *
@@ -448,7 +595,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div data-tour="transportes-form-motorista" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div className="relative">
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Empresa *
@@ -481,7 +628,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div data-tour="transportes-form-horarios" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data
@@ -520,65 +667,67 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Rota
-                  </label>
-                  <select
-                    value={rotaModoOutro ? '__OUTRO__' : (ROTAS.includes(formNovo.rota as (typeof ROTAS)[number]) ? formNovo.rota : '')}
-                    onChange={(e) => {
-                      if (e.target.value === '__OUTRO__') {
-                        setRotaModoOutro(true);
-                        setFormNovo({ ...formNovo, rota: '' });
-                      } else {
-                        setRotaModoOutro(false);
-                        setFormNovo({ ...formNovo, rota: e.target.value });
-                      }
-                    }}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  >
-                    <option value="">— Sem rota</option>
-                    {ROTAS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                    <option value="__OUTRO__">Outro (digitar)...</option>
-                  </select>
-                  {rotaModoOutro && (
+              <div data-tour="transportes-form-passageiros" className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Rota
+                    </label>
+                    <select
+                      value={rotaModoOutro ? '__OUTRO__' : (ROTAS.includes(formNovo.rota as (typeof ROTAS)[number]) ? formNovo.rota : '')}
+                      onChange={(e) => {
+                        if (e.target.value === '__OUTRO__') {
+                          setRotaModoOutro(true);
+                          setFormNovo({ ...formNovo, rota: '' });
+                        } else {
+                          setRotaModoOutro(false);
+                          setFormNovo({ ...formNovo, rota: e.target.value });
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    >
+                      <option value="">— Sem rota</option>
+                      {ROTAS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                      <option value="__OUTRO__">Outro (digitar)...</option>
+                    </select>
+                    {rotaModoOutro && (
+                      <input
+                        type="text"
+                        autoFocus
+                        autoCapitalize="characters"
+                        placeholder="Ex: R4, ESPECIAL..."
+                        value={formNovo.rota}
+                        onChange={(e) => setFormNovo({ ...formNovo, rota: e.target.value.toUpperCase() })}
+                        className="mt-2 w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    )}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Ocupação / Motivo (Opcional)
+                    </label>
                     <input
                       type="text"
-                      autoFocus
                       autoCapitalize="characters"
-                      placeholder="Ex: R4, ESPECIAL..."
-                      value={formNovo.rota}
-                      onChange={(e) => setFormNovo({ ...formNovo, rota: e.target.value.toUpperCase() })}
-                      className="mt-2 w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      placeholder="Ex: Entrega de suprimentos / 4 passageiros"
+                      value={formNovo.ocupacao}
+                      onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
+                      className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
-                  )}
+                  </div>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Ocupação / Motivo (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    autoCapitalize="characters"
-                    placeholder="Ex: Entrega de suprimentos / 4 passageiros"
-                    value={formNovo.ocupacao}
-                    onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
-                    className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <VigilanteSelect
-                    label="Vigilante Portaria"
-                    required
-                    value={formNovo.vigilante}
-                    onChange={(val) => setFormNovo({ ...formNovo, vigilante: val })}
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div>
+                    <VigilanteSelect
+                      label="Vigilante Portaria"
+                      required
+                      value={formNovo.vigilante}
+                      onChange={(val) => setFormNovo({ ...formNovo, vigilante: val })}
+                    />
+                  </div>
                 </div>
               </div>
             </ModalBody>
@@ -594,6 +743,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               <button
                 type="submit"
                 disabled={salvando}
+                data-tour="transportes-form-salvar"
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -613,6 +763,24 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleExcluir}
           onCancelar={() => setItemParaExcluir(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_TRANSPORTES_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+      {tourNovo.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS}
+          stepIndex={tourNovo.stepIndex}
+          onNext={tourNovo.next}
+          onBack={tourNovo.back}
+          onClose={tourNovo.close}
         />
       )}
     </div>

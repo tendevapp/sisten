@@ -10,7 +10,13 @@
  */
 
 import { supabase } from '../db/supabaseClient';
-import { normalizarCnpj, formatarCnpj, normalizarDescricao } from './cotacoes';
+import {
+  normalizarCnpj,
+  formatarCnpj,
+  normalizarDescricao,
+  gerarCodigoCotacao,
+  proximoIndiceCotacao,
+} from './cotacoes';
 import type {
   CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft, CotacaoProcessoStatus,
   CotacaoProposta, CotacaoPropostaDraft, ExtracaoResposta, SugestaoVinculo,
@@ -56,10 +62,29 @@ export async function extrairCotacao(params: {
 // Processos
 // =====================================================================
 
-function gerarNumeroProcesso(): string {
-  const ano = new Date().getFullYear();
-  const sufixo = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `COT-${ano}-${sufixo}`;
+/**
+ * Consulta os numeros de processo de cotacao existentes e calcula o proximo
+ * codigo no padrao do SISTEN: `COT-DDMMYY-INDICE` (ex.: `COT-040926-01`),
+ * com indice sequencial acumulado no mes.
+ */
+export async function obterProximoNumeroCotacao(dataISO?: string | null): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('sup_cotacao_processos')
+      .select('numero');
+
+    if (error || !data) {
+      if (error) console.warn('Erro ao consultar processos de cotacao para numero:', error);
+      return gerarCodigoCotacao(dataISO, 1);
+    }
+
+    const codigosExistentes = data.map(d => d.numero).filter(Boolean);
+    const proximoIndice = proximoIndiceCotacao(codigosExistentes, dataISO);
+    return gerarCodigoCotacao(dataISO, proximoIndice);
+  } catch (err) {
+    console.warn('Falha ao obter proximo numero de cotacao:', err);
+    return gerarCodigoCotacao(dataISO, 1);
+  }
 }
 
 export async function criarProcessoCotacao(params: {
@@ -69,18 +94,40 @@ export async function criarProcessoCotacao(params: {
   usuarioId: string;
   usuarioNome: string;
 }): Promise<CotacaoProcesso> {
-  const { data: processo, error: erroProcesso } = await supabase
-    .from('sup_cotacao_processos')
-    .insert({
-      numero: gerarNumeroProcesso(),
-      titulo: params.titulo,
-      observacoes: params.observacoes,
-      criado_por: params.usuarioId,
-      criado_por_nome: params.usuarioNome,
-    })
-    .select('*')
-    .single();
-  if (erroProcesso) throw new Error(`Falha ao criar processo de cotação: ${erroProcesso.message}`);
+  let numero = await obterProximoNumeroCotacao();
+  let processo: CotacaoProcesso | null = null;
+  let erroProcesso: any = null;
+
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const res = await supabase
+      .from('sup_cotacao_processos')
+      .insert({
+        numero,
+        titulo: params.titulo,
+        observacoes: params.observacoes,
+        criado_por: params.usuarioId,
+        criado_por_nome: params.usuarioNome,
+      })
+      .select('*')
+      .single();
+
+    if (!res.error && res.data) {
+      processo = res.data as CotacaoProcesso;
+      erroProcesso = null;
+      break;
+    }
+
+    erroProcesso = res.error;
+    if (res.error?.code === '23505' || String(res.error?.message).toLowerCase().includes('numero')) {
+      numero = await obterProximoNumeroCotacao();
+      continue;
+    }
+    break;
+  }
+
+  if (erroProcesso || !processo) {
+    throw new Error(`Falha ao criar processo de cotacao: ${erroProcesso?.message || 'Erro desconhecido'}`);
+  }
 
   // Cotação avulsa (criada sem passar pela Central de Compras) não tem item
   // nenhum — insert com array vazio é só custo de round-trip à toa.
@@ -153,6 +200,30 @@ export async function buscarPropostasPorArquivo(processoId: string, arquivosOrig
     .in('arquivo_origem', nomes);
   if (error) throw new Error(`Falha ao verificar propostas já extraídas: ${error.message}`);
   return (data ?? []) as PropostaJaExtraida[];
+}
+
+/**
+ * Busca todas as propostas de cotação já extraídas e salvas no banco pelo nome
+ * do arquivo de origem, trazendo também seus itens já normalizados.
+ * Permite recarregar uma cotação anterior evitando nova chamada de IA.
+ */
+export async function buscarPropostasPorNomeArquivo(nomeArquivo: string): Promise<CotacaoProposta[]> {
+  const nome = nomeArquivo.trim();
+  if (!nome) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('sup_cotacao_propostas')
+      .select('*, itens:sup_cotacao_proposta_itens(*)')
+      .ilike('arquivo_origem', nome)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data as CotacaoProposta[];
+  } catch (err) {
+    console.warn('Falha ao consultar propostas existentes por arquivo:', err);
+    return [];
+  }
 }
 
 /** Exclui uma proposta salva (e seus itens, via ON DELETE CASCADE em `cotacao_proposta_itens`). */
@@ -332,4 +403,50 @@ export async function salvarProcessoCotacao(params: {
   const { data, error } = await supabase.rpc('salvar_processo_cotacao', { p_payload: payload });
   if (error) throw new Error(`Falha ao salvar a proposta: ${error.message}`);
   return data as ResultadoSalvamento;
+}
+
+// =====================================================================
+// Mapa comparativo
+// =====================================================================
+
+/**
+ * Grava o valor do frete de uma proposta. Fica fora do payload de
+ * `salvar_processo_cotacao` de propósito: aquela RPC insere (nunca atualiza),
+ * e o frete é preenchido depois, no mapa, sobre uma proposta já salva.
+ */
+export async function salvarFreteProposta(propostaId: string, valorFrete: number | null): Promise<void> {
+  const { error } = await supabase
+    .from('sup_cotacao_propostas')
+    .update({ valor_frete: valorFrete, updated_at: new Date().toISOString() })
+    .eq('id', propostaId);
+  if (error) throw new Error(`Falha ao salvar o frete da proposta: ${error.message}`);
+}
+
+/**
+ * Persiste a decisão do comprador no mapa: quais itens cotados foram
+ * escolhidos. Recebe a seleção inteira do processo e grava a diferença nos
+ * dois sentidos — desmarcar é uma decisão tão real quanto marcar.
+ */
+export async function salvarSelecaoMapa(params: {
+  itensSelecionados: string[];
+  itensDesmarcados: string[];
+  usuarioNome: string;
+}): Promise<void> {
+  const agora = new Date().toISOString();
+
+  if (params.itensSelecionados.length > 0) {
+    const { error } = await supabase
+      .from('sup_cotacao_proposta_itens')
+      .update({ mapa_selecionado: true, mapa_selecionado_em: agora, mapa_selecionado_por: params.usuarioNome })
+      .in('id', params.itensSelecionados);
+    if (error) throw new Error(`Falha ao salvar a seleção do mapa: ${error.message}`);
+  }
+
+  if (params.itensDesmarcados.length > 0) {
+    const { error } = await supabase
+      .from('sup_cotacao_proposta_itens')
+      .update({ mapa_selecionado: false, mapa_selecionado_em: null, mapa_selecionado_por: null })
+      .in('id', params.itensDesmarcados);
+    if (error) throw new Error(`Falha ao limpar a seleção do mapa: ${error.message}`);
+  }
 }

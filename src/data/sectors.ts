@@ -24,4 +24,7 @@ export const INITIAL_SECTORS: Sector[] = [
   { id: '16', name: 'Diretoria', is_support: false, helpdesk_enabled: false },
   { id: '17', name: 'Jurídico', is_support: true, helpdesk_enabled: true },
   { id: '18', name: 'Controladoria', is_support: false, helpdesk_enabled: false },
+  // Portaria: opera os formulários do próprio módulo (chegada de transporte,
+  // carretas, passagem de plantão). Não é destino de helpdesk.
+  { id: '19', name: 'Portaria', is_support: false, helpdesk_enabled: false },
 ];

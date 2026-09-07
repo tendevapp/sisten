@@ -98,12 +98,25 @@ export default function RhSetores({ onNavigate }: Props) {
 
   const excluir = async () => {
     if (!paraExcluir) return;
+    const itemRemovido = { ...paraExcluir };
     setExcluindo(true);
     try {
-      await api.excluirRhSetor(paraExcluir.id);
-      toast.success(`Setor ${paraExcluir.nome} excluído.`);
+      await api.excluirRhSetor(itemRemovido.id);
       setParaExcluir(null);
       await carregar();
+      toast.undo(
+        `Setor ${itemRemovido.nome} excluído.`,
+        async () => {
+          try {
+            await api.criarRhSetor(itemRemovido.nome);
+            await carregar();
+            toast.success(`Setor ${itemRemovido.nome} restaurado com sucesso!`);
+          } catch (err: any) {
+            toast.error('Erro ao restaurar o setor: ' + (err.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error(err.message || 'Erro ao excluir o setor.');
     } finally {

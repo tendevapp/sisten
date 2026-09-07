@@ -26,6 +26,7 @@ interface ToastItem {
   type: ToastType;
   message: string;
   action?: ToastActionDef;
+  durationMs?: number;
 }
 
 interface ToastApi {
@@ -35,7 +36,12 @@ interface ToastApi {
   info: (message: string) => void;
   warning: (message: string) => void;
   /** Toast com botão de ação (ex.: "Desfazer") e duração customizável — para ações reversíveis (delete otimista + janela de undo). */
-  action: (message: string, actionLabel: string, onAction: () => void, durationMs?: number) => void;
+  action: (message: string, actionLabel: string, onAction: () => void | Promise<void>, durationMs?: number) => void;
+  /**
+   * Toast com ação "Desfazer" padronizada de 6 segundos com barra de progresso regressiva.
+   * Padrão sistêmico do SISTEN para exclusões e ações reversíveis.
+   */
+  undo: (message: string, onUndo: () => void | Promise<void>, durationMs?: number, actionLabel?: string) => void;
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
@@ -58,7 +64,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const push = useCallback((message: string, type: ToastType, action: ToastActionDef | undefined, durationMs: number) => {
     const id = nextId.current++;
-    setToasts(prev => [...prev, { id, type, message, action }]);
+    setToasts(prev => [...prev, { id, type, message, action, durationMs }]);
     window.setTimeout(() => remove(id), durationMs);
   }, [remove]);
 
@@ -66,8 +72,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     push(message, type, undefined, 5000);
   }, [push]);
 
-  const action = useCallback((message: string, actionLabel: string, onAction: () => void, durationMs = 6000) => {
-    push(message, 'undo', { label: actionLabel, onClick: onAction }, durationMs);
+  const action = useCallback((message: string, actionLabel: string, onAction: () => void | Promise<void>, durationMs = 6000) => {
+    push(message, 'undo', { label: actionLabel, onClick: () => { void onAction(); } }, durationMs);
+  }, [push]);
+
+  const undo = useCallback((message: string, onUndo: () => void | Promise<void>, durationMs = 6000, actionLabel = 'Desfazer') => {
+    push(message, 'undo', { label: actionLabel, onClick: () => { void onUndo(); } }, durationMs);
   }, [push]);
 
   const api = useRef<ToastApi>({
@@ -77,6 +87,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     info: (m: string) => show(m, 'info'),
     warning: (m: string) => show(m, 'warning'),
     action,
+    undo,
   });
   // Mantém as closures atualizadas apontando para as versões mais recentes.
   api.current.show = show;
@@ -85,6 +96,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   api.current.info = (m: string) => show(m, 'info');
   api.current.warning = (m: string) => show(m, 'warning');
   api.current.action = action;
+  api.current.undo = undo;
 
   return (
     <ToastContext.Provider value={api.current}>
@@ -108,7 +120,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
   return (
     <div
       role="status"
-      className={`pointer-events-auto w-full flex items-center gap-3 rounded-xl border shadow-lg px-4 py-3 animate-slide-up ${classes}`}
+      className={`relative overflow-hidden pointer-events-auto w-full flex items-center gap-3 rounded-xl border shadow-lg px-4 py-3 animate-slide-up ${classes}`}
     >
       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${ehUndo ? 'bg-white/10' : ''}`}>
         <Icon className={`h-4 w-4 ${iconColor}`} />
@@ -120,7 +132,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
         <button
           type="button"
           onClick={() => { toast.action!.onClick(); onClose(); }}
-          className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-white/20 transition-colors"
+          className="shrink-0 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-white/25 active:scale-95 transition-all cursor-pointer shadow-sm"
         >
           {toast.action.label}
         </button>
@@ -129,7 +141,7 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
         type="button"
         onClick={onClose}
         aria-label="Fechar aviso"
-        className={`shrink-0 rounded-lg p-1.5 -m-1 transition-colors ${
+        className={`shrink-0 rounded-lg p-1.5 -m-1 transition-colors cursor-pointer ${
           ehUndo
             ? 'text-slate-400 hover:bg-white/10 hover:text-slate-100'
             : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200'
@@ -137,6 +149,17 @@ function ToastCard({ toast, onClose }: { toast: ToastItem; onClose: () => void }
       >
         <X className="h-4 w-4" />
       </button>
+
+      {toast.action && toast.durationMs && (
+        <div className="absolute bottom-0 inset-x-0 h-1 bg-white/10 dark:bg-black/20 overflow-hidden">
+          <div
+            className={`h-full ${ehUndo ? 'bg-amber-400 dark:bg-amber-300' : 'bg-blue-500'}`}
+            style={{
+              animation: `toast-countdown ${toast.durationMs}ms linear forwards`,
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -154,6 +177,7 @@ export function useToast(): ToastApi {
     info: (m) => console.info('[toast:info]', m),
     warning: (m) => console.warn('[toast:warning]', m),
     action: (m, actionLabel) => console.warn('[toast:action]', m, actionLabel),
+    undo: (m, onUndo) => console.warn('[toast:undo]', m, onUndo),
   });
   return ctx ?? fallback.current;
 }

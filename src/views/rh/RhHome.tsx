@@ -122,6 +122,15 @@ const SECOES: Secao[] = [
         path: '/formularios/rh-ase-hora-extra',
         fonte: 'Formulário ASE (FRM.RHU-0007)',
       },
+      {
+        id: 'rel_ase_gerencial',
+        label: 'Relatório de Horas Extras',
+        icon: BarChart3,
+        desc: 'Consolidado gerencial das ASEs: horas por setor, turno e colaborador, evolução no período, transporte e refeição, com exportação em Excel.',
+        cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
+        path: '/rh/relatorio-ase',
+        fonte: 'Base rh_ase_hora_extra',
+      },
     ],
   },
 ];

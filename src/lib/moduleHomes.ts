@@ -61,6 +61,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_fornecedores: 'Base de fornecedores homologados e seus contatos.',
       sup_central_compras: 'Requisições em aberto, cotação de fornecedores e acompanhamento até a entrega.',
       sup_analise_cotacoes: 'Mapa comparativo de propostas e cotações.',
+      sup_historico_cotacoes: 'Consulta de cotações passadas, inteligência de preços e benchmark de fornecedores.',
       sup_historico: 'Histórico de pedidos, preços praticados e fornecedores.',
       sup_contratos: 'Contratos vigentes, aditivos e demandas contratuais.',
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
@@ -82,6 +83,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       arrow: 'group-hover:text-cyan-500',
     },
     cardDescriptions: {
+      almox_abrir_rm: 'Solicitações de compra aprovadas prontas para virar RM no SAP, com exportação da planilha padrão.',
       almox_estoque: 'Posição de estoque, curva ABC e cobertura por depósito.',
       almox_movimentacoes: 'Entradas, saídas, giro e idade do estoque.',
       almox_consumo_semanal: 'Consumo de cada material ao longo das semanas.',

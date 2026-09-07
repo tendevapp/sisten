@@ -25,7 +25,8 @@ vi.mock('xlsx', () => ({
 }));
 
 const {
-  exportarSolicitacoes, classificarEventoHistorico,
+  exportarSolicitacoes, classificarEventoHistorico, foiEditadaAposAprovacao,
+  formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
 } = await import('./solicitacoes');
 const {
   podeAlterarDecisao, podeCancelar,
@@ -209,3 +210,204 @@ describe('classificarEventoHistorico', () => {
     expect(ev.tipo).toBe('abertura');
   });
 });
+
+describe('foiEditadaAposAprovacao', () => {
+  it('retorna false para solicitacao sem historico', () => {
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, [])).toBe(false);
+  });
+
+  it('retorna false para solicitacao nova nunca aprovada', () => {
+    const historico = [
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'rascunho' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+    ];
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, historico)).toBe(false);
+  });
+
+  it('retorna false para solicitacao editada que nunca foi aprovada antes', () => {
+    const historico = [
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'rascunho' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'h2',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        comment: 'Solicitação editada pelo solicitante. Alterada quantidade',
+        created_at: '2026-09-01T11:00:00Z',
+      },
+    ];
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, historico)).toBe(false);
+  });
+
+  it('retorna true para solicitacao que ja havia sido aprovada e foi editada pelo solicitante', () => {
+    const historico = [
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'aprovada' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        comment: 'Aprovado conforme planejado',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'h2',
+        request_id: 'r1',
+        from_status: 'aprovada' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        comment: 'Solicitação editada pelo solicitante. Alterada por Requisitante: item adicionado',
+        created_at: '2026-09-02T14:00:00Z',
+      },
+    ];
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, historico)).toBe(true);
+  });
+
+  it('retorna true mesmo com historico em ordem decrescente de data', () => {
+    const historico = [
+      {
+        id: 'h2',
+        request_id: 'r1',
+        from_status: 'aprovada' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        comment: 'Solicitação editada pelo solicitante.',
+        created_at: '2026-09-02T14:00:00Z',
+      },
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'aprovada' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        comment: 'Aprovado',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+    ];
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, historico)).toBe(true);
+  });
+
+  it('retorna true quando aprovada, devolvida para revisao e entao editada', () => {
+    const historico = [
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'aprovada' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'h2',
+        request_id: 'r1',
+        from_status: 'aprovada' as any,
+        to_status: 'em_revisao' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        created_at: '2026-09-02T10:00:00Z',
+      },
+      {
+        id: 'h3',
+        request_id: 'r1',
+        from_status: 'em_revisao' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        comment: 'Solicitação editada pelo solicitante. Ajustado preco',
+        created_at: '2026-09-02T11:00:00Z',
+      },
+    ];
+    expect(foiEditadaAposAprovacao({ status: 'pendente' }, historico)).toBe(true);
+  });
+
+  it('retorna false se a solicitacao editada ja foi novamente aprovada pelo gestor', () => {
+    const historico = [
+      {
+        id: 'h1',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'aprovada' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'h2',
+        request_id: 'r1',
+        from_status: 'aprovada' as any,
+        to_status: 'pendente' as any,
+        user_id: 'u1',
+        user_name: 'Requisitante',
+        comment: 'Solicitação editada pelo solicitante.',
+        created_at: '2026-09-02T14:00:00Z',
+      },
+      {
+        id: 'h3',
+        request_id: 'r1',
+        from_status: 'pendente' as any,
+        to_status: 'aprovada' as any,
+        user_id: 'u_gestor',
+        user_name: 'Gestor',
+        comment: 'Re-aprovado',
+        created_at: '2026-09-03T09:00:00Z',
+      },
+    ];
+    // Como ja foi aprovada, o status atual e aprovada, logo nao deve exibir Editada ao lado de aguardando aprovacao
+    expect(foiEditadaAposAprovacao({ status: 'aprovada' }, historico)).toBe(false);
+  });
+});
+
+describe('formatarObservacaoItemGenerico e desformatarObservacaoItemGenerico', () => {
+  it('adiciona prefixo ITEM GENÉRICO: quando vazio', () => {
+    expect(formatarObservacaoItemGenerico('')).toBe('ITEM GENÉRICO: ');
+    expect(formatarObservacaoItemGenerico(null)).toBe('ITEM GENÉRICO: ');
+    expect(formatarObservacaoItemGenerico(undefined)).toBe('ITEM GENÉRICO: ');
+  });
+
+  it('adiciona prefixo ITEM GENÉRICO: preservando texto do usuario', () => {
+    expect(formatarObservacaoItemGenerico('Parafuso M8 com rosca grossa')).toBe(
+      'ITEM GENÉRICO: Parafuso M8 com rosca grossa'
+    );
+  });
+
+  it('nao duplica prefixo se ja existir', () => {
+    expect(formatarObservacaoItemGenerico('ITEM GENÉRICO: Parafuso M8')).toBe(
+      'ITEM GENÉRICO: Parafuso M8'
+    );
+    expect(formatarObservacaoItemGenerico('item generico: Parafuso M8')).toBe(
+      'ITEM GENÉRICO: Parafuso M8'
+    );
+    expect(formatarObservacaoItemGenerico('ITEM GENÉRICO:')).toBe('ITEM GENÉRICO: ');
+  });
+
+  it('remove o prefixo ao desformatar quando o item deixa de ser generico', () => {
+    expect(desformatarObservacaoItemGenerico('ITEM GENÉRICO: Parafuso M8')).toBe('Parafuso M8');
+    expect(desformatarObservacaoItemGenerico('item generico: Parafuso M8')).toBe('Parafuso M8');
+    expect(desformatarObservacaoItemGenerico('ITEM GENÉRICO:')).toBe('');
+    expect(desformatarObservacaoItemGenerico('Observacao comum')).toBe('Observacao comum');
+    expect(desformatarObservacaoItemGenerico('')).toBe('');
+  });
+});
+

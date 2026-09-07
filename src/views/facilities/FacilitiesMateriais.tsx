@@ -154,11 +154,24 @@ export default function FacilitiesMateriais({ user: _user, onNavigate }: Props) 
 
   const handleConfirmarExclusao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirMaterialSeguranca(itemParaExcluir.id);
-      toast.success(`Material "${itemParaExcluir.nome}" excluído com sucesso!`);
+      await api.excluirMaterialSeguranca(item.id);
       setItemParaExcluir(null);
       carregarMateriais();
+      toast.undo(
+        `Material "${item.nome}" excluído.`,
+        async () => {
+          try {
+            await api.restaurarMaterialSeguranca(item.id);
+            toast.success(`Material "${item.nome}" restaurado com sucesso.`);
+            carregarMateriais();
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir material: ' + (err.message || ''));
     }

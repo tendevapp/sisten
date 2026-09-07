@@ -993,3 +993,128 @@ body,
     scroll-behavior: auto !important;
   }
 }
+/* ------------------------------------------------------------------ */
+/* Torre eólica da tela Início — enfeite animado                       */
+/* ------------------------------------------------------------------ */
+
+@keyframes home-eolica-rotor {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Vai e volta um grau e meio: o mastro cede ao vento sem parecer mole. */
+@keyframes home-eolica-mastro {
+  0%,
+  100% {
+    transform: rotate(-0.5deg);
+  }
+
+  50% {
+    transform: rotate(0.9deg);
+  }
+}
+
+@keyframes home-eolica-nuvem {
+  0% {
+    transform: translateX(-30px);
+    opacity: 0;
+  }
+
+  12%,
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(175px);
+    opacity: 0;
+  }
+}
+
+@keyframes home-eolica-rajada {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: translateX(130px);
+    opacity: 0;
+  }
+}
+
+.home-rotor {
+  animation: home-eolica-rotor 3.6s linear infinite;
+}
+
+/* O mastro balança a partir da base, não do meio. */
+.home-mastro {
+  transform-origin: 80px 168px;
+  animation: home-eolica-mastro 6s ease-in-out infinite;
+}
+
+.home-nuvem {
+  animation: home-eolica-nuvem 22s linear infinite;
+}
+
+.home-nuvem-2 {
+  animation-duration: 30s;
+  animation-delay: -9s;
+}
+
+.home-rajada {
+  animation: home-eolica-rajada 4.5s linear infinite;
+}
+
+.home-rajada-2 {
+  animation-duration: 6s;
+  animation-delay: -2.4s;
+}
+
+/* Rajada forte: apontar o mouse (ou tocar) acelera a cena inteira. */
+.home-eolica:hover .home-rotor,
+.home-eolica:active .home-rotor {
+  animation-duration: 0.9s;
+}
+
+.home-eolica:hover .home-nuvem,
+.home-eolica:active .home-nuvem {
+  animation-duration: 7s;
+}
+
+.home-eolica:hover .home-rajada,
+.home-eolica:active .home-rajada {
+  animation-duration: 1.6s;
+}
+
+.home-eolica:hover .home-mastro,
+.home-eolica:active .home-mastro {
+  animation-duration: 2.4s;
+}
+
+/* Movimento ambiente é decoração: some por completo com movimento reduzido. */
+@media (prefers-reduced-motion: reduce) {
+
+  .home-rotor,
+  .home-mastro,
+  .home-nuvem,
+  .home-rajada {
+    animation: none !important;
+  }
+}
+
+/* Barra regressiva de 6 segundos para toasts com ação de Desfazer */
+@keyframes toast-countdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+

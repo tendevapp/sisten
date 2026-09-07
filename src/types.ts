@@ -69,6 +69,11 @@ export interface Profile {
   // Gestão de Usuários; limpado automaticamente assim que o usuário grava a
   // nova senha.
   must_change_password?: boolean;
+  // Acesso criado pelo admin para quem não tem e-mail: o login é o
+  // identificador `nome.sobrenome` e o endereço guardado no Auth é interno
+  // (`@sisten.local`). Recuperação de senha por e-mail não se aplica — a
+  // redefinição passa pelo administrador.
+  login_sem_email?: boolean;
 }
 
 export interface ActivityLog {
@@ -898,6 +903,52 @@ export interface Transportadora {
   updated_at?: string;
 }
 
+/**
+ * Vinculo entre Grupo de Mercadoria (SAP) e Codigo do Comprador.
+ * Tabela `sup_grupo_comprador_mercadorias`.
+ */
+export interface GrupoCompradorMercadoria {
+  id: string;
+  grupo_compras: string;
+  nome_comprador: string;
+  grupo_mercadoria_codigo: string;
+  grupo_mercadoria_nome: string;
+  classificacao_nivel1?: string | null;
+  classificacao_nivel2?: string | null;
+  observacao?: string | null;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+  // Campos complementares de volume e historico
+  total_pedidos?: number;
+  total_valor?: number;
+  total_requisicoes?: number;
+}
+
+/** Comprador cadastrado na tabela `sup_compradores` */
+export interface CompradorCadastro {
+  grupo_compras: string;
+  nome_comprador: string;
+  usuario_sistema: string;
+  email: string;
+  ativo?: boolean;
+}
+
+/**
+ * Grupo de Mercadoria (SAP) classificado em níveis hierárquicos.
+ * Tabela `cadastro_grupo_mercadoria`.
+ */
+export interface CadastroGrupoMercadoria {
+  codigo: string;
+  denominacao: string;
+  denominacao2?: string | null;
+  classificacao_nivel1?: string | null;
+  classificacao_nivel2?: string | null;
+  codigo_pai?: string | null;
+}
+
+
+
 export interface CidadeForn {
   id?: string;
   forn_codigo: string;
@@ -1315,6 +1366,8 @@ export interface CotacaoProposta {
   faturamento_minimo: number | null;
   dados_bancarios_pix: string | null;
   valor_total_orcamento: number | null;
+  /** Valor do frete cotado, informado pelo comprador no mapa comparativo — a extração por IA não cobre este campo. */
+  valor_frete: number | null;
   observacoes_gerais: string | null;
   campos_faltantes: string[];
   revisado: boolean;
@@ -1352,6 +1405,10 @@ export interface CotacaoPropostaItem {
   aliquota_cofins_pct: number | null;
   aliquota_ipi_pct: number | null;
   campos_faltantes: string[];
+  /** Comprador escolheu este item deste fornecedor no mapa comparativo. */
+  mapa_selecionado: boolean;
+  mapa_selecionado_em: string | null;
+  mapa_selecionado_por: string | null;
   extraido_raw: ItemPropostaExtraido | null;
   created_at: string;
 }
@@ -1381,6 +1438,8 @@ export interface CotacaoPropostaItemDraft {
   aliquota_pis_pct: number | null;
   aliquota_cofins_pct: number | null;
   aliquota_ipi_pct: number | null;
+  /** Só existe em item já salvo — o mapa comparativo carrega a decisão anterior do comprador. */
+  mapa_selecionado?: boolean;
   extraido_raw: ItemPropostaExtraido;
 }
 
@@ -1420,6 +1479,8 @@ export interface CotacaoPropostaDraft {
   faturamento_minimo: number | null;
   dados_bancarios_pix: string | null;
   valor_total_orcamento: number | null;
+  /** Ver `CotacaoProposta.valor_frete`. */
+  valor_frete: number | null;
   observacoes_gerais: string | null;
   campos_faltantes: string[];
   revisado: boolean;
@@ -2279,4 +2340,69 @@ export interface FacServico {
   updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
+}
+
+
+// ---------------------------------------------------------------------
+// Almoxarifado — Abrir RM
+// ---------------------------------------------------------------------
+
+/**
+ * Um lote exportado na tela Almoxarifado > Abrir RM: um arquivo, um
+ * responsável, um instante. As solicitações que saíram nele ficam em
+ * `AlmoxRmExportacaoSolicitacao`.
+ */
+export interface AlmoxRmExportacao {
+  id: string;
+  arquivo: string;
+  exportado_por_id: string | null;
+  exportado_por_nome: string;
+  total_solicitacoes: number;
+  total_itens: number;
+  observacao?: string | null;
+  created_at: string;
+}
+
+/**
+ * Marca de "esta solicitação já saiu numa planilha de RM". É o que o filtro
+ * Exportadas/Não exportadas lê. A mesma solicitação pode ter mais de uma
+ * linha — reexportar é legítimo e o histórico anterior fica.
+ *
+ * Reabrir não apaga a marca: carimba `reaberto_em`. A solicitação volta para
+ * a fila (vale a marca vigente, sem carimbo) mas o registro de que ela já
+ * saiu, por quem e quando, continua no histórico.
+ *
+ * A reabertura pode ser manual (o almoxarife, sem motivo) ou automática —
+ * quando o solicitante edita uma solicitação já exportada, ela reabre sozinha
+ * e `reaberto_motivo` traz o resumo do que mudou (ver
+ * `lib/solicitacoesDiff.ts` e `saveRequestEdit` em `db/localDb.ts`).
+ *
+ * `concluido_em` fecha o ciclo de uma reabertura automática sem exigir nova
+ * exportação: quem corrigiu a RM direto no SAP marca "Concluído" (em lote, se
+ * quiser) e a marca sai do grupo "Editar no SAP" ativo para o histórico —
+ * continua reaberta (`reaberto_em` não muda), só deixa de pedir ação.
+ *
+ * `liberado_exportar_em` é a outra saída do mesmo grupo: quando a edição
+ * reabriu a solicitação mas a RM nunca chegou a ser criada no SAP, não há o
+ * que corrigir lá — "Habilitar Exportar" tira o sinalizador de ajuste manual
+ * e devolve a solicitação para a fila normal de exportação, como um
+ * "Reabrir" comum.
+ */
+export interface AlmoxRmExportacaoSolicitacao {
+  id: string;
+  exportacao_id: string;
+  request_id: string;
+  request_number: string;
+  total_itens: number;
+  created_at: string;
+  reaberto_em?: string | null;
+  reaberto_por_id?: string | null;
+  reaberto_por_nome?: string | null;
+  reaberto_motivo?: string | null;
+  concluido_em?: string | null;
+  concluido_por_id?: string | null;
+  concluido_por_nome?: string | null;
+  liberado_exportar_em?: string | null;
+  liberado_exportar_por_id?: string | null;
+  liberado_exportar_por_nome?: string | null;
 }

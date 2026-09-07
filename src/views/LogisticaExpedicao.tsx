@@ -18,7 +18,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Mail, Plus, Save, Trash2, Truck, AlertCircle, Check,
+  HelpCircle, Bug, Lightbulb, Clock, Camera,
 } from 'lucide-react';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 import type {
   EtapaExpedicao, ExpedicaoCarregamentoCompleto, ExpedicaoCarregamentoResumo,
   ExpedicaoFoto, ExpedicaoLogEnvio, ExpedicaoTramo, Profile,
@@ -48,8 +52,53 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const LOGISTICA_EXPEDICAO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Truck,
+    title: 'Logística — Expedição de Tramos',
+    description:
+      'Formulário operacional para registro de carregamento de tramos e torres: dados do cavalo/carreta, 3 horários (portaria, pátio, expedição) e fotos comprobatórias.',
+  },
+  {
+    target: 'expedicao-header',
+    icon: Truck,
+    title: 'Abertura de Novo Carregamento',
+    description:
+      'Ao chegar o caminhão na fábrica, clique em "Novo carregamento" para iniciar o registro imediatamente e preencher os horários ao longo do dia.',
+  },
+  {
+    target: 'expedicao-lista',
+    icon: Check,
+    title: 'Acompanhamento dos Carregamentos',
+    description:
+      'Consulte a fila de tramos em expedição com indicador de etapas preenchidas (1/3, 2/3, 3/3), horário de saída e disparo de e-mail formal de aviso.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function LogisticaExpedicao({ user, onNavigate }: Props) {
   const [carregamentoId, setCarregamentoId] = useState<string | null>(null);
+  const tour = usePageTour('form-logistica-expedicao', LOGISTICA_EXPEDICAO_TOUR_STEPS.length, !carregamentoId);
 
   useEffect(() => {
     const hash = window.location.hash || '';
@@ -62,9 +111,22 @@ export default function LogisticaExpedicao({ user, onNavigate }: Props) {
     }
   }, []);
 
-  return carregamentoId
-    ? <Edicao user={user} id={carregamentoId} onVoltar={() => setCarregamentoId(null)} />
-    : <Lista user={user} onAbrir={setCarregamentoId} onNavigate={onNavigate} />;
+  return (
+    <>
+      {carregamentoId
+        ? <Edicao user={user} id={carregamentoId} onVoltar={() => setCarregamentoId(null)} />
+        : <Lista user={user} onAbrir={setCarregamentoId} onNavigate={onNavigate} />}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={LOGISTICA_EXPEDICAO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+    </>
+  );
 }
 
 // =====================================================================
@@ -100,12 +162,25 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
 
   const handleConfirmarExclusao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     setExcluindo(true);
     try {
-      await api.excluirCarregamento(itemParaExcluir.id, user.id);
-      toast.success(`Carregamento ${itemParaExcluir.numero} excluído.`);
+      await api.excluirCarregamento(item.id, user.id);
       setItemParaExcluir(null);
       void recarregar();
+      toast.undo(
+        `Carregamento ${item.numero} excluído.`,
+        async () => {
+          try {
+            await api.restaurarCarregamento(item.id);
+            toast.success(`Carregamento ${item.numero} restaurado com sucesso.`);
+            void recarregar();
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir: ${(e as Error).message}`);
     } finally {
@@ -137,7 +212,7 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-tour="expedicao-header" className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <button
             type="button"
@@ -186,7 +261,7 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
           </p>
         </div>
       ) : (
-        <ul className="space-y-3">
+        <ul data-tour="expedicao-lista" className="space-y-3">
           {itens.map(c => {
             const etapasPreenchidas = c.tramos.reduce(
               (n, t) => n + [t.hora_chegada_portaria, t.hora_entrada_patio, t.hora_expedicao].filter(Boolean).length, 0,
@@ -413,12 +488,78 @@ function LogEnviosCard({
   );
 }
 
+const LOGISTICA_EXPEDICAO_EDICAO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Truck,
+    title: 'Preenchimento do Carregamento de Tramo',
+    description:
+      'Acompanhe e registre todas as fases do carregamento (portaria, pátio e expedição). Os dados são salvos automaticamente conforme você preenche.',
+  },
+  {
+    target: 'expedicao-edicao-header',
+    icon: Save,
+    title: 'Status e Identificação',
+    description:
+      'Veja o status do carregamento (Aberto ou Enviado), o indicador de salvamento automático em nuvem e acesse as Dicas de Preenchimento a qualquer momento.',
+  },
+  {
+    target: 'expedicao-edicao-geral',
+    icon: Truck,
+    title: 'Empresa Transportadora e Observações',
+    description:
+      'Informe a razão social da transportadora responsável e observações operacionais gerais (ex.: presença de escolta ou orientações de trânsito).',
+  },
+  {
+    target: 'expedicao-edicao-tramo',
+    icon: Check,
+    title: 'Dados do Tramo e Veículo',
+    description:
+      'Identifique o tramo, motorista com CNH e as placas do cavalo mecânico, carreta e dolly com suas respectivas UFs.',
+  },
+  {
+    target: 'expedicao-edicao-etapas',
+    icon: Clock,
+    title: 'Horários, Fotos e Faturamento',
+    description:
+      'Preencha as 3 etapas (Portaria, Pátio e Expedição) com data/hora e fotos anexadas, além do Nº do Tramo e Nota Fiscal para cálculo do Lead Time.',
+  },
+  {
+    target: 'expedicao-edicao-acoes',
+    icon: Mail,
+    title: 'Ações de Salvamento e Envio',
+    description:
+      'Salve rascunho manualmente se desejar. Ao preencher o horário de expedição de todos os tramos, clique em "Salvar e enviar e-mail" para abrir o Outlook com o comunicado e links das fotos.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 // =====================================================================
 // Edição
 // =====================================================================
 
 function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: () => void }) {
   const toast = useToast();
+  const tourEdicao = usePageTour('form-logistica-expedicao-edicao', LOGISTICA_EXPEDICAO_EDICAO_TOUR_STEPS.length);
 
   const [dados, setDados] = useState<ExpedicaoCarregamentoCompleto | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -430,6 +571,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     | { tipo: 'voltar' }
     | { tipo: 'excluir-tramo'; tramoId: string; rotulo: string }
     | { tipo: 'excluir-carregamento' }
+    | { tipo: 'excluir-foto'; foto: ExpedicaoFoto }
     | { tipo: 'enviar-sem-nf-tramo'; pendencias: string[] }
     | null
   >(null);
@@ -608,12 +750,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   };
 
   const excluirFoto = async (foto: ExpedicaoFoto) => {
-    try {
-      await api.excluirFoto(foto);
-      setDados(d => (d ? { ...d, fotos: d.fotos.filter(f => f.id !== foto.id) } : d));
-    } catch (e) {
-      toast.error(`Falha ao excluir a foto: ${(e as Error).message}`);
-    }
+    setConfirmacao({ tipo: 'excluir-foto', foto });
   };
 
   const confirmarExclusao = async () => {
@@ -621,17 +758,64 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     setExcluindo(true);
     try {
       if (confirmacao.tipo === 'excluir-tramo') {
-        await api.excluirTramo(confirmacao.tramoId, user.id);
+        const { tramoId, rotulo } = confirmacao;
+        await api.excluirTramo(tramoId, user.id);
         setDados(d => (d ? {
           ...d,
-          tramos: d.tramos.filter(t => t.id !== confirmacao.tramoId),
-          fotos: d.fotos.filter(f => f.tramo_id !== confirmacao.tramoId),
+          tramos: d.tramos.filter(t => t.id !== tramoId),
+          fotos: d.fotos.filter(f => f.tramo_id !== tramoId),
         } : d));
         setConfirmacao(null);
+        toast.undo(
+          `Tramo "${rotulo}" excluído.`,
+          async () => {
+            try {
+              await api.restaurarTramo(tramoId);
+              toast.success(`Tramo "${rotulo}" restaurado com sucesso.`);
+              const reloaded = await api.obterCarregamento(dados.id);
+              if (reloaded) setDados(reloaded);
+            } catch (err) {
+              toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+            }
+          },
+          6000
+        );
       } else if (confirmacao.tipo === 'excluir-carregamento') {
-        await api.excluirCarregamento(dados.id, user.id);
-        toast.success('Carregamento excluído.');
+        const dadosId = dados.id;
+        const dadosNum = dados.numero;
+        await api.excluirCarregamento(dadosId, user.id);
         onVoltar();
+        toast.undo(
+          `Carregamento ${dadosNum} excluído.`,
+          async () => {
+            try {
+              await api.restaurarCarregamento(dadosId);
+              toast.success(`Carregamento ${dadosNum} restaurado com sucesso.`);
+            } catch (err) {
+              toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+            }
+          },
+          6000
+        );
+      } else if (confirmacao.tipo === 'excluir-foto') {
+        const foto = confirmacao.foto;
+        await api.excluirFoto(foto);
+        setDados(d => (d ? { ...d, fotos: d.fotos.filter(f => f.id !== foto.id) } : d));
+        setConfirmacao(null);
+        toast.undo(
+          'Foto excluída.',
+          async () => {
+            try {
+              await api.restaurarFoto(foto.id);
+              toast.success('Foto restaurada com sucesso.');
+              const reloaded = await api.obterCarregamento(dados.id);
+              if (reloaded) setDados(reloaded);
+            } catch (err) {
+              toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+            }
+          },
+          6000
+        );
       }
     } catch (e) {
       toast.error(`Falha ao excluir: ${(e as Error).message}`);
@@ -883,16 +1067,27 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   return (
     <div className="mx-auto max-w-4xl pb-24">
       {/* Cabeçalho */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3" data-tour="expedicao-edicao-header">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={voltar}
-            className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:text-blue-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar para lista
-          </button>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={voltar}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-400 hover:text-blue-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Voltar para lista
+            </button>
+            <button
+              type="button"
+              onClick={tourEdicao.startTour}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs transition-colors hover:bg-blue-100 hover:border-blue-300 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+              title="Dicas de preenchimento do carregamento"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              Dicas de Preenchimento
+            </button>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-50">
               {dados.empresa?.trim() || 'Novo carregamento'}
@@ -949,7 +1144,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       <LogEnviosCard carregamento={dados} />
 
       {/* Dados do carregamento */}
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900" data-tour="expedicao-edicao-geral">
         <div className="grid grid-cols-1 gap-4">
           <div>
             <label htmlFor="empresa" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -1005,7 +1200,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       </div>
 
       {/* Barra de ações inferior fixa com botão Voltar e Salvar */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-xs sm:px-6 dark:border-slate-800 dark:bg-slate-900/95">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur-xs sm:px-6 dark:border-slate-800 dark:bg-slate-900/95" data-tour="expedicao-edicao-acoes">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
@@ -1146,6 +1341,18 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         />
       )}
 
+      {confirmacao?.tipo === 'excluir-foto' && (
+        <ConfirmDialog
+          titulo="Excluir foto do carregamento?"
+          mensagem="Tem certeza de que deseja remover esta foto? Ela deixará de constar no relatório e nos envios de e-mail."
+          confirmarLabel="Sim, Excluir Foto"
+          variante="perigo"
+          confirmando={excluindo}
+          onConfirmar={confirmarExclusao}
+          onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
       {confirmacao?.tipo === 'enviar-sem-nf-tramo' && (
         <ConfirmDialog
           titulo="Enviar e-mail sem Nº do Tramo ou NF?"
@@ -1173,6 +1380,16 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             await executarEnvioFinal();
           }}
           onCancelar={() => setConfirmacao(null)}
+        />
+      )}
+
+      {tourEdicao.isOpen && (
+        <TourSpotlight
+          steps={LOGISTICA_EXPEDICAO_EDICAO_TOUR_STEPS}
+          stepIndex={tourEdicao.stepIndex}
+          onNext={tourEdicao.next}
+          onBack={tourEdicao.back}
+          onClose={tourEdicao.close}
         />
       )}
     </div>

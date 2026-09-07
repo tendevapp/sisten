@@ -18,12 +18,17 @@ import {
   Trash2, X, Loader2, ClipboardList, Shield, Clock, AlertTriangle, Info,
   Check, UserCheck, Car, User, UserX, Building2,
   Sparkles, History, ShieldCheck, ChevronRight, CornerDownRight,
-  Camera, Upload, Image as ImageIcon, Eye, LogOut, LogIn, Edit3, UserPlus, Users, CheckCircle2
+  Camera, Upload, Image as ImageIcon, Eye, LogOut, LogIn, Edit3, UserPlus, Users, CheckCircle2,
+  HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
+import TourSpotlight from '../../components/help/TourSpotlight';
+import { usePageTour } from '../../components/help/TourRegistryContext';
+import type { TourStep } from '../../components/help/types';
 import type {
   Profile, PortRelatorioPortaria, PortRelatorioOcorrencia,
   PortRelatorioStatus, PortTurno, PortLocalSetor, PortSeveridade,
-  PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa
+  PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa,
+  PortStatusPermanencia
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -45,6 +50,57 @@ interface Props {
   user: Profile;
   onNavigate: (path: string) => void;
 }
+
+const PORTARIA_RELATORIO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ClipboardList,
+    title: 'Relatório de Ocorrências da Portaria',
+    description:
+      'Livro digital oficial de ocorrências (FRM.SGP-0010) para controle contínuo de entradas, saídas, visitantes no pátio e rondas de vigilância.',
+  },
+  {
+    target: 'relatorio-header',
+    icon: Plus,
+    title: 'Ações e Nova Ocorrência',
+    description:
+      'Clique em "Nova Ocorrência" para registrar uma movimentação de portaria (veículos com passageiros, visitantes, saída de funcionários ou ronda). Exporte o livro em PDF a qualquer momento.',
+  },
+  {
+    target: 'relatorio-livros',
+    icon: Clock,
+    title: 'Livros por Data & Turno',
+    description:
+      'Navegue pelos plantões arquivados e em andamento. Clique em qualquer data para inspecionar os lançamentos correspondentes na linha do tempo.',
+  },
+  {
+    target: 'relatorio-ocorrencias-detalhe',
+    icon: Shield,
+    title: 'Linha do Tempo e Controle de Pátio',
+    description:
+      'Visualize todas as movimentações do plantão selecionado, com fotos anexadas, histórico de briefing e botão de "Dar Baixa" para saída de visitantes.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 interface ItemPessoaForm {
   nome: string;
@@ -128,6 +184,78 @@ const SETORES: { id: PortLocalSetor; label: string }[] = [
   { id: 'OUTRO', label: 'Outro Local' },
 ];
 
+const PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: ClipboardList,
+    title: 'Lançamento no Livro de Ocorrências',
+    description:
+      'Registre entradas de veículos e visitantes, saídas de colaboradores ou rondas patrimoniais com autocompletar e verificação de briefing.',
+  },
+  {
+    target: 'relatorio-form-tipo',
+    icon: Car,
+    title: 'Tipo de Lançamento',
+    description:
+      'Escolha entre Entrada de Veículo, Entrada de Visitante, Saída de Colaborador (RH), Ronda Patrimonial, Ocorrência Geral ou Outro Registro.',
+  },
+  {
+    target: 'relatorio-form-horario-local',
+    icon: Clock,
+    title: 'Horário, Posto e Vigilante',
+    description:
+      'Defina o horário do evento, o posto de serviço (Portaria, Rondas, Pátios ou Fábrica) e o vigilante responsável pelo registro.',
+  },
+  {
+    target: 'relatorio-form-detalhes',
+    icon: ShieldCheck,
+    title: 'Dados da Visita ou Ocorrência',
+    description:
+      'Preencha empresa, placa, autorizador e fotos para veículos/visitantes; ou colaborador do RH com motivo rápido; ou texto livre e foto para rondas e incidentes.',
+  },
+  {
+    target: 'relatorio-form-pessoas',
+    icon: Users,
+    title: 'Pessoas e Validade de Briefing',
+    description:
+      'Adicione condutor e múltiplos acompanhantes com CPF. O sistema consulta automaticamente a validade do briefing de segurança de cada pessoa nos últimos 30 dias.',
+  },
+  {
+    target: 'relatorio-form-previa',
+    icon: Eye,
+    title: 'Prévia da Linha do Livro',
+    description:
+      'Veja em tempo real como a anotação oficial será gravada no livro e exibida no relatório PDF de auditoria.',
+  },
+  {
+    target: 'relatorio-form-salvar',
+    icon: Check,
+    title: 'Confirmar Lançamento',
+    description:
+      'Grava a movimentação no plantão ativo e adiciona à linha do tempo da portaria.',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description:
+      'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description:
+      'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description:
+      'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
+
 export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -143,6 +271,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Modais
   const [modalNovoRelatorio, setModalNovoRelatorio] = useState(false);
   const [modalNovaOcorrencia, setModalNovaOcorrencia] = useState(false);
+
+  const tour = usePageTour('portaria-relatorio', PORTARIA_RELATORIO_TOUR_STEPS.length, !modalNovaOcorrencia);
+  const tourOcorrencia = usePageTour('portaria-relatorio-ocorrencia', PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS.length, modalNovaOcorrencia);
   const [modalRegistrarSaida, setModalRegistrarSaida] = useState(false);
   const [modalFotoZoom, setModalFotoZoom] = useState<string | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRelatorioPortaria | null>(null);
@@ -661,7 +792,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         setRelatorioAtivo(novoRel);
       }
 
-      const statusPermanencia = tipoAtual.isLivre
+      const statusPermanencia: PortStatusPermanencia = tipoAtual.isLivre
         ? 'NAO_APLICA'
         : formOcorrencia.hora_saida
         ? 'FINALIZADO'
@@ -741,13 +872,29 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   const handleExcluirOcorrencia = async () => {
     if (!ocorrenciaParaExcluir || !relatorioAtivo) return;
+    const oc = ocorrenciaParaExcluir;
+    const relId = relatorioAtivo.id;
     try {
-      await api.excluirOcorrencia(ocorrenciaParaExcluir.id, user.id);
-      toast.success('Ocorrência removida com sucesso!');
+      await api.excluirOcorrencia(oc.id, user.id);
       setOcorrenciaParaExcluir(null);
-      const relAtualizado = await api.obterRelatorio(relatorioAtivo.id);
+      const relAtualizado = await api.obterRelatorio(relId);
       if (relAtualizado) setRelatorioAtivo(relAtualizado);
-      carregarRelatorios(relatorioAtivo.id);
+      carregarRelatorios(relId);
+      toast.undo(
+        `Lançamento das ${oc.horario} excluído.`,
+        async () => {
+          try {
+            await api.restaurarOcorrencia(oc.id);
+            toast.success('Lançamento restaurado com sucesso.');
+            const rRec = await api.obterRelatorio(relId);
+            if (rRec) setRelatorioAtivo(rRec);
+            carregarRelatorios(relId);
+          } catch (err: any) {
+            toast.error('Erro ao desfazer exclusão: ' + (err?.message || ''));
+          }
+        },
+        6000
+      );
     } catch (err: any) {
       toast.error('Erro ao excluir ocorrência: ' + (err.message || ''));
     }
@@ -755,14 +902,27 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   const handleExcluirPlantao = async () => {
     if (!itemParaExcluir) return;
+    const item = itemParaExcluir;
     try {
-      await api.excluirRelatorio(itemParaExcluir.id, user.id);
-      toast.success(`Plantão ${itemParaExcluir.numero_protocolo} excluído!`);
+      await api.excluirRelatorio(item.id, user.id);
       setItemParaExcluir(null);
-      if (relatorioAtivo?.id === itemParaExcluir.id) {
+      if (relatorioAtivo?.id === item.id) {
         setRelatorioAtivo(null);
       }
       carregarRelatorios();
+      toast.undo(
+        `Plantão ${item.numero_protocolo} excluído.`,
+        async () => {
+          try {
+            await api.restaurarRelatorio(item.id);
+            toast.success(`Plantão ${item.numero_protocolo} restaurado com sucesso.`);
+            carregarRelatorios(item.id);
+          } catch (err) {
+            toast.error(`Erro ao desfazer exclusão: ${(err as Error).message}`);
+          }
+        },
+        6000
+      );
     } catch (e) {
       toast.error(`Erro ao excluir plantão: ${(e as Error).message}`);
     }
@@ -837,7 +997,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div data-tour="relatorio-header" className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <button
             type="button"
@@ -893,7 +1053,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       {/* Main Grid: Left = Shifts / Right = Occurrence Timeline */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left Column: Shifts List */}
-        <div className="space-y-3 lg:col-span-4">
+        <div data-tour="relatorio-livros" className="space-y-3 lg:col-span-4">
           <div className="flex flex-wrap items-center justify-between gap-2 px-1">
             <div className="flex items-center gap-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -1028,7 +1188,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         </div>
 
         {/* Right Column: Selected Shift Timeline & Ocorrências */}
-        <div className="lg:col-span-8">
+        <div data-tour="relatorio-ocorrencias-detalhe" className="lg:col-span-8">
           {relatorioAtivo ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900 flex flex-col">
               {/* Shift Header Bar */}
@@ -1311,25 +1471,36 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       {modalNovaOcorrencia && (
         <Modal onClose={() => setModalNovaOcorrencia(false)} maxWidth="max-w-4xl">
           <ModalHeader onClose={() => setModalNovaOcorrencia(false)}>
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
-                <ClipboardList className="h-5 w-5" />
-              </span>
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">
-                  {ocorrenciaEmEdicao ? 'Editar Lançamento no Livro' : 'Novo Lançamento no Livro de Ocorrências'}
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {relatorioAtivo ? `Livro ${relatorioAtivo.numero_protocolo} · Turno ${relatorioAtivo.turno}` : 'Registro de Ocorrência — Hoje'}
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400">
+                  <ClipboardList className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {ocorrenciaEmEdicao ? 'Editar Lançamento no Livro' : 'Novo Lançamento no Livro de Ocorrências'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {relatorioAtivo ? `Livro ${relatorioAtivo.numero_protocolo} · Turno ${relatorioAtivo.turno}` : 'Registro de Ocorrência — Hoje'}
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={tourOcorrencia.startTour}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 shadow-2xs transition-colors hover:bg-purple-100 dark:border-purple-900/60 dark:bg-purple-950/40 dark:text-purple-300"
+                title="Dicas de preenchimento do lançamento"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                Dicas de Preenchimento
+              </button>
             </div>
           </ModalHeader>
 
           <form onSubmit={handleSalvarOcorrencia} className="flex flex-col flex-1 min-h-0 overflow-hidden">
             <ModalBody className="space-y-4">
               {/* 1. Seleção Visual do Tipo de Lançamento */}
-              <div>
+              <div data-tour="relatorio-form-tipo">
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                   Tipo de Lançamento *
                 </label>
@@ -1373,7 +1544,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               </div>
 
               {/* 2. Horário, Local e Vigilante */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div data-tour="relatorio-form-horario-local" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Horário da Entrada / Evento *
@@ -1416,6 +1587,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               </div>
 
               {/* 3. Formulário Condicional */}
+              <div data-tour="relatorio-form-detalhes">
               {tipoAtual.isLivre ? (
                 /* CASO A: Ronda Patrimonial, Ocorrência Geral, Outro Registro (Texto Livre + Câmera/Foto) */
                 <div className="rounded-2xl border border-purple-200 bg-purple-50/30 p-4 sm:p-5 space-y-4 dark:border-purple-900/40 dark:bg-purple-950/20">
@@ -1960,7 +2132,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   </div>
 
                   {/* Lista de Pessoas / Visitantes que Chegaram Juntos */}
-                  <div className="rounded-2xl border border-purple-200 bg-purple-50/30 p-4 sm:p-5 space-y-3 dark:border-purple-900/40 dark:bg-purple-950/20">
+                  <div data-tour="relatorio-form-pessoas" className="rounded-2xl border border-purple-200 bg-purple-50/30 p-4 sm:p-5 space-y-3 dark:border-purple-900/40 dark:bg-purple-950/20">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -2140,9 +2312,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                   </div>
                 </div>
               )}
+              </div>
 
               {/* 4. Prévia do Registro */}
-              <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900">
+              <div data-tour="relatorio-form-previa" className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900">
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Pré-visualização da linha no livro de ocorrências:
                 </p>
@@ -2163,6 +2336,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               <button
                 type="submit"
                 disabled={salvando}
+                data-tour="relatorio-form-salvar"
                 className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-purple-500 disabled:opacity-50"
               >
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -2426,6 +2600,24 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           variante="perigo"
           onConfirmar={handleExcluirOcorrencia}
           onCancelar={() => setOcorrenciaParaExcluir(null)}
+        />
+      )}
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_RELATORIO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
+      {tourOcorrencia.isOpen && (
+        <TourSpotlight
+          steps={PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS}
+          stepIndex={tourOcorrencia.stepIndex}
+          onNext={tourOcorrencia.next}
+          onBack={tourOcorrencia.back}
+          onClose={tourOcorrencia.close}
         />
       )}
     </div>

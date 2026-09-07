@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { FileSpreadsheet, ChevronRight, PackageSearch, PlusCircle } from 'lucide-react';
+import { FileSpreadsheet, ChevronRight, PackageSearch, PlusCircle, History } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty } from '../ui/DataTable';
 import type { CotacaoProcesso, CotacaoProcessoStatus } from '../../types';
 
@@ -33,17 +33,37 @@ interface ProcessosListProps {
   onNovoProcesso: () => void;
   /** Cria um processo direto, sem passar pela Central de Compras — para cotações avulsas, sem RM vinculada. */
   onCriarSemVinculo: () => void;
+  /** Abre a página analítica de histórico e inteligência de cotações passadas. */
+  onAbrirHistorico?: () => void;
 }
 
-export default function ProcessosList({ processos, carregando, onAbrir, onNovoProcesso, onCriarSemVinculo }: ProcessosListProps) {
+export default function ProcessosList({
+  processos,
+  carregando,
+  onAbrir,
+  onNovoProcesso,
+  onCriarSemVinculo,
+  onAbrirHistorico,
+}: ProcessosListProps) {
   const semProcessos = !carregando && processos.length === 0;
 
   const acoes = (
     <div className="flex flex-wrap items-center gap-2">
+      {onAbrirHistorico && (
+        <button
+          type="button"
+          onClick={onAbrirHistorico}
+          title="Consultar histórico de cotações e inteligência de preços passados"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 transition-colors"
+        >
+          <History className="h-3.5 w-3.5" />
+          Histórico de cotações
+        </button>
+      )}
       <button
         type="button"
         onClick={onNovoProcesso}
-        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
       >
         <PackageSearch className="h-3.5 w-3.5" />
         Ir para a Central de Compras
@@ -52,7 +72,7 @@ export default function ProcessosList({ processos, carregando, onAbrir, onNovoPr
         type="button"
         onClick={onCriarSemVinculo}
         title="Criar um processo de cotação sem vincular itens de RM"
-        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
       >
         <PlusCircle className="h-3.5 w-3.5" />
         Criar nova

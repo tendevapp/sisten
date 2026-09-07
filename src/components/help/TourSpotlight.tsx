@@ -114,11 +114,11 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
   return (
     <>
       {/* Camada que escurece tudo e captura clique-fora (equivale a "Pular"). */}
-      <div className="fixed inset-0 z-[100]" onClick={onClose} aria-hidden="true" />
+      <div className="fixed inset-0 z-[120]" onClick={onClose} aria-hidden="true" />
 
       {/* Recorte do spotlight sobre o elemento alvo. */}
       <motion.div
-        className="fixed z-[101] pointer-events-none rounded-xl"
+        className="fixed z-[121] pointer-events-none rounded-xl"
         animate={{
           top: hasTarget && targetRect ? targetRect.top - PAD : vh / 2,
           left: hasTarget && targetRect ? targetRect.left - PAD : vw / 2,
@@ -131,7 +131,7 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
       />
       {/* Sem alvo: só escurece a tela por igual. */}
       {!hasTarget && (
-        <div className="fixed inset-0 z-[101] pointer-events-none bg-slate-950/72" />
+        <div className="fixed inset-0 z-[121] pointer-events-none bg-slate-950/72" />
       )}
 
       <AnimatePresence mode="wait">
@@ -145,7 +145,7 @@ export default function TourSpotlight({ steps, stepIndex, onNext, onBack, onClos
           role="dialog"
           aria-label={step.title}
           style={{ width: CARD_WIDTH }}
-          className="fixed z-[102] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5"
+          className="fixed z-[122] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5"
         >
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">

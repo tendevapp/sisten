@@ -16,7 +16,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Bell, BellOff, FileCheck, List, FileEdit, Database, Users, ArrowRight,
   Star, Clock, Info, CheckCircle2, AlertTriangle, ShieldAlert, Compass,
-  ChevronRight, Plus, CheckCheck, Sparkles,
+  ChevronRight, Plus, CheckCheck, Sparkles, HelpCircle, Bug, Lightbulb,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -24,11 +24,77 @@ import type { Notification, Profile, Request } from '../types';
 import { PAGES, canAccessPage, pageIdForPath } from '../lib/pages';
 import { getRecentPages, getFavoritePages, toggleFavoritePage } from '../lib/homePrefs';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
+import TorreEolica from '../components/home/TorreEolica';
+import TourSpotlight from '../components/help/TourSpotlight';
+import { usePageTour } from '../components/help/TourRegistryContext';
+import type { TourStep } from '../components/help/types';
 
 interface DashboardProps {
   user: Profile;
   onNavigate: (path: string) => void;
 }
+
+const INICIO_TOUR_STEPS: TourStep[] = [
+  {
+    icon: Compass,
+    title: 'Bem-vindo ao Início do SISTEN',
+    description: 'Este é o seu painel central personalizado. Aqui você acompanha avisos, indicadores do seu dia a dia, solicitações recentes e navega para todos os módulos.',
+  },
+  {
+    target: 'inicio-saudacao',
+    icon: Sparkles,
+    title: 'Sua identificação no sistema',
+    description: 'Mostra sua saudação, seu setor de atuação e cargo cadastrado. As informações da tela se adaptam automaticamente ao seu perfil.',
+  },
+  {
+    target: 'inicio-indicadores',
+    icon: FileCheck,
+    title: 'Indicadores rápidos e pendências',
+    description: 'Apresenta resumos acionáveis de acordo com suas permissões: aprovações pendentes, solicitações em andamento e status de compras. Clique em qualquer cartão para ir direto à tela correspondente.',
+  },
+  {
+    target: 'inicio-notificacoes',
+    icon: Bell,
+    title: 'Mural de notificações',
+    description: 'Aqui você recebe alertas de movimentações de solicitações, aprovações e avisos do sistema em tempo real. Você pode marcar como lidas individualmente ou todas de uma vez.',
+  },
+  {
+    target: 'inicio-recentes',
+    icon: List,
+    title: 'Minhas solicitações recentes',
+    description: 'Acesso imediato às suas últimas solicitações criadas. Clique em qualquer linha para abrir a central e ver o histórico e andamento completo.',
+  },
+  {
+    target: 'inicio-acesso-rapido',
+    icon: Star,
+    title: 'Acesso rápido e favoritos',
+    description: 'Reúne suas páginas visitadas recentemente e permite fixar suas telas favoritas com um clique na estrela, agilizando sua rotina diária.',
+  },
+  {
+    target: 'inicio-modulos',
+    icon: Compass,
+    title: 'Explorar módulos do sistema',
+    description: 'Atalhos organizados para todas as ferramentas e áreas que seu usuário tem permissão de acessar (Catálogo SAP, Solicitações, Formulários, Compras, etc.).',
+  },
+  {
+    target: 'help-button',
+    icon: HelpCircle,
+    title: 'Reabra o tour a qualquer momento',
+    description: 'Ficou com alguma dúvida ou quer rever as dicas desta tela? Clique neste botão a qualquer momento no canto inferior e escolha "Tour guiado desta página".',
+  },
+  {
+    target: 'help-button',
+    icon: Bug,
+    title: 'Encontrou um erro nesta tela?',
+    description: 'No mesmo botão, escolha "Reportar um erro" para descrever o problema — o histórico técnico recente da sessão vai junto, direto para o time responsável.',
+  },
+  {
+    target: 'help-button',
+    icon: Lightbulb,
+    title: 'Tem uma ideia de melhoria?',
+    description: 'Escolha "Enviar sugestão" no mesmo botão para propor uma melhoria a qualquer momento, sem sair da tela.',
+  },
+];
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -78,9 +144,9 @@ const MODULE_IDS = [
   'formularios', 'materiais_busca', 'rastreio', 'relatorios',
 ];
 
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = '', dataTour }: { children: React.ReactNode; className?: string; dataTour?: string }) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 ${className}`}>
+    <section data-tour={dataTour} className={`rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 ${className}`}>
       {children}
     </section>
   );
@@ -89,6 +155,7 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 /* -------------------------------------------------------------- component */
 
 export default function Dashboard({ user, onNavigate }: DashboardProps) {
+  const tour = usePageTour('inicio', INICIO_TOUR_STEPS.length);
   const [notifs, setNotifs] = useState<Notification[]>(() => localDb.getNotifications(user.id));
   const [favs, setFavs] = useState<string[]>(() => getFavoritePages(user.id));
 
@@ -240,24 +307,27 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      {/* Saudação */}
-      <header className="flex flex-col gap-1">
-        <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
-          {saudacao()}, {user.name.split(' ')[0]}.
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{sector?.name || 'Sem setor'}</span>
-          {user.cargo ? <> · {user.cargo}</> : null}
-          {' · '}
-          <span className="capitalize">
-            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </span>
-        </p>
+      {/* Saudação — com a torre eólica girando ao lado, só de enfeite */}
+      <header data-tour="inicio-saudacao" className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="font-display text-2xl font-bold text-slate-900 dark:text-slate-50">
+            {saudacao()}, {user.name.split(' ')[0]}.
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{sector?.name || 'Sem setor'}</span>
+            {user.cargo ? <> · {user.cargo}</> : null}
+            {' · '}
+            <span className="capitalize">
+              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </span>
+          </p>
+        </div>
+        <TorreEolica />
       </header>
 
       {/* Indicadores relevantes ao usuário */}
       {chips.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        <div data-tour="inicio-indicadores" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {chips.map(c => {
             const Icon = c.icon;
             return (
@@ -319,7 +389,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         {/* Coluna principal */}
         <div className="space-y-6 lg:col-span-2">
           {/* Notificações */}
-          <Card>
+          <Card dataTour="inicio-notificacoes">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
                 <Bell className="h-4 w-4 text-slate-400" />
@@ -380,7 +450,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </Card>
 
           {/* Minhas solicitações recentes */}
-          <Card>
+          <Card dataTour="inicio-recentes">
             <div className="flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
                 <List className="h-4 w-4 text-slate-400" />
@@ -440,7 +510,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
         {/* Coluna lateral */}
         <div className="space-y-6">
           {/* Acesso rápido: favoritos + recentes */}
-          <Card>
+          <Card dataTour="inicio-acesso-rapido">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
               <Star className="h-4 w-4 text-slate-400" />
               Acesso rápido
@@ -522,7 +592,7 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           </Card>
 
           {/* Mapa de módulos liberados */}
-          <Card>
+          <Card dataTour="inicio-modulos">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
               <Compass className="h-4 w-4 text-slate-400" />
               Explorar módulos
@@ -576,6 +646,16 @@ export default function Dashboard({ user, onNavigate }: DashboardProps) {
           )}
         </div>
       </div>
+
+      {tour.isOpen && (
+        <TourSpotlight
+          steps={INICIO_TOUR_STEPS}
+          stepIndex={tour.stepIndex}
+          onNext={tour.next}
+          onBack={tour.back}
+          onClose={tour.close}
+        />
+      )}
     </div>
   );
 }
