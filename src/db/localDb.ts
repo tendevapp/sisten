@@ -7980,9 +7980,13 @@ class LocalDatabase {
 
   // Reset de senha forçado pelo admin (Painel de Administração > Usuários).
   // O admin define uma senha provisória; ela é gravada no Supabase Auth via
-  // Admin API (requer service_role key — supabaseAdmin) e o perfil é marcado
-  // com must_change_password para obrigar o usuário a criar a própria senha
-  // logo após o próximo login. Retorna 'sucesso' ou uma mensagem de erro.
+  // Admin API e o perfil é marcado com must_change_password para obrigar o
+  // usuário a criar a própria senha logo após o próximo login.
+  //
+  // Caminho preferido: a Edge Function `admin-reset-password`, que guarda a
+  // service_role só no servidor e confere o papel `admin` do chamador. Se a
+  // função ainda não estiver publicada, cai para a Admin API direta (que exige
+  // VITE_SUPABASE_SERVICE_ROLE_KEY no build). Retorna 'sucesso' ou uma mensagem.
   public async adminResetUserPassword(userId: string, newPassword: string): Promise<string> {
     if (!newPassword || newPassword.length < 6) {
       return 'A senha provisória deve ter pelo menos 6 caracteres.';
@@ -7993,8 +7997,37 @@ class LocalDatabase {
     const idx = users.findIndex(u => u.id === userId);
     if (idx === -1) return 'Usuário não encontrado.';
 
-    // 1. Troca a senha no Auth. Sem a service_role key configurada, supabaseAdmin
-    //    cai para a chave anônima e a Admin API responde 403 — avisamos o admin.
+    // 1a. Tenta pela Edge Function (não depende de service_role no client).
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-reset-password', {
+        body: { userId, newPassword },
+      });
+      if (!error && (data as any)?.ok) {
+        users[idx].must_change_password = true;
+        this.setStorageItem(this.profilesKey, users);
+        this.logActivity('admin', 'Administração', 'Resetar Senha', `Senha de ${users[idx].name} redefinida pelo admin. Troca obrigatória no próximo login.`);
+        return 'sucesso';
+      }
+      if (error) {
+        const contexto = (error as any)?.context;
+        const corpo = typeof contexto?.json === 'function' ? await contexto.json().catch(() => null) : null;
+        const status = contexto?.status ?? (error as any)?.status;
+        const msg = corpo?.error as string | undefined;
+        // 404/erro de transporte = função não publicada → segue para o fallback.
+        const funcaoAusente =
+          status === 404 ||
+          (error as any)?.name === 'FunctionsFetchError' ||
+          /not found|failed to (send|fetch)/i.test(error.message || '');
+        if (!funcaoAusente) {
+          return msg || error.message || 'Falha ao redefinir a senha no servidor.';
+        }
+      }
+    } catch (e) {
+      console.warn('admin-reset-password indisponível, tentando via Admin API direta:', e);
+    }
+
+    // 1b. Fallback: Admin API direta. Sem a service_role key configurada,
+    //     supabaseAdmin cai para a chave anônima e a Admin API responde 403.
     const adminClient = supabaseAdmin || supabase;
     const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
       password: newPassword,
@@ -8003,7 +8036,7 @@ class LocalDatabase {
       console.error('Erro ao redefinir senha do usuário via Admin API:', authError);
       const status = (authError as any).status;
       if (status === 401 || status === 403 || /not_admin|not admin|service_role|user not allowed/i.test(authError.message || '')) {
-        return 'Sem permissão para redefinir senha. Verifique se a chave service_role do Supabase está configurada.';
+        return 'Sem permissão para redefinir senha. Publique a Edge Function admin-reset-password (npx supabase functions deploy admin-reset-password) ou configure a chave service_role no build.';
       }
       return authError.message || 'Falha ao redefinir a senha no servidor.';
     }
