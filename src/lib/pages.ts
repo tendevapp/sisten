@@ -47,8 +47,8 @@ export const PAGES: PageDef[] = [
   // `sol_minhas`, `sol_todas` e `sol_aprovacoes` sobrevivem como permissões
   // (ver FEATURE_FLAGS): agora liberam abas, não páginas.
   { id: 'solicitacoes_home', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes', icon: ClipboardList, defaultRoles: '*' },
-  { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin', 'coordenador_suprimentos'] },
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
+  { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin', 'coordenador_suprimentos'] },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },

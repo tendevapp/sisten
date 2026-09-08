@@ -15,7 +15,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
-import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
+import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
 import { type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
@@ -743,6 +743,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   };
 
   const isDestinoJuridico = isJuridicoSector(sectors.find(s => s.id === helpdeskSectorId));
+  // "Assinatura de Documento": só encaminha um documento já fechado — tipo de
+  // contrato, fornecedor/terceiro e descrição ficam opcionais.
+  const isJuridicoAssinatura = isDestinoJuridico && helpdeskCategory === CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO;
   const isDestinoSuprimentos = isSuprimentosSector(sectors.find(s => s.id === helpdeskSectorId));
   // Categorias do destino Suprimentos.
   const isSupPendencia = isDestinoSuprimentos && helpdeskCategory === CATEGORIA_PENDENCIA_PROCESSAMENTO;
@@ -2107,11 +2110,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
                 {isDestinoJuridico ? (
                   <div>
-                    <label className={labelClass} style={labelStyle}>Tipo de contrato *</label>
+                    <label className={labelClass} style={labelStyle}>Tipo de contrato {isJuridicoAssinatura ? '(opcional)' : '*'}</label>
                     <select
                       value={juridicoTipoContrato}
                       onChange={(e) => setJuridicoTipoContrato(e.target.value)}
-                      required
+                      required={!isJuridicoAssinatura}
                       className={`${fieldClass} cursor-pointer`}
                       style={fieldStyle}
                     >
@@ -2142,10 +2145,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
               {isDestinoJuridico && (
                 <div>
-                  <label className={labelClass} style={labelStyle}>Fornecedor / terceiro *</label>
+                  <label className={labelClass} style={labelStyle}>Fornecedor / terceiro {isJuridicoAssinatura ? '(opcional)' : '*'}</label>
                   <input
                     type="text"
-                    required
+                    required={!isJuridicoAssinatura}
                     placeholder="Razão social"
                     value={juridicoFornecedor}
                     onChange={(e) => setJuridicoFornecedor(e.target.value)}
@@ -2342,9 +2345,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </p>
               ) : (
               <div data-tour="novasol-justificativa">
-                <label className={labelClass} style={labelStyle}>Descrição detalhada *</label>
+                <label className={labelClass} style={labelStyle}>Descrição detalhada {isJuridicoAssinatura ? '(opcional)' : '*'}</label>
                 <textarea
-                  required
+                  required={!isJuridicoAssinatura}
                   rows={4}
                   placeholder="Descreva as características do erro, mensagens de sistema apresentadas, impactos causados no setor, e passos já efetuados para tentar resolver."
                   value={justificativa}

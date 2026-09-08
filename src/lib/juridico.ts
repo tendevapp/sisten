@@ -26,7 +26,14 @@ export const TIPOS_CHAMADO_JURIDICO = [
   'Distrato / Rescisão',
   'Consulta Jurídica Geral',
   'Suporte a Cotação / Suprimentos',
+  'Assinatura de Documento',
 ] as const;
+
+// Na "Assinatura de Documento" o chamado é só o encaminhamento de um documento
+// já fechado para assinatura — não há minuta a classificar nem contraparte a
+// registrar, então tipo de contrato, fornecedor/terceiro e descrição deixam de
+// ser obrigatórios no formulário de Nova Solicitação.
+export const CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO = 'Assinatura de Documento';
 
 // Taxonomia inicial e genérica — sem regra de negócio definida ainda; fácil
 // de ajustar depois (é só uma lista).

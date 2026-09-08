@@ -50,6 +50,7 @@ import {
   TableShell, TableHeadRow, Th, SortableTh, TableBody, Tr, Td, TableSkeleton, TableEmpty, SortDir,
 } from '../components/ui/DataTable';
 import Pagination from '../components/ui/Pagination';
+import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
 
 export type AbaMovimentacoes = 'geral' | 'giro' | 'idade' | 'urgencia' | 'minimo';
 
@@ -489,15 +490,26 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
             {ABAS.find(a => a.id === aba)?.pergunta}
           </p>
         </div>
-        <button
-          onClick={() => load(true)}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer border hover:opacity-90 active:scale-95 disabled:opacity-50"
-          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => load(true)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border hover:opacity-90 active:scale-95 disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+          {/* MB51 sempre em modo "apenas novos" (upsert): a tela acrescenta
+              movimentações recentes sem apagar o histórico já carregado. */}
+          <PlanilhaSapUploadButton
+            sigla="MB51"
+            descricao="Movimentações de Estoque — importa apenas os registros novos"
+            importar={(rawRows, filename, onProgress) => localDb.importMB51Raw(rawRows, filename, 'upsert', onProgress)}
+            onImportado={() => load(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-primary)] hover:opacity-90 active:scale-95 disabled:opacity-50"
+          />
+        </div>
       </div>
 
       {/* Abas */}

@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-08',
+    resumo: 'Almoxarifado, Jurídico & Navegação (`PlanilhaSapUploadButton.tsx`, `Estoque.tsx`, `Movimentacoes.tsx`, `juridico.ts`, `NewRequest.tsx`, `pages.ts`): 1. Almoxarifado: botão de importação direta de planilhas SAP nas telas de Posição de Estoque (ZL0024 - substituição integral) e Movimentações (MB51 - modo upsert/novos registros) sem depender do Painel de Administração; 2. Helpdesk Jurídico: inclusão da categoria "Assinatura de Documento" para envio direto de documentos já finalizados, tornando opcionais os campos tipo de contrato, fornecedor/terceiro e descrição detalhada; 3. Navegação: reordenação dos itens no menu Solicitações ("Nova Solicitação" antes de "Aprovações").',
+  },
+  {
     data: '2026-09-07',
     resumo: 'Diretrizes do Sistema — Cobertura Integral de Todos os Módulos do SISTEN (`diretrizes.ts`, `Diretrizes.tsx`): 1. Atualização completa do manual técnico das Diretrizes incluindo todos os domínios e páginas ativas do sistema; 2. Novos domínios cadastrados: Logística & Expedição (carregamento de tramos, 3 horários, auto-save e fotos), RH & Departamento Pessoal (ASE de Horas Extras, relatório gerencial e tabelas mestre), SSMA (desvios RID, classificação de risco e tratativas) e Facilities (hub, rotas de transporte, materiais da vigilância e serviços); 3. Inclusão de páginas faltantes em domínios existentes: Almoxarifado > Abrir RM (tradução SAP, depósitos 0001/0050, itens genéricos e lotes de exportação), Suprimentos > Análise de Cotações, Histórico de Preços, Vínculos & Auditoria de Cotações e Pendências de Processamento, Solicitações > Painel de Aprovações e Governança, e Administração > Cadastros Gerais (Vigilantes, E-mails Outlook, Níveis de Mercadorias e Lead Time) e Gestão de APIs & IA; 4. Expansão do módulo Portaria com cobertura detalhada de todos os 6 formulários (Hub com métricas ao vivo, Passagem de Plantão, Transportes, Ferramental de Terceiros, Carretas de Chapas, Ocorrências e Briefing); 5. Registro de novos ícones temáticos Lucide no componente de renderização das diretrizes.',
   },
