@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 /**
@@ -48,10 +48,26 @@ export default function Modal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose, disableOutsideClose]);
 
+  // Só fecha quando o gesto INTEIRO acontece no backdrop: press e release no
+  // próprio overlay. Sem isso, selecionar uma opção num popover/lista de dentro
+  // do modal e soltar o mouse fora do painel fechava o modal — o `click` é
+  // emitido no ancestral comum (o backdrop) quando down e up têm alvos
+  // diferentes.
+  const pressIniciouNoBackdrop = useRef(false);
+  const marcarOrigem = (e: React.MouseEvent | React.TouchEvent) => {
+    pressIniciouNoBackdrop.current = e.target === e.currentTarget;
+  };
+
   return (
     <div
       className={`fixed inset-0 ${zIndexClassName} flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-0 sm:p-4 animate-fade-in`}
-      onClick={e => { if (!disableOutsideClose && e.target === e.currentTarget) onClose(); }}
+      onMouseDown={marcarOrigem}
+      onTouchStart={marcarOrigem}
+      onClick={e => {
+        if (disableOutsideClose) return;
+        if (e.target === e.currentTarget && pressIniciouNoBackdrop.current) onClose();
+        pressIniciouNoBackdrop.current = false;
+      }}
     >
       <div
         role="dialog"

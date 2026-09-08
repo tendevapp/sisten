@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-08',
+    resumo: 'Demandas — Novo Módulo de Gestão de Tarefas e Quadros estilo Planner/Trello (`DemandasWorkspace.tsx`, `DemandasMinhas.tsx`, `demandasApi.ts`, `demandasAcesso.ts`, `demandasQuadro.ts`, `components/demandas-modulo/`, `dem_demandas`): 1. Novo módulo de topo "Demandas" no menu lateral do SISTEN com rotas "/demandas" (quadros e workspace) e "/demandas/minhas" (central de tarefas do usuário logado); 2. Gestão visual completa de quadros com 3 modos de visualização: Quadro Kanban com drag-and-drop por bucket, Grade tabular com filtros rápidos e Calendário mensal de prazos; 3. Modelo de governança e permissões (`demandasAcesso.ts`): visibilidade padrão por setor de origem do quadro com suporte a quadros compartilhados entre setores e permissão ampliada para gestores configurada pelo admin via Governança ("Setores de Demandas"); 4. Suporte a buckets customizados com cores temáticas, checklists, etiquetas coloridas, comentários com histórico auditável, atribuição de múltiplos responsáveis e priorização (Urgente, Alta, Média, Baixa); 5. Criação das tabelas relacionais `dem_quadros`, `dem_buckets`, `dem_tarefas`, `dem_comentarios` e `dem_historico` no Supabase com migrations e suíte de testes unitários com 100% de aprovação.',
+  },
+  {
+    data: '2026-09-08',
     resumo: 'Almoxarifado, Jurídico & Administração (`PlanilhaSapUploadButton.tsx`, `Estoque.tsx`, `Movimentacoes.tsx`, `juridico.ts`, `NewRequest.tsx`, `pages.ts`, `AdminPanel.tsx`): 1. Almoxarifado: botão de importação direta de planilhas SAP nas telas de Posição de Estoque (ZL0024 - substituição integral) e Movimentações (MB51 - modo upsert/novos registros), controlado pela nova permissão individual `almox_importar_planilhas` em Módulos de Acesso; 2. Helpdesk Jurídico: inclusão da categoria "Assinatura de Documento" para envio direto de documentos já finalizados, tornando opcionais os campos tipo de contrato, fornecedor/terceiro e descrição detalhada; 3. Navegação: reordenação dos itens no menu Solicitações ("Nova Solicitação" antes de "Aprovações"); 4. Painel Administrativo: correção de Temporal Dead Zone (TDZ) no filtro de usuários ao acessar `getRoleLabel` durante a inicialização do componente.',
   },
   {
@@ -2509,6 +2513,67 @@ export const DIRETRIZES: DiretrizesDominio[] = [
           {
             titulo: 'Tabelas do banco (Supabase)',
             itens: ['`fac_servicos`.']
+          }
+        ]
+      }
+    ]
+  },
+  // ────────────────────────────────────────────────────────────────────────
+  {
+    id: 'demandas',
+    nome: 'Demandas & Tarefas',
+    icone: 'KanbanSquare',
+    resumo:
+      'Módulo de gestão de demandas e tarefas no estilo Planner/Trello, organizado por quadros setoriais com suporte a múltiplos modos de visualização (Kanban, Grade e Calendário), governança de acesso por setor e central de tarefas pessoais.',
+    paginas: [
+      {
+        id: 'demandas-workspace',
+        nome: 'Workspace de Demandas',
+        arquivo: 'src/views/demandas/DemandasWorkspace.tsx · src/lib/demandasApi.ts · src/lib/demandasAcesso.ts',
+        secoes: [
+          {
+            titulo: 'Visualizações e operação',
+            itens: [
+              'Três modos de exibição integrados: Quadro Kanban (drag-and-drop de tarefas entre buckets), Grade (tabela dinâmica com ordenação e filtros rápidos) e Calendário (visão mensal dos prazos com badges de status).',
+              'Gestão de buckets por quadro: adição, renomeação, ordenação e cores temáticas personalizadas (Slate, Azul, Verde, Âmbar, Roxo, Rosa, Vermelho).',
+              'Tarefas completas: título, descrição detalhada, prioridade (Urgente, Alta, Média, Baixa), status (Não iniciada, Em andamento, Concluída), datas de início e entrega, múltiplos responsáveis, etiquetas coloridas e checklists interativos com barra de progresso.',
+              'Comentários e auditoria: histórico detalhado de alterações (status, prioridade, prazos) e comentários colaborativos com registro de autor e data/hora.'
+            ]
+          },
+          {
+            titulo: 'Governança e controle de acesso',
+            itens: [
+              'Visibilidade de quadros definida por setor (`sector_id`): colaboradores visualizam por padrão os quadros do seu setor de lotação.',
+              'Compartilhamento intersetorial: quadros podem ter setores adicionais autorizados via array `setores_compartilhados`.',
+              'Permissão ampliada para gestores: o administrador pode atribuir setores adicionais de visualização de demandas no cadastro do usuário via Governança (`profiles.demandas_setores_ids`). Administradores (`admin`) têm acesso global irrestrito a todos os quadros.',
+              'Regras de edição: criador do quadro, administradores e gestores autorizados podem configurar o quadro (editar nome, setores compartilhados, buckets e excluir).'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: [
+              '`dem_quadros` (quadros setoriais, setor dono e setores compartilhados).',
+              '`dem_buckets` (colunas do quadro, ordem e cor temática).',
+              '`dem_tarefas` (tarefas, bucket, datas, prioridade, status, checklist e responsáveis).',
+              '`dem_comentarios` (discussões da tarefa).',
+              '`dem_historico` (trilha de auditoria das mudanças na tarefa).'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'demandas-minhas',
+        nome: 'Minhas Tarefas',
+        arquivo: 'src/views/demandas/DemandasMinhas.tsx',
+        secoes: [
+          {
+            titulo: 'Central do colaborador',
+            itens: [
+              'Painel consolidado com todas as tarefas atribuídas ao usuário logado em todos os quadros acessíveis.',
+              'Filtros por status (Pendentes, Concluídas, Todas) e busca textual por título e nome do quadro.',
+              'Indicadores de atraso e vencimento com badges destacados em vermelho quando a data de entrega expirou.',
+              'Conclusão rápida com checkbox de 1 clique diretamente na linha da tarefa, atualizando instantaneamente o status para "concluida" no Supabase.'
+            ]
           }
         ]
       }

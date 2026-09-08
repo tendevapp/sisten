@@ -8101,6 +8101,40 @@ class LocalDatabase {
     return true;
   }
 
+  // Define os setores cujos quadros do módulo Demandas este usuário enxerga
+  // além do próprio setor, editável no modal de Governança de Gestão de
+  // Usuários. Só amplia a visão de um gestor — admin vê todos de qualquer forma.
+  public async updateUserDemandasSetores(userId: string, sectorIds: string[]): Promise<boolean> {
+    const users = this.getProfiles();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) return false;
+
+    const prevSectorIds = users[idx].demandas_setores;
+    users[idx].demandas_setores = sectorIds;
+    this.setStorageItem(this.profilesKey, users);
+
+    if (supabase) {
+      const client = supabaseAdmin || supabase;
+      const { error } = await client.from('core_perfis')
+        .update({ demandas_setores: sectorIds })
+        .eq('id', userId);
+
+      if (error) {
+        console.error('Erro ao sincronizar setores de Demandas no Supabase:', error.message, error.details || '', error);
+        const revertUsers = this.getProfiles();
+        const revertIdx = revertUsers.findIndex(u => u.id === userId);
+        if (revertIdx !== -1) {
+          revertUsers[revertIdx].demandas_setores = prevSectorIds;
+          this.setStorageItem(this.profilesKey, revertUsers);
+        }
+        return false;
+      }
+    }
+
+    this.logActivity('admin', 'Administração', 'Editar Perfil', `Setores de Demandas de ${users[idx].name} atualizados (${sectorIds.length} setor(es)).`);
+    return true;
+  }
+
   // Marca/desmarca este usuário como aprovador de Cadastro SAP, editável no
   // mesmo modal "Aprovador" de Gestão de Usuários. Aditivo: soma com a
   // notificação automática por role (coordenador_suprimentos/comprador) em

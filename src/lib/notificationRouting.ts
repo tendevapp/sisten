@@ -46,6 +46,16 @@ export function resolverRotaNotificacao(notif: Notification, user: Profile): str
     return `/formularios/portaria-relatorio?id=${encodeURIComponent(id)}`;
   }
 
+  if (contextKey.startsWith('demanda-quadro:')) {
+    const id = contextKey.split(':')[1];
+    return `/demandas?quadro=${encodeURIComponent(id)}&tab=quadro`;
+  }
+
+  if (contextKey.startsWith('demanda:')) {
+    const id = contextKey.split(':')[1];
+    return `/demandas/minhas?id=${encodeURIComponent(id)}`;
+  }
+
   if (
     contextKey.startsWith('importacao:') ||
     contextKey.startsWith('exportacao:') ||

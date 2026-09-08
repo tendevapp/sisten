@@ -349,6 +349,7 @@ export type Database = {
           aprovador_setores: Json
           cargo: string | null
           created_at: string | null
+          demandas_setores: Json
           email: string
           grupo_compras: string | null
           id: string
@@ -367,6 +368,7 @@ export type Database = {
           aprovador_setores?: Json
           cargo?: string | null
           created_at?: string | null
+          demandas_setores?: Json
           email: string
           grupo_compras?: string | null
           id: string
@@ -385,6 +387,7 @@ export type Database = {
           aprovador_setores?: Json
           cargo?: string | null
           created_at?: string | null
+          demandas_setores?: Json
           email?: string
           grupo_compras?: string | null
           id?: string
@@ -7898,6 +7901,7 @@ export type Database = {
           aprovador_setores: Json | null
           cargo: string | null
           created_at: string | null
+          demandas_setores: Json | null
           email: string | null
           grupo_compras: string | null
           id: string | null
@@ -7914,6 +7918,7 @@ export type Database = {
           aprovador_setores?: Json | null
           cargo?: string | null
           created_at?: string | null
+          demandas_setores?: Json | null
           email?: string | null
           grupo_compras?: string | null
           id?: string | null
@@ -7930,6 +7935,7 @@ export type Database = {
           aprovador_setores?: Json | null
           cargo?: string | null
           created_at?: string | null
+          demandas_setores?: Json | null
           email?: string | null
           grupo_compras?: string | null
           id?: string | null

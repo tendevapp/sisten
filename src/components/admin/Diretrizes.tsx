@@ -8,14 +8,14 @@ import {
   Search, BookOpen, ShoppingCart, Package, Truck, ClipboardList, Wallet, ShieldCheck,
   UploadCloud, History, ChevronRight, X, AlertTriangle, Database, FileText,
   Shield, ShieldAlert, Building2, UserCog, Users, Activity, FileSpreadsheet, Boxes,
-  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus
+  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus, KanbanSquare
 } from 'lucide-react';
 import { DIRETRIZES, CHANGELOG, DiretrizesDominio, DiretrizesPagina } from '../../data/diretrizes';
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   BookOpen, ShoppingCart, Package, Truck, ClipboardList, Wallet, ShieldCheck, UploadCloud,
   Shield, ShieldAlert, Building2, UserCog, Users, Activity, FileSpreadsheet, Boxes,
-  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus
+  FileCheck, Settings, Cpu, Layers, Route, Wrench, Bus, KanbanSquare
 };
 
 function normalize(s: string): string {

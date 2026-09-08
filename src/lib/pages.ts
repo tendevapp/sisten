@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck,
+  ClipboardCheck, KanbanSquare, ListChecks,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -49,6 +49,14 @@ export const PAGES: PageDef[] = [
   { id: 'solicitacoes_home', group: 'SOLICITAÇÕES', label: 'Solicitações', path: '/solicitacoes', icon: ClipboardList, defaultRoles: '*' },
   { id: 'sol_nova', group: 'SOLICITAÇÕES', label: 'Nova Solicitação', path: '/solicitacoes/nova', icon: PlusCircle, defaultRoles: '*' },
   { id: 'sol_aprovacoes', group: 'SOLICITAÇÕES', label: 'Aprovações', path: '/solicitacoes/aprovacoes', icon: FileCheck, defaultRoles: ['gestor', 'admin', 'coordenador_suprimentos'] },
+
+  // Módulo Demandas — quadro de tarefas (Planner/Trello) por setor. Grupo de
+  // topo, visível para todos; sem hub próprio (o grupo lista os itens direto,
+  // como GERAL). A visibilidade de cada quadro é por setor + compartilhamento
+  // (ver lib/demandasAcesso.ts); o admin amplia a visão de um gestor pelo
+  // campo "Setores de Demandas" no modal de Governança.
+  { id: 'demandas', group: 'DEMANDAS', label: 'Demandas', path: '/demandas', icon: KanbanSquare, defaultRoles: '*' },
+  { id: 'demandas_minhas', group: 'DEMANDAS', label: 'Minhas tarefas', path: '/demandas/minhas', icon: ListChecks, defaultRoles: '*' },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
@@ -437,7 +445,7 @@ export function pageIdForPath(path: string): string | undefined {
  * `pages.test.ts` garante que todo grupo de `PAGES` esteja listado.
  */
 export const GROUP_ORDER = [
-  'GERAL', 'SOLICITAÇÕES', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'RH',
+  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'RH',
   'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
 ] as const;
 

@@ -76,6 +76,8 @@ const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
 const RhAseRelatorio = lazy(() => import('./views/rh/RhAseRelatorio'));
 const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
+const DemandasWorkspace = lazy(() => import('./views/demandas/DemandasWorkspace'));
+const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
 // estado local dela: formulário preenchido, filtros, busca, seleção, edição
@@ -95,6 +97,7 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
   '/admin',
   '/facilities',
   '/rh',
+  '/demandas',
   '/helpdesk/inicio',
 ]);
 
@@ -842,6 +845,20 @@ export default function App() {
       case '/solicitacoes':
         if (canAccessPage(user, 'solicitacoes_home')) {
           return <SolicitacoesCentral user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Módulo Demandas — quadro de tarefas por setor. Sem hub: a rota abre a
+      // área de trabalho direto (seletor de quadro + Grade/Quadro/Calendário).
+      case '/demandas':
+        if (canAccessPage(user, 'demandas')) {
+          return <DemandasWorkspace user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/demandas/minhas':
+        if (canAccessPage(user, 'demandas_minhas')) {
+          return <DemandasMinhas user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

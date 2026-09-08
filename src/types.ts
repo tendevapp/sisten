@@ -61,6 +61,10 @@ export interface Profile {
   // a notificação automática por role (coordenador_suprimentos/comprador),
   // não a substitui.
   aprovador_cadastro_sap?: boolean;
+  // Setores (Sector.id) cujos quadros do módulo Demandas este usuário enxerga
+  // além do próprio setor, definidos pelo admin no modal de Governança. Só
+  // amplia a visão de um gestor — admin vê todos os quadros de qualquer jeito.
+  demandas_setores?: string[];
   // Dicionário de tours guiados já vistos pelo usuário (ex.: { 'nova-solicitacao': true }),
   // persistido no Supabase para não reabrir o tour quando o cache do navegador for limpo.
   tours_seen?: Record<string, boolean>;
@@ -2405,4 +2409,96 @@ export interface AlmoxRmExportacaoSolicitacao {
   liberado_exportar_em?: string | null;
   liberado_exportar_por_id?: string | null;
   liberado_exportar_por_nome?: string | null;
+}
+
+// =====================================================================
+// Módulo Demandas — quadro de tarefas (Planner/Trello) por setor
+// =====================================================================
+
+export type DemStatus = 'nao_iniciado' | 'em_andamento' | 'concluida';
+export type DemPrioridade = 'baixa' | 'media' | 'importante' | 'urgente';
+
+/** Item de checklist dentro de um cartão. */
+export interface DemChecklistItem {
+  id: string;
+  texto: string;
+  feito: boolean;
+}
+
+/** Anexo de uma tarefa (arquivo no bucket privado `dem-anexos`). */
+export interface DemAnexo {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  created_at: string;
+  /** URL assinada resolvida em runtime — não vem do banco. */
+  preview_url?: string;
+}
+
+/** Quadro (projeto). Pertence a um setor; `membros_extra` são ids de perfis
+ *  com quem o quadro foi compartilhado via @usuário. */
+export interface DemQuadro {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  setor_id: string;
+  cor?: string | null;
+  membros_extra: string[];
+  arquivado: boolean;
+  ordem: number;
+  criado_por?: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
+/** Coluna de um quadro. */
+export interface DemBucket {
+  id: string;
+  quadro_id: string;
+  nome: string;
+  ordem: number;
+  /** Hex da cor de destaque da coluna; null = neutra. */
+  cor?: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+}
+
+/** Cartão. */
+export interface DemTarefa {
+  id: string;
+  quadro_id: string;
+  bucket_id?: string | null;
+  titulo: string;
+  descricao?: string | null;
+  responsaveis: string[];
+  data_inicio?: string | null;
+  data_vencimento?: string | null;
+  status: DemStatus;
+  prioridade: DemPrioridade;
+  checklist: DemChecklistItem[];
+  anexos: DemAnexo[];
+  ordem: number;
+  concluida_em?: string | null;
+  codigo?: string | null;
+  criado_por?: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
+/** Comentário ou linha de log de uma tarefa. */
+export interface DemTarefaAtividade {
+  id: string;
+  tarefa_id: string;
+  tipo: 'comentario' | 'sistema';
+  texto: string;
+  criado_por?: string | null;
+  criado_por_nome?: string | null;
+  created_at: string;
 }

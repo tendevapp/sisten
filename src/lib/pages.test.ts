@@ -42,6 +42,14 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessPage(user, 'materiais_busca')).toBe(true);
     });
 
+    it('módulo Demandas é visível para qualquer usuário', () => {
+      const user = mockUser({ roles: ['requisitante'] });
+      expect(canAccessPage(user, 'demandas')).toBe(true);
+      expect(canAccessPage(user, 'demandas_minhas')).toBe(true);
+      const bloqueado = mockUser({ roles: ['requisitante'], page_access: { demandas: false } });
+      expect(canAccessPage(bloqueado, 'demandas')).toBe(false);
+    });
+
     it('deve respeitar restrições por role', () => {
       const user = mockUser({ roles: ['requisitante'] });
       expect(canAccessPage(user, 'sol_aprovacoes')).toBe(false);

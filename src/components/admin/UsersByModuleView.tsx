@@ -55,6 +55,11 @@ export default function UsersByModuleView({
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [aplicandoEmMassa, setAplicandoEmMassa] = useState(false);
+  // Diálogo de confirmação da aplicação em massa: guarda a decisão pendente
+  // (liberar/bloquear/restaurar), o rótulo da ação e a lista de alvos.
+  const [confirmBulk, setConfirmBulk] = useState<
+    { decisao: boolean | null; rotulo: string; alvos: Profile[] } | null
+  >(null);
 
   // Mapeamento de setores
   const sectorMap = useMemo(() => {

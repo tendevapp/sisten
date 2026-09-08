@@ -7,6 +7,7 @@ import {
 import { Profile, Sector, Role } from '../../types';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
+import DemandasSetoresSelect from './DemandasSetoresSelect';
 
 interface UserEditGovernanceModalProps {
   isOpen: boolean;
@@ -51,6 +52,7 @@ export default function UserEditGovernanceModal({
   const [grupoCompras, setGrupoCompras] = useState('');
   const [aprovadorSetores, setAprovadorSetores] = useState<string[]>([]);
   const [aprovadorCadastroSap, setAprovadorCadastroSap] = useState(false);
+  const [demandasSetores, setDemandasSetores] = useState<string[]>([]);
   const [filtroSetores, setFiltroSetores] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -64,6 +66,7 @@ export default function UserEditGovernanceModal({
       setGrupoCompras(profile.grupo_compras || '');
       setAprovadorSetores(profile.aprovador_setores || []);
       setAprovadorCadastroSap(!!profile.aprovador_cadastro_sap);
+      setDemandasSetores(profile.demandas_setores || []);
       setActiveTab('perfil');
     }
   }, [profile]);
@@ -129,6 +132,9 @@ export default function UserEditGovernanceModal({
 
       // 6. Update SAP Approver
       await localDb.updateUserAprovadorCadastroSap(profile.id, aprovadorCadastroSap);
+
+      // 7. Update Demandas sectors (visibilidade extra do módulo Demandas)
+      await localDb.updateUserDemandasSetores(profile.id, demandasSetores);
 
       toast.success(`Usuário ${name} atualizado com sucesso!`);
       onSaveSuccess();
@@ -534,6 +540,21 @@ export default function UserEditGovernanceModal({
                       </p>
                     </div>
                   </label>
+                </div>
+
+                {/* Card Setores de Demandas (módulo de tarefas por setor) */}
+                <div className="p-4 rounded-2xl border border-indigo-200/90 bg-indigo-50/50">
+                  <label className="block text-xs font-bold text-indigo-950">
+                    Setores de Demandas
+                  </label>
+                  <p className="text-[11px] text-indigo-800/90 leading-relaxed mt-0.5 mb-2.5">
+                    Além do próprio setor, este usuário passa a ver os quadros do módulo Demandas destes setores. Use para um gestor acompanhar mais de um setor.
+                  </p>
+                  <DemandasSetoresSelect
+                    sectors={sectors}
+                    selected={demandasSetores}
+                    onChange={setDemandasSetores}
+                  />
                 </div>
               </div>
             )}
