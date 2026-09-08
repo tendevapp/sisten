@@ -7,8 +7,8 @@
  * sessão que veio da Central de Compras.
  */
 
-import React from 'react';
-import { FileSpreadsheet, ChevronRight, PackageSearch, PlusCircle, History } from 'lucide-react';
+import React, { useState } from 'react';
+import { FileSpreadsheet, ChevronRight, PackageSearch, PlusCircle, History, Trash2, Loader2 } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableEmpty } from '../ui/DataTable';
 import type { CotacaoProcesso, CotacaoProcessoStatus } from '../../types';
 
@@ -35,6 +35,10 @@ interface ProcessosListProps {
   onCriarSemVinculo: () => void;
   /** Abre a página analítica de histórico e inteligência de cotações passadas. */
   onAbrirHistorico?: () => void;
+  /** Habilita a exclusão de processos ainda abertos (só admin). */
+  podeExcluir?: boolean;
+  /** Exclui o processo de cotação. Deve rejeitar em caso de falha. */
+  onExcluir?: (id: string) => Promise<void>;
 }
 
 export default function ProcessosList({
@@ -44,8 +48,26 @@ export default function ProcessosList({
   onNovoProcesso,
   onCriarSemVinculo,
   onAbrirHistorico,
+  podeExcluir = false,
+  onExcluir,
 }: ProcessosListProps) {
   const semProcessos = !carregando && processos.length === 0;
+  const podeGerenciarExclusao = podeExcluir && !!onExcluir;
+  const [confirmarId, setConfirmarId] = useState<string | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
+
+  const confirmarExclusao = async (id: string) => {
+    setExcluindoId(id);
+    try {
+      await onExcluir!(id);
+      setConfirmarId(null);
+    } catch {
+      // O componente-pai já notifica o erro; mantém a confirmação aberta
+      // para o admin tentar de novo.
+    } finally {
+      setExcluindoId(null);
+    }
+  };
 
   const acoes = (
     <div className="flex flex-wrap items-center gap-2">
@@ -102,6 +124,7 @@ export default function ProcessosList({
             <Th label="Status" />
             <Th label="Criado por" />
             <Th label="Criado em" />
+            {podeGerenciarExclusao && <Th label="" align="right" width="w-24" />}
           </TableHeadRow>
           <TableBody>
             {processos.map(p => (
@@ -120,6 +143,40 @@ export default function ProcessosList({
                     <ChevronRight className="h-3 w-3 text-slate-400" />
                   </span>
                 </Td>
+                {podeGerenciarExclusao && (
+                  <Td align="right">
+                    {p.status !== 'aberto' ? null : confirmarId === p.id ? (
+                      <span className="inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={excluindoId === p.id}
+                          onClick={() => confirmarExclusao(p.id)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700 disabled:opacity-60"
+                        >
+                          {excluindoId === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          Excluir
+                        </button>
+                        <button
+                          type="button"
+                          disabled={excluindoId === p.id}
+                          onClick={() => setConfirmarId(null)}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                        >
+                          Não
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        title="Excluir este processo de cotação"
+                        onClick={e => { e.stopPropagation(); setConfirmarId(p.id); }}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </Td>
+                )}
               </Tr>
             ))}
           </TableBody>

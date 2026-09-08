@@ -189,12 +189,18 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
 
     try {
+      const labelCod = selectedReq.registration_type === 'Item' ? 'Cód. Material SAP' : 'Cód. Fornecedor SAP';
       let finalComment = `Cadastro Finalizado: ${resolution}`;
       if (sapResultCode.trim()) {
-        finalComment += ` | Código SAP Gerado: ${sapResultCode}`;
+        finalComment += ` | ${labelCod}: ${sapResultCode.trim()}`;
       }
 
-      const ok = await localDb.transitionRequestStatus(selectedReq.id, 'resolvido', finalComment);
+      const ok = await localDb.transitionRequestStatus(
+        selectedReq.id,
+        'resolvido',
+        finalComment,
+        sapResultCode.trim() || undefined
+      );
       if (!ok) {
         setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
         return;
@@ -429,9 +435,16 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       >
                         <td className="py-3 px-4 font-bold text-slate-800">#{req.number}</td>
                         <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 border border-indigo-150 text-indigo-700">
-                            {req.registration_type}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 border border-indigo-150 text-indigo-700 w-fit">
+                              {req.registration_type}
+                            </span>
+                            {req.registration_type === 'Fornecedor' && req.fornecedor_operacao === 'atualizacao' && (
+                              <span className="px-1.5 py-0.5 rounded font-semibold text-[9px] bg-amber-50 border border-amber-200 text-amber-800 w-fit">
+                                Atualização
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <div>
@@ -483,6 +496,11 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
                       {selectedReq.registration_type}
                     </span>
+                    {selectedReq.registration_type === 'Fornecedor' && selectedReq.fornecedor_operacao === 'atualizacao' && (
+                      <span className="text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded">
+                        Atualização
+                      </span>
+                    )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">
                     Aberta em {new Date(selectedReq.created_at).toLocaleString('pt-BR')}
@@ -512,6 +530,22 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Item / Fornecedor</h4>
                   <p className="font-bold text-slate-800 text-sm mt-1">{selectedReq.justificativa?.split('|')[0] || selectedReq.justificativa}</p>
                 </div>
+
+                {selectedReq.registration_type === 'Fornecedor' && selectedReq.codigo_fornecedor_sap && (
+                  <div className="rounded border border-amber-200 bg-amber-50/60 p-2.5">
+                    <h4 className="font-bold text-amber-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atual)</h4>
+                    <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.codigo_fornecedor_sap}</p>
+                  </div>
+                )}
+
+                {selectedReq.codigo_sap_gerado && (
+                  <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
+                    <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">
+                      {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
+                    </h4>
+                    <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
+                  </div>
+                )}
 
                 <div>
                   <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider">Solicitante</h4>
@@ -633,12 +667,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500">Novo Código SAP Gerado (Opcional)</label>
+                        <label className="text-[10px] font-bold text-slate-500">
+                          {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP' : 'Cód. Fornecedor SAP'}
+                        </label>
                         <input
                           type="text"
                           value={sapResultCode}
                           onChange={(e) => setSapResultCode(e.target.value)}
-                          placeholder="Ex: 10000259"
+                          placeholder={selectedReq.registration_type === 'Item' ? 'Ex: 10000259' : 'Ex: 20004567'}
                           className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none bg-white font-mono"
                         />
                       </div>
@@ -658,6 +694,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   <div className="rounded-lg bg-emerald-50 p-4 border border-emerald-100 text-center space-y-2">
                     <CheckCircle className="h-8 w-8 text-emerald-600 mx-auto" />
                     <p className="text-xs font-bold text-emerald-800">Cadastro Resolvido</p>
+                    {selectedReq.codigo_sap_gerado && (
+                      <div className="inline-block bg-white border border-emerald-200 rounded px-3 py-1.5 text-xs shadow-xs">
+                        <span className="text-slate-500 font-medium">
+                          {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP: ' : 'Cód. Fornecedor SAP: '}
+                        </span>
+                        <span className="font-mono font-bold text-emerald-700">{selectedReq.codigo_sap_gerado}</span>
+                      </div>
+                    )}
                     <p className="text-[11px] text-slate-500">
                       Aguardando auto-fechamento do sistema ou confirmação de fechamento pelo solicitante.
                     </p>

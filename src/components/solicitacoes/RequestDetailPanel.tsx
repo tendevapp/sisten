@@ -20,7 +20,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, Ban, Calendar, Check, CheckCircle, Clock, Copy,
   ExternalLink, FileEdit, FileText, Info, Loader2, Paperclip, Pencil,
-  PlusCircle, RefreshCw, Send, Star, Upload, XCircle,
+  PlusCircle, RefreshCw, Send, Star, Trash2, Upload, XCircle,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, Request, RequestComment, RequestItem, RequestStatus, Sector } from '../../types';
@@ -324,17 +324,17 @@ export default function RequestDetailPanel({
     if (e) e.preventDefault();
     setErroModalCancelar('');
     if (!motivoCancelamento.trim()) {
-      setErroModalCancelar('O motivo do cancelamento é obrigatório.');
+      setErroModalCancelar('O motivo da exclusão é obrigatório.');
       return;
     }
     setSalvandoCancelamento(true);
     const ok = await localDb.cancelRequest(request.id, user.id, motivoCancelamento.trim());
     setSalvandoCancelamento(false);
     if (!ok) {
-      setErroModalCancelar('Não foi possível cancelar a solicitação.');
+      setErroModalCancelar('Não foi possível excluir a solicitação.');
       return;
     }
-    toast.success(`Solicitação #${request.number} cancelada.`);
+    toast.success(`Solicitação #${request.number} excluída.`);
     setModalCancelarAberta(false);
     setMotivoCancelamento('');
     onChanged();
@@ -504,9 +504,9 @@ export default function RequestDetailPanel({
                 setErroModalCancelar('');
                 setModalCancelarAberta(true);
               }}
-              title="Cancelar esta solicitação"
+              title="Excluir esta solicitação"
             >
-              <Ban className="h-4 w-4 text-rose-500" /> Cancelar
+              <Trash2 className="h-4 w-4 text-rose-500" /> Excluir
             </BotaoSecundario>
           )}
 
@@ -752,7 +752,17 @@ export default function RequestDetailPanel({
               {request.target_sector_id && <Campo rotulo="Setor de destino" valor={nomeSetor(request.target_sector_id)} />}
               {request.local && <Campo rotulo="Local" valor={request.local} />}
               {request.registration_type && <Campo rotulo="Tipo de cadastro" valor={request.registration_type} />}
+              {request.fornecedor_operacao && (
+                <Campo rotulo="Operação" valor={request.fornecedor_operacao === 'atualizacao' ? 'Atualização de Cadastro' : 'Novo Cadastro'} />
+              )}
+              {request.codigo_fornecedor_sap && <Campo rotulo="Cód. Fornecedor SAP (atual)" valor={request.codigo_fornecedor_sap} />}
               {request.brand && <Campo rotulo="Fabricante / CNPJ" valor={request.brand} />}
+              {request.codigo_sap_gerado && (
+                <Campo
+                  rotulo={request.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
+                  valor={request.codigo_sap_gerado}
+                />
+              )}
             </dl>
           </section>
 
@@ -1050,20 +1060,20 @@ export default function RequestDetailPanel({
         </Modal>
       )}
 
-      {/* Modal para cancelamento de solicitacao */}
+      {/* Modal para exclusao de solicitacao */}
       {modalCancelarAberta && (
         <Modal
           onClose={() => !salvandoCancelamento && setModalCancelarAberta(false)}
           maxWidth="max-w-md"
-          ariaLabel="Cancelar Solicitação"
+          ariaLabel="Excluir Solicitação"
           zIndexClassName="z-[110]"
         >
           <ModalHeader onClose={() => !salvandoCancelamento && setModalCancelarAberta(false)}>
             <div className="flex items-center gap-2">
-              <Ban className="h-5 w-5 text-rose-500" />
+              <Trash2 className="h-5 w-5 text-rose-500" />
               <div>
                 <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  Cancelar Solicitação — #{request.number}
+                  Excluir Solicitação — #{request.number}
                 </h3>
                 <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
                   Esta ação interrompe o andamento da solicitação.
@@ -1085,18 +1095,18 @@ export default function RequestDetailPanel({
                 )}
 
                 <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
-                  Tem certeza de que deseja cancelar esta solicitação? Uma notificação será enviada aos envolvidos e o motivo ficará registrado no histórico.
+                  Tem certeza de que deseja excluir esta solicitação? Uma notificação será enviada aos envolvidos e o motivo ficará registrado no histórico.
                 </p>
 
                 <div>
                   <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                    Motivo do Cancelamento <span className="text-rose-500">*</span>
+                    Motivo da Exclusão <span className="text-rose-500">*</span>
                   </label>
                   <textarea
                     rows={3}
                     value={motivoCancelamento}
                     onChange={e => setMotivoCancelamento(e.target.value)}
-                    placeholder="Informe detalhadamente o motivo do cancelamento..."
+                    placeholder="Informe detalhadamente o motivo da exclusão..."
                     className="w-full rounded-lg border p-2.5 text-sm focus:outline-2 focus:outline-offset-1"
                     style={campo}
                     required
@@ -1122,8 +1132,8 @@ export default function RequestDetailPanel({
                   className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white cursor-pointer disabled:opacity-50"
                   style={{ background: 'var(--status-critical)' }}
                 >
-                  {salvandoCancelamento ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-                  Confirmar cancelamento
+                  {salvandoCancelamento ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Confirmar exclusão
                 </button>
               </div>
             </ModalFooter>

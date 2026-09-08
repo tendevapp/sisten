@@ -232,6 +232,18 @@ export async function excluirPropostaCotacao(propostaId: string): Promise<void> 
   if (error) throw new Error(`Falha ao excluir a proposta: ${error.message}`);
 }
 
+/**
+ * Exclui um processo de cotação inteiro. Os itens do escopo, as propostas, os
+ * itens das propostas e os vínculos com SAP saem juntos por ON DELETE CASCADE.
+ * A RLS já restringe a operação a quem pode gerir cotações (admin, comprador,
+ * coordenador de suprimentos); a UI só oferece o botão para admin em processos
+ * ainda abertos.
+ */
+export async function excluirProcessoCotacao(processoId: string): Promise<void> {
+  const { error } = await supabase.from('sup_cotacao_processos').delete().eq('id', processoId);
+  if (error) throw new Error(`Falha ao excluir o processo de cotação: ${error.message}`);
+}
+
 // =====================================================================
 // Vínculo com itens de RM
 // =====================================================================

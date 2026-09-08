@@ -267,6 +267,10 @@ export interface Request {
   // Título curto e editável, mostrado no card do Kanban. Opcional na criação;
   // sem ele o card cai para `category_id` como rótulo.
   titulo?: string | null;
+  // Específicos de Cadastro SAP (Fornecedor e conclusão):
+  fornecedor_operacao?: 'novo' | 'atualizacao';
+  codigo_fornecedor_sap?: string;
+  codigo_sap_gerado?: string;
 }
 
 export interface Notification {

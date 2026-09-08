@@ -27,6 +27,7 @@ vi.mock('xlsx', () => ({
 const {
   exportarSolicitacoes, classificarEventoHistorico, foiEditadaAposAprovacao,
   formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
+  ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, MARCA_IMOBILIZADO,
 } = await import('./solicitacoes');
 const {
   podeAlterarDecisao, podeCancelar,
@@ -408,6 +409,30 @@ describe('formatarObservacaoItemGenerico e desformatarObservacaoItemGenerico', (
     expect(desformatarObservacaoItemGenerico('ITEM GENÉRICO:')).toBe('');
     expect(desformatarObservacaoItemGenerico('Observacao comum')).toBe('Observacao comum');
     expect(desformatarObservacaoItemGenerico('')).toBe('');
+  });
+});
+
+describe('itens de imobilizado', () => {
+  it('ehItemImobilizado só para código de 5 dígitos começando com 4', () => {
+    expect(ehItemImobilizado('45233')).toBe(true);
+    expect(ehItemImobilizado('40001')).toBe(true);
+    expect(ehItemImobilizado('00045233')).toBe(true); // zeros à esquerda contam igual
+    expect(ehItemImobilizado(' 45233 ')).toBe(true);
+    expect(ehItemImobilizado('50001')).toBe(false); // 5 dígitos, mas não começa com 4
+    expect(ehItemImobilizado('1007869')).toBe(false); // 7 dígitos = material normal
+    expect(ehItemImobilizado('1234')).toBe(false);
+    expect(ehItemImobilizado('')).toBe(false);
+    expect(ehItemImobilizado(null)).toBe(false);
+    expect(ehItemImobilizado(undefined)).toBe(false);
+  });
+
+  it('marca a observação sem duplicar', () => {
+    expect(marcarObservacaoImobilizado('')).toBe(MARCA_IMOBILIZADO);
+    expect(marcarObservacaoImobilizado('Trocar mancal')).toBe(`${MARCA_IMOBILIZADO} Trocar mancal`);
+    const jaMarcada = marcarObservacaoImobilizado('Trocar mancal');
+    expect(marcarObservacaoImobilizado(jaMarcada)).toBe(jaMarcada);
+    expect(temMarcaImobilizado(jaMarcada)).toBe(true);
+    expect(temMarcaImobilizado('Observação comum')).toBe(false);
   });
 });
 

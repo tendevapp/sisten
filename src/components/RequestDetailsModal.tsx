@@ -49,10 +49,19 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
  */
 function parseCadastroSapJustificativa(texto: string, tipo?: 'Item' | 'Fornecedor') {
   const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
-  const fornecedorMatch = itemMatch ? null : texto.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
-  if (itemMatch) return { nome: itemMatch[1], specs: itemMatch[2], justificativa: itemMatch[3] };
-  if (fornecedorMatch) return { nome: fornecedorMatch[1], specs: '', justificativa: fornecedorMatch[2] };
-  return { nome: '', specs: '', justificativa: texto };
+  const atualizacaoMatch = texto.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*(.*?)\.(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*([\s\S]*)$/i);
+  const fornecedorMatch = itemMatch || atualizacaoMatch ? null : texto.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
+  if (itemMatch) return { nome: itemMatch[1], specs: itemMatch[2], justificativa: itemMatch[3], codigoFornecedor: '' };
+  if (atualizacaoMatch) {
+    return {
+      nome: atualizacaoMatch[2]?.trim() || '',
+      specs: '',
+      justificativa: atualizacaoMatch[3]?.trim() || '',
+      codigoFornecedor: atualizacaoMatch[1]?.trim() || '',
+    };
+  }
+  if (fornecedorMatch) return { nome: fornecedorMatch[1], specs: '', justificativa: fornecedorMatch[2], codigoFornecedor: '' };
+  return { nome: '', specs: '', justificativa: texto, codigoFornecedor: '' };
 }
 
 export default function RequestDetailsModal({ request: r, items, sectors, onClose }: RequestDetailsModalProps) {
@@ -202,8 +211,34 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
 
           {r.type === 'cadastro_sap' && cadastroSap && (
             <Section title={`Cadastro SAP — ${r.registration_type || 'Item'}`}>
-              <Field label={r.registration_type === 'Fornecedor' ? 'Razão Social / Nome Fantasia' : 'Nome / Descrição'} value={cadastroSap.nome} />
-              <Field label={r.registration_type === 'Fornecedor' ? 'CNPJ / Site' : 'Fabricante'} value={r.brand} />
+              {r.registration_type === 'Fornecedor' && (
+                <Field
+                  label="Operação"
+                  value={r.fornecedor_operacao === 'atualizacao' ? 'Atualização de Cadastro' : 'Novo Cadastro'}
+                />
+              )}
+              {r.registration_type === 'Fornecedor' && (r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor) && (
+                <Field
+                  label="Código Fornecedor SAP (atual)"
+                  value={r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor}
+                />
+              )}
+              <Field
+                label={
+                  r.registration_type === 'Fornecedor'
+                    ? (r.fornecedor_operacao === 'atualizacao' ? 'NOVO Razão Social / Nome Fantasia' : 'Razão Social / Nome Fantasia')
+                    : 'Nome / Descrição'
+                }
+                value={cadastroSap.nome}
+              />
+              <Field
+                label={
+                  r.registration_type === 'Fornecedor'
+                    ? (r.fornecedor_operacao === 'atualizacao' ? 'NOVO CNPJ / Site' : 'CNPJ / Site')
+                    : 'Fabricante'
+                }
+                value={r.brand}
+              />
               {r.registration_type !== 'Fornecedor' && (
                 <>
                   <Field label="Especificações Técnicas" value={cadastroSap.specs} />
@@ -212,12 +247,33 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
               )}
               {r.registration_type === 'Fornecedor' && (
                 <>
-                  <Field label="Representante / Contato" value={r.suggested_supplier} />
-                  <Field label="Nome do Representante" value={r.representante_nome} />
-                  <Field label="Cargo" value={r.representante_cargo} />
-                  <Field label="Telefone" value={r.representante_telefone} />
-                  <Field label="E-mail" value={r.representante_email} />
+                  <Field
+                    label={r.fornecedor_operacao === 'atualizacao' ? 'NOVO Representante / Contato' : 'Representante / Contato'}
+                    value={r.suggested_supplier}
+                  />
+                  <Field
+                    label={r.fornecedor_operacao === 'atualizacao' ? 'NOVO Nome do Representante' : 'Nome do Representante'}
+                    value={r.representante_nome}
+                  />
+                  <Field
+                    label={r.fornecedor_operacao === 'atualizacao' ? 'NOVO Cargo' : 'Cargo'}
+                    value={r.representante_cargo}
+                  />
+                  <Field
+                    label={r.fornecedor_operacao === 'atualizacao' ? 'NOVO Telefone' : 'Telefone'}
+                    value={r.representante_telefone}
+                  />
+                  <Field
+                    label={r.fornecedor_operacao === 'atualizacao' ? 'NOVO E-mail' : 'E-mail'}
+                    value={r.representante_email}
+                  />
                 </>
+              )}
+              {r.codigo_sap_gerado && (
+                <Field
+                  label={r.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
+                  value={r.codigo_sap_gerado}
+                />
               )}
             </Section>
           )}

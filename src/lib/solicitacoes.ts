@@ -198,6 +198,36 @@ export function desformatarObservacaoItemGenerico(obs?: string | null): string {
   return texto.replace(/^item\s+gen[eé]rico\s*:\s*/i, '').trim();
 }
 
+/* -------------------------------------------------------------------------- */
+/* Itens de imobilizado                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Item de imobilizado (ativo): código SAP de 5 dígitos significativos começando
+ * com `4` (faixa 4xxxx). Esses itens precisam de número de imobilizado e de
+ * aviso prévio à contabilidade antes da compra. Zeros à esquerda são ignorados,
+ * então `45233` e `00045233` contam igual.
+ */
+export function ehItemImobilizado(sapCode?: string | null): boolean {
+  const digitos = (sapCode || '').trim().replace(/\D/g, '').replace(/^0+/, '');
+  return digitos.length === 5 && digitos.startsWith('4');
+}
+
+/** Prefixo gravado na observação do item quando o solicitante confirma o imobilizado. */
+export const MARCA_IMOBILIZADO = '[IMOBILIZADO] Item de imobilizado — solicitante confirmou e avisou a contabilidade.';
+
+/** A observação já traz a confirmação de imobilizado? */
+export function temMarcaImobilizado(obs?: string | null): boolean {
+  return (obs || '').includes('[IMOBILIZADO]');
+}
+
+/** Prefixa a observação com a marca de imobilizado (sem duplicar). */
+export function marcarObservacaoImobilizado(obs?: string | null): string {
+  const texto = (obs || '').trim();
+  if (temMarcaImobilizado(texto)) return texto;
+  return texto ? `${MARCA_IMOBILIZADO} ${texto}` : MARCA_IMOBILIZADO;
+}
+
 
 export type TipoEventoHistorico =
   | 'abertura'

@@ -65,6 +65,7 @@ describe('emailConfigApi', () => {
     it('deve conter as chaves essenciais do SISTEN', () => {
       const chaves = CONFIGS_EMAIL_PADRAO.map(c => c.chave);
       expect(chaves).toContain('cadastro_sap');
+      expect(chaves).toContain('cadastro_sap_fornecedor');
       expect(chaves).toContain('expedicao_chegada');
       expect(chaves).toContain('expedicao_tramos');
       expect(chaves).toContain('portaria_relatorio');

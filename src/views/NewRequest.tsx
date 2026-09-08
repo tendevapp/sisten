@@ -9,7 +9,7 @@ import {
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
-  ReceiptText,
+  ReceiptText, Info,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -22,7 +22,10 @@ import { SinalChips } from '../components/ui/SinalChips';
 import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
-import { podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
+import {
+  podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
+  ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado,
+} from '../lib/solicitacoes';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
@@ -160,6 +163,10 @@ interface PurchaseItemState {
   brand: string;
   is_similar_allowed: boolean;
   is_generic?: boolean;
+  /** Item de imobilizado (código SAP de 5 dígitos): confirmação do solicitante. */
+  imobilizado_confirmado?: boolean;
+  /** Item de imobilizado: solicitante já avisou a contabilidade. */
+  contabilidade_avisada?: boolean;
   observation?: string;
   reference_link?: string;
   suggested_supplier: string;
@@ -280,6 +287,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
+  const [sapFornecedorOperacao, setSapFornecedorOperacao] = useState<'novo' | 'atualizacao'>('novo');
+  const [sapVendorCode, setSapVendorCode] = useState('');
   const [sapRegName, setSapRegName] = useState('');
   const [sapRegSpecs, setSapRegSpecs] = useState('');
   const [sapRegBrand, setSapRegBrand] = useState('');
@@ -383,16 +392,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     if (req.tipo_compra) setTipoCompra(req.tipo_compra);
     if (req.data_necessidade) setDataNecessidade(req.data_necessidade);
     if (req.registration_type) setRegistrationType(req.registration_type);
+    if (req.fornecedor_operacao) setSapFornecedorOperacao(req.fornecedor_operacao);
+    if (req.codigo_fornecedor_sap) setSapVendorCode(req.codigo_fornecedor_sap);
     if (req.type === 'cadastro_sap' && req.justificativa) {
       // Ao criar, Nome/Specs/Justificativa são compostos num único texto (ver
       // handleSubmit) porque o Request não tem campos próprios pra eles. Ao
       // editar, faz o parse reverso pra não deixar os campos em branco.
       const itemMatch = req.justificativa.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
-      const fornecedorMatch = itemMatch ? null : req.justificativa.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
+      const atualizacaoMatch = req.justificativa.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*(.*?)\.(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*([\s\S]*)$/i);
+      const fornecedorMatch = itemMatch || atualizacaoMatch ? null : req.justificativa.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
       if (itemMatch) {
         setSapRegName(itemMatch[1]);
         setSapRegSpecs(itemMatch[2]);
         setJustificativa(itemMatch[3]);
+      } else if (atualizacaoMatch) {
+        setSapFornecedorOperacao('atualizacao');
+        if (!req.codigo_fornecedor_sap) setSapVendorCode(atualizacaoMatch[1].trim());
+        setSapRegName(atualizacaoMatch[2] ? atualizacaoMatch[2].trim() : '');
+        setJustificativa(atualizacaoMatch[3].trim());
       } else if (fornecedorMatch) {
         setSapRegName(fornecedorMatch[1]);
         setJustificativa(fornecedorMatch[2]);
@@ -425,6 +442,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         brand: it.brand || '',
         is_similar_allowed: it.is_similar_allowed ?? true,
         is_generic: it.is_generic || false,
+        imobilizado_confirmado: temMarcaImobilizado(it.observation),
+        contabilidade_avisada: temMarcaImobilizado(it.observation),
         observation: it.observation || '',
         reference_link: it.reference_link || '',
         suggested_supplier: it.suggested_supplier || '',
@@ -470,6 +489,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           })));
         }
         if (parsed.registrationType) setRegistrationType(parsed.registrationType);
+        if (parsed.sapFornecedorOperacao) setSapFornecedorOperacao(parsed.sapFornecedorOperacao);
+        if (parsed.sapVendorCode) setSapVendorCode(parsed.sapVendorCode);
         if (parsed.sapRegName) setSapRegName(parsed.sapRegName);
         if (parsed.sapRegSpecs) setSapRegSpecs(parsed.sapRegSpecs);
         if (parsed.sapRegBrand) setSapRegBrand(parsed.sapRegBrand);
@@ -524,7 +545,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     return () => clearTimeout(timeout);
   }, [
     activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
-    items, registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+    items, registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
     juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
@@ -544,7 +565,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // Anexos ficam de fora: `Blob` vira `{}` no JSON e `previewUrl` vira um
       // object URL morto, o que reencheria o rascunho de chips quebrados.
       items: items.map(({ attachments, ...resto }) => resto),
-      registrationType, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+      registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
       juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
@@ -576,6 +597,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setJustificativa('');
     setItems([itemVazio()]);
     setRegistrationType('Item');
+    setSapFornecedorOperacao('novo');
+    setSapVendorCode('');
     setSapRegName('');
     setSapRegSpecs('');
     setSapRegBrand('');
@@ -894,6 +917,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // do navegador/SO) — por isso os anexos entram como lista + link para a
   // solicitação no SISTEN, e o usuário precisa anexá-los manualmente no Outlook.
   const buildCadastroSapEmailBody = (reqId: string, reqNumero: string): string => {
+    const isAtualizacao = registrationType === 'Fornecedor' && sapFornecedorOperacao === 'atualizacao';
     const linhas: string[] = [
       'Olá, Jeff!',
       '',
@@ -901,19 +925,35 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       '',
       `Número da solicitação: #${reqNumero}`,
       `Tipo de cadastro: ${registrationType}`,
-      `Solicitante: ${user.name}${user.cargo ? ` (${user.cargo})` : ''}`,
-      '',
-      registrationType === 'Item' ? `Nome / Descrição: ${sapRegName}` : `Razão Social / Nome Fantasia: ${sapRegName}`,
-      registrationType === 'Item' ? `Fabricante: ${sapRegBrand}` : `CNPJ / Site corporativo: ${sapRegBrand}`,
-      registrationType === 'Item' ? `Fornecedor de referência: ${sapRegVendorInfo || '—'}` : `Representante / Contato: ${sapRegVendorInfo || '—'}`,
     ];
 
     if (registrationType === 'Fornecedor') {
+      linhas.push(`Operação: ${isAtualizacao ? 'Atualização de Cadastro' : 'Novo Cadastro'}`);
+      if (isAtualizacao) {
+        linhas.push(`Código Fornecedor SAP: ${sapVendorCode || '—'}`);
+      }
+    }
+
+    linhas.push(
+      `Solicitante: ${user.name}${user.cargo ? ` (${user.cargo})` : ''}`,
+      '',
+      registrationType === 'Item'
+        ? `Nome / Descrição: ${sapRegName}`
+        : `${isAtualizacao ? 'NOVO ' : ''}Razão Social / Nome Fantasia: ${sapRegName || '—'}`,
+      registrationType === 'Item'
+        ? `Fabricante: ${sapRegBrand}`
+        : `${isAtualizacao ? 'NOVO ' : ''}CNPJ / Site corporativo: ${sapRegBrand || '—'}`,
+      registrationType === 'Item'
+        ? `Fornecedor de referência: ${sapRegVendorInfo || '—'}`
+        : `${isAtualizacao ? 'NOVO ' : ''}Representante / Contato: ${sapRegVendorInfo || '—'}`,
+    );
+
+    if (registrationType === 'Fornecedor') {
       linhas.push(
-        `Nome do representante: ${sapRepresentanteNome || '—'}`,
-        `Cargo: ${sapRepresentanteCargo || '—'}`,
-        `Telefone: ${sapRepresentanteTelefone || '—'}`,
-        `E-mail: ${sapRepresentanteEmail || '—'}`
+        `${isAtualizacao ? 'NOVO ' : ''}Nome do representante: ${sapRepresentanteNome || '—'}`,
+        `${isAtualizacao ? 'NOVO ' : ''}Cargo: ${sapRepresentanteCargo || '—'}`,
+        `${isAtualizacao ? 'NOVO ' : ''}Telefone: ${sapRepresentanteTelefone || '—'}`,
+        `${isAtualizacao ? 'NOVO ' : ''}E-mail: ${sapRepresentanteEmail || '—'}`
       );
     }
 
@@ -959,6 +999,65 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         );
         return;
       }
+
+      // Código SAP de 5 dígitos = item de imobilizado: exige as duas confirmações.
+      const imobPendente = items.findIndex(
+        it => !it.is_generic
+          && ehItemImobilizado(it.sap_code)
+          && (!it.imobilizado_confirmado || !it.contabilidade_avisada),
+      );
+      if (imobPendente !== -1) {
+        alert(
+          `Item ${imobPendente + 1}: o código SAP tem 5 dígitos, ou seja, é um item de imobilizado. ` +
+          'Confirme que é um item de imobilizado e que a contabilidade já foi avisada antes de enviar.',
+        );
+        return;
+      }
+    }
+
+    if (activeTab === 'cadastro_sap') {
+      if (registrationType === 'Fornecedor') {
+        if (sapFornecedorOperacao === 'atualizacao') {
+          if (!sapVendorCode.trim()) {
+            alert('Informe o Código Fornecedor SAP.');
+            return;
+          }
+          if (!justificativa.trim()) {
+            alert('Informe a justificativa da alteração.');
+            return;
+          }
+        } else {
+          if (!sapRegName.trim()) {
+            alert('Informe a Razão Social / Nome Fantasia.');
+            return;
+          }
+          if (!sapRegBrand.trim()) {
+            alert('Informe o CNPJ / Site corporativo.');
+            return;
+          }
+          if (!justificativa.trim()) {
+            alert('Informe a justificativa de necessidade.');
+            return;
+          }
+        }
+      } else {
+        if (!sapRegName.trim()) {
+          alert('Informe o Nome / Descrição Curta do material.');
+          return;
+        }
+        if (!sapRegBrand.trim()) {
+          alert('Informe o Fabricante.');
+          return;
+        }
+        if (!sapRegSpecs.trim()) {
+          alert('Informe as Especificações Técnicas.');
+          return;
+        }
+        if (!justificativa.trim()) {
+          alert('Informe a justificativa de necessidade.');
+          return;
+        }
+      }
     }
 
     if (activeTab === 'chamado' && isDestinoSuprimentos && !helpdeskCategory) {
@@ -1000,6 +1099,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           data_necessidade: dataNecessidade,
           items: items.map(it => {
             const ehGen = Boolean(it.is_generic);
+            let observation = ehGen ? formatarObservacaoItemGenerico(it.observation) : (it.observation || '');
+            // Item de imobilizado (código de 5 dígitos): carimba a confirmação na
+            // observação, para o comprador e a contabilidade verem no chamado e no PDF.
+            if (!ehGen && ehItemImobilizado(it.sap_code)) {
+              observation = marcarObservacaoImobilizado(observation);
+            }
             return {
               // O id acompanha o item: na criação ele já nasceu no formulário,
               // na edição veio do banco. É o que amarra os anexos.
@@ -1008,7 +1113,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               sap_code: it.sap_code,
               has_no_sap_code: !it.sap_code || it.sap_code.trim().length !== 8,
               is_generic: ehGen,
-              observation: ehGen ? formatarObservacaoItemGenerico(it.observation) : (it.observation || ''),
+              observation,
               reference_link: it.reference_link || '',
               quantity: it.quantity,
               unit: it.unit,
@@ -1020,12 +1125,17 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           })
         };
       } else if (activeTab === 'cadastro_sap') {
+        const isAtualizacao = registrationType === 'Fornecedor' && sapFornecedorOperacao === 'atualizacao';
         payload = {
           ...payload,
           registration_type: registrationType,
+          fornecedor_operacao: registrationType === 'Fornecedor' ? sapFornecedorOperacao : undefined,
+          codigo_fornecedor_sap: isAtualizacao ? sapVendorCode.trim() : undefined,
           justificativa: registrationType === 'Item'
             ? `Nome: ${sapRegName}. Specs: ${sapRegSpecs}. Justificativa: ${justificativa}`
-            : `Nome: ${sapRegName}. Justificativa: ${justificativa}`,
+            : isAtualizacao
+              ? `Operação: Atualização de Cadastro. Cód. Fornecedor SAP: ${sapVendorCode.trim()}.${sapRegName.trim() ? ` NOVO Nome: ${sapRegName.trim()}.` : ''} Justificativa: ${justificativa}`
+              : `Nome: ${sapRegName}. Justificativa: ${justificativa}`,
           brand: sapRegBrand,
           suggested_supplier: sapRegVendorInfo,
           ...(registrationType === 'Fornecedor' && {
@@ -1212,13 +1322,18 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       }
 
       if (activeTab === 'cadastro_sap') {
-        const configEmail = await obterConfigEmail('cadastro_sap');
-        const subject = configEmail?.assunto_padrao
-          ? `${configEmail.assunto_padrao} #${reqNumero}`
-          : `Cadastro SAP #${reqNumero}`;
+        // Cadastro de item vai para o Jeff; cadastro de fornecedor vai para a
+        // Ana Leite. Cada destino tem seu gatilho editável em Cadastros > E-mails.
+        const ehFornecedor = registrationType === 'Fornecedor';
+        const chaveEmail = ehFornecedor ? 'cadastro_sap_fornecedor' : 'cadastro_sap';
+        const destinoPadrao = ehFornecedor ? 'ana.leite@ten.ind.br' : 'jefferson.santana@ten.ind.br';
+        const assuntoPadrao = ehFornecedor ? 'Cadastro SAP - Fornecedor' : 'Cadastro SAP - Item';
+
+        const configEmail = await obterConfigEmail(chaveEmail);
+        const subject = `${configEmail?.assunto_padrao || assuntoPadrao} #${reqNumero}`;
         const body = buildCadastroSapEmailBody(reqId, reqNumero);
         const mailtoUrl = montarMailtoComConfig({
-          destinatarios: configEmail?.destinatarios || 'jefferson.santana@ten.ind.br',
+          destinatarios: configEmail?.destinatarios || destinoPadrao,
           copia: configEmail?.copia,
           copiaOculta: configEmail?.copia_oculta,
           assunto: subject,
@@ -1681,6 +1796,41 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                       </div>
                     )}
 
+                    {/* Item de imobilizado — código SAP de 5 dígitos. Precisa de
+                        número de imobilizado e de aviso prévio à contabilidade. */}
+                    {!ehServico && !it.is_generic && ehItemImobilizado(it.sap_code) && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-950/30">
+                        <p className="text-[12px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Código de 5 dígitos: item de imobilizado
+                        </p>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                          Itens de imobilizado precisam de número de imobilizado e a contabilidade
+                          tem que ser avisada antes da compra. Confirme os dois pontos abaixo para enviar.
+                        </p>
+                        <label className="flex items-start gap-2 text-[12px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={it.imobilizado_confirmado || false}
+                            onChange={(e) => patchItem(index, { imobilizado_confirmado: e.target.checked })}
+                            className="mt-0.5 rounded cursor-pointer"
+                            style={{ accentColor: 'var(--status-warning)' }}
+                          />
+                          Confirmo que este é um item de imobilizado (ativo).
+                        </label>
+                        <label className="flex items-start gap-2 text-[12px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={it.contabilidade_avisada || false}
+                            onChange={(e) => patchItem(index, { contabilidade_avisada: e.target.checked })}
+                            className="mt-0.5 rounded cursor-pointer"
+                            style={{ accentColor: 'var(--status-warning)' }}
+                          />
+                          Já avisei a contabilidade sobre este item.
+                        </label>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {/* Marca — só faz sentido para material; serviço não tem
                           fabricante nem "ou similar". */}
@@ -1856,30 +2006,129 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
                 </div>
 
-                <div>
-                  <label className={labelClass} style={labelStyle}>
-                    {registrationType === 'Item' ? 'Nome / Descrição Curta *' : 'Razão Social / Nome Fantasia *'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder={registrationType === 'Item' ? 'Ex: CHAPA DE AÇO 12MM' : 'Ex: METALURGICA JACOBINA LTDA'}
-                    value={sapRegName}
-                    onChange={(e) => setSapRegName(e.target.value)}
-                    className={fieldClass}
-                    style={fieldStyle}
-                  />
-                </div>
+                {registrationType === 'Fornecedor' ? (
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Operação</label>
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSapFornecedorOperacao('novo')}
+                        aria-pressed={sapFornecedorOperacao === 'novo'}
+                        className="rounded py-1.5 text-center text-sm font-bold cursor-pointer transition-colors duration-150"
+                        style={
+                          sapFornecedorOperacao === 'novo'
+                            ? { background: 'var(--brand)', color: '#ffffff' }
+                            : { color: 'var(--ink-muted)' }
+                        }
+                      >
+                        Novo Cadastro
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSapFornecedorOperacao('atualizacao')}
+                        aria-pressed={sapFornecedorOperacao === 'atualizacao'}
+                        className="rounded py-1.5 text-center text-sm font-bold cursor-pointer transition-colors duration-150"
+                        style={
+                          sapFornecedorOperacao === 'atualizacao'
+                            ? { background: 'var(--brand)', color: '#ffffff' }
+                            : { color: 'var(--ink-muted)' }
+                        }
+                      >
+                        Atualização de cadastro
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className={labelClass} style={labelStyle}>Nome / Descrição Curta *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: CHAPA DE AÇO 12MM"
+                      value={sapRegName}
+                      onChange={(e) => setSapRegName(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+                )}
               </div>
+
+              {registrationType === 'Fornecedor' && sapFornecedorOperacao === 'atualizacao' && (
+                <div
+                  className="rounded-lg border p-3 flex items-start gap-2.5"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--brand-amber, #d97706) 30%, transparent)',
+                    background: 'color-mix(in srgb, var(--brand-amber, #f59e0b) 8%, var(--surface-card))'
+                  }}
+                >
+                  <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="text-xs">
+                    <p className="font-bold text-amber-900">Atualização de cadastro</p>
+                    <p className="text-amber-800/90 mt-0.5">
+                      Preencha apenas os campos que vão mudar. Os campos marcados com NOVO são opcionais.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {registrationType === 'Fornecedor' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {sapFornecedorOperacao === 'atualizacao' ? (
+                    <>
+                      <div>
+                        <label className={labelClass} style={labelStyle}>Código Fornecedor SAP *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: 20004567"
+                          value={sapVendorCode}
+                          onChange={(e) => setSapVendorCode(e.target.value)}
+                          className={fieldClass}
+                          style={fieldStyle}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass} style={labelStyle}>NOVO Razão Social / Nome Fantasia</label>
+                        <input
+                          type="text"
+                          placeholder="Preencha apenas se for alterar"
+                          value={sapRegName}
+                          onChange={(e) => setSapRegName(e.target.value)}
+                          className={fieldClass}
+                          style={fieldStyle}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="sm:col-span-2">
+                      <label className={labelClass} style={labelStyle}>Razão Social / Nome Fantasia *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: METALURGICA JACOBINA LTDA"
+                        value={sapRegName}
+                        onChange={(e) => setSapRegName(e.target.value)}
+                        className={fieldClass}
+                        style={fieldStyle}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className={labelClass} style={labelStyle}>
-                    {registrationType === 'Item' ? 'Fabricante *' : 'CNPJ / Site corporativo *'}
+                    {registrationType === 'Item'
+                      ? 'Fabricante *'
+                      : sapFornecedorOperacao === 'atualizacao'
+                        ? 'NOVO CNPJ / Site corporativo'
+                        : 'CNPJ / Site corporativo *'}
                   </label>
                   <input
                     type="text"
-                    required
+                    required={registrationType === 'Item' || sapFornecedorOperacao === 'novo'}
                     placeholder={registrationType === 'Item' ? 'Ex: Belgo Bekaert' : 'Ex: 00.000.000/0001-00'}
                     value={sapRegBrand}
                     onChange={(e) => setSapRegBrand(e.target.value)}
@@ -1890,7 +2139,11 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
                 <div>
                   <label className={labelClass} style={labelStyle}>
-                    {registrationType === 'Item' ? 'Fornecedor de Referência' : 'Representante / Contato'}
+                    {registrationType === 'Item'
+                      ? 'Fornecedor de Referência'
+                      : sapFornecedorOperacao === 'atualizacao'
+                        ? 'NOVO Representante / Contato'
+                        : 'Representante / Contato'}
                   </label>
                   <input
                     type="text"
@@ -1906,7 +2159,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               {registrationType === 'Fornecedor' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className={labelClass} style={labelStyle}>Nome do Representante</label>
+                    <label className={labelClass} style={labelStyle}>
+                      {sapFornecedorOperacao === 'atualizacao' ? 'NOVO Nome do Representante' : 'Nome do Representante'}
+                    </label>
                     <input
                       type="text"
                       placeholder="Nome completo"
@@ -1918,7 +2173,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
 
                   <div>
-                    <label className={labelClass} style={labelStyle}>Cargo</label>
+                    <label className={labelClass} style={labelStyle}>
+                      {sapFornecedorOperacao === 'atualizacao' ? 'NOVO Cargo' : 'Cargo'}
+                    </label>
                     <input
                       type="text"
                       placeholder="Ex: Gerente de Vendas"
@@ -1930,7 +2187,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
 
                   <div>
-                    <label className={labelClass} style={labelStyle}>Telefone</label>
+                    <label className={labelClass} style={labelStyle}>
+                      {sapFornecedorOperacao === 'atualizacao' ? 'NOVO Telefone' : 'Telefone'}
+                    </label>
                     <input
                       type="tel"
                       placeholder="Ex: (11) 99999-9999"
@@ -1942,7 +2201,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                   </div>
 
                   <div>
-                    <label className={labelClass} style={labelStyle}>E-mail</label>
+                    <label className={labelClass} style={labelStyle}>
+                      {sapFornecedorOperacao === 'atualizacao' ? 'NOVO E-mail' : 'E-mail'}
+                    </label>
                     <input
                       type="email"
                       placeholder="Ex: email@empresa.com"
@@ -1971,11 +2232,21 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               )}
 
               <div data-tour="novasol-justificativa">
-                <label className={labelClass} style={labelStyle}>Justificativa de necessidade *</label>
+                <label className={labelClass} style={labelStyle}>
+                  {registrationType === 'Fornecedor' && sapFornecedorOperacao === 'atualizacao'
+                    ? 'Justificativa da alteração *'
+                    : 'Justificativa de necessidade *'}
+                </label>
                 <textarea
                   required
                   rows={2}
-                  placeholder="Por que é necessário criar este novo item ou homologar este fornecedor?"
+                  placeholder={
+                    registrationType === 'Item'
+                      ? 'Por que é necessário criar este novo item ou homologar este fornecedor?'
+                      : sapFornecedorOperacao === 'atualizacao'
+                        ? 'Explique o motivo da alteração cadastral e o que vai mudar.'
+                        : 'Por que é necessário homologar este novo fornecedor?'
+                  }
                   value={justificativa}
                   onChange={(e) => setJustificativa(e.target.value)}
                   className="w-full rounded-lg border py-2 px-3 text-base transition-colors duration-150 focus:outline-2 focus:outline-offset-1"

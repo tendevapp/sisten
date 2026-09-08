@@ -144,7 +144,7 @@ function CabecalhoFornecedor({
   const vencedor = posicao === 0 && resumo.itensCotados > 0;
 
   return (
-    <div className="w-[240px] space-y-1.5 p-2 text-left align-top">
+    <div className="w-full min-w-0 space-y-1.5 p-2 text-left align-top">
       <div className="flex items-start gap-1.5">
         {vencedor && <Award className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />}
         <div className="min-w-0">
@@ -312,6 +312,72 @@ function Celula({
 }
 
 // =====================================================================
+// Larguras de coluna ajustáveis
+// =====================================================================
+
+const chaveLarguras = (processoId: string) => `sisten_cotacao_mapa_larguras_${processoId}`;
+/** Chave da 1ª coluna (item cotado) no mapa de larguras. */
+const COL_ITEM = '__item__';
+const LARGURA_ITEM_PADRAO = 288;
+const LARGURA_FORN_PADRAO = 264;
+const LARGURA_MIN = 150;
+const LARGURA_MAX = 760;
+
+const clampLargura = (px: number) => Math.max(LARGURA_MIN, Math.min(LARGURA_MAX, Math.round(px)));
+
+/**
+ * Alça de redimensionamento na borda direita de um cabeçalho de coluna.
+ * Arrastar aumenta/diminui a largura; o valor final é persistido pelo pai.
+ */
+function AlcaColuna({
+  largura, onArrastar, onFim,
+}: {
+  largura: number;
+  onArrastar: (nova: number) => void;
+  onFim: (nova: number) => void;
+}) {
+  const dragRef = React.useRef<{ x0: number; w0: number; atual: number } | null>(null);
+
+  const aoMover = React.useCallback((e: PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    d.atual = clampLargura(d.w0 + (e.clientX - d.x0));
+    onArrastar(d.atual);
+  }, [onArrastar]);
+
+  const aoSoltar = React.useCallback(() => {
+    const d = dragRef.current;
+    window.removeEventListener('pointermove', aoMover);
+    window.removeEventListener('pointerup', aoSoltar);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    if (d) onFim(d.atual);
+    dragRef.current = null;
+  }, [aoMover, onFim]);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      title="Arraste para ajustar a largura • duplo clique para redefinir"
+      onPointerDown={e => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragRef.current = { x0: e.clientX, w0: largura, atual: largura };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', aoMover);
+        window.addEventListener('pointerup', aoSoltar);
+      }}
+      onDoubleClick={e => { e.stopPropagation(); onFim(-1); }}
+      className="absolute right-0 top-0 z-30 h-full w-2 translate-x-1/2 cursor-col-resize touch-none select-none
+                 before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-slate-200
+                 hover:before:w-0.5 hover:before:bg-indigo-400 dark:before:bg-slate-700 dark:hover:before:bg-indigo-500"
+    />
+  );
+}
+
+// =====================================================================
 // Tela
 // =====================================================================
 
@@ -372,6 +438,40 @@ export default function MapaComparativo({
       console.error('Falha ao gravar agrupamentos manuais do mapa:', err);
     }
   }, [overrides, processo.id]);
+
+  // Larguras de coluna ajustadas pelo comprador — preferência de visualização,
+  // fica no navegador por processo. Chave `__item__` = coluna do item cotado.
+  const [larguras, setLarguras] = useState<Record<string, number>>(() => {
+    try {
+      const bruto = localStorage.getItem(chaveLarguras(processo.id));
+      return bruto ? JSON.parse(bruto) : {};
+    } catch { return {}; }
+  });
+  useEffect(() => {
+    try {
+      if (Object.keys(larguras).length > 0) localStorage.setItem(chaveLarguras(processo.id), JSON.stringify(larguras));
+      else localStorage.removeItem(chaveLarguras(processo.id));
+    } catch { /* ignora */ }
+  }, [larguras, processo.id]);
+
+  // Enquanto arrasta, mostra a largura sem persistir a cada pixel.
+  const [larguraPreview, setLarguraPreview] = useState<{ col: string; px: number } | null>(null);
+  const larguraDe = (col: string) => {
+    if (larguraPreview?.col === col) return larguraPreview.px;
+    if (typeof larguras[col] === 'number') return larguras[col];
+    return col === COL_ITEM ? LARGURA_ITEM_PADRAO : LARGURA_FORN_PADRAO;
+  };
+  const fixarLargura = (col: string, px: number) => {
+    setLarguraPreview(null);
+    setLarguras(prev => {
+      const next = { ...prev };
+      if (px < 0) delete next[col]; // duplo clique: volta ao padrão
+      else next[col] = clampLargura(px);
+      return next;
+    });
+  };
+  const resetLarguras = () => { setLarguraPreview(null); setLarguras({}); };
+  const larguraCustomizada = Object.keys(larguras).length > 0;
 
   // A seleção é lida do banco uma única vez, na montagem. Recalculá-la a
   // cada mudança em `propostas` apagaria a decisão em andamento assim que o
@@ -657,21 +757,49 @@ export default function MapaComparativo({
 
       <MapaCenarios cenarios={cenarios} onAplicar={aplicarCenario} />
 
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={resetLarguras}
+          disabled={!larguraCustomizada}
+          title="Voltar todas as colunas à largura padrão"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          <RotateCcw className="h-3 w-3" /> Redefinir larguras
+        </button>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <table className="w-full border-collapse">
+        <table className="border-collapse" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
+          <colgroup>
+            <col style={{ width: larguraDe(COL_ITEM) }} />
+            {resumos.map(r => (
+              <col key={r.propostaKey} style={{ width: larguraDe(r.propostaKey) }} />
+            ))}
+          </colgroup>
           <thead>
             <tr className="border-b border-slate-200 dark:border-slate-800">
-              <th className="sticky left-0 z-20 w-[280px] min-w-[280px] bg-slate-50 p-2 text-left align-bottom text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+              <th className="sticky left-0 z-20 bg-slate-50 p-2 pr-3 text-left align-bottom text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
                 Item cotado
+                <AlcaColuna
+                  largura={larguraDe(COL_ITEM)}
+                  onArrastar={px => setLarguraPreview({ col: COL_ITEM, px })}
+                  onFim={px => fixarLargura(COL_ITEM, px)}
+                />
               </th>
               {resumos.map((r, i) => (
-                <th key={r.propostaKey} className="border-l border-slate-100 bg-slate-50/60 align-top dark:border-slate-800 dark:bg-slate-800/40">
+                <th key={r.propostaKey} className="relative border-l border-slate-100 bg-slate-50/60 align-top dark:border-slate-800 dark:bg-slate-800/40">
                   <CabecalhoFornecedor
                     resumo={r}
                     proposta={salvas.find(p => p._key === r.propostaKey)!}
                     posicao={i}
                     melhorTotal={melhorTotalFornecedor}
                     onFrete={v => handleFrete(r.propostaKey, v)}
+                  />
+                  <AlcaColuna
+                    largura={larguraDe(r.propostaKey)}
+                    onArrastar={px => setLarguraPreview({ col: r.propostaKey, px })}
+                    onFim={px => fixarLargura(r.propostaKey, px)}
                   />
                 </th>
               ))}
@@ -688,8 +816,8 @@ export default function MapaComparativo({
             )}
             {linhasFiltradas.map(linha => (
               <tr key={linha.key} className="border-b border-slate-100 last:border-0 dark:border-slate-800/70">
-                <td className="sticky left-0 z-10 w-[280px] min-w-[280px] bg-white p-2 align-top dark:bg-slate-900">
-                  <div className="text-xs font-semibold leading-snug text-slate-800 dark:text-slate-100">{linha.titulo}</div>
+                <td className="sticky left-0 z-10 overflow-hidden bg-white p-2 align-top dark:bg-slate-900">
+                  <div className="break-words text-xs font-semibold leading-snug text-slate-800 dark:text-slate-100">{linha.titulo}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1">
                     {linha.ri && <Chip tom="neutro"><Link2 className="h-3 w-3" />{linha.ri}</Chip>}
                     {linha.qtdSolicitada != null && (
@@ -720,7 +848,7 @@ export default function MapaComparativo({
                 {resumos.map(r => {
                   const celula = linha.celulas.find(c => c.propostaKey === r.propostaKey);
                   return (
-                    <td key={r.propostaKey} className="border-l border-slate-100 p-1 align-top dark:border-slate-800">
+                    <td key={r.propostaKey} className="overflow-hidden border-l border-slate-100 p-1 align-top dark:border-slate-800">
                       {celula ? (
                         <Celula
                           celula={celula}

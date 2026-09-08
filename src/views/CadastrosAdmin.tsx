@@ -38,7 +38,8 @@ type TabType = 'portaria_vigilantes' | 'emails_envios' | 'suprimentos';
 type SubSuprimentos = 'lead_time' | 'transportadoras' | 'grupos_compradores' | 'niveis_mercadorias';
 
 const SUGESTOES_GATILHOS = [
-  { chave: 'cadastro_sap', nome: 'Solicitação de Cadastro SAP', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP' },
+  { chave: 'cadastro_sap', nome: 'Cadastro SAP — Itens', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP - Item' },
+  { chave: 'cadastro_sap_fornecedor', nome: 'Cadastro SAP — Fornecedor', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Cadastro SAP - Fornecedor' },
   { chave: 'helpdesk_suprimentos', nome: 'Abertura de Chamado Suprimentos (Pendências)', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Pendências de Processamento de Notas Fiscais' },
   { chave: 'pendencia_processamento_conclusao', nome: 'Conclusão de Pendências de Processamento', modulo: 'SUPRIMENTOS' as EmailModulo, assunto: 'Conclusão de Processamento' },
   { chave: 'expedicao_chegada', nome: 'Aviso de Chegada de Veículo na Portaria', modulo: 'LOGISTICA' as EmailModulo, assunto: 'Chegada na portaria' },

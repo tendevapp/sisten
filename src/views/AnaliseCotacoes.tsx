@@ -24,6 +24,7 @@ import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplic
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
+  excluirProcessoCotacao,
 } from '../lib/cotacoesApi';
 import type {
   Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
@@ -468,6 +469,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           onNovoProcesso={() => onNavigate('/suprimentos/compras')}
           onCriarSemVinculo={() => { setEscopoRascunho([]); setFase('escopo'); }}
           onAbrirHistorico={() => onNavigate('/suprimentos/cotacoes/historico')}
+          podeExcluir={user.roles.includes('admin')}
+          onExcluir={async (id) => {
+            try {
+              await excluirProcessoCotacao(id);
+              setProcessos(prev => prev.filter(p => p.id !== id));
+              toast.success('Processo de cotação excluído.');
+            } catch (err) {
+              toast.error((err as Error).message);
+              throw err;
+            }
+          }}
         />
       )}
 

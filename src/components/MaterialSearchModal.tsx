@@ -23,6 +23,7 @@ import {
   type MaterialResultado,
   type SinalChip,
 } from '../lib/materiais';
+import { ehItemImobilizado } from '../lib/solicitacoes';
 
 /**
  * Tamanho da página. Enxuto de propósito: a maioria decide nas primeiras
@@ -93,6 +94,8 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
     return termoInicial.trim().split(/\s+/).filter(Boolean);
   });
   const [incluirTecnico, setIncluirTecnico] = useState(false);
+  // "Itens sem ativo": esconde os itens de imobilizado (código 4xxxx de 5 dígitos).
+  const [somenteSemAtivo, setSomenteSemAtivo] = useState(false);
   const [resultados, setResultados] = useState<MaterialResultado[]>([]);
   const [estado, setEstado] = useState<Estado>('inicial');
   const [carregandoMais, setCarregandoMais] = useState(false);
@@ -101,6 +104,14 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
   const [chipsBuscados, setChipsBuscados] = useState<string[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Filtro "Itens sem ativo": remove os itens de imobilizado (código 4xxxx de 5
+  // dígitos) da lista já carregada.
+  const resultadosVisiveis = useMemo(
+    () => (somenteSemAtivo ? resultados.filter(m => !ehItemImobilizado(m.materialCode)) : resultados),
+    [resultados, somenteSemAtivo],
+  );
+  const ocultosPorAtivo = resultados.length - resultadosVisiveis.length;
 
   const executarBusca = useCallback(async (chavesParaBuscar: string[], comTecnico: boolean) => {
     const alvo = chavesParaBuscar.map(c => c.trim()).filter(Boolean).join(' ');
@@ -315,18 +326,29 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
             </div>
           )}
 
-          <label className="flex items-center gap-2 mt-2.5 text-[11px] cursor-pointer w-fit" style={{ color: 'var(--ink-muted)' }}>
-            <input
-              type="checkbox"
-              checked={incluirTecnico}
-              onChange={e => alternarTecnico(e.target.checked)}
-              className="cursor-pointer"
-            />
-            {/* Existem materiais com descrição idêntica que só o texto técnico
-                separa (GALVANIZADO FOGO vs SEM REVESTIMENTO). Fora esse caso,
-                incluí-lo só traz ruído — por isso é opção, não padrão. */}
-            Incluir texto técnico na busca (para separar itens de descrição igual)
-          </label>
+          <div className="mt-2.5 flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-[11px] cursor-pointer w-fit" style={{ color: 'var(--ink-muted)' }}>
+              <input
+                type="checkbox"
+                checked={incluirTecnico}
+                onChange={e => alternarTecnico(e.target.checked)}
+                className="cursor-pointer"
+              />
+              {/* Existem materiais com descrição idêntica que só o texto técnico
+                  separa (GALVANIZADO FOGO vs SEM REVESTIMENTO). Fora esse caso,
+                  incluí-lo só traz ruído — por isso é opção, não padrão. */}
+              Incluir texto técnico na busca (para separar itens de descrição igual)
+            </label>
+            <label className="flex items-center gap-2 text-[11px] cursor-pointer w-fit" style={{ color: 'var(--ink-muted)' }}>
+              <input
+                type="checkbox"
+                checked={somenteSemAtivo}
+                onChange={e => setSomenteSemAtivo(e.target.checked)}
+                className="cursor-pointer"
+              />
+              Itens sem ativo (esconde imobilizado — código 4xxxx de 5 dígitos)
+            </label>
+          </div>
         </div>
 
         <ModalBody className="pt-3">
@@ -359,13 +381,32 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
                   : 'Tente marcar “incluir texto técnico” acima, ou remover alguma chave.'}
               </div>
             </div>
+          ) : resultadosVisiveis.length === 0 ? (
+            <div className="text-sm text-center py-10" style={{ color: 'var(--ink-muted)' }}>
+              Todos os {resultados.length} resultados carregados são itens de imobilizado.
+              <div className="text-[11px] mt-1">Desmarque “Itens sem ativo” para vê-los.</div>
+              {temMais && (
+                <button
+                  type="button"
+                  onClick={() => void carregarMais()}
+                  disabled={carregandoMais}
+                  className="block mx-auto mt-2 text-[11px] font-bold underline cursor-pointer disabled:opacity-50"
+                  style={{ color: 'var(--brand)' }}
+                >
+                  {carregandoMais ? 'Carregando...' : `Carregar mais ${PAGINA}`}
+                </button>
+              )}
+            </div>
           ) : (
             <>
               <div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--ink-muted)' }}>
-                {resultados.length}{temMais ? '+' : ''} resultado{resultados.length === 1 ? '' : 's'} para {chipsBuscados.map(c => `“${c}”`).join(' + ')}
+                {resultadosVisiveis.length}{temMais ? '+' : ''} resultado{resultadosVisiveis.length === 1 ? '' : 's'} para {chipsBuscados.map(c => `“${c}”`).join(' + ')}
+                {somenteSemAtivo && ocultosPorAtivo > 0 && (
+                  <span className="normal-case font-normal"> · {ocultosPorAtivo} de imobilizado oculto{ocultosPorAtivo === 1 ? '' : 's'}</span>
+                )}
               </div>
               <div className="divide-y rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
-                {resultados.map(mat => {
+                {resultadosVisiveis.map(mat => {
                   const chipsSinais = resumoSinais(mat);
                   return (
                     <button

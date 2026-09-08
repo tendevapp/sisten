@@ -17,6 +17,11 @@ function parseNomeEspecificacoes(request: Request): { nome: string; especificaco
   const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: [\s\S]*$/);
   if (itemMatch) return { nome: itemMatch[1], especificacoes: itemMatch[2] };
 
+  const atualizacaoMatch = texto.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*.*?(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*[\s\S]*$/i);
+  if (atualizacaoMatch) {
+    return { nome: atualizacaoMatch[1] || 'Conforme cadastro SAP', especificacoes: '-' };
+  }
+
   const fornecedorMatch = texto.match(/^Nome: (.*?)\. Justificativa: [\s\S]*$/);
   if (fornecedorMatch) return { nome: fornecedorMatch[1], especificacoes: '-' };
 
@@ -31,24 +36,57 @@ export async function exportCadastroSapPdf(
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
   const isFornecedor = request.registration_type === 'Fornecedor';
+  const isAtualizacao = isFornecedor && request.fornecedor_operacao === 'atualizacao';
   const { nome, especificacoes } = parseNomeEspecificacoes(request);
+
+  const statusBadge = isFornecedor
+    ? isAtualizacao
+      ? 'ATUALIZAÇÃO FORNECEDOR'
+      : 'CADASTRO FORNECEDOR'
+    : 'CADASTRO MATERIAL';
 
   writer.drawDocumentHeader({
     title: `Solicitação de Cadastro SAP #${request.number}`,
-    formCode: 'FRM.CAD-0001 (Rev. 01)',
+    formCode: 'FRM.CAD-0001 (Rev. 02)',
     protocol: `SAP-${request.number}`,
-    statusBadge: isFornecedor ? 'CADASTRO FORNECEDOR' : 'CADASTRO MATERIAL',
-    statusColor: 'blue',
+    statusBadge,
+    statusColor: isAtualizacao ? 'amber' : 'blue',
   });
 
-  writer.drawInfoGrid([
+  const gridItems: { label: string; value: string }[] = [
     { label: 'Tipo de Cadastro', value: request.registration_type || 'Material' },
+  ];
+
+  if (isFornecedor) {
+    gridItems.push({
+      label: 'Operação',
+      value: isAtualizacao ? 'Atualização de Cadastro' : 'Novo Cadastro',
+    });
+  }
+
+  gridItems.push(
     { label: 'Solicitante', value: request.solicitante_name },
     { label: 'Setor Solicitante', value: sectorName },
     { label: 'Data de Abertura', value: new Date(request.created_at).toLocaleString('pt-BR') },
-    { label: isFornecedor ? 'Razão Social / Nome Fantasia' : 'Nome / Descrição Curta', value: nome },
-    { label: isFornecedor ? 'CNPJ / Site Corporativo' : 'Fabricante / Marca', value: request.brand || '-' },
-  ], 2);
+  );
+
+  if (isAtualizacao && request.codigo_fornecedor_sap) {
+    gridItems.push({ label: 'Código Fornecedor SAP (atual)', value: request.codigo_fornecedor_sap });
+  }
+
+  gridItems.push(
+    { label: isFornecedor ? (isAtualizacao ? 'NOVO Razão Social / Nome Fantasia' : 'Razão Social / Nome Fantasia') : 'Nome / Descrição Curta', value: nome },
+    { label: isFornecedor ? (isAtualizacao ? 'NOVO CNPJ / Site Corporativo' : 'CNPJ / Site Corporativo') : 'Fabricante / Marca', value: request.brand || '-' },
+  );
+
+  if (request.codigo_sap_gerado) {
+    gridItems.push({
+      label: isFornecedor ? 'Cód. Fornecedor SAP Gerado' : 'Cód. Material SAP Gerado',
+      value: request.codigo_sap_gerado,
+    });
+  }
+
+  writer.drawInfoGrid(gridItems, 2);
 
   if (!isFornecedor && especificacoes && especificacoes !== '-') {
     writer.drawSectionHeader('Especificações Técnicas');

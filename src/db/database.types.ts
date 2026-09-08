@@ -479,6 +479,9 @@ export type Database = {
           target_sector_id: string | null
           tipo_compra: string | null
           titulo: string | null
+          fornecedor_operacao: string | null
+          codigo_fornecedor_sap: string | null
+          codigo_sap_gerado: string | null
           type: string
           updated_at: string | null
         }
@@ -518,6 +521,9 @@ export type Database = {
           target_sector_id?: string | null
           tipo_compra?: string | null
           titulo?: string | null
+          fornecedor_operacao?: string | null
+          codigo_fornecedor_sap?: string | null
+          codigo_sap_gerado?: string | null
           type: string
           updated_at?: string | null
         }
@@ -557,6 +563,9 @@ export type Database = {
           target_sector_id?: string | null
           tipo_compra?: string | null
           titulo?: string | null
+          fornecedor_operacao?: string | null
+          codigo_fornecedor_sap?: string | null
+          codigo_sap_gerado?: string | null
           type?: string
           updated_at?: string | null
         }

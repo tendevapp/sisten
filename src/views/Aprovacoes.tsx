@@ -698,10 +698,26 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   ) : null;
 
   // Cartoes com as informacoes da solicitacao — usados no painel e no modal expandido
+  const critAtiva = solicitacaoAtiva?.criticality || 1;
+  const critCorAtiva =
+    critAtiva >= 4
+      ? 'text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-950/70 dark:border-rose-800'
+      : critAtiva === 3
+      ? 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/70 dark:border-amber-800'
+      : 'text-slate-600 bg-slate-100 border-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:border-slate-700';
   const infoCards = solicitacaoAtiva ? (
     <>
       {/* Cartao: Solicitante & Logistica */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3.5 bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl text-xs">
+        <div>
+          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Criticidade</span>
+          <p className="mt-0.5">
+            <span className={`inline-flex text-[11px] font-bold px-1.5 py-0.5 rounded border ${critCorAtiva}`}>
+              {rotuloCriticidade(solicitacaoAtiva.criticality)}
+            </span>
+          </p>
+        </div>
+
         <div>
           <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">Setor Solicitante</span>
           <p className="font-bold text-slate-900 dark:text-slate-200 mt-0.5">{nomeSetor(solicitacaoAtiva.solicitante_sector_id)}</p>
@@ -1376,6 +1392,12 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                         'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                       }`}>
                         {rotuloStatus(solicitacaoAtiva)}
+                      </span>
+                      <span
+                        title="Criticidade informada pelo solicitante"
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${critCorAtiva}`}
+                      >
+                        {rotuloCriticidade(solicitacaoAtiva.criticality)}
                       </span>
                       {idsEditadasAposAprovacao.has(solicitacaoAtiva.id) && (
                         <span

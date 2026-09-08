@@ -2790,6 +2790,9 @@ class LocalDatabase {
         contrato_tipo: draft.contrato_tipo,
         fornecedor_terceiro: draft.fornecedor_terceiro,
         titulo: draft.titulo,
+        fornecedor_operacao: draft.fornecedor_operacao,
+        codigo_fornecedor_sap: draft.codigo_fornecedor_sap,
+        codigo_sap_gerado: draft.codigo_sap_gerado,
         paused_minutes: 0
       } as Request;
 
@@ -3123,7 +3126,7 @@ class LocalDatabase {
     delete row.comments;
     delete row.status_history;
 
-    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo']) {
+    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo', 'fornecedor_operacao', 'codigo_fornecedor_sap', 'codigo_sap_gerado']) {
       if (row[campo] === '') row[campo] = null;
     }
 
@@ -3206,7 +3209,7 @@ class LocalDatabase {
    * aprova e ninguém mais fica sabendo — cada usuário veria um status diferente
    * da mesma solicitação. Ver o design da página Solicitações.
    */
-  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string): Promise<boolean> {
+  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string, codigoSapGerado?: string): Promise<boolean> {
     const user = this.getCurrentUser();
     if (!user) return false;
 
@@ -3219,6 +3222,7 @@ class LocalDatabase {
     const prevUpdatedAt = request.updated_at;
     const prevFirstResponseAt = request.first_response_at;
     const prevResolvedAt = request.resolved_at;
+    const prevCodigoSapGerado = request.codigo_sap_gerado;
 
     request.status = toStatus;
     request.updated_at = new Date().toISOString();
@@ -3229,6 +3233,9 @@ class LocalDatabase {
 
     if (toStatus === 'resolvido') {
       request.resolved_at = new Date().toISOString();
+      if (codigoSapGerado) {
+        request.codigo_sap_gerado = codigoSapGerado;
+      }
     }
 
     this.setStorageItem(this.requestsKey, requests);
@@ -3244,6 +3251,7 @@ class LocalDatabase {
         revertRequests[revertIdx].updated_at = prevUpdatedAt;
         revertRequests[revertIdx].first_response_at = prevFirstResponseAt;
         revertRequests[revertIdx].resolved_at = prevResolvedAt;
+        revertRequests[revertIdx].codigo_sap_gerado = prevCodigoSapGerado;
         this.setStorageItem(this.requestsKey, revertRequests);
       }
       return false;

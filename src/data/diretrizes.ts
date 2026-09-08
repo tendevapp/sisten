@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-08',
+    resumo: 'Cadastros SAP — Atualização de Fornecedor e Código de Resposta Dinâmico (`NewRequest.tsx`, `CadastrosSap.tsx`, `localDb.ts`, `types.ts`, `database.types.ts`, `exportCadastroSapPdf.ts`, `RequestDetailsModal.tsx`, `RequestDetailPanel.tsx`, `20260908150000_cadastro_sap_atualizacao_e_codigo.sql`): 1. Nova Solicitação (Cadastro SAP): se selecionado tipo "Fornecedor", inclusão de seletor segmentado entre "Novo Cadastro" e "Atualização de cadastro"; 2. No modo "Atualização de cadastro": exibição do campo obrigatório "Código Fornecedor SAP", inclusão do prefixo "NOVO " nos campos cadastrais e conversão deles em opcionais, permitindo ao solicitante preencher estritamente o que vai mudar; 3. Página Cadastros SAP (`CadastrosSap.tsx`): adaptação dinâmica do campo de código gerado ao resolver o chamado ("Cód. Material SAP" para itens e "Cód. Fornecedor SAP" para fornecedores), salvando o código gerado no registro e exibindo-o na tela de detalhes e no PDF exportado.',
+  },
+  {
+    data: '2026-09-08',
     resumo: 'Demandas — Novo Módulo de Gestão de Tarefas e Quadros estilo Planner/Trello (`DemandasWorkspace.tsx`, `DemandasMinhas.tsx`, `demandasApi.ts`, `demandasAcesso.ts`, `demandasQuadro.ts`, `components/demandas-modulo/`, `dem_demandas`): 1. Novo módulo de topo "Demandas" no menu lateral do SISTEN com rotas "/demandas" (quadros e workspace) e "/demandas/minhas" (central de tarefas do usuário logado); 2. Gestão visual completa de quadros com 3 modos de visualização: Quadro Kanban com drag-and-drop por bucket, Grade tabular com filtros rápidos e Calendário mensal de prazos; 3. Modelo de governança e permissões (`demandasAcesso.ts`): visibilidade padrão por setor de origem do quadro com suporte a quadros compartilhados entre setores e permissão ampliada para gestores configurada pelo admin via Governança ("Setores de Demandas"); 4. Suporte a buckets customizados com cores temáticas, checklists, etiquetas coloridas, comentários com histórico auditável, atribuição de múltiplos responsáveis e priorização (Urgente, Alta, Média, Baixa); 5. Criação das tabelas relacionais `dem_quadros`, `dem_buckets`, `dem_tarefas`, `dem_comentarios` e `dem_historico` no Supabase com migrations e suíte de testes unitários com 100% de aprovação.',
   },
   {
@@ -833,13 +837,15 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'Regras de negócio',
             itens: [
               'SLA por criticidade 1-5: {1: 120h, 2: 72h, 3: 24h, 4: 8h, 5: 2h} (default 24h). Pausado enquanto `status === "aguardando_solicitante"`.',
-              'Fluxo: aberto → em_atendimento (ao "Assumir") → aguardando_solicitante (pede esclarecimento, pausa SLA) → resolvido (nota + código SAP opcional) → fechado.',
+              'Tipo de cadastro: Item (Material) ou Fornecedor. Para Fornecedor, permite seleção entre "Novo Cadastro" e "Atualização de cadastro".',
+              'No modo Atualização de cadastro: exige "Código Fornecedor SAP" e torna os demais dados opcionais (com prefixo "NOVO ") para preencher apenas o que vai mudar.',
+              'Fluxo: aberto → em_atendimento (ao "Assumir") → aguardando_solicitante (pede esclarecimento, pausa SLA) → resolvido (nota + código de resposta dinâmico: "Cód. Material SAP" para Item e "Cód. Fornecedor SAP" para Fornecedor) → fechado.',
               'Só o atendente que assumiu (`atendente_id === user.id`) vê os formulários de esclarecimento/resolução; itens sem atendente mostram "Assumir".'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`requests` filtrado por `type="cadastro_sap"`; `sectors`; anexos via tabela de attachments.']
+            itens: ['`core_solicitacoes` filtrado por `type="cadastro_sap"` (com colunas `registration_type`, `fornecedor_operacao`, `codigo_fornecedor_sap`, `codigo_sap_gerado`); `sectors`; anexos via tabela de attachments.']
           }
         ]
       },
