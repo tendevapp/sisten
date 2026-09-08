@@ -51,6 +51,7 @@ import {
 } from '../components/ui/DataTable';
 import Pagination from '../components/ui/Pagination';
 import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
+import { canAccessPage } from '../lib/pages';
 
 export type AbaMovimentacoes = 'geral' | 'giro' | 'idade' | 'urgencia' | 'minimo';
 
@@ -502,13 +503,15 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
           </button>
           {/* MB51 sempre em modo "apenas novos" (upsert): a tela acrescenta
               movimentações recentes sem apagar o histórico já carregado. */}
-          <PlanilhaSapUploadButton
-            sigla="MB51"
-            descricao="Movimentações de Estoque — importa apenas os registros novos"
-            importar={(rawRows, filename, onProgress) => localDb.importMB51Raw(rawRows, filename, 'upsert', onProgress)}
-            onImportado={() => load(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-primary)] hover:opacity-90 active:scale-95 disabled:opacity-50"
-          />
+          {canAccessPage(user, 'almox_importar_planilhas') && (
+            <PlanilhaSapUploadButton
+              sigla="MB51"
+              descricao="Movimentações de Estoque — importa apenas os registros novos"
+              importar={(rawRows, filename, onProgress) => localDb.importMB51Raw(rawRows, filename, 'upsert', onProgress)}
+              onImportado={() => load(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer border border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-primary)] hover:opacity-90 active:scale-95 disabled:opacity-50"
+            />
+          )}
         </div>
       </div>
 

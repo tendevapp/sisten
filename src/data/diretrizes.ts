@@ -39,7 +39,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-08',
-    resumo: 'Almoxarifado, Jurídico & Navegação (`PlanilhaSapUploadButton.tsx`, `Estoque.tsx`, `Movimentacoes.tsx`, `juridico.ts`, `NewRequest.tsx`, `pages.ts`): 1. Almoxarifado: botão de importação direta de planilhas SAP nas telas de Posição de Estoque (ZL0024 - substituição integral) e Movimentações (MB51 - modo upsert/novos registros) sem depender do Painel de Administração; 2. Helpdesk Jurídico: inclusão da categoria "Assinatura de Documento" para envio direto de documentos já finalizados, tornando opcionais os campos tipo de contrato, fornecedor/terceiro e descrição detalhada; 3. Navegação: reordenação dos itens no menu Solicitações ("Nova Solicitação" antes de "Aprovações").',
+    resumo: 'Almoxarifado, Jurídico & Administração (`PlanilhaSapUploadButton.tsx`, `Estoque.tsx`, `Movimentacoes.tsx`, `juridico.ts`, `NewRequest.tsx`, `pages.ts`, `AdminPanel.tsx`): 1. Almoxarifado: botão de importação direta de planilhas SAP nas telas de Posição de Estoque (ZL0024 - substituição integral) e Movimentações (MB51 - modo upsert/novos registros), controlado pela nova permissão individual `almox_importar_planilhas` em Módulos de Acesso; 2. Helpdesk Jurídico: inclusão da categoria "Assinatura de Documento" para envio direto de documentos já finalizados, tornando opcionais os campos tipo de contrato, fornecedor/terceiro e descrição detalhada; 3. Navegação: reordenação dos itens no menu Solicitações ("Nova Solicitação" antes de "Aprovações"); 4. Painel Administrativo: correção de Temporal Dead Zone (TDZ) no filtro de usuários ao acessar `getRoleLabel` durante a inicialização do componente.',
   },
   {
     data: '2026-09-07',

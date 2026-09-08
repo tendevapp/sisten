@@ -42,6 +42,21 @@ interface AdminPanelProps {
   user: Profile;
 }
 
+function getRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    admin: 'Administrador',
+    visualizador: 'Visualizador',
+    solicitante: 'Solicitante',
+    requisitante: 'Requisitante',
+    gestor: 'Gestor',
+    comprador: 'Comprador',
+    coordenador_suprimentos: 'Coordenador',
+    atendente: 'Atendente Suporte',
+    pendente: 'Acesso Pendente'
+  };
+  return labels[role] || role;
+}
+
 export default function AdminPanel({ user }: AdminPanelProps) {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<
@@ -1170,21 +1185,6 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     }
     const idx = Math.abs(hash) % gradients.length;
     return gradients[idx];
-  };
-
-  const getRoleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      admin: 'Administrador',
-      visualizador: 'Visualizador',
-      solicitante: 'Solicitante',
-      requisitante: 'Requisitante',
-      gestor: 'Gestor',
-      comprador: 'Comprador',
-      coordenador_suprimentos: 'Coordenador',
-      atendente: 'Atendente Suporte',
-      pendente: 'Acesso Pendente'
-    };
-    return labels[role] || role;
   };
 
   const getRoleBadgeUI = (role: string) => {

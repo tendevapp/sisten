@@ -160,6 +160,16 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Marcar chegada no almoxarifado (Rastreio Compras)',
     defaultRoles: [],
   },
+  // Sem role padrão: importar planilha SAP é ação de manutenção de base. Quem
+  // vê Estoque/Movimentações não importa por padrão — o admin libera usuário a
+  // usuário. Habilita os botões "Importar ZL0024" (Estoque) e "Importar MB51"
+  // (Movimentações), que rodam o mesmo motor do painel administrativo.
+  {
+    id: 'almox_importar_planilhas',
+    group: 'ALMOXARIFADO',
+    label: 'Importar planilhas SAP (Estoque ZL0024 e Movimentações MB51)',
+    defaultRoles: [],
+  },
   // Sem role padrão: quem recebe notificação de chamado jurídico é decidido
   // usuário a usuário pelo admin (aqui mesmo, em Módulos de Acesso), não por
   // papel — o time jurídico não necessariamente tem um setor/role próprio.

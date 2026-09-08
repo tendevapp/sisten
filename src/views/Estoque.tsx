@@ -20,6 +20,7 @@ import {
 } from '../components/ui/DataTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
+import { canAccessPage } from '../lib/pages';
 
 interface EstoqueProps {
   user: Profile;
@@ -442,13 +443,15 @@ export default function Estoque({ user }: EstoqueProps) {
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
-          <PlanilhaSapUploadButton
-            sigla="ZL0024"
-            descricao="Posição de Estoque — substitui integralmente a carga anterior"
-            importar={(rawRows, filename, onProgress) => localDb.importZL0024Raw(rawRows, filename, onProgress)}
-            onImportado={() => load(true)}
-            className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer"
-          />
+          {canAccessPage(user, 'almox_importar_planilhas') && (
+            <PlanilhaSapUploadButton
+              sigla="ZL0024"
+              descricao="Posição de Estoque — substitui integralmente a carga anterior"
+              importar={(rawRows, filename, onProgress) => localDb.importZL0024Raw(rawRows, filename, onProgress)}
+              onImportado={() => load(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50 h-9 cursor-pointer"
+            />
+          )}
           {filteredRows.length > 0 && (
             <button
               onClick={handleExportExcel}
