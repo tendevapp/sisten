@@ -786,6 +786,87 @@ export function gerarProtocoloAse(dataISO?: string | null, nomeSetor?: string | 
   return `${base}-${seqStr}`;
 }
 
+/**
+ * Calcula o próximo protocolo ASE disponível a partir de uma lista de protocolos existentes.
+ * Se o código base ASE-DDMMAA-SETOR estiver livre, usa ele.
+ * Se já existir para aquela data e setor, adiciona sufixo sequencial (-01, -02, etc.).
+ */
+export function calcularProximoProtocoloAse(
+  dataISO?: string | null,
+  nomeSetor?: string | null,
+  protocolosExistentes?: (string | null | undefined)[],
+): string {
+  const base = gerarProtocoloAse(dataISO, nomeSetor, null);
+  if (!protocolosExistentes || protocolosExistentes.length === 0) return base;
+
+  const baseUpper = base.toUpperCase();
+  const existentesUpper = new Set(
+    protocolosExistentes
+      .map(p => String(p ?? '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  // Se o código base puro ainda não foi usado, ele é o escolhido
+  if (!existentesUpper.has(baseUpper)) {
+    return base;
+  }
+
+  // O base puro já existe; procura o maior sufixo sequencial existente (-01, -02, ...)
+  const padrao = new RegExp(`^${baseUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`, 'i');
+  let maiorSufixo = 0;
+
+  for (const cod of existentesUpper) {
+    const match = cod.match(padrao);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maiorSufixo) {
+        maiorSufixo = num;
+      }
+    }
+  }
+
+  return gerarProtocoloAse(dataISO, nomeSetor, maiorSufixo + 1);
+}
+
+/**
+ * Consulta no banco todos os protocolos de ASE para uma data e setor (inclui excluídos para respeitar a constraint única).
+ * Opcionalmente exclui um ID específico (útil na edição do próprio registro).
+ */
+export async function obterProtocolosAseExistentes(
+  dataISO?: string | null,
+  nomeSetor?: string | null,
+  excluirId?: string,
+): Promise<string[]> {
+  const ddmmaa = formatarDataDDMMAA(dataISO);
+  const sigla = extrairSiglaSetor(nomeSetor);
+  const prefixo = `ASE-${ddmmaa}-${sigla}`;
+
+  let query = supabase
+    .from('rh_ase_solicitacoes')
+    .select('id, numero_protocolo')
+    .ilike('numero_protocolo', `${prefixo}%`);
+
+  if (excluirId) {
+    query = query.neq('id', excluirId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => r.numero_protocolo).filter(Boolean) as string[];
+}
+
+/**
+ * Obtém o próximo protocolo ASE disponível consultando o banco de dados.
+ */
+export async function obterProximoProtocoloAseDisponivel(
+  dataISO?: string | null,
+  nomeSetor?: string | null,
+  excluirId?: string,
+): Promise<string> {
+  const existentes = await obterProtocolosAseExistentes(dataISO, nomeSetor, excluirId);
+  return calcularProximoProtocoloAse(dataISO, nomeSetor, existentes);
+}
+
 export async function listarSolicitacoesASE(incluirExcluidos = false): Promise<AseHoraExtraCompleta[]> {
   const rotasMapPromise = carregarMapaRotas();
   let query = supabase
@@ -887,7 +968,7 @@ export async function obterSolicitacaoASE(id: string, incluirExcluidos = false):
   } as AseHoraExtraCompleta;
 }
 
-/** Cria o cabeçalho já no banco com o novo padrão ASE-DDMMAA-SETOR. Retenta com sufixo sequencial (-01, -02) se houver colisão. */
+/** Cria o cabeçalho já no banco com o padrão ASE-DDMMAA-SETOR. Concorrência segura com resolução de sufixo sequencial. */
 export async function criarSolicitacaoASE(params: {
   solicitanteId: string;
   setorId: string | null;
@@ -895,9 +976,8 @@ export async function criarSolicitacaoASE(params: {
   dataExecucao: string;
   setorNome?: string | null;
 }): Promise<AseHoraExtraSolicitacao> {
-  for (let tentativa = 0; tentativa < 15; tentativa++) {
-    const seq = tentativa === 0 ? null : tentativa;
-    const protocolo = gerarProtocoloAse(params.dataExecucao, params.setorNome, seq);
+  for (let tentativa = 0; tentativa < 10; tentativa++) {
+    const protocolo = await obterProximoProtocoloAseDisponivel(params.dataExecucao, params.setorNome);
 
     const { data, error } = await supabase
       .from('rh_ase_solicitacoes')
@@ -913,21 +993,63 @@ export async function criarSolicitacaoASE(params: {
       .single();
 
     if (!error) return data as AseHoraExtraSolicitacao;
-    if (!error.message.includes('numero_protocolo')) throw new Error(error.message);
-    // colisão de protocolo: tenta com o próximo número sequencial (-01, -02, etc.)
+
+    const ehDuplicado =
+      error.message.includes('numero_protocolo') ||
+      error.message.includes('duplicate key') ||
+      (error as any).code === '23505';
+
+    if (!ehDuplicado) throw new Error(error.message);
+    // Colisão concorrente: outro usuário criou simultaneamente, repete a busca e cálculo
   }
-  throw new Error('Não foi possível gerar um número de protocolo único. Tente novamente.');
+  throw new Error('Não foi possível gerar um número de protocolo único para a ASE. Tente novamente.');
 }
 
+/**
+ * Salva os dados do cabeçalho da ASE. Resiliente a concorrência:
+ * se outro usuário tiver salvo simultaneamente com o mesmo protocolo, detecta o erro de chave duplicada,
+ * calcula o próximo sufixo sequencial disponível (-01, -02, etc.) e retenta automaticamente.
+ */
 export async function salvarSolicitacaoASE(
   id: string,
   patch: Partial<Pick<AseHoraExtraSolicitacao, 'numero_protocolo' | 'setor_id' | 'turno_id' | 'data_execucao' | 'justificativa' | 'status'>>,
-): Promise<void> {
-  const { error } = await supabase
-    .from('rh_ase_solicitacoes')
-    .update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw new Error(error.message);
+  setorNome?: string | null,
+): Promise<{ numero_protocolo?: string }> {
+  let protocoloFinal = patch.numero_protocolo;
+
+  for (let tentativa = 0; tentativa < 10; tentativa++) {
+    const dadosUpdate: any = {
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+    if (protocoloFinal) {
+      dadosUpdate.numero_protocolo = protocoloFinal;
+    }
+
+    const { error } = await supabase
+      .from('rh_ase_solicitacoes')
+      .update(dadosUpdate)
+      .eq('id', id);
+
+    if (!error) {
+      return { numero_protocolo: protocoloFinal };
+    }
+
+    const ehDuplicado =
+      error.message.includes('numero_protocolo') ||
+      error.message.includes('duplicate key') ||
+      (error as any).code === '23505';
+
+    // Se houve conflito de chave única e temos os dados de data/setor, recalcula o próximo protocolo disponível
+    if (ehDuplicado && patch.data_execucao) {
+      protocoloFinal = await obterProximoProtocoloAseDisponivel(patch.data_execucao, setorNome, id);
+      continue;
+    }
+
+    throw new Error(error.message);
+  }
+
+  throw new Error('Não foi possível salvar a ASE devido a conflito de protocolo concorrente.');
 }
 
 export async function excluirSolicitacaoASE(id: string, excluidoPor?: string): Promise<void> {

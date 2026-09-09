@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-09',
+    resumo: 'RH > ASE - Hora Extra — Resolução de Concorrência e Protocolos Únicos (`rhApi.ts`, `RhAseHoraExtra.tsx`, `rhApi.test.ts`): 1. Implementadas funções `calcularProximoProtocoloAse`, `obterProtocolosAseExistentes` e `obterProximoProtocoloAseDisponivel` para calcular automaticamente o próximo protocolo disponível com sufixos sequenciais (`-01`, `-02`, etc.) quando múltiplos formulários são abertos ou salvos para o mesmo setor na mesma data; 2. Salvamento resiliente a concorrência em `salvarSolicitacaoASE`: captura violação da restrição de chave única do PostgreSQL (`rh_ase_solicitacoes_numero_protocolo_key`), recalcula com o próximo sufixo livre e retenta com sucesso sem travar o usuário; 3. Atualização assíncrona do protocolo no formulário `RhAseHoraExtra.tsx` e garantia de repasse do protocolo persistido ao envio por e-mail no Outlook; 4. Cobertura de testes unitários para casos de concorrência e sufixos sequenciais em `rhApi.test.ts`.',
+  },
+  {
+    data: '2026-09-09',
     resumo: 'Admin > Cadastros Gerais > Suprimentos — Filtro de Grupo de Compradores na Barra de Ferramentas (`GestaoGrupoComprador.tsx`, `diretrizes.ts`): 1. Adicionado seletor dropdown dedicado para "Comprador" (Grupo de Compras) na barra de ferramentas e filtros da tela de Grupos Compradores x Mercadorias; 2. Sincronização bidirecional instantânea entre o seletor dropdown e os cards analíticos superiores por comprador; 3. Inclusão de botão dinâmico para limpar todos os filtros ativos; 4. Layout flexível com quebra harmoniosa em telas de diferentes resoluções.',
   },
   {

@@ -991,6 +991,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       if (merged.status === 'RASCUNHO' && ('setor_id' in patch || 'data_execucao' in patch)) {
         const setorNome = setores.find(s => s.id === (patch.setor_id ?? merged.setor_id))?.nome;
         merged.numero_protocolo = api.gerarProtocoloAse(merged.data_execucao, setorNome);
+
+        // Busca assíncrona do protocolo disponível real no banco para evitar colisão na concorrência
+        api.obterProximoProtocoloAseDisponivel(merged.data_execucao, setorNome, d.id)
+          .then(protDisponivel => {
+            setDados(curr => (curr && curr.id === d.id && curr.status === 'RASCUNHO' ? { ...curr, numero_protocolo: protDisponivel } : curr));
+          })
+          .catch(() => {});
       }
 
       return merged;
@@ -1015,17 +1022,24 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     setSujo(true);
   };
 
-  const salvar = useCallback(async (silencioso = false): Promise<boolean> => {
-    if (!dados) return false;
+  const salvar = useCallback(async (silencioso = false): Promise<string | null> => {
+    if (!dados) return null;
     setSalvando(true);
     try {
-      await api.salvarSolicitacaoASE(dados.id, {
+      const setorNome = setores.find(s => s.id === dados.setor_id)?.nome;
+      const res = await api.salvarSolicitacaoASE(dados.id, {
         numero_protocolo: dados.numero_protocolo,
         setor_id: dados.setor_id,
         turno_id: dados.turno_id,
         data_execucao: dados.data_execucao,
         justificativa: dados.justificativa,
-      });
+      }, setorNome);
+
+      const protocoloPersistido = res?.numero_protocolo || dados.numero_protocolo;
+      if (protocoloPersistido !== dados.numero_protocolo) {
+        setDados(d => (d ? { ...d, numero_protocolo: protocoloPersistido } : d));
+      }
+
       await Promise.all(dados.itens.map(it => api.atualizarItemASE(it.id, {
         transporte: it.transporte,
         refeicao: it.refeicao,
@@ -1040,15 +1054,15 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         ...(it.pessoa_id === null ? { nome: it.nome, registro: it.registro, cargo: it.cargo } : {}),
       })));
       setSujo(false);
-      if (!silencioso) toast.success('ASE salva com sucesso.');
-      return true;
+      if (!silencioso) toast.success(`ASE ${protocoloPersistido} salva com sucesso.`);
+      return protocoloPersistido;
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
-      return false;
+      return null;
     } finally {
       setSalvando(false);
     }
-  }, [dados, toast]);
+  }, [dados, setores, toast]);
 
   /**
    * Confirma o "carrinho" do seletor: grava todos os escolhidos de uma vez.
@@ -1220,11 +1234,12 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       toast.warning('Preencha o horário de entrada e saída de todos os colaboradores.');
       return;
     }
-    if (!(await salvar(true))) return;
+    const protPersistido = await salvar(true);
+    if (!protPersistido) return;
     try {
       if (dados.status !== 'ENVIADO') {
         await api.salvarSolicitacaoASE(dados.id, { status: 'ENVIADO' });
-        setDados(d => (d ? { ...d, status: 'ENVIADO' } : d));
+        setDados(d => (d ? { ...d, status: 'ENVIADO', numero_protocolo: protPersistido } : d));
       }
       setModoEdicao(false);
 
@@ -1234,7 +1249,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
 
       const emailConfig = await obterConfigEmail('rh_ase_hora_extra');
       const emailContent = buildAseHoraExtraEmail({
-        solicitacao: dados,
+        solicitacao: { ...dados, numero_protocolo: protPersistido },
         setorNome,
         turnoNome,
         solicitanteNome,
@@ -1245,13 +1260,13 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
         copia: emailConfig?.copia,
         copiaOculta: emailConfig?.copia_oculta,
         assunto: emailConfig?.assunto_padrao
-          ? `${emailConfig.assunto_padrao} - ${dados.numero_protocolo} - ${setorNome} (${formatDataBR(dados.data_execucao)})`
+          ? `${emailConfig.assunto_padrao} - ${protPersistido} - ${setorNome} (${formatDataBR(dados.data_execucao)})`
           : emailContent.assunto,
         corpo: emailContent.corpo,
       });
 
       window.location.href = mailtoUrl;
-      toast.success(`ASE ${dados.numero_protocolo} salva. Abrindo e-mail no Outlook...`);
+      toast.success(`ASE ${protPersistido} salva. Abrindo e-mail no Outlook...`);
     } catch (e) {
       toast.error(`Falha ao enviar: ${(e as Error).message}`);
     }
