@@ -36,6 +36,8 @@ export type MotivoSobressalente =
   | 'deformacao_solda'
   | 'nc_fornecedor'
   | 'perda_extravio'
+  | 'divergencia_bom'
+  | 'divergencia_pagamento'
   | 'outros';
 
 export const MOTIVOS_SOBRESSALENTE: { id: MotivoSobressalente; rotulo: string }[] = [
@@ -43,6 +45,8 @@ export const MOTIVOS_SOBRESSALENTE: { id: MotivoSobressalente; rotulo: string }[
   { id: 'deformacao_solda', rotulo: 'Deformação / solda' },
   { id: 'nc_fornecedor', rotulo: 'Não-conformidade do fornecedor' },
   { id: 'perda_extravio', rotulo: 'Perda / extravio' },
+  { id: 'divergencia_bom', rotulo: 'Divergência BOM' },
+  { id: 'divergencia_pagamento', rotulo: 'Divergência de pagamento' },
   { id: 'outros', rotulo: 'Outros' },
 ];
 

@@ -129,7 +129,7 @@ export function textoCabecalhoRm(request: Request, itens: RequestItem[]): string
   // é do formato da planilha e continua como está escrito aqui.
   const base = `#${request.number} - ${normalizarSap((request.justificativa || '').trim())}`.trim();
   const observacoes = itens
-    .map((it, idx) => ({ pos: idx + 1, obs: normalizarSap((it.observation || '').trim()) }))
+    .map((it, idx) => ({ pos: (idx + 1) * 10, obs: normalizarSap((it.observation || '').trim()) }))
     .filter(o => o.obs)
     .map(o => ` -Item ${o.pos} ${o.obs};`)
     .join('');
@@ -200,10 +200,11 @@ export function montarLinhasRm(solicitacoes: SolicitacaoRm[], ctx: ContextoRm): 
     };
 
     // O grupo de compras é por item, não por solicitação: uma mesma RM pode
-    // misturar materiais de compradores diferentes.
+    // misturar materiais de compradores diferentes. O número do item segue o
+    // padrão SAP com incremento de 10 (10, 20, 30...).
     return itens.map((it, idx): LinhaRm => ({
       ...cabecalho,
-      'Item': idx + 1,
+      'Item': (idx + 1) * 10,
       'Material (MATNR)': it.sap_code || '',
       'Quantidade (MENGE)': it.quantity,
       'Grupo Compras (EKGRP)': grupoComprasRm(it, ctx) || RM_GRUPO_COMPRAS_PADRAO,

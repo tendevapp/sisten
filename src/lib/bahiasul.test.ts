@@ -5,6 +5,9 @@ import {
   calcularFreteContratual,
   calcularKpisBahiaSul,
   enriquecerEntregasComPedidos,
+  agruparPedidosParaSugestao,
+  sugerirPoBahiaSul,
+  resumirBahiaSulPorPo,
 } from './bahiasul';
 import type { BahiaSulEntrega, TabelaFrete } from '../types';
 
@@ -124,7 +127,7 @@ describe('calcularFreteContratual', () => {
       kgs_cubado: 38.0,
       qtd_volumes: 1,
       vlr_mercadoria: 588.0,
-      frt_cobrado: 158.92, // Supondo valor cobrado com sobrepreco
+      frt_cobrado: 162.26,
       obs_diversos: null,
       nro_pedido: null,
       chave_unica: '12345_FSA',
@@ -136,16 +139,72 @@ describe('calcularFreteContratual', () => {
     expect(calc.freteBase).toBe(67.69); // Faixa 31-50kg Salvador
     expect(calc.adValoresPct).toBe(0.35); // 0.0035 convertido para 0.35%
     expect(calc.adValoresValor).toBeCloseTo((588 * 0.35) / 100, 2);
+    expect(calc.grisPct).toBe(0.5);
+    expect(calc.grisValor).toBeCloseTo((588 * 0.5) / 100, 2);
     expect(calc.pedagioTotal).toBe(4.50); // 1 fracao de 100kg
     expect(calc.cat).toBe(30.00);
     expect(calc.itrTas).toBe(5.60);
     expect(calc.taxaFixa).toBe(30.00);
     expect(calc.icmsPct).toBe(12);
 
-    // Subtotal: 67.69 + 2.058 + 4.50 + 30 + 5.60 + 30 = 139.848
-    expect(calc.subtotalSemIcms).toBeCloseTo(139.848, 2);
-    // Total com ICMS 12%: 139.848 / (1 - 0.12) = 158.918 ~ 158.92
-    expect(calc.totalComIcms).toBeCloseTo(158.92, 1);
+    // Subtotal: 67.69 + 2.058 + 2.94 + 4.50 + 30 + 5.60 + 30 = 142.788
+    expect(calc.subtotalSemIcms).toBeCloseTo(142.788, 2);
+    // Total com ICMS 12%: 142.788 / (1 - 0.12) = 162.259 ~ 162.26
+    expect(calc.totalComIcms).toBeCloseTo(162.26, 1);
+    expect(calc.statusAuditoria).toBe('conforme');
+  });
+
+  it('calcula com precisão o CTe 00033095 (São Paulo -> Jacobina) incluindo GRIS 0.5%', () => {
+    const entrega: BahiaSulEntrega = {
+      cto_numero: '00033095',
+      cto_documento: '57',
+      cto_filial: 'SPO',
+      cto_serie: '1',
+      tpo_embarque: 'NORMAL',
+      rmt_nome: 'MMCK SERVICE EQUIPAMENTOS PNEUMATICOS EIRELI',
+      rmt_cnpj: '22.767.906/0001-79',
+      dst_nome: 'TORRES EOLICAS DO NORDESTE S/A',
+      dst_cnpj: '13.892.216/0002-31',
+      emissao: '2026-08-27',
+      referencia: null,
+      prz_contratado: null,
+      embarque: '2026-08-27',
+      prv_chegada: null,
+      chegada: null,
+      prv_entrega: '2026-09-06',
+      entrega: '2026-09-02',
+      situacao: 'ENTREGUE',
+      org_cidade: 'SAO PAULO/SP',
+      dst_cidade: 'JACOBINA/BA',
+      nfs_embarcadas: '1004829/1004830',
+      kgs_declarado: null,
+      kgs_real: 0.8,
+      kgs_cubado: 2.7,
+      qtd_volumes: 2,
+      vlr_mercadoria: 5094.89,
+      frt_cobrado: 195.87,
+      obs_diversos: null,
+      nro_pedido: null,
+      chave_unica: 'SPO_1_00033095',
+    };
+
+    const calc = calcularFreteContratual(entrega, mockTabela);
+    expect(calc.rotaEncontrada).not.toBeNull();
+    expect(calc.pesoConsiderado).toBe(2.7);
+    expect(calc.freteBase).toBe(68.76); // Faixa 1-10kg SP
+    expect(calc.adValoresPct).toBe(0.35);
+    expect(calc.adValoresValor).toBeCloseTo(17.83, 2);
+    expect(calc.grisPct).toBe(0.5);
+    expect(calc.grisValor).toBeCloseTo(25.47, 2);
+    expect(calc.pedagioTotal).toBe(4.50);
+    expect(calc.cat).toBe(30.00);
+    expect(calc.itrTas).toBe(5.60);
+    expect(calc.taxaFixa).toBe(30.00);
+    expect(calc.subtotalSemIcms).toBeCloseTo(182.16, 2);
+    expect(calc.icmsPct).toBe(7);
+    expect(calc.valorIcms).toBeCloseTo(13.71, 2);
+    expect(calc.totalComIcms).toBeCloseTo(195.87, 2);
+    expect(calc.diferenca).toBeCloseTo(0.00, 2);
     expect(calc.statusAuditoria).toBe('conforme');
   });
 
@@ -310,5 +369,97 @@ describe('enriquecerEntregasComPedidos e calcularKpisBahiaSul', () => {
     expect(kpis.totalFreteCobrado).toBe(350);
     expect(kpis.totalFreteCalculado).toBeGreaterThan(0);
     expect(kpis.divergenciaLiquida).toBe(kpis.totalFreteCobrado - kpis.totalFreteCalculado);
+  });
+});
+
+/* Sugestão de vínculo com PO SAP ------------------------------------------- */
+
+/** CTe mínimo para os testes de sugestão/resumo. */
+function mkEntrega(over: Partial<BahiaSulEntrega>): BahiaSulEntrega {
+  return {
+    cto_documento: null, cto_filial: 'SPO', cto_serie: '1', cto_numero: over.cto_numero || 'X',
+    tpo_embarque: null, rmt_nome: null, rmt_cnpj: null, dst_nome: null, dst_cnpj: null,
+    emissao: null, referencia: null, prz_contratado: null, embarque: null,
+    prv_chegada: null, chegada: null, prv_entrega: null, entrega: null,
+    situacao: null, org_cidade: null, dst_cidade: null, nfs_embarcadas: null,
+    kgs_declarado: null, kgs_real: null, kgs_cubado: null, qtd_volumes: null,
+    vlr_mercadoria: null, frt_cobrado: null, obs_diversos: null, nro_pedido: null,
+    chave_unica: over.cto_numero || 'X', ...over,
+  };
+}
+
+const pedidoRow = (over: Record<string, unknown>) => ({
+  documento_compra: '4100000001', cnpj_fornecedor: '12.345.678/0001-90',
+  fornecedor_name: 'FORN A', data_doc: '2026-06-01', valor_liquido: 1000, data_migo: null,
+  ...over,
+});
+
+describe('agruparPedidosParaSugestao', () => {
+  it('condensa itens do mesmo PO: soma valor, menor data, item sem MIGO', () => {
+    const g = agruparPedidosParaSugestao([
+      pedidoRow({ valor_liquido: 400, data_doc: '2026-06-10', data_migo: '2026-07-01' }),
+      pedidoRow({ valor_liquido: 600, data_doc: '2026-06-01', data_migo: null }),
+    ]);
+    expect(g).toHaveLength(1);
+    expect(g[0].valorLiquido).toBe(1000);
+    expect(g[0].dataPedido).toBe('2026-06-01');
+    expect(g[0].cnpj).toBe('12345678000190');
+    expect(g[0].temItemSemMigo).toBe(true);
+  });
+});
+
+describe('sugerirPoBahiaSul', () => {
+  const pedidos = agruparPedidosParaSugestao([
+    pedidoRow({ documento_compra: '4100000001', cnpj_fornecedor: '12345678000190', valor_liquido: 1000, data_doc: '2026-06-01' }),
+    pedidoRow({ documento_compra: '4100000002', cnpj_fornecedor: '12345678000190', valor_liquido: 9000, data_doc: '2025-11-01', data_migo: '2025-12-01' }),
+    pedidoRow({ documento_compra: '4100000003', cnpj_fornecedor: '99999999999999', valor_liquido: 1000, data_doc: '2026-06-01' }),
+  ]);
+
+  it('não sugere sem CNPJ de 14 dígitos', () => {
+    expect(sugerirPoBahiaSul(mkEntrega({ rmt_cnpj: '123', emissao: '2026-06-15', vlr_mercadoria: 1000 }), pedidos)).toBeNull();
+  });
+
+  it('não sugere quando o CTe já tem nro_pedido', () => {
+    expect(sugerirPoBahiaSul(
+      mkEntrega({ rmt_cnpj: '12.345.678/0001-90', nro_pedido: '4100000001', emissao: '2026-06-15' }), pedidos,
+    )).toBeNull();
+  });
+
+  it('escolhe o PO do mesmo CNPJ mais próximo em valor e data, dentro da janela', () => {
+    const s = sugerirPoBahiaSul(
+      mkEntrega({ cto_numero: 'A1', rmt_cnpj: '12.345.678/0001-90', emissao: '2026-06-20', vlr_mercadoria: 1050 }),
+      pedidos,
+    );
+    expect(s).not.toBeNull();
+    expect(s!.documentoCompra).toBe('4100000001');
+    // 4100000002 é do mesmo CNPJ mas foi emitido >180 dias antes do CTe → fora da janela
+    expect(s!.alternativas.map(a => a.documentoCompra)).not.toContain('4100000002');
+    // 4100000003 é de outro CNPJ → nunca entra
+    expect(s!.alternativas.map(a => a.documentoCompra)).not.toContain('4100000003');
+  });
+
+  it('candidato único ⇒ confiança alta', () => {
+    const s = sugerirPoBahiaSul(
+      mkEntrega({ rmt_cnpj: '12.345.678/0001-90', emissao: '2026-06-10', vlr_mercadoria: 1 }),
+      agruparPedidosParaSugestao([pedidoRow({})]),
+    );
+    expect(s!.confianca).toBe('alta');
+  });
+});
+
+describe('resumirBahiaSulPorPo', () => {
+  it('agrega por PO: previsão dos não entregues, data física do entregue', () => {
+    const m = resumirBahiaSulPorPo([
+      mkEntrega({ cto_numero: 'C1', nro_pedido: '4100000001', situacao: 'A ENTREGAR', prv_chegada: '2026-06-20' }),
+      mkEntrega({ cto_numero: 'C2', nro_pedido: '4100000001', situacao: 'ENTREGUE', entrega: '2026-06-18', chegada: '2026-06-17' }),
+    ]);
+    const r = m.get('4100000001')!;
+    expect(r.entregue).toBe(true);
+    expect(r.dataChegadaFisica).toBe('2026-06-18'); // entrega tem prioridade sobre chegada
+    expect(r.ctos.sort()).toEqual(['C1', 'C2']);
+  });
+
+  it('ignora CTe sem nro_pedido', () => {
+    expect(resumirBahiaSulPorPo([mkEntrega({ nro_pedido: null })]).size).toBe(0);
   });
 });

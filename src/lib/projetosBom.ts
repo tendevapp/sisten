@@ -177,21 +177,42 @@ export interface ConsumoItem {
   qtdPorTorre: number;
   subconjuntos: string[];
   linhasBom: number;
+  /**
+   * Níveis da BOM (1–6) que contribuíram para esta quantidade, ordenados.
+   * Um parafuso comum aparece em vários níveis e grupos ao mesmo tempo — não
+   * existe "o nível" de um item consolidado, só os níveis que ele atravessa.
+   */
+  niveis: number[];
 }
 
 /**
- * Consumo de UMA torre, por tramo. Só folhas — os pais são cabeçalhos de
- * conjunto e já estão contabilizados dentro dos filhos.
+ * Consumo de UMA torre, por tramo, com filtro opcional por grupo da BOM. Só
+ * folhas — os pais são cabeçalhos de conjunto e já estão contabilizados
+ * dentro dos filhos.
+ *
+ * O filtro por grupo é o que sustenta a separação por zona dentro de um
+ * tramo (T1: Escada de Acesso / Plataforma Inferior / Plataforma Sup+Média):
+ * a MESMA peça pode ter linhas em vários grupos (uma arruela usada tanto na
+ * escada quanto na plataforma), então a quantidade de cada zona precisa ser
+ * somada a partir das linhas BRUTAS filtradas por grupo — nunca fatiada
+ * depois de já consolidada, ou o rateio entre zonas sairia errado.
  *
  * Um mesmo part number entra num tramo por mais de uma linha (e por mais de um
  * subconjunto Atlanta): as linhas são somadas e os subconjuntos acumulados,
  * porque o romaneio precisa dizer em que montagem cada peça é usada.
  */
-export function consumoPorTramo(arvore: ArvoreBom): Map<Tramo, Map<string, ConsumoItem>> {
+export function consumoPorTramoFiltrado(
+  arvore: ArvoreBom,
+  opcoes: { incluirGrupos?: string[]; excluirGrupos?: string[] } = {},
+): Map<Tramo, Map<string, ConsumoItem>> {
+  const incluir = opcoes.incluirGrupos ? new Set(opcoes.incluirGrupos) : null;
+  const excluir = opcoes.excluirGrupos ? new Set(opcoes.excluirGrupos) : null;
   const saida = new Map<Tramo, Map<string, ConsumoItem>>();
 
   for (const no of arvore.nos) {
     if (!no.folha || !no.tramo || !no.partNumberNorm || no.qtdPorTorre === null) continue;
+    if (incluir && !incluir.has(no.grupoNorm)) continue;
+    if (excluir && excluir.has(no.grupoNorm)) continue;
 
     let doTramo = saida.get(no.tramo);
     if (!doTramo) { doTramo = new Map(); saida.set(no.tramo, doTramo); }
@@ -203,6 +224,7 @@ export function consumoPorTramo(arvore: ArvoreBom): Map<Tramo, Map<string, Consu
       if (no.subconjunto && !atual.subconjuntos.includes(no.subconjunto)) {
         atual.subconjuntos.push(no.subconjunto);
       }
+      if (!atual.niveis.includes(no.level)) atual.niveis.push(no.level);
     } else {
       doTramo.set(no.partNumberNorm, {
         partNumberNorm: no.partNumberNorm,
@@ -212,11 +234,21 @@ export function consumoPorTramo(arvore: ArvoreBom): Map<Tramo, Map<string, Consu
         qtdPorTorre: no.qtdPorTorre,
         subconjuntos: no.subconjunto ? [no.subconjunto] : [],
         linhasBom: 1,
+        niveis: [no.level],
       });
     }
   }
 
+  for (const doTramo of saida.values()) {
+    for (const item of doTramo.values()) item.niveis.sort((a, b) => a - b);
+  }
+
   return saida;
+}
+
+/** Consumo de UMA torre, por tramo, sem filtro de grupo — o romaneio inteiro. */
+export function consumoPorTramo(arvore: ArvoreBom): Map<Tramo, Map<string, ConsumoItem>> {
+  return consumoPorTramoFiltrado(arvore);
 }
 
 export interface LinhaExplosao {
@@ -432,4 +464,54 @@ export function auditarBom(arvore: ArvoreBom): Pendencia[] {
   }
 
   return pendencias;
+}
+
+// ---------------------------------------------------------------------------
+// Romaneio para relatório: folhas filtradas + a cadeia de pais delas
+// ---------------------------------------------------------------------------
+
+/**
+ * As folhas de um tramo que casam com o filtro de grupo — a mesma regra de
+ * `consumoPorTramoFiltrado`, mas devolvendo os nós da BOM (com `level`,
+ * `parentId`, `caminho`) em vez do consumo já consolidado. Base do relatório
+ * "por níveis": aqui cada linha da BOM aparece separada, não somada.
+ */
+export function folhasDoTramoFiltradas(
+  arvore: ArvoreBom,
+  tramo: Tramo,
+  opcoes: { incluirGrupos?: string[]; excluirGrupos?: string[] } = {},
+): NoBom[] {
+  const incluir = opcoes.incluirGrupos ? new Set(opcoes.incluirGrupos) : null;
+  const excluir = opcoes.excluirGrupos ? new Set(opcoes.excluirGrupos) : null;
+
+  return arvore.nos.filter((no) => {
+    if (!no.folha || no.tramo !== tramo || !no.partNumberNorm || no.qtdPorTorre === null) return false;
+    if (incluir && !incluir.has(no.grupoNorm)) return false;
+    if (excluir && excluir.has(no.grupoNorm)) return false;
+    return true;
+  });
+}
+
+/**
+ * As folhas dadas, mais todo ancestral delas (pai, avô...) — para desenhar a
+ * árvore pai/filho do romaneio sem perder o cabeçalho de conjunto. Devolve
+ * na ordem do `id`, que É a ordem de indentação da BOM.
+ */
+export function comAncestrais(arvore: ArvoreBom, folhas: NoBom[]): NoBom[] {
+  const vistos = new Set<number>();
+  const saida: NoBom[] = [];
+
+  for (const folha of folhas) {
+    let atual: NoBom | undefined = folha;
+    const cadeia: NoBom[] = [];
+    while (atual) {
+      if (vistos.has(atual.id)) break; // já subiu esse ramo por outra folha
+      cadeia.push(atual);
+      vistos.add(atual.id);
+      atual = atual.parentId !== null ? arvore.porId.get(atual.parentId) : undefined;
+    }
+    saida.push(...cadeia);
+  }
+
+  return saida.sort((a, b) => a.id - b.id);
 }

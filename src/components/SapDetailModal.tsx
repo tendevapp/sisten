@@ -4,16 +4,25 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { X, Copy, Check, ExternalLink, Calendar, User, Package, FileText, Phone, Mail, Clock, Save, RefreshCw } from 'lucide-react';
-import { EnrichedSAPRecord, FornecedorMaterialRow, ItemStatus } from '../types';
+import { X, Copy, Check, ExternalLink, Calendar, User, Package, FileText, Phone, Mail, Clock, Save, RefreshCw, ImageIcon, Loader2 } from 'lucide-react';
+import { EnrichedSAPRecord, FornecedorMaterialRow, ItemStatus, RequestAttachment } from '../types';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { sanitizeTechnicalText } from '../lib/materiais';
+import { desformatarObservacaoItemGenerico } from '../lib/solicitacoes';
+import type { VinculoSistenRm } from '../lib/centralComprasSisten';
 import { useToast } from './ui/Toast';
 
 interface SapDetailModalProps {
   record: EnrichedSAPRecord;
   fornecedores: FornecedorMaterialRow[];
+  /**
+   * Solicitação do SISTEN que originou a RM. Quando o item é genérico, o
+   * catálogo SAP não descreve a compra — o detalhamento troca o texto técnico
+   * pela observação de quem pediu e mostra a foto anexada (ver
+   * `lib/centralComprasSisten.ts`).
+   */
+  vinculoSisten?: VinculoSistenRm | null;
   onClose: () => void;
   onUpdate?: () => void;
 }
@@ -31,10 +40,28 @@ const itemStatusOptions: ItemStatus[] = [
   'Aguardando Solicitante'
 ];
 
-export default function SapDetailModal({ record, fornecedores, onClose, onUpdate }: SapDetailModalProps) {
+export default function SapDetailModal({ record, fornecedores, vinculoSisten, onClose, onUpdate }: SapDetailModalProps) {
   const [techText, setTechText] = useState<string>('');
   const [isLoadingTechText, setIsLoadingTechText] = useState(false);
   const [auditHistory, setAuditHistory] = useState<any[]>([]);
+
+  // Item genérico: o código do catálogo é um guarda-chuva para vários produtos,
+  // então o texto técnico dele não descreve esta compra. Vale a observação que
+  // o solicitante escreveu no SISTEN (mesma regra do texto de cotação, em
+  // `lib/centralComprasSisten.ts`).
+  const ehGenerico = Boolean(
+    vinculoSisten?.item?.is_generic ||
+    (vinculoSisten?.item?.observation && /^item\s+gen[eé]rico\s*:/i.test(vinculoSisten.item.observation))
+  );
+  const obsGenerica = ehGenerico
+    ? desformatarObservacaoItemGenerico(vinculoSisten?.item?.observation)
+    : '';
+
+  // Foto anexada ao item genérico — buscada pelo código do material no banco de
+  // imagens (mesma fonte da Nova Solicitação). URL assinada resolvida à parte.
+  const [imagensItem, setImagensItem] = useState<Array<{ anexo: RequestAttachment; url: string }>>([]);
+  const [carregandoImagens, setCarregandoImagens] = useState(false);
+  const [imagemCopiada, setImagemCopiada] = useState<string | null>(null);
 
   // Edição inline de Status do Item e Observações do comprador
   const [statusInput, setStatusInput] = useState<ItemStatus | ''>(record.item_status || 'Aguardando Cotação');
@@ -64,7 +91,7 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
   };
 
   useEffect(() => {
-    if (!record.material_code) return;
+    if (!record.material_code || ehGenerico) return;
 
     setIsLoadingTechText(true);
     supabase
@@ -86,11 +113,86 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
     setAuditHistory(hist.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }, [record.ri]);
 
+  useEffect(() => {
+    if (!record.material_code) {
+      setImagensItem([]);
+      return;
+    }
+    let cancelado = false;
+    setCarregandoImagens(true);
+    (async () => {
+      // Toda imagem já cadastrada para este código de material — não só a de
+      // item genérico. É o "banco de imagens por material" servindo Compras e
+      // Rastreio: quem abre o item vê a foto sem caçar a solicitação de origem.
+      const anexos = localDb
+        .getAttachmentsByMaterialCode(record.material_code)
+        .filter(a => (a.mime_type || '').startsWith('image/'));
+
+      // Cada reaproveitamento do banco de imagens grava uma linha nova para o
+      // mesmo arquivo físico — sem deduplicar, a mesma foto aparece repetida.
+      const vistos = new Set<string>();
+      const unicos = anexos.filter(a => {
+        const chave = a.storage_path || a.url;
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+      });
+
+      const resolvidas: Array<{ anexo: RequestAttachment; url: string }> = [];
+      for (const a of unicos) {
+        const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+        if (url) resolvidas.push({ anexo: a, url });
+      }
+      if (!cancelado) {
+        setImagensItem(resolvidas);
+        setCarregandoImagens(false);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [record.material_code]);
+
+  /** Converte para PNG antes de escrever na área de transferência — o clipboard
+   *  só aceita `image/png` de forma confiável e a foto vem comprimida em JPEG. */
+  const converterParaPng = (blob: Blob): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(blob);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        URL.revokeObjectURL(objUrl);
+        if (!ctx) { reject(new Error('sem contexto 2d')); return; }
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob falhou'))), 'image/png');
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('falha ao decodificar imagem')); };
+      img.src = objUrl;
+    });
+
+  const handleCopyImagem = async (url: string, id: string) => {
+    try {
+      const blob = await (await fetch(url)).blob();
+      const png = blob.type === 'image/png' ? blob : await converterParaPng(blob);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      setImagemCopiada(id);
+      setTimeout(() => setImagemCopiada(null), 2000);
+    } catch (err) {
+      console.error('Falha ao copiar imagem:', err);
+      toast.error('Não foi possível copiar a imagem. Abra pela miniatura e copie manualmente.');
+    }
+  };
+
   const [copiedCompra, setCopiedCompra] = useState(false);
 
   const handleCopyCompra = async () => {
     const headers = "Cód. Material\tTexto Breve\tQtd\tTexto Técnico";
-    const dataRow = `${record.material_code || ''}\t${record.texto_breve || ''}\t${record.qtd_requisicao || ''} ${record.unidade_medida || ''}\t${techText || ''}`;
+    // Item genérico: o texto técnico do catálogo não vale — usa a observação do
+    // solicitante, como no texto de cotação (ver `lib/centralComprasSisten.ts`).
+    const especificacao = ehGenerico ? obsGenerica : techText;
+    const descricao = ehGenerico && obsGenerica ? obsGenerica : (record.texto_breve || '');
+    const dataRow = `${record.material_code || ''}\t${descricao}\t${record.qtd_requisicao || ''} ${record.unidade_medida || ''}\t${especificacao || ''}`;
     const tsv = `${headers}\n${dataRow}`;
     
     try {
@@ -223,8 +325,16 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
                   {record.material_code || 'Sem código'}
                 </span>
                 {record.material_code && <CopyButton text={record.material_code} label="código do material" />}
+                {ehGenerico && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-600 text-white shadow-xs"
+                    title="Código guarda-chuva do catálogo — quem pediu descreveu o item na observação"
+                  >
+                    Item Genérico
+                  </span>
+                )}
               </div>
-              
+
               {/* Botão Copiar Compra */}
               <button
                 onClick={handleCopyCompra}
@@ -242,11 +352,16 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
             <div className="space-y-2 text-left">
               <div className="flex items-start justify-between gap-4">
                 <p className="text-base font-extrabold text-slate-900 dark:text-slate-50 leading-snug">
+                  {ehGenerico && (
+                    <span className="mr-1.5 align-middle inline-flex items-center rounded bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide">
+                      Genérico
+                    </span>
+                  )}
                   {record.texto_breve || '—'}
                 </p>
                 {record.texto_breve && <CopyButton text={record.texto_breve} label="descrição" />}
               </div>
-              
+
               {record.campos_extras?.['texto_completo'] && (
                 <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-900">
                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
@@ -260,8 +375,29 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
             </div>
           </div>
 
-          {/* Texto Técnico do Catálogo SAP */}
-          {(techText || isLoadingTechText) && (
+          {/* Item genérico: o catálogo SAP não descreve a compra. No lugar do
+              texto técnico vale a observação que o solicitante escreveu no
+              SISTEN, mais a foto que ele anexou ao item. */}
+          {ehGenerico ? (
+            <div className="space-y-4">
+              <div className="bg-rose-50/60 dark:bg-rose-950/15 p-4.5 rounded-xl border border-rose-150 dark:border-rose-900/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                    Observação do Solicitante
+                    {vinculoSisten?.requestNumber && (
+                      <span className="ml-1.5 font-bold text-rose-500/70 dark:text-rose-400/60">
+                        · SISTEN #{vinculoSisten.requestNumber}
+                      </span>
+                    )}
+                  </span>
+                  {obsGenerica && <CopyButton text={obsGenerica} label="observação do solicitante" />}
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-rose-100 dark:border-rose-900/30">
+                  {obsGenerica || 'Sem observação registrada na solicitação.'}
+                </p>
+              </div>
+            </div>
+          ) : (techText || isLoadingTechText) ? (
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -275,6 +411,49 @@ export default function SapDetailModal({ record, fornecedores, onClose, onUpdate
                 <p className="text-xs text-slate-650 dark:text-slate-350 leading-relaxed font-mono whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
                   {techText}
                 </p>
+              )}
+            </div>
+          ) : null}
+
+          {/* Imagem do item — qualquer foto já cadastrada para este código de
+              material (banco de imagens). Some quando não há nenhuma. */}
+          {(carregandoImagens || imagensItem.length > 0) && (
+            <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5" />
+                {ehGenerico ? 'Foto anexada ao item' : 'Imagem do item'}
+              </span>
+              {carregandoImagens ? (
+                <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando imagem...
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {imagensItem.map(({ anexo, url }) => (
+                    <div key={anexo.id} className="flex flex-col gap-1.5 w-32">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden hover:opacity-90 transition-opacity"
+                        title="Abrir imagem em nova aba"
+                      >
+                        <img src={url} alt={anexo.name} className="h-32 w-32 object-cover" />
+                      </a>
+                      <button
+                        onClick={() => handleCopyImagem(url, anexo.id)}
+                        className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          imagemCopiada === anexo.id
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-450 border border-emerald-200'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
+                      >
+                        {imagemCopiada === anexo.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{imagemCopiada === anexo.id ? 'Copiada!' : 'Copiar imagem'}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

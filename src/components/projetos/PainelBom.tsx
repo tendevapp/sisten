@@ -11,13 +11,15 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, GitBranch, Search, ShieldAlert, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch, Network, Search, ShieldAlert, X } from 'lucide-react';
 import { TableEmpty } from '../ui/DataTable';
+import Modal, { ModalHeader, ModalBody } from '../ui/Modal';
 import { SELECT_CLS } from './campos';
 import { formatQtd } from '../../lib/format';
 import { TRAMOS, type Tramo } from '../../lib/projetos';
-import type { NoBom } from '../../lib/projetosBom';
+import { comAncestrais, type NoBom } from '../../lib/projetosBom';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
+import MapaMentalBom from './MapaMentalBom';
 
 interface Props { dados: DadosProjetos }
 
@@ -31,6 +33,7 @@ export default function PainelBom({ dados }: Props) {
   const [soFolhas, setSoFolhas] = useState(false);
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
   const [auditoriaAberta, setAuditoriaAberta] = useState(false);
+  const [mapaAberto, setMapaAberto] = useState(false);
 
   const torres = subprojetoAtivo?.torres_previstas ?? 1;
 
@@ -69,6 +72,18 @@ export default function PainelBom({ dados }: Props) {
     // Sem filtro: só o que está aberto (raízes sempre visíveis).
     return arvore.nos.filter((n) => n.parentId === null || estaAberto(n, arvore, expandidos));
   }, [arvore, busca, tramoFiltro, grupoFiltro, fornecedorFiltro, soFolhas, temFiltro, expandidos]);
+
+  /**
+   * O mapa mental usa o mesmo recorte que a tabela: com filtro, fecha por
+   * ancestrais (senão os nós filtrados ficam soltos, sem pai pra pendurar);
+   * sem filtro, é a BOM inteira — o `initialExpandLevel` do markmap já cuida
+   * de não abrir tudo de uma vez.
+   */
+  const nosMapa = useMemo(
+    () => (temFiltro ? comAncestrais(arvore, visiveis) : arvore.nos),
+    [arvore, visiveis, temFiltro],
+  );
+  const tituloMapa = subprojetoAtivo?.nome ? `BOM — ${subprojetoAtivo.nome}` : 'BOM';
 
   const alternar = (id: number) => {
     setExpandidos((atual) => {
@@ -119,6 +134,15 @@ export default function PainelBom({ dados }: Props) {
             <X className="h-3.5 w-3.5" /> Limpar
           </button>
         )}
+        <button
+          onClick={() => setMapaAberto(true)}
+          disabled={loading || !arvore.nos.length}
+          className="inline-flex items-center gap-1.5 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+        >
+          <Network className="h-3.5 w-3.5" />
+          Mapa mental{temFiltro ? ` (${formatQtd(visiveis.length)})` : ''}
+        </button>
         {pendencias.length > 0 && (
           <button
             onClick={() => setAuditoriaAberta((v) => !v)}
@@ -230,6 +254,24 @@ export default function PainelBom({ dados }: Props) {
             </table>
           </div>
         </div>
+      )}
+
+      {mapaAberto && (
+        <Modal onClose={() => setMapaAberto(false)} maxWidth="max-w-6xl">
+          <ModalHeader onClose={() => setMapaAberto(false)}>
+            <div>
+              <p className="font-bold" style={{ color: 'var(--ink-primary)' }}>Mapa mental — {tituloMapa}</p>
+              <p className="text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                {temFiltro
+                  ? `Recorte pelos filtros ativos — ${formatQtd(nosMapa.length)} linhas com ancestrais.`
+                  : `BOM inteira — ${formatQtd(nosMapa.length)} linhas. Clique nos nós para expandir/recolher.`}
+              </p>
+            </div>
+          </ModalHeader>
+          <ModalBody className="p-0">
+            <MapaMentalBom nos={nosMapa} titulo={tituloMapa} />
+          </ModalBody>
+        </Modal>
       )}
     </div>
   );

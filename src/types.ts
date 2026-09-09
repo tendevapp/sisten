@@ -467,6 +467,13 @@ export interface SAPPedido {
   por?: string; // "Por" (Preiseinheit) do SAP: base de preço. Unitário = preco_liquido / por (vazio = 1).
   eflag_e?: string;
   campos_extras: Record<string, any>;
+  // Campos crus da tabela `pedidos` preservados pelo `...p` de `normalizePedidoRow`,
+  // usados pela sugestão de vínculo do painel Bahia Sul (ver `lib/bahiasul.ts`).
+  cnpj_fornecedor?: string | null;
+  cnpj?: string | null;
+  data_doc?: string | null;
+  data_migo?: string | null;
+  valor_liquido?: number | null;
 }
 
 export interface SAPObsHistory {
@@ -987,6 +994,7 @@ export interface TabelaFrete {
   lead_time_entrega?: string;
   ad_valores: number;
   pedagio_fracao_100kg: number;
+  gris?: number;
   cat: number;
   itr_tas: number;
   taxa_fixa_itr_redespacho: number;
@@ -2179,6 +2187,10 @@ export interface BahiaSulEntrega {
   frt_cobrado: number | null;
   obs_diversos: string | null;
   nro_pedido: string | null;
+  /** Procedência do `nro_pedido`: 'planilha' | 'sugestao' | 'manual'. Ver migration 20260909160000. */
+  vinculo_origem?: 'planilha' | 'sugestao' | 'manual' | null;
+  vinculo_confirmado_em?: string | null;
+  vinculo_confirmado_por?: string | null;
   chave_unica: string;
   imported_at?: string;
   created_at?: string;
@@ -2196,6 +2208,8 @@ export interface FreteCalculadoDetalhes {
   freteBase: number;
   adValoresPct: number;
   adValoresValor: number;
+  grisPct: number;
+  grisValor: number;
   pedagioTotal: number;
   fracoes100kg: number;
   cat: number;
@@ -2586,6 +2600,8 @@ export interface ProjItem {
   /** Prateleira; preenchido pelo almoxarifado, não vem da BOM. */
   localizador: string | null;
   estoque_minimo: number;
+  /** Fora do romaneio de ordens de pré-montagem (chapa/placa de aço, flange, cerca quadrada — gerido fora deste fluxo). */
+  ignorar_premontagem: boolean;
   observacao: string | null;
   created_at?: string;
   updated_at?: string;
@@ -2714,6 +2730,11 @@ export interface ProjOrdemItem {
   qtd_total: number;
   localizador: string | null;
   saldo_no_momento: number | null;
+  /** Marcado por quem separa fisicamente. Não debita por si só — só na confirmação da ordem. */
+  separado: boolean;
+  qtd_separada: number;
+  separado_em: string | null;
+  separado_por_nome: string | null;
   created_at?: string;
 }
 
@@ -2723,11 +2744,16 @@ export interface ProjOrdemPremontagem {
   codigo: string;
   subprojeto_id: string | null;
   tramo: string;
+  /** Fatia do romaneio do tramo (ex.: 'escada_acesso'), só para tramos com zona — ver projetosZonas.ts. Null = romaneio inteiro. */
+  zona: string | null;
   quantidade_kits: number;
   status: 'em_processamento' | 'concluida' | 'cancelada';
   observacao: string | null;
   criado_por_id: string | null;
   criado_por_nome: string | null;
+  /** Quando o débito de estoque foi aplicado (ver o fluxo de separação em 2 etapas). Null = ainda em picking, sem nenhum débito. */
+  separacao_confirmada_em: string | null;
+  separacao_confirmada_por_nome: string | null;
   concluida_em: string | null;
   concluida_por_nome: string | null;
   excluido_em: string | null;
@@ -2803,7 +2829,7 @@ export interface ProjSobressalente {
   subprojeto_id: string | null;
   tramo: string | null;
   tramo_unidade_id: string | null;
-  motivo: 'quebra_montagem' | 'deformacao_solda' | 'nc_fornecedor' | 'perda_extravio' | 'outros';
+  motivo: 'quebra_montagem' | 'deformacao_solda' | 'nc_fornecedor' | 'perda_extravio' | 'divergencia_bom' | 'divergencia_pagamento' | 'outros';
   motivo_detalhe: string | null;
   aprovador_nome: string;
   aprovador_id: string | null;

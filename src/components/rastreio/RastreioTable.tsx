@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { MessageSquare, PackageCheck, Undo2 } from 'lucide-react';
+import { MessageSquare, PackageCheck, Undo2, Tag } from 'lucide-react';
 import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatBRL, isAlmoxarifadoCandidate } from '../../lib/rastreio';
 import type { EntregaParcial } from '../../lib/entregaParcial';
 import { formatInt } from '../../lib/format';
@@ -197,8 +197,24 @@ export default function RastreioTable({
 
               {visibleColumns.descricao && (
                 <div>
-                  <p className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</p>
+                    {r.isGeneric && (
+                      <span
+                        className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                        title="Item Genérico"
+                      >
+                        <Tag className="h-2.5 w-2.5" />
+                        Item Genérico
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: 'var(--ink-primary)' }}>{r.descricao}</p>
+                  {r.isGeneric && r.obsGenerica && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 italic mt-0.5 leading-snug">
+                      {r.obsGenerica}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -353,8 +369,24 @@ export default function RastreioTable({
                 )}
                 {visibleColumns.descricao && (
                   <Td className="py-1.5 px-2">
-                    <div className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono text-[9px] truncate" style={{ color: 'var(--ink-muted)' }}>{r.material}</span>
+                      {r.isGeneric && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                          title="Item Genérico"
+                        >
+                          <Tag className="h-2.5 w-2.5" />
+                          Item Genérico
+                        </span>
+                      )}
+                    </div>
                     <div className="break-words leading-tight" title={r.descricao}>{r.descricao}</div>
+                    {r.isGeneric && r.obsGenerica && (
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 italic mt-0.5 leading-snug break-words">
+                        {r.obsGenerica}
+                      </div>
+                    )}
                   </Td>
                 )}
                 {visibleColumns.fornecedor && (

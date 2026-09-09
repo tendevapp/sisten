@@ -7,14 +7,16 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   X, Send, MessageSquare, Loader2, Package, Building2, MapPin, Calendar,
   Truck, CheckCircle2, FileText, User as UserIcon, AlertCircle, History, Flag, Check,
-  CircleDollarSign,
+  CircleDollarSign, Tag, Image as ImageIcon, CalendarClock,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile, RastreioMensagem, RastreioPrioridade, SAPObsHistory } from '../../types';
 import {
   RastreioRow, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatDateTimeBR, formatBRL,
-  PRIORITY_LEVELS, priorityMeta, latestPriorityByRi,
+  PRIORITY_LEVELS, priorityMeta, latestPriorityByRi, hasValue,
 } from '../../lib/rastreio';
+import { resumirBahiaSulPorPo, normalizePoNumber } from '../../lib/bahiasul';
+import { gravarPrevisaoNoRastreio } from '../../lib/diligenciamentoApi';
 
 // Uma entrada da linha do tempo da conversa: mensagem de chat ou uma
 // atualização de observação registrada pelo comprador (histórico de
@@ -40,6 +42,69 @@ function Field({ label, children, icon: Icon }: { label: string; children: React
         {Icon && <Icon className="h-3 w-3" />}{label}
       </span>
       <div className="mt-0.5 text-sm text-slate-800 dark:text-slate-200 font-semibold break-words">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Imagens do item, para o comprador não precisar abrir a solicitação de origem
+ * só para ver o que foi pedido. Primeiro os anexos do item da solicitação SISTEN
+ * vinculada (quando há vínculo); na falta, qualquer imagem já enviada para o
+ * mesmo código de material (o "banco de imagens por material"). Some se não há
+ * nenhuma imagem — nada de seção vazia.
+ */
+function ItemImages({ row }: { row: RastreioRow }) {
+  const [urls, setUrls] = useState<{ id: string; url: string; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const imagens = useMemo(() => {
+    const vinc = row.vinculoSisten;
+    const doItem = vinc ? localDb.getAttachments(vinc.item.request_id, vinc.item.id) : [];
+    const base = doItem.length > 0
+      ? doItem
+      : (row.material && row.material !== '—' ? localDb.getAttachmentsByMaterialCode(row.material) : []);
+    return base.filter(a => (a.mime_type || '').startsWith('image/'));
+  }, [row.vinculoSisten, row.material]);
+
+  useEffect(() => {
+    let cancelado = false;
+    setLoading(true);
+    (async () => {
+      const resolvidas: { id: string; url: string; name: string }[] = [];
+      for (const a of imagens) {
+        const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+        if (url) resolvidas.push({ id: a.id, url, name: a.name });
+      }
+      if (!cancelado) { setUrls(resolvidas); setLoading(false); }
+    })();
+    return () => { cancelado = true; };
+  }, [imagens]);
+
+  if (!loading && urls.length === 0) return null;
+
+  return (
+    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+      <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+        <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Imagem do item
+      </h4>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Carregando imagens…</div>
+      ) : (
+        <div className="flex flex-wrap gap-3">
+          {urls.map(u => (
+            <a
+              key={u.id}
+              href={u.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={u.name}
+              className="block h-28 w-28 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 hover:ring-2 hover:ring-emerald-500/40 transition-all"
+            >
+              <img src={u.url} alt={u.name} loading="lazy" className="h-full w-full object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -104,6 +169,63 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
       setPriorityError('Falha ao salvar. Tente novamente.');
     } finally {
       setSavingPriority(false);
+    }
+  };
+
+  // Previsão de entrega pela transportadora Bahia Sul: quando há CTe vinculado
+  // ao PO deste item, a `prv_chegada`/`prv_entrega` do conhecimento serve de
+  // previsão pronta — o comprador confirma com um clique em vez de digitar.
+  const [bsPrevisao, setBsPrevisao] = useState<string | null>(null);
+  const [bsCtos, setBsCtos] = useState<string[]>([]);
+  const [bsSaving, setBsSaving] = useState(false);
+  const [bsError, setBsError] = useState<string | null>(null);
+  const [previstaLocal, setPrevistaLocal] = useState(row.dataPrevista);
+
+  useEffect(() => {
+    setPrevistaLocal(row.dataPrevista);
+    if (!row.po || row.po === '—' || hasValue(row.dataEntrega)) {
+      setBsPrevisao(null);
+      setBsCtos([]);
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        let entregas = await localDb.getBahiaSulEntregas({ pedido: row.po });
+        const semZeros = normalizePoNumber(row.po);
+        if (entregas.length === 0 && semZeros && semZeros !== row.po) {
+          entregas = await localDb.getBahiaSulEntregas({ pedido: semZeros });
+        }
+        const resumo = resumirBahiaSulPorPo(entregas).get(semZeros);
+        if (cancelado) return;
+        setBsPrevisao(resumo && !resumo.entregue ? resumo.previsaoChegada : null);
+        setBsCtos(resumo?.ctos.filter(Boolean) ?? []);
+      } catch (e) {
+        console.error('Erro ao buscar previsão da Bahia Sul:', e);
+        if (!cancelado) { setBsPrevisao(null); setBsCtos([]); }
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [row.po, row.dataPrevista, row.dataEntrega]);
+
+  const previsaoJaConfirmada = hasValue(previstaLocal) && previstaLocal === bsPrevisao;
+
+  const handleUsarPrevisaoBahiaSul = async () => {
+    if (!bsPrevisao || bsSaving) return;
+    setBsSaving(true);
+    setBsError(null);
+    try {
+      const { falhas } = await gravarPrevisaoNoRastreio([row.ri], bsPrevisao);
+      if (falhas.length > 0) {
+        setBsError('Não foi possível gravar a previsão. Tente novamente.');
+        return;
+      }
+      setPrevistaLocal(bsPrevisao);
+    } catch (e) {
+      console.error('Erro ao gravar previsão da Bahia Sul no Rastreio:', e);
+      setBsError('Não foi possível gravar a previsão. Tente novamente.');
+    } finally {
+      setBsSaving(false);
     }
   };
 
@@ -190,6 +312,11 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
                   <Flag className="h-2.5 w-2.5" /> Prioridade {currentPriority.nivel}
                 </span>
               )}
+              {row.isGeneric && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                  <Tag className="h-2.5 w-2.5" /> Item Genérico
+                </span>
+              )}
             </div>
             <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-300 truncate">{row.descricao}</p>
           </div>
@@ -201,7 +328,16 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
         <div className="flex-1 overflow-y-auto">
           {/* Detalhes */}
           <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-3 gap-4 border-b border-slate-100 dark:border-slate-800">
-            <Field label="Material" icon={Package}><span className="font-mono">{row.material}</span></Field>
+            <Field label="Material" icon={Package}>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono">{row.material}</span>
+                {row.isGeneric && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                    <Tag className="h-2 w-2" /> Item Genérico
+                  </span>
+                )}
+              </div>
+            </Field>
             <Field label="Fornecedor" icon={Truck}>{row.fornecedor}</Field>
             <Field label="Setor" icon={Building2}>{row.setor}</Field>
             <Field label="Quantidade" icon={Package}>{row.qtd !== undefined ? `${row.qtd.toLocaleString('pt-BR')}${row.unidade !== '—' ? ` ${row.unidade}` : ''}` : '—'}</Field>
@@ -219,6 +355,15 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <Field label="Prev. entrega" icon={Calendar}>{formatDateBR(row.dataPrevista)}</Field>
             <Field label="Entrega (MIGO)" icon={CheckCircle2}>{formatDateBR(row.dataEntrega)}</Field>
             {row.grupoComprador && <Field label="Grupo comprador" icon={UserIcon}>{row.grupoComprador}</Field>}
+            {row.isGeneric && row.obsGenerica && (
+              <div className="col-span-2 md:col-span-3">
+                <Field label="Especificação do Item Genérico (SISTEN)" icon={Tag}>
+                  <span className="font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-800/60 block whitespace-pre-wrap">
+                    {row.obsGenerica}
+                  </span>
+                </Field>
+              </div>
+            )}
             {row.observacoes !== '—' && (
               <div className="col-span-2 md:col-span-3">
                 <Field label="Observações do comprador" icon={FileText}>
@@ -227,6 +372,51 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
               </div>
             )}
           </div>
+
+          {/* Imagem do item (anexos da solicitação vinculada ou do material) */}
+          <ItemImages row={row} />
+
+          {/* Previsão de entrega pela Bahia Sul */}
+          {bsPrevisao && (
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                <CalendarClock className="h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Previsão de entrega — Bahia Sul
+              </h4>
+              {previsaoJaConfirmada ? (
+                <p className="text-[13px] text-slate-600 dark:text-slate-300">
+                  Previsão preenchida com a data da transportadora Bahia Sul:{' '}
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
+                  {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}
+                </p>
+              ) : (
+                <>
+                  <p className="text-[13px] text-slate-600 dark:text-slate-300">
+                    A Bahia Sul prevê a entrega deste pedido em{' '}
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
+                    {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}.
+                    {hasValue(previstaLocal) && (
+                      <span className="text-slate-400 dark:text-slate-500"> Previsão atual no Rastreio: {formatDateBR(previstaLocal)}.</span>
+                    )}
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={handleUsarPrevisaoBahiaSul}
+                      disabled={bsSaving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    >
+                      {bsSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
+                      {hasValue(previstaLocal) ? 'Atualizar previsão pela Bahia Sul' : 'Preencher previsão pela Bahia Sul'}
+                    </button>
+                    {bsError && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                        <AlertCircle className="h-3.5 w-3.5" /> {bsError}
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Solicitar Prioridade */}
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">

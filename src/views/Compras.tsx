@@ -512,6 +512,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   // Modal SAP
   const [selectedRecordForModal, setSelectedRecordForModal] = useState<EnrichedSAPRecord | null>(null);
+  // Vínculo SISTEN da linha aberta no modal — carrega a observação e o "item
+  // genérico" para o detalhamento (ver `lib/centralComprasSisten.ts`).
+  const [selectedVinculoForModal, setSelectedVinculoForModal] = useState<VinculoSistenRm | null>(null);
+  const abrirDetalheSap = useCallback((r: EnrichedSAPRecord, vinculo: VinculoSistenRm | null) => {
+    setSelectedRecordForModal(r);
+    setSelectedVinculoForModal(vinculo);
+  }, []);
   const [showNovidades, setShowNovidades] = useState(false);
 
   // Exportação: escolha se a planilha sai com o histórico de fornecedores
@@ -1962,6 +1969,18 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // não confirmada (só na Central); verde = confirmada e visível no Rastreio.
   // Só a data confirmada é levada para o Rastreio Compras.
   const renderPromessaInput = (r: EnrichedSAPRecord, compact = false) => {
+    // Pedido com MIGO já chegou — promessa de entrega deixa de fazer sentido.
+    if (r.data_migo) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400"
+          title="Item já recebido (MIGO lançado no SAP) — sem promessa de entrega a acompanhar"
+        >
+          <PackageCheck className="h-3.5 w-3.5" />
+          Recebido · MIGO {formatDateBR(r.data_migo)}
+        </span>
+      );
+    }
     const valor = dateInputState[r.ri] || '';
     const estado = promessaEstado(r, valor);
     const confirmando = confirmingRi === r.ri;
@@ -2507,7 +2526,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setSelectedRecordForModal(r)}
+                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
                             className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-450 dark:text-slate-500 hover:text-[#0056c6] dark:hover:text-emerald-450 cursor-pointer"
                             title="Ver detalhes SAP"
                           >
@@ -2524,7 +2543,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                       </div>
 
                       {/* Title & Desc (Clickable to modal) */}
-                      <div className="cursor-pointer group" onClick={() => setSelectedRecordForModal(r)}>
+                      <div className="cursor-pointer group" onClick={() => abrirDetalheSap(r, vinculoSisten)}>
                         <h4 className="text-[13px] font-mono font-bold text-slate-800 dark:text-slate-200 group-hover:text-[#0056c6] dark:group-hover:text-emerald-450 group-hover:underline leading-tight flex items-center gap-1">
                           {r.material_code || '—'}
                           <ArrowUpRight className="h-3 w-3 opacity-60 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
@@ -2945,7 +2964,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         {/* Material Code (Clickable) */}
                         <td className="py-3 px-3 font-mono font-semibold whitespace-nowrap">
                           <button
-                            onClick={() => setSelectedRecordForModal(r)}
+                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
                             className="hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 cursor-pointer flex items-center gap-1 focus:outline-none"
                           >
                             {r.material_code}
@@ -2956,7 +2975,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         {/* Description (Clickable) */}
                         <td className="py-3 px-3 min-w-[280px] max-w-[480px] break-words font-medium text-slate-800 dark:text-slate-200">
                           <button
-                            onClick={() => setSelectedRecordForModal(r)}
+                            onClick={() => abrirDetalheSap(r, vinculoSisten)}
                             className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
                           >
                             {r.texto_breve}
@@ -3534,12 +3553,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       {selectedRecordForModal && (
         <SapDetailModal
           record={selectedRecordForModal}
+          vinculoSisten={selectedVinculoForModal}
           fornecedores={
             rmGroups
               .flatMap(g => g.items)
               .find(it => it.record.ri === selectedRecordForModal.ri)?.fornecedores || []
           }
-          onClose={() => setSelectedRecordForModal(null)}
+          onClose={() => { setSelectedRecordForModal(null); setSelectedVinculoForModal(null); }}
           onUpdate={buildSuppliersData}
         />
       )}

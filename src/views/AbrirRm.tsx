@@ -1513,7 +1513,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                     style={{ borderColor: 'var(--hairline)' }}
                                   >
                                     <td className="px-2 py-1.5 font-mono" style={{ color: ehGen ? 'var(--status-critical)' : 'var(--ink-secondary)' }}>
-                                      {idx + 1}
+                                      {(idx + 1) * 10}
                                     </td>
                                     <td className="px-2 py-1.5 font-mono font-semibold whitespace-nowrap">
                                       {it.sap_code ? (

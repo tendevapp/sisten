@@ -206,22 +206,29 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     // 2. Ad Valorem
     const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
     const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
-    const adValoresValor = (vMerc * adValoresPct) / 100;
+    const adValoresValor = Math.round(((vMerc * adValoresPct) / 100) * 100) / 100;
 
-    // 3. Pedágio por fração de 100kg
+    // 3. GRIS (Gerenciamento de Risco)
+    const rawGris = rotaAtiva.gris !== undefined && rotaAtiva.gris !== null && !isNaN(Number(rotaAtiva.gris)) && Number(rotaAtiva.gris) > 0
+      ? Number(rotaAtiva.gris)
+      : 0.5; // Padrão contratual Bahia Sul: 0,5%
+    const grisPct = rawGris < 0.05 && rawGris > 0 ? rawGris * 100 : rawGris;
+    const grisValor = Math.round(((vMerc * grisPct) / 100) * 100) / 100;
+
+    // 4. Pedágio por fração de 100kg
     const taxaPedagioFracao = Number(rotaAtiva.pedagio_fracao_100kg) || 0;
     const fracoes100kg = Math.ceil(peso / 100) || 1;
-    const pedagioTotal = fracoes100kg * taxaPedagioFracao;
+    const pedagioTotal = Math.round((fracoes100kg * taxaPedagioFracao) * 100) / 100;
 
-    // 4. Taxas Fixas e Especiais
+    // 5. Taxas Fixas e Especiais
     const cat = Number(rotaAtiva.cat) || 0;
     const itrTas = Number(rotaAtiva.itr_tas) || 0;
     const taxaFixa = Number(rotaAtiva.taxa_fixa_itr_redespacho) || 0;
 
-    // 5. Subtotal Sem ICMS
-    const subtotalSemIcms = freteBase + adValoresValor + pedagioTotal + cat + itrTas + taxaFixa;
+    // 6. Subtotal Sem ICMS
+    const subtotalSemIcms = Math.round((freteBase + adValoresValor + grisValor + pedagioTotal + cat + itrTas + taxaFixa) * 100) / 100;
 
-    // 6. ICMS
+    // 7. ICMS
     const icmsCleanStr = String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
     const rawIcms = parseFloat(icmsCleanStr) || 0;
     const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
@@ -230,8 +237,8 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     let valorIcms = 0;
 
     if (icmsPct > 0 && icmsPct < 100) {
-      totalComIcms = subtotalSemIcms / (1 - (icmsPct / 100));
-      valorIcms = totalComIcms - subtotalSemIcms;
+      totalComIcms = Math.round((subtotalSemIcms / (1 - (icmsPct / 100))) * 100) / 100;
+      valorIcms = Math.round((totalComIcms - subtotalSemIcms) * 100) / 100;
     }
 
     return {
@@ -239,6 +246,8 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
       faixaDesc,
       adValoresPct,
       adValoresValor,
+      grisPct,
+      grisValor,
       fracoes100kg,
       taxaPedagioFracao,
       pedagioTotal,
@@ -270,16 +279,23 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
     const adValPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
     const adVal = (valorMercadoria * adValPct) / 100;
+
+    const rawGris = rotaAtiva.gris !== undefined && rotaAtiva.gris !== null && !isNaN(Number(rotaAtiva.gris)) && Number(rotaAtiva.gris) > 0
+      ? Number(rotaAtiva.gris)
+      : 0.5;
+    const grisPct = rawGris < 0.05 && rawGris > 0 ? rawGris * 100 : rawGris;
+    const gris = (valorMercadoria * grisPct) / 100;
+
     const pedag = Math.ceil(pesoKg / 100) * (Number(rotaAtiva.pedagio_fracao_100kg) || 0);
     const taxas = (Number(rotaAtiva.cat) || 0) + (Number(rotaAtiva.itr_tas) || 0) + (Number(rotaAtiva.taxa_fixa_itr_redespacho) || 0);
-    const subtotalFrac = fBaseFrac + adVal + pedag + taxas;
+    const subtotalFrac = fBaseFrac + adVal + gris + pedag + taxas;
 
     const rawIcms = parseFloat(String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.')) || 0;
     const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
     const totalFrac = icmsPct > 0 ? subtotalFrac / (1 - (icmsPct / 100)) : subtotalFrac;
 
     const fiorinoBase = Number(rotaAtiva.fiorino) || 0;
-    const subtotalFiorino = fiorinoBase + adVal + pedag + taxas;
+    const subtotalFiorino = fiorinoBase + adVal + gris + pedag + taxas;
     const totalFiorino = icmsPct > 0 ? subtotalFiorino / (1 - (icmsPct / 100)) : subtotalFiorino;
 
     const recomendacao = totalFrac <= totalFiorino || fiorinoBase === 0 ? 'fracionado' : 'dedicado';
@@ -308,6 +324,7 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
 -----------------------------------------
 • Frete Base: R$ ${calculoFrete.freteBase.toFixed(2)} (${calculoFrete.faixaDesc})
 • Ad Valorem (${calculoFrete.adValoresPct}%): R$ ${calculoFrete.adValoresValor.toFixed(2)}
+• GRIS / Gerenc. Risco (${calculoFrete.grisPct}%): R$ ${calculoFrete.grisValor.toFixed(2)}
 • Pedágio (${calculoFrete.fracoes100kg} fr. 100kg): R$ ${calculoFrete.pedagioTotal.toFixed(2)}
 • Taxa CAT: R$ ${calculoFrete.cat.toFixed(2)}
 • ITR / TAS: R$ ${calculoFrete.itrTas.toFixed(2)}
@@ -341,6 +358,8 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
       { Parametro: 'Frete Base (R$)', Valor: calculoFrete.freteBase },
       { Parametro: 'Ad Valorem (%)', Valor: calculoFrete.adValoresPct },
       { Parametro: 'Ad Valorem Valor (R$)', Valor: calculoFrete.adValoresValor },
+      { Parametro: 'GRIS (%)', Valor: calculoFrete.grisPct },
+      { Parametro: 'GRIS Valor (R$)', Valor: calculoFrete.grisValor },
       { Parametro: 'Frações 100kg Pedágio', Valor: calculoFrete.fracoes100kg },
       { Parametro: 'Pedágio Total (R$)', Valor: calculoFrete.pedagioTotal },
       { Parametro: 'CAT (R$)', Valor: calculoFrete.cat },
@@ -901,6 +920,15 @@ Cotação gerada via SISTEN por ${user.name} em ${new Date().toLocaleDateString(
                       <span className="text-[10px] text-slate-400">{calculoFrete.adValoresPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
                     </div>
                     <span className="font-semibold text-slate-800">R$ {calculoFrete.adValoresValor.toFixed(2)}</span>
+                  </div>
+
+                  {/* GRIS / Gerenciamento de Risco */}
+                  <div className="flex justify-between items-center py-1 border-b border-slate-100/60">
+                    <div>
+                      <span className="font-semibold text-slate-700 block">GRIS (Gerenciamento de Risco)</span>
+                      <span className="text-[10px] text-slate-400">{calculoFrete.grisPct}% sobre R$ {valorMercadoria.toLocaleString('pt-BR')}</span>
+                    </div>
+                    <span className="font-semibold text-slate-800">R$ {calculoFrete.grisValor.toFixed(2)}</span>
                   </div>
 
                   {/* Pedágio */}

@@ -117,4 +117,97 @@ describe('Cadastros SAP — Atualização de Fornecedor e Código de Resposta', 
     expect(match?.[2]?.trim()).toBe('NOVO NOME FORNECEDOR');
     expect(match?.[3]?.trim()).toBe('Atualização cadastral necessária');
   });
+
+  it('adiciona observacao na conversa sem alterar status ou pausar SLA', async () => {
+    const draft: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Item',
+      justificativa: 'Item de teste',
+      criticality: 3,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+
+    const created = await localDb.submitRequest(draft, false);
+    await localDb.assignAtendente(created.id, 'user-atendente', 'Jefferson Santana');
+
+    const antes = localDb.getRequests().find(r => r.id === created.id);
+    expect(antes?.status).toBe('em_atendimento');
+
+    // Atendente adiciona observação / andamento (ex: Chamado aberto no Astrein)
+    localDb.setCurrentUser({
+      id: 'user-atendente',
+      name: 'Jefferson Santana',
+      email: 'jefferson@ten.ind.br',
+      cargo: 'Comprador',
+      sector_id: 'sec-sup',
+      roles: ['requisitante'],
+      status: 'ativo',
+      created_at: new Date().toISOString(),
+    });
+
+    await localDb.addRequestComment(created.id, 'Chamado aberto no Astrein (507203), aguardando retorno.', false);
+
+    // O status e SLA devem permanecer inalterados ('em_atendimento')
+    const depois = localDb.getRequests().find(r => r.id === created.id);
+    expect(depois?.status).toBe('em_atendimento');
+
+    // A observação deve estar registrada nos comentários da solicitação
+    const comentarios = localDb.getRequestComments(created.id);
+    expect(comentarios.length).toBeGreaterThanOrEqual(1);
+    expect(comentarios.some(c => c.content.includes('Chamado aberto no Astrein'))).toBe(true);
+  });
+
+  it('solicitar esclarecimento pausa SLA e resposta do solicitante reativa SLA', async () => {
+    const draft: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Item',
+      justificativa: 'Item para teste de SLA',
+      criticality: 3,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+
+    const created = await localDb.submitRequest(draft, false);
+    await localDb.assignAtendente(created.id, 'user-atendente', 'Jefferson Santana');
+
+    // Atendente solicita esclarecimento -> pausa SLA
+    localDb.setCurrentUser({
+      id: 'user-atendente',
+      name: 'Jefferson Santana',
+      email: 'jefferson@ten.ind.br',
+      cargo: 'Comprador',
+      sector_id: 'sec-sup',
+      roles: ['requisitante'],
+      status: 'ativo',
+      created_at: new Date().toISOString(),
+    });
+
+    const pausado = await localDb.transitionRequestStatus(created.id, 'aguardando_solicitante', 'Falta ficha técnica');
+    expect(pausado).toBe(true);
+    await localDb.addRequestComment(created.id, 'Por favor anexar ficha técnica', false);
+
+    let req = localDb.getRequests().find(r => r.id === created.id);
+    expect(req?.status).toBe('aguardando_solicitante');
+
+    // Solicitante responde na conversa -> reativa SLA para em_atendimento
+    localDb.setCurrentUser({
+      id: 'user-1',
+      name: 'Solicitante Teste',
+      email: 'solicitante@ten.ind.br',
+      cargo: 'Analista',
+      sector_id: 'sec-1',
+      roles: ['solicitante'],
+      status: 'ativo',
+      created_at: new Date().toISOString(),
+    });
+
+    await localDb.addRequestComment(created.id, 'Segue a ficha técnica em anexo', false);
+
+    req = localDb.getRequests().find(r => r.id === created.id);
+    expect(req?.status).toBe('em_atendimento');
+  });
 });
+

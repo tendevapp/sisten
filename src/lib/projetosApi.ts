@@ -140,10 +140,15 @@ export async function listarConsumoTramo(projeto = PROJETO_PADRAO): Promise<
 
 export async function atualizarItem(
   id: string,
-  campos: Partial<Pick<ProjItem, 'localizador' | 'estoque_minimo' | 'observacao'>>,
+  campos: Partial<Pick<ProjItem, 'localizador' | 'estoque_minimo' | 'observacao' | 'ignorar_premontagem'>>,
 ): Promise<void> {
   const { error } = await db('proj_itens').update({ ...campos, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/** Atualiza `ignorar_premontagem` de vários itens de uma vez — o cadastro salva em lote. */
+export async function atualizarItensIgnorarPremontagem(alteracoes: { id: string; ignorar_premontagem: boolean }[]): Promise<void> {
+  await Promise.all(alteracoes.map((a) => atualizarItem(a.id, { ignorar_premontagem: a.ignorar_premontagem })));
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +280,8 @@ export interface OrdemPremontagemInput {
   codigo: string;
   subprojeto_id?: string | null;
   tramo: string;
+  /** Fatia do romaneio (ex.: 'escada_acesso') — só para tramos com zona definida (T1). */
+  zona?: string | null;
   quantidade_kits: number;
   observacao?: string | null;
   criado_por_id?: string | null;
@@ -290,19 +297,67 @@ export interface OrdemPremontagemInput {
 }
 
 /**
- * Debita o almoxarifado e abre um kit por tramo alvo.
- * Lança `ProjSaldoInsuficienteError` com a lista de faltantes quando o
- * romaneio não fecha — a tela mostra exatamente qual part number travou.
+ * Abre a ordem: congela o romaneio e cria o kit por tramo alvo — SEM debitar
+ * o almoxarifado. O débito só acontece em `confirmarSeparacaoPremontagem`,
+ * depois que quem separa fisicamente marcar os itens (ver `marcarItemSeparado`).
  */
 export async function criarOrdemPremontagem(ordem: OrdemPremontagemInput): Promise<{ id: string; codigo: string }> {
   const { itens, alvos, ...cabecalho } = ordem;
-  const { data, error } = await supabase.rpc('proj_registrar_saida_premontagem' as any, {
+  const { data, error } = await supabase.rpc('proj_abrir_ordem_premontagem' as any, {
     p_ordem: { ...cabecalho, projeto: PROJETO_PADRAO },
     p_itens: itens,
     p_alvos: alvos,
   } as any);
   if (error) lancarErroRpc(error, 'Falha ao gerar a ordem de pré-montagem');
   return data as { id: string; codigo: string };
+}
+
+/** Marca (ou desmarca) um item do romaneio como separado fisicamente. Não mexe em estoque. */
+export async function marcarItemSeparado(
+  ordemItemId: string,
+  separado: boolean,
+  qtdSeparada: number,
+  usuario: { nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('proj_marcar_item_ordem_premontagem' as any, {
+    p_ordem_item_id: ordemItemId,
+    p_separado: separado,
+    p_qtd_separada: qtdSeparada,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao marcar o item separado');
+}
+
+/**
+ * Confirma a separação: debita o almoxarifado só pelo que foi de fato
+ * marcado como separado. Ação única — depois de confirmada, os checks
+ * travam e o apontamento de conclusão (F3) fica liberado.
+ */
+export async function confirmarSeparacaoPremontagem(
+  ordemId: string,
+  usuario: { id?: string | null; nome: string },
+): Promise<{ itens_totais: number; itens_separados: number; itens_faltantes: number; total_pecas_debitadas: number }> {
+  const { data, error } = await supabase.rpc('proj_confirmar_separacao_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao confirmar a separação');
+  return data as { itens_totais: number; itens_separados: number; itens_faltantes: number; total_pecas_debitadas: number };
+}
+
+/**
+ * Marca TODOS os itens do romaneio como separados (qtd = qtd_total) e
+ * confirma na sequência — usado para backfill de saída já ocorrida na
+ * vida real (import de planilha histórica) e como atalho na tela quando
+ * não há check parcial a fazer.
+ */
+export async function separarTudoEConfirmar(ordemId: string, usuario: { id?: string | null; nome: string }): Promise<void> {
+  const { data, error } = await db('proj_ordens_premontagem_itens').select('id, qtd_total').eq('ordem_id', ordemId);
+  if (error) throw new Error(error.message);
+  for (const item of (data ?? []) as { id: string; qtd_total: number }[]) {
+    await marcarItemSeparado(item.id, true, item.qtd_total, usuario);
+  }
+  await confirmarSeparacaoPremontagem(ordemId, usuario);
 }
 
 export async function listarOrdens(

@@ -33,10 +33,11 @@
  * novas em `lib/diligenciamentoApi.ts`.
  */
 
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
 import { localDb } from '../../db/localDb';
-import { AlmoxarifadoChegada, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
+import { AlmoxarifadoChegada, BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
+import { resumirBahiaSulPorPo } from '../../lib/bahiasul';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatDateBR } from '../../lib/format';
 import { numeroContratoPO } from '../../lib/contratoPedido';
@@ -85,6 +86,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const [diligItensRaw, setDiligItensRaw] = useState<DiligenciamentoItem[]>([]);
   const [prazos, setPrazos] = useState<PrazoTransporte[]>([]);
   const [transportadorasCad, setTransportadorasCad] = useState<Transportadora[]>([]);
+  const [bahiaSulEntregas, setBahiaSulEntregas] = useState<BahiaSulEntrega[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [prazosAberto, setPrazosAberto] = useState(false);
 
@@ -123,12 +125,14 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const carregarDiligenciamento = async () => {
     try {
-      const [itens, listaPrazos, listaTransp] = await Promise.all([
+      const [itens, listaPrazos, listaTransp, entregasBS] = await Promise.all([
         listarDiligenciamentoItens(), listarPrazosTransporte(), listarTransportadoras(),
+        localDb.getBahiaSulEntregas(),
       ]);
       setDiligItensRaw(itens);
       setPrazos(listaPrazos);
       setTransportadorasCad(listaTransp);
+      setBahiaSulEntregas(entregasBS);
     } catch (e) {
       console.error('Falha ao carregar diligenciamento:', e);
       toast.error('Não foi possível carregar transportadoras e prazos. Tente recarregar a página.');
@@ -139,10 +143,37 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   useEffect(() => { carregarDiligenciamento(); }, []);
 
+  // Resumo por PO das entregas Bahia Sul já vinculadas — sugere transportadora
+  // e previsão (prv_chegada do CTe) para itens sem MIGO ainda sem escolha do comprador.
+  const bahiaSulPorPo = useMemo(() => resumirBahiaSulPorPo(bahiaSulEntregas), [bahiaSulEntregas]);
+
   const itens = useMemo(
-    () => montarItens(registros, diligPorRi, chegadasMap, cidadesPorCodigo, regiaoUfMap, prazos),
-    [registros, diligPorRi, chegadasMap, cidadesPorCodigo, regiaoUfMap, prazos],
+    () => montarItens(registros, diligPorRi, chegadasMap, cidadesPorCodigo, regiaoUfMap, prazos, bahiaSulPorPo),
+    [registros, diligPorRi, chegadasMap, cidadesPorCodigo, regiaoUfMap, prazos, bahiaSulPorPo],
   );
+
+  // A previsão vinda do CTe Bahia Sul (prv_chegada) precisa aparecer também nas
+  // outras telas de Compras (grade, Rastreio). Uma vez por carga, grava em
+  // `data_entrega_prevista`/`data_entrega_confirmada` os itens cuja previsão do
+  // CTe ainda não está refletida. O comprador pode reajustar depois.
+  const propagouBahiaSul = useRef(false);
+  useEffect(() => {
+    if (propagouBahiaSul.current || carregando) return;
+    const pendentes = itens.filter(it =>
+      it.origemBahiaSul && dataValida(it.previsaoBahiaSul) &&
+      (regPorRi.get(it.riPo)?.data_entrega_confirmada || '') !== it.previsaoBahiaSul,
+    );
+    propagouBahiaSul.current = true;
+    if (pendentes.length === 0) return;
+    (async () => {
+      let ok = 0;
+      for (const it of pendentes) {
+        const { falhas } = await gravarPrevisaoNoRastreio([it.ri], it.previsaoBahiaSul as string);
+        if (falhas.length === 0) ok++;
+      }
+      if (ok > 0) toast.success(`Previsão do CTe Bahia Sul propagada para ${ok} item(ns) da Central de Compras.`);
+    })();
+  }, [carregando, itens, regPorRi, toast]);
 
   const itensOrdenados = useMemo(() => [...itens].sort((a, b) => {
     if (a.previsaoEfetiva && b.previsaoEfetiva) return a.previsaoEfetiva < b.previsaoEfetiva ? -1 : 1;
@@ -235,7 +266,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const propagarPrevisaoParaRastreio = async (item: ItemDiligenciamento, novaTransportadora?: string, novaPrevisaoManual?: string) => {
     const transportadora = novaTransportadora ?? item.transportadora;
-    let efetiva: string | null = novaPrevisaoManual !== undefined ? (novaPrevisaoManual || null) : (item.previsaoManual || null);
+    // Prioridade: o que foi digitado agora → previsão manual salva → previsão do
+    // CTe Bahia Sul (prv_chegada) → cálculo remessa + prazo abaixo.
+    let efetiva: string | null = novaPrevisaoManual !== undefined
+      ? (novaPrevisaoManual || null)
+      : (item.previsaoManual || item.previsaoBahiaSul || null);
 
     if (!efetiva && item.dataRemessa) {
       const reg = regPorRi.get(item.riPo);
@@ -790,9 +825,16 @@ function PrevisaoCelula({
         <span
           className="mt-0.5 inline-flex items-center gap-1 font-bold"
           style={{ color: vencido ? 'var(--status-critical)' : 'var(--brand-strong)' }}
-          title={item.previsaoManual ? 'Previsão editada manualmente' : 'Previsão calculada (remessa + prazo)'}
+          title={
+            item.previsaoManual ? 'Previsão editada manualmente'
+            : item.origemBahiaSul ? `Prev. chegada do CTe Bahia Sul${item.ctosBahiaSul?.length ? ` (${item.ctosBahiaSul.join(', ')})` : ''}`
+            : 'Previsão calculada (remessa + prazo)'
+          }
         >
           Prev.: {formatDateBR(item.previsaoEfetiva)}
+          {item.origemBahiaSul && !item.previsaoManual && (
+            <Truck className="h-3 w-3" style={{ color: 'var(--brand)' }} />
+          )}
           {vencido && <AlertTriangle className="h-3 w-3" />}
         </span>
       ) : item.motivoSemPrevisao === 'sem_remessa' ? (

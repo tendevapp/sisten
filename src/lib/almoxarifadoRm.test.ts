@@ -137,7 +137,7 @@ describe('texto de cabeçalho', () => {
     ];
     expect(textoCabecalhoRm(req(), itens)).toBe(
       '#2001004 - COMPRA MATERIAL ESCRITORIO PROJETO BETA' +
-      ' -Item 2 ACEITA SIMILAR; -Item 3 ENTREGAR NO GALPAO 2;',
+      ' -Item 20 ACEITA SIMILAR; -Item 30 ENTREGAR NO GALPAO 2;',
     );
   });
 
@@ -147,7 +147,7 @@ describe('texto de cabeçalho', () => {
 });
 
 describe('montagem das linhas', () => {
-  it('gera uma linha por item, numerada a partir de 1', () => {
+  it('gera uma linha por item, numerada no padrão SAP (* 10: 10, 20...)', () => {
     const linhas = montarLinhasRm(
       [{
         request: req({ criticality: 5, number: '4000005' }),
@@ -163,7 +163,7 @@ describe('montagem das linhas', () => {
     expect(linhas[0]).toEqual({
       'ID Req': '#4000005',
       'Classificação': 'Urgente',
-      'Item': 1,
+      'Item': 10,
       'Material (MATNR)': '1456961',
       'Quantidade (MENGE)': 17,
       'Depósito (LGOBE)': '0050',
@@ -175,7 +175,7 @@ describe('montagem das linhas', () => {
       'Texto Cabeçalho (Justificativa)': '#4000005 - COMPRA MATERIAL ESCRITORIO PROJETO BETA',
       'Status / Nº da RM': '',
     });
-    expect(linhas[1]['Item']).toBe(2);
+    expect(linhas[1]['Item']).toBe(20);
     expect(linhas[1]['Material (MATNR)']).toBe('1047902');
   });
 

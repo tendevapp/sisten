@@ -469,6 +469,8 @@ export function calcularFreteContratual(
       freteBase: 0,
       adValoresPct: 0,
       adValoresValor: 0,
+      grisPct: 0,
+      grisValor: 0,
       pedagioTotal: 0,
       fracoes100kg: 0,
       cat: 0,
@@ -530,22 +532,29 @@ export function calcularFreteContratual(
   // 2. Ad Valorem (taxa sobre o valor da carga)
   const rawAdVal = Number(rota.ad_valores) || 0;
   const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? Number((rawAdVal * 100).toFixed(4)) : rawAdVal;
-  const adValoresValor = (vMerc * adValoresPct) / 100;
+  const adValoresValor = Math.round(((vMerc * adValoresPct) / 100) * 100) / 100;
 
-  // 3. Pedagio por fracao de 100kg
+  // 3. GRIS (Gerenciamento de Risco - padrao contratual 0.5% ou especificado na rota)
+  const rawGris = rota.gris !== undefined && rota.gris !== null && !isNaN(Number(rota.gris)) && Number(rota.gris) > 0
+    ? Number(rota.gris)
+    : 0.5; // Padrao contratual Bahia Sul: 0.5%
+  const grisPct = rawGris < 0.05 && rawGris > 0 ? Number((rawGris * 100).toFixed(4)) : rawGris;
+  const grisValor = Math.round(((vMerc * grisPct) / 100) * 100) / 100;
+
+  // 4. Pedagio por fracao de 100kg
   const taxaPedagioFracao = Number(rota.pedagio_fracao_100kg) || 0;
   const fracoes100kg = Math.ceil(peso / 100) || 1;
-  const pedagioTotal = fracoes100kg * taxaPedagioFracao;
+  const pedagioTotal = Math.round((fracoes100kg * taxaPedagioFracao) * 100) / 100;
 
-  // 4. Taxas fixas e contratuais
+  // 5. Taxas fixas e contratuais
   const cat = Number(rota.cat) || 0;
   const itrTas = Number(rota.itr_tas) || 0;
   const taxaFixa = Number(rota.taxa_fixa_itr_redespacho) || 0;
 
-  // 5. Subtotal Sem ICMS
-  const subtotalSemIcms = freteBase + adValoresValor + pedagioTotal + cat + itrTas + taxaFixa;
+  // 6. Subtotal Sem ICMS
+  const subtotalSemIcms = Math.round((freteBase + adValoresValor + grisValor + pedagioTotal + cat + itrTas + taxaFixa) * 100) / 100;
 
-  // 6. ICMS (calculo por dentro)
+  // 7. ICMS (calculo por dentro)
   const icmsCleanStr = String(rota.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
   const rawIcms = parseFloat(icmsCleanStr) || 0;
   const icmsPct = rawIcms <= 1 && rawIcms > 0 ? Number((rawIcms * 100).toFixed(4)) : rawIcms;
@@ -554,13 +563,13 @@ export function calcularFreteContratual(
   let valorIcms = 0;
 
   if (icmsPct > 0 && icmsPct < 100) {
-    totalComIcms = subtotalSemIcms / (1 - (icmsPct / 100));
-    valorIcms = totalComIcms - subtotalSemIcms;
+    totalComIcms = Math.round((subtotalSemIcms / (1 - (icmsPct / 100))) * 100) / 100;
+    valorIcms = Math.round((totalComIcms - subtotalSemIcms) * 100) / 100;
   }
 
-  // 7. Comparativo e Auditoria
-  const diferenca = frtCobrado > 0 ? frtCobrado - totalComIcms : 0;
-  const diferencaPct = totalComIcms > 0 && frtCobrado > 0 ? ((frtCobrado - totalComIcms) / totalComIcms) * 100 : 0;
+  // 8. Comparativo e Auditoria
+  const diferenca = frtCobrado > 0 ? Math.round((frtCobrado - totalComIcms) * 100) / 100 : 0;
+  const diferencaPct = totalComIcms > 0 && frtCobrado > 0 ? Number((((frtCobrado - totalComIcms) / totalComIcms) * 100).toFixed(2)) : 0;
 
   let statusAuditoria: StatusAuditoriaFrete = 'conforme';
   if (frtCobrado <= 0) {
@@ -582,6 +591,8 @@ export function calcularFreteContratual(
     freteBase,
     adValoresPct,
     adValoresValor,
+    grisPct,
+    grisValor,
     pedagioTotal,
     fracoes100kg,
     cat,
@@ -765,4 +776,246 @@ export function calcularKpisBahiaSul(entregas: BahiaSulEnriquecida[]): BahiaSulK
     taxaVinculoPct,
     atrasados,
   };
+}
+
+/* ==========================================================================
+ * Sugestão de vínculo com o Pedido de Compras (PO) do SAP
+ *
+ * A planilha da Bahia Sul chega com `nro_pedido` em branco na maioria das
+ * linhas (a transportadora nem sempre recebe o número do PO). Aqui montamos
+ * um PO *sugerido, para o comprador confirmar* — nunca gravado sozinho.
+ *
+ * Sinal âncora: o CNPJ do remetente (`rmt_cnpj`) tem de bater com o
+ * `cnpj_fornecedor` de algum PO (14 dígitos exatos). Sobre esse conjunto,
+ * ranqueamos por: PO ainda com item sem MIGO > proximidade do valor da
+ * mercadoria > proximidade da data do pedido com a emissão do CTe. NF não
+ * entra: `nfs_embarcadas` só reconcilia com o SAP depois do MIGO
+ * (`zl0170_miro.referencia`), e o alvo aqui é justamente o que ainda não tem
+ * MIGO.
+ * ========================================================================== */
+
+/** Só os dígitos — CNPJ com ou sem máscara vira a mesma chave. */
+export function normalizarCnpj(val: unknown): string {
+  return String(val ?? '').replace(/\D/g, '');
+}
+
+/** (fim − início) em dias corridos, lendo só os campos locais da data ISO. */
+function diasEntreISO(isoInicio: string, isoFim: string): number {
+  const a = new Date(isoInicio.slice(0, 10) + 'T00:00:00');
+  const b = new Date(isoFim.slice(0, 10) + 'T00:00:00');
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+const RE_ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
+
+/** Um PO do SAP condensado no que a sugestão de vínculo precisa. */
+export interface PedidoAgrupado {
+  documentoCompra: string;
+  /** 14 dígitos; `''` quando o PO não trouxe CNPJ. */
+  cnpj: string;
+  fornecedorNome: string;
+  /** Menor `data_doc` entre os itens do PO (ISO), ou `null`. */
+  dataPedido: string | null;
+  /** Soma de `valor_liquido` dos itens do PO. */
+  valorLiquido: number;
+  /** Ao menos um item do PO ainda sem `data_migo`. */
+  temItemSemMigo: boolean;
+}
+
+/**
+ * Condensa as linhas de `pedidos` (uma por item de PO) num registro por
+ * documento de compra. Aceita tanto a linha crua da tabela `pedidos`
+ * (`doc_compra`, `cnpj_fornecedor`, `valor_liquido`, `data_doc`, `data_migo`)
+ * quanto o `SAPPedido` já normalizado do `localDb` — daí os vários nomes de
+ * campo testados.
+ */
+export function agruparPedidosParaSugestao(
+  pedidos: Array<Record<string, unknown>>,
+): PedidoAgrupado[] {
+  const porDoc = new Map<string, PedidoAgrupado>();
+
+  for (const p of pedidos) {
+    const doc = String(p.documento_compra ?? p.doc_compra ?? '').trim();
+    if (!doc) continue;
+
+    const cnpj = normalizarCnpj(p.cnpj_fornecedor ?? p.cnpj);
+    const nome = String(p.fornecedor_name ?? p.fornecedor_nome ?? '').trim();
+    const dataDoc = String(p.data_pedido ?? p.data_doc ?? '').slice(0, 10) || null;
+    const valor = Number(p.valor_liquido ?? p.valor_em_brl ?? p.valor_brl ?? 0) || 0;
+    const semMigo = !String(p.data_migo ?? '').trim();
+
+    const atual = porDoc.get(doc);
+    if (!atual) {
+      porDoc.set(doc, {
+        documentoCompra: doc,
+        cnpj,
+        fornecedorNome: nome,
+        dataPedido: dataDoc && RE_ISO_DATE.test(dataDoc) ? dataDoc : null,
+        valorLiquido: valor,
+        temItemSemMigo: semMigo,
+      });
+      continue;
+    }
+    atual.valorLiquido += valor;
+    if (dataDoc && RE_ISO_DATE.test(dataDoc) && (!atual.dataPedido || dataDoc < atual.dataPedido)) {
+      atual.dataPedido = dataDoc;
+    }
+    if (semMigo) atual.temItemSemMigo = true;
+    if (!atual.cnpj && cnpj) atual.cnpj = cnpj;
+    if (!atual.fornecedorNome && nome) atual.fornecedorNome = nome;
+  }
+
+  return Array.from(porDoc.values());
+}
+
+export type ConfiancaSugestao = 'alta' | 'media' | 'baixa';
+
+export interface SugestaoPoBahiaSul {
+  documentoCompra: string;
+  fornecedorNome: string;
+  confianca: ConfiancaSugestao;
+  temItemSemMigo: boolean;
+  /** |vlr_mercadoria − valor do PO| ÷ valor do PO. `null` quando não dá para comparar. */
+  difValorRelativa: number | null;
+  /** Dias entre a data do PO e a emissão do CTe (negativo = PO depois do CTe). */
+  diasPedidoAteEmissao: number | null;
+  /** Outros POs do mesmo CNPJ, melhores primeiro — para o comprador trocar. */
+  alternativas: Array<{ documentoCompra: string; fornecedorNome: string }>;
+}
+
+// PO emitido pouco depois do embarque ainda conta; CTe até ~6 meses após o PO.
+const JANELA_ANTES_DIAS = 5;
+const JANELA_DEPOIS_DIAS = 180;
+// Diferença de valor até aqui já dá confiança "média" mesmo com vários candidatos.
+const DIF_VALOR_MEDIA = 0.15;
+
+/**
+ * PO sugerido para um CTe ainda sem `nro_pedido`. `null` quando não há CNPJ de
+ * 14 dígitos ou nenhum PO do mesmo fornecedor na janela de datas.
+ */
+export function sugerirPoBahiaSul(
+  entrega: BahiaSulEntrega,
+  pedidosAgrupados: PedidoAgrupado[],
+): SugestaoPoBahiaSul | null {
+  if (entrega.nro_pedido && entrega.nro_pedido.trim()) return null;
+
+  const cnpjAlvo = normalizarCnpj(entrega.rmt_cnpj);
+  if (cnpjAlvo.length !== 14) return null;
+
+  const emissao = entrega.emissao && RE_ISO_DATE.test(entrega.emissao) ? entrega.emissao.slice(0, 10) : null;
+  const vlrMerc = Number(entrega.vlr_mercadoria) || 0;
+
+  const dentroDaJanela = (dataPedido: string | null): boolean => {
+    if (!emissao || !dataPedido) return true; // sem data para comparar, não descarta
+    const dias = diasEntreISO(dataPedido, emissao);
+    return dias >= -JANELA_ANTES_DIAS && dias <= JANELA_DEPOIS_DIAS;
+  };
+
+  const candidatos = pedidosAgrupados
+    .filter(p => p.cnpj === cnpjAlvo && dentroDaJanela(p.dataPedido))
+    .map(p => ({
+      p,
+      difValorRelativa:
+        p.valorLiquido > 0 && vlrMerc > 0 ? Math.abs(vlrMerc - p.valorLiquido) / p.valorLiquido : null,
+      diasPedidoAteEmissao: emissao && p.dataPedido ? diasEntreISO(p.dataPedido, emissao) : null,
+    }))
+    .sort((a, b) => {
+      if (a.p.temItemSemMigo !== b.p.temItemSemMigo) return a.p.temItemSemMigo ? -1 : 1;
+      const da = a.difValorRelativa ?? Number.POSITIVE_INFINITY;
+      const db = b.difValorRelativa ?? Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+      const ta = a.diasPedidoAteEmissao === null ? Number.POSITIVE_INFINITY : Math.abs(a.diasPedidoAteEmissao);
+      const tb = b.diasPedidoAteEmissao === null ? Number.POSITIVE_INFINITY : Math.abs(b.diasPedidoAteEmissao);
+      if (ta !== tb) return ta - tb;
+      return a.p.documentoCompra.localeCompare(b.p.documentoCompra);
+    });
+
+  if (candidatos.length === 0) return null;
+
+  const [melhor, ...resto] = candidatos;
+
+  let confianca: ConfiancaSugestao;
+  if (candidatos.length === 1) {
+    confianca = 'alta';
+  } else if ((melhor.difValorRelativa !== null && melhor.difValorRelativa <= DIF_VALOR_MEDIA) || melhor.p.temItemSemMigo) {
+    confianca = 'media';
+  } else {
+    confianca = 'baixa';
+  }
+
+  return {
+    documentoCompra: melhor.p.documentoCompra,
+    fornecedorNome: melhor.p.fornecedorNome,
+    confianca,
+    temItemSemMigo: melhor.p.temItemSemMigo,
+    difValorRelativa: melhor.difValorRelativa,
+    diasPedidoAteEmissao: melhor.diasPedidoAteEmissao,
+    alternativas: resto.slice(0, 3).map(r => ({
+      documentoCompra: r.p.documentoCompra,
+      fornecedorNome: r.p.fornecedorNome,
+    })),
+  };
+}
+
+/* ==========================================================================
+ * Resumo por PO das entregas JÁ vinculadas — alimenta o Diligenciamento
+ * (previsão + transportadora dos itens sem MIGO) e o lançamento automático de
+ * chegada no almoxarifado quando o CTe fica "ENTREGUE".
+ * ========================================================================== */
+
+export interface ResumoBahiaSulPorPo {
+  /** `nro_pedido` como veio na planilha (cru, trimado). */
+  documentoCompra: string;
+  /** Menor `prv_chegada`/`prv_entrega` entre os CTes do PO ainda não entregues. */
+  previsaoChegada: string | null;
+  /** `entrega` ?? `chegada` do CTe entregue mais recente — a data para lançar no almox. */
+  dataChegadaFisica: string | null;
+  /** Ao menos um CTe do PO já está "ENTREGUE". */
+  entregue: boolean;
+  ctos: string[];
+}
+
+/**
+ * Indexa as entregas com `nro_pedido` preenchido por PO (chave =
+ * `normalizePoNumber(nro_pedido)`, para casar com o PO do SAP sem tropeçar em
+ * zero à esquerda). Um PO pode ter mais de um CTe (remessas parciais).
+ */
+export function resumirBahiaSulPorPo(entregas: BahiaSulEntrega[]): Map<string, ResumoBahiaSulPorPo> {
+  const porPo = new Map<string, ResumoBahiaSulPorPo>();
+
+  for (const e of entregas) {
+    if (!e.nro_pedido || !e.nro_pedido.trim()) continue;
+    const chave = normalizePoNumber(e.nro_pedido);
+    if (!chave) continue;
+
+    const situacao = (e.situacao || '').toUpperCase();
+    const entregue = situacao.includes('ENTREGUE') || !!e.entrega;
+    const dataFisica = e.entrega || e.chegada || null;
+    const prev = e.prv_chegada || e.prv_entrega || null;
+
+    const atual = porPo.get(chave);
+    if (!atual) {
+      porPo.set(chave, {
+        documentoCompra: e.nro_pedido.trim(),
+        previsaoChegada: entregue ? null : prev,
+        dataChegadaFisica: entregue ? dataFisica : null,
+        entregue,
+        ctos: [e.cto_numero],
+      });
+      continue;
+    }
+
+    atual.ctos.push(e.cto_numero);
+    if (!entregue && prev && (!atual.previsaoChegada || prev < atual.previsaoChegada)) {
+      atual.previsaoChegada = prev;
+    }
+    if (entregue) {
+      atual.entregue = true;
+      if (dataFisica && (!atual.dataChegadaFisica || dataFisica > atual.dataChegadaFisica)) {
+        atual.dataChegadaFisica = dataFisica;
+      }
+    }
+  }
+
+  return porPo;
 }

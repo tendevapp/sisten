@@ -21,6 +21,7 @@ import { formatDateBR, formatQtd } from '../../lib/format';
 import { PREFIXO, hojeISO } from '../../lib/projetos';
 import { explodirRecebimento, ExplosaoIndisponivelError, type NoBom } from '../../lib/projetosBom';
 import { proximoCodigo, registrarEntradaNf, estornarDocumento } from '../../lib/projetosApi';
+import ImportarNotasEntrada from './ImportarNotasEntrada';
 import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
@@ -40,7 +41,7 @@ interface LinhaCredito {
 
 export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
   const toast = useToast();
-  const { arvore, itemPorPn, notas, subprojetoAtivo, loading, recarregar } = dados;
+  const { arvore, itemPorPn, notas, itens, tramos, subprojetos, subprojetoAtivo, loading, recarregar } = dados;
 
   const [aberto, setAberto] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -227,13 +228,23 @@ export default function PainelRecebimento({ dados, user, podeLancar }: Props) {
           {notas.length} nota(s) lançada(s) neste projeto.
         </p>
         {podeLancar ? (
-          <button
-            onClick={() => { limpar(); setAberto(true); }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white shadow-sm hover:opacity-90 active:scale-95"
-            style={{ background: 'var(--brand)' }}
-          >
-            <Plus className="h-4 w-4" /> Nova entrada de NF
-          </button>
+          <div className="flex items-center gap-2">
+            <ImportarNotasEntrada
+              itens={itens}
+              tramos={tramos}
+              subprojetos={subprojetos}
+              subprojetoAtivoId={subprojetoAtivo?.id}
+              user={user}
+              onImportado={() => void recarregar(true)}
+            />
+            <button
+              onClick={() => { limpar(); setAberto(true); }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white shadow-sm hover:opacity-90 active:scale-95"
+              style={{ background: 'var(--brand)' }}
+            >
+              <Plus className="h-4 w-4" /> Nova entrada de NF
+            </button>
+          </div>
         ) : (
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
             Você tem acesso de consulta. Lançar entrada exige a permissão “Projetos: lançar entrada de NF”.

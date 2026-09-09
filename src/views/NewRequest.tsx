@@ -23,6 +23,10 @@ import MaterialSearchModal from '../components/MaterialSearchModal';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { novoItemId } from '../lib/ids';
 import {
+  consultarCnpj, formatarCnpj, formatarCpf, cpfValido,
+  REGIMES_TRIBUTARIOS, type CnpjInfo,
+} from '../lib/cnpjLookup';
+import {
   podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
   ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado,
 } from '../lib/solicitacoes';
@@ -293,6 +297,13 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [sapRegSpecs, setSapRegSpecs] = useState('');
   const [sapRegBrand, setSapRegBrand] = useState('');
   const [sapRegVendorInfo, setSapRegVendorInfo] = useState(''); // CNPJ / Site or vendor suggestion
+  // Consulta de CNPJ (novo fornecedor): busca em base pública, regime a
+  // confirmar e — quando MEI — CPF do titular. Ver src/lib/cnpjLookup.ts.
+  const [sapCnpjBuscando, setSapCnpjBuscando] = useState(false);
+  const [sapCnpjErro, setSapCnpjErro] = useState('');
+  const [sapCnpjInfo, setSapCnpjInfo] = useState<CnpjInfo | null>(null);
+  const [sapRegimeTributario, setSapRegimeTributario] = useState('');
+  const [sapMeiCpf, setSapMeiCpf] = useState('');
   const [sapRepresentanteNome, setSapRepresentanteNome] = useState('');
   const [sapRepresentanteCargo, setSapRepresentanteCargo] = useState('');
   const [sapRepresentanteTelefone, setSapRepresentanteTelefone] = useState('');
@@ -400,7 +411,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // editar, faz o parse reverso pra não deixar os campos em branco.
       const itemMatch = req.justificativa.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: ([\s\S]*)$/);
       const atualizacaoMatch = req.justificativa.match(/Operação:\s*Atualização de Cadastro\.\s*Cód\. Fornecedor SAP:\s*(.*?)\.(?:\s*NOVO Nome:\s*(.*?)\.)?\s*Justificativa:\s*([\s\S]*)$/i);
-      const fornecedorMatch = itemMatch || atualizacaoMatch ? null : req.justificativa.match(/^Nome: (.*?)\. Justificativa: ([\s\S]*)$/);
+      const fornecedorMatch = itemMatch || atualizacaoMatch
+        ? null
+        : req.justificativa.match(/^Nome: (.*?)\.(?: CNPJ: (.*?)\.)?(?: Regime: (.*?)\.)?(?: CPF do titular: (.*?)\.)?(?: Pendente:[^.]*\.)? Justificativa: ([\s\S]*)$/);
       if (itemMatch) {
         setSapRegName(itemMatch[1]);
         setSapRegSpecs(itemMatch[2]);
@@ -412,7 +425,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         setJustificativa(atualizacaoMatch[3].trim());
       } else if (fornecedorMatch) {
         setSapRegName(fornecedorMatch[1]);
-        setJustificativa(fornecedorMatch[2]);
+        if (fornecedorMatch[2] && fornecedorMatch[2] !== '—') setSapRegBrand(fornecedorMatch[2].trim());
+        if (fornecedorMatch[3] && fornecedorMatch[3] !== '—') setSapRegimeTributario(fornecedorMatch[3].trim());
+        if (fornecedorMatch[4]) setSapMeiCpf(fornecedorMatch[4].trim());
+        setJustificativa(fornecedorMatch[5]);
       }
       if (req.brand) setSapRegBrand(req.brand);
       if (req.suggested_supplier) setSapRegVendorInfo(req.suggested_supplier);
@@ -495,6 +511,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.sapRegSpecs) setSapRegSpecs(parsed.sapRegSpecs);
         if (parsed.sapRegBrand) setSapRegBrand(parsed.sapRegBrand);
         if (parsed.sapRegVendorInfo) setSapRegVendorInfo(parsed.sapRegVendorInfo);
+        if (parsed.sapRegimeTributario) setSapRegimeTributario(parsed.sapRegimeTributario);
+        if (parsed.sapMeiCpf) setSapMeiCpf(parsed.sapMeiCpf);
         if (parsed.sapRepresentanteNome) setSapRepresentanteNome(parsed.sapRepresentanteNome);
         if (parsed.sapRepresentanteCargo) setSapRepresentanteCargo(parsed.sapRepresentanteCargo);
         if (parsed.sapRepresentanteTelefone) setSapRepresentanteTelefone(parsed.sapRepresentanteTelefone);
@@ -546,6 +564,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   }, [
     activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
     items, registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+    sapRegimeTributario, sapMeiCpf,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
     chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
     juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
@@ -566,6 +585,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       // object URL morto, o que reencheria o rascunho de chips quebrados.
       items: items.map(({ attachments, ...resto }) => resto),
       registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
+      sapRegimeTributario, sapMeiCpf,
       sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
       chamadoSectorId, helpdeskSectorId, helpdeskCategory, helpdeskLocal,
       juridicoTitulo, juridicoTipoContrato, juridicoFornecedor, pendenciasTexto,
@@ -603,6 +623,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setSapRegSpecs('');
     setSapRegBrand('');
     setSapRegVendorInfo('');
+    setSapCnpjErro('');
+    setSapCnpjInfo(null);
+    setSapRegimeTributario('');
+    setSapMeiCpf('');
     setSapRepresentanteNome('');
     setSapRepresentanteCargo('');
     setSapRepresentanteTelefone('');
@@ -957,6 +981,23 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
       );
     }
 
+    if (registrationType === 'Fornecedor' && !isAtualizacao) {
+      linhas.push('', `Regime tributário (confirmado pelo solicitante): ${sapRegimeTributario || '—'}`);
+      if (sapCnpjInfo) {
+        linhas.push(
+          `Situação cadastral na Receita: ${sapCnpjInfo.situacaoCadastral || '—'}`,
+          `Porte: ${sapCnpjInfo.porte || '—'}`,
+          `Endereço: ${[sapCnpjInfo.endereco, sapCnpjInfo.municipio, sapCnpjInfo.uf].filter(Boolean).join(' - ') || '—'}`
+        );
+      }
+      if (sapRegimeTributario === 'MEI') {
+        linhas.push(
+          `CPF do titular (MEI): ${sapMeiCpf || '—'}`,
+          'PENDENTE: o solicitante deve enviar por e-mail a cópia do documento com CPF do titular e o comprovante de residência atualizado. O cadastro só avança após o recebimento.'
+        );
+      }
+    }
+
     if (registrationType === 'Item') {
       linhas.push('', `Especificações técnicas: ${sapRegSpecs}`);
     }
@@ -974,6 +1015,34 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     );
 
     return linhas.join('\n');
+  };
+
+  const meiExigeCpf = registrationType === 'Fornecedor'
+    && sapFornecedorOperacao === 'novo'
+    && sapRegimeTributario === 'MEI';
+
+  // Consulta o CNPJ digitado em base pública e mostra o resultado no painel de
+  // referência — sem preencher os campos do formulário (decisão do time: o
+  // solicitante digita/confere manualmente). Só o próprio campo de CNPJ é
+  // normalizado com a máscara; `sapRegBrand` segue no payload e no e-mail.
+  const handleBuscarCnpj = async () => {
+    setSapCnpjErro('');
+    try {
+      setSapCnpjBuscando(true);
+      const info = await consultarCnpj(sapRegBrand);
+      setSapCnpjInfo(info);
+      setSapRegBrand(info.cnpj);
+      if (info.situacaoCadastral && info.situacaoCadastral !== 'ATIVA') {
+        toast.info(`Atenção: situação cadastral "${info.situacaoCadastral}" na Receita.`);
+      } else {
+        toast.success('Dados do CNPJ carregados no painel. Copie o que precisar e confirme o regime.');
+      }
+    } catch (err) {
+      setSapCnpjInfo(null);
+      setSapCnpjErro(err instanceof Error ? err.message : 'Não foi possível consultar o CNPJ.');
+    } finally {
+      setSapCnpjBuscando(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1027,12 +1096,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             return;
           }
         } else {
+          if (!sapRegBrand.trim()) {
+            alert('Informe o CNPJ do fornecedor.');
+            return;
+          }
           if (!sapRegName.trim()) {
             alert('Informe a Razão Social / Nome Fantasia.');
             return;
           }
-          if (!sapRegBrand.trim()) {
-            alert('Informe o CNPJ / Site corporativo.');
+          if (sapRegimeTributario === 'MEI' && !cpfValido(sapMeiCpf)) {
+            alert('Fornecedor MEI: informe um CPF do titular válido.');
             return;
           }
           if (!justificativa.trim()) {
@@ -1135,7 +1208,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             ? `Nome: ${sapRegName}. Specs: ${sapRegSpecs}. Justificativa: ${justificativa}`
             : isAtualizacao
               ? `Operação: Atualização de Cadastro. Cód. Fornecedor SAP: ${sapVendorCode.trim()}.${sapRegName.trim() ? ` NOVO Nome: ${sapRegName.trim()}.` : ''} Justificativa: ${justificativa}`
-              : `Nome: ${sapRegName}. Justificativa: ${justificativa}`,
+              : `Nome: ${sapRegName}. CNPJ: ${sapRegBrand.trim() || '—'}. Regime: ${sapRegimeTributario || '—'}.${sapRegimeTributario === 'MEI' ? ` CPF do titular: ${sapMeiCpf.trim()}. Pendente: enviar por e-mail o documento do CPF e o comprovante de residência do titular.` : ''} Justificativa: ${justificativa}`,
           brand: sapRegBrand,
           suggested_supplier: sapRegVendorInfo,
           ...(registrationType === 'Fornecedor' && {
@@ -2072,6 +2145,125 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               )}
 
+              {registrationType === 'Fornecedor' && sapFornecedorOperacao === 'novo' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className={labelClass} style={labelStyle}>CNPJ *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        required
+                        placeholder="00.000.000/0001-00"
+                        value={sapRegBrand}
+                        onChange={(e) => { setSapRegBrand(formatarCnpj(e.target.value)); setSapCnpjErro(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBuscarCnpj(); } }}
+                        className={fieldClass}
+                        style={fieldStyle}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleBuscarCnpj}
+                        disabled={sapCnpjBuscando || !sapRegBrand.trim()}
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-50 cursor-pointer transition-colors"
+                        style={{ background: 'var(--brand)' }}
+                      >
+                        {sapCnpjBuscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                        Buscar
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+                      Consulta a base pública da Receita (BrasilAPI) e mostra os dados no painel de referência.
+                      Os campos abaixo <strong>não são preenchidos</strong> — copie o que precisar e confirme o regime.
+                    </p>
+                    {sapCnpjErro && <p className="mt-1 text-xs font-semibold text-red-600">{sapCnpjErro}</p>}
+                  </div>
+
+                  {sapCnpjInfo && (
+                    <div
+                      className="rounded-lg border p-3 text-xs space-y-1"
+                      style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--ink-muted)' }}>
+                        Consulta Receita — referência (não preenche o formulário)
+                      </p>
+                      <p className="font-bold" style={{ color: 'var(--ink)' }}>{sapCnpjInfo.razaoSocial || '—'}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--ink-muted)' }}>
+                        {sapCnpjInfo.nomeFantasia && <span className="sm:col-span-2">Nome fantasia: {sapCnpjInfo.nomeFantasia}</span>}
+                        <span>CNPJ: {sapCnpjInfo.cnpj}</span>
+                        <span>Situação: <strong>{sapCnpjInfo.situacaoCadastral || '—'}</strong></span>
+                        <span>Porte: {sapCnpjInfo.porte || '—'}</span>
+                        <span>Natureza jurídica: {sapCnpjInfo.naturezaJuridica || '—'}</span>
+                        {sapCnpjInfo.cnaePrincipal && <span className="sm:col-span-2">CNAE: {sapCnpjInfo.cnaePrincipal}</span>}
+                        {sapCnpjInfo.endereco && (
+                          <span className="sm:col-span-2">
+                            {[sapCnpjInfo.endereco, sapCnpjInfo.municipio, sapCnpjInfo.uf, sapCnpjInfo.cep].filter(Boolean).join(' - ')}
+                          </span>
+                        )}
+                        {sapCnpjInfo.email && <span>E-mail: {sapCnpjInfo.email}</span>}
+                        {sapCnpjInfo.telefone && <span>Telefone: {sapCnpjInfo.telefone}</span>}
+                      </div>
+                      <p className="pt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                        Regime sugerido pela Receita: <strong>{sapCnpjInfo.regimeSugerido}</strong> — confirme abaixo.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass} style={labelStyle}>Regime tributário (confirmar)</label>
+                      <select
+                        value={sapRegimeTributario}
+                        onChange={(e) => { setSapRegimeTributario(e.target.value); if (e.target.value !== 'MEI') setSapMeiCpf(''); }}
+                        className={`${fieldClass} cursor-pointer`}
+                        style={fieldStyle}
+                      >
+                        <option value="">Selecione...</option>
+                        {REGIMES_TRIBUTARIOS.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {meiExigeCpf && (
+                      <div>
+                        <label className={labelClass} style={labelStyle}>CPF do titular (MEI) *</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          required
+                          placeholder="000.000.000-00"
+                          value={sapMeiCpf}
+                          onChange={(e) => setSapMeiCpf(formatarCpf(e.target.value))}
+                          className={fieldClass}
+                          style={fieldStyle}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {meiExigeCpf && (
+                    <div
+                      className="rounded-lg border p-3 flex items-start gap-2.5"
+                      style={{
+                        borderColor: 'color-mix(in srgb, var(--brand-amber, #d97706) 30%, transparent)',
+                        background: 'color-mix(in srgb, var(--brand-amber, #f59e0b) 8%, var(--surface-card))'
+                      }}
+                    >
+                      <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                      <div className="text-xs">
+                        <p className="font-bold text-amber-900">Fornecedor MEI — documentos por e-mail</p>
+                        <p className="text-amber-800/90 mt-0.5">
+                          Envie para o Suprimentos (ana.leite@ten.ind.br), por e-mail, a cópia do documento de
+                          identificação com CPF do titular e um comprovante de residência atualizado. O cadastro
+                          só avança após o recebimento — o CPF e este aviso seguem anexados à solicitação.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {registrationType === 'Fornecedor' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {sapFornecedorOperacao === 'atualizacao' ? (
@@ -2118,26 +2310,27 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass} style={labelStyle}>
-                    {registrationType === 'Item'
-                      ? 'Fabricante *'
-                      : sapFornecedorOperacao === 'atualizacao'
-                        ? 'NOVO CNPJ / Site corporativo'
-                        : 'CNPJ / Site corporativo *'}
-                  </label>
-                  <input
-                    type="text"
-                    required={registrationType === 'Item' || sapFornecedorOperacao === 'novo'}
-                    placeholder={registrationType === 'Item' ? 'Ex: Belgo Bekaert' : 'Ex: 00.000.000/0001-00'}
-                    value={sapRegBrand}
-                    onChange={(e) => setSapRegBrand(e.target.value)}
-                    className={fieldClass}
-                    style={fieldStyle}
-                  />
-                </div>
+                {/* Fornecedor novo já capturou o CNPJ no campo de busca acima. */}
+                {!(registrationType === 'Fornecedor' && sapFornecedorOperacao === 'novo') && (
+                  <div>
+                    <label className={labelClass} style={labelStyle}>
+                      {registrationType === 'Item'
+                        ? 'Fabricante *'
+                        : 'NOVO CNPJ / Site corporativo'}
+                    </label>
+                    <input
+                      type="text"
+                      required={registrationType === 'Item'}
+                      placeholder={registrationType === 'Item' ? 'Ex: Belgo Bekaert' : 'Ex: 00.000.000/0001-00'}
+                      value={sapRegBrand}
+                      onChange={(e) => setSapRegBrand(e.target.value)}
+                      className={fieldClass}
+                      style={fieldStyle}
+                    />
+                  </div>
+                )}
 
-                <div>
+                <div className={registrationType === 'Fornecedor' && sapFornecedorOperacao === 'novo' ? 'sm:col-span-2' : ''}>
                   <label className={labelClass} style={labelStyle}>
                     {registrationType === 'Item'
                       ? 'Fornecedor de Referência'

@@ -8,6 +8,9 @@ import {
   montarArvore,
   folhasDe,
   consumoPorTramo,
+  consumoPorTramoFiltrado,
+  folhasDoTramoFiltradas,
+  comAncestrais,
   explodirRecebimento,
   subconjuntosDoTramo,
   auditarBom,
@@ -115,6 +118,72 @@ describe('consumoPorTramo', () => {
     expect(t2.get('403000075')!.qtdPorTorre).toBe(14);
     expect(t2.get('403000075')!.linhasBom).toBe(2);
   });
+
+  it('registra os níveis distintos que compõem a quantidade de cada item', () => {
+    const t1 = consumoPorTramo(montarArvore(RECORTE_478)).get('T1')!;
+    // 479..484 são todas nível 4 no recorte — um único nível.
+    expect(t1.get('601051388')!.niveis).toEqual([4]);
+  });
+
+  it('acumula vários níveis quando o mesmo item aparece em profundidades diferentes', () => {
+    const linhas: BomLinha[] = [
+      { id: 1, level: 1, section: 'S1', group: 'A', part_number: 'PAI1', quantity: 1 },
+      { id: 2, level: 2, section: 'S1', group: 'A', part_number: 'PARAFUSO', quantity: 5 },
+      { id: 3, level: 1, section: 'S1', group: 'B', part_number: 'PAI2', quantity: 1 },
+      { id: 4, level: 2, section: 'S1', group: 'B', part_number: 'X', quantity: 1 },
+      { id: 5, level: 3, section: 'S1', group: 'B', part_number: 'PARAFUSO', quantity: 3 },
+    ];
+    const t1 = consumoPorTramo(montarArvore(linhas)).get('T1')!;
+    expect(t1.get('PARAFUSO')!.qtdPorTorre).toBe(8);
+    expect(t1.get('PARAFUSO')!.niveis).toEqual([2, 3]);
+  });
+});
+
+describe('consumoPorTramoFiltrado — a base do romaneio por zona', () => {
+  const linhas: BomLinha[] = [
+    { id: 1, level: 1, section: 'S1', group: 'ESCADA', part_number: 'PAI-ESC', quantity: 1 },
+    { id: 2, level: 2, section: 'S1', group: 'ESCADA', part_number: 'DEGRAU', quantity: 10 },
+    { id: 3, level: 2, section: 'S1', group: 'ESCADA', part_number: 'PARAFUSO', quantity: 4 },
+    { id: 4, level: 1, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'PAI-SUP', quantity: 1 },
+    { id: 5, level: 2, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'CHAPA', quantity: 2 },
+    { id: 6, level: 2, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'PARAFUSO', quantity: 6 },
+    { id: 7, level: 1, section: 'S1', group: 'ELETRICO', part_number: 'PAI-ELE', quantity: 1 },
+    { id: 8, level: 2, section: 'S1', group: 'ELETRICO', part_number: 'CABO', quantity: 1 },
+  ];
+
+  it('incluirGrupos: soma só as linhas do(s) grupo(s) pedido(s) — a mesma peça em outro grupo não entra', () => {
+    const t1 = consumoPorTramoFiltrado(montarArvore(linhas), { incluirGrupos: ['ESCADA'] }).get('T1')!;
+    expect(Array.from(t1.keys()).sort()).toEqual(['DEGRAU', 'PARAFUSO']);
+    // PARAFUSO tem 4 na escada e 6 na plataforma — só os 4 da escada entram aqui.
+    expect(t1.get('PARAFUSO')!.qtdPorTorre).toBe(4);
+  });
+
+  it('o mesmo item em dois grupos incluídos soma as duas fatias, não conta 2x por acaso', () => {
+    const t1 = consumoPorTramoFiltrado(montarArvore(linhas), { incluirGrupos: ['ESCADA', 'PLATAFORMA SUPERIOR'] }).get('T1')!;
+    expect(t1.get('PARAFUSO')!.qtdPorTorre).toBe(10); // 4 + 6
+  });
+
+  it('excluirGrupos: cobre o residual — tudo que não está nos grupos nomeados', () => {
+    const t1 = consumoPorTramoFiltrado(montarArvore(linhas), { excluirGrupos: ['ESCADA', 'PLATAFORMA SUPERIOR'] }).get('T1')!;
+    expect(Array.from(t1.keys()).sort()).toEqual(['CABO']);
+  });
+
+  it('sem opções, é idêntico a consumoPorTramo (romaneio inteiro)', () => {
+    const arvore = montarArvore(linhas);
+    const semFiltro = consumoPorTramoFiltrado(arvore);
+    const original = consumoPorTramo(arvore);
+    expect(semFiltro.get('T1')!.size).toBe(original.get('T1')!.size);
+    expect(semFiltro.get('T1')!.get('PARAFUSO')!.qtdPorTorre).toBe(original.get('T1')!.get('PARAFUSO')!.qtdPorTorre);
+  });
+
+  it('incluirGrupos + excluirGrupos juntos combinam por E — uso normal é só um dos dois', () => {
+    const t1 = consumoPorTramoFiltrado(montarArvore(linhas), {
+      incluirGrupos: ['ESCADA', 'PLATAFORMA SUPERIOR'],
+      excluirGrupos: ['ESCADA'],
+    }).get('T1')!;
+    expect(Array.from(t1.keys()).sort()).toEqual(['CHAPA', 'PARAFUSO']);
+    expect(t1.get('PARAFUSO')!.qtdPorTorre).toBe(6); // só a fatia da plataforma — a da escada foi excluída
+  });
 });
 
 describe('explodirRecebimento', () => {
@@ -221,5 +290,42 @@ describe('auditarBom', () => {
       { id: 2, level: 2, section: 'S1', group: 'ESCADA', part_number: 'B', quantity: 2, cod_sap: '2' },
     ];
     expect(auditarBom(montarArvore(linhas))).toHaveLength(0);
+  });
+});
+
+describe('folhasDoTramoFiltradas + comAncestrais — a árvore do relatório de romaneio', () => {
+  const linhas: BomLinha[] = [
+    { id: 1, level: 1, section: 'S1', group: 'ESCADA', part_number: 'PAI-ESC', quantity: 1 },
+    { id: 2, level: 2, section: 'S1', group: 'ESCADA', part_number: 'SUB-ESC', quantity: 1 },
+    { id: 3, level: 3, section: 'S1', group: 'ESCADA', part_number: 'DEGRAU', quantity: 10 },
+    { id: 4, level: 1, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'PAI-SUP', quantity: 1 },
+    { id: 5, level: 2, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'CHAPA', quantity: 2 },
+    { id: 6, level: 2, section: 'S1', group: 'PLATAFORMA SUPERIOR', part_number: 'PARAFUSO', quantity: 6 },
+  ];
+  const arvore = montarArvore(linhas);
+
+  it('folhasDoTramoFiltradas devolve só as folhas do grupo pedido', () => {
+    const folhas = folhasDoTramoFiltradas(arvore, 'T1', { incluirGrupos: ['ESCADA'] });
+    expect(folhas.map((f) => f.partNumber)).toEqual(['DEGRAU']);
+  });
+
+  it('comAncestrais inclui o pai e o avô de cada folha, sem duplicar', () => {
+    const folhas = folhasDoTramoFiltradas(arvore, 'T1', { incluirGrupos: ['ESCADA'] });
+    const comPais = comAncestrais(arvore, folhas);
+    expect(comPais.map((n) => n.partNumber)).toEqual(['PAI-ESC', 'SUB-ESC', 'DEGRAU']);
+  });
+
+  it('duas folhas do mesmo ramo não duplicam o pai comum', () => {
+    const folhas = folhasDoTramoFiltradas(arvore, 'T1', { incluirGrupos: ['PLATAFORMA SUPERIOR'] });
+    const comPais = comAncestrais(arvore, folhas);
+    expect(comPais.map((n) => n.partNumber)).toEqual(['PAI-SUP', 'CHAPA', 'PARAFUSO']);
+    expect(comPais.filter((n) => n.partNumber === 'PAI-SUP')).toHaveLength(1);
+  });
+
+  it('mantém a ordem do id (a ordem de indentação da BOM)', () => {
+    const folhas = folhasDoTramoFiltradas(arvore, 'T1', {});
+    const comPais = comAncestrais(arvore, folhas);
+    const ids = comPais.map((n) => n.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
   });
 });

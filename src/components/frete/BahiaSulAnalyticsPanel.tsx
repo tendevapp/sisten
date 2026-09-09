@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Truck, Search, Filter, RefreshCw, Upload, FileSpreadsheet,
   Calendar, CheckCircle2, Clock, AlertTriangle, ChevronRight,
   ExternalLink, Package, ArrowRight, ShieldCheck, MapPin,
   Scale, DollarSign, X, Edit2, Check, HelpCircle,
-  Calculator, TrendingUp, TrendingDown
+  Calculator, TrendingUp, TrendingDown, Sparkles, PackageCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../../db/localDb';
@@ -18,8 +18,12 @@ import { BahiaSulEntrega, SAPPedido, Profile, TabelaFrete, StatusAuditoriaFrete 
 import {
   enriquecerEntregasComPedidos,
   calcularKpisBahiaSul,
+  agruparPedidosParaSugestao,
+  sugerirPoBahiaSul,
   BahiaSulEnriquecida,
-  BahiaSulKpis
+  BahiaSulKpis,
+  SugestaoPoBahiaSul,
+  ConfiancaSugestao
 } from '../../lib/bahiasul';
 import { useToast } from '../ui/Toast';
 import BahiaSulUploadModal from './BahiaSulUploadModal';
@@ -27,6 +31,33 @@ import BahiaSulUploadModal from './BahiaSulUploadModal';
 interface BahiaSulAnalyticsPanelProps {
   user: Profile;
   onNavigate?: (path: string) => void;
+}
+
+const CONFIANCA_BADGE: Record<ConfiancaSugestao, string> = {
+  alta: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  media: 'bg-amber-50 text-amber-700 border-amber-200',
+  baixa: 'bg-slate-100 text-slate-500 border-slate-200',
+};
+
+/**
+ * CTe cujo REMETENTE é a própria TEN (Torres Eólicas do Nordeste) — carga que
+ * sai da fábrica, não compra que chega. Vai para a seção "Frete Enviado".
+ */
+function isFreteEnviado(rmtNome?: string | null): boolean {
+  return /torres\s+e[oó]lica/i.test(rmtNome || '');
+}
+
+// Confiança das sugestões que o Sisten confirma sozinho ao abrir o painel.
+const CONFIRMA_AUTOMATICO: ConfiancaSugestao[] = ['alta', 'media'];
+
+/** Texto do tooltip do badge de confiança — mostra por que o PO foi sugerido. */
+function sugestaoTitulo(s: SugestaoPoBahiaSul): string {
+  const partes: string[] = [`Sugerido por CNPJ do remetente`];
+  if (s.temItemSemMigo) partes.push('PO ainda com item sem MIGO');
+  if (s.difValorRelativa !== null) partes.push(`valor difere ${(s.difValorRelativa * 100).toFixed(0)}% do PO`);
+  if (s.diasPedidoAteEmissao !== null) partes.push(`CTe emitido ${s.diasPedidoAteEmissao}d após o PO`);
+  if (s.alternativas.length > 0) partes.push(`${s.alternativas.length} outro(s) PO candidato(s)`);
+  return partes.join(' • ');
 }
 
 export default function BahiaSulAnalyticsPanel({
@@ -51,6 +82,9 @@ export default function BahiaSulAnalyticsPanel({
   const [editingPoChave, setEditingPoChave] = useState<string | null>(null);
   const [inputPoNumber, setInputPoNumber] = useState('');
   const [savingPo, setSavingPo] = useState(false);
+
+  // Lançamento de chegada no almoxarifado a partir dos CTes já entregues
+  const [aplicandoChegadas, setAplicandoChegadas] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -95,6 +129,53 @@ export default function BahiaSulAnalyticsPanel({
   const kpis: BahiaSulKpis = useMemo(() => {
     return calcularKpisBahiaSul(entregasEnriquecidas);
   }, [entregasEnriquecidas]);
+
+  // PO SUGERIDO (para confirmação): CTe sem vínculo cujo CNPJ do remetente bate
+  // com um PO do SAP na janela de datas. Nada é gravado sem o clique em Confirmar.
+  const pedidosAgrupados = useMemo(() => agruparPedidosParaSugestao(pedidosSap as any), [pedidosSap]);
+
+  const sugestaoPorChave = useMemo(() => {
+    const mapa = new Map<string, SugestaoPoBahiaSul>();
+    for (const ent of entregas) {
+      if (ent.nro_pedido && ent.nro_pedido.trim()) continue;
+      const s = sugerirPoBahiaSul(ent, pedidosAgrupados);
+      if (s) mapa.set(ent.chave_unica, s);
+    }
+    return mapa;
+  }, [entregas, pedidosAgrupados]);
+
+  const totalSugestoes = sugestaoPorChave.size;
+
+  // Confirma automaticamente as sugestões de confiança alta/média assim que os
+  // dados carregam (uma vez por conjunto). Ficam marcadas com a estrela amarela
+  // (`vinculo_origem = 'sugestao'`) e o comprador ainda pode editar/trocar.
+  const autoVinculoFeito = useRef(false);
+  useEffect(() => {
+    if (autoVinculoFeito.current) return;
+    if (loading || entregas.length === 0 || pedidosAgrupados.length === 0) return;
+
+    const pares: Array<{ chaveUnica: string; nroPedido: string }> = [];
+    for (const [chave, sug] of sugestaoPorChave) {
+      if (CONFIRMA_AUTOMATICO.includes(sug.confianca)) {
+        pares.push({ chaveUnica: chave, nroPedido: sug.documentoCompra });
+      }
+    }
+    autoVinculoFeito.current = true;
+    if (pares.length === 0) return;
+
+    (async () => {
+      const n = await localDb.vincularBahiaSulSugeridos(pares);
+      if (n > 0) {
+        const porChave = new Map(pares.map(p => [p.chaveUnica, p.nroPedido]));
+        setEntregas(prev => prev.map(e =>
+          porChave.has(e.chave_unica)
+            ? { ...e, nro_pedido: porChave.get(e.chave_unica)!, vinculo_origem: 'sugestao' as const }
+            : e,
+        ));
+        toast.info(`Sisten vinculou ${n} pedido(s) sugerido(s) — revise a estrela amarela.`);
+      }
+    })();
+  }, [loading, entregas, pedidosAgrupados, sugestaoPorChave, toast]);
 
   // Lista filtrada
   const entregasFiltradas = useMemo(() => {
@@ -142,24 +223,70 @@ export default function BahiaSulAnalyticsPanel({
     });
   }, [entregasEnriquecidas, statusFilter, vinculoFilter, auditoriaFilter, searchTerm]);
 
-  // Salva o vínculo manual com PO
-  const handleSavePo = async (chaveUnica: string) => {
-    if (!inputPoNumber.trim()) return;
+  // Quando há CTe com remetente = TEN, a tabela quebra em duas seções:
+  // "Frete Contratado" (compras que chegam) e "Frete Enviado" (carga que sai da
+  // fábrica). Sem nenhum "Enviado", fica uma seção só, sem cabeçalho.
+  const gruposEntregas = useMemo(() => {
+    const enviado = entregasFiltradas.filter(e => isFreteEnviado(e.rmt_nome));
+    if (enviado.length === 0) return [{ titulo: '', itens: entregasFiltradas }];
+    const contratado = entregasFiltradas.filter(e => !isFreteEnviado(e.rmt_nome));
+    return [
+      { titulo: 'Frete Contratado', itens: contratado },
+      { titulo: 'Frete Enviado', itens: enviado },
+    ].filter(g => g.itens.length > 0);
+  }, [entregasFiltradas]);
+
+  // Salva o vínculo com PO. `origem`: 'sugestao' quando o usuário confirma o PO
+  // sugerido, 'manual' quando digita.
+  const salvarVinculoPo = async (
+    chaveUnica: string,
+    nroPedido: string,
+    origem: 'sugestao' | 'manual',
+  ) => {
+    const limpo = nroPedido.trim();
+    if (!limpo) return;
     setSavingPo(true);
     try {
-      await localDb.updateBahiaSulPedido(chaveUnica, inputPoNumber);
-      toast.success(`Pedido SAP ${inputPoNumber} vinculado com sucesso!`);
+      await localDb.updateBahiaSulPedido(chaveUnica, limpo, origem);
+      toast.success(`Pedido SAP ${limpo} vinculado com sucesso!`);
       setEditingPoChave(null);
       setInputPoNumber('');
-      // Atualiza localmente
-      setEntregas(prev => prev.map(e => e.chave_unica === chaveUnica ? { ...e, nro_pedido: inputPoNumber } : e));
+      setEntregas(prev => prev.map(e => e.chave_unica === chaveUnica
+        ? { ...e, nro_pedido: limpo, vinculo_origem: origem } : e));
       if (selectedItem && selectedItem.chave_unica === chaveUnica) {
-        setSelectedItem(prev => prev ? { ...prev, nro_pedido: inputPoNumber } : null);
+        setSelectedItem(prev => prev ? { ...prev, nro_pedido: limpo } : null);
       }
     } catch (e: any) {
       toast.error('Erro ao salvar vínculo do pedido SAP.');
     } finally {
       setSavingPo(false);
+    }
+  };
+
+  const handleSavePo = (chaveUnica: string) => salvarVinculoPo(chaveUnica, inputPoNumber, 'manual');
+
+  // Lança a chegada no almoxarifado dos itens sem MIGO cujo PO tem CTe Bahia Sul
+  // já entregue e confirmado. Não sobrescreve chegada marcada à mão.
+  const handleAplicarChegadas = async () => {
+    setAplicandoChegadas(true);
+    try {
+      const r = await localDb.aplicarChegadasBahiaSulNoAlmox();
+      if (r.aplicadas === 0) {
+        toast.info(
+          r.pulados > 0
+            ? `Nada a lançar: ${r.pulados} item(ns) já tinham chegada registrada.`
+            : 'Nenhum item sem MIGO com CTe entregue e PO confirmado.',
+        );
+      } else {
+        toast.success(
+          `Chegada lançada para ${r.aplicadas} item(ns) em ${r.pedidos.length} pedido(s).` +
+          (r.pulados > 0 ? ` ${r.pulados} já tinham data e não foram tocados.` : ''),
+        );
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Não foi possível lançar as chegadas no almoxarifado.');
+    } finally {
+      setAplicandoChegadas(false);
     }
   };
 
@@ -196,6 +323,8 @@ export default function BahiaSulAnalyticsPanel({
       'Frete Calculado (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.totalComIcms : '',
       'Diferença Auditoria (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.diferenca : '',
       'Diferença Auditoria (%)': it.freteCalculado?.rotaEncontrada ? `${it.freteCalculado.diferencaPct.toFixed(1)}%` : '',
+      'GRIS (%)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.grisPct : '',
+      'GRIS (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.grisValor : '',
       'Status Auditoria': it.freteCalculado?.statusAuditoria ?? 'sem_rota',
       'Rota Contratual': it.freteCalculado?.rotaEncontrada ? `${it.freteCalculado.rotaEncontrada.origem} (${it.freteCalculado.rotaEncontrada.uf}) ➔ ${it.freteCalculado.rotaEncontrada.destino}` : 'Rota não localizada',
       'Observações': it.obs_diversos,
@@ -243,6 +372,16 @@ export default function BahiaSulAnalyticsPanel({
           >
             <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
             <span>Exportar Excel</span>
+          </button>
+
+          <button
+            onClick={handleAplicarChegadas}
+            disabled={aplicandoChegadas}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-all shadow-2xs cursor-pointer disabled:opacity-50"
+            title="Lança a chegada no almoxarifado dos itens sem MIGO cujo PO tem CTe já entregue e confirmado"
+          >
+            <PackageCheck className={`h-3.5 w-3.5 ${aplicandoChegadas ? 'animate-pulse text-amber-500' : 'text-indigo-600'}`} />
+            <span>Aplicar chegadas no almox</span>
           </button>
 
           <button
@@ -513,8 +652,14 @@ export default function BahiaSulAnalyticsPanel({
               className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 vinculoFilter === 'sem_vinculo' ? 'bg-slate-700 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
               }`}
+              title={totalSugestoes > 0 ? `${totalSugestoes} com PO sugerido para confirmar` : undefined}
             >
               Sem Pedido SAP
+              {totalSugestoes > 0 && (
+                <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-black text-amber-600">
+                  <Sparkles className="h-3 w-3" />{totalSugestoes}
+                </span>
+              )}
             </button>
           </div>
 
@@ -604,7 +749,26 @@ export default function BahiaSulAnalyticsPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {entregasFiltradas.map((item) => {
+                {gruposEntregas.map((grupo) => (
+                  <React.Fragment key={grupo.titulo || 'todos'}>
+                    {grupo.titulo && (
+                      <tr className="bg-slate-100/80 border-y border-slate-200">
+                        <td colSpan={10} className="py-2 px-4 text-[11px] font-black uppercase tracking-wider text-slate-600">
+                          {grupo.titulo === 'Frete Enviado' ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <ArrowRight className="h-3.5 w-3.5 text-amber-600" />
+                              {grupo.titulo} — carga saindo da fábrica ({grupo.itens.length})
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Package className="h-3.5 w-3.5 text-indigo-600" />
+                              {grupo.titulo} — compras recebidas ({grupo.itens.length})
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    {grupo.itens.map((item) => {
                   const sitUpper = (item.situacao || '').toUpperCase();
                   const isEmTransito = sitUpper.includes('TRANSITO');
                   const isAEntregar = sitUpper.includes('A ENTREGAR');
@@ -733,17 +897,30 @@ export default function BahiaSulAnalyticsPanel({
                         ) : item.pedidoSap || item.nro_pedido ? (
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                <ShieldCheck className="h-3 w-3 text-indigo-500" />
-                                {item.nro_pedido || item.pedidoSap?.documento_compra}
-                              </span>
+                              {item.vinculo_origem === 'sugestao' ? (
+                                <span
+                                  className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300"
+                                  title="Pedido vinculado automaticamente pelo Sisten (sugestão confirmada) — edite se estiver errado"
+                                >
+                                  <Sparkles className="h-3 w-3 text-amber-500" />
+                                  {item.nro_pedido || item.pedidoSap?.documento_compra}
+                                </span>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                  title="Pedido informado na planilha da Bahia Sul"
+                                >
+                                  <ShieldCheck className="h-3 w-3 text-indigo-500" />
+                                  {item.nro_pedido || item.pedidoSap?.documento_compra}
+                                </span>
+                              )}
                               <button
                                 onClick={() => {
                                   setEditingPoChave(item.chave_unica);
                                   setInputPoNumber(item.nro_pedido || item.pedidoSap?.documento_compra || '');
                                 }}
                                 className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-indigo-600 transition-opacity p-0.5"
-                                title="Editar pedido vinculado"
+                                title="Editar / trocar pedido vinculado"
                               >
                                 <Edit2 className="h-3 w-3" />
                               </button>
@@ -754,6 +931,53 @@ export default function BahiaSulAnalyticsPanel({
                               </p>
                             )}
                           </div>
+                        ) : sugestaoPorChave.get(item.chave_unica) ? (
+                          (() => {
+                            const sug = sugestaoPorChave.get(item.chave_unica)!;
+                            return (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-dashed border-amber-300">
+                                    <Sparkles className="h-3 w-3 text-amber-500" />
+                                    {sug.documentoCompra}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${CONFIANCA_BADGE[sug.confianca]}`}
+                                    title={sugestaoTitulo(sug)}
+                                  >
+                                    {sug.confianca}
+                                  </span>
+                                </div>
+                                {sug.fornecedorNome && (
+                                  <p className="text-[10px] text-slate-500 truncate max-w-[150px]" title={sug.fornecedorNome}>
+                                    {sug.fornecedorNome}
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => salvarVinculoPo(item.chave_unica, sug.documentoCompra, 'sugestao')}
+                                    disabled={savingPo}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
+                                    title="Confirmar este PO sugerido"
+                                  >
+                                    <Check className="h-3 w-3" /> Confirmar
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingPoChave(item.chave_unica);
+                                      setInputPoNumber(sug.documentoCompra);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold hover:bg-slate-200 cursor-pointer"
+                                    title={sug.alternativas.length > 0
+                                      ? `Trocar (outros: ${sug.alternativas.map(a => a.documentoCompra).join(', ')})`
+                                      : 'Digitar outro PO'}
+                                  >
+                                    <Edit2 className="h-3 w-3" /> Trocar
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : (
                           <button
                             onClick={() => {
@@ -857,7 +1081,9 @@ export default function BahiaSulAnalyticsPanel({
                       </td>
                     </tr>
                   );
-                })}
+                    })}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1105,7 +1331,7 @@ export default function BahiaSulAnalyticsPanel({
                         Rota: <strong>{selectedItem.freteCalculado.rotaEncontrada.origem} ({selectedItem.freteCalculado.rotaEncontrada.uf}) ➔ {selectedItem.freteCalculado.rotaEncontrada.destino}</strong> • Código: <strong>{selectedItem.freteCalculado.rotaEncontrada.rotas || 'Padrão'}</strong>
                       </span>
                     </div>
-                    <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+                    <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px]">
                       <div>
                         <span className="text-slate-400 block">Peso Tarifado:</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.pesoConsiderado.toFixed(2)} kg</strong>
@@ -1119,6 +1345,11 @@ export default function BahiaSulAnalyticsPanel({
                         <span className="text-slate-400 block">Ad Valorem ({selectedItem.freteCalculado.adValoresPct}%):</span>
                         <strong className="text-slate-800">{selectedItem.freteCalculado.adValoresValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
                         <span className="text-[10px] text-slate-400 block">Merc: {selectedItem.freteCalculado.vlrMercadoria.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">GRIS / Seguro ({selectedItem.freteCalculado.grisPct}%):</span>
+                        <strong className="text-slate-800">{selectedItem.freteCalculado.grisValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
+                        <span className="text-[10px] text-slate-400 block">Gerenc. de Risco</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block">Pedágio ({selectedItem.freteCalculado.fracoes100kg} fr. 100kg):</span>

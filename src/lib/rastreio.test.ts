@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EnrichedSAPRecord } from '../types';
-import { buildRastreioRows, groupRowsByPo } from './rastreio';
+import { buildRastreioRows, groupRowsByPo, filterRegistros } from './rastreio';
+import type { VinculoSistenRm } from './centralComprasSisten';
 
 function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
   const base = {
@@ -88,3 +89,77 @@ describe('buildRastreioRows sem PO', () => {
     expect(row.riPo).toBe('120009412500010-SEM-PO');
   });
 });
+
+describe('itens genéricos no rastreio', () => {
+  it('reconhece item genérico via vínculo SISTEN com is_generic', () => {
+    const vinculos = new Map<string, VinculoSistenRm>([
+      ['1200094199::1477274', {
+        requestNumber: '2001004',
+        item: {
+          id: 'item-1',
+          request_id: 'req-1',
+          description: 'CHAVE COMBINADA 13MM',
+          sap_code: '1477274',
+          has_no_sap_code: false,
+          is_generic: true,
+          observation: 'ITEM GENÉRICO: CHAVE COMBINADA 13MM DE QUALIDADE SUPERIOR',
+          quantity: 2,
+          unit: 'UN',
+          estimated_value: 50,
+        },
+      }],
+    ]);
+
+    const [row] = buildRastreioRows([
+      registro({ requisicao_de_compra: '1200094199', material_code: '1477274', texto_breve: 'CHAVE COMBINADA DE 8 MM' }),
+    ], vinculos);
+
+    expect(row.isGeneric).toBe(true);
+    expect(row.obsGenerica).toBe('CHAVE COMBINADA 13MM DE QUALIDADE SUPERIOR');
+    expect(row.vinculoSisten?.requestNumber).toBe('2001004');
+  });
+
+  it('reconhece item genérico via tag [GENÉRICO] no texto breve ou flag direta', () => {
+    const [row1] = buildRastreioRows([
+      registro({ texto_breve: 'CHAVE COMBINADA [GENÉRICO]' }),
+    ]);
+    expect(row1.isGeneric).toBe(true);
+
+    const [row2] = buildRastreioRows([
+      registro({ texto_breve: 'NOTEBOOK [IG]' }),
+    ]);
+    expect(row2.isGeneric).toBe(true);
+
+    const [row3] = buildRastreioRows([
+      registro({ texto_breve: 'PARAFUSO NORMAL' }),
+    ]);
+    expect(row3.isGeneric).toBe(false);
+  });
+
+  it('filtra item genérico na busca textual por "generico" ou termos da observação', () => {
+    const [row] = buildRastreioRows([
+      registro({ is_generic: true, obs_generica: 'ESPECIFICAÇÃO ESPECIAL X' } as any),
+    ]);
+    expect(row.isGeneric).toBe(true);
+    expect(row.obsGenerica).toBe('ESPECIFICAÇÃO ESPECIAL X');
+
+    const filtrados1 = filterRegistros([row], {
+      query: 'generico',
+      status: 'Todos',
+      setor: 'Todos',
+      ano: 'Todos',
+      scope: 'todos',
+    });
+    expect(filtrados1.length).toBe(1);
+
+    const filtrados2 = filterRegistros([row], {
+      query: 'ESPECIAL X',
+      status: 'Todos',
+      setor: 'Todos',
+      ano: 'Todos',
+      scope: 'todos',
+    });
+    expect(filtrados2.length).toBe(1);
+  });
+});
+

@@ -5,13 +5,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  KeyRound, Search, Filter, CheckCircle, Clock, AlertTriangle, ArrowRight, UserPlus, HelpCircle, Check, Info, FileText
+  KeyRound, Search, Filter, CheckCircle, Clock, AlertTriangle, ArrowRight, UserPlus, HelpCircle, Check, Info, FileText,
+  MessageSquare, Send, Loader2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile, Request, Sector } from '../types';
+import { Profile, Request, RequestComment, Sector } from '../types';
 import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
+import { formatDateTimeBR } from '../lib/format';
 
 interface CadastrosSapProps {
   user: Profile;
@@ -49,6 +51,9 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   }, [viewTab, statusFilter, typeFilter, search]);
 
   // Action fields
+  const [observacao, setObservacao] = useState('');
+  const [enviandoObservacao, setEnviandoObservacao] = useState(false);
+  const [comments, setComments] = useState<RequestComment[]>([]);
   const [question, setQuestion] = useState('');
   const [resolution, setResolution] = useState('');
   const [sapResultCode, setSapResultCode] = useState('');
@@ -65,6 +70,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         if (found) {
           setViewTab('todos');
           setSelectedReq(found);
+          setComments(localDb.getRequestComments(found.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
         }
       }
     }
@@ -115,6 +121,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     });
 
     setRequests(list);
+
+    if (selectedReq) {
+      setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
+    }
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,14 +137,20 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     setQuestion('');
     setResolution('');
     setSapResultCode('');
+    setObservacao('');
     setActionSuccess('');
     setActionError('');
+    setComments(localDb.getRequestComments(req.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
   };
 
   const handleAssumir = async () => {
     if (!selectedReq) return;
     try {
-      await localDb.assignAtendente(selectedReq.id, user.id, user.name);
+      const ok = await localDb.assignAtendente(selectedReq.id, user.id, user.name);
+      if (!ok) {
+        setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+        return;
+      }
       
       // Update local state
       setActionSuccess('Você assumiu este atendimento!');
@@ -143,9 +159,39 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       // Refresh
       const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
       if (updatedReq) setSelectedReq(updatedReq);
+      setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
       loadData();
     } catch (err) {
       setActionError('Falha ao assumir atendimento.');
+    }
+  };
+
+  const handleAdicionarObservacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq || !observacao.trim()) {
+      setActionError('Por favor, informe a observação ou andamento.');
+      return;
+    }
+
+    try {
+      setEnviandoObservacao(true);
+      setActionError('');
+      setActionSuccess('');
+
+      const texto = observacao.trim();
+      await localDb.addRequestComment(selectedReq.id, texto, false);
+
+      setActionSuccess('Observação registrada na conversa da solicitação!');
+      setObservacao('');
+
+      const updatedComments = localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+      setComments(updatedComments);
+      loadData();
+      setTimeout(() => setActionSuccess(''), 4000);
+    } catch (err) {
+      setActionError('Falha ao registrar observação.');
+    } finally {
+      setEnviandoObservacao(false);
     }
   };
 
@@ -170,11 +216,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       // Post comment
       await localDb.addRequestComment(selectedReq.id, question, false);
       
-      setActionSuccess('Solicitação colocada em aguardo.');
+      setActionSuccess('Solicitação colocada em aguardo (SLA pausado).');
       setQuestion('');
       
       const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
       if (updatedReq) setSelectedReq(updatedReq);
+      setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
       loadData();
     } catch (err) {
       setActionError('Falha ao atualizar status.');
@@ -215,6 +262,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
       const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
       if (updatedReq) setSelectedReq(updatedReq);
+      setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
       loadData();
     } catch (err) {
       setActionError('Falha ao resolver cadastro.');
@@ -595,6 +643,63 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     )}
                   </p>
                 </div>
+
+                {/* Conversa / Histórico de Observações e Andamentos */}
+                <div className="border-t border-slate-100 pt-3">
+                  <h4 className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <MessageSquare className="h-3 w-3 text-slate-400" /> Conversa & Andamentos
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded-full">
+                      {comments.length}
+                    </span>
+                  </h4>
+
+                  {comments.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic bg-slate-50 p-2.5 rounded border border-slate-100">
+                      Nenhuma observação ou esclarecimento registrado ainda.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {comments.map((c) => {
+                        const souEu = c.user_id === user.id;
+                        const ehSolicitante = c.user_id === selectedReq.solicitante_id;
+                        return (
+                          <div
+                            key={c.id}
+                            className={`p-2.5 rounded-lg border text-xs ${
+                              souEu
+                                ? 'bg-blue-50/70 border-blue-100 text-blue-950'
+                                : ehSolicitante
+                                  ? 'bg-amber-50/70 border-amber-100 text-amber-950'
+                                  : 'bg-slate-50 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 text-[10px] mb-1">
+                              <span className="font-bold flex items-center gap-1">
+                                {c.user_name || 'Usuário'}
+                                {ehSolicitante && (
+                                  <span className="bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-semibold text-[9px]">
+                                    Solicitante
+                                  </span>
+                                )}
+                                {souEu && !ehSolicitante && (
+                                  <span className="bg-blue-100 text-blue-800 px-1 py-0.2 rounded font-semibold text-[9px]">
+                                    Você
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-slate-400 font-mono text-[9px]">
+                                {formatDateTimeBR(c.created_at)}
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap leading-relaxed text-slate-700">{c.content}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Action Forms / Buttons */}
@@ -626,24 +731,61 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
                 {/* 2. Atendente is current user & state is not final */}
                 {selectedReq.atendente_id === user.id && selectedReq.status !== 'resolvido' && selectedReq.status !== 'fechado' && (
-                  <div className="space-y-6">
+                  <div className="space-y-5">
                     
-                    {/* Ask Solicitante (Aguardando Solicitante) */}
-                    <form onSubmit={handleAguardarSolicitante} className="space-y-2 border border-slate-100 p-3 rounded-xl bg-slate-50/50">
-                      <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                        <HelpCircle className="h-3.5 w-3.5 text-blue-500" /> Solicitar Esclarecimento
+                    {/* 1. Observação / Andamento (NÃO pausa SLA) */}
+                    <form onSubmit={handleAdicionarObservacao} className="space-y-2 border border-slate-200 p-3 rounded-xl bg-white shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <MessageSquare className="h-3.5 w-3.5 text-slate-700" /> Observações / Andamento
+                        </p>
+                        <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                          SLA Ativo (não pausa)
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        Adicione notas de progresso para a conversa da solicitação (ex.: chamado aberto no Astrein, aguardando validação cadastral):
                       </p>
-                      <p className="text-[10px] text-slate-400">Insira a pergunta ou documento complementar pendente:</p>
                       <textarea
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        placeholder="Ex: Por favor anexe a ficha técnica do fabricante..."
-                        className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none bg-white min-h-[60px]"
+                        value={observacao}
+                        onChange={(e) => setObservacao(e.target.value)}
+                        placeholder="Ex: Chamado aberto na plataforma Astrein (Chamado: 507203), aguardando retorno..."
+                        className="w-full rounded border border-slate-200 p-2 text-xs focus:border-slate-400 focus:outline-none bg-white min-h-[60px]"
                         required
                       />
                       <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-1.5 px-3 rounded cursor-pointer transition-colors"
+                        disabled={enviandoObservacao || !observacao.trim()}
+                        className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold text-[10px] py-2 px-3 rounded cursor-pointer transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        {enviandoObservacao ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                        Registrar Observação
+                      </button>
+                    </form>
+
+                    {/* 2. Ask Solicitante (Aguardando Solicitante - Pausa SLA) */}
+                    <form onSubmit={handleAguardarSolicitante} className="space-y-2 border border-blue-100 p-3 rounded-xl bg-blue-50/40">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
+                          <HelpCircle className="h-3.5 w-3.5 text-blue-600" /> Solicitar Esclarecimento
+                        </p>
+                        <span className="text-[9px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">
+                          Pausa SLA
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        Insira a pergunta ou documento complementar pendente. O chamado mudará para &ldquo;Aguardando Solicitante&rdquo; e o SLA será pausado:
+                      </p>
+                      <textarea
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder="Ex: Por favor anexe a ficha técnica do fabricante..."
+                        className="w-full rounded border border-slate-200 p-2 text-xs focus:border-blue-500 focus:outline-none bg-white min-h-[60px]"
+                        required
+                      />
+                      <button
+                        type="submit"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] py-2 px-3 rounded cursor-pointer transition-colors shadow-2xs"
                       >
                         Enviar & Pausar SLA
                       </button>

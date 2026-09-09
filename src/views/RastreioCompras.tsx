@@ -18,6 +18,7 @@ import {
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort, itensSemMigo,
 } from '../lib/rastreio';
 import { AlmoxarifadoChegada } from '../types';
+import { indexarVinculosSistenPorRm, VinculoSistenRm } from '../lib/centralComprasSisten';
 import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
@@ -304,8 +305,12 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         // usuários (que não disparam um sync completo do dataset).
         try { await localDb.refreshBuyerFieldsFromSupabase(); } catch (e) { console.warn('Falha ao atualizar campos do comprador:', e); }
       }
+      const compras = localDb.getRequests().filter(r => r.type === 'compra' && r.linked_rm_number);
+      const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
+      const vinculos = indexarVinculosSistenPorRm(compras, itensPorRequest);
+
       const records = localDb.getEnrichedSAPRequisicoes();
-      setRows(buildRastreioRows(records));
+      setRows(buildRastreioRows(records, vinculos));
       setChegadasMap(localDb.getAlmoxarifadoChegadasMap());
       setLastUpdated(localDb.getDatasetUpdatedAt('requisicoes'));
     } catch (e: any) {
@@ -318,6 +323,20 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   }, []);
 
   useEffect(() => { load(false); }, [load]);
+
+  // Recalcula vínculos e linhas caso novas RMs sejam vinculadas no SISTEN ou chegadas atualizadas
+  useEffect(() => {
+    const recalcular = () => {
+      const compras = localDb.getRequests().filter(r => r.type === 'compra' && r.linked_rm_number);
+      const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
+      const vinculos = indexarVinculosSistenPorRm(compras, itensPorRequest);
+      const records = localDb.getEnrichedSAPRequisicoes();
+      setRows(buildRastreioRows(records, vinculos));
+      setChegadasMap(localDb.getAlmoxarifadoChegadasMap());
+    };
+    const unsubscribe = localDb.subscribe(recalcular);
+    return () => unsubscribe();
+  }, []);
 
   // Abre o tour sozinho na primeira visita — só quando há dados na tela para mostrar.
   useEffect(() => {

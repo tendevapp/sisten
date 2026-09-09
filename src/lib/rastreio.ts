@@ -10,6 +10,8 @@ import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { EnrichedSAPRecord, GrupoMercadoria, RastreioPrioridade } from '../types';
 import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './format';
 import { avaliarEntregaParcial, type EntregaParcial } from './entregaParcial';
+import { buscarVinculoSistenRm, type VinculoSistenRm } from './centralComprasSisten';
+import { desformatarObservacaoItemGenerico } from './solicitacoes';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
 // RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
@@ -108,6 +110,9 @@ export interface RastreioRow {
   statusReq: string;     // status_requisicao ('Sem PO' | 'Processado')
   observacoes: string;   // obs_comprador
   grupoComprador: string; // grupo_comprador (roteamento de notificações)
+  isGeneric?: boolean;    // se o item é genérico (vinculado a solicitação SISTEN com is_generic ou obs de item genérico)
+  obsGenerica?: string;   // observação técnica do item genérico escrita pelo solicitante
+  vinculoSisten?: VinculoSistenRm | null; // vínculo com a solicitação SISTEN que originou a RM
 }
 
 export type DeliveryStatus = 'entregue' | 'no_prazo' | 'atrasado' | 'sem_data';
@@ -179,7 +184,10 @@ export const parseDate = (d?: string): Date | null => {
 
 // Mapeia os registros enriquecidos do SAP para linhas da tela de rastreio,
 // ignorando RMs de serviços (que começam com 17).
-export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
+export function buildRastreioRows(
+  records: EnrichedSAPRecord[],
+  vinculos?: Map<string, VinculoSistenRm>,
+): RastreioRow[] {
   return records
     .filter(r => {
       const rm = txt(r.requisicao_de_compra) !== EMPTY ? txt(r.requisicao_de_compra) : txt(r.ri);
@@ -188,13 +196,27 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
     .map(r => {
       const raw = r as any;
       const ri = txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri;
+      const rm = txt(r.requisicao_de_compra);
+      const material = txt(r.material_code);
+      const vinculo = vinculos ? buscarVinculoSistenRm(vinculos, rm, material) : null;
+      const isGeneric = Boolean(
+        raw.is_generic ||
+        raw.isGeneric ||
+        vinculo?.item?.is_generic ||
+        (vinculo?.item?.observation && /^item\s+gen[eé]rico\s*:/i.test(vinculo.item.observation)) ||
+        /\[(?:gen[eé]rico|ig)\]/i.test(txt(r.texto_breve))
+      );
+      const obsGenerica = isGeneric
+        ? (desformatarObservacaoItemGenerico(vinculo?.item?.observation) || raw.obs_generica || raw.obsGenerica || undefined)
+        : undefined;
+
       return {
         riPo: r.ri_po || `${ri}-${txt(r.documento_compra) !== EMPTY ? String(r.documento_compra).trim() : 'SEM-PO'}`,
         ri,
-        rm: txt(r.requisicao_de_compra),
+        rm,
         item: txt(r.item_reqc),
         po: txt(r.documento_compra),
-        material: txt(r.material_code),
+        material,
         descricao: txt(r.texto_breve),
         fornecedor: txt(r.fornecedor_name),
         setor: txt(r.area_solicitante) !== EMPTY ? txt(r.area_solicitante) : txt(r.requisitante_name),
@@ -225,6 +247,9 @@ export function buildRastreioRows(records: EnrichedSAPRecord[]): RastreioRow[] {
         statusReq: txt(r.status_requisicao),
         observacoes: txt(r.obs_comprador),
         grupoComprador: txt(r.grupo_comprador) === EMPTY ? '' : txt(r.grupo_comprador),
+        isGeneric,
+        obsGenerica,
+        vinculoSisten: vinculo,
       };
     });
 }
@@ -287,7 +312,9 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
         r.descricao.toLowerCase().includes(q) ||
         r.material.toLowerCase().includes(q) ||
         r.fornecedor.toLowerCase().includes(q) ||
-        r.setor.toLowerCase().includes(q);
+        r.setor.toLowerCase().includes(q) ||
+        (!!r.obsGenerica && r.obsGenerica.toLowerCase().includes(q)) ||
+        (!!r.isGeneric && (q === 'generico' || q === 'genérico' || q === 'ig' || 'item genérico'.includes(q) || 'item generico'.includes(q)));
       if (!hit) return false;
     }
     return true;

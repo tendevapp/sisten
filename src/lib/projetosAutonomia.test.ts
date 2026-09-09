@@ -16,6 +16,7 @@ const item = (pn: string, qtd: number): ConsumoItem => ({
   qtdPorTorre: qtd,
   subconjuntos: [],
   linhasBom: 1,
+  niveis: [],
 });
 
 /** Monta o mapa de consumo a partir de `{ T1: { PN: qtd } }`. */

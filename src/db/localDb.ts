@@ -29,7 +29,7 @@ import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSe
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
-import { parseBahiaSulRows } from '../lib/bahiasul';
+import { parseBahiaSulRows, resumirBahiaSulPorPo, normalizePoNumber } from '../lib/bahiasul';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
 import { emailDominioPermitido, MSG_DOMINIO_NAO_PERMITIDO } from '../lib/authDomains';
@@ -2694,14 +2694,14 @@ class LocalDatabase {
 
     await this.publishChildRow('core_solicitacoes_comentarios', newComment);
 
-    // If it's helpdesk and in "aguardando_solicitante", receiving a comment from the solicitante re-activates it
+    // Se for chamado ou cadastro_sap em "aguardando_solicitante", resposta do solicitante reativa o atendimento
     const requests = this.getRequests();
     const reqIdx = requests.findIndex(r => r.id === reqId);
-    if (reqIdx !== -1 && requests[reqIdx].type === 'chamado' && requests[reqIdx].status === 'aguardando_solicitante') {
+    if (reqIdx !== -1 && (requests[reqIdx].type === 'chamado' || requests[reqIdx].type === 'cadastro_sap') && requests[reqIdx].status === 'aguardando_solicitante') {
       const solicitante = requests[reqIdx].solicitante_id;
       if (user.id === solicitante) {
         const reactivated = await this.transitionRequestStatus(reqId, 'em_atendimento', 'Solicitante respondeu ao chamado, SLA retomado.');
-        if (!reactivated) console.error(`Falha ao reativar SLA do chamado #${requests[reqIdx].number} após resposta do solicitante.`);
+        if (!reactivated) console.error(`Falha ao reativar SLA da solicitação #${requests[reqIdx].number} após resposta do solicitante.`);
       }
     }
   }
@@ -3455,22 +3455,43 @@ class LocalDatabase {
     }
   }
 
-  public async assignAtendente(reqId: string, atendenteId: string, name: string): Promise<void> {
+  public async assignAtendente(reqId: string, atendenteId: string, name: string): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
-    if (idx !== -1) {
-      requests[idx].atendente_id = atendenteId;
-      requests[idx].atendente_name = name;
-      requests[idx].status = 'em_atendimento';
-      if (!requests[idx].first_response_at) {
-        requests[idx].first_response_at = new Date().toISOString();
-      }
-      requests[idx].updated_at = new Date().toISOString();
-      this.setStorageItem(this.requestsKey, requests);
+    if (idx === -1) return false;
 
-      await this.publishRequestRow(requests[idx]);
-      await this.logStatusChange(reqId, 'aberto', 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
+    const prevAtendenteId = requests[idx].atendente_id;
+    const prevAtendenteName = requests[idx].atendente_name;
+    const prevStatus = requests[idx].status;
+    const prevFirstResponseAt = requests[idx].first_response_at;
+    const prevUpdatedAt = requests[idx].updated_at;
+
+    requests[idx].atendente_id = atendenteId;
+    requests[idx].atendente_name = name;
+    requests[idx].status = 'em_atendimento';
+    if (!requests[idx].first_response_at) {
+      requests[idx].first_response_at = new Date().toISOString();
     }
+    requests[idx].updated_at = new Date().toISOString();
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(requests[idx]);
+    if (!published) {
+      const revertRequests = this.getRequests();
+      const revertIdx = revertRequests.findIndex(r => r.id === reqId);
+      if (revertIdx !== -1) {
+        revertRequests[revertIdx].atendente_id = prevAtendenteId;
+        revertRequests[revertIdx].atendente_name = prevAtendenteName;
+        revertRequests[revertIdx].status = prevStatus;
+        revertRequests[revertIdx].first_response_at = prevFirstResponseAt;
+        revertRequests[revertIdx].updated_at = prevUpdatedAt;
+        this.setStorageItem(this.requestsKey, revertRequests);
+      }
+      return false;
+    }
+
+    await this.logStatusChange(reqId, prevStatus, 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
+    return true;
   }
 
   public async updateLinkedRM(reqId: string, rmNumber: string | null): Promise<boolean> {
@@ -7187,14 +7208,30 @@ class LocalDatabase {
 
   /**
    * Atualiza ou vincula o número do pedido de compra SAP em um CTe da Bahia Sul.
+   * `origem` registra COMO o número chegou ali ('sugestao' = PO sugerido e
+   * confirmado no painel, 'manual' = digitado). Ver a migration
+   * 20260909160000_bahiasul_vinculo_po_confirmado.sql.
    */
-  public async updateBahiaSulPedido(chaveUnica: string, nroPedido: string): Promise<boolean> {
+  public async updateBahiaSulPedido(
+    chaveUnica: string,
+    nroPedido: string,
+    origem: 'sugestao' | 'manual' = 'manual',
+  ): Promise<boolean> {
+    const limpo = nroPedido.trim();
+    const user = this.getCurrentUser();
+    // `vinculo_*` ainda não estão em database.types.ts (migration
+    // 20260909160000) — cast até o arquivo de tipos ser regerado, mesmo padrão
+    // de diligenciamentoApi.ts.
+    const patch: Record<string, unknown> = {
+      nro_pedido: limpo || null,
+      vinculo_origem: limpo ? origem : null,
+      vinculo_confirmado_em: limpo ? new Date().toISOString() : null,
+      vinculo_confirmado_por: limpo ? (user?.name || null) : null,
+      updated_at: new Date().toISOString(),
+    };
     const { error } = await supabase
       .from('sup_bahiasul_entregas')
-      .update({
-        nro_pedido: nroPedido.trim() || null,
-        updated_at: new Date().toISOString()
-      })
+      .update(patch as never)
       .eq('chave_unica', chaveUnica);
 
     if (error) {
@@ -7202,6 +7239,88 @@ class LocalDatabase {
       throw error;
     }
     return true;
+  }
+
+  /**
+   * Vincula em lote CTes ao PO sugerido pelo Sisten (`vinculo_origem =
+   * 'sugestao'`). Usado pelo painel Bahia Sul para confirmar automaticamente
+   * as sugestões de confiança alta/média ao abrir a tela — o comprador ainda
+   * pode editar/trocar depois. Devolve quantos foram gravados.
+   */
+  public async vincularBahiaSulSugeridos(
+    pares: Array<{ chaveUnica: string; nroPedido: string }>,
+  ): Promise<number> {
+    if (pares.length === 0) return 0;
+    let ok = 0;
+    for (const p of pares) {
+      try {
+        await this.updateBahiaSulPedido(p.chaveUnica, p.nroPedido, 'sugestao');
+        ok++;
+      } catch (e) {
+        console.error('Falha ao vincular sugestão Bahia Sul', p.chaveUnica, e);
+      }
+    }
+    return ok;
+  }
+
+  /**
+   * Lança a chegada no almoxarifado dos itens sem MIGO cujo PO tem um CTe da
+   * Bahia Sul já "ENTREGUE" e com `nro_pedido` confirmado. Data = `entrega`
+   * (descarga no destino) ou, na falta, `chegada` do CTe.
+   *
+   * Não sobrescreve chegada já registrada (o almoxarife pode ter marcado uma
+   * data diferente à mão). Item de serviço (RM começa com 17) fica de fora —
+   * não é carga física. Devolve o que foi aplicado e o que foi pulado, para o
+   * painel avisar o usuário antes/depois do clique.
+   */
+  public async aplicarChegadasBahiaSulNoAlmox(): Promise<{
+    aplicadas: number;
+    pulados: number;
+    pedidos: string[];
+  }> {
+    const entregas = await this.getBahiaSulEntregas();
+    const resumo = resumirBahiaSulPorPo(entregas);
+    const registros = this.getEnrichedSAPRequisicoes();
+    const jaChegaram = this.getAlmoxarifadoChegadasMap();
+
+    const registrosPorPo = new Map<string, typeof registros>();
+    for (const r of registros) {
+      const chave = normalizePoNumber(r.documento_compra);
+      if (!chave) continue;
+      const lista = registrosPorPo.get(chave);
+      if (lista) lista.push(r); else registrosPorPo.set(chave, [r]);
+    }
+
+    const porData = new Map<string, string[]>(); // data -> riPos
+    const pedidosTocados = new Set<string>();
+    let pulados = 0;
+
+    for (const [chavePo, info] of resumo) {
+      if (!info.entregue || !info.dataChegadaFisica) continue;
+      const doPo = registrosPorPo.get(chavePo);
+      if (!doPo) continue;
+
+      for (const r of doPo) {
+        const rm = String(r.requisicao_de_compra || r.ri || '').trim().replace(/^0+/, '');
+        const eServico = rm.startsWith('17');
+        const semMigo = !r.data_migo || !/^\d{4}-\d{2}-\d{2}/.test(String(r.data_migo));
+        if (eServico || !semMigo) continue;
+        if (jaChegaram.has(r.ri_po)) { pulados++; continue; }
+
+        const lista = porData.get(info.dataChegadaFisica);
+        if (lista) lista.push(r.ri_po); else porData.set(info.dataChegadaFisica, [r.ri_po]);
+        pedidosTocados.add(info.documentoCompra);
+      }
+    }
+
+    let aplicadas = 0;
+    for (const [data, riPos] of porData) {
+      if (riPos.length === 0) continue;
+      await this.setAlmoxarifadoChegada(riPos, data);
+      aplicadas += riPos.length;
+    }
+
+    return { aplicadas, pulados, pedidos: Array.from(pedidosTocados) };
   }
 
   // Contratos (ME3N): upsert por (documento_compras, item) — atualiza o que
@@ -7490,6 +7609,8 @@ class LocalDatabase {
     { header: 'Acima de 100 kg', field: 'kg_acima_100' },
     { header: 'LEAD-TIME ENTREGA', field: 'lead_time_entrega' },
     { header: 'AD. VALORES', field: 'ad_valores' },
+    { header: 'GRIS', field: 'gris' },
+    { header: 'GR', field: 'gris' },
     { header: 'Pedagio a cada fração de 100kg', field: 'pedagio_fracao_100kg' },
     { header: 'CAT', field: 'cat' },
     { header: 'ITR/TAS', field: 'itr_tas' },
@@ -7546,6 +7667,7 @@ class LocalDatabase {
     const kgAcima100Idx = colIdx('kg_acima_100');
     const lt1Idx = colIdx('lead_time_entrega') !== -1 ? colIdx('lead_time_entrega') : (ltIndices[0] ?? -1);
     const adValoresIdx = colIdx('ad_valores');
+    const grisIdx = colIdx('gris');
     const pedagioIdx = colIdx('pedagio_fracao_100kg');
     const catIdx = colIdx('cat');
     const itrTasIdx = colIdx('itr_tas');
@@ -7607,6 +7729,7 @@ class LocalDatabase {
         kg_acima_100: parseNum(row[kgAcima100Idx]),
         lead_time_entrega: strVal(row, lt1Idx),
         ad_valores: parseNum(row[adValoresIdx]),
+        gris: grisIdx !== -1 ? parseNum(row[grisIdx]) : 0.5,
         pedagio_fracao_100kg: parseNum(row[pedagioIdx]),
         cat: parseNum(row[catIdx]),
         itr_tas: parseNum(row[itrTasIdx]),
@@ -8300,8 +8423,7 @@ class LocalDatabase {
     if (status === 'em_atendimento' && actorId) {
       const user = this.getProfiles().find(u => u.id === actorId);
       if (user) {
-        await this.assignAtendente(reqId, actorId, user.name);
-        return true;
+        return await this.assignAtendente(reqId, actorId, user.name);
       }
     }
     return await this.transitionRequestStatus(reqId, status, comment);

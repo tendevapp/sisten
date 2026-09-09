@@ -28,6 +28,10 @@
 
 import { AlmoxarifadoChegada, CidadeForn, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte } from '../types';
 import { isServicoItem } from './rastreio';
+import { normalizePoNumber, type ResumoBahiaSulPorPo } from './bahiasul';
+
+/** Nome canônico da transportadora no cadastro (`sup_transportadoras`). */
+export const TRANSPORTADORA_BAHIA_SUL = 'Bahia Sul';
 
 /* Normalização de transportadora -------------------------------------------- */
 
@@ -165,6 +169,16 @@ export interface ItemDiligenciamento {
   dataRemessa?: string;
   chegou: boolean;
   dataChegada?: string;
+  /**
+   * Transportadora e previsão vieram de um CTe da Bahia Sul já vinculado a
+   * este PO (o comprador ainda não digitou nada). É uma sugestão exibida —
+   * `transportadora`/`previsaoEfetiva` já trazem o valor; ao salvar, vira
+   * dado normal. `previsaoBahiaSul` é a `prv_chegada` do CTe.
+   */
+  origemBahiaSul?: boolean;
+  previsaoBahiaSul?: string;
+  /** CTes da Bahia Sul deste PO, para o comprador conferir a origem. */
+  ctosBahiaSul?: string[];
 }
 
 export interface PedidoDiligenciamento {
@@ -195,6 +209,12 @@ interface ItemComPo extends ItemDiligenciamento {
  * do SAP (requisição + PO). Entram só os que têm PO emitida, ainda sem MIGO
  * (não chegou pelo SAP) e não são RM de serviço (chamado, não carga física —
  * transportadora não se aplica).
+ *
+ * `bahiaSulPorPo` (opcional): resumo por PO das entregas da Bahia Sul já
+ * vinculadas (`lib/bahiasul.resumirBahiaSulPorPo`). Quando o comprador ainda
+ * não escolheu transportadora e o PO tem um CTe da Bahia Sul, o item já vem
+ * com `transportadora = 'Bahia Sul'` e a previsão = `prv_chegada` do CTe,
+ * marcados como `origemBahiaSul` — é sugestão exibida, some ao salvar.
  */
 export function montarItens(
   registros: EnrichedSAPRecord[],
@@ -204,13 +224,21 @@ export function montarItens(
   cidadesPorCodigo: Map<string, CidadeForn>,
   regiaoUfBrutaPorRi: Map<string, string>,
   prazos: PrazoTransporte[],
+  bahiaSulPorPo?: Map<string, ResumoBahiaSulPorPo>,
 ): ItemDiligenciamento[] {
   return registros
     .filter(r => !!r.documento_compra && !dataValida(r.data_migo))
     .filter(r => !isServicoItem(r.requisicao_de_compra || r.ri))
     .map(r => {
       const dilig = diligenciamentoPorRi.get(r.ri_po);
-      const transportadora = dilig?.transportadora || '';
+      const bs = bahiaSulPorPo?.get(normalizePoNumber(r.documento_compra));
+
+      // Transportadora: o que o comprador digitou; senão, "Bahia Sul" quando o
+      // PO tem CTe vinculado (sugestão).
+      const transportadoraDigitada = dilig?.transportadora || '';
+      const origemBahiaSul = !transportadoraDigitada && !!bs;
+      const transportadora = transportadoraDigitada || (origemBahiaSul ? TRANSPORTADORA_BAHIA_SUL : '');
+
       const uf = ufDoFornecedor(r.fornecedor_code, regiaoUfBrutaPorRi.get(r.ri), cidadesPorCodigo);
       const prazoDias = resolverPrazoDias(uf, transportadora, prazos);
       const remessa = dataValida(r.data_entrega_sap) ? r.data_entrega_sap : undefined;
@@ -222,6 +250,17 @@ export function montarItens(
       else previsaoCalculada = somarDiasCorridos(remessa, prazoDias);
 
       const previsaoManual = dataValida(dilig?.previsao_manual) ? (dilig!.previsao_manual as string) : undefined;
+
+      // Previsão pela Bahia Sul: a prv_chegada do CTe entra no lugar do cálculo
+      // (remessa + prazo) quando não há previsão manual nem transportadora digitada.
+      const previsaoBahiaSul = origemBahiaSul && dataValida(bs?.previsaoChegada)
+        ? (bs!.previsaoChegada as string)
+        : undefined;
+      if (previsaoBahiaSul) {
+        previsaoCalculada = previsaoBahiaSul;
+        motivoSemPrevisao = undefined;
+      }
+
       const chegada = chegadasPorRi.get(r.ri_po);
 
       const item: ItemComPo = {
@@ -245,6 +284,9 @@ export function montarItens(
         dataRemessa: remessa,
         chegou: !!chegada,
         dataChegada: chegada?.data_chegada,
+        origemBahiaSul: origemBahiaSul || undefined,
+        previsaoBahiaSul,
+        ctosBahiaSul: origemBahiaSul ? bs!.ctos : undefined,
         __fornecedorNome: r.fornecedor_name || '',
         __fornecedorCode: r.fornecedor_code || '',
         __uf: uf,
