@@ -11,11 +11,14 @@
  *
  * Serve a três coisas na Central de Compras: mostrar o número da solicitação
  * ao lado da RM, sinalizar item genérico com a observação de quem pediu, e
- * substituir por essa observação o texto técnico do catálogo no texto da
- * cotação — que para item genérico não descreve nada de específico.
+ * formatar itens genéricos para cotação (substituindo a descrição genérica
+ * pelo texto da observação, aplicando a tag [IG] e deixando o texto técnico
+ * em branco, já que o catálogo SAP não descreve o item específico).
  */
 
 import type { Request, RequestItem } from '../types';
+import { desformatarObservacaoItemGenerico } from './solicitacoes';
+import { sanitizeTechnicalText } from './materiais';
 
 export interface VinculoSistenRm {
   requestNumber: string;
@@ -86,4 +89,49 @@ export function textoTecnicoParaCotacao(vinculo: VinculoSistenRm | null): string
   if (!vinculo || !vinculo.item.is_generic) return null;
   const obs = (vinculo.item.observation || '').trim();
   return obs || null;
+}
+
+export interface FormatarItemCotacaoParams {
+  idx: number;
+  materialCode?: string | null;
+  textoBreve?: string | null;
+  rm?: string | null;
+  unidadeMedida?: string | null;
+  qtdRequisicao?: number | string | null;
+  rawTechText?: string | null;
+  vinculo?: VinculoSistenRm | null;
+}
+
+/**
+ * Formata um item de cotação para o texto enviado ao fornecedor (Outlook, WhatsApp, Clipboard).
+ *
+ * Para itens genéricos:
+ * - Mantém o código do material.
+ * - Substitui a descrição (texto breve do SAP) pela observação da solicitação sem o prefixo ("ITEM GENÉRICO:"),
+ *   ou mantém o texto breve se não houver observação.
+ * - Adiciona a tag [IG].
+ * - Deixa o campo "Texto Técnico:" vazio (desconsiderando o texto técnico do catálogo).
+ *
+ * Para itens normais:
+ * - Mantém código e texto breve do SAP.
+ * - Exibe o texto técnico sanitizado do catálogo SAP, ou "—" caso não haja.
+ */
+export function formatarItemCotacao(params: FormatarItemCotacaoParams): string {
+  const { idx, materialCode, textoBreve, rm, unidadeMedida, qtdRequisicao, rawTechText, vinculo } = params;
+
+  const ehGenerico = Boolean(
+    vinculo?.item?.is_generic ||
+    (vinculo?.item?.observation && /^item\s+gen[eé]rico\s*:/i.test(vinculo.item.observation))
+  );
+
+  const obsGenerica = ehGenerico ? desformatarObservacaoItemGenerico(vinculo?.item?.observation) : '';
+  const descricao = (ehGenerico && obsGenerica) ? obsGenerica : (textoBreve || '—');
+  const tag = ehGenerico ? ' [IG]' : '';
+  const techText = ehGenerico ? '' : (rawTechText ? sanitizeTechnicalText(rawTechText) : '—');
+
+  return [
+    `${idx + 1}) Material: ${materialCode || '—'} — ${descricao}${tag}`,
+    `   RM: ${rm || '—'}   |   Unidade: ${unidadeMedida || '—'}   |   Quantidade: ${qtdRequisicao ?? '—'}`,
+    `   Texto Técnico: ${techText}`
+  ].join('\n');
 }

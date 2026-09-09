@@ -38,6 +38,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-09',
+    resumo: 'Admin > Cadastros Gerais > Suprimentos — Filtro de Grupo de Compradores na Barra de Ferramentas (`GestaoGrupoComprador.tsx`, `diretrizes.ts`): 1. Adicionado seletor dropdown dedicado para "Comprador" (Grupo de Compras) na barra de ferramentas e filtros da tela de Grupos Compradores x Mercadorias; 2. Sincronização bidirecional instantânea entre o seletor dropdown e os cards analíticos superiores por comprador; 3. Inclusão de botão dinâmico para limpar todos os filtros ativos; 4. Layout flexível com quebra harmoniosa em telas de diferentes resoluções.',
+  },
+  {
+    data: '2026-09-08',
+    resumo: 'Suprimentos > Central de Compras / Cotação por E-mail (Outlook, WhatsApp & Clipboard) para Itens Genéricos (`centralComprasSisten.ts`, `Compras.tsx`, `centralComprasSisten.test.ts`, `diretrizes.ts`): 1. Na formatação dos itens da Carta Convite / cotação por Outlook, WhatsApp e cópia de texto, itens genéricos vinculados a solicitações do SISTEN mantêm o código do material SAP, mas substituem a descrição breve do catálogo pelo texto da observação da solicitação (desformatado sem o prefixo "ITEM GENÉRICO:"); 2. Adicionada a tag compacta `[IG]` junto à descrição do material; 3. O campo "Texto Técnico:" é mantido em branco para itens genéricos, evitando a poluição com textos genéricos do catálogo SAP.',
+  },
+  {
     data: '2026-09-08',
     resumo: 'Cadastros SAP — Atualização de Fornecedor e Código de Resposta Dinâmico (`NewRequest.tsx`, `CadastrosSap.tsx`, `localDb.ts`, `types.ts`, `database.types.ts`, `exportCadastroSapPdf.ts`, `RequestDetailsModal.tsx`, `RequestDetailPanel.tsx`, `20260908150000_cadastro_sap_atualizacao_e_codigo.sql`): 1. Nova Solicitação (Cadastro SAP): se selecionado tipo "Fornecedor", inclusão de seletor segmentado entre "Novo Cadastro" e "Atualização de cadastro"; 2. No modo "Atualização de cadastro": exibição do campo obrigatório "Código Fornecedor SAP", inclusão do prefixo "NOVO " nos campos cadastrais e conversão deles em opcionais, permitindo ao solicitante preencher estritamente o que vai mudar; 3. Página Cadastros SAP (`CadastrosSap.tsx`): adaptação dinâmica do campo de código gerado ao resolver o chamado ("Cód. Material SAP" para itens e "Cód. Fornecedor SAP" para fornecedores), salvando o código gerado no registro e exibindo-o na tela de detalhes e no PDF exportado.',
   },
@@ -647,7 +655,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'Toggle "Sem PO" / "Sem MIGO" / "Todos": Sem PO = `status_requisicao==="Sem PO"`; Sem MIGO = Processado sem `data_migo` E que NÃO seja RM de serviço (prefixo "17" — nunca recebe MIGO, ver Conceitos Centrais).',
               'Match de fornecedor por material: busca em `pedidosforn` com `crf ilike "x"` (linha confirmada no SAP), por código de material com/sem zeros à esquerda, deduplicado por CNPJ mantendo o pedido mais recente.',
               'Para item já com PO, mostra o fornecedor do próprio pedido (não o histórico geral de material) — lógica: "quem tem o pedido, fala com ele para cobrar entrega".',
-              'Texto técnico do material é injetado no corpo da Carta Convite; histórico de cotações já enviadas ao mesmo fornecedor é consultado para avisar o comprador antes de reenviar.',
+              'Texto técnico do material é injetado no corpo da Carta Convite. Para itens genéricos vinculados ao SISTEN, o texto técnico do catálogo SAP é desconsiderado (deixado em branco), a descrição é substituída pelo texto da observação digitada na solicitação e identificada com a tag [IG]; histórico de cotações já enviadas ao mesmo fornecedor é consultado para avisar o comprador antes de reenviar.',
               'Edição em lote: seleção múltipla de itens aplica status/data de uma vez.'
             ]
           },

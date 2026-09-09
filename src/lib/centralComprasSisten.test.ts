@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buscarVinculoSistenRm, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
+  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
   type VinculoSistenRm,
 } from './centralComprasSisten';
 import type { Request, RequestItem } from '../types';
@@ -124,5 +124,118 @@ describe('textoTecnicoParaCotacao', () => {
     expect(textoTecnicoParaCotacao({
       requestNumber: '2001004', item: item({ is_generic: true, observation: undefined }),
     })).toBeNull();
+  });
+});
+
+describe('formatarItemCotacao', () => {
+  it('formata item genérico substituindo a descrição pela observação, aplicando tag [IG] e deixando texto técnico em branco', () => {
+    const vinculo: VinculoSistenRm = {
+      requestNumber: '2001004',
+      item: item({
+        is_generic: true,
+        observation: 'ITEM GENÉRICO: CHAVE COMBINADA 13MM',
+      }),
+    };
+
+    const resultado = formatarItemCotacao({
+      idx: 9, // 10º item
+      materialCode: '1477274',
+      textoBreve: 'CHAVE COMBINADA DE 8 MM',
+      rm: '1200094199',
+      unidadeMedida: 'UN',
+      qtdRequisicao: 2,
+      rawTechText: 'ESPECIFICACAO DO CATALOGO SAP',
+      vinculo,
+    });
+
+    const esperado = [
+      '10) Material: 1477274 — CHAVE COMBINADA 13MM [IG]',
+      '   RM: 1200094199   |   Unidade: UN   |   Quantidade: 2',
+      '   Texto Técnico: ',
+    ].join('\n');
+
+    expect(resultado).toBe(esperado);
+  });
+
+  it('formata item genérico com observação sem o prefixo ITEM GENÉRICO:', () => {
+    const vinculo: VinculoSistenRm = {
+      requestNumber: '2001004',
+      item: item({
+        is_generic: true,
+        observation: 'PARAFUSO INOX 316 M10X50',
+      }),
+    };
+
+    const resultado = formatarItemCotacao({
+      idx: 0,
+      materialCode: '1000100',
+      textoBreve: 'PARAFUSO COMUM',
+      rm: '1200094200',
+      unidadeMedida: 'PC',
+      qtdRequisicao: 10,
+      vinculo,
+    });
+
+    expect(resultado).toContain('1) Material: 1000100 — PARAFUSO INOX 316 M10X50 [IG]');
+    expect(resultado).toContain('   Texto Técnico: \n'.trimEnd());
+  });
+
+  it('item genérico sem observação mantém texto breve com tag [IG] e texto técnico em branco', () => {
+    const vinculo: VinculoSistenRm = {
+      requestNumber: '2001004',
+      item: item({
+        is_generic: true,
+        observation: '',
+      }),
+    };
+
+    const resultado = formatarItemCotacao({
+      idx: 1,
+      materialCode: '1000101',
+      textoBreve: 'MATERIAL GENERICO',
+      rm: '1200094201',
+      unidadeMedida: 'UN',
+      qtdRequisicao: 1,
+      vinculo,
+    });
+
+    expect(resultado).toContain('2) Material: 1000101 — MATERIAL GENERICO [IG]');
+    expect(resultado).toContain('   Texto Técnico: \n'.trimEnd());
+  });
+
+  it('formata item comum (não-genérico) com texto técnico e sem tag [IG]', () => {
+    const resultado = formatarItemCotacao({
+      idx: 0,
+      materialCode: '1456972',
+      textoBreve: 'DISJUNTOR BIPOLAR 20A',
+      rm: '1200094199',
+      unidadeMedida: 'UN',
+      qtdRequisicao: 5,
+      rawTechText: 'CURVA C 5KA 220V',
+      vinculo: null,
+    });
+
+    const esperado = [
+      '1) Material: 1456972 — DISJUNTOR BIPOLAR 20A',
+      '   RM: 1200094199   |   Unidade: UN   |   Quantidade: 5',
+      '   Texto Técnico: CURVA C 5KA 220V',
+    ].join('\n');
+
+    expect(resultado).toBe(esperado);
+  });
+
+  it('formata item comum sem texto técnico exibindo travessão', () => {
+    const resultado = formatarItemCotacao({
+      idx: 0,
+      materialCode: '1456972',
+      textoBreve: 'DISJUNTOR BIPOLAR 20A',
+      rm: '1200094199',
+      unidadeMedida: 'UN',
+      qtdRequisicao: 5,
+      rawTechText: null,
+      vinculo: null,
+    });
+
+    expect(resultado).toContain('   Texto Técnico: —');
   });
 });

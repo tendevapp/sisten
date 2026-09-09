@@ -11,7 +11,7 @@ import {
   Boxes, Users, Plus, Search, Trash2, Edit2, CheckCircle2, XCircle,
   RefreshCw, Filter, Layers, Download, ChevronLeft, ChevronRight,
   TrendingUp, ShoppingCart, FileText, Check, AlertCircle, Sparkles,
-  ArrowUp, ArrowDown, ArrowUpDown
+  ArrowUp, ArrowDown, ArrowUpDown, X
 } from 'lucide-react';
 import type { Profile, GrupoCompradorMercadoria, CompradorCadastro } from '../../types';
 import * as api from '../../lib/grupoCompradorApi';
@@ -187,6 +187,46 @@ export default function GestaoGrupoComprador({ user }: Props) {
 
     return { totalVinculos, mapa };
   }, [vinculos, compradores]);
+
+  // Opcoes de compradores para o filtro dropdown
+  const opcoesCompradoresFiltro = useMemo(() => {
+    const mapa = new Map<string, { codigo: string; nome: string; ativo?: boolean }>();
+    compradores.forEach((c) => {
+      mapa.set(c.grupo_compras, {
+        codigo: c.grupo_compras,
+        nome: c.nome_comprador,
+        ativo: c.ativo,
+      });
+    });
+    vinculos.forEach((v) => {
+      if (v.grupo_compras && !mapa.has(v.grupo_compras)) {
+        mapa.set(v.grupo_compras, {
+          codigo: v.grupo_compras,
+          nome: v.nome_comprador || 'Não identificado',
+          ativo: true,
+        });
+      }
+    });
+    return Array.from(mapa.values()).sort((a, b) =>
+      a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true })
+    );
+  }, [compradores, vinculos]);
+
+  const temFiltroAtivo =
+    busca.trim() !== '' ||
+    filtroComprador !== 'TODOS' ||
+    filtroNivel1 !== 'TODOS' ||
+    filtroNivel2 !== 'TODOS' ||
+    filtroStatus !== 'TODOS';
+
+  const limparTodosFiltros = () => {
+    setBusca('');
+    setFiltroComprador('TODOS');
+    setFiltroNivel1('TODOS');
+    setFiltroNivel2('TODOS');
+    setFiltroStatus('TODOS');
+    setPaginaAtual(1);
+  };
 
   // Opcoes de subcategoria dinamicas para o filtro de Nivel 2
   const opcoesNivel2Filtro = useMemo(() => {
@@ -810,7 +850,7 @@ export default function GestaoGrupoComprador({ user }: Props) {
 
       {/* Barra de Ferramentas e Filtros */}
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           {/* Campo de Busca */}
           <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -824,6 +864,26 @@ export default function GestaoGrupoComprador({ user }: Props) {
               placeholder="Buscar por código, denominação, nível ou comprador..."
               className="h-9 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-xs text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
             />
+          </div>
+
+          {/* Filtro Grupo de Compradores */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Comprador:</span>
+            <select
+              value={filtroComprador}
+              onChange={(e) => {
+                setFiltroComprador(e.target.value);
+                setPaginaAtual(1);
+              }}
+              className="h-9 max-w-[210px] truncate rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+            >
+              <option value="TODOS">Todos os Compradores</option>
+              {opcoesCompradoresFiltro.map((comp) => (
+                <option key={comp.codigo} value={comp.codigo}>
+                  {comp.codigo} - {comp.nome}{comp.ativo === false ? ' (Inativo)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Filtro Nível 1 */}
@@ -887,6 +947,19 @@ export default function GestaoGrupoComprador({ user }: Props) {
               </button>
             ))}
           </div>
+
+          {/* Botão Limpar Filtros quando houver filtro ativo */}
+          {temFiltroAtivo && (
+            <button
+              type="button"
+              onClick={limparTodosFiltros}
+              className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+              title="Limpar todos os filtros aplicados"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Limpar</span>
+            </button>
+          )}
         </div>
 
         {/* Botoes de Acao */}

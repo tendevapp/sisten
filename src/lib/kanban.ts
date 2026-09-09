@@ -137,3 +137,35 @@ export function formatarPrazoRestante(prazo?: string | null, agora: Date = new D
   }
   return { texto: `${Math.round(horas / 24)}d restantes`, atrasado: false };
 }
+
+/**
+ * Idade do card — há quanto tempo a demanda foi aberta. Serve de "temporizador"
+ * na coluna de entrada: quanto mais tempo parada sem atendimento, mais forte o
+ * alerta (`atencao` a partir de 3 dias, `critico` a partir de 7).
+ */
+export function formatarIdadeCartao(
+  criadoEm: string,
+  agora: Date = new Date(),
+): { texto: string; nivel: 'novo' | 'atencao' | 'critico' } {
+  const criado = new Date(criadoEm).getTime();
+  if (!Number.isFinite(criado)) return { texto: '—', nivel: 'novo' };
+
+  const diffMs = Math.max(0, agora.getTime() - criado);
+  const min = Math.floor(diffMs / 60000);
+  const horas = Math.floor(min / 60);
+  const dias = Math.floor(horas / 24);
+
+  let texto: string;
+  if (min < 1) texto = 'agora';
+  else if (min < 60) texto = `há ${min} min`;
+  else if (horas < 24) texto = `há ${horas} h`;
+  else if (dias < 7) texto = `há ${dias} d`;
+  else if (dias < 30) texto = `há ${Math.floor(dias / 7)} sem`;
+  else {
+    const meses = Math.floor(dias / 30);
+    texto = `há ${meses} ${meses > 1 ? 'meses' : 'mês'}`;
+  }
+
+  const nivel = dias >= 7 ? 'critico' : dias >= 3 ? 'atencao' : 'novo';
+  return { texto, nivel };
+}

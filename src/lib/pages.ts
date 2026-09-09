@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -85,6 +85,13 @@ export const PAGES: PageDef[] = [
   { id: 'almox_movimentacoes', group: 'ALMOXARIFADO', label: 'Movimentações', path: '/almoxarifado/movimentacoes', icon: ArrowLeftRight, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_consumo_semanal', group: 'ALMOXARIFADO', label: 'Consumo Semanal', path: '/almoxarifado/consumo-semanal', icon: CalendarDays, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'almox_dashboards', group: 'ALMOXARIFADO', label: 'Dashboards', path: '/almoxarifado/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  // Projetos entra com UMA linha no menu: o hub. As sub-rotas
+  // (/almoxarifado/projetos/bom, /recebimento, /premontagem, /producao,
+  // /posicao, /sobressalentes, /paineis) existem no switch do App.tsx e usam
+  // este mesmo `id` como gate — mesmo desenho de
+  // `/almoxarifado/movimentacoes/giro`. Oito itens de menu para um módulo só
+  // afogariam o grupo.
+  { id: 'almox_projetos', group: 'ALMOXARIFADO', label: 'Projetos', path: '/almoxarifado/projetos', icon: Factory, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   // Módulo Facilities — tela inicial (hub) + páginas de cadastro e relatórios
   // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
@@ -176,6 +183,34 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'almox_importar_planilhas',
     group: 'ALMOXARIFADO',
     label: 'Importar planilhas SAP (Estoque ZL0024 e Movimentações MB51)',
+    defaultRoles: [],
+  },
+  // Projetos separa CONSULTAR de LANÇAR. Quem abre o módulo vê a BOM, a
+  // posição e os painéis; movimentar estoque é ato de quem está no balcão, na
+  // bancada ou na linha — três pessoas diferentes. Sem role padrão: o admin
+  // libera usuário a usuário, como nas planilhas SAP acima.
+  {
+    id: 'proj_lancar_entrada',
+    group: 'ALMOXARIFADO',
+    label: 'Projetos: lançar entrada de NF (recebimento)',
+    defaultRoles: [],
+  },
+  {
+    id: 'proj_lancar_premontagem',
+    group: 'ALMOXARIFADO',
+    label: 'Projetos: separar romaneio e apontar pré-montagem',
+    defaultRoles: [],
+  },
+  {
+    id: 'proj_lancar_producao',
+    group: 'ALMOXARIFADO',
+    label: 'Projetos: entregar kit à produção',
+    defaultRoles: [],
+  },
+  {
+    id: 'proj_lancar_sobressalente',
+    group: 'ALMOXARIFADO',
+    label: 'Projetos: solicitar sobressalente / refugo',
     defaultRoles: [],
   },
   // Sem role padrão: quem recebe notificação de chamado jurídico é decidido

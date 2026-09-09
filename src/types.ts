@@ -2506,3 +2506,314 @@ export interface DemTarefaAtividade {
   criado_por_nome?: string | null;
   created_at: string;
 }
+
+// =====================================================================
+// Módulo Projetos: Estrutura BOM - GW_JACOBINA
+// =====================================================================
+
+export interface ProjBomGwjaco {
+  id?: number;
+  projeto: string;
+  level: number | null;
+  section: string | null;
+  group: string | null;
+  find_number: string | null;
+  part_number: string | null;
+  codigo_equivalente_qingdao: string | null;
+  revision: string | null;
+  description: string | null;
+  descricao: string | null;
+  quantity: number | null;
+  each_weight_kg: number | null;
+  total_weight_kg: number | null;
+  uom: string | null;
+  source: string | null;
+  delivery_at: string | null;
+  kit_atlanta: string | null;
+  cod_sap: string | null;
+  created_at?: string;
+}
+
+// =====================================================================
+// Módulo Projetos: cadastro, estoque em dois estágios e formulários
+//
+// A BOM (`ProjBomGwjaco`) é engenharia e só leitura. O que segue é a camada
+// operacional do almoxarifado — catálogo de itens, razão de movimento e os
+// cinco formulários. Ver `src/lib/projetosApi.ts`.
+// =====================================================================
+
+export interface ProjSubprojeto {
+  id: string;
+  projeto: string;
+  nome: string;
+  pedido_compra: string | null;
+  torres_previstas: number;
+  torre_inicial: number;
+  torre_final: number;
+  ativo: boolean;
+  ordem: number;
+  observacao: string | null;
+  created_at?: string;
+}
+
+/** Unidade física de tramo: `T1-3143` = tramo 1 da série 3143 (torre 1). */
+export interface ProjTramoUnidade {
+  id: string;
+  projeto: string;
+  torre_numero: number;
+  tramo: string;
+  secao: string;
+  serie: number;
+  subprojeto_id: string | null;
+  status: 'pendente' | 'em_premontagem' | 'kit_pronto' | 'entregue';
+  observacao: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Catálogo operacional: uma linha por part number normalizado. */
+export interface ProjItem {
+  id: string;
+  projeto: string;
+  part_number_norm: string;
+  part_number: string;
+  cod_sap: string | null;
+  descricao: string | null;
+  description: string | null;
+  fornecedor: string | null;
+  uom: string | null;
+  peso_unitario_kg: number | null;
+  /** Prateleira; preenchido pelo almoxarifado, não vem da BOM. */
+  localizador: string | null;
+  estoque_minimo: number;
+  observacao: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Linha da `vw_proj_bom_arvore` — a BOM com a hierarquia já resolvida. */
+export interface ProjBomNo {
+  id: number;
+  projeto: string;
+  level: number | null;
+  parent_id: number | null;
+  folha: boolean;
+  secao: string | null;
+  tramo: string | null;
+  grupo: string | null;
+  grupo_norm: string | null;
+  find_number: string | null;
+  part_number: string | null;
+  part_number_norm: string | null;
+  codigo_equivalente_qingdao: string | null;
+  revision: string | null;
+  description: string | null;
+  descricao: string | null;
+  qtd_por_torre: number | null;
+  each_weight_kg: number | null;
+  total_weight_kg: number | null;
+  uom: string | null;
+  fornecedor: string | null;
+  delivery_at: string | null;
+  subconjunto: string | null;
+  cod_sap: string | null;
+  caminho: string[];
+  profundidade: number;
+}
+
+/** Linha da `vw_proj_saldo_almox` — posição do almoxarifado central. */
+export interface ProjSaldoItem {
+  projeto: string;
+  item_id: string;
+  part_number: string;
+  part_number_norm: string;
+  cod_sap: string | null;
+  descricao: string | null;
+  description: string | null;
+  fornecedor: string | null;
+  uom: string | null;
+  localizador: string | null;
+  estoque_minimo: number;
+  entradas: number;
+  saidas: number;
+  refugo: number;
+  saldo: number;
+}
+
+export type ProjTipoMovimento =
+  | 'entrada_nf'
+  | 'saida_premontagem'
+  | 'retorno_premontagem'
+  | 'saida_sobressalente'
+  | 'ajuste';
+
+/** Razão único. `quantidade` com sinal: + entrada, − saída. */
+export interface ProjMovimento {
+  id: string;
+  projeto: string;
+  tipo: ProjTipoMovimento;
+  item_id: string;
+  quantidade: number;
+  documento_tipo: string | null;
+  documento_id: string | null;
+  documento_codigo: string | null;
+  secao: string | null;
+  tramo: string | null;
+  tramo_unidade_id: string | null;
+  bom_linha_id: number | null;
+  origem_pai_pn: string | null;
+  observacao: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+}
+
+export interface ProjNotaEntradaPai {
+  id: string;
+  nota_id: string;
+  bom_linha_id: number | null;
+  part_number: string | null;
+  cod_sap: string | null;
+  descricao: string | null;
+  quantidade_recebida: number;
+  explodir: boolean;
+  torres_equivalentes: number | null;
+  /** O conferente contou diferente da sugestão da explosão. */
+  divergencia: boolean;
+  created_at?: string;
+}
+
+export interface ProjNotaEntrada {
+  id: string;
+  projeto: string;
+  codigo: string;
+  data_entrada: string;
+  numero_nf: string;
+  fornecedor: string;
+  subprojeto_id: string | null;
+  observacao: string | null;
+  total_itens: number;
+  total_quantidade: number;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+  pais?: ProjNotaEntradaPai[];
+}
+
+/** Romaneio congelado no momento da separação. */
+export interface ProjOrdemItem {
+  id: string;
+  ordem_id: string;
+  item_id: string;
+  subconjunto: string | null;
+  qtd_por_kit: number;
+  qtd_total: number;
+  localizador: string | null;
+  saldo_no_momento: number | null;
+  created_at?: string;
+}
+
+export interface ProjOrdemPremontagem {
+  id: string;
+  projeto: string;
+  codigo: string;
+  subprojeto_id: string | null;
+  tramo: string;
+  quantidade_kits: number;
+  status: 'em_processamento' | 'concluida' | 'cancelada';
+  observacao: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  concluida_em: string | null;
+  concluida_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+  itens?: ProjOrdemItem[];
+  alvos?: { tramo_unidade_id: string }[];
+  kits?: ProjKit[];
+}
+
+export interface ProjKit {
+  id: string;
+  projeto: string;
+  /** `KIT-T1-3143` — a etiqueta física. */
+  rastreio: string;
+  codigo: string | null;
+  tramo: string;
+  tramo_unidade_id: string;
+  ordem_id: string | null;
+  status: 'em_premontagem' | 'pronto' | 'entregue';
+  qualidade_ok: boolean | null;
+  nao_conformidade: string | null;
+  observacao: string | null;
+  concluido_em: string | null;
+  concluido_por_nome: string | null;
+  entrega_id: string | null;
+  entregue_em: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+}
+
+export interface ProjEntregaProducao {
+  id: string;
+  projeto: string;
+  codigo: string;
+  data: string;
+  turno: string | null;
+  subprojeto_id: string | null;
+  kit_id: string;
+  tramo: string;
+  tramo_unidade_id: string;
+  recebido_por_nome: string;
+  observacao: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+}
+
+export interface ProjEvidencia {
+  path: string;
+  nome: string;
+  tipo: string;
+}
+
+export interface ProjSobressalenteItem {
+  id: string;
+  sobressalente_id: string;
+  item_id: string;
+  quantidade: number;
+  created_at?: string;
+}
+
+export interface ProjSobressalente {
+  id: string;
+  projeto: string;
+  codigo: string;
+  data: string;
+  subprojeto_id: string | null;
+  tramo: string | null;
+  tramo_unidade_id: string | null;
+  motivo: 'quebra_montagem' | 'deformacao_solda' | 'nc_fornecedor' | 'perda_extravio' | 'outros';
+  motivo_detalhe: string | null;
+  aprovador_nome: string;
+  aprovador_id: string | null;
+  status: 'solicitado' | 'aprovado' | 'recusado' | 'atendido';
+  evidencias: ProjEvidencia[];
+  observacao: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  excluido_em: string | null;
+  excluido_por: string | null;
+  created_at: string;
+  itens?: ProjSobressalenteItem[];
+}

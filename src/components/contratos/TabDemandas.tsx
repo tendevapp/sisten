@@ -19,16 +19,18 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Inbox, User, Building2, SlidersHorizontal, GripVertical, Plus,
+  Inbox, Building2, SlidersHorizontal, GripVertical, Plus, Search, Clock,
   ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw, AlertTriangle, Pencil,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
+import { Avatar } from '../demandas-modulo/shared';
 import { Profile, Request, RequestStatus } from '../../types';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, findJuridicoSector, isJuridicoSector } from '../../lib/juridico';
 import {
   COLUNA_INICIAL, DEFAULT_KANBAN_COLUMNS, KanbanColumnConfig,
   carregarColunasKanban, salvarColunasKanban, corDoStatus, corPrioridade,
-  PRIORIDADE_LABEL, codigoCurtoDemanda, formatarPrazoRestante, STATUS_LABEL_DEMANDA,
+  PRIORIDADE_LABEL, codigoCurtoDemanda, formatarPrazoRestante, formatarIdadeCartao,
+  STATUS_LABEL_DEMANDA,
 } from '../../lib/kanban';
 import { useChartConfig } from '../charts/chartDefaults';
 import DemandaDetailModal from './DemandaDetailModal';
@@ -41,6 +43,25 @@ interface TabDemandasProps {
 /* --------------------------------------------------------------------- */
 /* Card                                                                   */
 /* --------------------------------------------------------------------- */
+
+/** "Temporizador" da coluna de entrada: há quanto tempo o card está aberto. */
+function IdadeChip({ criadoEm }: { criadoEm: string }) {
+  const idade = formatarIdadeCartao(criadoEm);
+  const cor = idade.nivel === 'critico'
+    ? 'var(--status-critical)'
+    : idade.nivel === 'atencao'
+      ? 'var(--status-warning)'
+      : 'var(--ink-muted)';
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5"
+      style={{ color: cor, background: `color-mix(in srgb, ${cor} 14%, transparent)` }}
+      title={`Aberto ${idade.texto}`}
+    >
+      <Clock className="h-2.5 w-2.5" />{idade.texto}
+    </span>
+  );
+}
 
 interface CardContentProps {
   request: Request;
@@ -72,11 +93,11 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
 
   return (
     <>
-      <span className="font-mono text-[11px] font-black" style={{ color: 'var(--brand-strong)' }}>
+      <span className="font-mono text-[10px] font-black" style={{ color: 'var(--brand-strong)' }}>
         {codigoCurtoDemanda(request.number)}
       </span>
 
-      <div className="group/titulo flex items-start gap-1 mt-1">
+      <div className="group/titulo flex items-start gap-1 mt-0.5">
         {editando ? (
           <input
             ref={inputRef}
@@ -112,17 +133,30 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
         )}
       </div>
 
-      <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--ink-muted)' }}>
-        {request.category_id || 'Sem categoria'}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+      <div className="flex flex-wrap items-center gap-1.5 mt-2">
         <span
           className="text-[9px] font-black uppercase tracking-wide rounded-full px-2 py-0.5"
           style={{ color: corPrio, background: `color-mix(in srgb, ${corPrio} 16%, transparent)` }}
         >
           {PRIORIDADE_LABEL[request.criticality] || '—'}
         </span>
+        <select
+          value={request.status}
+          onChange={(e) => onMudarStatus(e.target.value as RequestStatus)}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-[9px] font-bold rounded-full px-2 py-0.5 cursor-pointer border-0 appearance-none"
+          style={{ color: corStatusAtual, background: `color-mix(in srgb, ${corStatusAtual} 14%, transparent)` }}
+          title="Mudar status"
+        >
+          {colunas.map(c => (
+            <option key={c.status} value={c.status}>{c.label}</option>
+          ))}
+          {/* Garante uma opção para o status atual mesmo que a coluna correspondente esteja oculta/renomeada fora da lista. */}
+          {!colunas.some(c => c.status === request.status) && (
+            <option value={request.status}>{STATUS_LABEL_DEMANDA[request.status]}</option>
+          )}
+        </select>
         {prazo && (
           <span
             className="inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5"
@@ -137,37 +171,20 @@ function CardContent({ request, setorNome, corPrio, colunas, onSalvarTitulo, onM
             {prazo.texto}
           </span>
         )}
-      </div>
-
-      <div className="mt-1.5">
-        <select
-          value={request.status}
-          onChange={(e) => onMudarStatus(e.target.value as RequestStatus)}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="w-full text-[10px] font-bold rounded-lg px-2 py-1 cursor-pointer border-0 appearance-none"
-          style={{ color: corStatusAtual, background: `color-mix(in srgb, ${corStatusAtual} 12%, transparent)` }}
-          title="Mudar status"
-        >
-          {colunas.map(c => (
-            <option key={c.status} value={c.status}>{c.label}</option>
-          ))}
-          {/* Garante uma opção para o status atual mesmo que a coluna correspondente esteja oculta/renomeada fora da lista. */}
-          {!colunas.some(c => c.status === request.status) && (
-            <option value={request.status}>{STATUS_LABEL_DEMANDA[request.status]}</option>
-          )}
-        </select>
+        {request.status === COLUNA_INICIAL.status && <IdadeChip criadoEm={request.created_at} />}
       </div>
 
       <div
-        className="flex items-center justify-between gap-2 mt-2.5 pt-2.5 text-[10px]"
-        style={{ borderTop: '1px solid var(--hairline)', color: 'var(--ink-muted)' }}
+        className="flex items-center justify-between gap-2 mt-2.5 pt-2.5"
+        style={{ borderTop: '1px solid var(--hairline)' }}
       >
-        <span className="flex items-center gap-1 min-w-0">
-          <User className="h-3 w-3 shrink-0" />
-          <span className="truncate max-w-[100px]">{request.atendente_name || request.solicitante_name}</span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <Avatar nome={request.atendente_name || request.solicitante_name} size={22} />
+          <span className="text-[10px] truncate max-w-[110px]" style={{ color: 'var(--ink-muted)' }}>
+            {request.atendente_name || request.solicitante_name}
+          </span>
         </span>
-        <span className="flex items-center gap-1 min-w-0 shrink-0">
+        <span className="flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--ink-muted)' }}>
           <Building2 className="h-3 w-3 shrink-0" />
           <span className="truncate max-w-[90px]">{setorNome}</span>
         </span>
@@ -188,32 +205,31 @@ interface KanbanCardProps {
 
 function KanbanCard({ request, setorNome, corPrio, colunas, onClick, onSalvarTitulo, onMudarStatus }: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: request.id });
+  // Depois de arrastar, o navegador ainda dispara um `click` no card de origem —
+  // sem isto o modal abriria toda vez que se solta um card.
+  const arrastou = useRef(false);
+  useEffect(() => { if (isDragging) arrastou.current = true; }, [isDragging]);
+  const handleClick = () => {
+    if (arrastou.current) { arrastou.current = false; return; }
+    onClick();
+  };
   return (
     <div
       ref={setNodeRef}
-      onClick={onClick}
-      className="relative rounded-xl border p-3 transition-shadow duration-150 hover:shadow-md reveal"
+      onClick={handleClick}
+      {...listeners}
+      {...attributes}
+      className="relative rounded-xl border p-3 transition-shadow hover:shadow-md select-none"
       style={{
         borderColor: 'var(--hairline)',
         background: 'var(--surface-card)',
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
-        boxShadow: isDragging ? 'none' : '0 1px 2px 0 rgb(0 0 0 / 0.04)',
-        cursor: 'pointer',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none',
       }}
     >
-      <button
-        type="button"
-        {...listeners}
-        {...attributes}
-        onClick={(e) => e.stopPropagation()}
-        className="absolute top-2.5 right-2.5 cursor-grab active:cursor-grabbing touch-none p-0.5"
-        style={{ color: 'var(--ink-muted)', opacity: 0.5 }}
-        aria-label="Arrastar card"
-        title="Arrastar para outra coluna"
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
+      <GripVertical className="absolute top-2 right-2 h-3.5 w-3.5 pointer-events-none" style={{ color: 'var(--ink-muted)', opacity: 0.4 }} />
       <CardContent request={request} setorNome={setorNome} corPrio={corPrio} colunas={colunas} onSalvarTitulo={onSalvarTitulo} onMudarStatus={onMudarStatus} />
     </div>
   );
@@ -242,28 +258,35 @@ function KanbanColumn({ status, label, cor, requests, colunas, setorPorId, onCar
 
   return (
     <div className="flex flex-col w-[300px] shrink-0 rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-      <div className="flex items-center gap-2 px-3.5 py-3 shrink-0" style={{ borderBottom: '1px solid var(--hairline)' }}>
+      <div
+        className="flex items-center gap-2 px-3.5 py-3 shrink-0"
+        style={{
+          borderBottom: '1px solid var(--hairline)',
+          borderTop: `3px solid ${cor}`,
+          background: `color-mix(in srgb, ${cor} 8%, transparent)`,
+        }}
+      >
         <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cor }} />
         <h3 className="text-xs font-bold uppercase tracking-wide truncate flex-1" style={{ color: 'var(--ink-primary)' }} title={label}>
           {label}
         </h3>
         <span
           className="text-[10px] font-black rounded-full h-5 min-w-5 px-1 flex items-center justify-center"
-          style={{ color: cor, background: `color-mix(in srgb, ${cor} 16%, transparent)` }}
+          style={{ color: 'var(--ink-secondary)', background: 'var(--surface-sunken)' }}
         >
           {requests.length}
         </span>
       </div>
       <div
         ref={setNodeRef}
-        className="flex-1 min-h-[120px] p-2.5 space-y-2.5 overflow-y-auto transition-colors duration-150 stagger"
+        className="flex-1 min-h-[120px] p-2.5 space-y-2.5 overflow-y-auto transition-colors duration-150"
         style={{
-          maxHeight: 'calc(100vh - 340px)',
-          background: isOver ? `color-mix(in srgb, ${cor} 7%, transparent)` : 'transparent',
+          maxHeight: 'calc(100vh - 300px)',
+          background: isOver ? `color-mix(in srgb, ${cor} 9%, transparent)` : 'transparent',
         }}
       >
         {requests.length === 0 && (
-          <p className="text-[11px] italic text-center py-6" style={{ color: 'var(--ink-muted)' }}>Nenhuma demanda aqui.</p>
+          <p className="text-[11px] italic text-center py-6" style={{ color: 'var(--ink-muted)' }}>Nada aqui.</p>
         )}
         {requests.map(r => (
           <KanbanCard
@@ -372,9 +395,12 @@ export default function TabDemandas({ user }: TabDemandasProps) {
   const [requests, setRequests] = useState<Request[]>([]);
   const [colunas, setColunas] = useState<KanbanColumnConfig[]>(() => carregarColunasKanban());
   const [showCustomize, setShowCustomize] = useState(false);
+  const [busca, setBusca] = useState('');
   const [selecionado, setSelecionado] = useState<Request | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [novaDemandaStatus, setNovaDemandaStatus] = useState<RequestStatus | null>(null);
+  // Faz o "temporizador" de idade dos cards abertos avançar sozinho.
+  const [, setTick] = useState(0);
 
   const getJuridicoSectorId = useCallback(() => {
     const sectors = localDb.getSectors();
@@ -409,6 +435,10 @@ export default function TabDemandas({ user }: TabDemandasProps) {
 
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => localDb.subscribe(carregar), [carregar]);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const atualizarColunas = (next: KanbanColumnConfig[]) => {
     setColunas(next);
@@ -420,11 +450,24 @@ export default function TabDemandas({ user }: TabDemandasProps) {
     [colunas]
   );
 
+  const requestsFiltradas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return requests;
+    return requests.filter(r =>
+      (r.titulo || '').toLowerCase().includes(q) ||
+      (r.category_id || '').toLowerCase().includes(q) ||
+      (r.number || '').toLowerCase().includes(q) ||
+      codigoCurtoDemanda(r.number).toLowerCase().includes(q) ||
+      (r.solicitante_name || '').toLowerCase().includes(q) ||
+      (r.atendente_name || '').toLowerCase().includes(q)
+    );
+  }, [requests, busca]);
+
   const requestsPorStatus = useMemo(() => {
     const mapa = new Map<RequestStatus, Request[]>();
     colunasVisiveis.forEach(c => mapa.set(c.status, []));
     // Mais urgente primeiro (criticidade desc), depois mais recente.
-    const ordenados = [...requests].sort((a, b) => {
+    const ordenados = [...requestsFiltradas].sort((a, b) => {
       if (b.criticality !== a.criticality) return b.criticality - a.criticality;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
@@ -436,7 +479,7 @@ export default function TabDemandas({ user }: TabDemandasProps) {
       // some do sistema: ainda está em Minhas Solicitações.
     });
     return mapa;
-  }, [requests, colunasVisiveis]);
+  }, [requestsFiltradas, colunasVisiveis]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -520,8 +563,19 @@ export default function TabDemandas({ user }: TabDemandasProps) {
         </div>
       </div>
 
+      <div className="relative max-w-md">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Busque por código, título, categoria, solicitante ou atendente..."
+          className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
+        />
+      </div>
+
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-2 stagger">
+        <div className="flex gap-4 overflow-x-auto pb-2 items-start">
           {colunasVisiveis.map(col => (
             <KanbanColumn
               key={col.status}

@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  CalendarDays, KanbanSquare, LayoutGrid, Plus, Settings2, SlidersHorizontal,
+  CalendarDays, KanbanSquare, LayoutGrid, Plus, Search, Settings2, SlidersHorizontal,
 } from 'lucide-react';
 import type { DemBucket, DemQuadro, DemTarefa, Profile } from '../../types';
 import { localDb } from '../../db/localDb';
@@ -59,6 +59,7 @@ export default function DemandasWorkspace({ user }: Props) {
   const [aba, setAba] = useState<Aba>(lerHash().aba);
   const [buckets, setBuckets] = useState<DemBucket[]>([]);
   const [tarefas, setTarefas] = useState<DemTarefa[]>([]);
+  const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
 
   const [novoQuadro, setNovoQuadro] = useState(false);
@@ -69,6 +70,17 @@ export default function DemandasWorkspace({ user }: Props) {
 
   const quadro = quadros.find(q => q.id === quadroId);
   const podeGerir = quadro ? podeGerenciarQuadro(user, quadro, sectors) : false;
+
+  const tarefasFiltradas = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return tarefas;
+    return tarefas.filter(t =>
+      t.titulo.toLowerCase().includes(q) ||
+      (t.descricao || '').toLowerCase().includes(q) ||
+      (t.codigo || '').toLowerCase().includes(q) ||
+      t.responsaveis.some(id => (porId.get(id)?.name || '').toLowerCase().includes(q))
+    );
+  }, [tarefas, busca, porId]);
 
   const sincronizarHash = useCallback((novaAba: Aba, novoQuadroId?: string) => {
     const qs = new URLSearchParams();
@@ -205,6 +217,19 @@ export default function DemandasWorkspace({ user }: Props) {
         </div>
       </div>
 
+      {/* Busca — filtra as tarefas nas três visões (Quadro / Grade / Calendário) */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
+        <input
+          type="search"
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar por título, descrição, código ou responsável…"
+          className="w-full rounded-lg border pl-9 pr-3 py-2 text-sm"
+          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+        />
+      </div>
+
       {/* Abas */}
       <div role="tablist" className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--hairline)' }}>
         {ABAS.map(({ id, label, icon: Icon }) => (
@@ -226,7 +251,7 @@ export default function DemandasWorkspace({ user }: Props) {
         <p className="text-sm py-10 text-center" style={{ color: 'var(--ink-muted)' }}>Carregando…</p>
       ) : !quadro ? null : aba === 'quadro' ? (
         <ViewQuadro
-          buckets={buckets} tarefas={tarefas} porId={porId} podeEditar podeGerirColunas={podeGerir}
+          buckets={buckets} tarefas={tarefasFiltradas} porId={porId} podeEditar podeGerirColunas={podeGerir}
           onAbrirTarefa={setTarefaSel}
           onCriarTarefa={b => setNovaTarefa({ bucketId: b })}
           onMover={handleMover}
@@ -235,13 +260,13 @@ export default function DemandasWorkspace({ user }: Props) {
         />
       ) : aba === 'grade' ? (
         <ViewGrade
-          buckets={buckets} tarefas={tarefas} porId={porId} podeEditar
+          buckets={buckets} tarefas={tarefasFiltradas} porId={porId} podeEditar
           onAbrirTarefa={setTarefaSel}
           onAtualizarInline={handleInline}
         />
       ) : (
         <ViewCalendario
-          tarefas={tarefas} porId={porId} podeEditar
+          tarefas={tarefasFiltradas} porId={porId} podeEditar
           onAbrirTarefa={setTarefaSel}
           onCriarNoDia={venc => setNovaTarefa({ bucketId: buckets[0]?.id ?? null, venc })}
         />

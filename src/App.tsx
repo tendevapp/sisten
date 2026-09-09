@@ -46,6 +46,7 @@ const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
 const AbrirRm = lazy(() => import('./views/AbrirRm'));
 const Estoque = lazy(() => import('./views/Estoque'));
 const Movimentacoes = lazy(() => import('./views/Movimentacoes'));
+const Projetos = lazy(() => import('./views/projetos/Projetos'));
 const ConsumoSemanal = lazy(() => import('./views/ConsumoSemanal'));
 const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards'));
 const Sobre = lazy(() => import('./views/Sobre'));
@@ -838,6 +839,42 @@ export default function App() {
         if (canAccessPage(user, 'almox_dashboards')) {
           return <AlmoxarifadoDashboards user={user} onNavigate={handleNavigate} />;
         }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Almoxarifado > Projetos — uma view com abas. As sub-rotas existem para
+      // o deep-link (mandar "abra o romaneio da OPM-080926-01" por mensagem) e
+      // compartilham o mesmo gate `almox_projetos`; carregar a BOM inteira uma
+      // vez por aba seria desperdicio, entao os dados vivem na view.
+      case '/almoxarifado/projetos':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/bom':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="bom" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/posicao':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="posicao" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/recebimento':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="recebimento" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/premontagem':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="premontagem" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/producao':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="producao" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/sobressalentes':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="sobressalentes" />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/almoxarifado/projetos/paineis':
+        if (canAccessPage(user, 'almox_projetos')) return <Projetos user={user} onNavigate={handleNavigate} abaInicial="paineis" />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       // Telas iniciais (hubs) dos módulos — grade de cards para as subpáginas

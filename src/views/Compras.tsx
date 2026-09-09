@@ -27,7 +27,7 @@ import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
 import {
-  buscarVinculoSistenRm, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
+  buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
   type VinculoSistenRm,
 } from '../lib/centralComprasSisten';
 import type { CotacaoProcessoItemDraft } from '../types';
@@ -123,9 +123,8 @@ FINEZA, SEMPRE MANTER O NOSSO Nº DE COTAÇÃO NO ASSUNTO DO E-MAIL, BEM COMO MA
 // Texto Técnico costuma ser longo demais para caber em uma coluna sem quebrar a leitura.
 //
 // Item genérico com solicitação vinculada no SISTEN: o texto técnico do
-// catálogo é ignorado — um material genérico é um código guarda-chuva, não
-// descreve a compra — e entra a observação que o solicitante escreveu
-// (`textoTecnicoParaCotacao`, ver `lib/centralComprasSisten.ts`).
+// catálogo é ignorado e fica em branco, a descrição é substituída pela
+// observação do solicitante e recebe a tag [IG] (ver `lib/centralComprasSisten.ts`).
 const buildQuoteItemsTable = (
   items: QuoteItemEntry[],
   techTextByCode: Map<string, string>,
@@ -142,14 +141,17 @@ const buildQuoteItemsTable = (
 
   return dedupedItems.map(({ record: r, rm }, idx) => {
     const vinculo = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
-    const textoGenerico = textoTecnicoParaCotacao(vinculo);
     const rawTech = techTextByCode.get(normalizeCode(r.material_code));
-    const techText = textoGenerico || (rawTech ? sanitizeTechnicalText(rawTech) : '—');
-    return [
-      `${idx + 1}) Material: ${r.material_code || '—'} — ${r.texto_breve || '—'}${textoGenerico ? ' [ITEM GENÉRICO]' : ''}`,
-      `   RM: ${rm || '—'}   |   Unidade: ${r.unidade_medida || '—'}   |   Quantidade: ${r.qtd_requisicao ?? '—'}`,
-      `   Texto Técnico: ${techText}`
-    ].join('\n');
+    return formatarItemCotacao({
+      idx,
+      materialCode: r.material_code,
+      textoBreve: r.texto_breve,
+      rm,
+      unidadeMedida: r.unidade_medida,
+      qtdRequisicao: r.qtd_requisicao,
+      rawTechText: rawTech,
+      vinculo,
+    });
   }).join('\n\n');
 };
 
