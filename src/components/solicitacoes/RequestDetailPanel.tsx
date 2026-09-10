@@ -411,8 +411,15 @@ export default function RequestDetailPanel({
         uma conversa comprida — antes, rolar três telas fazia perder de vista
         de qual solicitação se estava falando.
       */}
+      {/*
+        No celular o painel já mora numa folha (Modal bottom-sheet) com seu
+        próprio cabeçalho fixo — repetir a fixação aqui empilhava um cartão
+        arredondado colado no topo, com a rolagem aparecendo pelos cantos e
+        pelo vão da margem. Fixa só a partir de `sm`, onde o painel divide a
+        rolagem com uma lista longa.
+      */}
       <header
-        className="sticky top-0 z-10 space-y-3 rounded-2xl border p-4 shadow-sm"
+        className="sm:sticky sm:top-0 z-10 space-y-3 rounded-2xl border p-4 shadow-sm"
         style={cartao}
       >
         {/* Número e tipo ficam no cabeçalho da janela, logo acima — repetir

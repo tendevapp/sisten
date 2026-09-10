@@ -2213,6 +2213,17 @@ class LocalDatabase {
     return Array.from(byId.values());
   }
 
+  // Destinatários do aviso "tem demanda no Abrir RM": quem enxerga a tela de
+  // Abrir RM (admin, comprador, coordenador de suprimentos e qualquer usuário
+  // com a página liberada — tipicamente o almoxarifado). Deduplicado por id.
+  private getAbrirRmNotificationRecipients(): Profile[] {
+    const byId = new Map<string, Profile>();
+    this.getProfiles()
+      .filter(u => canAccessPage(u, 'almox_abrir_rm'))
+      .forEach(u => byId.set(u.id, u));
+    return Array.from(byId.values());
+  }
+
   public createNotification(userId: string, title: string, description: string, type: Notification['type'], reqId?: string, reqNo?: string): void {
     const notifications = this.getStorageItem<Notification[]>(this.notificationsKey, []);
     const newNotif: Notification = {
@@ -3141,7 +3152,7 @@ class LocalDatabase {
     delete row.comments;
     delete row.status_history;
 
-    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo', 'fornecedor_operacao', 'codigo_fornecedor_sap', 'codigo_sap_gerado']) {
+    for (const campo of ['data_necessidade', 'first_response_at', 'resolved_at', 'last_paused_at', 'linked_rm_number', 'prazo_conclusao', 'titulo', 'fornecedor_operacao', 'codigo_fornecedor_sap', 'codigo_sap_gerado', 'ticket_externo']) {
       if (row[campo] === '') row[campo] = null;
     }
 
@@ -3224,8 +3235,8 @@ class LocalDatabase {
    * aprova e ninguém mais fica sabendo — cada usuário veria um status diferente
    * da mesma solicitação. Ver o design da página Solicitações.
    */
-  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string, codigoSapGerado?: string): Promise<boolean> {
-    const user = this.getCurrentUser();
+  public async transitionRequestStatus(reqId: string, toStatus: RequestStatus, comment?: string, codigoSapGerado?: string, actorId?: string): Promise<boolean> {
+    const user = this.getCurrentUser() || (actorId ? this.getProfiles().find(u => u.id === actorId) : null);
     if (!user) return false;
 
     const requests = this.getRequests();
@@ -3238,9 +3249,19 @@ class LocalDatabase {
     const prevFirstResponseAt = request.first_response_at;
     const prevResolvedAt = request.resolved_at;
     const prevCodigoSapGerado = request.codigo_sap_gerado;
+    const prevAtendenteId = request.atendente_id;
+    const prevAtendenteName = request.atendente_name;
 
     request.status = toStatus;
     request.updated_at = new Date().toISOString();
+
+    if (!request.atendente_id && actorId && ['em_atendimento', 'aguardando_solicitante', 'resolvido'].includes(toStatus)) {
+      const atendenteUser = this.getProfiles().find(u => u.id === actorId);
+      if (atendenteUser) {
+        request.atendente_id = actorId;
+        request.atendente_name = atendenteUser.name;
+      }
+    }
 
     if (toStatus === 'em_atendimento' && !request.first_response_at) {
       request.first_response_at = new Date().toISOString();
@@ -3267,6 +3288,8 @@ class LocalDatabase {
         revertRequests[revertIdx].first_response_at = prevFirstResponseAt;
         revertRequests[revertIdx].resolved_at = prevResolvedAt;
         revertRequests[revertIdx].codigo_sap_gerado = prevCodigoSapGerado;
+        revertRequests[revertIdx].atendente_id = prevAtendenteId;
+        revertRequests[revertIdx].atendente_name = prevAtendenteName;
         this.setStorageItem(this.requestsKey, revertRequests);
       }
       return false;
@@ -3284,6 +3307,20 @@ class LocalDatabase {
       request.id,
       request.number
     );
+
+    // Compra aprovada pelo gestor: o almoxarifado tem uma demanda nova para
+    // virar RM. Sem este aviso a fila de "Abrir RM" só é vista quando alguém
+    // abre a tela por conta própria.
+    if (toStatus === 'aprovada' && fromStatus !== 'aprovada' && request.type === 'compra') {
+      this.getAbrirRmNotificationRecipients().forEach(d => this.createNotification(
+        d.id,
+        `Abrir RM: nova demanda #${request.number}`,
+        `A solicitação de compra #${request.number} de ${request.solicitante_name} foi aprovada pelo gestor e está pronta para virar RM no SAP.`,
+        request.criticality >= 4 ? 'alert' : 'info',
+        request.id,
+        request.number
+      ));
+    }
 
     return true;
   }
@@ -3569,6 +3606,48 @@ class LocalDatabase {
     }
 
     await this.logStatusChange(reqId, prevStatus, 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
+    return true;
+  }
+
+  /**
+   * Nº do ticket que o atendente de Cadastro SAP abriu numa plataforma externa
+   * (Astrein, service desk da controladoria...). Texto livre e opcional: passar
+   * vazio limpa o vínculo. Não mexe em status nem SLA — é só rastreabilidade.
+   */
+  public async updateCadastroSapTicketExterno(reqId: string, ticket: string | null): Promise<boolean> {
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return false;
+
+    const prev = requests[idx].ticket_externo;
+    const prevUpdatedAt = requests[idx].updated_at;
+    const valorLimpo = ticket?.trim() || undefined;
+    if (valorLimpo === prev) return true;
+
+    requests[idx] = { ...requests[idx], ticket_externo: valorLimpo, updated_at: new Date().toISOString() };
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(requests[idx]);
+    if (!published) {
+      const revert = this.getRequests();
+      const ri = revert.findIndex(r => r.id === reqId);
+      if (ri !== -1) {
+        revert[ri] = { ...revert[ri], ticket_externo: prev, updated_at: prevUpdatedAt };
+        this.setStorageItem(this.requestsKey, revert);
+      }
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    this.logActivity(
+      user?.id || 'admin',
+      'Suprimentos',
+      valorLimpo ? 'Ticket Externo' : 'Ticket Externo (removido)',
+      valorLimpo
+        ? `Registrou o ticket externo "${valorLimpo}" na solicitação #${requests[idx].number}.`
+        : `Removeu o ticket externo da solicitação #${requests[idx].number}.`,
+    );
+    this.notifyListeners();
     return true;
   }
 
@@ -8503,7 +8582,7 @@ class LocalDatabase {
         return await this.assignAtendente(reqId, actorId, user.name);
       }
     }
-    return await this.transitionRequestStatus(reqId, status, comment);
+    return await this.transitionRequestStatus(reqId, status, comment, undefined, actorId);
   }
 
   /** Prazo de conclusão do quadro Kanban (Contratos > Demandas). `prazo` em ISO (YYYY-MM-DD) ou null para limpar. */

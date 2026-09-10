@@ -119,6 +119,17 @@ interface Linha {
 
 type ModoVisao = 'lista' | 'quadro' | 'calendario';
 
+/**
+ * Visão inicial: no celular a lista vira uma tabela larga que só rola de lado;
+ * o Quadro mostra o mesmo conteúdo em colunas de cartões, que é o formato que
+ * cabe na mão. Uma vez que a pessoa troque, a escolha vale para a sessão.
+ */
+function visaoPadrao(): ModoVisao {
+  const estreita = typeof window !== 'undefined' && !!window.matchMedia
+    && window.matchMedia('(max-width: 640px)').matches;
+  return estreita ? 'quadro' : 'lista';
+}
+
 export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }: Props) {
   const tour = usePageTour('central-solicitacoes', CENTRAL_SOLICITACOES_TOUR_STEPS.length);
   const abas = useMemo(() => escoposDisponiveis(user), [user]);
@@ -131,7 +142,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     setor: 'todos',
     statusFiltro: 'abertas',
     dataFiltro: 'todas',
-    visao: 'lista' as ModoVisao,
+    visao: visaoPadrao(),
   });
 
   const [escopo, setEscopo] = useState<Escopo>(
@@ -145,7 +156,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const [setor, setSetor] = useState<string>(cache.setor);
   const [statusFiltro, setStatusFiltro] = useState<string>(cache.statusFiltro || 'abertas');
   const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
-  const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || 'lista');
+  const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || visaoPadrao());
 
   const [todas, setTodas] = useState<Request[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -466,15 +477,17 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         })}
       </nav>
 
-      {/* Barra de Tipos e Alternador de Visao (Exibicao do Mockup) */}
-      <div data-tour="solicitacoes-tipos" className="flex flex-wrap items-center justify-between gap-3 pt-1">
+      {/* Barra de Tipos e Alternador de Visao (Exibicao do Mockup).
+          No celular: pílulas viram uma trilha que rola de lado (uma linha só) e
+          o alternador de visão ocupa a largura toda como controle segmentado. */}
+      <div data-tour="solicitacoes-tipos" className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
         {/* Pilulas de Tipo */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 sm:mx-0 sm:px-0 sm:flex-wrap sm:overflow-visible">
           {/* Todas */}
           <button
             type="button"
             onClick={() => setTipo('todos')}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
               tipo === 'todos'
                 ? 'bg-[#00897b] text-white shadow-sm'
                 : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -494,7 +507,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           <button
             type="button"
             onClick={() => setTipo(tipo === 'compra' ? 'todos' : 'compra')}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
               tipo === 'compra'
                 ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -515,7 +528,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           <button
             type="button"
             onClick={() => setTipo(tipo === 'cadastro_sap' ? 'todos' : 'cadastro_sap')}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
               tipo === 'cadastro_sap'
                 ? 'bg-purple-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -536,7 +549,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           <button
             type="button"
             onClick={() => setTipo(tipo === 'chamado' ? 'todos' : 'chamado')}
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
               tipo === 'chamado'
                 ? 'bg-orange-600 text-white shadow-sm'
                 : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -554,12 +567,12 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           </button>
         </div>
 
-        {/* Alternador de Modo de Exibicao */}
-        <div className="flex items-center gap-1 bg-white dark:bg-slate-850 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+        {/* Alternador de Modo de Exibicao — controle segmentado, largura total no celular */}
+        <div className="flex w-full items-center gap-1 bg-white dark:bg-slate-850 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-2xs sm:w-auto">
           <button
             type="button"
             onClick={() => setVisao('lista')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
               visao === 'lista'
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -571,7 +584,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           <button
             type="button"
             onClick={() => setVisao('quadro')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
               visao === 'quadro'
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -583,7 +596,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           <button
             type="button"
             onClick={() => setVisao('calendario')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+            className={`inline-flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
               visao === 'calendario'
                 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -923,9 +936,12 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         </div>
       )}
 
-      {/* VISÃO 2: QUADRO (KANBAN) */}
+      {/* VISÃO 2: QUADRO (KANBAN).
+          Celular: colunas lado a lado que passam com o dedo (scroll-snap), sem
+          três caixas empilhadas cada uma com a sua própria barra de rolagem.
+          A partir de `md`: grade de 3 colunas. */}
       {visao === 'quadro' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-4 px-4 pb-1 md:mx-0 md:px-0 md:pb-0 md:grid md:grid-cols-3 md:overflow-visible">
           {([
             { id: 'abertas', titulo: 'Abertas', cor: 'border-sky-500', filtro: (r: Request) => estaEmAberto(r) && !['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
             { id: 'analise', titulo: 'Em análise', cor: 'border-amber-500', filtro: (r: Request) => ['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
@@ -935,7 +951,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
             return (
               <div
                 key={col.id}
-                className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 p-3.5 flex flex-col min-h-[420px]"
+                className="snap-start shrink-0 w-[86%] sm:w-[70%] md:w-auto md:shrink rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 p-3.5 flex flex-col min-h-[420px]"
               >
                 <div className={`flex items-center justify-between pb-3 mb-3 border-b-2 ${col.cor}`}>
                   <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">{col.titulo}</h3>
@@ -944,7 +960,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
                   </span>
                 </div>
 
-                <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[640px] pr-1">
+                <div className="space-y-2.5 flex-1 pr-1 md:overflow-y-auto md:max-h-[640px]">
                   {itensCol.length === 0 ? (
                     <div className="py-8 text-center text-xs text-slate-400">Nenhum item nesta coluna</div>
                   ) : (

@@ -28,6 +28,7 @@ const {
   exportarSolicitacoes, classificarEventoHistorico, foiEditadaAposAprovacao,
   formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
   ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, MARCA_IMOBILIZADO,
+  temAvisoAlmoxarifado, carimbarAvisoAlmoxarifado,
 } = await import('./solicitacoes');
 const {
   podeAlterarDecisao, podeCancelar,
@@ -433,6 +434,31 @@ describe('itens de imobilizado', () => {
     expect(marcarObservacaoImobilizado(jaMarcada)).toBe(jaMarcada);
     expect(temMarcaImobilizado(jaMarcada)).toBe(true);
     expect(temMarcaImobilizado('Observação comum')).toBe(false);
+  });
+});
+
+describe('carimbo de aviso ao almoxarifado em compras para estoque', () => {
+  it('identifica corretamente se o aviso ja foi carimbado', () => {
+    expect(temAvisoAlmoxarifado('Necessidade urgente de reposição.')).toBe(false);
+    expect(temAvisoAlmoxarifado('Necessidade urgente\n[Almoxarifado avisado: Sim]')).toBe(true);
+    expect(temAvisoAlmoxarifado('Necessidade urgente\n[Almoxarifado avisado: Não]')).toBe(true);
+    expect(temAvisoAlmoxarifado(null)).toBe(false);
+    expect(temAvisoAlmoxarifado(undefined)).toBe(false);
+  });
+
+  it('carimba aviso de almoxarifado sem duplicar', () => {
+    const semCarimbo = 'Compra de rolamentos para estoque';
+    const carimbadoSim = carimbarAvisoAlmoxarifado(semCarimbo, true);
+    expect(carimbadoSim).toBe('Compra de rolamentos para estoque\n[Almoxarifado avisado: Sim]');
+
+    // Se já estiver carimbado, não duplica
+    expect(carimbarAvisoAlmoxarifado(carimbadoSim, true)).toBe(carimbadoSim);
+
+    const carimbadoNao = carimbarAvisoAlmoxarifado(semCarimbo, false);
+    expect(carimbadoNao).toBe('Compra de rolamentos para estoque\n[Almoxarifado avisado: Não]');
+
+    // Quando a justificativa original está vazia
+    expect(carimbarAvisoAlmoxarifado('', true)).toBe('[Almoxarifado avisado: Sim]');
   });
 });
 

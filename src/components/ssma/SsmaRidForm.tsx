@@ -80,7 +80,7 @@ const SSMA_RID_PREENCHIMENTO_TOUR_STEPS: TourStep[] = [
     icon: UserCheck,
     title: '1. Identificação do Informante & Empresa',
     description:
-      'Busque seu nome na base oficial do RH ou digite livremente. O setor, função e turno são preenchidos automaticamente. Indique se o desvio envolve a TEN ou empresa contratada.',
+      'Busque seu nome na base do RH ou digite livremente. Selecione o setor correspondente e indique se o desvio envolve a TEN ou empresa contratada.',
   },
   {
     target: 'rid-form-local-desvio',
@@ -94,7 +94,7 @@ const SSMA_RID_PREENCHIMENTO_TOUR_STEPS: TourStep[] = [
     icon: FileText,
     title: '3. Descrição Detalhada do Desvio',
     description:
-      'Descreva a situação observada, equipamentos envolvidos e o potencial de risco. O texto é convertido automaticamente em maiúsculas.',
+      'Descreva a situação observada, equipamentos envolvidos e o potencial de risco.',
   },
   {
     target: 'rid-form-acao-imediata',
@@ -181,7 +181,7 @@ export default function SsmaRidForm({
 
   // Setores dinâmicos do banco
   const [setoresDisponiveis, setSetoresDisponiveis] = useState<string[]>([...SETORES_SSMA]);
-  const [setor, setSetor] = useState<string>('PRODUÇÃO');
+  const [setor, setSetor] = useState<string>('');
   const [carregandoSetores, setCarregandoSetores] = useState(false);
 
   // Informante (rh_pessoas vs manual)
@@ -204,7 +204,7 @@ export default function SsmaRidForm({
   const [dropdownAreaAberto, setDropdownAreaAberto] = useState(false);
   const dropdownAreaRef = useRef<HTMLDivElement>(null);
 
-  // Descrição do Desvio (sempre maiúscula)
+  // Descrição do Desvio
   const [descricaoDesvio, setDescricaoDesvio] = useState('');
 
   // Ações Imediatas & Comunicação
@@ -247,9 +247,6 @@ export default function SsmaRidForm({
         if (!ativo) return;
         if (lista.length > 0) {
           setSetoresDisponiveis(lista);
-          if (!setor || !lista.includes(setor)) {
-            setSetor(lista.includes('PRODUÇÃO') ? 'PRODUÇÃO' : lista[0]);
-          }
         }
       })
       .catch((err) => console.warn('Erro ao obter setores:', err))
@@ -261,21 +258,6 @@ export default function SsmaRidForm({
       ativo = false;
     };
   }, []);
-
-  // Se o usuário logado tiver dados de perfil, inicializar com ele se possível
-  useEffect(() => {
-    if (user?.name && !nomeInformante && !modoManual) {
-      setNomeInformante(user.name.toUpperCase());
-      buscarColaboradoresRh(user.name).then((res) => {
-        if (res.length > 0) {
-          const match = res.find((c) => c.nome.toLowerCase() === user.name.toLowerCase()) || res[0];
-          setNomeInformante(match.nome);
-          setMatriculaInformante(match.registro || '');
-          setPessoaId(match.id);
-        }
-      }).catch(() => {});
-    }
-  }, [user]);
 
   // Fechar dropdowns ao clicar fora
   useEffect(() => {
@@ -394,6 +376,7 @@ export default function SsmaRidForm({
     setMatriculaInformante('');
     setPessoaId(null);
     setModoManual(false);
+    setSetor('');
     setDescricaoDesvio('');
     setSanadoImediato(null);
     setAcaoImediata('');
@@ -470,7 +453,7 @@ export default function SsmaRidForm({
         {
           numero_registro: numeroRegistro,
           pessoa_id: pessoaId,
-          nome_informante: nomeInformante.trim().toUpperCase(),
+          nome_informante: nomeInformante.trim(),
           matricula_informante: matriculaInformante.trim(),
           origem_informante: modoManual ? 'manual' : 'rh_pessoas',
           setor,
@@ -479,17 +462,17 @@ export default function SsmaRidForm({
           empresa,
           empresa_contratada_nome: empresa === 'CONTRATADA' ? empresaContratadaNome.trim() : null,
           area_desvio: areaDesvio,
-          area_desvio_outro: areaDesvio === 'OUTROS' ? areaDesvioOutro.trim().toUpperCase() : null,
-          descricao_desvio: descricaoDesvio.trim().toUpperCase(),
+          area_desvio_outro: areaDesvio === 'OUTROS' ? areaDesvioOutro.trim() : null,
+          descricao_desvio: descricaoDesvio.trim(),
           sanado_imediato: !!sanadoImediato,
-          acao_imediata: sanadoImediato ? acaoImediata.trim().toUpperCase() : null,
-          acao_proposta: !sanadoImediato ? acaoProposta.trim().toUpperCase() : null,
+          acao_imediata: sanadoImediato ? acaoImediata.trim() : null,
+          acao_proposta: !sanadoImediato ? acaoProposta.trim() : null,
           comunicado_responsavel_area: !!comunicadoResponsavel,
           comunicado_seguranca: !!comunicadoSeguranca,
           responsavel_seguranca_informado: comunicadoSeguranca ? responsavelSeguranca : 'N/A - NÃO APLICÁVEL',
           comportamentos_inseguros: comportamentosInseguros,
           condicoes_inseguras: condicoesInseguras,
-          classificacao_outro: classificacaoOutro.trim() ? classificacaoOutro.trim().toUpperCase() : null,
+          classificacao_outro: classificacaoOutro.trim() ? classificacaoOutro.trim() : null,
           status: sanadoImediato ? 'CONCLUIDO' : 'REGISTRADO',
           parecer_ssma: null,
           criado_por: user?.id || null,
@@ -630,15 +613,15 @@ export default function SsmaRidForm({
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="DIGITE O NOME COMPLETO..."
+                  placeholder="Digite o nome completo..."
                   value={nomeInformante}
                   onChange={(e) => {
-                    setNomeInformante(e.target.value.toUpperCase());
+                    setNomeInformante(e.target.value);
                     setErros((prev) => ({ ...prev, nome: '' }));
                   }}
                   className={`w-full rounded-xl border ${
                     erros.nome ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 dark:border-slate-700'
-                  } bg-white px-3.5 py-2.5 text-xs uppercase font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
+                  } bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md dark:bg-amber-950/60 dark:text-amber-400">
                   DIGITAÇÃO LIVRE
@@ -650,19 +633,19 @@ export default function SsmaRidForm({
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="DIGITE O NOME OU A MATRÍCULA PARA BUSCAR EM RH_PESSOAS..."
+                    placeholder="Digite o nome ou a matrícula para buscar em rh_pessoas..."
                     value={dropdownAberto ? buscaColab : nomeInformante}
                     onFocus={() => {
                       setDropdownAberto(true);
                       setBuscaColab(nomeInformante);
                     }}
                     onChange={(e) => {
-                      setBuscaColab(e.target.value.toUpperCase());
+                      setBuscaColab(e.target.value);
                       setDropdownAberto(true);
                     }}
                     className={`w-full rounded-xl border ${
                       erros.nome ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 dark:border-slate-700'
-                    } bg-white pl-9 pr-20 py-2.5 text-xs uppercase font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
+                    } bg-white pl-9 pr-20 py-2.5 text-xs font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
                   />
                   {buscandoColab ? (
                     <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-blue-500" />
@@ -776,8 +759,11 @@ export default function SsmaRidForm({
                   setSetor(e.target.value);
                   setErros((prev) => ({ ...prev, setor: '' }));
                 }}
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                className={`w-full appearance-none rounded-xl border ${
+                  erros.setor ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 dark:border-slate-700'
+                } bg-white px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
               >
+                <option value="">SELECIONE O SETOR...</option>
                 {setoresDisponiveis.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -786,6 +772,7 @@ export default function SsmaRidForm({
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             </div>
+            {erros.setor && <p className="mt-1 text-[11px] text-rose-500">{erros.setor}</p>}
           </div>
 
           {/* Campo Data do Registro */}
@@ -859,14 +846,14 @@ export default function SsmaRidForm({
                 <div className="flex-1">
                   <input
                     type="text"
-                    placeholder="DIGITE A RAZÃO SOCIAL OU NOME DA EMPRESA CONTRATADA..."
+                    placeholder="Digite a razão social ou nome da empresa contratada..."
                     value={empresaContratadaNome}
-                    onChange={(e) => setEmpresaContratadaNome(e.target.value.toUpperCase())}
+                    onChange={(e) => setEmpresaContratadaNome(e.target.value)}
                     className={`w-full rounded-xl border ${
                       erros.empresaContratada
                         ? 'border-rose-400 bg-rose-50/20'
                         : 'border-slate-200 dark:border-slate-700'
-                    } bg-white px-3.5 py-2.5 text-xs uppercase font-semibold text-slate-900 focus:border-purple-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
+                    } bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-purple-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
                   />
                   {erros.empresaContratada && (
                     <p className="mt-1 text-[11px] text-rose-500">{erros.empresaContratada}</p>
@@ -961,14 +948,14 @@ export default function SsmaRidForm({
               <div className="mt-2.5">
                 <input
                   type="text"
-                  placeholder="ESPECIFIQUE O LOCAL EXATO DO DESVIO..."
+                  placeholder="Especifique o local exato do desvio..."
                   value={areaDesvioOutro}
-                  onChange={(e) => setAreaDesvioOutro(e.target.value.toUpperCase())}
+                  onChange={(e) => setAreaDesvioOutro(e.target.value)}
                   className={`w-full rounded-xl border ${
                     erros.areaDesvioOutro
                       ? 'border-rose-400 bg-rose-50/20'
                       : 'border-slate-200 dark:border-slate-700'
-                  } bg-white px-3.5 py-2.5 text-xs uppercase font-semibold text-slate-900 focus:border-amber-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
+                  } bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-amber-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
                 />
                 {erros.areaDesvioOutro && (
                   <p className="mt-1 text-[11px] text-rose-500">{erros.areaDesvioOutro}</p>
@@ -977,7 +964,7 @@ export default function SsmaRidForm({
             )}
           </div>
 
-          {/* Campo Descrição do Desvio (SEMPRE MAIÚSCULO) */}
+          {/* Campo Descrição do Desvio */}
           <div data-tour="rid-form-descricao-desvio">
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -997,13 +984,13 @@ export default function SsmaRidForm({
             )}
             <textarea
               rows={3}
-              placeholder="DESCREVA DETALHADAMENTE O DESVIO IDENTIFICADO (SITUAÇÃO OBSERVADA, EQUIPAMENTOS ENVOLVIDOS, COMPORTAMENTOS OU RISCOS)..."
+              placeholder="Descreva detalhadamente o desvio identificado (situação observada, equipamentos envolvidos, comportamentos ou riscos)..."
               value={descricaoDesvio}
               onChange={(e) => {
-                setDescricaoDesvio(e.target.value.toUpperCase());
+                setDescricaoDesvio(e.target.value);
                 setErros((prev) => ({ ...prev, descricao: '' }));
               }}
-              className={`w-full rounded-2xl border uppercase font-medium ${
+              className={`w-full rounded-2xl border font-medium ${
                 erros.descricao ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 dark:border-slate-700'
               } bg-white p-3.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none dark:bg-slate-950 dark:text-slate-100`}
             />
@@ -1075,13 +1062,13 @@ export default function SsmaRidForm({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="DESCREVA A AÇÃO IMEDIATA REALIZADA PARA CORRIGIR OU ELIMINAR O RISCO..."
+                  placeholder="Descreva a ação imediata realizada para corrigir ou eliminar o risco..."
                   value={acaoImediata}
                   onChange={(e) => {
-                    setAcaoImediata(e.target.value.toUpperCase());
+                    setAcaoImediata(e.target.value);
                     setErros((prev) => ({ ...prev, acaoImediata: '' }));
                   }}
-                  className="w-full rounded-xl border border-emerald-300 bg-white p-3 text-xs uppercase font-medium text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none dark:border-emerald-800 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full rounded-xl border border-emerald-300 bg-white p-3 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none dark:border-emerald-800 dark:bg-slate-950 dark:text-slate-100"
                 />
                 {erros.acaoImediata && (
                   <p className="mt-1 text-[11px] text-rose-500">{erros.acaoImediata}</p>
@@ -1097,13 +1084,13 @@ export default function SsmaRidForm({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="SUGIRA AÇÕES CORRETIVAS, MATERIAIS OU INTERVENÇÕES NECESSÁRIAS..."
+                  placeholder="Sugira ações corretivas, materiais ou intervenções necessárias..."
                   value={acaoProposta}
                   onChange={(e) => {
-                    setAcaoProposta(e.target.value.toUpperCase());
+                    setAcaoProposta(e.target.value);
                     setErros((prev) => ({ ...prev, acaoProposta: '' }));
                   }}
-                  className="w-full rounded-xl border border-rose-300 bg-white p-3 text-xs uppercase font-medium text-slate-900 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none dark:border-rose-800 dark:bg-slate-950 dark:text-slate-100"
+                  className="w-full rounded-xl border border-rose-300 bg-white p-3 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none dark:border-rose-800 dark:bg-slate-950 dark:text-slate-100"
                 />
                 {erros.acaoProposta && (
                   <p className="mt-1 text-[11px] text-rose-500">{erros.acaoProposta}</p>
@@ -1379,14 +1366,14 @@ export default function SsmaRidForm({
           {(comportamentosInseguros.includes('OUTRO') || condicoesInseguras.includes('OUTRO')) && (
             <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200 dark:bg-slate-950/40 dark:border-slate-800">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                ESPECIFIQUE A OUTRA CLASSIFICAÇÃO OU DETALHE DO RISCO:
+                Especifique a outra classificação ou detalhe do risco:
               </label>
               <input
                 type="text"
-                placeholder="DIGITE AQUI A CLASSIFICAÇÃO COMPLEMENTAR..."
+                placeholder="Digite aqui a classificação complementar..."
                 value={classificacaoOutro}
-                onChange={(e) => setClassificacaoOutro(e.target.value.toUpperCase())}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 uppercase focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                onChange={(e) => setClassificacaoOutro(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
               />
             </div>
           )}

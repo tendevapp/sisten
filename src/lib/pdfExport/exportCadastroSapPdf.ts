@@ -86,6 +86,10 @@ export async function exportCadastroSapPdf(
     });
   }
 
+  if (request.ticket_externo) {
+    gridItems.push({ label: 'Ticket em Plataforma Externa', value: request.ticket_externo });
+  }
+
   writer.drawInfoGrid(gridItems, 2);
 
   if (!isFornecedor && especificacoes && especificacoes !== '-') {

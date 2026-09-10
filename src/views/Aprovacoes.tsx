@@ -13,7 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, AlertTriangle, ArrowRight, Building2, Calendar, Check,
   CheckCircle2, CheckSquare, ChevronRight, Clock, Download, ExternalLink,
-  FileEdit, FileSpreadsheet, FileText, Filter, Layers, RefreshCw, Search,
+  ArrowLeft, FileEdit, FileSpreadsheet, FileText, Filter, Layers, RefreshCw, Search,
   Square, User, X, XCircle, ArrowUpRight, ShieldCheck, DollarSign,
   HelpCircle, Bug, Lightbulb, Maximize2,
 } from 'lucide-react';
@@ -27,6 +27,7 @@ import { SinalChips } from '../components/ui/SinalChips';
 import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
+import { useTelaEstreita } from '../lib/useTelaEstreita';
 import { exportCompraPdf } from '../lib/pdfExport/exportCompraPdf';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -126,6 +127,11 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   // Selecao para inspecao e lote
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
   const [selecionadasLote, setSelecionadasLote] = useState<Set<string>>(new Set());
+
+  // No celular o painel de detalhe vira uma folha sobre a lista — sem isso o
+  // toque no cartão só marcava a seleção e o detalhe abria fora da tela, lá
+  // embaixo, dando a impressão de que "nada abriu".
+  const telaEstreita = useTelaEstreita();
 
   // Estado do painel de decisao
   const [parecer, setParecer] = useState('');
@@ -329,14 +335,23 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
     });
   }, [comprasElegiveis, abaAtiva, filtroSetor, filtroCriticidade, busca, filtroFaixaValor]);
 
-  // Se nao houver solicitacao selecionada mas a lista tiver itens, seleciona a primeira
+  // Desktop: pré-seleciona a primeira para o painel lateral nunca ficar vazio.
+  // Celular: não pré-seleciona — a folha de detalhe só abre no toque explícito.
   useEffect(() => {
-    if (!selecionadaId && solicitacoesFiltradas.length > 0) {
+    if (selecionadaId && !solicitacoesFiltradas.some(r => r.id === selecionadaId)) {
+      setSelecionadaId(telaEstreita ? null : (solicitacoesFiltradas[0]?.id || null));
+    } else if (!selecionadaId && !telaEstreita && solicitacoesFiltradas.length > 0) {
       setSelecionadaId(solicitacoesFiltradas[0].id);
-    } else if (selecionadaId && !solicitacoesFiltradas.some(r => r.id === selecionadaId)) {
-      setSelecionadaId(solicitacoesFiltradas[0]?.id || null);
     }
-  }, [solicitacoesFiltradas, selecionadaId]);
+  }, [solicitacoesFiltradas, selecionadaId, telaEstreita]);
+
+  // Trava a rolagem do fundo enquanto a folha de detalhe estiver aberta no celular.
+  useEffect(() => {
+    if (!telaEstreita || !selecionadaId) return;
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = anterior; };
+  }, [telaEstreita, selecionadaId]);
 
   // Dados da solicitacao ativa inspecionada
   const solicitacaoAtiva = useMemo(() => {
@@ -1029,12 +1044,13 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
         data-tour="aprovacoes-abas-filtros"
         className="shrink-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-2 shadow-xs transition-colors"
       >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-          {/* Abas com Badges */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 min-w-0">
+          {/* Abas com Badges — trilha que desliza no celular (min-w-0 deixa o
+              container encolher para o overflow-x realmente valer). */}
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0 -mx-1 px-1 pb-1 md:pb-0 md:mx-0 md:px-0">
             <button
               onClick={() => setAbaAtiva('pendentes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'pendentes'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1054,7 +1070,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('aprovadas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'aprovadas'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1074,7 +1090,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('revisao')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'revisao'
                   ? 'bg-orange-500 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1094,7 +1110,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('rejeitadas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'rejeitadas'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1114,7 +1130,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
 
             <button
               onClick={() => setAbaAtiva('todas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex shrink-0 items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 abaAtiva === 'todas'
                   ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1366,11 +1382,31 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
           </div>
         </section>
 
-        {/* PAINEL DIREITO: Inspecao Profunda & Estacao de Decisao (col-span-7) */}
+        {/* PAINEL DIREITO: Inspecao Profunda & Estacao de Decisao (col-span-7).
+            No celular sai do fluxo e vira folha em tela cheia sobre a lista. */}
         <section
           data-tour="aprovacoes-detalhe"
-          className="lg:col-span-7 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs transition-colors"
+          className={
+            telaEstreita
+              ? `fixed inset-0 z-[60] flex flex-col bg-white dark:bg-slate-900 overflow-y-auto overscroll-contain ${solicitacaoAtiva ? '' : 'hidden'}`
+              : 'lg:col-span-7 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs transition-colors'
+          }
         >
+          {telaEstreita && solicitacaoAtiva && (
+            <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-3 py-2.5">
+              <button
+                type="button"
+                onClick={() => setSelecionadaId(null)}
+                className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar à fila
+              </button>
+              <span className="ml-auto font-mono text-sm font-black text-slate-900 dark:text-white">
+                #{solicitacaoAtiva.number}
+              </span>
+            </div>
+          )}
           {solicitacaoAtiva ? (
             <div className="flex flex-col">
 

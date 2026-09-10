@@ -29,6 +29,7 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import * as api from '../lib/cotacaoVinculosApi';
 import type { VinculoItem, VinculoStatus, ResumoVinculos, RodadaVinculo, LinhaAuditoria } from '../lib/cotacaoVinculosApi';
 import { formatBRL, formatDateBR, formatQtd } from '../lib/format';
+import { TableCards, TableCardRow, TableDesktop } from '../components/ui/DataTable';
 
 interface Props {
   user: Profile;
@@ -553,6 +554,61 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
               </p>
             </div>
           ) : (
+            <>
+            {/* Celular: cada linha de auditoria vira um cartão (8 colunas). */}
+            <TableCards>
+              {auditoria.map(l => {
+                const conforme = !l.div_preco && !l.div_fornecedor && !l.div_quantidade;
+                return (
+                  <TableCardRow key={`m-${l.po_id}`} accent={conforme ? undefined : 'var(--status-warning)'}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{l.doc_compra}/{l.item}</p>
+                        <p className="text-[11px] text-slate-400">{dataBR(l.data_doc)}</p>
+                      </div>
+                      <span className="shrink-0 text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        {formatBRL(l.preco_pedido ?? 0)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                      <span className="font-mono">{l.material}</span>
+                      {l.material_generico && <span className="ml-1 text-amber-600 dark:text-amber-400">· genérico</span>}
+                      <span className="block text-[11px] text-slate-400 truncate">{l.txt_breve}</span>
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{l.fornecedor_pedido}</p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span>Cotado {l.preco_cotado_fornecedor === null ? '—' : formatBRL(l.preco_cotado_fornecedor)}</span>
+                      <span>Menor {l.menor_preco_cotado === null ? '—' : formatBRL(l.menor_preco_cotado)}</span>
+                      <span>Qtd {formatQtd(l.qtd_pedido)}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {l.div_preco && (
+                        <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                          preço +{formatBRL(l.delta_preco_unit ?? 0)}
+                        </span>
+                      )}
+                      {l.div_fornecedor && (
+                        <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                          outro fornecedor
+                        </span>
+                      )}
+                      {l.div_quantidade && (
+                        <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          quantidade
+                        </span>
+                      )}
+                      {conforme && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3 w-3" /> conforme
+                        </span>
+                      )}
+                    </div>
+                  </TableCardRow>
+                );
+              })}
+            </TableCards>
+
+            <TableDesktop>
             <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
               <table className="min-w-full text-left text-xs">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
@@ -641,6 +697,8 @@ export default function CotacaoVinculos({ user, onNavigate }: Props) {
                 </tbody>
               </table>
             </div>
+            </TableDesktop>
+            </>
           )}
         </section>
       )}

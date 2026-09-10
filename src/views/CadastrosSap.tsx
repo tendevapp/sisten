@@ -13,6 +13,7 @@ import { Profile, Request, RequestComment, Sector } from '../types';
 import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
 import { formatDateTimeBR } from '../lib/format';
 
@@ -58,6 +59,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [question, setQuestion] = useState('');
   const [resolution, setResolution] = useState('');
   const [sapResultCode, setSapResultCode] = useState('');
+  const [ticketExterno, setTicketExterno] = useState('');
+  const [salvandoTicket, setSalvandoTicket] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
@@ -73,6 +76,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         if (found) {
           setViewTab('todos');
           setSelectedReq(found);
+          setTicketExterno(found.ticket_externo || '');
           setComments(localDb.getRequestComments(found.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
         }
       }
@@ -144,9 +148,37 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     setResolution('');
     setSapResultCode('');
     setObservacao('');
+    setTicketExterno(req.ticket_externo || '');
     setActionSuccess('');
     setActionError('');
     setComments(localDb.getRequestComments(req.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
+  };
+
+  const handleSalvarTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq) return;
+    const valor = ticketExterno.trim();
+    if (valor === (selectedReq.ticket_externo || '')) return;
+
+    setSalvandoTicket(true);
+    setActionError('');
+    setActionSuccess('');
+    try {
+      const ok = await localDb.updateCadastroSapTicketExterno(selectedReq.id, valor || null);
+      if (!ok) {
+        setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
+        return;
+      }
+      setActionSuccess(valor ? 'Nº do ticket externo registrado.' : 'Nº do ticket externo removido.');
+      const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
+      if (updatedReq) setSelectedReq(updatedReq);
+      loadData();
+      setTimeout(() => setActionSuccess(''), 3000);
+    } catch (err) {
+      setActionError('Falha ao salvar o nº do ticket externo.');
+    } finally {
+      setSalvandoTicket(false);
+    }
   };
 
   const handleAssumir = async () => {
@@ -404,6 +436,26 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
   };
 
+  const getItemSummary = (req: Request): string => {
+    const texto = req.justificativa || '';
+    const itemMatch = texto.match(/^Nome:\s*(.*?)\.\s*Specs:/i);
+    if (itemMatch) return itemMatch[1].trim();
+
+    const novoNomeMatch = texto.match(/NOVO Nome:\s*(.*?)\./i);
+    if (novoNomeMatch) return novoNomeMatch[1].trim();
+
+    const fornecMatch = texto.match(/^Nome:\s*(.*?)\.\s*(?:CNPJ:|Justificativa:)/i);
+    if (fornecMatch) return fornecMatch[1].trim();
+
+    const simpleNome = texto.match(/^Nome:\s*([^.]+)/i);
+    if (simpleNome) return simpleNome[1].trim();
+
+    const firstPart = texto.split('|')[0]?.split('.')[0]?.trim();
+    if (firstPart) return firstPart;
+
+    return texto.trim() || '-';
+  };
+
   return (
     <div className="space-y-6 text-left py-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -417,10 +469,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Table Column */}
-        <div className="lg:col-span-2 space-y-4">
+      {/* Tabela de Solicitações (Largura Total) */}
+      <div className="space-y-4">
           
           {/* Filter Bar */}
           <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col gap-3">
@@ -502,6 +552,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                     <th className="py-3 px-4">Número</th>
                     <th className="py-3 px-4">Tipo</th>
+                    <th className="py-3 px-4">Item</th>
                     <th className="py-3 px-4">Solicitante</th>
                     <th className="py-3 px-4">Criticidade</th>
                     <th className="py-3 px-4">Status</th>
@@ -512,7 +563,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 <tbody className="divide-y divide-slate-100">
                   {requests.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400 font-medium">
+                      <td colSpan={8} className="py-8 text-center text-slate-400 font-medium">
                         Nenhuma solicitação de cadastro SAP encontrada.
                       </td>
                     </tr>
@@ -535,6 +586,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td className="py-3 px-4 max-w-[200px] lg:max-w-[280px]">
+                          <span 
+                            className="block truncate font-semibold text-slate-800 text-xs" 
+                            title={getItemSummary(req)}
+                          >
+                            {getItemSummary(req)}
+                          </span>
                         </td>
                         <td className="py-3 px-4">
                           <div>
@@ -581,46 +640,44 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
           </div>
         </div>
 
-        {/* Action / Detail Drawer Column */}
-        <div className="lg:col-span-1">
-          {selectedReq ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md space-y-6">
-              
-              {/* Header */}
-              <div className="flex items-start justify-between border-b border-slate-100 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-800">Solicitação #{selectedReq.number}</span>
-                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
-                      {selectedReq.registration_type}
+        {/* Janela Suspensa (Modal) de Detalhes e Atendimento */}
+      {selectedReq && (
+        <Modal
+          onClose={() => setSelectedReq(null)}
+          maxWidth="max-w-3xl"
+          ariaLabel={`Solicitação #${selectedReq.number}`}
+        >
+          <ModalHeader onClose={() => setSelectedReq(null)}>
+            <div className="flex flex-wrap items-center justify-between gap-3 pr-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm sm:text-base font-bold text-slate-800">Solicitação #{selectedReq.number}</span>
+                  <span className="text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-0.5 rounded">
+                    {selectedReq.registration_type}
+                  </span>
+                  {selectedReq.registration_type === 'Fornecedor' && selectedReq.fornecedor_operacao === 'atualizacao' && (
+                    <span className="text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded">
+                      Atualização
                     </span>
-                    {selectedReq.registration_type === 'Fornecedor' && selectedReq.fornecedor_operacao === 'atualizacao' && (
-                      <span className="text-[10px] font-bold bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded">
-                        Atualização
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Aberta em {new Date(selectedReq.created_at).toLocaleString('pt-BR')}
-                  </p>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={handleExportPdf}
-                    disabled={exportingPdf}
-                    className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
-                  </button>
-                  <button
-                    onClick={() => setSelectedReq(null)}
-                    className="text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Aberta em {new Date(selectedReq.created_at).toLocaleString('pt-BR')}
+                </p>
               </div>
+
+              <button
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+                className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <FileText className="h-3.5 w-3.5 text-slate-500" />
+                {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
+              </button>
+            </div>
+          </ModalHeader>
+
+          <ModalBody className="p-5 sm:p-6 space-y-6">
 
               {/* Details */}
               <div className="space-y-4 text-xs">
@@ -642,6 +699,13 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
                     </h4>
                     <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
+                  </div>
+                )}
+
+                {selectedReq.ticket_externo && (
+                  <div className="rounded border border-indigo-200 bg-indigo-50/60 p-2.5">
+                    <h4 className="font-bold text-indigo-800 uppercase text-[9px] tracking-wider">Ticket em Plataforma Externa</h4>
+                    <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.ticket_externo}</p>
                   </div>
                 )}
 
@@ -782,7 +846,37 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 {/* 2. Atendente is current user & state is not final */}
                 {selectedReq.atendente_id === user.id && !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(selectedReq.status) && (
                   <div className="space-y-5">
-                    
+
+                    {/* Nº do ticket externo — opcional. O cadastro real costuma
+                        ser aberto em outra plataforma; guardar o número aqui liga
+                        as duas pontas sem depender da conversa. */}
+                    <form onSubmit={handleSalvarTicket} className="space-y-2 border border-indigo-100 p-3 rounded-xl bg-indigo-50/40">
+                      <label className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-indigo-600" /> Nº do Ticket Externo
+                        <span className="text-[9px] font-semibold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">Opcional</span>
+                      </label>
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        Chamado aberto em outra plataforma (Astrein, service desk...). Ex.: <span className="font-mono">Astrein #507203</span>.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={ticketExterno}
+                          onChange={(e) => setTicketExterno(e.target.value)}
+                          placeholder="Ex: Astrein #507203"
+                          className="flex-1 rounded border border-slate-200 p-2 text-xs focus:border-indigo-500 focus:outline-none bg-white font-mono"
+                        />
+                        <button
+                          type="submit"
+                          disabled={salvandoTicket || ticketExterno.trim() === (selectedReq.ticket_externo || '')}
+                          className="shrink-0 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[10px] py-2 px-3 rounded cursor-pointer transition-colors flex items-center gap-1.5 shadow-2xs"
+                        >
+                          {salvandoTicket ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Salvar
+                        </button>
+                      </div>
+                    </form>
+
                     {/* 1. Observação / Andamento (NÃO pausa SLA) */}
                     <form onSubmit={handleAdicionarObservacao} className="space-y-2 border border-slate-200 p-3 rounded-xl bg-white shadow-2xs">
                       <div className="flex items-center justify-between">
@@ -925,6 +1019,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         <span className="font-mono font-bold text-emerald-700">{selectedReq.codigo_sap_gerado}</span>
                       </div>
                     )}
+                    {selectedReq.ticket_externo && (
+                      <div className="inline-block bg-white border border-slate-200 rounded px-3 py-1.5 text-xs shadow-xs">
+                        <span className="text-slate-500 font-medium">Ticket externo: </span>
+                        <span className="font-mono font-bold text-slate-700">{selectedReq.ticket_externo}</span>
+                      </div>
+                    )}
                     <p className="text-[11px] text-slate-500">
                       {selectedReq.status === 'fechado'
                         ? 'Solicitação concluída definitivamente no sistema.'
@@ -948,16 +1048,9 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
               </div>
 
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-400 space-y-2 bg-slate-50/30">
-              <KeyRound className="h-8 w-8 mx-auto text-slate-300" />
-              <p className="text-xs font-semibold">Nenhuma Solicitação Selecionada</p>
-              <p className="text-[11px] text-slate-400">Clique em qualquer linha da fila ao lado para ver os detalhes, assumir ou resolver a solicitação.</p>
-            </div>
-          )}
-        </div>
-      </div>
+          </ModalBody>
+        </Modal>
+      )}
 
       {confirmarExclusao && selectedReq && (
         <ConfirmDialog

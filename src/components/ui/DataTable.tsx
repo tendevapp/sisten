@@ -286,6 +286,59 @@ export function Td({
 }
 
 /* --------------------------------------------------------------------- */
+/* Modo celular: cartões                                                  */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Padrão do SISTEN para tabelas densas no celular: a grade some e cada linha
+ * vira um cartão. Envolve a lista de cartões; renderiza só abaixo de `lg`.
+ * O par no desktop é `<TableDesktop>`.
+ *
+ *   <TableCards>
+ *     {linhas.map(l => <TableCardRow key={l.id} onClick={...}> ... </TableCardRow>)}
+ *   </TableCards>
+ *   <TableDesktop><TableShell>...</TableShell></TableDesktop>
+ */
+export function TableCards({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={`lg:hidden rounded-xl border overflow-hidden divide-y ${className}`}
+      style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Um cartão da lista celular. Alcançável por toque; vira botão real quando `onClick`. */
+export function TableCardRow({
+  children, onClick, accent, className = '',
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  /** Faixa de cor na borda esquerda (mesmo papel do `accent` da `Tr`). */
+  accent?: string;
+  className?: string;
+}) {
+  const Comp: React.ElementType = onClick ? 'button' : 'div';
+  return (
+    <Comp
+      onClick={onClick}
+      type={onClick ? 'button' : undefined}
+      className={`block w-full text-left p-4 space-y-2 transition-colors ${onClick ? 'cursor-pointer active:bg-[var(--surface-raised)]' : ''} ${className}`}
+      style={accent ? { boxShadow: `inset 3px 0 0 0 ${accent}` } : undefined}
+    >
+      {children}
+    </Comp>
+  );
+}
+
+/** Só desktop (`lg+`). Guarda a `TableShell` para não renderizar a grade no celular. */
+export function TableDesktop({ children }: { children: React.ReactNode }) {
+  return <div className="hidden lg:block">{children}</div>;
+}
+
+/* --------------------------------------------------------------------- */
 /* Estados                                                                */
 /* --------------------------------------------------------------------- */
 

@@ -558,10 +558,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // usado para avisar o comprador na tela de texto da cotação.
   const [cotacaoHistoricoByKey, setCotacaoHistoricoByKey] = useState<Map<string, CotacaoHistoricoEntry[]>>(new Map());
 
-  // Modos de Visualização: 'cards' | 'table'
+  // Modos de Visualização: 'cards' | 'table'. Sem preferência salva, o celular
+  // abre em Cards: a tabela plana tem ~13 colunas e no celular vira uma faixa
+  // que só rola de lado. Assim que a pessoa escolher, a opção fica salva.
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() => {
     const saved = localStorage.getItem('sisten_suppliers_view_mode');
-    return (saved === 'cards' || saved === 'table') ? saved : 'table';
+    if (saved === 'cards' || saved === 'table') return saved;
+    const estreita = typeof window !== 'undefined' && !!window.matchMedia
+      && window.matchMedia('(max-width: 640px)').matches;
+    return estreita ? 'cards' : 'table';
   });
 
   // Salva preferência do modo de visualização

@@ -9,14 +9,14 @@ import {
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
-  ReceiptText, Info,
+  ReceiptText, Info, Layers,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
-import { type MaterialResultado, type SinalChip } from '../lib/materiais';
+import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
 import MaterialSearchModal from '../components/MaterialSearchModal';
@@ -28,7 +28,7 @@ import {
 } from '../lib/cnpjLookup';
 import {
   podeEditar, statusAposEdicao, avisoEdicao, formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
-  ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado,
+  ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, carimbarAvisoAlmoxarifado,
 } from '../lib/solicitacoes';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -262,7 +262,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     { mailtoUrl: string; reqId: string; temAnexos: boolean } | null
   >(null);
   const [sectorId, setSectorId] = useState('');
-  const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
+  // Tipo de compra inicia nulo para exigir escolha explícita do usuário:
+  const [tipoCompra, setTipoCompra] = useState<'Direta' | 'Estoque' | 'Serviço' | null>(null);
+  // Alinhamento prévio com o almoxarifado caso tipo de compra seja Estoque
+  const [almoxarifadoAvisado, setAlmoxarifadoAvisado] = useState<boolean | null>(null);
   // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
   // livre e o bloco de busca some inteiro em vez de oferecer um campo morto.
   const ehServico = tipoCompra === 'Serviço';
@@ -280,6 +283,22 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   // aberto.
   const sectors = useMemo(() => localDb.getSectors(), []);
 
+  // Identifica se o solicitante é do Almoxarifado (setor id 2 ou nome Almoxarifado).
+  // Usuários do Almoxarifado não precisam do aviso de alinhamento consigo mesmos.
+  const ehUsuarioAlmoxarifado = useMemo(() => {
+    const setorUser = sectors.find(s => s.id === user.sector_id);
+    const nomeSetorUser = (setorUser?.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (user.sector_id === '2' || nomeSetorUser.includes('almoxarif')) {
+      return true;
+    }
+    const setorForm = sectors.find(s => s.id === sectorId);
+    const nomeSetorForm = (setorForm?.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (sectorId === '2' || nomeSetorForm.includes('almoxarif')) {
+      return true;
+    }
+    return false;
+  }, [user.sector_id, sectorId, sectors]);
+
   // Área SAP do setor selecionado, para o sinal "sua área já pediu" na busca
   // de material. Depende de `sectorId` (não da lista `sectors` inteira, que
   // fica congelada no mount acima) para não perder um sync de setores que
@@ -294,6 +313,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   /** Item cujo modal de busca no catálogo está aberto, ou null. */
   const [buscaModalIndex, setBuscaModalIndex] = useState<number | null>(null);
+
+  // "Vários itens": campo para colar uma lista de códigos SAP e adicionar todos
+  // de uma vez, cada um já resolvido no catálogo (descrição, unidade, sinais).
+  const [colarVariosAberto, setColarVariosAberto] = useState(false);
+  const [codigosColados, setCodigosColados] = useState('');
+  const [adicionandoVarios, setAdicionandoVarios] = useState(false);
 
   // Specific for SAP registration
   const [registrationType, setRegistrationType] = useState<'Item' | 'Fornecedor'>('Item');
@@ -498,6 +523,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         if (parsed.activeTab) setActiveTab(parsed.activeTab);
         if (parsed.sectorId) setSectorId(parsed.sectorId);
         if (parsed.tipoCompra) setTipoCompra(parsed.tipoCompra);
+        if (parsed.almoxarifadoAvisado !== undefined) setAlmoxarifadoAvisado(parsed.almoxarifadoAvisado);
         if (parsed.criticality !== undefined && parsed.criticality !== null) setCriticality(parsed.criticality);
         if (parsed.dataNecessidade) setDataNecessidade(parsed.dataNecessidade);
         if (parsed.justificativa) setJustificativa(parsed.justificativa);
@@ -568,7 +594,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     return () => clearTimeout(timeout);
   }, [
-    activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
+    activeTab, sectorId, tipoCompra, almoxarifadoAvisado, criticality, dataNecessidade, justificativa,
     items, registrationType, sapFornecedorOperacao, sapVendorCode, sapRegName, sapRegSpecs, sapRegBrand, sapRegVendorInfo,
     sapRegimeTributario, sapMeiCpf,
     sapRepresentanteNome, sapRepresentanteCargo, sapRepresentanteTelefone, sapRepresentanteEmail,
@@ -586,7 +612,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
     setAutosaveStatus('saving');
     const draftData = {
-      activeTab, sectorId, tipoCompra, criticality, dataNecessidade, justificativa,
+      activeTab, sectorId, tipoCompra, almoxarifadoAvisado, criticality, dataNecessidade, justificativa,
       // Anexos ficam de fora: `Blob` vira `{}` no JSON e `previewUrl` vira um
       // object URL morto, o que reencheria o rascunho de chips quebrados.
       items: items.map(({ attachments, ...resto }) => resto),
@@ -617,7 +643,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     draftLoadedRef.current = true;
     setActiveTab('compra');
     setSectorId('');
-    setTipoCompra('Estoque');
+    setTipoCompra(null);
+    setAlmoxarifadoAvisado(null);
     setCriticality(null);
     setDataNecessidade('');
     setJustificativa('');
@@ -671,7 +698,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   /** Escolha de um material — vem da janela do catálogo. */
   const selecionarMaterial = (index: number, mat: MaterialResultado, chips: SinalChip[]) => {
-    // Unidade não é autopreenchida — fica em "Selecione..." até o usuário confirmar.
+    // Unidade vem do cadastro do material no catálogo SAP e fica travada: quem
+    // abre a compra não escolhe unidade, herda a que o item já tem no SAP.
     const itemAtual = items[index];
     const ehGen = Boolean(itemAtual?.is_generic);
     patchItem(index, {
@@ -679,6 +707,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         ? itemAtual.description.toUpperCase()
         : mat.description.toUpperCase(),
       sap_code: mat.materialCode,
+      unit: mat.unit || itemAtual?.unit || '',
       technical_text: mat.technicalText || '',
       sinais: chips,
     });
@@ -690,6 +719,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     patchItem(index, {
       sap_code: '',
       description: itemAtual?.is_generic ? itemAtual.description : '',
+      unit: '',
       technical_text: '',
       sinais: [],
     });
@@ -713,8 +743,88 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Novo item nasce no topo: a linha vazia fica sempre à vista em cima e as já
+  // preenchidas descem, em vez de o usuário ter que rolar até o fim da lista.
   const handleAddItem = () => {
-    setItems([...items, itemVazio()]);
+    setItems(prev => [itemVazio(), ...prev]);
+  };
+
+  /** Normaliza um código SAP para comparar (sem zeros à esquerda, sem espaços). */
+  const chaveCodigoSap = (c: string) => (c || '').trim().replace(/^0+/, '');
+
+  /**
+   * "Vários itens": o usuário cola uma lista de códigos SAP (um por linha,
+   * vírgula, ponto e vírgula ou espaço) e cada um vira uma linha já resolvida
+   * no catálogo. Códigos não encontrados são reportados e nada é inventado —
+   * material fora do catálogo continua sendo caso de Cadastro SAP.
+   */
+  const handleAdicionarVariosItens = async () => {
+    const codigos = Array.from(new Set(
+      codigosColados
+        .split(/[\s,;]+/)
+        .map(c => c.trim())
+        .filter(Boolean),
+    )).slice(0, 50);
+
+    if (codigos.length === 0) {
+      toast.info('Cole ao menos um código SAP.');
+      return;
+    }
+
+    setAdicionandoVarios(true);
+    try {
+      const novos: PurchaseItemState[] = [];
+      const naoEncontrados: string[] = [];
+
+      for (const codigo of codigos) {
+        try {
+          const achados = await buscarMateriais(codigo, { limite: 5 });
+          const mat = achados.find(m => chaveCodigoSap(m.materialCode) === chaveCodigoSap(codigo)) || null;
+          if (!mat) {
+            naoEncontrados.push(codigo);
+            continue;
+          }
+          novos.push({
+            ...itemVazio(),
+            description: mat.description.toUpperCase(),
+            sap_code: mat.materialCode,
+            unit: mat.unit || '',
+            technical_text: mat.technicalText || '',
+            sinais: resumoSinais(mat),
+          });
+        } catch {
+          naoEncontrados.push(codigo);
+        }
+      }
+
+      if (novos.length > 0) {
+        // Descarta a linha inicial ainda intocada — senão fica uma vazia órfã no topo.
+        setItems(prev => {
+          const semVaziaInicial = prev.length === 1 && !prev[0].description.trim() && !prev[0].sap_code
+            ? []
+            : prev;
+          return [...novos, ...semVaziaInicial];
+        });
+      }
+
+      if (novos.length > 0 && naoEncontrados.length === 0) {
+        toast.success(`${novos.length} ${novos.length === 1 ? 'item adicionado' : 'itens adicionados'}.`);
+      } else if (novos.length > 0) {
+        toast.warning(
+          `${novos.length} ${novos.length === 1 ? 'item adicionado' : 'itens adicionados'}. ` +
+          `Sem correspondência no catálogo: ${naoEncontrados.join(', ')}.`,
+        );
+      } else {
+        toast.error(`Nenhum código foi encontrado no catálogo: ${naoEncontrados.join(', ')}.`);
+      }
+
+      if (novos.length > 0) {
+        setCodigosColados('');
+        setColarVariosAberto(false);
+      }
+    } finally {
+      setAdicionandoVarios(false);
+    }
   };
 
   const handleRemoveItem = (index: number) => {
@@ -1065,6 +1175,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     // Item sem material escolhido: no modo de busca não existe campo
     // `required` que o HTML segure, então a checagem é aqui.
     if (activeTab === 'compra') {
+      if (!tipoCompra) {
+        alert('Selecione o tipo de compra (Direta, Estoque ou Serviço) antes de enviar.');
+        return;
+      }
+
+      if (tipoCompra === 'Estoque' && !ehUsuarioAlmoxarifado && almoxarifadoAvisado === null) {
+        alert('Informe se o almoxarifado foi avisado sobre a compra para estoque antes de enviar.');
+        return;
+      }
+
       const semDescricao = items.findIndex(it => !it.description.trim());
       if (semDescricao !== -1) {
         alert(
@@ -1159,11 +1279,16 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     let protocoloSup = '';
 
     try {
+      let justificativaEnvio = justificativa;
+      if (activeTab === 'compra' && tipoCompra === 'Estoque' && !ehUsuarioAlmoxarifado && almoxarifadoAvisado !== null) {
+        justificativaEnvio = carimbarAvisoAlmoxarifado(justificativaEnvio, almoxarifadoAvisado);
+      }
+
       // Structure base request payload
       let payload: any = {
         type: activeTab,
         criticality,
-        justificativa: activeTab === 'compra' ? justificativa : '',
+        justificativa: activeTab === 'compra' ? justificativaEnvio : '',
       };
 
       if (activeTab === 'compra') {
@@ -1590,9 +1715,24 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
 
                 <div>
-                  <label className={labelClass} style={labelStyle}>Tipo de compra</label>
-                  <div className="grid grid-cols-3 gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)' }}>
-                    {(['Estoque', 'Direta', 'Serviço'] as const).map(type => (
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={labelClass} style={labelStyle}>Tipo de compra *</label>
+                    {tipoCompra === null && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                        Obrigatório escolher
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={`grid grid-cols-3 gap-1 rounded-lg border p-0.5 transition-colors ${
+                      tipoCompra === null ? 'border-amber-300 dark:border-amber-700/60 ring-1 ring-amber-300/40' : ''
+                    }`}
+                    style={{
+                      borderColor: tipoCompra === null ? undefined : 'var(--hairline)',
+                      background: 'var(--surface-sunken)',
+                    }}
+                  >
+                    {(['Direta', 'Estoque', 'Serviço'] as const).map(type => (
                       <button
                         key={type}
                         type="button"
@@ -1626,27 +1766,132 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                 </div>
               </div>
 
+              {/* Aviso e seleção: Avisou ao almoxarifado sobre a compra? (exceto se for do setor de almoxarifado) */}
+              {tipoCompra === 'Estoque' && !ehUsuarioAlmoxarifado && (
+                <div className="p-3.5 rounded-xl border border-sky-200 dark:border-sky-800/70 bg-sky-50/70 dark:bg-sky-950/30 text-sky-950 dark:text-sky-100 transition-all shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="h-5 w-5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
+                          Avisou ao almoxarifado sobre a compra? *
+                        </p>
+                        <p className="text-[11px] text-sky-700 dark:text-sky-300/90 leading-tight mt-0.5">
+                          Compras para estoque geram entrada física no depósito. É necessário alinhamento prévio com o Almoxarifado.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => setAlmoxarifadoAvisado(true)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          almoxarifadoAvisado === true
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                        }`}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Sim, avisei
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAlmoxarifadoAvisado(false)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                          almoxarifadoAvisado === false
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                            : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                        }`}
+                      >
+                        <AlertCircle className="h-3.5 w-3.5" />
+                        Não avisei
+                      </button>
+                    </div>
+                  </div>
+                  {almoxarifadoAvisado === false && (
+                    <div className="mt-2.5 pt-2 border-t border-sky-200 dark:border-sky-800/60 text-[11px] font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>
+                        Atenção: Comunique a equipe do Almoxarifado para que eles estejam cientes da previsão de chegada e espaço para estocagem.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Repeatable Items Area */}
               <div className="space-y-3 pt-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
                     {ehServico ? 'Serviços solicitados *' : 'Itens solicitados *'}
                   </span>
-                  <button
-                    type="button"
-                    data-tour="novasol-add-item"
-                    onClick={handleAddItem}
-                    className="flex items-center gap-1 text-sm font-bold cursor-pointer transition-colors duration-150 hover:text-[var(--brand-strong)]"
-                    style={{ color: 'var(--brand)' }}
-                  >
-                    <Plus className="h-4 w-4" /> {ehServico ? 'Serviço' : 'Item'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!ehServico && (
+                      <button
+                        type="button"
+                        onClick={() => setColarVariosAberto(v => !v)}
+                        aria-expanded={colarVariosAberto}
+                        className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-bold cursor-pointer transition-colors duration-150 hover:bg-[var(--surface-raised)]"
+                        style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                      >
+                        <Layers className="h-4 w-4" /> Vários itens
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-tour="novasol-add-item"
+                      onClick={handleAddItem}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white cursor-pointer transition-opacity duration-150 hover:opacity-90"
+                      style={{ background: 'var(--brand)' }}
+                    >
+                      <Plus className="h-4 w-4" /> {ehServico ? 'Serviço' : 'Item'}
+                    </button>
+                  </div>
                 </div>
+
+                {colarVariosAberto && !ehServico && (
+                  <div
+                    className="rounded-xl border p-3 space-y-2"
+                    style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
+                  >
+                    <label className="text-[11px] font-bold block" style={{ color: 'var(--ink-muted)' }}>
+                      Cole os códigos SAP — um por linha, ou separados por vírgula, ponto e vírgula ou espaço (até 50)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={codigosColados}
+                      onChange={(e) => setCodigosColados(e.target.value)}
+                      placeholder={'10000123\n10000456\n10000789'}
+                      className="w-full rounded-lg border py-2 px-3 text-sm font-mono transition-colors duration-150 focus:outline-2 focus:outline-offset-1 resize-y"
+                      style={fieldStyle}
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setColarVariosAberto(false); setCodigosColados(''); }}
+                        className="rounded-lg px-3 py-1.5 text-sm font-bold cursor-pointer"
+                        style={{ color: 'var(--ink-muted)' }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAdicionarVariosItens}
+                        disabled={adicionandoVarios || !codigosColados.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-bold text-white cursor-pointer transition-opacity duration-150 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ background: 'var(--brand)' }}
+                      >
+                        {adicionandoVarios ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        Adicionar todos
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3 stagger">
                 {items.map((it, index) => (
                   <div
-                    key={index}
+                    key={it.id}
                     className={`relative rounded-xl border p-4 space-y-3 transition-colors ${
                       it.is_generic
                         ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20'
@@ -1708,6 +1953,31 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         )}
                       </div>
                     </div>
+
+                    {/* Crítica de Item Genérico em compra para Estoque */}
+                    {it.is_generic && tipoCompra === 'Estoque' && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-lg border border-amber-300 dark:border-amber-700/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 text-xs">
+                        <div className="flex items-start gap-2.5">
+                          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block text-sm text-amber-800 dark:text-amber-300">
+                              Crítica: Compras para Estoque não devem utilizar Item Genérico
+                            </span>
+                            <p className="text-amber-700 dark:text-amber-300/90 text-xs leading-relaxed mt-0.5">
+                              Itens de estoque necessitam de código SAP no catálogo para controle de saldo físico, movimentação e inventário no almoxarifado. Recomendamos cadastrar o item no SAP.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => solicitarCadastroSap(index)}
+                          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white transition shadow-xs cursor-pointer"
+                        >
+                          <ClipboardCopy className="h-3.5 w-3.5" />
+                          Cadastrar item no SAP
+                        </button>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                       {/* Escolha do material — só pela janela do catálogo.
@@ -1853,23 +2123,34 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         />
                       </div>
 
-                      {/* Un — sem padrão: UN silencioso escondia a unidade
-                          errada passar despercebida. */}
+                      {/* Un — quando o material vem do catálogo, a unidade é a
+                          do cadastro SAP e fica travada (sem opção de mudar). Só
+                          item genérico e item ainda sem código escolhem à mão. */}
                       {!ehServico && (
                         <div className="sm:col-span-2 sm:max-w-[160px]">
                           <label className="text-[11px] font-bold block mb-1" style={{ color: 'var(--ink-muted)' }}>Un. *</label>
-                          <select
-                            required
-                            value={it.unit}
-                            onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
-                            className="w-full rounded border py-1 px-1.5 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
-                            style={fieldStyle}
-                          >
-                            <option value="">Selecione...</option>
-                            {UNIDADES.map(un => (
-                              <option key={un} value={un}>{un}</option>
-                            ))}
-                          </select>
+                          {!it.is_generic && it.sap_code && it.unit ? (
+                            <div
+                              title="Unidade definida pelo cadastro do material no SAP"
+                              className="w-full rounded border py-1 px-1.5 text-sm font-bold flex items-center"
+                              style={{ ...fieldStyle, background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
+                            >
+                              {it.unit}
+                            </div>
+                          ) : (
+                            <select
+                              required
+                              value={it.unit}
+                              onChange={(e) => handleItemChange(index, 'unit', e.target.value)}
+                              className="w-full rounded border py-1 px-1.5 text-sm cursor-pointer transition-colors duration-150 focus:outline-2 focus:outline-offset-1"
+                              style={fieldStyle}
+                            >
+                              <option value="">Selecione...</option>
+                              {UNIDADES.map(un => (
+                                <option key={un} value={un}>{un}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       )}
                     </div>

@@ -80,7 +80,10 @@ export default function DemandaDetailModal({ request, user, onClose, onUpdated }
     setStatus(novoStatus);
     setSavingStatus(true);
     try {
-      await localDb.updateRequestStatus(request.id, novoStatus, user.id, `Status alterado para "${STATUS_LABEL_DEMANDA[novoStatus]}" nos detalhes da demanda.`);
+      const ok = await localDb.updateRequestStatus(request.id, novoStatus, user.id, `Status alterado para "${STATUS_LABEL_DEMANDA[novoStatus]}" nos detalhes da demanda.`);
+      if (!ok) {
+        throw new Error('Falha ao persistir no Supabase');
+      }
       onUpdated({ ...request, status: novoStatus });
       toast.success(`Status alterado para "${STATUS_LABEL_DEMANDA[novoStatus]}".`);
     } catch (err) {

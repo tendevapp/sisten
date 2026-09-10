@@ -3,14 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle, AlertTriangle, Bell, Check, CheckCircle2, ChevronDown, Eye, Info,
-  LogOut, Menu, Moon, Search, Sun, Upload, User, type LucideIcon,
+  AlertCircle, AlertTriangle, Bell, BellRing, Check, CheckCircle2, ChevronDown, Eye, Info,
+  LogOut, Menu, Monitor, Moon, Search, Sun, Upload, User, Volume2, VolumeX, type LucideIcon,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Notification, Role } from '../types';
 import { resolverRotaNotificacao } from '../lib/notificationRouting';
+import AlertaNotificacoes, { type ItemAviso } from './notifications/AlertaNotificacoes';
+import {
+  atualizarTituloAba, avisarNoDesktop, filtrarNovas, gravarIdsAlertados, gravarPrefsAviso,
+  lerIdsAlertados, lerPrefsAviso, pedirPermissaoDesktop, permissaoDesktop, tocarBipe,
+  type AvisoPrefs, type PermissaoDesktop,
+} from '../lib/avisosNotificacao';
 
 interface HeaderProps {
   user: Profile;
@@ -31,25 +37,140 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   const [searchQuery, setSearchQuery] = useState('');
   const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
 
+  /* Avisos visuais de movimentação — ver `lib/avisosNotificacao.ts`. */
+  const [avisos, setAvisos] = useState<ItemAviso[]>([]);
+  const [sinoTocando, setSinoTocando] = useState(false);
+  const [prefsAviso, setPrefsAviso] = useState<AvisoPrefs>(() => lerPrefsAviso(user.id));
+  const [permDesktop, setPermDesktop] = useState<PermissaoDesktop>(() => permissaoDesktop());
+  const alertadosRef = useRef<Set<string>>(new Set());
+  const montadoEmRef = useRef(Date.now());
+  const timerSinoRef = useRef<number | undefined>(undefined);
+  // A sincronização vive em intervalos: se ela dependesse de `onNavigate` (nova
+  // a cada render do App) ou das preferências, os `setInterval` seriam
+  // recriados a cada troca de tela. Os valores mutáveis entram por ref.
+  const navegarRef = useRef(onNavigate);
+  navegarRef.current = onNavigate;
+  const prefsRef = useRef(prefsAviso);
+  prefsRef.current = prefsAviso;
+  const userRef = useRef(user);
+  userRef.current = user;
+
+  /**
+   * Ponto único de entrada das notificações: guarda a lista, decide o que é
+   * novidade e dispara os avisos. Toda origem (carga inicial, espelho do cache,
+   * busca no servidor) passa por aqui — senão cada uma alertaria à sua maneira.
+   */
+  const sincronizarNotificacoes = useCallback(() => {
+    const usuario = userRef.current;
+    const prefs = prefsRef.current;
+    const lista = localDb.getNotifications(usuario.id);
+    setNotifications(lista);
+
+    const novas = filtrarNovas(lista, alertadosRef.current);
+    if (novas.length === 0) return;
+
+    // Janela de abertura: o cache local e a primeira busca no servidor chegam
+    // em momentos diferentes, e as duas trazem o acumulado de antes de a pessoa
+    // abrir o app. Tudo que cair aqui vira um resumo só; depois disso é
+    // movimentação ao vivo, e cada uma ganha o seu cartão.
+    const naJanelaDeAbertura = Date.now() - montadoEmRef.current < 5000;
+
+    novas.forEach(n => alertadosRef.current.add(n.id));
+    gravarIdsAlertados(usuario.id, alertadosRef.current);
+
+    if (naJanelaDeAbertura) {
+      const pendentes = lista.filter(n => !n.is_read).length;
+      setAvisos([{
+        id: 'resumo',
+        tipo: 'resumo',
+        titulo: pendentes === 1 ? '1 aviso não lido' : `${pendentes} avisos não lidos`,
+        descricao: pendentes === 1
+          ? novas[novas.length - 1].title
+          : 'Chamados com movimentação desde a sua última visita.',
+        permanente: false,
+        rotuloAcao: 'Ver avisos',
+      }]);
+      return;
+    }
+
+    // Movimentação com o app aberto: um cartão por aviso, o mais novo no topo.
+    const cartoes: ItemAviso[] = [...novas].reverse().map(n => ({
+      id: n.id,
+      tipo: n.type,
+      titulo: n.title,
+      descricao: n.description || '',
+      rodape: n.request_number ? `#${n.request_number}` : undefined,
+      // Prazo e alerta ficam: sumir sozinho é justamente o que faz perder status.
+      permanente: n.type === 'alert' || n.type === 'critical',
+      rotuloAcao: 'Abrir',
+    }));
+    setAvisos(prev => [...cartoes, ...prev.filter(p => p.id !== 'resumo')]);
+
+    // Três batidas de 1 s: o cabeçalho pisca, o selo aparece e o sino sacode.
+    setSinoTocando(true);
+    window.clearTimeout(timerSinoRef.current);
+    timerSinoRef.current = window.setTimeout(() => setSinoTocando(false), 3200);
+    if (prefs.som) tocarBipe();
+    // Fora da aba, o cartão não é visto: aí sim vale o aviso do sistema.
+    if (prefs.desktop) {
+      novas.slice(-3).forEach(n => avisarNoDesktop(n, () => navegarRef.current(resolverRotaNotificacao(n, usuario))));
+    }
+  }, []);
+
   useEffect(() => {
-    setNotifications(localDb.getNotifications(user.id));
+    alertadosRef.current = lerIdsAlertados(user.id);
+    montadoEmRef.current = Date.now();
+    setAvisos([]);
+    setPrefsAviso(lerPrefsAviso(user.id));
     setAllProfiles(localDb.getProfiles().filter(p => p.status === 'ativo'));
+  }, [user.id]);
+
+  useEffect(() => {
+    sincronizarNotificacoes();
 
     // Atualiza o cache local de notificações (leve) para captar mensagens novas.
-    localDb.refreshNotificationsFromSupabase().then(() => setNotifications(localDb.getNotifications(user.id)));
+    localDb.refreshNotificationsFromSupabase().then(sincronizarNotificacoes);
 
     // Reflete no cache local a cada 4s (barato).
-    const interval = setInterval(() => {
-      setNotifications(localDb.getNotifications(user.id));
-    }, 4000);
+    const interval = setInterval(sincronizarNotificacoes, 4000);
     // Busca notificações novas do servidor periodicamente (mais espaçado, egress).
     const netInterval = setInterval(() => {
-      localDb.refreshNotificationsFromSupabase().then(() => setNotifications(localDb.getNotifications(user.id)));
+      localDb.refreshNotificationsFromSupabase().then(sincronizarNotificacoes);
     }, 30000);
     return () => { clearInterval(interval); clearInterval(netInterval); };
-  }, [user]);
+  }, [sincronizarNotificacoes]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  // Título da aba: o único aviso que atravessa a aba sem pedir permissão.
+  useEffect(() => { atualizarTituloAba(unreadCount); }, [unreadCount]);
+  useEffect(() => () => {
+    atualizarTituloAba(0);
+    window.clearTimeout(timerSinoRef.current);
+  }, []);
+
+  const abrirAviso = (item: ItemAviso) => {
+    setAvisos(prev => prev.filter(a => a.id !== item.id));
+    if (item.id === 'resumo') {
+      setShowNotifications(true);
+      setShowProfileMenu(false);
+      return;
+    }
+    const notif = notifications.find(n => n.id === item.id);
+    if (notif) handleNotificationClick(notif);
+  };
+
+  const alternarPref = (chave: keyof AvisoPrefs, valor: boolean) => {
+    const novas = { ...prefsAviso, [chave]: valor };
+    setPrefsAviso(novas);
+    gravarPrefsAviso(user.id, novas);
+  };
+
+  const ativarDesktop = async () => {
+    const p = await pedirPermissaoDesktop();
+    setPermDesktop(p);
+    alternarPref('desktop', p === 'granted');
+  };
 
   /** Agrupa por dia: "hoje" e "ontem" respondem sozinhos o quão urgente é o aviso. */
   const notificacoesAgrupadas = useMemo(() => {
@@ -67,6 +188,12 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }
     return grupos;
   }, [notifications, somenteNaoLidas]);
+
+  // Aviso de algo que a pessoa já leu (aqui ou em outro dispositivo) sai da tela.
+  useEffect(() => {
+    const lidas = new Set(notifications.filter(n => n.is_read).map(n => n.id));
+    setAvisos(prev => (prev.some(a => lidas.has(a.id)) ? prev.filter(a => !lidas.has(a.id)) : prev));
+  }, [notifications]);
 
   const marcarTodasComoLidas = () => {
     localDb.markAllNotificationsAsRead(user.id);
@@ -146,7 +273,18 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
   ];
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900 px-3 sm:px-6 shadow-sm transition-colors gap-2">
+    <>
+    <AlertaNotificacoes
+      itens={avisos}
+      onAbrir={abrirAviso}
+      onDispensar={id => setAvisos(prev => prev.filter(a => a.id !== id))}
+      onDispensarTodos={() => setAvisos([])}
+    />
+    <header className={`sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b px-3 sm:px-6 shadow-sm transition-colors gap-2 ${
+      sinoTocando
+        ? 'border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/30 animate-cabecalho-pisca'
+        : 'border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900'
+    }`}>
       {/* Mobile menu trigger */}
       <button
         onClick={onOpenMobileMenu}
@@ -200,6 +338,18 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
           </button>
         )}
 
+        {/* Selo de chegada: enquanto o cabeçalho pisca, ele diz em palavras o
+            que mudou e leva ao sino em um clique. */}
+        {sinoTocando && (
+          <button
+            onClick={() => { setShowNotifications(true); setShowProfileMenu(false); }}
+            className="animate-selo-pisca hidden sm:flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 cursor-pointer"
+          >
+            <BellRing className="h-3.5 w-3.5" />
+            Nova notificação
+          </button>
+        )}
+
         {/* Notifications */}
         <div className="relative">
           <button
@@ -211,10 +361,17 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
             aria-expanded={showNotifications}
             className="relative rounded-full p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 focus:outline-none transition-colors"
           >
-            <Bell className="h-6 w-6" />
+            {unreadCount > 0
+              ? <BellRing className={`h-6 w-6 text-slate-700 dark:text-slate-200 ${sinoTocando ? 'animate-sino-toca' : ''}`} />
+              : <Bell className="h-6 w-6" />}
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-white">
-                {unreadCount}
+              <span className="absolute top-0.5 right-0.5 flex h-5 min-w-5 items-center justify-center px-1">
+                {/* O halo pisca ENQUANTO houver não lida: parar no primeiro
+                    segundo é justamente o que fazia o aviso passar batido. */}
+                <span aria-hidden className="absolute inline-flex h-5 w-5 rounded-full bg-red-500 animate-sino-pulsa" />
+                <span className="relative inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-900">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
               </span>
             )}
           </button>
@@ -305,6 +462,38 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
                 )}
               </div>
 
+              {/* Como o aviso chega. Fica no rodapé do sino porque é aqui que a
+                  pessoa vem quando percebe que perdeu alguma movimentação. */}
+              <div className="flex items-center gap-1.5 border-t border-gray-100 dark:border-slate-800 px-3 py-2">
+                {permDesktop !== 'indisponivel' && (
+                  <button
+                    onClick={() => { if (permDesktop === 'granted') alternarPref('desktop', !prefsAviso.desktop); else void ativarDesktop(); }}
+                    disabled={permDesktop === 'denied'}
+                    title={permDesktop === 'denied' ? 'Avisos bloqueados nas permissões do navegador' : 'Avisar na área de trabalho quando o SISTEN estiver em outra aba'}
+                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
+                      prefsAviso.desktop && permDesktop === 'granted'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                        : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    Avisar fora da aba
+                  </button>
+                )}
+                <button
+                  onClick={() => { alternarPref('som', !prefsAviso.som); if (!prefsAviso.som) tocarBipe(); }}
+                  title={prefsAviso.som ? 'Desligar o som dos avisos' : 'Tocar um bipe curto a cada aviso novo'}
+                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold transition-colors cursor-pointer ${
+                    prefsAviso.som
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : 'text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {prefsAviso.som ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                  Som
+                </button>
+              </div>
+
               <button
                 onClick={() => { setShowNotifications(false); onNavigate('/solicitacoes?escopo=acao'); }}
                 className="w-full border-t border-gray-100 dark:border-slate-800 px-4 py-2.5 text-[13px] font-bold text-emerald-700 dark:text-emerald-400 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer"
@@ -371,6 +560,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
         </div>
       </div>
     </header>
+    </>
   );
 }
 

@@ -33,6 +33,7 @@ import {
   STATUS_LABEL_DEMANDA,
 } from '../../lib/kanban';
 import { useChartConfig } from '../charts/chartDefaults';
+import { useToast } from '../ui/Toast';
 import DemandaDetailModal from './DemandaDetailModal';
 import NovaDemandaModal from './NovaDemandaModal';
 
@@ -393,6 +394,7 @@ function PainelPersonalizarColunas({
 const SENSOR_POINTER_OPTIONS = { activationConstraint: { distance: 6 } };
 
 export default function TabDemandas({ user }: TabDemandasProps) {
+  const toast = useToast();
   const chartTokens = useChartConfig().tokens;
   const [requests, setRequests] = useState<Request[]>([]);
   const [colunas, setColunas] = useState<KanbanColumnConfig[]>(() => carregarColunasKanban());
@@ -500,13 +502,15 @@ export default function TabDemandas({ user }: TabDemandasProps) {
       const ok = await localDb.updateRequestStatus(reqId, novoStatus, user.id, `Movido para "${colunasVisiveis.find(c => c.status === novoStatus)?.label}" no quadro Kanban.`);
       if (!ok) {
         console.error('Falha ao mover a demanda no quadro: escrita no Supabase não confirmada.');
+        toast.error('Não foi possível mover a demanda no quadro. Tente novamente.');
         carregar();
       }
     } catch (err) {
       console.error('Falha ao mover a demanda no quadro.', err);
+      toast.error('Ocorreu um erro ao mover a demanda.');
       carregar();
     }
-  }, [requests, colunasVisiveis, user.id, carregar]);
+  }, [requests, colunasVisiveis, user.id, carregar, toast]);
 
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveId(null);
@@ -521,6 +525,7 @@ export default function TabDemandas({ user }: TabDemandasProps) {
       await localDb.updateRequestTitulo(id, titulo);
     } catch (err) {
       console.error('Falha ao salvar o título.', err);
+      toast.error('Não foi possível salvar o título da demanda.');
       carregar();
     }
   };

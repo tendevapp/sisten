@@ -228,6 +228,19 @@ export function marcarObservacaoImobilizado(obs?: string | null): string {
   return texto ? `${MARCA_IMOBILIZADO} ${texto}` : MARCA_IMOBILIZADO;
 }
 
+/** Identifica se a justificativa já possui o registro de alinhamento com o almoxarifado. */
+export function temAvisoAlmoxarifado(justificativa?: string | null): boolean {
+  return (justificativa || '').includes('[Almoxarifado avisado:');
+}
+
+/** Insere o carimbo de alinhamento com o almoxarifado na justificativa da compra. */
+export function carimbarAvisoAlmoxarifado(justificativa: string | null | undefined, avisado: boolean): string {
+  const texto = (justificativa || '').trim();
+  if (temAvisoAlmoxarifado(texto)) return texto;
+  const carimbo = `[Almoxarifado avisado: ${avisado ? 'Sim' : 'Não'}]`;
+  return texto ? `${texto}\n${carimbo}` : carimbo;
+}
+
 
 export type TipoEventoHistorico =
   | 'abertura'

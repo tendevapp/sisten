@@ -1118,3 +1118,100 @@ body,
   }
 }
 
+
+/* ------------------------------------------------------------------ */
+/* Avisos de movimentação de chamado                                   */
+/* ------------------------------------------------------------------ */
+
+/* Cartão flutuante: entra da direita (de cima no mobile, onde ele é largo).
+   Movimento curto de propósito — é para o olho pegar, não para exibir. */
+@keyframes sisten-aviso-entra {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-aviso-entra {
+  animation: sisten-aviso-entra 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* O sino balança uma vez quando chega aviso novo: sinaliza ONDE o número
+   mudou, para quem estava olhando para outro canto da tela. */
+@keyframes sisten-sino-toca {
+  0%, 100% { transform: rotate(0deg); }
+  12% { transform: rotate(-13deg); }
+  28% { transform: rotate(11deg); }
+  44% { transform: rotate(-8deg); }
+  60% { transform: rotate(6deg); }
+  76% { transform: rotate(-3deg); }
+}
+
+.animate-sino-toca {
+  animation: sisten-sino-toca 0.9s ease-in-out;
+  transform-origin: 50% 15%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .animate-aviso-entra,
+  .animate-sino-toca {
+    animation: none !important;
+  }
+}
+
+/* Sino piscando enquanto houver aviso não lido. É lento e de baixa amplitude
+   de propósito: precisa ser notado com o olho de canto sem virar estrobo na
+   frente de quem digita o dia inteiro. */
+@keyframes sisten-sino-pulsa {
+  0%, 100% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.9); opacity: 0; }
+}
+
+.animate-sino-pulsa {
+  animation: sisten-sino-pulsa 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Cabeçalho inteiro pisca quando o aviso ACABA de chegar — três batidas e
+   para. Enquanto durar, é impossível não ver que algo se moveu. */
+@keyframes sisten-cabecalho-pisca {
+  0%, 100% { background-color: var(--color-white); }
+  25%, 75% { background-color: var(--color-amber-50); }
+}
+
+@keyframes sisten-cabecalho-pisca-escuro {
+  0%, 100% { background-color: var(--color-slate-900); }
+  25%, 75% { background-color: var(--color-amber-950); }
+}
+
+.animate-cabecalho-pisca {
+  animation: sisten-cabecalho-pisca 1s ease-in-out 3;
+}
+
+:where(.dark) .animate-cabecalho-pisca {
+  animation-name: sisten-cabecalho-pisca-escuro;
+}
+
+/* Selo "Nova notificação": pisca junto com o cabeçalho e some quando lido. */
+@keyframes sisten-selo-pisca {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.animate-selo-pisca {
+  animation: sisten-selo-pisca 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .animate-sino-pulsa,
+  .animate-cabecalho-pisca,
+  .animate-selo-pisca {
+    animation: none !important;
+  }
+}

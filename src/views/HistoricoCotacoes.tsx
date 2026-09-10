@@ -33,6 +33,7 @@ import {
   type BenchmarkProduto,
 } from '../lib/cotacoesHistoricoApi';
 import CotacaoHistoricoDetalhesModal from '../components/cotacoes/CotacaoHistoricoDetalhesModal';
+import { TableCards, TableCardRow, TableDesktop } from '../components/ui/DataTable';
 import { formatBRL, formatDateTimeBR } from '../lib/format';
 import type { Profile } from '../types';
 
@@ -657,6 +658,51 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
 
       {/* TABELA 1: VISÃO POR ITENS */}
       {visao === 'itens' && (
+        <>
+        {/* Celular: cada item vira um cartão (a tabela tem 9 colunas). */}
+        {!carregandoItens && itens.length > 0 && (
+          <TableCards>
+            {itens.map(it => {
+              const p = it.proposta;
+              const dataFormatada = p?.data_emissao ? formatDateTimeBR(p.data_emissao).split(' ')[0] : '—';
+              return (
+                <TableCardRow key={`m-${it.id}`} onClick={() => setItemSelecionado(it)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-2">
+                      {it.descricao_produto}
+                    </p>
+                    <span className="shrink-0 text-sm font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      {it.preco_unitario != null ? formatBRL(it.preco_unitario) : '—'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-400">
+                    {it.codigo_produto && <span>Cód {it.codigo_produto}</span>}
+                    {it.marca_fabricante && <span>· {it.marca_fabricante}</span>}
+                    {it.vinculo?.material_code && (
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        SAP {it.vinculo.material_code}
+                        {genericos.has(it.vinculo.material_code) && ' · genérico'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                    {p?.fornecedor_razao_social || '—'}
+                    <span className="ml-1 font-normal text-slate-400">
+                      {[p?.fornecedor_cidade, p?.fornecedor_uf].filter(Boolean).join('/')}
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-bold text-slate-600 dark:text-slate-300">{p?.frete_modalidade || '—'}</span>
+                    <span>Qtd {it.quantidade ?? 1} {it.unidade_medida || 'UN'}</span>
+                    {it.preco_total_item != null && <span>Total {formatBRL(it.preco_total_item)}</span>}
+                    <span>{dataFormatada}</span>
+                  </div>
+                </TableCardRow>
+              );
+            })}
+          </TableCards>
+        )}
+        <TableDesktop>
         <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -806,10 +852,44 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
             </table>
           </div>
         </div>
+        </TableDesktop>
+        </>
       )}
 
       {/* TABELA 2: VISÃO POR COTAÇÃO COMPLETA */}
       {visao === 'propostas' && (
+        <>
+        {/* Celular: cada proposta vira um cartão. */}
+        {!carregandoPropostas && propostas.length > 0 && (
+          <TableCards>
+            {propostas.map(prop => {
+              const dataEmissao = prop.data_emissao ? formatDateTimeBR(prop.data_emissao).split(' ')[0] : '—';
+              return (
+                <TableCardRow key={`m-${prop.id}`} onClick={() => setPropostaSelecionada(prop)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {prop.fornecedor_razao_social || '—'}
+                    </p>
+                    <span className="shrink-0 text-sm font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      {formatBRL(prop.valor_total_orcamento ?? prop.soma_itens_valor)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {prop.numero_proposta ? `Nº ${prop.numero_proposta}` : 'Sem número'}
+                    {prop.arquivo_origem ? ` · ${prop.arquivo_origem}` : ''}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-bold text-slate-600 dark:text-slate-300">{prop.frete_modalidade || 'FOB'}</span>
+                    <span>{prop.condicao_pagamento || prop.forma_pagamento || 'Pgto. a combinar'}</span>
+                    <span>{prop.total_itens_catalogados} itens</span>
+                    <span>{dataEmissao}</span>
+                  </div>
+                </TableCardRow>
+              );
+            })}
+          </TableCards>
+        )}
+        <TableDesktop>
         <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -919,6 +999,8 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
             </table>
           </div>
         </div>
+        </TableDesktop>
+        </>
       )}
 
       {/* Modal de Detalhes da Cotação Completa */}

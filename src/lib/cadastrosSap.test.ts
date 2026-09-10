@@ -210,6 +210,33 @@ describe('Cadastros SAP — Atualização de Fornecedor e Código de Resposta', 
     expect(req?.status).toBe('em_atendimento');
   });
 
+  it('registra e limpa o nº do ticket externo sem mexer em status', async () => {
+    const draft: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Item',
+      justificativa: 'Item cujo cadastro real vai para o Astrein',
+      criticality: 3,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+
+    const created = await localDb.submitRequest(draft, false);
+    await localDb.assignAtendente(created.id, 'user-atendente', 'Jefferson Santana');
+
+    const ok = await localDb.updateCadastroSapTicketExterno(created.id, '  Astrein #507203  ');
+    expect(ok).toBe(true);
+
+    let req = localDb.getRequests().find(r => r.id === created.id);
+    expect(req?.ticket_externo).toBe('Astrein #507203'); // trim aplicado
+    expect(req?.status).toBe('em_atendimento'); // status intacto
+
+    // Passar vazio limpa o vínculo
+    await localDb.updateCadastroSapTicketExterno(created.id, '');
+    req = localDb.getRequests().find(r => r.id === created.id);
+    expect(req?.ticket_externo).toBeUndefined();
+  });
+
   it('exclui solicitacao definitivamente com deleteRequest', async () => {
     const draft: Partial<Request> = {
       type: 'cadastro_sap',

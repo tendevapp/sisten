@@ -68,6 +68,12 @@ export function resolverRotaNotificacao(notif: Notification, user: Profile): str
     return contextKey;
   }
 
+  // Aviso de demanda nova em Abrir RM: leva direto para a fila do almoxarifado,
+  // não para a solicitação — o destinatário é quem vai abrir a RM.
+  if (textoCompleto.includes('abrir rm')) {
+    return '/almoxarifado/abrir-rm';
+  }
+
   // 2. Roteamento por request_id vinculado
   if (notif.request_id) {
     const req = localDb.getRequests().find(r => r.id === notif.request_id);

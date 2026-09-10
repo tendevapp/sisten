@@ -271,6 +271,10 @@ export interface Request {
   fornecedor_operacao?: 'novo' | 'atualizacao';
   codigo_fornecedor_sap?: string;
   codigo_sap_gerado?: string;
+  // Cadastro SAP: nº do chamado aberto pelo atendente em plataforma externa
+  // (Astrein, service desk da controladoria...). Texto livre, opcional —
+  // registra "onde acompanhar lá fora" sem garimpar a conversa.
+  ticket_externo?: string;
 }
 
 export interface Notification {

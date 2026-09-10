@@ -312,6 +312,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const [aba, setAba] = useState<'para_abrir' | 'abertas'>('para_abrir');
   const [buscaAbertas, setBuscaAbertas] = useState('');
   const [importandoRm, setImportandoRm] = useState(false);
+  const [arrastandoRm, setArrastandoRm] = useState(false);
   const inputArquivoRmRef = useRef<HTMLInputElement>(null);
 
   /* Carga ---------------------------------------------------------------- */
@@ -1863,10 +1864,18 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
       >
         <label
+          onDragOver={e => { e.preventDefault(); if (!importandoRm) setArrastandoRm(true); }}
+          onDragLeave={e => { e.preventDefault(); setArrastandoRm(false); }}
+          onDrop={e => {
+            e.preventDefault();
+            setArrastandoRm(false);
+            const arquivo = e.dataTransfer.files?.[0];
+            if (arquivo && !importandoRm) handleImportarPlanilhaRm(arquivo);
+          }}
           className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border-2 border-dashed p-4 cursor-pointer transition-colors"
           style={{
-            borderColor: importandoRm ? 'var(--brand)' : 'var(--hairline)',
-            background: importandoRm ? 'color-mix(in srgb, var(--brand) 6%, transparent)' : 'transparent',
+            borderColor: importandoRm || arrastandoRm ? 'var(--brand)' : 'var(--hairline)',
+            background: importandoRm || arrastandoRm ? 'color-mix(in srgb, var(--brand) 6%, transparent)' : 'transparent',
           }}
         >
           <input
@@ -1889,7 +1898,11 @@ export default function AbrirRm({ user, onNavigate }: Props) {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
-              {importandoRm ? 'Lendo a planilha…' : 'Importar planilha com a RM preenchida'}
+              {importandoRm
+                ? 'Lendo a planilha…'
+                : arrastandoRm
+                  ? 'Solte o arquivo para importar'
+                  : 'Arraste a planilha aqui ou clique para escolher'}
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
               A mesma planilha exportada daqui, ou o controle do comprador (inclusive .xlsm com

@@ -482,6 +482,7 @@ export type Database = {
           fornecedor_operacao: string | null
           codigo_fornecedor_sap: string | null
           codigo_sap_gerado: string | null
+          ticket_externo: string | null
           type: string
           updated_at: string | null
         }
@@ -524,6 +525,7 @@ export type Database = {
           fornecedor_operacao?: string | null
           codigo_fornecedor_sap?: string | null
           codigo_sap_gerado?: string | null
+          ticket_externo?: string | null
           type: string
           updated_at?: string | null
         }
@@ -566,6 +568,7 @@ export type Database = {
           fornecedor_operacao?: string | null
           codigo_fornecedor_sap?: string | null
           codigo_sap_gerado?: string | null
+          ticket_externo?: string | null
           type?: string
           updated_at?: string | null
         }
