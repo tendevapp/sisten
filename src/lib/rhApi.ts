@@ -774,58 +774,55 @@ export function formatarDataDDMMAA(dataISO?: string | null): string {
 }
 
 /**
- * Gera protocolo de ASE no padrão ASE-DDMMAA-SETOR (ou com sequencial se houver duplicidade no mesmo dia/setor).
- * Ex: "ASE-270826-SUPR", "ASE-270826-ALMOX-01"
+ * Gera protocolo de ASE no padrão com setor e índice obrigatório (Opção B):
+ * ASE-DDMMAA-SETOR-INDICE (ex: "ASE-270826-SUPR-01", "ASE-270826-ALMOX-02").
  */
-export function gerarProtocoloAse(dataISO?: string | null, nomeSetor?: string | null, sequencial?: number | string | null): string {
+export function gerarProtocoloAse(
+  dataISO?: string | null,
+  nomeSetor?: string | null,
+  sequencial: number | string = 1,
+): string {
   const ddmmaa = formatarDataDDMMAA(dataISO);
   const sigla = extrairSiglaSetor(nomeSetor);
-  const base = `ASE-${ddmmaa}-${sigla}`;
-  if (sequencial === null || sequencial === undefined || sequencial === '') return base;
-  const seqStr = typeof sequencial === 'number' ? String(sequencial).padStart(2, '0') : String(sequencial);
-  return `${base}-${seqStr}`;
+  const seqNum = typeof sequencial === 'number' ? sequencial : parseInt(String(sequencial), 10) || 1;
+  const seqStr = String(Math.max(1, seqNum)).padStart(2, '0');
+  return `ASE-${ddmmaa}-${sigla}-${seqStr}`;
 }
 
 /**
  * Calcula o próximo protocolo ASE disponível a partir de uma lista de protocolos existentes.
- * Se o código base ASE-DDMMAA-SETOR estiver livre, usa ele.
- * Se já existir para aquela data e setor, adiciona sufixo sequencial (-01, -02, etc.).
+ * Sempre atribui índice sequencial de no mínimo 2 dígitos (-01, -02, etc.), garantindo que
+ * até o primeiro registro do dia/setor possua o índice "-01".
  */
 export function calcularProximoProtocoloAse(
   dataISO?: string | null,
   nomeSetor?: string | null,
   protocolosExistentes?: (string | null | undefined)[],
 ): string {
-  const base = gerarProtocoloAse(dataISO, nomeSetor, null);
-  if (!protocolosExistentes || protocolosExistentes.length === 0) return base;
+  const ddmmaa = formatarDataDDMMAA(dataISO);
+  const sigla = extrairSiglaSetor(nomeSetor);
+  const prefixoBase = `ASE-${ddmmaa}-${sigla}`;
+  const padrao = new RegExp(`^${prefixoBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`, 'i');
 
-  const baseUpper = base.toUpperCase();
-  const existentesUpper = new Set(
-    protocolosExistentes
-      .map(p => String(p ?? '').trim().toUpperCase())
-      .filter(Boolean)
-  );
-
-  // Se o código base puro ainda não foi usado, ele é o escolhido
-  if (!existentesUpper.has(baseUpper)) {
-    return base;
-  }
-
-  // O base puro já existe; procura o maior sufixo sequencial existente (-01, -02, ...)
-  const padrao = new RegExp(`^${baseUpper.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`, 'i');
-  let maiorSufixo = 0;
-
-  for (const cod of existentesUpper) {
-    const match = cod.match(padrao);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (!isNaN(num) && num > maiorSufixo) {
-        maiorSufixo = num;
+  let maiorSeq = 0;
+  if (protocolosExistentes && protocolosExistentes.length > 0) {
+    for (const p of protocolosExistentes) {
+      if (!p) continue;
+      const trimP = String(p).trim();
+      const m = trimP.match(padrao);
+      if (m) {
+        const num = parseInt(m[1], 10);
+        if (!isNaN(num) && num > maiorSeq) {
+          maiorSeq = num;
+        }
+      } else if (trimP.toUpperCase() === prefixoBase.toUpperCase()) {
+        // Compatibilidade com possíveis registros legados sem sufixo
+        if (maiorSeq < 1) maiorSeq = 1;
       }
     }
   }
 
-  return gerarProtocoloAse(dataISO, nomeSetor, maiorSufixo + 1);
+  return gerarProtocoloAse(dataISO, nomeSetor, maiorSeq + 1);
 }
 
 /**
@@ -1026,13 +1023,15 @@ export async function salvarSolicitacaoASE(
       dadosUpdate.numero_protocolo = protocoloFinal;
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('rh_ase_solicitacoes')
       .update(dadosUpdate)
-      .eq('id', id);
+      .eq('id', id)
+      .select('numero_protocolo')
+      .maybeSingle();
 
     if (!error) {
-      return { numero_protocolo: protocoloFinal };
+      return { numero_protocolo: data?.numero_protocolo || protocoloFinal };
     }
 
     const ehDuplicado =
@@ -1040,10 +1039,28 @@ export async function salvarSolicitacaoASE(
       error.message.includes('duplicate key') ||
       (error as any).code === '23505';
 
-    // Se houve conflito de chave única e temos os dados de data/setor, recalcula o próximo protocolo disponível
-    if (ehDuplicado && patch.data_execucao) {
-      protocoloFinal = await obterProximoProtocoloAseDisponivel(patch.data_execucao, setorNome, id);
-      continue;
+    // Se houve conflito de chave única, recalcula o próximo protocolo disponível.
+    // Se data ou setor não tiverem sido fornecidos no patch, busca os valores atuais no banco.
+    if (ehDuplicado) {
+      let dataExec = patch.data_execucao;
+      let nomeSetor = setorNome;
+
+      if (!dataExec || !nomeSetor) {
+        const { data: row } = await supabase
+          .from('rh_ase_solicitacoes')
+          .select('data_execucao, setor:rh_setores(nome)')
+          .eq('id', id)
+          .maybeSingle();
+        if (row) {
+          dataExec = dataExec || row.data_execucao;
+          nomeSetor = nomeSetor || (row.setor as any)?.nome || null;
+        }
+      }
+
+      if (dataExec) {
+        protocoloFinal = await obterProximoProtocoloAseDisponivel(dataExec, nomeSetor, id);
+        continue;
+      }
     }
 
     throw new Error(error.message);

@@ -17,6 +17,8 @@
 type ComDono = {
   /** Portaria / Expedição */
   criado_por?: string | null;
+  /** Almoxarifado — Recebimento (cargas / conferências) */
+  criado_por_id?: string | null;
   /** RH — ASE Hora Extra */
   solicitante_id?: string | null;
 };
@@ -24,7 +26,7 @@ type ComDono = {
 /** Extrai o id do dono do registro, seja qual for a convenção da tabela. */
 export function donoDoRegistro(registro: ComDono | null | undefined): string | null {
   if (!registro) return null;
-  return registro.criado_por ?? registro.solicitante_id ?? null;
+  return registro.criado_por ?? registro.criado_por_id ?? registro.solicitante_id ?? null;
 }
 
 /**

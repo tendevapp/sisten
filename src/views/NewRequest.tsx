@@ -255,6 +255,12 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [itemParaRemover, setItemParaRemover] = useState<{ index: number; item: PurchaseItemState } | null>(null);
   const [confirmLimparRascunho, setConfirmLimparRascunho] = useState(false);
   const [confirmSolicitarCadastro, setConfirmSolicitarCadastro] = useState(false);
+  // Depois de criar a solicitação de Cadastro SAP, um aviso segura o fluxo até
+  // o usuário confirmar — é ele quem precisa abrir e ENVIAR o e-mail no Outlook
+  // (o mailto: não manda sozinho, e sem esse e-mail o setor não recebe a demanda).
+  const [avisoEmailCadastro, setAvisoEmailCadastro] = useState<
+    { mailtoUrl: string; reqId: string; temAnexos: boolean } | null
+  >(null);
   const [sectorId, setSectorId] = useState('');
   const [tipoCompra, setTipoCompra] = useState<'Estoque' | 'Direta' | 'Serviço'>('Estoque');
   // Serviço não tem catálogo SAP para consultar neste momento: a descrição é
@@ -1412,10 +1418,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           assunto: subject,
           corpo: body,
         });
-        window.location.href = mailtoUrl;
-        if (sapAttachments.length > 0) {
-          toast.info('E-mail aberto no Outlook. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
-        }
+        // Não abre o e-mail direto: mostra o aviso primeiro. A confirmação
+        // dispara o mailto: e navega para a solicitação (ver confirmarAvisoEmailCadastro).
+        setAvisoEmailCadastro({ mailtoUrl, reqId, temAnexos: sapAttachments.length > 0 });
+        return;
       }
 
       // Navigate to tracking
@@ -1426,6 +1432,29 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     } finally {
       setUploadProgress(false);
     }
+  };
+
+  // Confirmação do aviso de e-mail do Cadastro SAP: abre o Outlook com o mailto:
+  // já montado e leva o usuário para a solicitação criada.
+  const confirmarAvisoEmailCadastro = () => {
+    const aviso = avisoEmailCadastro;
+    if (!aviso) return;
+    setAvisoEmailCadastro(null);
+    window.location.href = aviso.mailtoUrl;
+    if (aviso.temAnexos) {
+      toast.info('E-mail aberto no Outlook. Anexe os arquivos manualmente antes de enviar — o link não inclui anexos.');
+    }
+    onNavigate(`/solicitacoes?id=${aviso.reqId}`);
+  };
+
+  // Fechou o aviso sem abrir o e-mail: a solicitação já existe, então segue para
+  // ela, mas lembra que sem o e-mail o setor não recebe a demanda.
+  const dispensarAvisoEmailCadastro = () => {
+    const aviso = avisoEmailCadastro;
+    if (!aviso) return;
+    setAvisoEmailCadastro(null);
+    toast.warning('Solicitação criada, mas o e-mail não foi aberto. Você precisa enviá-lo ao setor responsável para dar andamento.');
+    onNavigate(`/solicitacoes?id=${aviso.reqId}`);
   };
 
   // A categoria já escolhida entra na lista mesmo que tenha saído do cadastro
@@ -3026,6 +3055,26 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           confirmarLabel="Abrir Cadastro SAP"
           onConfirmar={confirmarSolicitarCadastro}
           onCancelar={() => setConfirmSolicitarCadastro(false)}
+        />
+      )}
+
+      {avisoEmailCadastro && (
+        <ConfirmDialog
+          titulo="Falta enviar o e-mail no Outlook"
+          mensagem={
+            <span>
+              A solicitação foi criada. Ao confirmar, o SISTEN vai <strong>abrir uma janela de e-mail no Outlook</strong> já
+              preenchida com os dados do cadastro. <strong>Você precisa enviar esse e-mail</strong> — a solicitação só entra na
+              fila do setor responsável depois do envio.
+              {avisoEmailCadastro.temAnexos && (
+                <> Os anexos não vão no link: <strong>anexe os arquivos manualmente</strong> antes de enviar.</>
+              )}
+            </span>
+          }
+          confirmarLabel="Abrir e-mail no Outlook"
+          cancelarLabel="Agora não"
+          onConfirmar={confirmarAvisoEmailCadastro}
+          onCancelar={dispensarAvisoEmailCadastro}
         />
       )}
 

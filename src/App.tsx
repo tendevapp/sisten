@@ -53,6 +53,7 @@ const Sobre = lazy(() => import('./views/Sobre'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
+const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -601,6 +602,13 @@ export default function App() {
       case '/formularios/logistica-expedicao':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
           return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado':
+      case '/formularios/almoxarifado-recebimento':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'almoxarifado')) {
+          return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

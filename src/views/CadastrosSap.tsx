@@ -6,12 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   KeyRound, Search, Filter, CheckCircle, Clock, AlertTriangle, ArrowRight, UserPlus, HelpCircle, Check, Info, FileText,
-  MessageSquare, Send, Loader2
+  MessageSquare, Send, Loader2, Trash2
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { Profile, Request, RequestComment, Sector } from '../types';
 import { AttachmentGallery } from '../components/ui/Attachments';
 import { useToast } from '../components/ui/Toast';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
 import { formatDateTimeBR } from '../lib/format';
 
@@ -59,6 +60,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [sapResultCode, setSapResultCode] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
 
   useEffect(() => {
     const hash = window.location.hash || '';
@@ -89,7 +92,10 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     if (viewTab === 'meus') {
       list = list.filter(r => r.atendente_id === user.id);
     } else if (viewTab === 'fila') {
-      list = list.filter(r => !r.atendente_id || r.status === 'aberto');
+      list = list.filter(r => 
+        !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(r.status) &&
+        (!r.atendente_id || r.status === 'aberto')
+      );
     }
 
     // Apply Status filter
@@ -269,7 +275,39 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
   };
 
+  const podeExcluir = Boolean(selectedReq && (
+    user.roles.includes('admin') ||
+    user.roles.includes('coordenador_suprimentos') ||
+    user.id === selectedReq.solicitante_id
+  ));
+
+  const handleExcluir = async () => {
+    if (!selectedReq) return;
+    setExcluindo(true);
+    try {
+      const ok = await localDb.deleteRequest(selectedReq.id);
+      if (ok) {
+        toast.success(`Solicitação #${selectedReq.number} excluída com sucesso.`);
+        setSelectedReq(null);
+        setConfirmarExclusao(false);
+        loadData();
+      } else {
+        toast.error('Não foi possível excluir a solicitação. Tente novamente.');
+      }
+    } catch (e) {
+      console.error('Falha ao excluir solicitação:', e);
+      toast.error('Ocorreu um erro ao excluir a solicitação.');
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   const getSlaTimeRemaining = (req: Request) => {
+    if (req.status === 'cancelada') return 'Cancelada';
+    if (req.status === 'rejeitada') return 'Rejeitada';
+    if (req.status === 'resolvido' || req.status === 'fechado') return 'Resolvido';
+    if (req.status === 'aguardando_solicitante') return 'Pausado';
+
     // 120h for scale 1 down to 2h for scale 5
     const slaHoursMap: Record<number, number> = { 1: 120, 2: 72, 3: 24, 4: 8, 5: 2 };
     const allowedHours = slaHoursMap[req.criticality] || 24;
@@ -279,9 +317,6 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     const elapsedHours = elapsed / (3600 * 1000);
     const remaining = allowedHours - elapsedHours;
 
-    if (req.status === 'resolvido' || req.status === 'fechado') return 'Resolvido';
-    if (req.status === 'aguardando_solicitante') return 'Pausado';
-
     if (remaining < 0) {
       return `Atrasado ${Math.abs(Math.round(remaining))}h`;
     }
@@ -289,6 +324,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   };
 
   const getSlaColor = (req: Request) => {
+    if (req.status === 'cancelada' || req.status === 'rejeitada') return 'bg-slate-100 text-slate-500';
     if (req.status === 'resolvido' || req.status === 'fechado') return 'bg-emerald-100 text-emerald-800';
     if (req.status === 'aguardando_solicitante') return 'bg-slate-100 text-slate-500';
 
@@ -310,6 +346,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       case 'aguardando_solicitante': return 'bg-slate-100 text-slate-600 border-slate-200';
       case 'resolvido': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'fechado': return 'bg-slate-50 text-slate-500 border-slate-200';
+      case 'cancelada': return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'rejeitada': return 'bg-rose-50 text-rose-700 border-rose-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
@@ -320,7 +358,9 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       em_atendimento: 'Em Atendimento',
       aguardando_solicitante: 'Aguardando Solicitante',
       resolvido: 'Resolvido',
-      fechado: 'Fechado/Concluído'
+      fechado: 'Fechado/Concluído',
+      cancelada: 'Cancelada',
+      rejeitada: 'Rejeitada'
     };
     return labels[status] || status;
   };
@@ -437,6 +477,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 <option value="aguardando_solicitante">Aguardando Solicitante</option>
                 <option value="resolvido">Resolvido</option>
                 <option value="fechado">Fechado</option>
+                <option value="cancelada">Cancelada</option>
+                <option value="rejeitada">Rejeitada</option>
               </select>
 
               {/* Type Filter */}
@@ -513,13 +555,21 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <button 
-                            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs flex items-center gap-1 mx-auto"
+                            className={`font-bold text-xs flex items-center gap-1 mx-auto cursor-pointer ${
+                              ['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(req.status)
+                                ? 'text-slate-600 hover:text-slate-900'
+                                : 'text-emerald-700 hover:text-emerald-900'
+                            }`}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSelectRequest(req);
                             }}
                           >
-                            Atender <ArrowRight className="h-3 w-3" />
+                            {['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(req.status) ? (
+                              <>Ver <ArrowRight className="h-3 w-3" /></>
+                            ) : (
+                              <>Atender <ArrowRight className="h-3 w-3" /></>
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -720,7 +770,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 )}
 
                 {/* 1. Assumir Atendimento */}
-                {!selectedReq.atendente_id && (
+                {!selectedReq.atendente_id && !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(selectedReq.status) && (
                   <button
                     onClick={handleAssumir}
                     className="w-full rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 px-4 cursor-pointer flex items-center justify-center gap-2 shadow-sm transition-colors"
@@ -730,7 +780,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 )}
 
                 {/* 2. Atendente is current user & state is not final */}
-                {selectedReq.atendente_id === user.id && selectedReq.status !== 'resolvido' && selectedReq.status !== 'fechado' && (
+                {selectedReq.atendente_id === user.id && !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(selectedReq.status) && (
                   <div className="space-y-5">
                     
                     {/* 1. Observação / Andamento (NÃO pausa SLA) */}
@@ -832,10 +882,41 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   </div>
                 )}
 
-                {selectedReq.status === 'resolvido' && (
+                {/* 3. Status Cancelada / Rejeitada */}
+                {['cancelada', 'rejeitada'].includes(selectedReq.status) && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-4 text-xs space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                      <p className="font-bold text-rose-900">
+                        Solicitação {selectedReq.status === 'cancelada' ? 'Cancelada' : 'Rejeitada'}
+                      </p>
+                    </div>
+                    <p className="text-slate-600 leading-relaxed text-[11px]">
+                      Esta solicitação foi {selectedReq.status === 'cancelada' ? 'cancelada' : 'rejeitada'} e não está mais ativa para atendimento na fila de Suprimentos.
+                    </p>
+                    {podeExcluir && (
+                      <div className="pt-2 border-t border-rose-200">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmarExclusao(true)}
+                          disabled={excluindo}
+                          className="w-full rounded-lg bg-white hover:bg-rose-100 text-rose-700 font-bold text-xs py-2 px-3 border border-rose-300 cursor-pointer flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                          Excluir Registro Definitivamente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. Status Resolvido / Fechado */}
+                {(selectedReq.status === 'resolvido' || selectedReq.status === 'fechado') && (
                   <div className="rounded-lg bg-emerald-50 p-4 border border-emerald-100 text-center space-y-2">
                     <CheckCircle className="h-8 w-8 text-emerald-600 mx-auto" />
-                    <p className="text-xs font-bold text-emerald-800">Cadastro Resolvido</p>
+                    <p className="text-xs font-bold text-emerald-800">
+                      Cadastro {selectedReq.status === 'fechado' ? 'Fechado/Concluído' : 'Resolvido'}
+                    </p>
                     {selectedReq.codigo_sap_gerado && (
                       <div className="inline-block bg-white border border-emerald-200 rounded px-3 py-1.5 text-xs shadow-xs">
                         <span className="text-slate-500 font-medium">
@@ -845,8 +926,23 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       </div>
                     )}
                     <p className="text-[11px] text-slate-500">
-                      Aguardando auto-fechamento do sistema ou confirmação de fechamento pelo solicitante.
+                      {selectedReq.status === 'fechado'
+                        ? 'Solicitação concluída definitivamente no sistema.'
+                        : 'Aguardando auto-fechamento do sistema ou confirmação de fechamento pelo solicitante.'}
                     </p>
+                    {podeExcluir && (
+                      <div className="pt-2 border-t border-emerald-200/60">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmarExclusao(true)}
+                          disabled={excluindo}
+                          className="w-full rounded-lg bg-white hover:bg-rose-50 text-rose-700 font-semibold text-xs py-1.5 px-3 border border-slate-200 cursor-pointer flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                          Excluir Registro Definitivamente
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -862,6 +958,24 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
           )}
         </div>
       </div>
+
+      {confirmarExclusao && selectedReq && (
+        <ConfirmDialog
+          titulo="Excluir Solicitação de Cadastro SAP?"
+          mensagem={
+            <span>
+              Tem certeza de que deseja excluir definitivamente a solicitação <strong>#{selectedReq.number}</strong>?
+              Esta ação removerá o registro do banco de dados e é irreversível.
+            </span>
+          }
+          variante="perigo"
+          confirmarLabel="Sim, excluir"
+          cancelarLabel="Cancelar"
+          confirmando={excluindo}
+          onConfirmar={handleExcluir}
+          onCancelar={() => setConfirmarExclusao(false)}
+        />
+      )}
     </div>
   );
 }

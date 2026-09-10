@@ -29,6 +29,7 @@ import {
 import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatFileSize } from '../../lib/format';
 import ConfirmDialog from './ConfirmDialog';
+import { useLightbox } from './Lightbox';
 import { useToast } from './Toast';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
@@ -647,6 +648,7 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
   const [excluindo, setExcluindo] = useState<string | null>(null);
   const [anexoParaExcluir, setAnexoParaExcluir] = useState<RequestAttachment | null>(null);
   const toast = useToast();
+  const lightbox = useLightbox();
 
   useEffect(() => {
     const lista = localDb.getAttachments(requestId, itemId);
@@ -700,6 +702,15 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
     }
   };
 
+  const imagens = anexos
+    .filter(a => !ehPdf(a.mime_type) && urls[a.id])
+    .map(a => ({ url: urls[a.id], legenda: a.name }));
+  const abrirImagem = (a: RequestAttachment) => {
+    if (ehPdf(a.mime_type)) { window.open(urls[a.id], '_blank', 'noopener'); return; }
+    const i = imagens.findIndex(x => x.url === urls[a.id]);
+    lightbox.abrir(imagens, i < 0 ? 0 : i);
+  };
+
   return (
     <>
       <ul className="flex flex-wrap gap-2">
@@ -730,15 +741,15 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
 
           return (
             <li key={a.id} className="relative">
-              <a
-                href={url || undefined}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                disabled={!url}
+                onClick={() => abrirImagem(a)}
                 title={`${a.name} — ${formatFileSize(a.size)}`}
-                className="block cursor-pointer transition-opacity hover:opacity-80"
+                className="block cursor-pointer transition-opacity hover:opacity-80 disabled:cursor-default disabled:opacity-100"
               >
                 {conteudo}
-              </a>
+              </button>
 
               {onDelete && (
                 <button
@@ -771,6 +782,7 @@ export function AttachmentGallery({ requestId, itemId, refreshKey, emptyLabel, o
           onCancelar={() => setAnexoParaExcluir(null)}
         />
       )}
+      {lightbox.elemento}
     </>
   );
 }

@@ -4,33 +4,34 @@
  *
  * Central de Solicitações — uma tela para acompanhar, responder e decidir.
  *
- * Substitui Minhas Solicitações, a fila coletiva e Aprovações. As três eram a
- * mesma tabela com recortes diferentes, e a pessoa tinha de adivinhar em qual
- * delas a sua solicitação tinha ido parar. Aqui o recorte virou aba e a lista
- * deixou de ser ordenada por status para ser ordenada por *o que precisa de
- * você agora* — a única pergunta que todo mundo abria a tela para responder.
- *
- * As regras vivem em `lib/solicitacoesCentral.ts`; esta view é interface.
+ * Oferece visualização em Tabela detalhada (conforme novo design do SISTEN),
+ * Quadro Kanban e Calendário de prazos, com filtros por tipo, status, setor,
+ * criticidade e período.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ClipboardList, Clock, Download, FileEdit, FileSpreadsheet, Filter, Loader2, PlusCircle, Search,
-  HelpCircle, Bug, Lightbulb, Layers,
+  ClipboardList, Clock, Download, FileEdit, FileSpreadsheet, Loader2, PlusCircle, Search,
+  HelpCircle, Bug, Lightbulb, ShoppingCart, Database, LifeBuoy, List, LayoutGrid,
+  Calendar as CalendarIcon, MoreVertical, ChevronLeft, ChevronRight, CheckSquare,
 } from 'lucide-react';
+import {
+  addMonths, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth,
+  isToday, startOfMonth, startOfWeek,
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { localDb } from '../db/localDb';
-import { Profile, Request, RequestStatusHistory, Sector } from '../types';
-import { formatDateBR } from '../lib/format';
+import { Profile, Request, RequestItem, RequestStatusHistory, Sector } from '../types';
+import { formatDateBR, toDate } from '../lib/format';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
-import { TIPOS_EM_ORDEM, TIPO_VISUAL, type TipoVisual } from '../components/solicitacoes/tipoVisual';
-import { TableEmpty } from '../components/ui/DataTable';
+import { TIPOS_EM_ORDEM, TIPO_VISUAL } from '../components/solicitacoes/tipoVisual';
 import RequestDetailPanel from '../components/solicitacoes/RequestDetailPanel';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
 import {
   baixarAnexos, contarAnexos, estaEmAberto, exportarSolicitacoes,
-  foiEditadaAposAprovacao, rotuloCriticidade, rotuloStatus, rotuloTipo,
+  foiEditadaAposAprovacao, rotuloStatus,
 } from '../lib/solicitacoes';
 import {
   Escopo, FAIXAS, Faixa, Novidade, Pendencia, escopoPadrao, escoposDisponiveis,
@@ -38,6 +39,14 @@ import {
   marcarLida, marcarTodasLidas, novidade, ordenarFila, ordenarPorRecencia,
   registrarVisita, universoVisivel,
 } from '../lib/solicitacoesCentral';
+import {
+  calcularPrazoSolicitacao,
+  formatarTempoRelativoAbertura,
+  obterEstilosCriticidade,
+  obterEstilosStatus,
+  obterIniciaisNome,
+  obterTituloEJustificativa,
+} from '../components/solicitacoes/solicitacoesTabelaHelpers';
 
 const CENTRAL_SOLICITACOES_TOUR_STEPS: TourStep[] = [
   {
@@ -53,33 +62,27 @@ const CENTRAL_SOLICITACOES_TOUR_STEPS: TourStep[] = [
   },
   {
     target: 'solicitacoes-abas',
-    icon: Layers,
+    icon: LayoutGrid,
     title: 'Abas de escopo dinâmico',
     description: 'Alterne entre "Precisa de mim" (suas pendências ativas de aprovação ou resposta), "Minhas solicitações" (pedidos criados por você), "Do meu setor" e "Todas".',
   },
   {
-    target: 'solicitacoes-busca',
-    icon: Search,
-    title: 'Busca instantânea',
-    description: 'Localize rapidamente qualquer solicitação digitando o número (ex: #123), o nome do solicitante ou palavras-chave da justificativa.',
-  },
-  {
     target: 'solicitacoes-tipos',
-    icon: Filter,
-    title: 'Composição por tipo em chips',
-    description: 'Filtre instantaneamente apenas Compras, Cadastros SAP ou Chamados. A contagem em tempo real em cada chip mostra a distribuição da fila sem precisar abrir menus.',
+    icon: List,
+    title: 'Composição por tipo em chips e visualizações',
+    description: 'Filtre instantaneamente por Compras, Cadastros SAP ou Chamados, ou alterne os modos de exibição entre Lista, Quadro Kanban e Calendário.',
   },
   {
     target: 'solicitacoes-filtros',
-    icon: Filter,
-    title: 'Filtros de criticidade e setor',
-    description: 'Filtre por grau de criticidade (urgência) e setor responsável, ou marque para exibir solicitações já concluídas no histórico.',
+    icon: Search,
+    title: 'Busca instantânea e filtros refinados',
+    description: 'Localize rapidamente por número, solicitante, título, criticidade, status e período de abertura.',
   },
   {
     target: 'solicitacoes-lista',
     icon: ClipboardList,
-    title: 'Lista inteligente por faixas',
-    description: 'As solicitações são organizadas por urgência e recência. Clique em qualquer cartão para abrir a janela de detalhes completos, anexos e chat com o time.',
+    title: 'Tabela de solicitações',
+    description: 'Visualize todas as informações essenciais: tipo, título, justificativa, solicitante, setor, data de abertura, prazo e criticidade. Clique em qualquer linha para abrir o detalhe.',
   },
   {
     target: 'help-button',
@@ -114,6 +117,8 @@ interface Linha {
   faixa: Faixa;
 }
 
+type ModoVisao = 'lista' | 'quadro' | 'calendario';
+
 export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }: Props) {
   const tour = usePageTour('central-solicitacoes', CENTRAL_SOLICITACOES_TOUR_STEPS.length);
   const abas = useMemo(() => escoposDisponiveis(user), [user]);
@@ -124,7 +129,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     tipo: 'todos',
     criticidade: 'todas',
     setor: 'todos',
-    mostrarConcluidas: false,
+    statusFiltro: 'abertas',
+    dataFiltro: 'todas',
+    visao: 'lista' as ModoVisao,
   });
 
   const [escopo, setEscopo] = useState<Escopo>(
@@ -136,7 +143,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const [tipo, setTipo] = useState<string>(cache.tipo);
   const [criticidade, setCriticidade] = useState<string>(cache.criticidade);
   const [setor, setSetor] = useState<string>(cache.setor);
-  const [mostrarConcluidas, setMostrarConcluidas] = useState<boolean>(cache.mostrarConcluidas);
+  const [statusFiltro, setStatusFiltro] = useState<string>(cache.statusFiltro || 'abertas');
+  const [dataFiltro, setDataFiltro] = useState<string>(cache.dataFiltro || 'todas');
+  const [visao, setVisao] = useState<ModoVisao>((cache.visao as ModoVisao) || 'lista');
 
   const [todas, setTodas] = useState<Request[]>([]);
   const [sectors, setSectors] = useState<Sector[]>([]);
@@ -145,32 +154,22 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState('');
 
-  // Estado de leitura: guardado fora do React (IndexedDB) e espelhado aqui,
-  // para a lista redesenhar assim que uma solicitação deixa de ser novidade.
+  const [refMes, setRefMes] = useState(() => startOfMonth(new Date()));
+
   const [leitura, setLeitura] = useState(() => lerEstadoLeitura(user.id));
-  // Congelado na montagem: se recalculasse a cada render, a faixa "Novidades"
-  // se esvaziaria embaixo do usuário no instante em que ele clicasse no item.
   const [leituraDaSessao] = useState(() => lerEstadoLeitura(user.id));
 
   useEffect(() => {
     localDb.setPageCache('solicitacoes_central', {
-      escopo, busca, tipo, criticidade, setor, mostrarConcluidas,
+      escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao,
     });
-  }, [escopo, busca, tipo, criticidade, setor, mostrarConcluidas]);
+  }, [escopo, busca, tipo, criticidade, setor, statusFiltro, dataFiltro, visao]);
 
   const carregar = () => {
     setTodas(localDb.getRequests());
     setSectors(localDb.getSectors());
   };
 
-  /**
-   * Lê `?id=` e `?escopo=` do endereço.
-   *
-   * Precisa rodar também no `hashchange`, não só na montagem: quem já está na
-   * Central e clica numa notificação continua na mesma rota, então o React não
-   * remonta a tela e o `?id=` novo passaria despercebido — a notificação
-   * parecia não fazer nada.
-   */
   const aplicarUrl = () => {
     const params = new URLSearchParams((window.location.hash.split('?')[1]) || '');
 
@@ -196,7 +195,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id]);
 
-  /* Índices ---------------------------------------------------------------- */
+  /* Indices ---------------------------------------------------------------- */
 
   const universo = useMemo(() => universoVisivel(todas, user), [todas, user]);
 
@@ -211,6 +210,16 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   );
 
   const totalPendencias = pendencias.size;
+
+  const itensPorRequestId = useMemo(() => {
+    const map = new Map<string, RequestItem[]>();
+    for (const req of todas) {
+      if (req.type === 'compra') {
+        map.set(req.id, localDb.getRequestItems(req.id));
+      }
+    }
+    return map;
+  }, [todas]);
 
   const idsEditadasAposAprovacao = useMemo(() => {
     const todosHistoricos = localDb.getAllRequestHistory();
@@ -236,44 +245,70 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     return editadas;
   }, [todas]);
 
-  const idsComItemGenerico = useMemo(() => {
-    const set = new Set<string>();
-    for (const req of todas) {
-      if (req.type === 'compra') {
-        const itens = localDb.getRequestItems(req.id);
-        if (itens.some(it => it.is_generic)) {
-          set.add(req.id);
-        }
-      }
-    }
-    return set;
-  }, [todas]);
+  /* Filtros e Linhas -------------------------------------------------------- */
 
-  /* Lista ------------------------------------------------------------------ */
-
-  /**
-   * Tudo do escopo depois dos filtros, EXCETO o de tipo.
-   *
-   * Separado para que os chips de tipo possam mostrar a contagem real de cada
-   * um: se contassem sobre a lista já filtrada por tipo, escolher "Compras"
-   * zeraria os outros chips e a fileira deixaria de dizer o que existe na fila.
-   */
   const antesDoTipo = useMemo(() => {
     let lista = filtrarPorEscopo(universo, user, escopo, pendencias);
 
-    if (criticidade !== 'todas') lista = lista.filter(r => r.criticality === Number(criticidade));
-    if (setor !== 'todos') lista = lista.filter(r => r.solicitante_sector_id === setor);
+    // Filtro por status
+    if (statusFiltro !== 'todas') {
+      if (statusFiltro === 'abertas') {
+        lista = lista.filter(r => estaEmAberto(r));
+      } else if (statusFiltro === 'em_analise') {
+        lista = lista.filter(r => ['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status));
+      } else if (statusFiltro === 'aguardando_aprovacao') {
+        lista = lista.filter(r => r.type === 'compra' && r.status === 'pendente');
+      } else if (statusFiltro === 'concluidas') {
+        lista = lista.filter(r => ['resolvido', 'fechado', 'aprovada'].includes(r.status));
+      } else if (statusFiltro === 'canceladas') {
+        lista = lista.filter(r => ['cancelada', 'rejeitada'].includes(r.status));
+      }
+    }
 
+    // Filtro por criticidade
+    if (criticidade !== 'todas') {
+      lista = lista.filter(r => r.criticality === Number(criticidade));
+    }
+
+    // Filtro por setor
+    if (setor !== 'todos') {
+      lista = lista.filter(r => r.solicitante_sector_id === setor);
+    }
+
+    // Filtro por data
+    if (dataFiltro !== 'todas') {
+      const agora = new Date();
+      const hojeZero = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime();
+      const msPorDia = 24 * 60 * 60 * 1000;
+
+      lista = lista.filter(r => {
+        const dt = toDate(r.created_at);
+        if (!dt) return false;
+        const dtZero = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+        const diffDias = Math.round((hojeZero - dtZero) / msPorDia);
+
+        if (dataFiltro === 'hoje') return diffDias === 0;
+        if (dataFiltro === '7dias') return diffDias >= 0 && diffDias <= 7;
+        if (dataFiltro === '30dias') return diffDias >= 0 && diffDias <= 30;
+        if (dataFiltro === 'este_mes') {
+          return dt.getMonth() === agora.getMonth() && dt.getFullYear() === agora.getFullYear();
+        }
+        return true;
+      });
+    }
+
+    // Busca textual
     const q = busca.trim().toLowerCase();
     if (q) {
       lista = lista.filter(r =>
         r.number.toLowerCase().includes(q) ||
         r.solicitante_name.toLowerCase().includes(q) ||
-        (r.justificativa || '').toLowerCase().includes(q),
+        (r.justificativa || '').toLowerCase().includes(q) ||
+        (r.titulo || '').toLowerCase().includes(q),
       );
     }
     return lista;
-  }, [universo, user, escopo, pendencias, criticidade, setor, busca]);
+  }, [universo, user, escopo, pendencias, statusFiltro, criticidade, setor, dataFiltro, busca]);
 
   const contagemPorTipo = useMemo(() => {
     const contagem = { total: antesDoTipo.length, compra: 0, cadastro_sap: 0, chamado: 0 };
@@ -291,29 +326,9 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
     });
   }, [antesDoTipo, tipo, pendencias, user, eventos, leituraDaSessao]);
 
-  const porFaixa = useMemo(() => {
-    const mapa = new Map<Faixa, Linha[]>();
-    for (const faixa of FAIXAS) {
-      const desta = linhas.filter(l => l.faixa === faixa.id);
-      mapa.set(
-        faixa.id,
-        faixa.id === 'concluidas'
-          ? ordenarPorRecencia(desta.map(l => l.request)).map(r => desta.find(l => l.request.id === r.id)!)
-          : ordenarFila(desta.map(l => l.request)).map(r => desta.find(l => l.request.id === r.id)!),
-      );
-    }
-    return mapa;
-  }, [linhas]);
-
-  const faixasVisiveis = FAIXAS.filter(f =>
-    f.id === 'concluidas' ? mostrarConcluidas : true,
-  );
-
-  const concluidasOcultas = mostrarConcluidas ? 0 : (porFaixa.get('concluidas')?.length ?? 0);
-
   const aberta = universo.find(r => r.id === abertaId) || todas.find(r => r.id === abertaId) || null;
 
-  /* Ações ------------------------------------------------------------------ */
+  /* Acoes ------------------------------------------------------------------ */
 
   function abrir(id: string) {
     setAbertaId(id);
@@ -323,18 +338,27 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
 
   const fechar = () => setAbertaId(null);
 
-  const limparNovidades = () => {
-    const ids = linhas.filter(l => l.novidade).map(l => l.request.id);
-    setLeitura(marcarTodasLidas(user.id, ids));
-    // `leituraDaSessao` continua congelado de propósito: as linhas somem da
-    // faixa só no próximo carregamento da tela, e não sob o cursor.
-    setAviso(`${ids.length} novidade(s) marcada(s) como vista(s).`);
+  const limparFiltros = () => {
+    setBusca('');
+    setStatusFiltro('abertas');
+    setCriticidade('todas');
+    setSetor('todos');
+    setDataFiltro('todas');
+    setTipo('todos');
   };
 
   const alternarSelecao = (id: string) => {
     const proximo = new Set(selecionadas);
     if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
     setSelecionadas(proximo);
+  };
+
+  const alternarTodasSelecoes = () => {
+    if (selecionadas.size === linhas.length && linhas.length > 0) {
+      setSelecionadas(new Set());
+    } else {
+      setSelecionadas(new Set(linhas.map(l => l.request.id)));
+    }
   };
 
   const selecionadasReq = useMemo(
@@ -357,17 +381,41 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
   const abaAtiva = abas.find(a => a.id === escopo) || abas[0];
   const modoFila = escopo === 'todas' || escopo === 'setor';
 
+  /* Calendario -------------------------------------------------------------- */
+
+  const diasCalendario = useMemo(() => eachDayOfInterval({
+    start: startOfWeek(startOfMonth(refMes), { weekStartsOn: 0 }),
+    end: endOfWeek(endOfMonth(refMes), { weekStartsOn: 0 }),
+  }), [refMes]);
+
+  const itensPorDiaCalendario = useMemo(() => {
+    const mapa = new Map<string, Linha[]>();
+    for (const linha of linhas) {
+      const prazo = linha.request.prazo_conclusao || linha.request.data_necessidade || linha.request.created_at;
+      if (prazo) {
+        const d = toDate(prazo);
+        if (d) {
+          const chave = format(d, 'yyyy-MM-dd');
+          const arr = mapa.get(chave) || [];
+          arr.push(linha);
+          mapa.set(chave, arr);
+        }
+      }
+    }
+    return mapa;
+  }, [linhas]);
+
   /* Desenho ---------------------------------------------------------------- */
 
   return (
-    <div className="space-y-5 py-4 text-left">
-      {/* Cabeçalho */}
+    <div className="space-y-4 py-3 text-left">
+      {/* Cabecalho Principal */}
       <header data-tour="solicitacoes-header" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
             <ClipboardList className="h-6 w-6" style={{ color: 'var(--brand)' }} /> Solicitações
           </h2>
-          <p className="mt-1 text-base" style={{ color: 'var(--ink-secondary)' }}>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             {abaAtiva.descricao}
           </p>
         </div>
@@ -375,14 +423,14 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         <button
           type="button"
           onClick={() => onNavigate('/solicitacoes/nova')}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-bold text-white cursor-pointer"
+          className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold text-white cursor-pointer shadow-xs transition-opacity hover:opacity-95"
           style={{ background: 'var(--brand)' }}
         >
           <PlusCircle className="h-4 w-4" /> Nova solicitação
         </button>
       </header>
 
-      {/* Abas de escopo */}
+      {/* Abas de escopo dinâmico */}
       <nav
         data-tour="solicitacoes-abas"
         className="flex flex-wrap gap-1 rounded-xl border p-1"
@@ -397,7 +445,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
               type="button"
               onClick={() => setEscopo(aba.id)}
               aria-current={ativa ? 'page' : undefined}
-              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-bold cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-bold cursor-pointer transition-colors"
               style={ativa
                 ? { background: 'var(--brand)', color: '#fff' }
                 : { color: 'var(--ink-secondary)' }}
@@ -418,186 +466,643 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         })}
       </nav>
 
-      {/* Filtros */}
-      <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
-        <div data-tour="solicitacoes-busca" className="relative max-w-md">
-          <Search className="absolute left-3 top-2.5 h-4 w-4" style={{ color: 'var(--ink-muted)' }} />
+      {/* Barra de Tipos e Alternador de Visao (Exibicao do Mockup) */}
+      <div data-tour="solicitacoes-tipos" className="flex flex-wrap items-center justify-between gap-3 pt-1">
+        {/* Pilulas de Tipo */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Todas */}
+          <button
+            type="button"
+            onClick={() => setTipo('todos')}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+              tipo === 'todos'
+                ? 'bg-[#00897b] text-white shadow-sm'
+                : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>Todas</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                tipo === 'todos' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {contagemPorTipo.total}
+            </span>
+          </button>
+
+          {/* Compras */}
+          <button
+            type="button"
+            onClick={() => setTipo(tipo === 'compra' ? 'todos' : 'compra')}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+              tipo === 'compra'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <ShoppingCart className={`h-4 w-4 ${tipo === 'compra' ? 'text-white' : 'text-sky-500'}`} />
+            <span>Compras</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                tipo === 'compra' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {contagemPorTipo.compra}
+            </span>
+          </button>
+
+          {/* Cadastros SAP */}
+          <button
+            type="button"
+            onClick={() => setTipo(tipo === 'cadastro_sap' ? 'todos' : 'cadastro_sap')}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+              tipo === 'cadastro_sap'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Database className={`h-4 w-4 ${tipo === 'cadastro_sap' ? 'text-white' : 'text-purple-600'}`} />
+            <span>Cadastros SAP</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                tipo === 'cadastro_sap' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {contagemPorTipo.cadastro_sap}
+            </span>
+          </button>
+
+          {/* Chamados */}
+          <button
+            type="button"
+            onClick={() => setTipo(tipo === 'chamado' ? 'todos' : 'chamado')}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold cursor-pointer transition-all ${
+              tipo === 'chamado'
+                ? 'bg-orange-600 text-white shadow-sm'
+                : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <LifeBuoy className={`h-4 w-4 ${tipo === 'chamado' ? 'text-white' : 'text-orange-500'}`} />
+            <span>Chamados</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                tipo === 'chamado' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-750 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              {contagemPorTipo.chamado}
+            </span>
+          </button>
+        </div>
+
+        {/* Alternador de Modo de Exibicao */}
+        <div className="flex items-center gap-1 bg-white dark:bg-slate-850 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setVisao('lista')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+              visao === 'lista'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <List className="h-4 w-4" />
+            Lista
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisao('quadro')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+              visao === 'quadro'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Quadro
+          </button>
+          <button
+            type="button"
+            onClick={() => setVisao('calendario')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+              visao === 'calendario'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <CalendarIcon className="h-4 w-4" />
+            Calendário
+          </button>
+        </div>
+      </div>
+
+      {/* Barra de Busca e Filtros com Rotulos Superiores */}
+      <div
+        data-tour="solicitacoes-filtros"
+        className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs flex flex-wrap items-end gap-3 justify-between"
+      >
+        {/* Campo de Busca */}
+        <div data-tour="solicitacoes-busca" className="relative flex-1 min-w-[260px] max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             type="text"
             value={busca}
             onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar nº, solicitante ou justificativa…"
-            className="w-full rounded-lg border py-2 pl-9 pr-4 text-sm focus:outline-2 focus:outline-offset-1"
-            style={campo}
+            placeholder="Buscar por número, solicitante, título ou justificativa..."
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 py-2 pl-10 pr-4 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
           />
         </div>
 
-        {/*
-          Tipo saiu do `select` e virou uma fileira de chips com ícone, cor e
-          contagem. Num `select` fechado o recorte por tipo era invisível — e
-          era justamente a separação que se perdia numa lista de dez cartões
-          quase idênticos. Aqui a composição da fila se lê sem abrir nada.
-        */}
-        <div data-tour="solicitacoes-tipos" className="flex flex-wrap items-center gap-1.5 border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
-          <ChipTipo
-            ativo={tipo === 'todos'}
-            onClick={() => setTipo('todos')}
-            rotulo="Todos"
-            contagem={contagemPorTipo.total}
-          />
-          {TIPOS_EM_ORDEM.map(t => (
-            <ChipTipo
-              key={t}
-              ativo={tipo === t}
-              onClick={() => setTipo(tipo === t ? 'todos' : t)}
-              rotulo={TIPO_VISUAL[t].plural}
-              contagem={contagemPorTipo[t]}
-              visual={TIPO_VISUAL[t]}
-            />
-          ))}
-        </div>
-
-        <div data-tour="solicitacoes-filtros" className="flex flex-wrap items-center gap-2 border-t pt-3 text-sm" style={{ borderColor: 'var(--hairline)' }}>
-          <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--ink-secondary)' }}>
-            <Filter className="h-4 w-4" /> Filtrar:
-          </span>
-
-          <select value={criticidade} onChange={e => setCriticidade(e.target.value)} className="cursor-pointer rounded border p-1" style={campo}>
-            <option value="todas">Toda criticidade</option>
-            {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{rotuloCriticidade(n)}</option>)}
-          </select>
-
-          {modoFila && (
-            <select value={setor} onChange={e => setSetor(e.target.value)} className="cursor-pointer rounded border p-1" style={campo}>
-              <option value="todos">Todos os setores</option>
-              {sectors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        {/* Dropdowns com Rotulos */}
+        <div className="flex flex-wrap items-end gap-3 text-xs">
+          {/* Status */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Status</label>
+            <select
+              value={statusFiltro}
+              onChange={e => setStatusFiltro(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
+            >
+              <option value="abertas">Abertas</option>
+              <option value="todas">Todas</option>
+              <option value="em_analise">Em análise</option>
+              <option value="aguardando_aprovacao">Aguardando aprovação</option>
+              <option value="concluidas">Concluídas</option>
+              <option value="canceladas">Canceladas / Rejeitadas</option>
             </select>
-          )}
+          </div>
 
-          <label className="flex cursor-pointer items-center gap-1.5 font-semibold" style={{ color: 'var(--ink-secondary)' }}>
-            <input
-              type="checkbox"
-              checked={mostrarConcluidas}
-              onChange={e => setMostrarConcluidas(e.target.checked)}
-              style={{ accentColor: 'var(--brand)' }}
-            />
-            Mostrar concluídas{concluidasOcultas > 0 ? ` (${concluidasOcultas})` : ''}
-          </label>
+          {/* Criticidade */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Criticidade</label>
+            <select
+              value={criticidade}
+              onChange={e => setCriticidade(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
+            >
+              <option value="todas">Todas</option>
+              <option value="5">5 - Impeditiva</option>
+              <option value="4">4 - Crítica</option>
+              <option value="3">3 - Alta</option>
+              <option value="2">2 - Média</option>
+              <option value="1">1 - Baixa</option>
+            </select>
+          </div>
+
+          {/* Meu setor */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Meu setor</label>
+            <select
+              value={setor}
+              onChange={e => setSetor(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
+            >
+              <option value="todos">Todos</option>
+              {sectors.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Data */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">Data</label>
+            <select
+              value={dataFiltro}
+              onChange={e => setDataFiltro(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:border-emerald-600 focus:outline-none cursor-pointer"
+            >
+              <option value="todas">Todas</option>
+              <option value="hoje">Hoje</option>
+              <option value="7dias">Últimos 7 dias</option>
+              <option value="30dias">Últimos 30 dias</option>
+              <option value="este_mes">Este mês</option>
+            </select>
+          </div>
+
+          {/* Limpar filtros */}
+          <button
+            type="button"
+            onClick={limparFiltros}
+            className="text-xs sm:text-sm font-semibold text-sky-600 hover:text-sky-700 dark:text-sky-400 cursor-pointer whitespace-nowrap self-end pb-2.5 transition-colors"
+          >
+            Limpar filtros
+          </button>
         </div>
+      </div>
 
-        {/* Seleção em lote — só onde ela serve: operando a fila */}
-        {modoFila && (
-          <div className="flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: 'var(--hairline)' }}>
-            <span className="text-sm font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+      {/* Barra de Acoes em Lote (Exportacao e Download de Anexos) */}
+      {modoFila && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
               {selecionadas.size} de {linhas.length} selecionada(s)
             </span>
 
-            <BotaoBarra
+            <button
+              type="button"
               onClick={() => exportarSolicitacoes(selecionadasReq, sectors)}
               disabled={selecionadasReq.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
-              <FileSpreadsheet className="h-4 w-4" /> Exportar Excel
-            </BotaoBarra>
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" /> Exportar Excel
+            </button>
 
-            <BotaoBarra
+            <button
+              type="button"
               onClick={baixar}
               disabled={selecionadasReq.length === 0 || contarAnexos(selecionadasReq) === 0 || ocupado}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
-              {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
               Baixar anexos
-            </BotaoBarra>
-
-            {linhas.some(l => l.novidade) && (
-              <BotaoBarra onClick={limparNovidades}>Marcar novidades como vistas</BotaoBarra>
-            )}
-
-            {aviso && (
-              <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>{aviso}</span>
-            )}
+            </button>
           </div>
-        )}
-      </div>
 
-      {/*
-        A lista ocupa a largura toda: o detalhe abre em janela suspensa, não
-        mais numa coluna lateral. Numa coluna de 440px a conversa e a lista de
-        itens ficavam espremidas, e a lista perdia metade da tela mesmo quando
-        nada estava selecionado.
-      */}
-      <div data-tour="solicitacoes-lista" className="min-w-0 space-y-6">
-        {linhas.length === 0 ? (
-          <TableEmpty
-            icon={ClipboardList}
-            title={escopo === 'acao' ? 'Nada esperando você' : 'Nenhuma solicitação neste recorte'}
-            hint={escopo === 'acao'
-              ? 'Quando alguma solicitação depender de uma ação sua, ela aparece aqui.'
-              : 'Ajuste os filtros ou troque de aba para ampliar a busca.'}
-          />
-        ) : (
-          faixasVisiveis.map(faixa => {
-            const desta = porFaixa.get(faixa.id) || [];
-            if (desta.length === 0) return null;
+          {aviso && (
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{aviso}</span>
+          )}
+        </div>
+      )}
 
-            return (
-              <section key={faixa.id} className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="flex flex-wrap items-center gap-2 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-                    {faixa.titulo}
-                    <span className="tabular-nums font-normal">({desta.length})</span>
-                    {/* Composição da faixa por tipo: quantas compras, quantos
-                        chamados. Numa faixa de dez itens, dizer "9 chamados e
-                        1 compra" evita a varredura cartão a cartão. */}
-                    <ResumoTipos linhas={desta} />
-                  </h3>
-                  {faixa.id === 'novidades' && !modoFila && (
-                    <button
-                      type="button"
-                      onClick={limparNovidades}
-                      className="text-[13px] font-bold cursor-pointer"
-                      style={{ color: 'var(--brand)' }}
-                    >
-                      Marcar como vistas
-                    </button>
+      {/* VISÃO 1: TABELA (LISTA) */}
+      {visao === 'lista' && (
+        <div
+          data-tour="solicitacoes-lista"
+          className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs overflow-hidden"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1050px]">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  {modoFila && (
+                    <th scope="col" className="w-10 px-3 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={linhas.length > 0 && selecionadas.size === linhas.length}
+                        onChange={alternarTodasSelecoes}
+                        aria-label="Selecionar todas"
+                        className="cursor-pointer rounded"
+                        style={{ accentColor: 'var(--brand)' }}
+                      />
+                    </th>
                   )}
+                  <th scope="col" className="w-24 px-4 py-3">#</th>
+                  <th scope="col" className="w-28 px-3 py-3">Tipo</th>
+                  <th scope="col" className="min-w-[240px] px-3 py-3">Título / Justificativa</th>
+                  <th scope="col" className="w-44 px-3 py-3">Solicitante</th>
+                  <th scope="col" className="w-32 px-3 py-3">Setor</th>
+                  <th scope="col" className="w-36 px-3 py-3">Data de abertura</th>
+                  <th scope="col" className="w-32 px-3 py-3">Prazo</th>
+                  <th scope="col" className="w-36 px-3 py-3">Criticidade</th>
+                  <th scope="col" className="w-28 px-3 py-3">Status</th>
+                  <th scope="col" className="w-16 px-3 py-3 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-sm">
+                {linhas.length === 0 ? (
+                  <tr>
+                    <td colSpan={modoFila ? 11 : 10} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                      <ClipboardList className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
+                      <p className="font-semibold text-slate-700 dark:text-slate-200">
+                        {escopo === 'acao' ? 'Nada esperando você no momento' : 'Nenhuma solicitação encontrada'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">Ajuste os filtros de busca para ampliar os resultados.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  linhas.map(linha => {
+                    const req = linha.request;
+                    const itens = itensPorRequestId.get(req.id) || [];
+                    const { titulo, subtitulo } = obterTituloEJustificativa(req, itens, nomeSetor);
+                    const prazoInfo = calcularPrazoSolicitacao(req);
+                    const criticidadeInfo = obterEstilosCriticidade(req.criticality);
+                    const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number);
+                    const iniciais = obterIniciaisNome(req.solicitante_name);
+                    const tempoAbertura = formatarTempoRelativoAbertura(req.created_at);
+
+                    return (
+                      <tr
+                        key={req.id}
+                        onClick={() => abrir(req.id)}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-850/60 transition-colors cursor-pointer group"
+                      >
+                        {modoFila && (
+                          <td className="px-3 py-3.5 text-center" onClick={e => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selecionadas.has(req.id)}
+                              onChange={() => alternarSelecao(req.id)}
+                              aria-label={`Selecionar ${req.number}`}
+                              className="cursor-pointer rounded"
+                              style={{ accentColor: 'var(--brand)' }}
+                            />
+                          </td>
+                        )}
+
+                        {/* # */}
+                        <td className="px-4 py-3.5 font-mono font-bold text-sm text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                          #{req.number}
+                        </td>
+
+                        {/* Tipo */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          {req.type === 'chamado' && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-7 h-7 rounded-lg bg-orange-50 dark:bg-orange-950/40 border border-orange-200/60 dark:border-orange-800/60 text-orange-500 flex items-center justify-center shrink-0">
+                                <LifeBuoy className="h-4 w-4" />
+                              </span>
+                              <span className="text-[11px] font-bold text-orange-500 tracking-wider">CHAMADO</span>
+                            </div>
+                          )}
+                          {req.type === 'compra' && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/60 text-blue-500 flex items-center justify-center shrink-0">
+                                <ShoppingCart className="h-4 w-4" />
+                              </span>
+                              <span className="text-[11px] font-bold text-blue-500 tracking-wider">COMPRA</span>
+                            </div>
+                          )}
+                          {req.type === 'cadastro_sap' && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-7 h-7 rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200/60 dark:border-purple-800/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                                <Database className="h-4 w-4" />
+                              </span>
+                              <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400 tracking-wider">SAP</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Titulo / Justificativa */}
+                        <td className="px-3 py-3.5 min-w-[240px] max-w-[340px]">
+                          <div className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate" title={titulo}>
+                            {titulo}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5" title={subtitulo}>
+                            {subtitulo}
+                          </div>
+                        </td>
+
+                        {/* Solicitante */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center justify-center shrink-0 uppercase">
+                              {iniciais}
+                            </span>
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[130px]">
+                              {req.solicitante_name}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Setor */}
+                        <td className="px-3 py-3.5 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
+                          {nomeSetor(req.solicitante_sector_id)}
+                        </td>
+
+                        {/* Data de abertura */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                            {formatDateBR(req.created_at)}
+                          </div>
+                          <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                            {tempoAbertura}
+                          </div>
+                        </td>
+
+                        {/* Prazo */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                            {prazoInfo.dataPrazoFormatada}
+                          </div>
+                          <div
+                            className={`text-xs font-semibold mt-0.5 ${
+                              prazoInfo.urgente || prazoInfo.estaVencido
+                                ? 'text-red-500 dark:text-red-400'
+                                : 'text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            {prazoInfo.textoRelativo}
+                          </div>
+                        </td>
+
+                        {/* Criticidade */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${criticidadeInfo.classes}`}>
+                            {criticidadeInfo.rotulo}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${statusInfo.classes}`}>
+                            {statusInfo.rotulo}
+                          </span>
+                        </td>
+
+                        {/* Acoes */}
+                        <td className="px-3 py-3.5 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrir(req.id);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                            title="Ver detalhes da solicitação"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VISÃO 2: QUADRO (KANBAN) */}
+      {visao === 'quadro' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {([
+            { id: 'abertas', titulo: 'Abertas', cor: 'border-sky-500', filtro: (r: Request) => estaEmAberto(r) && !['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
+            { id: 'analise', titulo: 'Em análise', cor: 'border-amber-500', filtro: (r: Request) => ['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
+            { id: 'concluidas', titulo: 'Concluídas / Encerradas', cor: 'border-emerald-500', filtro: (r: Request) => ['resolvido', 'fechado', 'aprovada', 'cancelada', 'rejeitada'].includes(r.status) },
+          ] as const).map(col => {
+            const itensCol = linhas.filter(l => col.filtro(l.request));
+            return (
+              <div
+                key={col.id}
+                className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 p-3.5 flex flex-col min-h-[420px]"
+              >
+                <div className={`flex items-center justify-between pb-3 mb-3 border-b-2 ${col.cor}`}>
+                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">{col.titulo}</h3>
+                  <span className="text-xs font-bold rounded-full bg-slate-200 dark:bg-slate-750 px-2 py-0.5 text-slate-700 dark:text-slate-300">
+                    {itensCol.length}
+                  </span>
                 </div>
 
-                <ul className="space-y-2">
-                  {desta.map(linha => (
-                    <CartaoSolicitacao
-                      key={linha.request.id}
-                      linha={linha}
-                      ativa={linha.request.id === abertaId}
-                      selecionavel={modoFila}
-                      selecionada={selecionadas.has(linha.request.id)}
-                      onSelecionar={() => alternarSelecao(linha.request.id)}
-                      onAbrir={() => abrir(linha.request.id)}
-                      nomeSetor={nomeSetor}
-                      ehEditadaAposAprovacao={idsEditadasAposAprovacao.has(linha.request.id)}
-                      temItemGenerico={idsComItemGenerico.has(linha.request.id)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })
-        )}
-      </div>
+                <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[640px] pr-1">
+                  {itensCol.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400">Nenhum item nesta coluna</div>
+                  ) : (
+                    itensCol.map(linha => {
+                      const req = linha.request;
+                      const itens = itensPorRequestId.get(req.id) || [];
+                      const { titulo, subtitulo } = obterTituloEJustificativa(req, itens, nomeSetor);
+                      const prazoInfo = calcularPrazoSolicitacao(req);
+                      const criticidadeInfo = obterEstilosCriticidade(req.criticality);
+                      const statusInfo = obterEstilosStatus(req.status, req.type, !!req.linked_rm_number);
 
-      {/* Detalhe — sempre em janela suspensa */}
+                      return (
+                        <div
+                          key={req.id}
+                          onClick={() => abrir(req.id)}
+                          className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-850 p-3.5 shadow-2xs hover:shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-200">
+                              #{req.number}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${criticidadeInfo.classes}`}>
+                              {criticidadeInfo.rotulo}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 line-clamp-1">{titulo}</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">{subtitulo}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                            <span className="text-slate-500 truncate max-w-[130px]">{req.solicitante_name}</span>
+                            <span className={`font-semibold ${prazoInfo.urgente ? 'text-red-500' : 'text-slate-400'}`}>
+                              {prazoInfo.textoRelativo}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* VISÃO 3: CALENDÁRIO */}
+      {visao === 'calendario' && (
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setRefMes(m => addMonths(m, -1))}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setRefMes(startOfMonth(new Date()))}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                onClick={() => setRefMes(m => addMonths(m, 1))}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <h3 className="text-base font-bold capitalize text-slate-800 dark:text-slate-100">
+              {format(refMes, "MMMM 'de' yyyy", { locale: ptBR })}
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-7 gap-px rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-200 dark:bg-slate-800">
+            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+              <div key={d} className="py-2 text-center text-xs font-bold uppercase bg-slate-50 dark:bg-slate-850 text-slate-500 dark:text-slate-400">
+                {d}
+              </div>
+            ))}
+
+            {diasCalendario.map(dia => {
+              const chave = format(dia, 'yyyy-MM-dd');
+              const itensDia = itensPorDiaCalendario.get(chave) || [];
+              const ehMesAtual = isSameMonth(dia, refMes);
+              const ehHoje = isToday(dia);
+
+              return (
+                <div
+                  key={chave}
+                  className={`min-h-[90px] p-2 bg-white dark:bg-slate-900 transition-colors ${
+                    !ehMesAtual ? 'opacity-40' : ''
+                  } ${ehHoje ? 'ring-2 ring-emerald-500 ring-inset' : ''}`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-xs font-bold ${ehHoje ? 'text-emerald-600 font-extrabold' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {format(dia, 'd')}
+                    </span>
+                    {itensDia.length > 0 && (
+                      <span className="text-[10px] font-bold rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 text-slate-600 dark:text-slate-300">
+                        {itensDia.length}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 overflow-y-auto max-h-[60px]">
+                    {itensDia.slice(0, 2).map(l => (
+                      <button
+                        key={l.request.id}
+                        type="button"
+                        onClick={() => abrir(l.request.id)}
+                        className="w-full text-left truncate rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors block cursor-pointer"
+                      >
+                        #{l.request.number} {l.request.titulo || l.request.justificativa || 'Solicitação'}
+                      </button>
+                    ))}
+                    {itensDia.length > 2 && (
+                      <span className="text-[9px] text-slate-400 font-medium pl-1 block">
+                        +{itensDia.length - 2} mais
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Detalhe — em janela suspensa Modal */}
       {aberta && (
         <Modal onClose={fechar} maxWidth="max-w-4xl" ariaLabel={`Solicitação ${aberta.number}`}>
           <ModalHeader onClose={fechar}>
             <div className="flex flex-1 items-center justify-between gap-3 mr-6">
               <div className="flex items-center gap-2.5">
-                <ChipTipoIcone
-                  tipo={aberta.type}
-                  apagado={aberta.type === 'compra' && (aberta.status === 'pendente' || aberta.status === 'em_revisao')}
-                />
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                  style={{
+                    background: TIPO_VISUAL[aberta.type].fundo,
+                    color: TIPO_VISUAL[aberta.type].cor,
+                  }}
+                >
+                  {(() => {
+                    const Icone = TIPO_VISUAL[aberta.type].icone;
+                    return <Icone className="h-5 w-5" />;
+                  })()}
+                </span>
                 <div className="min-w-0">
-                  <h3 className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>
+                  <h3 className="font-mono text-base font-bold text-slate-900 dark:text-slate-100">
                     #{aberta.number}
                   </h3>
-                  <p className="truncate text-[13px]" style={{ color: 'var(--ink-muted)' }}>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {TIPO_VISUAL[aberta.type].rotulo} · aberta em {formatDateBR(aberta.created_at)}
                   </p>
                 </div>
@@ -652,292 +1157,5 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
         />
       )}
     </div>
-  );
-}
-
-/* Peças ------------------------------------------------------------------- */
-
-const campo: React.CSSProperties = {
-  borderColor: 'var(--hairline)',
-  background: 'var(--surface-card)',
-  color: 'var(--ink-primary)',
-  outlineColor: 'var(--brand)',
-};
-
-function BotaoBarra({
-  children, onClick, disabled,
-}: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-bold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-      style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* Tipo — ícone, cor e contagem --------------------------------------------- */
-
-/** Chip quadrado com o ícone do tipo. É o que se enxerga antes de ler o cartão. */
-function ChipTipoIcone({
-  tipo, tamanho = 'md', apagado = false,
-}: {
-  tipo: Request['type'];
-  tamanho?: 'sm' | 'md';
-  apagado?: boolean;
-}) {
-  const visual = TIPO_VISUAL[tipo];
-  const Icone = visual.icone;
-  const medida = tamanho === 'sm' ? 'h-6 w-6' : 'h-9 w-9';
-  const icone = tamanho === 'sm' ? 'h-4 w-4' : 'h-4.5 w-4.5';
-
-  return (
-    <span
-      className={`flex ${medida} shrink-0 items-center justify-center rounded-lg transition-colors`}
-      style={{
-        background: apagado ? 'color-mix(in srgb, var(--ink-muted) 12%, transparent)' : visual.fundo,
-        color: apagado ? 'var(--ink-muted)' : visual.cor,
-      }}
-      title={visual.rotulo}
-    >
-      <Icone className={icone} />
-    </span>
-  );
-}
-
-/** Chip de filtro por tipo, com a contagem do recorte atual. */
-function ChipTipo({
-  ativo, onClick, rotulo, contagem, visual,
-}: {
-  ativo: boolean;
-  onClick: () => void;
-  rotulo: string;
-  contagem: number;
-  visual?: TipoVisual;
-}) {
-  const Icone = visual?.icone;
-  const cor = visual?.cor ?? 'var(--ink-secondary)';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={ativo}
-      disabled={contagem === 0 && !ativo}
-      className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-bold cursor-pointer transition-colors disabled:cursor-default disabled:opacity-40"
-      style={{
-        borderColor: ativo ? cor : 'var(--hairline)',
-        background: ativo ? (visual?.fundo ?? 'var(--surface-sunken)') : 'var(--surface-card)',
-        color: ativo ? cor : 'var(--ink-secondary)',
-      }}
-    >
-      {Icone && <Icone className="h-4 w-4" style={{ color: cor }} />}
-      {rotulo}
-      <span className="tabular-nums font-normal" style={{ color: ativo ? cor : 'var(--ink-muted)' }}>
-        {contagem}
-      </span>
-    </button>
-  );
-}
-
-/** Composição de uma faixa por tipo — "9 chamados · 1 compra". */
-function ResumoTipos({ linhas }: { linhas: Linha[] }) {
-  const contagem = TIPOS_EM_ORDEM
-    .map(t => ({ tipo: t, n: linhas.filter(l => l.request.type === t).length }))
-    .filter(c => c.n > 0);
-
-  // Faixa de um tipo só não precisa de resumo: o ícone de cada cartão já diz.
-  if (contagem.length < 2) return null;
-
-  return (
-    <span className="flex items-center gap-2 font-normal normal-case tracking-normal">
-      {contagem.map(({ tipo, n }) => {
-        const visual = TIPO_VISUAL[tipo];
-        const Icone = visual.icone;
-        return (
-          <span key={tipo} className="flex items-center gap-1" style={{ color: visual.cor }}>
-            <Icone className="h-3.5 w-3.5" />
-            <span className="tabular-nums">{n}</span>
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-/* Cartão ------------------------------------------------------------------- */
-
-/** Cor do selo de criticidade. Grau 1 e 2 não recebem selo — não é notícia. */
-const CORES_CRITICIDADE: Record<number, string> = {
-  3: 'var(--status-warning)',
-  4: 'var(--status-serious)',
-  5: 'var(--status-critical)',
-};
-
-function CartaoSolicitacao({
-  linha, ativa, selecionavel, selecionada, onSelecionar, onAbrir, nomeSetor, ehEditadaAposAprovacao, temItemGenerico,
-}: {
-  linha: Linha;
-  ativa: boolean;
-  selecionavel: boolean;
-  selecionada: boolean;
-  onSelecionar: () => void;
-  onAbrir: () => void;
-  nomeSetor: (id: string) => string;
-  ehEditadaAposAprovacao?: boolean;
-  temItemGenerico?: boolean;
-}) {
-  const { request: r, pendencia, novidade: nova } = linha;
-  const visual = TIPO_VISUAL[r.type];
-  const corCriticidade = CORES_CRITICIDADE[r.criticality];
-
-  const ehCompraAguardandoAprovacao = r.type === 'compra' && r.status === 'pendente';
-  const ehCompraEmRevisao = r.type === 'compra' && r.status === 'em_revisao';
-  const ehCompraNaoAprovada = ehCompraAguardandoAprovacao || ehCompraEmRevisao;
-
-  return (
-    <li
-      className={`flex min-w-0 items-stretch overflow-hidden rounded-xl border transition-all duration-200 ${
-        ehCompraNaoAprovada ? 'opacity-85 hover:opacity-100 border-dashed' : ''
-      }`}
-      style={{
-        borderColor: ativa
-          ? visual.cor
-          : ehCompraNaoAprovada
-            ? 'var(--hairline-strong)'
-            : 'var(--hairline)',
-        background: ehCompraNaoAprovada ? 'var(--surface-sunken)' : 'var(--surface-card)',
-      }}
-    >
-      {/* Faixa da cor do tipo: numa lista longa, dá para separar os blocos de
-          compra e de chamado sem ler nada. Suavizada quando a compra ainda não foi aprovada. */}
-      <span
-        aria-hidden
-        className="w-1 shrink-0"
-        style={{
-          background: ehCompraNaoAprovada
-            ? 'color-mix(in srgb, var(--series-1) 35%, var(--hairline-strong))'
-            : visual.cor,
-        }}
-      />
-
-      {selecionavel && (
-        <label className="flex items-center pl-3">
-          <input
-            type="checkbox"
-            checked={selecionada}
-            onChange={onSelecionar}
-            aria-label={`Selecionar solicitação ${r.number}`}
-            className="cursor-pointer"
-            style={{ accentColor: 'var(--brand)' }}
-          />
-        </label>
-      )}
-
-      <button
-        type="button"
-        onClick={onAbrir}
-        className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 p-4 text-left"
-      >
-        <ChipTipoIcone tipo={r.type} apagado={ehCompraNaoAprovada} />
-
-        <span className="min-w-0 flex-1 space-y-1">
-          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <span className="font-mono text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
-              #{r.number}
-            </span>
-            <span
-              className="text-xs font-bold uppercase tracking-wide"
-              style={{ color: ehCompraNaoAprovada ? 'var(--ink-muted)' : visual.cor }}
-            >
-              {visual.rotulo}
-            </span>
-
-            {/* Status grande em destaque para compras ainda não aprovadas */}
-            {ehCompraAguardandoAprovacao && (
-              <>
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80"
-                >
-                  <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
-                  Aguardando aprovação
-                </span>
-                {ehEditadaAposAprovacao && (
-                  <span
-                    title="Esta solicitação já havia sido aprovada anteriormente e voltou para a fila após ser editada pelo solicitante"
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-200 dark:border-amber-700/80"
-                  >
-                    <FileEdit className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
-                    Editada
-                  </span>
-                )}
-              </>
-            )}
-
-            {temItemGenerico && (
-              <span
-                title="Esta solicitação possui item(ns) genérico(s)"
-                className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:border-rose-700/80"
-              >
-                Item Genérico
-              </span>
-            )}
-
-            {ehCompraEmRevisao && (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs sm:text-sm font-black uppercase tracking-wider shadow-xs bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700/80"
-              >
-                <Clock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
-                Em revisão
-              </span>
-            )}
-
-            {corCriticidade && (
-              <span
-                className="rounded px-1.5 py-0.5 text-xs font-bold"
-                style={{ background: `color-mix(in srgb, ${corCriticidade} 15%, transparent)`, color: corCriticidade }}
-              >
-                {rotuloCriticidade(r.criticality)}
-              </span>
-            )}
-
-            {pendencia && (
-              <span
-                className="rounded-full px-2 py-0.5 text-xs font-bold"
-                style={{ background: 'var(--brand)', color: '#fff' }}
-              >
-                {pendencia.rotulo}
-              </span>
-            )}
-
-            {!pendencia && nova && (
-              <span
-                className="rounded-full px-2 py-0.5 text-xs font-bold"
-                style={{ background: 'var(--brand-wash)', color: 'var(--brand-strong)' }}
-              >
-                {nova.texto}
-              </span>
-            )}
-          </span>
-
-          <span className="block truncate text-sm" style={{ color: 'var(--ink-secondary)' }}>
-            {r.justificativa || 'Sem justificativa'}
-          </span>
-
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            <span>{r.solicitante_name} · {nomeSetor(r.solicitante_sector_id)}</span>
-            {!ehCompraNaoAprovada && <span>{rotuloStatus(r)}</span>}
-            <span className="tabular-nums">
-              {estaEmAberto(r) ? `aberta em ${formatDateBR(r.created_at)}` : `encerrada em ${formatDateBR(r.updated_at)}`}
-            </span>
-            {nova && <span>{nova.autor}</span>}
-          </span>
-        </span>
-      </button>
-    </li>
   );
 }

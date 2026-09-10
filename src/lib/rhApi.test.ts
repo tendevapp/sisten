@@ -117,45 +117,49 @@ describe('gerarProtocoloAse e siglas de setores', () => {
     expect(extrairSiglaSetor(null)).toBe('GERAL');
   });
 
-  it('gera protocolo no formato ASE-DDMMAA-SETOR', () => {
-    expect(gerarProtocoloAse('2026-08-27', 'Suprimentos / Compras')).toBe('ASE-270826-SUPR');
-    expect(gerarProtocoloAse('2026-08-27', 'Almoxarifado')).toBe('ASE-270826-ALMOX');
-    expect(gerarProtocoloAse('2026-08-27', null)).toBe('ASE-270826-GERAL');
+  it('gera protocolo no formato ASE-DDMMAA-SETOR-INDICE com índice padrão 01', () => {
+    expect(gerarProtocoloAse('2026-08-27', 'Suprimentos / Compras')).toBe('ASE-270826-SUPR-01');
+    expect(gerarProtocoloAse('2026-08-27', 'Almoxarifado')).toBe('ASE-270826-ALMOX-01');
+    expect(gerarProtocoloAse('2026-08-27', null)).toBe('ASE-270826-GERAL-01');
   });
 
-  it('adiciona sufixo sequencial quando especificado para evitar duplicatas', () => {
+  it('permite especificar índice sequencial customizado (ex: 2 -> -02)', () => {
     expect(gerarProtocoloAse('2026-08-27', 'Suprimentos / Compras', 1)).toBe('ASE-270826-SUPR-01');
     expect(gerarProtocoloAse('2026-08-27', 'Suprimentos / Compras', 2)).toBe('ASE-270826-SUPR-02');
   });
 
-  it('calcularProximoProtocoloAse resolve código sem sufixo se não houver existente', () => {
-    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', [])).toBe('ASE-090926-PROD');
-    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', null)).toBe('ASE-090926-PROD');
-    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', ['ASE-090926-ALMOX'])).toBe('ASE-090926-PROD');
+  it('calcularProximoProtocoloAse atribui -01 na primeira ocorrência do setor no dia', () => {
+    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', [])).toBe('ASE-090926-PROD-01');
+    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', null)).toBe('ASE-090926-PROD-01');
+    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', ['ASE-090926-ALMOX-01'])).toBe('ASE-090926-PROD-01');
   });
 
-  it('calcularProximoProtocoloAse atribui -01 na segunda ocorrência do setor no dia', () => {
-    const existentes = ['ASE-090926-PROD'];
-    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', existentes)).toBe('ASE-090926-PROD-01');
+  it('calcularProximoProtocoloAse atribui -02 na segunda ocorrência do setor no dia', () => {
+    const existentes = ['ASE-090926-PROD-01'];
+    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', existentes)).toBe('ASE-090926-PROD-02');
   });
 
   it('calcularProximoProtocoloAse incrementa sequencial (-02, -03) quando já existirem outras ASEs', () => {
-    const existentes = ['ASE-090926-PROD', 'ASE-090926-PROD-01'];
+    const existentes = ['ASE-090926-PROD-01'];
     expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', existentes)).toBe('ASE-090926-PROD-02');
 
-    const maisExistentes = ['ASE-090926-PROD', 'ASE-090926-PROD-01', 'ASE-090926-PROD-02'];
+    const maisExistentes = ['ASE-090926-PROD-01', 'ASE-090926-PROD-02'];
     expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', maisExistentes)).toBe('ASE-090926-PROD-03');
   });
 
+  it('calcularProximoProtocoloAse reconhece registros legados sem sufixo e avança para -02', () => {
+    const existentes = ['ASE-090926-PROD'];
+    expect(calcularProximoProtocoloAse('2026-09-09', 'Produção', existentes)).toBe('ASE-090926-PROD-02');
+  });
+
   it('calcularProximoProtocoloAse é case-insensitive e ignora entradas nulas ou vazias', () => {
-    const existentes = ['ase-090926-prod', null, undefined, '', 'ASE-090926-PROD-01'];
+    const existentes = ['ase-090926-prod-01', null, undefined, ''];
     expect(calcularProximoProtocoloAse('2026-09-09', 'PRODUÇÃO', existentes)).toBe('ASE-090926-PROD-02');
   });
 
   it('calcularProximoProtocoloAse funciona para formulários sem setor definido (GERAL)', () => {
-    expect(calcularProximoProtocoloAse('2026-09-09', null, [])).toBe('ASE-090926-GERAL');
-    expect(calcularProximoProtocoloAse('2026-09-09', null, ['ASE-090926-GERAL'])).toBe('ASE-090926-GERAL-01');
-    expect(calcularProximoProtocoloAse('2026-09-09', null, ['ASE-090926-GERAL', 'ASE-090926-GERAL-01'])).toBe('ASE-090926-GERAL-02');
+    expect(calcularProximoProtocoloAse('2026-09-09', null, [])).toBe('ASE-090926-GERAL-01');
+    expect(calcularProximoProtocoloAse('2026-09-09', null, ['ASE-090926-GERAL-01'])).toBe('ASE-090926-GERAL-02');
   });
 });
 

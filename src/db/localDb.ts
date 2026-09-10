@@ -1086,7 +1086,12 @@ class LocalDatabase {
   }
 
   private purgeLegacyDemoRequests(): void {
-    const idsLegado = new Set(['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13']);
+    const idsLegado = new Set([
+      'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13',
+      // Solicitacoes de teste canceladas de Cadastro SAP
+      'r_gmqh8xknn', 'r_v8c2luqc0', 'r_iwwmjr7f9', 'r_6ihbsxr2g', 'r_ph6cxgc0s',
+      'r_zz97gskoo', 'r_lhrwz4741', 'r_12pfyc93y', 'r_cf55708fl'
+    ]);
     const itemIdsLegado = new Set(['ri1', 'ri2', 'ri3', 'ri4']);
     const historyIdsLegado = new Set(['h1', 'h2', 'h3', 'h4']);
     const commentIdsLegado = new Set(['c1']);
@@ -1097,18 +1102,28 @@ class LocalDatabase {
     }
 
     const items = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
-    if (items.some(i => itemIdsLegado.has(i.id))) {
-      this.setStorageItem(this.requestItemsKey, items.filter(i => !itemIdsLegado.has(i.id)));
+    if (items.some(i => itemIdsLegado.has(i.id) || idsLegado.has(i.request_id))) {
+      this.setStorageItem(this.requestItemsKey, items.filter(i => !itemIdsLegado.has(i.id) && !idsLegado.has(i.request_id)));
     }
 
     const history = this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []);
-    if (history.some(h => historyIdsLegado.has(h.id))) {
-      this.setStorageItem(this.historyKey, history.filter(h => !historyIdsLegado.has(h.id)));
+    if (history.some(h => historyIdsLegado.has(h.id) || idsLegado.has(h.request_id))) {
+      this.setStorageItem(this.historyKey, history.filter(h => !historyIdsLegado.has(h.id) && !idsLegado.has(h.request_id)));
     }
 
     const comments = this.getStorageItem<RequestComment[]>(this.commentsKey, []);
-    if (comments.some(c => commentIdsLegado.has(c.id))) {
-      this.setStorageItem(this.commentsKey, comments.filter(c => !commentIdsLegado.has(c.id)));
+    if (comments.some(c => commentIdsLegado.has(c.id) || idsLegado.has(c.request_id))) {
+      this.setStorageItem(this.commentsKey, comments.filter(c => !commentIdsLegado.has(c.id) && !idsLegado.has(c.request_id)));
+    }
+
+    const attachments = this.getStorageItem<any[]>(this.attachmentsKey, []);
+    if (attachments.some(a => idsLegado.has(a.request_id))) {
+      this.setStorageItem(this.attachmentsKey, attachments.filter(a => !idsLegado.has(a.request_id)));
+    }
+
+    const notifs = this.getStorageItem<any[]>(this.notificationsKey, []);
+    if (notifs.some(n => idsLegado.has(n.request_id))) {
+      this.setStorageItem(this.notificationsKey, notifs.filter(n => !idsLegado.has(n.request_id)));
     }
   }
 
@@ -3435,6 +3450,69 @@ class LocalDatabase {
   }
 
   /**
+   * Exclui uma solicitacao definitivamente (Supabase + cache local).
+   * Usado para solicitacoes de teste, canceladas ou sob demanda administrativa.
+   */
+  public async deleteRequest(reqId: string): Promise<boolean> {
+    const user = this.getCurrentUser();
+    const requests = this.getRequests();
+    const req = requests.find(r => r.id === reqId);
+    if (!req) return false;
+
+    // 1. Remove do Supabase
+    if (supabase) {
+      try {
+        await supabase.from('core_notificacoes').delete().eq('request_id', reqId);
+        await supabase.from('core_solicitacoes_historico_status').delete().eq('request_id', reqId);
+        await supabase.from('core_solicitacoes_comentarios').delete().eq('request_id', reqId);
+        await supabase.from('core_solicitacoes_anexos').delete().eq('request_id', reqId);
+        await supabase.from('core_solicitacoes_itens').delete().eq('request_id', reqId);
+        await supabase.from('sup_pend_processamento_nf').delete().eq('request_id', reqId);
+        const { error } = await supabase.from('core_solicitacoes').delete().eq('id', reqId);
+        if (error) {
+          console.error('Falha ao excluir solicitacao no Supabase:', error);
+          return false;
+        }
+      } catch (err) {
+        console.error('Erro ao excluir solicitacao no Supabase:', err);
+        return false;
+      }
+    }
+
+    // 2. Remove do cache local / IndexedDB
+    this.setStorageItem(this.requestsKey, requests.filter(r => r.id !== reqId));
+
+    const items = this.getStorageItem<RequestItem[]>(this.requestItemsKey, []);
+    this.setStorageItem(this.requestItemsKey, items.filter(i => i.request_id !== reqId));
+
+    const comments = this.getStorageItem<RequestComment[]>(this.commentsKey, []);
+    this.setStorageItem(this.commentsKey, comments.filter(c => c.request_id !== reqId));
+
+    const history = this.getStorageItem<RequestStatusHistory[]>(this.historyKey, []);
+    this.setStorageItem(this.historyKey, history.filter(h => h.request_id !== reqId));
+
+    const attachments = this.getStorageItem<any[]>(this.attachmentsKey, []);
+    this.setStorageItem(this.attachmentsKey, attachments.filter(a => a.request_id !== reqId));
+
+    const notifications = this.getStorageItem<any[]>(this.notificationsKey, []);
+    if (notifications.some(n => n.request_id === reqId)) {
+      this.setStorageItem(this.notificationsKey, notifications.filter(n => n.request_id !== reqId));
+    }
+
+    if (user) {
+      this.logActivity(
+        user.id,
+        'Solicitacoes',
+        'Exclusao',
+        `Excluiu a solicitacao #${req.number}`
+      );
+    }
+
+    this.notifyListeners();
+    return true;
+  }
+
+  /**
    * Publica uma linha filha de solicitação (histórico ou comentário).
    *
    * Nenhuma das duas tabelas tem FK, então a linha sobe mesmo que a
@@ -4186,16 +4264,15 @@ class LocalDatabase {
         ? !!(r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra))
         : false;
 
-      // Item de contrato (categoria_do_item = 'D'): o fornecimento já está
-      // amarrado a um contrato guarda-chuva. Não é RM esperando pedido nem
-      // item a cotar, então entra como atendido — a tela mostra "Contrato" no
-      // lugar do número do PO (que na ZL0132 muitas vezes nem existe).
-      const isContrato = String(raw.categoria_do_item || '').trim().toUpperCase() === 'D';
+      // is_contrato: identificacao via categoria_do_item='D' foi removida.
+      // A origem contrato agora e determinada exclusivamente pelo contrato_po preenchido
+      // (EKPO-KONNR da ZL0132), normalizado em src/lib/contratoPedido.ts.
+      const isContrato = false;
 
-      const hasPO = isContrato || (!!docCompra
+      const hasPO = !!docCompra
         && docCompra !== '—' && docCompra !== '0'
         && docCompra !== 'undefined' && docCompra !== 'null'
-        && !isDocEliminated);
+        && !isDocEliminated;
 
       // Para contrato sem pedido casado, não há linha de PO de onde tirar
       // preço/quantidade — os campos financeiros ficam vazios, como já ficavam.

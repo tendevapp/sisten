@@ -18,13 +18,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, RefreshCw, FileSpreadsheet, Users, Timer, CalendarDays, Building2,
-  Clock3, Bus, UtensilsCrossed, UserRound, Layers, AlertTriangle, Route, ListFilter,
+  Clock3, Bus, UtensilsCrossed, UserRound, Layers, AlertTriangle, Route, ListFilter, Network,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer,
 } from 'recharts';
 import type { LucideIcon } from 'lucide-react';
-import type { AseHoraExtraCompleta, Profile } from '../../types';
+import type { AseHoraExtraCompleta, Profile, RhPessoa } from '../../types';
 import * as api from '../../lib/rhApi';
 import { diaDaSemana } from '../../lib/rhApi';
 import { canViewAllAse } from '../../lib/pages';
@@ -34,13 +34,15 @@ import ChartCard from '../../components/charts/ChartCard';
 import ChartTooltip from '../../components/charts/ChartTooltip';
 import KpiCard from '../../components/charts/KpiCard';
 import MultiSelectFilter from '../../components/ui/MultiSelectFilter';
+import Modal, { ModalBody, ModalHeader } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import { exportAseRelatorioExcel } from '../../lib/pdfExport/exportAseHoraExtraPdf';
 import {
-  acharLinhas, agruparPor, descreverFiltro, filtrarSolicitacoes, formatarDataBR,
-  intervaloDoPreset, opcoesDe, porRota, resumoAse, serieDiaria, setorDe, solicitanteDe,
-  topColaboradores, turnoDe, PRESETS_PERIODO, STATUS_ASE_LABEL,
-  type FiltroRelatorioAse, type GrupoAse, type PontoDiario, type PresetPeriodoAse,
+  acharLinhas, agruparPor, chaveColaboradorAse, descreverFiltro, filtrarSolicitacoes, formatarDataBR,
+  horasPorAreaSubsetor, intervaloDoPreset, opcoesDe, porRota, resumoAse, serieDiaria,
+  setorDe, solicitanteDe, topColaboradores, turnoDe, PRESETS_PERIODO, SEM_INFO, STATUS_ASE_LABEL,
+  type FiltroRelatorioAse, type GrupoAse, type LinhaAreaSubsetor, type LinhaColaboradorAse,
+  type PontoDiario, type PresetPeriodoAse,
 } from '../../lib/aseRelatorio';
 
 interface Props {
@@ -72,6 +74,17 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
   const [dados, setDados] = useState<AseHoraExtraCompleta[] | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+
+  // Cadastro dos colaboradores — é o que traz área e sub-setor (o item da ASE
+  // só guarda pessoa_id). Carrega uma vez; falha aqui não quebra o relatório,
+  // só deixa a tabulação por área/sub-setor como "Não informado".
+  const [pessoas, setPessoas] = useState<RhPessoa[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    api.listarRhPessoas().then(p => { if (vivo) setPessoas(p); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const pessoasPorId = useMemo(() => new Map(pessoas.map(p => [p.id, p])), [pessoas]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -106,14 +119,27 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
   }), [de, ate, setores, turnos, status, solicitantes, apenasTransporte, apenasRefeicao]);
 
   const solicitacoes = useMemo(() => filtrarSolicitacoes(base, filtro), [base, filtro]);
-  const linhas = useMemo(() => acharLinhas(solicitacoes), [solicitacoes]);
+  const linhas = useMemo(() => acharLinhas(solicitacoes, pessoasPorId), [solicitacoes, pessoasPorId]);
   const resumo = useMemo(() => resumoAse(solicitacoes, linhas), [solicitacoes, linhas]);
   const serie = useMemo(() => serieDiaria(solicitacoes), [solicitacoes]);
   const porSetor = useMemo(() => agruparPor(linhas, l => l.setor), [linhas]);
   const porTurno = useMemo(() => agruparPor(linhas, l => l.turno), [linhas]);
+  const areaSubsetor = useMemo(() => horasPorAreaSubsetor(linhas), [linhas]);
   const porSolicitante = useMemo(() => agruparPor(linhas, l => l.solicitante, 12), [linhas]);
   const porColaborador = useMemo(() => topColaboradores(linhas, 15), [linhas]);
   const rotas = useMemo(() => porRota(linhas), [linhas]);
+
+  // Drill-down: clicar numa barra (ou linha da tabulação por área) abre o
+  // recorte de colaboradores que formam aquele número — a mesma lista `linhas`
+  // que alimenta os gráficos, só filtrada.
+  const [detalhe, setDetalhe] = useState<{ titulo: string; linhas: LinhaColaboradorAse[] } | null>(null);
+  const abrirDetalhe = useCallback(
+    (titulo: string, filtro: (l: LinhaColaboradorAse) => boolean) => {
+      const sel = linhas.filter(filtro);
+      if (sel.length > 0) setDetalhe({ titulo, linhas: sel });
+    },
+    [linhas],
+  );
 
   const opcoesSetor = useMemo(() => opcoesDe(base, setorDe), [base]);
   const opcoesTurno = useMemo(() => opcoesDe(base, turnoDe), [base]);
@@ -145,6 +171,7 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
         serie,
         porSetor,
         porTurno,
+        areaSubsetor,
         // O Excel leva a lista inteira; na tela os rankings mostram só o topo.
         porSolicitante: agruparPor(linhas, l => l.solicitante),
         porColaborador: topColaboradores(linhas, undefined),
@@ -329,7 +356,7 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
 
         <p className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
           <ListFilter className="h-3 w-3" />
-          Indicadores, gráficos e exportação seguem exatamente esta seleção.
+          Indicadores, gráficos e exportação seguem exatamente esta seleção. Clique numa barra ou linha para abrir as ASEs que a compõem.
         </p>
       </div>
 
@@ -376,7 +403,12 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
             empty={serie.length === 0}
           >
             <ResponsiveContainer width="100%" height={320}>
-              <SerieDiariaChart data={serie} />
+              <SerieDiariaChart
+                data={serie}
+                aoSelecionar={dia =>
+                  abrirDetalhe(`Horas extras de ${formatarDataBR(dia)}`, l => l.data_execucao === dia)
+                }
+              />
             </ResponsiveContainer>
           </ChartCard>
 
@@ -387,14 +419,27 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
               icone={Building2}
               descricao="Onde a hora extra está sendo consumida."
               data={porSetor}
+              aoSelecionar={nome => abrirDetalhe(`Setor · ${nome}`, l => l.setor === nome)}
             />
             <GraficoHoras
               titulo="Horas por turno"
               icone={Clock3}
               descricao="Distribuição entre os turnos de trabalho."
               data={porTurno}
+              aoSelecionar={nome => abrirDetalhe(`Turno · ${nome}`, l => l.turno === nome)}
             />
           </div>
+
+          {/* Tabulação: horas por área e sub-setor (cadastro do colaborador) */}
+          <TabelaAreaSubsetor
+            data={areaSubsetor}
+            aoSelecionar={(area, subsetor) =>
+              abrirDetalhe(
+                `${area} · ${subsetor}`,
+                l => l.area === area && l.subsetor === subsetor,
+              )
+            }
+          />
 
           {/* Colaboradores + Solicitantes */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -403,12 +448,14 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
               icone={Users}
               descricao="Top 15 por horas acumuladas no período — apoio ao controle do limite da CLT."
               data={porColaborador}
+              aoSelecionar={nome => abrirDetalhe(nome, l => chaveColaboradorAse(l) === nome)}
             />
             <GraficoHoras
               titulo="Horas por solicitante"
               icone={UserRound}
               descricao="Quem emitiu as ASEs do período (top 12)."
               data={porSolicitante}
+              aoSelecionar={nome => abrirDetalhe(`Solicitante · ${nome}`, l => l.solicitante === nome)}
             />
           </div>
 
@@ -420,6 +467,9 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
               descricao="Passageiros autorizados por rota — base para programar o fretamento."
               data={rotas}
               metrica="colaboradores"
+              aoSelecionar={nome =>
+                abrirDetalhe(`Rota · ${nome}`, l => l.transporte && (l.rota || SEM_INFO) === nome)
+              }
             />
           )}
 
@@ -476,13 +526,86 @@ export default function RhAseRelatorio({ user, onVoltar, voltarLabel = 'Voltar p
           </div>
         </>
       )}
+
+      {detalhe && (
+        <Modal
+          onClose={() => setDetalhe(null)}
+          maxWidth="max-w-5xl"
+          ariaLabel={`Detalhe: ${detalhe.titulo}`}
+        >
+          <ModalHeader onClose={() => setDetalhe(null)}>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">
+                {detalhe.titulo}
+              </h2>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                {formatInt(detalhe.linhas.length)} autorização(ões) ·{' '}
+                {fmtHoras(detalhe.linhas.reduce((a, l) => a + l.horas, 0))} ·{' '}
+                {formatInt(new Set(detalhe.linhas.map(l => l.solicitacao_id)).size)} ASE(s)
+              </p>
+            </div>
+          </ModalHeader>
+          <ModalBody className="!p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-950/80 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2 font-bold">Protocolo</th>
+                    <th className="px-3 py-2 font-bold">Data</th>
+                    <th className="px-3 py-2 font-bold">Colaborador</th>
+                    <th className="px-3 py-2 font-bold">Setor</th>
+                    <th className="px-3 py-2 font-bold">Turno</th>
+                    <th className="px-3 py-2 font-bold">Solicitante</th>
+                    <th className="px-3 py-2 text-right font-bold">Entrada</th>
+                    <th className="px-3 py-2 text-right font-bold">Saída</th>
+                    <th className="px-3 py-2 text-right font-bold">Horas</th>
+                    <th className="px-3 py-2 font-bold">Transporte</th>
+                    <th className="px-4 py-2 text-center font-bold">Refeição</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {detalhe.linhas.map((l, i) => (
+                    <tr
+                      key={`${l.solicitacao_id}-${l.registro || l.nome}-${i}`}
+                      className="text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-800/40"
+                    >
+                      <td className="whitespace-nowrap px-4 py-2 font-semibold text-slate-900 dark:text-slate-100">
+                        {l.protocolo}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {formatarDataBR(l.data_execucao)}
+                        <span className="ml-1 text-[10px] text-slate-400">{diaDaSemana(l.data_execucao)}</span>
+                      </td>
+                      <td className="px-3 py-2">{l.registro ? `${l.registro} - ${l.nome}` : l.nome}</td>
+                      <td className="px-3 py-2">{l.setor}</td>
+                      <td className="px-3 py-2">{l.turno}</td>
+                      <td className="px-3 py-2">{l.solicitante}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{l.hora_entrada || '-'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{l.hora_saida || '-'}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{umaCasa.format(l.horas)}</td>
+                      <td className="px-3 py-2">{l.transporte ? l.rota || 'Sim' : '—'}</td>
+                      <td className="px-4 py-2 text-center">{l.refeicao ? 'Sim' : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ModalBody>
+        </Modal>
+      )}
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
 
-function SerieDiariaChart({ data }: { data: PontoDiario[] }) {
+function SerieDiariaChart({
+  data,
+  aoSelecionar,
+}: {
+  data: PontoDiario[];
+  aoSelecionar?: (dia: string) => void;
+}) {
   const c = useChartConfig();
 
   const Tip = ({ active, payload }: any) => {
@@ -507,7 +630,20 @@ function SerieDiariaChart({ data }: { data: PontoDiario[] }) {
       <XAxis dataKey="label" {...c.xAxis} interval="preserveStartEnd" minTickGap={6} />
       <YAxis {...c.yAxis} width={48} />
       <Tooltip content={<Tip />} cursor={c.cursor} />
-      <Bar dataKey="horas" fill={c.tokens.brand} radius={c.radius.top} maxBarSize={38} {...c.animation}>
+      <Bar
+        dataKey="horas"
+        fill={c.tokens.brand}
+        radius={c.radius.top}
+        maxBarSize={38}
+        cursor={aoSelecionar ? 'pointer' : undefined}
+        onClick={aoSelecionar
+          ? (entry: any, index: number) => {
+              const dia = data[index]?.dia ?? entry?.dia ?? entry?.payload?.dia;
+              if (dia) aoSelecionar(String(dia));
+            }
+          : undefined}
+        {...c.animation}
+      >
         <LabelList
           dataKey="horas"
           position="top"
@@ -526,12 +662,14 @@ function GraficoHoras({
   descricao,
   data,
   metrica = 'horas',
+  aoSelecionar,
 }: {
   titulo: string;
   icone: LucideIcon;
   descricao: string;
   data: GrupoAse[];
   metrica?: 'horas' | 'colaboradores';
+  aoSelecionar?: (nome: string) => void;
 }) {
   const c = useChartConfig();
   const altura = Math.max(180, data.length * 30 + 42);
@@ -568,6 +706,7 @@ function GraficoHoras({
       footer={
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           Barras por {rotuloMetrica.toLowerCase()}; o restante aparece ao passar o cursor.
+          {aoSelecionar && ' Clique numa barra para abrir as ASEs.'}
         </p>
       }
     >
@@ -586,7 +725,19 @@ function GraficoHoras({
             interval={0}
           />
           <Tooltip content={<Tip />} cursor={c.cursor} />
-          <Bar dataKey={metrica} radius={c.radius.right} maxBarSize={24} {...c.animation}>
+          <Bar
+            dataKey={metrica}
+            radius={c.radius.right}
+            maxBarSize={24}
+            cursor={aoSelecionar ? 'pointer' : undefined}
+            onClick={aoSelecionar
+              ? (entry: any, index: number) => {
+                  const nome = data[index]?.nome ?? entry?.nome ?? entry?.payload?.nome;
+                  if (nome != null) aoSelecionar(String(nome));
+                }
+              : undefined}
+            {...c.animation}
+          >
             {data.map((d, i) => (
               <Cell
                 key={i}
@@ -604,5 +755,106 @@ function GraficoHoras({
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>
+  );
+}
+
+/** Tabulação de horas por área × sub-setor, com subtotal por área e total geral. */
+function TabelaAreaSubsetor({
+  data,
+  aoSelecionar,
+}: {
+  data: LinhaAreaSubsetor[];
+  aoSelecionar?: (area: string, subsetor: string) => void;
+}) {
+  const areas = useMemo(() => {
+    const ordem: string[] = [];
+    const porArea = new Map<string, LinhaAreaSubsetor[]>();
+    data.forEach(l => {
+      if (!porArea.has(l.area)) { porArea.set(l.area, []); ordem.push(l.area); }
+      porArea.get(l.area)!.push(l);
+    });
+    return ordem.map(area => ({ area, linhas: porArea.get(area)! }));
+  }, [data]);
+
+  const totalHoras = data.reduce((a, l) => a + l.horas, 0);
+  const totalColab = data.reduce((a, l) => a + l.colaboradores, 0);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-50">
+          <Network className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+          Horas por área e sub-setor
+        </h2>
+        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+          Área e sub-setor do cadastro do colaborador · {fmtHoras(totalHoras)}
+        </span>
+      </div>
+      {data.length === 0 ? (
+        <p className="px-4 py-8 text-center text-xs text-slate-500 dark:text-slate-400">
+          Sem colaboradores com área/sub-setor na seleção atual.
+        </p>
+      ) : (
+        <div className="max-h-[520px] overflow-auto">
+          <table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 dark:bg-slate-950/80 dark:text-slate-400">
+              <tr>
+                <th className="px-4 py-2 font-bold">Área</th>
+                <th className="px-3 py-2 font-bold">Sub-setor</th>
+                <th className="px-3 py-2 text-right font-bold">Horas</th>
+                <th className="px-3 py-2 text-right font-bold">Colab.</th>
+                <th className="px-3 py-2 text-right font-bold">ASEs</th>
+                <th className="px-3 py-2 text-right font-bold">Transp.</th>
+                <th className="px-4 py-2 text-right font-bold">Refeição</th>
+              </tr>
+            </thead>
+            {areas.map(({ area, linhas }) => {
+              const subHoras = linhas.reduce((a, l) => a + l.horas, 0);
+              const subColab = linhas.reduce((a, l) => a + l.colaboradores, 0);
+              const subTransp = linhas.reduce((a, l) => a + l.transportes, 0);
+              const subRef = linhas.reduce((a, l) => a + l.refeicoes, 0);
+              return (
+                <tbody key={area} className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {linhas.map((l, i) => (
+                    <tr
+                      key={`${area}-${l.subsetor}`}
+                      onClick={aoSelecionar ? () => aoSelecionar(l.area, l.subsetor) : undefined}
+                      className={`text-slate-700 hover:bg-slate-50/80 dark:text-slate-300 dark:hover:bg-slate-800/40 ${aoSelecionar ? 'cursor-pointer' : ''}`}
+                    >
+                      <td className="px-4 py-2 font-semibold text-slate-900 dark:text-slate-100">{i === 0 ? area : ''}</td>
+                      <td className="px-3 py-2">{l.subsetor}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{umaCasa.format(l.horas)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatInt(l.colaboradores)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatInt(l.ases)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatInt(l.transportes)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{formatInt(l.refeicoes)}</td>
+                    </tr>
+                  ))}
+                  {linhas.length > 1 && (
+                    <tr className="bg-slate-50/70 text-[11px] font-bold text-slate-600 dark:bg-slate-950/40 dark:text-slate-300">
+                      <td className="px-4 py-1.5" />
+                      <td className="px-3 py-1.5">Subtotal {area}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{umaCasa.format(subHoras)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(subColab)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">—</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{formatInt(subTransp)}</td>
+                      <td className="px-4 py-1.5 text-right tabular-nums">{formatInt(subRef)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              );
+            })}
+            <tfoot className="sticky bottom-0 bg-slate-100 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+              <tr>
+                <td className="px-4 py-2" colSpan={2}>Total geral</td>
+                <td className="px-3 py-2 text-right tabular-nums">{umaCasa.format(totalHoras)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatInt(totalColab)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" colSpan={3} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

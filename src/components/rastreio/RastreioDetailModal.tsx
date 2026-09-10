@@ -191,14 +191,16 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
     let cancelado = false;
     (async () => {
       try {
-        let entregas = await localDb.getBahiaSulEntregas({ pedido: row.po });
-        const semZeros = normalizePoNumber(row.po);
-        if (entregas.length === 0 && semZeros && semZeros !== row.po) {
-          entregas = await localDb.getBahiaSulEntregas({ pedido: semZeros });
-        }
-        const resumo = resumirBahiaSulPorPo(entregas).get(semZeros);
+        // Mesmo padrão do Diligenciamento: baixa todas as entregas e casa pelo
+        // PO normalizado (sem zero à esquerda / sufixo). O filtro `.eq` exato
+        // errava quando `nro_pedido` vinha com zeros ou sufixo na planilha.
+        const entregas = await localDb.getBahiaSulEntregas();
+        const resumo = resumirBahiaSulPorPo(entregas).get(normalizePoNumber(row.po));
         if (cancelado) return;
-        setBsPrevisao(resumo && !resumo.entregue ? resumo.previsaoChegada : null);
+        // "O que já tem": previsão de chegada/entrega do CTe; na falta dela,
+        // a data física já registrada pela transportadora.
+        const data = resumo?.previsaoChegada || resumo?.dataChegadaFisica || null;
+        setBsPrevisao(data);
         setBsCtos(resumo?.ctos.filter(Boolean) ?? []);
       } catch (e) {
         console.error('Erro ao buscar previsão da Bahia Sul:', e);

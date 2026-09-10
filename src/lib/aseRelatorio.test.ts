@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AseHoraExtraCompleta, AseHoraExtraItem } from '../types';
+import type { RhPessoa } from '../types';
 import {
   acharLinhas, agruparPor, descreverFiltro, filtrarSolicitacoes, filtroVazio,
-  intervaloDoPreset, opcoesDe, porRota, resumoAse, rotuloDia, serieDiaria,
-  setorDe, topColaboradores,
+  horasPorAreaSubsetor, intervaloDoPreset, opcoesDe, porRota, resumoAse, rotuloDia,
+  serieDiaria, setorDe, topColaboradores, chaveColaboradorAse, SEM_INFO,
 } from './aseRelatorio';
 
 function item(over: Partial<AseHoraExtraItem> = {}): AseHoraExtraItem {
@@ -195,6 +196,14 @@ describe('agrupamentos', () => {
     expect(top[0]).toMatchObject({ nome: '1001 - Ana', horas: 7, colaboradores: 2 });
   });
 
+  it('chaveColaboradorAse casa com o rótulo do ranking (drill-down do gráfico)', () => {
+    const top = topColaboradores(linhas);
+    for (const l of linhas) {
+      expect(top.some(g => g.nome === chaveColaboradorAse(l))).toBe(true);
+    }
+    expect(chaveColaboradorAse({ registro: '', nome: 'Sem Matrícula' } as any)).toBe('Sem Matrícula');
+  });
+
   it('rotas consideram só quem tem transporte', () => {
     const rotas = porRota(linhas);
     expect(rotas.map(r => r.nome).sort()).toEqual(['R1', 'R2']);
@@ -203,6 +212,73 @@ describe('agrupamentos', () => {
 
   it('opcoesDe devolve valores únicos em ordem alfabética', () => {
     expect(opcoesDe(lista, setorDe)).toEqual(['Manutenção', 'Produção']);
+  });
+});
+
+describe('horasPorAreaSubsetor', () => {
+  const pessoa = (over: Partial<RhPessoa>): RhPessoa => ({
+    id: over.id || 'p',
+    registro: over.registro || '9',
+    nome: over.nome || 'X',
+    chave_nome: null,
+    macroarea: null,
+    area: over.area ?? null,
+    subsetor: over.subsetor ?? null,
+    cargo: null,
+    lideranca: null,
+    turno: null,
+    situacao: null,
+    ativo: true,
+    created_at: '',
+    updated_at: '',
+    atualizado_por: null,
+  });
+
+  const pessoasPorId = new Map<string, RhPessoa>([
+    ['p1', pessoa({ id: 'p1', area: 'Operação', subsetor: 'Montagem' })],
+    ['p2', pessoa({ id: 'p2', area: 'Operação', subsetor: 'Solda' })],
+    ['p3', pessoa({ id: 'p3', area: 'Qualidade', subsetor: 'Inspeção' })],
+  ]);
+
+  const lista = [
+    ase({
+      id: 'a1',
+      itens: [
+        item({ solicitacao_id: 'a1', pessoa_id: 'p1', total_horas: 3, transporte: true }),
+        item({ solicitacao_id: 'a1', pessoa_id: 'p2', total_horas: 2 }),
+        item({ solicitacao_id: 'a1', pessoa_id: 'p3', total_horas: 4 }),
+        item({ solicitacao_id: 'a1', pessoa_id: null, registro: '77', total_horas: 1 }),
+      ],
+    }),
+    ase({
+      id: 'a2',
+      itens: [item({ solicitacao_id: 'a2', pessoa_id: 'p1', total_horas: 5 })],
+    }),
+  ];
+
+  it('acharLinhas resolve área/sub-setor pelo cadastro e cai em SEM_INFO sem pessoa_id', () => {
+    const linhas = acharLinhas(lista, pessoasPorId);
+    expect(linhas.find(l => l.registro === '77')).toMatchObject({ area: SEM_INFO, subsetor: SEM_INFO });
+    expect(linhas.filter(l => l.area === 'Operação')).toHaveLength(3);
+  });
+
+  it('sem o mapa de pessoas tudo vira SEM_INFO', () => {
+    const linhas = acharLinhas(lista);
+    expect(linhas.every(l => l.area === SEM_INFO && l.subsetor === SEM_INFO)).toBe(true);
+  });
+
+  it('tabula horas por área e sub-setor com subtotal da área e SEM_INFO por último', () => {
+    const tab = horasPorAreaSubsetor(acharLinhas(lista, pessoasPorId));
+    // Operação: 3+5 (Montagem) + 2 (Solda) = 10 h; Qualidade: 4 h; SEM_INFO: 1 h.
+    expect(tab.map(l => `${l.area}/${l.subsetor}`)).toEqual([
+      'Operação/Montagem',
+      'Operação/Solda',
+      'Qualidade/Inspeção',
+      `${SEM_INFO}/${SEM_INFO}`,
+    ]);
+    expect(tab[0]).toMatchObject({ horas: 8, colaboradores: 2, ases: 2, transportes: 1, horasArea: 10 });
+    expect(tab[1]).toMatchObject({ horas: 2, colaboradores: 1, horasArea: 10 });
+    expect(tab[2]).toMatchObject({ horas: 4, horasArea: 4 });
   });
 });
 

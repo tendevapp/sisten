@@ -390,6 +390,8 @@ function PainelPersonalizarColunas({
 /* Tab principal                                                         */
 /* --------------------------------------------------------------------- */
 
+const SENSOR_POINTER_OPTIONS = { activationConstraint: { distance: 6 } };
+
 export default function TabDemandas({ user }: TabDemandasProps) {
   const chartTokens = useChartConfig().tokens;
   const [requests, setRequests] = useState<Request[]>([]);
@@ -481,7 +483,7 @@ export default function TabDemandas({ user }: TabDemandasProps) {
     return mapa;
   }, [requestsFiltradas, colunasVisiveis]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(useSensor(PointerSensor, SENSOR_POINTER_OPTIONS));
 
   const handleDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
 

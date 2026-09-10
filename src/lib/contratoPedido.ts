@@ -49,16 +49,14 @@ export function itemContratoPO(r: EnrichedSAPRecord): string | null {
 }
 
 /**
- * Item amarrado a contrato — por qualquer um dos dois caminhos que o SAP usa:
+ * Item amarrado a contrato — o PO foi criado por referência a um contrato
+ * (`contrato_po`, campo EKPO-KONNR da ZL0132).
  *
- *  1. o PO foi criado por referência a um contrato (`contrato_po`);
- *  2. o item da RM é de categoria `D` no ME5A (`is_contrato`), caso em que o
- *     fornecimento já nasce amarrado e muitas vezes nem gera linha na ZL0132.
- *
- * São populações diferentes e ambas contam como "não é compra spot".
+ * Nota: a detecção por `categoria_do_item === 'D'` foi removida — ela gerava
+ * falsos positivos na tela de Contratos. A fonte confiavel e o contrato_po.
  */
 export function ehItemDeContrato(r: EnrichedSAPRecord): boolean {
-  return !!r.is_contrato || numeroContratoPO(r) !== null;
+  return numeroContratoPO(r) !== null;
 }
 
 /**

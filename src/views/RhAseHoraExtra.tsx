@@ -39,6 +39,7 @@ import {
   exportAseConsolidadoDiaExcel,
 } from '../lib/pdfExport/exportAseHoraExtraPdf';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
+import { acharLinhas, horasPorAreaSubsetor, SEM_INFO } from '../lib/aseRelatorio';
 import { canAccessAseRelatorio, canViewAllAse } from '../lib/pages';
 import { podeEditarFormulario } from '../lib/permissoesFormularios';
 import {
@@ -983,25 +984,34 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
   }, [sujo]);
 
   const alterarCabecalho = (patch: Partial<AseHoraExtraCompleta>) => {
+    let deveBuscarProtocolo = false;
+    let targetSetorNome: string | undefined;
+    let targetData: string | undefined;
+    let targetId = '';
+
     setDados(d => {
       if (!d) return d;
       const merged = { ...d, ...patch };
 
-      // Se a ASE ainda estiver em rascunho, sincroniza o protocolo com a data e setor selecionados
+      // Se a ASE ainda estiver em rascunho, recalcula o protocolo disponivel com a data e setor selecionados
       if (merged.status === 'RASCUNHO' && ('setor_id' in patch || 'data_execucao' in patch)) {
-        const setorNome = setores.find(s => s.id === (patch.setor_id ?? merged.setor_id))?.nome;
-        merged.numero_protocolo = api.gerarProtocoloAse(merged.data_execucao, setorNome);
-
-        // Busca assíncrona do protocolo disponível real no banco para evitar colisão na concorrência
-        api.obterProximoProtocoloAseDisponivel(merged.data_execucao, setorNome, d.id)
-          .then(protDisponivel => {
-            setDados(curr => (curr && curr.id === d.id && curr.status === 'RASCUNHO' ? { ...curr, numero_protocolo: protDisponivel } : curr));
-          })
-          .catch(() => {});
+        deveBuscarProtocolo = true;
+        targetSetorNome = setores.find(s => s.id === (patch.setor_id ?? merged.setor_id))?.nome;
+        targetData = merged.data_execucao;
+        targetId = d.id;
       }
 
       return merged;
     });
+
+    if (deveBuscarProtocolo && targetId) {
+      api.obterProximoProtocoloAseDisponivel(targetData, targetSetorNome, targetId)
+        .then(protDisponivel => {
+          setDados(curr => (curr && curr.id === targetId && curr.status === 'RASCUNHO' ? { ...curr, numero_protocolo: protDisponivel } : curr));
+        })
+        .catch(() => {});
+    }
+
     setSujo(true);
   };
 
@@ -1238,7 +1248,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     if (!protPersistido) return;
     try {
       if (dados.status !== 'ENVIADO') {
-        await api.salvarSolicitacaoASE(dados.id, { status: 'ENVIADO' });
+        const setorNome = setores.find(s => s.id === dados.setor_id)?.nome;
+        await api.salvarSolicitacaoASE(dados.id, { status: 'ENVIADO' }, setorNome);
         setDados(d => (d ? { ...d, status: 'ENVIADO', numero_protocolo: protPersistido } : d));
       }
       setModoEdicao(false);
@@ -1338,6 +1349,8 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
     onVoltar();
   };
 
+  const pessoasPorId = useMemo(() => new Map(pessoas.map(p => [p.id, p])), [pessoas]);
+
   const resumo = useMemo(() => {
     if (!dados) return null;
     const porPercentual = new Map<string, number>();
@@ -1347,8 +1360,10 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
       porPercentual.set(chave, (porPercentual.get(chave) || 0) + (it.total_horas || 0));
       totalGeral += it.total_horas || 0;
     });
-    return { porPercentual: Array.from(porPercentual.entries()), totalGeral };
-  }, [dados]);
+    // Tabulação de horas por área e sub-setor do colaborador (rh_pessoas).
+    const porAreaSubsetor = horasPorAreaSubsetor(acharLinhas([dados], pessoasPorId));
+    return { porPercentual: Array.from(porPercentual.entries()), totalGeral, porAreaSubsetor };
+  }, [dados, pessoasPorId]);
 
   const antecedenciaInsuficiente = useMemo(() => {
     if (!dados?.data_execucao) return false;
@@ -1891,6 +1906,52 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
               <p className="mt-0.5 text-lg font-bold text-blue-600 dark:text-blue-400">{resumo.totalGeral.toFixed(2)}h</p>
             </div>
           </div>
+
+          {resumo.porAreaSubsetor.length > 0 && !(
+            resumo.porAreaSubsetor.length === 1
+            && resumo.porAreaSubsetor[0].area === SEM_INFO
+            && resumo.porAreaSubsetor[0].subsetor === SEM_INFO
+          ) && (
+            <div className="mt-4">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Horas por área e sub-setor
+              </p>
+              <div className="mt-1.5 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                <table className="w-full min-w-[420px] text-left text-xs">
+                  <thead className="bg-slate-100/70 text-[10px] uppercase tracking-wide text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                    <tr>
+                      <th className="px-3 py-1.5 font-bold">Área</th>
+                      <th className="px-3 py-1.5 font-bold">Sub-setor</th>
+                      <th className="px-3 py-1.5 text-right font-bold">Colab.</th>
+                      <th className="px-3 py-1.5 text-right font-bold">Horas</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {resumo.porAreaSubsetor.map((l, i) => {
+                      const primeiraDaArea = i === 0 || resumo.porAreaSubsetor[i - 1].area !== l.area;
+                      return (
+                        <tr key={`${l.area}||${l.subsetor}`} className="text-slate-700 dark:text-slate-300">
+                          <td className="px-3 py-1.5 font-semibold text-slate-900 dark:text-slate-100">{primeiraDaArea ? l.area : ''}</td>
+                          <td className="px-3 py-1.5">{l.subsetor}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{l.colaboradores}</td>
+                          <td className="px-3 py-1.5 text-right font-semibold tabular-nums">{l.horas.toFixed(2)}h</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-slate-100 text-xs font-bold text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+                    <tr>
+                      <td className="px-3 py-1.5" colSpan={2}>Total</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
+                        {resumo.porAreaSubsetor.reduce((a, l) => a + l.colaboradores, 0)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{resumo.totalGeral.toFixed(2)}h</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

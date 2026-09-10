@@ -188,12 +188,14 @@ function AdicionarColuna({ onCriar }: { onCriar: (nome: string) => void }) {
   );
 }
 
+const SENSOR_POINTER_OPTIONS = { activationConstraint: { distance: 6 } };
+
 export default function ViewQuadro({
   buckets, tarefas, porId, podeEditar, podeGerirColunas,
   onAbrirTarefa, onCriarTarefa, onMover, onCriarBucket, onAtualizarBucket,
 }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(useSensor(PointerSensor, SENSOR_POINTER_OPTIONS));
 
   const colunas = useMemo(() => {
     const semColuna = tarefas.filter(t => !t.bucket_id);

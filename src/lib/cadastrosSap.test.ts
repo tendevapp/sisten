@@ -209,5 +209,48 @@ describe('Cadastros SAP — Atualização de Fornecedor e Código de Resposta', 
     req = localDb.getRequests().find(r => r.id === created.id);
     expect(req?.status).toBe('em_atendimento');
   });
+
+  it('exclui solicitacao definitivamente com deleteRequest', async () => {
+    const draft: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Item',
+      justificativa: 'Solicitação a ser excluída',
+      criticality: 1,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+
+    const created = await localDb.submitRequest(draft, false);
+    expect(localDb.getRequests().some(r => r.id === created.id)).toBe(true);
+
+    const excluido = await localDb.deleteRequest(created.id);
+    expect(excluido).toBe(true);
+    expect(localDb.getRequests().some(r => r.id === created.id)).toBe(false);
+  });
+
+  it('purga solicitacoes de teste canceladas no purgeLegacyDemoRequests', () => {
+    const idsTeste = ['r_gmqh8xknn', 'r_v8c2luqc0', 'r_iwwmjr7f9', 'r_6ihbsxr2g', 'r_ph6cxgc0s', 'r_zz97gskoo', 'r_lhrwz4741', 'r_12pfyc93y', 'r_cf55708fl'];
+    const fakeRequests = idsTeste.map((id, idx) => ({
+      id,
+      number: `100100${idx}`,
+      type: 'cadastro_sap' as const,
+      registration_type: 'Item' as const,
+      status: 'cancelada' as const,
+      criticality: 1,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Teste',
+      solicitante_sector_id: 'sec-1',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+
+    (localDb as any).setStorageItem('sisten_requests', fakeRequests);
+    expect(localDb.getRequests().length).toBe(idsTeste.length);
+
+    (localDb as any).purgeLegacyDemoRequests();
+    expect(localDb.getRequests().length).toBe(0);
+  });
 });
+
 

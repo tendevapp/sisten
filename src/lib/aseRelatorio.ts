@@ -14,7 +14,7 @@
  * jogaria registros para o dia anterior no gráfico diário.
  */
 
-import type { AseHoraExtraCompleta } from '../types';
+import type { AseHoraExtraCompleta, RhPessoa } from '../types';
 
 /** Um colaborador dentro de uma ASE, achatado com o contexto da solicitação. */
 export interface LinhaColaboradorAse {
@@ -28,6 +28,10 @@ export interface LinhaColaboradorAse {
   registro: string;
   nome: string;
   cargo: string;
+  /** `area`/`subsetor` do cadastro do colaborador (rh_pessoas); `SEM_INFO`
+   *  para quem foi digitado à mão ("Outro") ou não tem o campo preenchido. */
+  area: string;
+  subsetor: string;
   hora_entrada: string;
   hora_saida: string;
   intervalo_minutos: number;
@@ -227,8 +231,13 @@ export function filtrarSolicitacoes(
   }, []);
 }
 
-export function acharLinhas(solicitacoes: AseHoraExtraCompleta[]): LinhaColaboradorAse[] {
-  return solicitacoes.flatMap(s => s.itens.map(it => ({
+export function acharLinhas(
+  solicitacoes: AseHoraExtraCompleta[],
+  pessoasPorId?: Map<string, RhPessoa>,
+): LinhaColaboradorAse[] {
+  return solicitacoes.flatMap(s => s.itens.map(it => {
+    const pessoa = it.pessoa_id ? pessoasPorId?.get(it.pessoa_id) : undefined;
+    return {
     solicitacao_id: s.id,
     protocolo: s.numero_protocolo,
     data_execucao: s.data_execucao,
@@ -236,6 +245,8 @@ export function acharLinhas(solicitacoes: AseHoraExtraCompleta[]): LinhaColabora
     setor: setorDe(s),
     turno: turnoDe(s),
     solicitante: solicitanteDe(s),
+    area: pessoa?.area?.trim() || SEM_INFO,
+    subsetor: pessoa?.subsetor?.trim() || SEM_INFO,
     registro: it.registro || '',
     nome: it.nome || SEM_INFO,
     cargo: it.cargo || '',
@@ -250,7 +261,8 @@ export function acharLinhas(solicitacoes: AseHoraExtraCompleta[]): LinhaColabora
     ponto_embarque: it.ponto_embarque_transporte?.trim() || '',
     contato: it.contato_transporte?.trim() || '',
     observacao: it.observacao?.trim() || '',
-  })));
+    };
+  }));
 }
 
 export function resumoAse(
@@ -332,14 +344,78 @@ export function agruparPor(
   return limite ? arr.slice(0, limite) : arr;
 }
 
+/** Chave do ranking de colaboradores: `registro - nome` quando há matrícula. */
+export function chaveColaboradorAse(l: LinhaColaboradorAse): string {
+  return l.registro ? `${l.registro} - ${l.nome}` : l.nome;
+}
+
 /** Ranking de pessoas por horas acumuladas no período. */
 export function topColaboradores(linhas: LinhaColaboradorAse[], limite?: number): GrupoAse[] {
-  return agruparPor(linhas, l => (l.registro ? `${l.registro} - ${l.nome}` : l.nome), limite);
+  return agruparPor(linhas, chaveColaboradorAse, limite);
 }
 
 /** Só quem tem transporte, agrupado por rota. */
 export function porRota(linhas: LinhaColaboradorAse[], limite?: number): GrupoAse[] {
   return agruparPor(linhas.filter(l => l.transporte), l => l.rota || SEM_INFO, limite);
+}
+
+/** Uma célula da tabulação de horas por área × sub-setor. */
+export interface LinhaAreaSubsetor {
+  area: string;
+  subsetor: string;
+  horas: number;
+  colaboradores: number;
+  ases: number;
+  transportes: number;
+  refeicoes: number;
+  /** Total de horas da área inteira — repetido em cada linha da área para
+   *  facilitar subtotais na tela e no Excel sem recontar. */
+  horasArea: number;
+}
+
+/** SEM_INFO sempre por último; o resto em ordem alfabética pt-BR. */
+function comparaChave(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === SEM_INFO) return 1;
+  if (b === SEM_INFO) return -1;
+  return a.localeCompare(b, 'pt-BR');
+}
+
+/**
+ * Tabulação de horas extras por área e sub-setor do colaborador (cadastro em
+ * `rh_pessoas`). As linhas vêm ordenadas por área de maior consumo, e dentro de
+ * cada área por sub-setor de maior consumo — a área/sub-setor "Não informado"
+ * (colaborador digitado à mão ou sem cadastro completo) fica por último.
+ */
+export function horasPorAreaSubsetor(linhas: LinhaColaboradorAse[]): LinhaAreaSubsetor[] {
+  type Acc = LinhaAreaSubsetor & { ids: Set<string> };
+  const mapa = new Map<string, Acc>();
+  const horasPorArea = new Map<string, number>();
+
+  linhas.forEach(l => {
+    const area = l.area || SEM_INFO;
+    const subsetor = l.subsetor || SEM_INFO;
+    const chave = `${area}||${subsetor}`;
+    let g = mapa.get(chave);
+    if (!g) {
+      g = { area, subsetor, horas: 0, colaboradores: 0, ases: 0, transportes: 0, refeicoes: 0, horasArea: 0, ids: new Set() };
+      mapa.set(chave, g);
+    }
+    g.horas += l.horas;
+    g.colaboradores += 1;
+    g.ids.add(l.solicitacao_id);
+    if (l.transporte) g.transportes += 1;
+    if (l.refeicao) g.refeicoes += 1;
+    horasPorArea.set(area, (horasPorArea.get(area) || 0) + l.horas);
+  });
+
+  return Array.from(mapa.values())
+    .map(({ ids, ...g }) => ({ ...g, ases: ids.size, horasArea: horasPorArea.get(g.area) || 0 }))
+    .sort((a, b) =>
+      (b.horasArea - a.horasArea) ||
+      comparaChave(a.area, b.area) ||
+      (b.horas - a.horas) ||
+      comparaChave(a.subsetor, b.subsetor));
 }
 
 /** Opções de um filtro, em ordem alfabética e sem repetição. */

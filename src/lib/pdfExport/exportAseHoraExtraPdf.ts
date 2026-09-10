@@ -10,7 +10,7 @@ import { rgb } from 'pdf-lib';
 import type { AseHoraExtraCompleta, AseHoraExtraItem } from '../../types';
 import { createDoc, PdfTextWriter, downloadPdf, sanitizeText, MARGIN, PAGE_HEIGHT, PAGE_WIDTH } from './core';
 import { diaDaSemana } from '../rhApi';
-import type { GrupoAse, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
+import type { GrupoAse, LinhaAreaSubsetor, LinhaColaboradorAse, PontoDiario, ResumoAse } from '../aseRelatorio';
 
 function formatDataBR(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
@@ -1414,6 +1414,7 @@ export function exportAseRelatorioExcel(params: {
   serie: PontoDiario[];
   porSetor: GrupoAse[];
   porTurno: GrupoAse[];
+  areaSubsetor: LinhaAreaSubsetor[];
   porSolicitante: GrupoAse[];
   porColaborador: GrupoAse[];
   rotas: GrupoAse[];
@@ -1421,7 +1422,7 @@ export function exportAseRelatorioExcel(params: {
 }): void {
   const {
     solicitacoes, linhas, resumo, serie,
-    porSetor, porTurno, porSolicitante, porColaborador, rotas, descricaoFiltro,
+    porSetor, porTurno, areaSubsetor, porSolicitante, porColaborador, rotas, descricaoFiltro,
   } = params;
 
   const h2 = (v: number) => Number(v.toFixed(2));
@@ -1489,6 +1490,30 @@ export function exportAseRelatorioExcel(params: {
 
   grupoSheet('HORAS EXTRAS POR SETOR', 'Por setor', 'Setor', porSetor);
   grupoSheet('HORAS EXTRAS POR TURNO', 'Por turno', 'Turno', porTurno, 24);
+
+  // Aba: tabulação de horas por área e sub-setor (cadastro do colaborador)
+  {
+    const asRows: (string | number)[][] = [
+      ['HORAS EXTRAS POR ÁREA E SUB-SETOR'],
+      [],
+      ['Área', 'Sub-setor', 'Horas (h)', 'Colaboradores', 'ASEs', 'Transportes', 'Refeições', 'Horas da área (h)'],
+      ...areaSubsetor.map(l => [
+        l.area, l.subsetor, h2(l.horas), l.colaboradores, l.ases, l.transportes, l.refeicoes, h2(l.horasArea),
+      ]),
+      [],
+      [
+        'TOTAL', '',
+        h2(areaSubsetor.reduce((a, l) => a + l.horas, 0)),
+        areaSubsetor.reduce((a, l) => a + l.colaboradores, 0),
+        '', '',
+        areaSubsetor.reduce((a, l) => a + l.transportes, 0),
+        '',
+      ],
+    ];
+    const wsAs = XLSX.utils.aoa_to_sheet(asRows);
+    wsAs['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsAs, 'Área x Sub-setor');
+  }
   grupoSheet('HORAS EXTRAS POR SOLICITANTE', 'Por solicitante', 'Solicitante', porSolicitante);
   grupoSheet('HORAS EXTRAS POR COLABORADOR', 'Por colaborador', 'Matrícula - Colaborador', porColaborador, 38);
   if (rotas.length > 0) {

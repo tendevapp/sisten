@@ -36,15 +36,16 @@ describe('numeroContratoPO', () => {
 });
 
 describe('ehItemDeContrato', () => {
-  it('vale pelos dois caminhos: KONNR no PO e categoria D no ME5A', () => {
+  it('identifica pelo contrato_po (EKPO-KONNR) preenchido', () => {
     expect(ehItemDeContrato(registro({ contrato_po: '5200001234' }))).toBe(true);
-    expect(ehItemDeContrato(registro({ is_contrato: true }))).toBe(true);
     expect(ehItemDeContrato(registro({}))).toBe(false);
+    // is_contrato via categoria_do_item='D' foi removido — nao e mais criterio
+    expect(ehItemDeContrato(registro({ is_contrato: true }))).toBe(false);
   });
 
-  // ZP06 é "Serviço", não contrato — a base tem 6.181 itens ZP06 e só 885 com
+  // ZP06 e "Servico", nao contrato — a base tem 6.181 itens ZP06 e so 885 com
   // contrato. Usar o tipo de documento como atalho inflaria o contratado em 7x.
-  it('não confunde pedido de serviço (ZP06) com pedido de contrato', () => {
+  it('nao confunde pedido de servico (ZP06) com pedido de contrato', () => {
     expect(ehItemDeContrato(registro({ tipo_doc_po: 'ZP06' }))).toBe(false);
   });
 });

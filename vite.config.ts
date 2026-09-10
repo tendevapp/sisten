@@ -7,9 +7,13 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom', '@dnd-kit/core', '@dnd-kit/utilities', '@dnd-kit/accessibility'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
