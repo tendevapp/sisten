@@ -58,7 +58,18 @@ function lerPlanilha(file: File): Promise<unknown[][]> {
 
 type Fase = 'idle' | 'lendo' | 'revisao' | 'gravando' | 'concluido';
 
-function paraPatch(l: LinhaImportadaFaturamento): api.FinFatPatch {
+/**
+ * Linha da planilha → patch de gravação. Substitui por completo cada uma das
+ * 9 colunas da planilha — célula em branco manda `null` explícito (limpa o
+ * que já estava gravado), não é ignorada. Isso é o que faz a reimportação
+ * ser confiável: reabrir a mesma torre/tramo com uma célula agora vazia
+ * apaga o valor antigo, em vez de deixar um dado obsoleto.
+ *
+ * `restricao` e `observacao` ficam de fora de propósito: não vêm da
+ * planilha, então a RPC (`fin_fat_editar`, que só mexe na coluna que
+ * aparece no patch) preserva o que foi lançado manualmente na tela.
+ */
+export function paraPatch(l: LinhaImportadaFaturamento): api.FinFatPatch {
   return {
     torre_numero: l.torre_numero,
     tramo: l.tramo,
@@ -178,8 +189,9 @@ export default function ImportarFaturamentoGwjaco({ linhasExistentes, user, onIm
               <FileSpreadsheet className="h-5 w-5" /> Importação da planilha de faturamento
             </h3>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Torre/tramo já cadastrados são atualizados (com log de alteração); os demais são cadastrados. Nada é
-              gravado antes da confirmação.
+              Torre/tramo já cadastrados têm as colunas da planilha substituídas por completo — inclusive célula em
+              branco apaga o que estava gravado — e ficam com log de alteração; os demais são cadastrados. Restrição e
+              Observação não vêm da planilha e continuam como estão. Nada é gravado antes da confirmação.
             </p>
           </ModalHeader>
 
