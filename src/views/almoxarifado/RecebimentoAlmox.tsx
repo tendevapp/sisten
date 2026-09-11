@@ -17,11 +17,13 @@
  * mesmo formulário; a diferença é só o encaminhamento pós-conferência.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, Camera, Check, ClipboardCheck, Loader2,
+  AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, Loader2,
   PackageCheck, Plus, RefreshCw, Search, Truck, X,
 } from 'lucide-react';
+import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import { useLightbox } from '../../components/ui/Lightbox';
 import { TableEmpty } from '../../components/ui/DataTable';
@@ -34,8 +36,9 @@ import {
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
   PREFIXO_RECEB, ROTULO_DIVERGENCIA, classificarDivergencia, cargaDivergente,
-  entregaParcialAnterior, pendentePedido, resumoConferencia, tipoNcSugerido,
-  type AnexoRecebimento, type DestinoPrevisto, type LinhaConferencia,
+  entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, posAbertosDoFornecedor,
+  resumoConferencia, tipoNcSugerido,
+  type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type LinhaConferencia, type PoAberto,
   type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
@@ -99,9 +102,11 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<
     | { tipo: 'carga'; registro?: CargaRow }
-    | { tipo: 'conferencia'; registro?: ConferenciaRow }
+    | { tipo: 'conferencia'; registro?: ConferenciaRow; rascunhoId?: string }
     | null
   >(null);
+  const [rascunhos, setRascunhos] = useState<RascunhoConferencia[]>(() => listarRascunhosConferencia());
+  const sincronizarRascunhos = useCallback(() => setRascunhos(listarRascunhosConferencia()), []);
   const [ncEd, setNcEd] = useState<NaoConformidadeRow | null>(null);
   const [detalhe, setDetalhe] = useState<
     | { tipo: 'carga'; row: CargaRow }
@@ -218,13 +223,20 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       <>
         <VistaContagem
           conferencias={conferencias}
+          rascunhos={rascunhos}
           loading={loading}
           podeEditar={(row) => podeEditarFormulario(user, row)}
           onVoltar={voltarAoHub}
           onNova={() => setForm({ tipo: 'conferencia' })}
           onEditar={(row) => setForm({ tipo: 'conferencia', registro: row })}
+          onContinuarRascunho={(id) => setForm({ tipo: 'conferencia', rascunhoId: id })}
+          onExcluirRascunho={(id) => {
+            if (!window.confirm('Descartar este rascunho de conferência? O que foi digitado se perde.')) return;
+            removerRascunhoConferencia(id);
+            sincronizarRascunhos();
+          }}
           onAbrir={(row) => setDetalhe({ tipo: 'conferencia', row })}
-          onRecarregar={recarregar}
+          onRecarregar={() => { void recarregar(); sincronizarRascunhos(); }}
           onEncaminhar={async (c) => {
             try {
               await marcarEncaminhadoProjetos(c.id);
@@ -246,8 +258,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             user={user}
             cargas={cargas}
             registro={form.registro}
-            onClose={() => setForm(null)}
-            onSalvo={async () => { setForm(null); await recarregar(); }}
+            rascunhoId={form.rascunhoId}
+            onClose={() => { setForm(null); sincronizarRascunhos(); }}
+            onSalvo={async () => { setForm(null); sincronizarRascunhos(); await recarregar(); }}
           />
         )}
         {detalheModal}
@@ -430,6 +443,160 @@ function AcaoCard({ onClick, cor, children }: { onClick: () => void; cor: string
 }
 
 // ===========================================================================
+// Busca + agrupamento das listas (por semana ISO e por dia)
+// ===========================================================================
+
+const semAcentoLower = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** `termo` casa se aparecer em qualquer campo (sem acento, sem caixa). Vazio casa tudo. */
+function casaBusca(termo: string, campos: (string | null | undefined)[]): boolean {
+  const t = semAcentoLower(termo.trim());
+  if (!t) return true;
+  return campos.some((c) => c != null && semAcentoLower(String(c)).includes(t));
+}
+
+/** `data` (aceita ISO com hora) dentro de [de, ate]; limites em branco não restringem. */
+function dentroDoPeriodo(data: string | null | undefined, de: string, ate: string): boolean {
+  const d = String(data ?? '').slice(0, 10);
+  if (de && d < de) return false;
+  if (ate && d > ate) return false;
+  return true;
+}
+
+interface GrupoDia<T> { data: string; rotulo: string; itens: T[] }
+interface GrupoSemana<T> { chave: string; rotulo: string; total: number; dias: GrupoDia<T>[] }
+
+/** Agrupa por semana ISO (segunda→domingo) e, dentro, por dia. Mais recente primeiro. */
+function agruparPorSemanaEData<T>(itens: T[], getISO: (t: T) => string): GrupoSemana<T>[] {
+  const porDia = new Map<string, T[]>();
+  for (const it of itens) {
+    const dia = String(getISO(it) ?? '').slice(0, 10);
+    if (!dia) continue;
+    const arr = porDia.get(dia);
+    if (arr) arr.push(it);
+    else porDia.set(dia, [it]);
+  }
+
+  const porSemana = new Map<string, GrupoDia<T>[]>();
+  for (const dia of [...porDia.keys()].sort((a, b) => b.localeCompare(a))) {
+    const d = parseISO(dia);
+    const chave = isValid(d) ? format(startOfISOWeek(d), 'yyyy-MM-dd') : dia;
+    const rotulo = isValid(d) ? format(d, "EEE, dd 'de' MMM", { locale: ptBR }) : dia;
+    const arr = porSemana.get(chave);
+    const entrada: GrupoDia<T> = { data: dia, rotulo, itens: porDia.get(dia)! };
+    if (arr) arr.push(entrada);
+    else porSemana.set(chave, [entrada]);
+  }
+
+  return [...porSemana.keys()]
+    .sort((a, b) => b.localeCompare(a))
+    .map((chave) => {
+      const d = parseISO(chave);
+      const dias = porSemana.get(chave)!;
+      return {
+        chave,
+        rotulo: isValid(d)
+          ? `Semana ${getISOWeek(d)} · ${format(d, 'dd/MM')} – ${format(endOfISOWeek(d), 'dd/MM')}`
+          : chave,
+        total: dias.reduce((s, g) => s + g.itens.length, 0),
+        dias,
+      };
+    });
+}
+
+/** Barra de filtro das listas gerais: texto + intervalo de datas. */
+function FiltroLista({
+  busca, onBusca, de, onDe, ate, onAte, placeholder, total, mostrados, extra,
+}: {
+  busca: string; onBusca: (v: string) => void;
+  de: string; onDe: (v: string) => void;
+  ate: string; onAte: (v: string) => void;
+  placeholder: string;
+  total: number;
+  mostrados: number;
+  extra?: React.ReactNode;
+}) {
+  const ativo = !!(busca || de || ate);
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+          <input
+            value={busca}
+            onChange={(e) => onBusca(e.target.value)}
+            placeholder={placeholder}
+            className={`${inputCls} pl-8 pr-8`}
+          />
+          {busca && (
+            <button type="button" onClick={() => onBusca('')} className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer" aria-label="Limpar busca">
+              <X className="h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date" value={de} onChange={(e) => onDe(e.target.value)} aria-label="Data inicial"
+            className="min-w-0 flex-1 rounded-lg border py-2 px-2 text-xs font-medium border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-primary)] focus:outline-2 focus:outline-[var(--brand)] sm:flex-none"
+          />
+          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>até</span>
+          <input
+            type="date" value={ate} onChange={(e) => onAte(e.target.value)} aria-label="Data final"
+            className="min-w-0 flex-1 rounded-lg border py-2 px-2 text-xs font-medium border-[var(--hairline)] bg-[var(--surface-raised)] text-[var(--ink-primary)] focus:outline-2 focus:outline-[var(--brand)] sm:flex-none"
+          />
+        </div>
+      </div>
+      {extra}
+      <div className="flex items-center justify-between">
+        <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          {ativo ? `${mostrados} de ${total}` : `${total} no total`}
+        </span>
+        {ativo && (
+          <button type="button" onClick={() => { onBusca(''); onDe(''); onAte(''); }} className="text-[11px] font-bold cursor-pointer hover:underline" style={{ color: 'var(--brand)' }}>
+            Limpar filtros
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Lista já agrupada em semana → dia, com cabeçalhos. */
+function ListaAgrupada<T>({
+  grupos, getKey, renderItem, grid, vazio,
+}: {
+  grupos: GrupoSemana<T>[];
+  getKey: (t: T) => string;
+  renderItem: (t: T) => React.ReactNode;
+  grid?: boolean;
+  vazio: React.ReactNode;
+}) {
+  if (!grupos.length) return <>{vazio}</>;
+  return (
+    <div className="space-y-4">
+      {grupos.map((g) => (
+        <div key={g.chave} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--ink-secondary)' }}>{g.rotulo}</span>
+            <span className="rounded-full px-1.5 text-[10px] font-bold" style={{ background: 'color-mix(in srgb, var(--ink-muted) 14%, transparent)', color: 'var(--ink-muted)' }}>{g.total}</span>
+            <span className="h-px flex-1" style={{ background: 'var(--hairline)' }} />
+          </div>
+          {g.dias.map((d) => (
+            <div key={d.data} className="space-y-2">
+              <p className="text-[11px] font-bold capitalize" style={{ color: 'var(--ink-muted)' }}>{d.rotulo} · {d.itens.length}</p>
+              <div className={grid ? 'grid gap-2 sm:grid-cols-2' : 'space-y-2'}>
+                {d.itens.map((it) => <React.Fragment key={getKey(it)}>{renderItem(it)}</React.Fragment>)}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===========================================================================
 // Vista — Ficha cega
 // ===========================================================================
 
@@ -446,22 +613,24 @@ function VistaFichaCega({
   onRecarregar: () => void;
   onExcluir: (id: string, codigo: string) => void;
 }) {
-  return (
-    <VistaShell
-      titulo="Ficha cega de volumes"
-      subtitulo="Toque num cartão para ver o preenchimento e o log. Só quem abriu (ou admin) edita; excluir tira da tela e mantém no banco."
-      onVoltar={onVoltar}
-      onRecarregar={onRecarregar}
-      acao={<BotaoNovo onClick={onNova}>Nova ficha cega</BotaoNovo>}
-    >
-      {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
-      {!loading && !cargas.length && (
-        <TableEmpty icon={Truck} title="Nenhuma carga registrada" hint="A ficha cega é a contagem de volumes na doca, antes de abrir caixa." />
-      )}
+  const [busca, setBusca] = useState('');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        {cargas.map((c) => (
-          <CardBase key={c.id} onClick={() => onAbrir(c)}>
+  const filtradas = useMemo(
+    () => cargas.filter((c) =>
+      dentroDoPeriodo(c.data, de, ate)
+      && casaBusca(busca, [
+        c.codigo, c.transportadora, c.veiculo_placa, c.motorista,
+        c.doc_transporte, c.nota_fiscal, c.nro_pedido, c.observacao, c.status,
+      ]),
+    ),
+    [cargas, busca, de, ate],
+  );
+  const grupos = useMemo(() => agruparPorSemanaEData(filtradas, (c) => c.data), [filtradas]);
+
+  const renderCarga = (c: CargaRow) => (
+    <CardBase key={c.id} onClick={() => onAbrir(c)}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
@@ -494,18 +663,48 @@ function VistaFichaCega({
                 {c.avaria_aparente ? `Avaria: ${c.avaria_descricao || 'sinalizada'}` : c.observacao}
               </p>
             )}
-            <div className="mt-2 flex items-center justify-end gap-3">
-              <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-              {podeEditar(c) && (
-                <>
-                  <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
-                  <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
-                </>
-              )}
-            </div>
-          </CardBase>
-        ))}
+      <div className="mt-2 flex items-center justify-end gap-3">
+        <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
+        {podeEditar(c) && (
+          <>
+            <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
+            <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
+          </>
+        )}
       </div>
+    </CardBase>
+  );
+
+  return (
+    <VistaShell
+      titulo="Ficha cega de volumes"
+      subtitulo="Toque num cartão para ver o preenchimento e o log. Só quem abriu (ou admin) edita; excluir tira da tela e mantém no banco."
+      onVoltar={onVoltar}
+      onRecarregar={onRecarregar}
+      acao={<BotaoNovo onClick={onNova}>Nova ficha cega</BotaoNovo>}
+    >
+      {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
+      {!loading && !cargas.length && (
+        <TableEmpty icon={Truck} title="Nenhuma carga registrada" hint="A ficha cega é a contagem de volumes na doca, antes de abrir caixa." />
+      )}
+
+      {!loading && cargas.length > 0 && (
+        <>
+          <FiltroLista
+            busca={busca} onBusca={setBusca}
+            de={de} onDe={setDe} ate={ate} onAte={setAte}
+            placeholder="Buscar por RCV, transportadora, placa, PO, NF…"
+            total={cargas.length} mostrados={filtradas.length}
+          />
+          <ListaAgrupada
+            grupos={grupos}
+            getKey={(c) => c.id}
+            renderItem={renderCarga}
+            grid
+            vazio={<p className="rounded-lg border border-dashed px-3 py-6 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>Nenhuma ficha cega bate com o filtro.</p>}
+          />
+        </>
+      )}
     </VistaShell>
   );
 }
@@ -515,82 +714,156 @@ function VistaFichaCega({
 // ===========================================================================
 
 function VistaContagem({
-  conferencias, loading, podeEditar, onVoltar, onNova, onEditar, onAbrir, onRecarregar, onEncaminhar, onExcluir,
+  conferencias, rascunhos, loading, podeEditar, onVoltar, onNova, onEditar,
+  onContinuarRascunho, onExcluirRascunho, onAbrir, onRecarregar, onEncaminhar, onExcluir,
 }: {
   conferencias: ConferenciaRow[];
+  rascunhos: RascunhoConferencia[];
   loading: boolean;
   podeEditar: (row: ConferenciaRow) => boolean;
   onVoltar: () => void;
   onNova: () => void;
   onEditar: (row: ConferenciaRow) => void;
+  onContinuarRascunho: (id: string) => void;
+  onExcluirRascunho: (id: string) => void;
   onAbrir: (row: ConferenciaRow) => void;
   onRecarregar: () => void;
   onEncaminhar: (c: ConferenciaRow) => void;
   onExcluir: (id: string, codigo: string) => void;
 }) {
+  const [busca, setBusca] = useState('');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+
+  const filtradas = useMemo(
+    () => conferencias.filter((c) => {
+      const pos = c.pedidos?.length ? c.pedidos : c.nro_pedido ? [c.nro_pedido] : [];
+      return dentroDoPeriodo(c.data, de, ate)
+        && casaBusca(busca, [
+          c.codigo, c.fornecedor, c.rm, c.tipo_item, ...pos,
+          ...c.itens.flatMap((it) => [it.material_code, it.descricao, it.nro_pedido]),
+        ]);
+    }),
+    [conferencias, busca, de, ate],
+  );
+  const grupos = useMemo(() => agruparPorSemanaEData(filtradas, (c) => c.data), [filtradas]);
+
+  const renderConferencia = (c: ConferenciaRow) => {
+    const pos = c.pedidos?.length ? c.pedidos : c.nro_pedido ? [c.nro_pedido] : [];
+    return (
+      <CardBase key={c.id} onClick={() => onAbrir(c)}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+              {c.codigo}
+              <span className="ml-2 font-medium" style={{ color: 'var(--ink-muted)' }}>
+                {pos.length ? `PO ${pos.join(' · ')}` : 'sem PO'}
+              </span>
+            </p>
+            <p className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
+              {c.fornecedor || '—'} · {formatDateBR(c.data)} · {c.tipo_item}
+            </p>
+          </div>
+          {c.tem_nc && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white" style={{ background: 'var(--status-critical)' }}>
+              <AlertTriangle className="h-3 w-3" /> NCR
+            </span>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+          <span>{c.total_itens} itens</span>
+          <StatusChip texto={`${c.itens_ok} ok`} tom="ok" />
+          {c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} diverg.`} tom="alerta" />}
+          <span className="ml-1">{FONTE_ROTULO[c.fonte_pedido] ?? c.fonte_pedido}</span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
+          {c.tipo_item !== 'consumo' && !c.encaminhado_projetos && (
+            <AcaoCard onClick={() => onEncaminhar(c)} cor="var(--brand)">Registrar entrada em Projetos →</AcaoCard>
+          )}
+          {c.encaminhado_projetos && (
+            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>encaminhado a Projetos</span>
+          )}
+          <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
+          {podeEditar(c) && (
+            <>
+              <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
+              <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
+            </>
+          )}
+        </div>
+      </CardBase>
+    );
+  };
+
   return (
     <VistaShell
       titulo="Recebimento e contagem"
-      subtitulo="Vários POs cabem numa conferência. Toque no cartão para ver o preenchimento e o log. Divergência abre uma NCR."
+      subtitulo="Vários POs cabem numa conferência, e dá pra deixar rascunhos abertos e finalizar depois. Divergência abre uma NCR."
       onVoltar={onVoltar}
       onRecarregar={onRecarregar}
       acao={<BotaoNovo onClick={onNova}>Nova conferência</BotaoNovo>}
     >
       {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
-      {!loading && !conferencias.length && (
+      {!loading && !conferencias.length && !rascunhos.length && (
         <TableEmpty icon={ClipboardCheck} title="Nenhuma conferência" hint="Informe o número do pedido e valide as quantidades item a item." />
       )}
 
-      <div className="space-y-2">
-        {conferencias.map((c) => {
-          const pos = c.pedidos?.length ? c.pedidos : c.nro_pedido ? [c.nro_pedido] : [];
-          return (
-          <CardBase key={c.id} onClick={() => onAbrir(c)}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-                  {c.codigo}
-                  <span className="ml-2 font-medium" style={{ color: 'var(--ink-muted)' }}>
-                    {pos.length ? `PO ${pos.join(' · ')}` : 'sem PO'}
+      {rascunhos.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: 'var(--status-serious)' }}>
+            Rascunhos — ainda não registrados ({rascunhos.length})
+          </p>
+          {rascunhos.map((r) => {
+            const pos = [...new Set(r.linhas.map((l) => l.nroPedido).filter(Boolean))] as string[];
+            return (
+              <div
+                key={r.id}
+                onClick={() => onContinuarRascunho(r.id)}
+                className="cursor-pointer rounded-xl border border-dashed p-3 transition-colors hover:border-[var(--brand)]"
+                style={{ borderColor: 'color-mix(in srgb, var(--status-serious) 45%, var(--hairline))', background: 'color-mix(in srgb, var(--status-serious) 6%, var(--surface-raised))' }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-1.5 text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                      {r.fornecedor || 'Sem fornecedor'}
+                      <StatusChip texto="rascunho" tom="atencao" />
+                    </p>
+                    <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                      {pos.length ? `PO ${pos.join(' · ')}` : 'sem PO'} · {r.linhas.length} item(ns)
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                    {r.atualizadoEm ? formatDateTimeBR(r.atualizadoEm) : ''}
                   </span>
-                </p>
-                <p className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
-                  {c.fornecedor || '—'} · {formatDateBR(c.data)} · {c.tipo_item}
-                </p>
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-3">
+                  <AcaoCard onClick={() => onContinuarRascunho(r.id)} cor="var(--brand)">Continuar</AcaoCard>
+                  <AcaoCard onClick={() => onExcluirRascunho(r.id)} cor="var(--status-critical)">Descartar</AcaoCard>
+                </div>
               </div>
-              {c.tem_nc && (
-                <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white" style={{ background: 'var(--status-critical)' }}>
-                  <AlertTriangle className="h-3 w-3" /> NCR
-                </span>
-              )}
-            </div>
+            );
+          })}
+        </div>
+      )}
 
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
-              <span>{c.total_itens} itens</span>
-              <StatusChip texto={`${c.itens_ok} ok`} tom="ok" />
-              {c.itens_divergentes > 0 && <StatusChip texto={`${c.itens_divergentes} diverg.`} tom="alerta" />}
-              <span className="ml-1">{FONTE_ROTULO[c.fonte_pedido] ?? c.fonte_pedido}</span>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
-              {c.tipo_item !== 'consumo' && !c.encaminhado_projetos && (
-                <AcaoCard onClick={() => onEncaminhar(c)} cor="var(--brand)">Registrar entrada em Projetos →</AcaoCard>
-              )}
-              {c.encaminhado_projetos && (
-                <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>encaminhado a Projetos</span>
-              )}
-              <AcaoCard onClick={() => onAbrir(c)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-              {podeEditar(c) && (
-                <>
-                  <AcaoCard onClick={() => onEditar(c)} cor="var(--brand)">Editar</AcaoCard>
-                  <AcaoCard onClick={() => onExcluir(c.id, c.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
-                </>
-              )}
-            </div>
-          </CardBase>
-          );
-        })}
-      </div>
+      {!loading && conferencias.length > 0 && (
+        <>
+          <FiltroLista
+            busca={busca} onBusca={setBusca}
+            de={de} onDe={setDe} ate={ate} onAte={setAte}
+            placeholder="Buscar por RCM, fornecedor, item, PO…"
+            total={conferencias.length} mostrados={filtradas.length}
+          />
+          <ListaAgrupada
+            grupos={grupos}
+            getKey={(c) => c.id}
+            renderItem={renderConferencia}
+            vazio={<p className="rounded-lg border border-dashed px-3 py-6 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>Nenhuma conferência bate com o filtro.</p>}
+          />
+        </>
+      )}
     </VistaShell>
   );
 }
@@ -610,20 +883,26 @@ function VistaNaoConformidades({
   onEditar: (row: NaoConformidadeRow) => void;
   onStatus: (id: string, status: 'aberta' | 'em_tratativa' | 'resolvida') => void;
 }) {
-  return (
-    <VistaShell
-      titulo="Não conformidades de recebimento"
-      subtitulo="Aberta quando a conferência acusa divergência. Toque para ver a tratativa e o log; Editar registra ação e foto."
-      onVoltar={onVoltar}
-      onRecarregar={onRecarregar}
-    >
-      {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
-      {!loading && !ncs.length && (
-        <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Uma NCR é aberta automaticamente quando a conferência acusa divergência." />
-      )}
-      <div className="space-y-2">
-        {ncs.map((n) => (
-          <CardBase key={n.id} onClick={() => onAbrir(n)}>
+  const [busca, setBusca] = useState('');
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+  const [status, setStatus] = useState<'todas' | 'aberta' | 'em_tratativa' | 'resolvida'>('todas');
+
+  const filtradas = useMemo(
+    () => ncs.filter((n) =>
+      (status === 'todas' || n.status === status)
+      && dentroDoPeriodo(n.created_at, de, ate)
+      && casaBusca(busca, [
+        n.codigo, n.fornecedor, n.nro_pedido, n.tipo, n.descricao, n.responsavel, n.resolucao,
+        ...(Array.isArray(n.itens_resumo) ? n.itens_resumo.flatMap((it: any) => [it?.material_code, it?.descricao]) : []),
+      ]),
+    ),
+    [ncs, busca, de, ate, status],
+  );
+  const grupos = useMemo(() => agruparPorSemanaEData(filtradas, (n) => n.created_at), [filtradas]);
+
+  const renderNc = (n: NaoConformidadeRow) => (
+    <CardBase key={n.id} onClick={() => onAbrir(n)}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-1.5 text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>
@@ -661,16 +940,61 @@ function VistaNaoConformidades({
                 ))}
               </ul>
             )}
-            <div className="mt-2 flex items-center justify-end gap-3">
-              {(n.acoes?.length ?? 0) > 0 && (
-                <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{n.acoes.length} ação(ões)</span>
-              )}
-              <AcaoCard onClick={() => onAbrir(n)} cor="var(--ink-muted)">Detalhes</AcaoCard>
-              <AcaoCard onClick={() => onEditar(n)} cor="var(--brand)">Editar</AcaoCard>
-            </div>
-          </CardBase>
-        ))}
+      <div className="mt-2 flex items-center justify-end gap-3">
+        {(n.acoes?.length ?? 0) > 0 && (
+          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{n.acoes.length} ação(ões)</span>
+        )}
+        <AcaoCard onClick={() => onAbrir(n)} cor="var(--ink-muted)">Detalhes</AcaoCard>
+        <AcaoCard onClick={() => onEditar(n)} cor="var(--brand)">Editar</AcaoCard>
       </div>
+    </CardBase>
+  );
+
+  return (
+    <VistaShell
+      titulo="Não conformidades de recebimento"
+      subtitulo="Aberta quando a conferência acusa divergência. Toque para ver a tratativa e o log; Editar registra ação e foto."
+      onVoltar={onVoltar}
+      onRecarregar={onRecarregar}
+    >
+      {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
+      {!loading && !ncs.length && (
+        <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Uma NCR é aberta automaticamente quando a conferência acusa divergência." />
+      )}
+
+      {!loading && ncs.length > 0 && (
+        <>
+          <FiltroLista
+            busca={busca} onBusca={setBusca}
+            de={de} onDe={setDe} ate={ate} onAte={setAte}
+            placeholder="Buscar por NCR, fornecedor, item, PO…"
+            total={ncs.length} mostrados={filtradas.length}
+            extra={
+              <div className="flex flex-wrap gap-1.5">
+                {([['todas', 'Todas'], ['aberta', 'Abertas'], ['em_tratativa', 'Em tratativa'], ['resolvida', 'Resolvidas']] as const).map(([id, rot]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setStatus(id)}
+                    className="rounded-full border px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-colors"
+                    style={status === id
+                      ? { borderColor: 'var(--brand)', background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }
+                      : { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                  >
+                    {rot}
+                  </button>
+                ))}
+              </div>
+            }
+          />
+          <ListaAgrupada
+            grupos={grupos}
+            getKey={(n) => n.id}
+            renderItem={renderNc}
+            vazio={<p className="rounded-lg border border-dashed px-3 py-6 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>Nenhuma NCR bate com o filtro.</p>}
+          />
+        </>
+      )}
     </VistaShell>
   );
 }
@@ -927,8 +1251,8 @@ function ModalDetalhe({
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                          {it.material_code}{it.nro_pedido ? ` · PO ${it.nro_pedido}` : ''}
+                        <span className="min-w-0 text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                          {it.descricao || it.material_code}
                         </span>
                         <span className="flex shrink-0 items-center gap-1.5">
                           {paths.length > 0 && (
@@ -945,7 +1269,9 @@ function ModalDetalhe({
                           )}
                         </span>
                       </div>
-                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{it.descricao}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                        cód. {it.material_code}{it.nro_pedido ? ` · PO ${it.nro_pedido}` : ''}
+                      </p>
                       {parcialAnt && (
                         <p className="mt-0.5 text-[10px] font-bold tabular-nums" style={{ color: 'var(--status-serious)' }}>
                           entrega parcial no PO — já recebido {formatQtd(parcialAnt.jaRecebido)} de {formatQtd(it.qtd_pedido ?? 0)}
@@ -1311,32 +1637,190 @@ function ModalFichaCega({
 
 interface LinhaUI extends LinhaConferencia {
   fotos: PreparedAttachment[];
+  /** Estado exclusivo da linha: só um de conferido / parcial / avaria. */
+  estado: EstadoLinha;
+}
+
+type EstadoLinha = null | 'conferido' | 'parcial' | 'avaria';
+
+/** Deriva estado a partir do que está gravado no registro. */
+function estadoDaLinha(it: { conferido: boolean; parcial?: boolean | null; tipo_divergencia?: string | null }): EstadoLinha {
+  if (it.tipo_divergencia === 'avaria') return 'avaria';
+  if (it.parcial) return 'parcial';
+  return it.conferido ? 'conferido' : null;
+}
+
+/** As três marcações mutuamente exclusivas viram estes campos no payload. */
+function flagsDoEstado(e: EstadoLinha): { conferido: boolean; parcial: boolean; avaria: boolean } {
+  return {
+    conferido: e === 'conferido' || e === 'parcial',
+    parcial: e === 'parcial',
+    avaria: e === 'avaria',
+  };
+}
+
+/** Paleta de cabeçalho por PO — cores calmas e distintas entre si, sem colidir
+ *  com a escala de status (verde/laranja/vermelho). */
+const COR_PO = ['#2563eb', '#0d9488', '#7c3aed', '#db2777', '#0369a1', '#65a30d'];
+
+// ---------------------------------------------------------------------------
+// Rascunhos locais de conferência — dá pra ter VÁRIAS abertas e finalizar
+// depois. Cada uma some da lista quando é registrada no banco.
+// ---------------------------------------------------------------------------
+
+const CHAVE_RASCUNHOS_CONF = 'sisten_receb_conferencias_rascunho';
+
+interface RascunhoConferencia {
+  id: string;
+  data: string;
+  cargaId: string;
+  fornecedor: string;
+  rm: string;
+  deposito: string;
+  fonte: FontePedido;
+  observacao: string;
+  ncResponsavel: string;
+  ncSeveridade: 'baixa' | 'media' | 'alta';
+  /** Linhas sem `fotos` — File/blob não sobrevive a serialização. */
+  linhas: Omit<LinhaUI, 'fotos'>[];
+  atualizadoEm: string;
+}
+
+function idRascunho(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+/** Nunca derruba a tela: ausente ou corrompido vira lista vazia. */
+function listarRascunhosConferencia(): RascunhoConferencia[] {
+  try {
+    const raw = localStorage.getItem(CHAVE_RASCUNHOS_CONF);
+    if (!raw) return [];
+    const p = JSON.parse(raw);
+    if (!Array.isArray(p)) return [];
+    return (p as RascunhoConferencia[])
+      .filter((r) => r && typeof r.id === 'string' && Array.isArray(r.linhas))
+      .sort((a, b) => (b.atualizadoEm ?? '').localeCompare(a.atualizadoEm ?? ''));
+  } catch (err) {
+    console.error('Falha ao ler rascunhos de conferência:', err);
+    return [];
+  }
+}
+
+/** Insere ou substitui o rascunho de mesmo `id`. */
+function salvarRascunhoConferencia(r: RascunhoConferencia): void {
+  try {
+    const outros = listarRascunhosConferencia().filter((x) => x.id !== r.id);
+    localStorage.setItem(CHAVE_RASCUNHOS_CONF, JSON.stringify([r, ...outros]));
+  } catch (err) {
+    console.error('Falha ao gravar rascunho de conferência:', err);
+  }
+}
+
+function removerRascunhoConferencia(id: string): void {
+  try {
+    const rest = listarRascunhosConferencia().filter((x) => x.id !== id);
+    if (rest.length) localStorage.setItem(CHAVE_RASCUNHOS_CONF, JSON.stringify(rest));
+    else localStorage.removeItem(CHAVE_RASCUNHOS_CONF);
+  } catch {
+    /* storage indisponível — segue a vida */
+  }
+}
+
+/** Bloco com cabeçalho que abre/fecha — usado nos POs da busca por fornecedor
+ *  e no agrupamento por PO quando a conferência junta vários pedidos. O
+ *  cabeçalho vem tingido (`tom`) pra separar bem um PO do outro na rolagem. */
+function Recolhivel({
+  titulo, resumo, acao, inicialAberto = false, tom = 'var(--brand)', children,
+}: {
+  titulo: React.ReactNode;
+  resumo?: React.ReactNode;
+  acao?: React.ReactNode;
+  inicialAberto?: boolean;
+  /** Cor base do cabeçalho e do filete lateral. */
+  tom?: string;
+  children: React.ReactNode;
+}) {
+  const [aberto, setAberto] = useState(inicialAberto);
+  return (
+    <div
+      className="overflow-hidden rounded-lg border"
+      style={{ borderColor: `color-mix(in srgb, ${tom} 35%, var(--hairline))`, background: 'var(--surface-raised)' }}
+    >
+      <div
+        className="flex items-center gap-2 p-2.5"
+        style={{
+          background: `color-mix(in srgb, ${tom} 12%, var(--surface-raised))`,
+          borderLeft: `4px solid ${tom}`,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setAberto((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+        >
+          <ChevronDown
+            className="h-4 w-4 shrink-0 transition-transform"
+            style={{ color: tom, transform: aberto ? 'none' : 'rotate(-90deg)' }}
+          />
+          <span className="min-w-0">
+            <span className="block text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>{titulo}</span>
+            {resumo && <span className="block text-[11px]" style={{ color: 'var(--ink-secondary)' }}>{resumo}</span>}
+          </span>
+        </button>
+        {acao}
+      </div>
+      {aberto && <div className="border-t p-2.5 space-y-2" style={{ borderColor: 'var(--hairline)' }}>{children}</div>}
+    </div>
+  );
 }
 
 function ModalConferencia({
-  user, cargas, registro, onClose, onSalvo,
+  user, cargas, registro, rascunhoId, onClose, onSalvo,
 }: {
   user: Profile;
   cargas: CargaRow[];
   registro?: ConferenciaRow;
+  /** Id do rascunho a continuar; ausente = conferência nova (id novo abaixo). */
+  rascunhoId?: string;
   onClose: () => void;
   onSalvo: () => void;
 }) {
   const toast = useToast();
   const ed = registro;
+  /** Rascunho local só faz sentido em conferência NOVA (edição já está no banco). */
+  const rascunho = useMemo(
+    () => (ed ? null : listarRascunhosConferencia().find((r) => r.id === rascunhoId) ?? null),
+    [ed, rascunhoId],
+  );
+  /** Id estável desta sessão do modal: o que veio, ou um novo pra conferência nova. */
+  const [rascId] = useState(() => rascunhoId ?? idRascunho());
+  const continuandoRascunho = !!rascunho;
   const [salvando, setSalvando] = useState(false);
   const [buscando, setBuscando] = useState(false);
-  const [data, setData] = useState(ed?.data ?? hojeISO());
-  const [cargaId, setCargaId] = useState(ed?.carga_id ?? '');
+  const [data, setData] = useState(ed?.data ?? rascunho?.data ?? hojeISO());
+  const [cargaId, setCargaId] = useState(ed?.carga_id ?? rascunho?.cargaId ?? '');
   /** Campo de busca: o PO a puxar agora. Vários POs viram várias buscas. */
   const [poBusca, setPoBusca] = useState('');
-  const [fornecedor, setFornecedor] = useState(ed?.fornecedor ?? '');
-  const [rm, setRm] = useState(ed?.rm ?? '');
-  const [deposito, setDeposito] = useState(ed?.deposito ?? '');
-  const [fonte, setFonte] = useState<'cache_sap' | 'supabase' | 'manual' | 'sem_pedido'>(ed?.fonte_pedido ?? 'sem_pedido');
-  const [linhas, setLinhas] = useState<LinhaUI[]>(
-    ed
-      ? ed.itens.map<LinhaUI>((it) => ({
+  /** Puxar por número do PO ou procurar pelos POs abertos de um fornecedor. */
+  const [modoBusca, setModoBusca] = useState<'po' | 'fornecedor'>('po');
+  const [fornBusca, setFornBusca] = useState('');
+  const [fornPos, setFornPos] = useState<PoAberto[] | null>(null);
+  /** Cache ZL0132 do aparelho — fonte da busca por fornecedor (sem rede). */
+  const sapCache = useMemo(() => localDb.getEnrichedSAPRequisicoes(), []);
+  const fornecedoresCache = useMemo(() => listarFornecedoresDoCache(sapCache), [sapCache]);
+  const [fornecedor, setFornecedor] = useState(ed?.fornecedor ?? rascunho?.fornecedor ?? '');
+  const [rm, setRm] = useState(ed?.rm ?? rascunho?.rm ?? '');
+  const [deposito, setDeposito] = useState(ed?.deposito ?? rascunho?.deposito ?? '');
+  const [fonte, setFonte] = useState<FontePedido>(ed?.fonte_pedido ?? rascunho?.fonte ?? 'sem_pedido');
+  const [linhas, setLinhas] = useState<LinhaUI[]>(() => {
+    if (ed) {
+      return ed.itens.map<LinhaUI>((it) => {
+        const est = estadoDaLinha(it);
+        return {
           linhaRef: it.linha_ref ?? null,
           nroPedido: it.nro_pedido ?? null,
           materialCode: it.material_code ?? '',
@@ -1345,20 +1829,22 @@ function ModalConferencia({
           qtdPedido: it.qtd_pedido ?? null,
           qtdJaFornecida: it.qtd_ja_fornecida ?? null,
           qtdRecebida: Number(it.qtd_recebida) || 0,
-          conferido: it.conferido,
           itemManual: it.item_manual ?? false,
-          avaria: it.tipo_divergencia === 'avaria',
-          parcial: it.parcial ?? false,
           observacao: it.observacao ?? '',
           evidencias: it.evidencias ?? [],
           fotos: [],
-        }))
-      : [],
-  );
-  const [observacao, setObservacao] = useState(ed?.observacao ?? '');
+          estado: est,
+          ...flagsDoEstado(est),
+        };
+      });
+    }
+    if (rascunho) return rascunho.linhas.map((l) => ({ ...l, fotos: [] }));
+    return [];
+  });
+  const [observacao, setObservacao] = useState(ed?.observacao ?? rascunho?.observacao ?? '');
   const [fotosCab, setFotosCab] = useState<PreparedAttachment[]>([]);
-  const [ncResponsavel, setNcResponsavel] = useState('');
-  const [ncSeveridade, setNcSeveridade] = useState<'baixa' | 'media' | 'alta'>('media');
+  const [ncResponsavel, setNcResponsavel] = useState(rascunho?.ncResponsavel ?? '');
+  const [ncSeveridade, setNcSeveridade] = useState<'baixa' | 'media' | 'alta'>(rascunho?.ncSeveridade ?? 'media');
 
   const cargasVinculaveis = cargas.filter((c) => c.status === 'recebida' || c.status === 'em_conferencia' || c.status === 'divergente');
 
@@ -1369,13 +1855,14 @@ function ModalConferencia({
     return vistos;
   }, [linhas]);
 
-  const buscarPedido = async () => {
-    const alvo = SO_DIGITOS(poBusca).trim();
+  /** Puxa um PO (do cache ou do servidor) e junta suas linhas à conferência. */
+  const adicionarPedido = async (alvoRaw: string) => {
+    const alvo = SO_DIGITOS(alvoRaw).trim();
     if (!alvo) { toast.error('Informe o número do pedido.'); return; }
     if (pedidos.includes(alvo)) { toast.info(`PO ${alvo} já está na conferência.`); setPoBusca(''); return; }
     setBuscando(true);
     try {
-      const res = await carregarLinhasPedido(alvo, localDb.getEnrichedSAPRequisicoes());
+      const res = await carregarLinhasPedido(alvo, sapCache);
       if (res.fonte !== 'manual' && res.fonte !== 'sem_pedido') setFonte(res.fonte);
       if (res.fornecedor && !fornecedor) setFornecedor(res.fornecedor);
       if (!res.linhas.length) {
@@ -1399,6 +1886,7 @@ function ModalConferencia({
           itemManual: false,
           avaria: false,
           parcial: false,
+          estado: null,
           observacao: '',
           evidencias: [],
           fotos: [],
@@ -1422,18 +1910,80 @@ function ModalConferencia({
     }
   };
 
+  const buscarPedido = () => adicionarPedido(poBusca);
+
+  /** Monta o painel de POs abertos do fornecedor a partir do cache local. */
+  const buscarFornecedor = () => {
+    const termo = fornBusca.trim();
+    if (termo.length < 3) { toast.error('Digite ao menos 3 letras do nome do fornecedor.'); return; }
+    if (!sapCache.length) {
+      toast.warning('O cache do SAP está vazio neste aparelho — use a busca por número do PO.');
+      return;
+    }
+    const achados = posAbertosDoFornecedor(sapCache, termo);
+    setFornPos(achados);
+    if (!achados.length) toast.info('Nenhum PO aberto para esse fornecedor no cache.');
+  };
+
   const setLinha = (idx: number, patch: Partial<LinhaUI>) =>
     setLinhas((a) => a.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+
+  /** Marca conferido/parcial/avaria de forma exclusiva — clicar no que já está
+   *  marcado limpa. Os três booleans do payload saem de `flagsDoEstado`. */
+  const setEstado = (idx: number, alvo: Exclude<EstadoLinha, null>) =>
+    setLinhas((a) => a.map((l, i) => {
+      if (i !== idx) return l;
+      const est = l.estado === alvo ? null : alvo;
+      return { ...l, estado: est, ...flagsDoEstado(est) };
+    }));
 
   const addManual = () =>
     setLinhas((a) => [...a, {
       linhaRef: null, nroPedido: SO_DIGITOS(poBusca).trim() || null,
       materialCode: '', descricao: '', unidade: 'UN',
       qtdPedido: null, qtdJaFornecida: null, qtdRecebida: 0,
-      conferido: true, itemManual: true, avaria: false, parcial: false, observacao: '', evidencias: [], fotos: [],
+      conferido: true, itemManual: true, avaria: false, parcial: false, estado: 'conferido',
+      observacao: '', evidencias: [], fotos: [],
     }]);
 
   const resumo = useMemo(() => resumoConferencia(linhas), [linhas]);
+
+  /** Linhas agrupadas por PO (mantém o índice real pra edição). Só usado
+   *  quando a conferência junta mais de um PO — aí cada bloco é recolhível. */
+  const gruposPorPO = useMemo(() => {
+    const m = new Map<string, { po: string | null; itens: { l: LinhaUI; idx: number }[] }>();
+    linhas.forEach((l, idx) => {
+      const chave = l.nroPedido ?? '__sem_po__';
+      if (!m.has(chave)) m.set(chave, { po: l.nroPedido ?? null, itens: [] });
+      m.get(chave)!.itens.push({ l, idx });
+    });
+    return [...m.values()];
+  }, [linhas]);
+  const agruparItens = gruposPorPO.length > 1;
+
+  /** Filtro dos itens já carregados — indispensável em PO grande. */
+  const [filtroItens, setFiltroItens] = useState('');
+
+  // Rascunho: grava a cada mudança (debounce) enquanto a conferência é nova e
+  // tem algo digitado. Fotos ficam de fora — o File não serializa; ao reabrir,
+  // o resto do preenchimento volta e as fotos são reanexadas. São VÁRIOS
+  // rascunhos (um por doca em andamento), cada um com seu id.
+  const debounceRascunhoRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (ed) return;
+    if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
+    debounceRascunhoRef.current = window.setTimeout(() => {
+      const temAlgo = linhas.length > 0 || fornecedor.trim() || rm.trim() || deposito.trim() || observacao.trim() || !!cargaId;
+      if (!temAlgo) { removerRascunhoConferencia(rascId); return; }
+      salvarRascunhoConferencia({
+        id: rascId,
+        data, cargaId, fornecedor, rm, deposito, fonte, observacao, ncResponsavel, ncSeveridade,
+        linhas: linhas.map(({ fotos, ...resto }) => resto),
+        atualizadoEm: new Date().toISOString(),
+      });
+    }, 600);
+    return () => { if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current); };
+  }, [ed, rascId, data, cargaId, fornecedor, rm, deposito, fonte, observacao, ncResponsavel, ncSeveridade, linhas]);
 
   const salvar = async () => {
     if (!linhas.length) { toast.error('Carregue o pedido ou adicione ao menos um item.'); return; }
@@ -1531,6 +2081,8 @@ function ModalConferencia({
         nc,
       });
 
+      if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
+      removerRascunhoConferencia(rascId);
       [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
       toast.success(`Conferência ${codigo} registrada.${tem_nc ? ` NCR ${nc_codigo} aberta.` : ''}`);
       if (resumo.tipoItem !== 'consumo') {
@@ -1553,7 +2105,9 @@ function ModalConferencia({
         <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
           {ed
             ? 'Ajuste o cabeçalho e a contagem. Uma nova divergência abre NCR; as alterações vão para o histórico.'
-            : 'Puxe o pedido, confira quantidade item a item. Divergência abre uma NCR.'}
+            : continuandoRascunho
+              ? 'Rascunho — ainda não registrado. Some da lista quando você registrar. As fotos precisam ser reanexadas.'
+              : 'Puxe o pedido, confira quantidade item a item. O que digitar fica salvo como rascunho até registrar.'}
         </p>
       </ModalHeader>
       <ModalBody>
@@ -1575,38 +2129,156 @@ function ModalConferencia({
           </div>
 
           <Campo rotulo="Pedidos (PO) — adicione um por vez">
-            <div className="flex gap-2">
-              <input
-                value={poBusca}
-                onChange={(e) => setPoBusca(SO_DIGITOS(e.target.value))}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void buscarPedido(); } }}
-                inputMode="numeric"
-                className={inputCls}
-                placeholder="Ex.: 4500001234"
-              />
-              <button
-                onClick={() => void buscarPedido()}
-                disabled={buscando}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold cursor-pointer text-white disabled:opacity-50"
-                style={{ background: 'var(--brand)' }}
-              >
-                {buscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Adicionar PO
-              </button>
+            <div className="mb-2 flex w-full rounded-lg border p-0.5 text-[11px] font-bold sm:w-auto sm:inline-flex" style={{ borderColor: 'var(--hairline)' }}>
+              {([['po', 'Por número do PO'], ['fornecedor', 'Por fornecedor']] as const).map(([id, rot]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setModoBusca(id)}
+                  className="flex-1 rounded-md px-2.5 py-1.5 cursor-pointer transition-colors sm:flex-none"
+                  style={modoBusca === id
+                    ? { background: 'var(--brand)', color: '#fff' }
+                    : { color: 'var(--ink-secondary)' }}
+                >
+                  {rot}
+                </button>
+              ))}
             </div>
+
+            {modoBusca === 'po' ? (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <input
+                    value={poBusca}
+                    onChange={(e) => setPoBusca(SO_DIGITOS(e.target.value))}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void buscarPedido(); } }}
+                    inputMode="numeric"
+                    className={`${inputCls} ${poBusca ? 'pr-8' : ''}`}
+                    placeholder="Ex.: 4500001234"
+                  />
+                  {poBusca && (
+                    <button
+                      type="button"
+                      onClick={() => setPoBusca('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
+                      aria-label="Limpar"
+                    >
+                      <X className="h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => void buscarPedido()}
+                  disabled={buscando}
+                  className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-bold cursor-pointer text-white disabled:opacity-50 sm:w-auto sm:py-2"
+                  style={{ background: 'var(--brand)' }}
+                >
+                  {buscando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />} Adicionar PO
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="relative flex-1">
+                    <input
+                      list="receb-fornecedores"
+                      value={fornBusca}
+                      onChange={(e) => setFornBusca(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarFornecedor(); } }}
+                      className={`${inputCls} ${(fornBusca || fornPos !== null) ? 'pr-8' : ''}`}
+                      placeholder="Nome do fornecedor — mostra os POs em aberto"
+                    />
+                    <datalist id="receb-fornecedores">
+                      {fornecedoresCache.map((f) => <option key={f} value={f} />)}
+                    </datalist>
+                    {(fornBusca || fornPos !== null) && (
+                      <button
+                        type="button"
+                        onClick={() => { setFornBusca(''); setFornPos(null); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
+                        aria-label="Limpar busca"
+                      >
+                        <X className="h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={buscarFornecedor}
+                    className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-bold cursor-pointer text-white sm:w-auto sm:py-2"
+                    style={{ background: 'var(--brand)' }}
+                  >
+                    <Search className="h-4 w-4" /> Buscar
+                  </button>
+                </div>
+
+                {fornPos !== null && (
+                  <div className="mt-2 space-y-1.5">
+                    {!fornPos.length && (
+                      <p className="rounded-lg border border-dashed px-3 py-3 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                        Nenhum PO em aberto para esse fornecedor no cache do aparelho.
+                      </p>
+                    )}
+                    {fornPos.map((po) => {
+                      const jaNaConf = pedidos.includes(po.numero);
+                      return (
+                        <Recolhivel
+                          key={po.numero}
+                          inicialAberto={fornPos.length === 1}
+                          tom="var(--ink-muted)"
+                          titulo={<><Building2 className="mr-1 inline h-3.5 w-3.5" />PO {po.numero}</>}
+                          resumo={`${po.fornecedor} · ${po.itensPendentes} item(ns) pendente(s) · saldo ${formatQtd(po.pendenteTotal)}`}
+                          acao={
+                            <button
+                              type="button"
+                              onClick={() => void adicionarPedido(po.numero)}
+                              disabled={buscando || jaNaConf}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer text-white disabled:opacity-60"
+                              style={{ background: jaNaConf ? 'var(--status-good)' : 'var(--brand)' }}
+                            >
+                              {jaNaConf ? <><Check className="h-3.5 w-3.5" /> na conferência</> : <><Plus className="h-3.5 w-3.5" /> Adicionar PO</>}
+                            </button>
+                          }
+                        >
+                          {po.itens.map((it) => (
+                            <div key={it.linhaRef ?? it.materialCode} className="flex items-start justify-between gap-2 text-[11px]">
+                              <span className="min-w-0">
+                                <span className="block font-bold" style={{ color: 'var(--ink-primary)' }}>{it.descricao || it.materialCode}</span>
+                                <span style={{ color: 'var(--ink-muted)' }}>cód. {it.materialCode}</span>
+                              </span>
+                              <span className="shrink-0 tabular-nums" style={{ color: it.pendente > 0 ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
+                                pendente {formatQtd(it.pendente)} {it.unidade}
+                              </span>
+                            </div>
+                          ))}
+                        </Recolhivel>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
             {pedidos.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {pedidos.map((po) => (
-                  <span key={po} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-                    PO {po}
-                    <button
-                      onClick={() => setLinhas((a) => a.filter((l) => l.nroPedido !== po))}
-                      className="cursor-pointer"
-                      aria-label={`Remover PO ${po}`}
+                {pedidos.map((po, i) => {
+                  const cor = COR_PO[i % COR_PO.length];
+                  return (
+                    <span
+                      key={po}
+                      className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold"
+                      style={{ borderColor: cor, color: cor, background: `color-mix(in srgb, ${cor} 10%, transparent)` }}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+                      PO {po}
+                      <button
+                        onClick={() => setLinhas((a) => a.filter((l) => l.nroPedido !== po))}
+                        className="cursor-pointer"
+                        aria-label={`Remover PO ${po}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
             {fonte !== 'sem_pedido' && (
@@ -1633,13 +2305,35 @@ function ModalConferencia({
               </button>
             </div>
 
+            {linhas.length > 0 && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
+                <input
+                  value={filtroItens}
+                  onChange={(e) => setFiltroItens(e.target.value)}
+                  placeholder="Buscar item por descrição, código ou PO"
+                  className={`${inputCls} pl-8 ${filtroItens ? 'pr-8' : ''}`}
+                />
+                {filtroItens && (
+                  <button
+                    onClick={() => setFiltroItens('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
+                    aria-label="Limpar filtro"
+                  >
+                    <X className="h-3.5 w-3.5" style={{ color: 'var(--ink-muted)' }} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {!linhas.length && (
               <p className="rounded-lg border border-dashed px-3 py-4 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
                 Puxe um PO ou adicione itens à mão.
               </p>
             )}
 
-            {linhas.map((l, idx) => {
+            {(() => {
+              const renderItem = (l: LinhaUI, idx: number) => {
               const tipo = classificarDivergencia(l);
               const pend = pendentePedido(l.qtdPedido, l.qtdJaFornecida);
               const parcialAnt = entregaParcialAnterior(l.qtdPedido, l.qtdJaFornecida);
@@ -1663,11 +2357,10 @@ function ModalConferencia({
                     </div>
                   ) : (
                     <div className="min-w-0">
-                      <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                        {l.materialCode}
-                        {l.nroPedido && <span className="ml-2 font-medium" style={{ color: 'var(--ink-muted)' }}>PO {l.nroPedido}</span>}
+                      <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{l.descricao || l.materialCode}</p>
+                      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                        cód. {l.materialCode}{l.nroPedido ? ` · PO ${l.nroPedido}` : ''}
                       </p>
-                      <p className="text-[11px] truncate" style={{ color: 'var(--ink-muted)' }}>{l.descricao}</p>
                     </div>
                   )}
 
@@ -1693,15 +2386,24 @@ function ModalConferencia({
                         style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
                       />
                     </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                      <input type="checkbox" checked={l.conferido} onChange={(e) => setLinha(idx, { conferido: e.target.checked })} /> conferido
-                    </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }} title="Chegou parte do pendente; o resto vem em outra entrega. Não abre NC.">
-                      <input type="checkbox" checked={l.parcial} onChange={(e) => setLinha(idx, { parcial: e.target.checked })} /> parcial
-                    </label>
-                    <label className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                      <input type="checkbox" checked={l.avaria} onChange={(e) => setLinha(idx, { avaria: e.target.checked })} /> avaria
-                    </label>
+                    {([
+                      ['conferido', 'conferido', 'Contagem confere com o pendente.'],
+                      ['parcial', 'parcial', 'Chegou parte do pendente; o resto vem em outra entrega. Não abre NC.'],
+                      ['avaria', 'avaria', 'Item danificado — abre NCR.'],
+                    ] as const).map(([alvo, rot, dica]) => (
+                      <label
+                        key={alvo}
+                        className="flex items-center gap-1.5 text-[11px] font-medium cursor-pointer"
+                        style={{ color: 'var(--ink-secondary)' }}
+                        title={`${dica} Só um dos três por item.`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={l.estado === alvo}
+                          onChange={() => setEstado(idx, alvo)}
+                        /> {rot}
+                      </label>
+                    ))}
                     {tipo && (
                       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase" style={{ background: 'color-mix(in srgb, var(--status-critical) 14%, transparent)', color: 'var(--status-critical)' }}>
                         <AlertTriangle className="h-3 w-3" /> {ROTULO_DIVERGENCIA[tipo]}
@@ -1745,7 +2447,49 @@ function ModalConferencia({
                   </div>
                 </div>
               );
-            })}
+              };
+
+              const termo = filtroItens.trim().toLowerCase();
+              const casa = (l: LinhaUI) =>
+                !termo
+                || l.itemManual
+                || l.descricao.toLowerCase().includes(termo)
+                || l.materialCode.toLowerCase().includes(termo)
+                || (l.nroPedido ?? '').includes(termo);
+
+              const nadaEncontrado = (
+                <p className="rounded-lg border border-dashed px-3 py-4 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                  Nenhum item bate com “{filtroItens}”.
+                </p>
+              );
+
+              if (!agruparItens) {
+                const vis = linhas.map((l, idx) => ({ l, idx })).filter(({ l }) => casa(l));
+                if (!vis.length && linhas.length) return nadaEncontrado;
+                return vis.map(({ l, idx }) => renderItem(l, idx));
+              }
+
+              const gruposVis = gruposPorPO
+                .map((g) => ({ ...g, itens: g.itens.filter(({ l }) => casa(l)) }))
+                .filter((g) => g.itens.length);
+              if (!gruposVis.length && linhas.length) return nadaEncontrado;
+              return gruposVis.map((g) => {
+                const okG = g.itens.filter(({ l }) => l.conferido && !classificarDivergencia(l)).length;
+                const divG = g.itens.filter(({ l }) => classificarDivergencia(l)).length;
+                const cor = g.po ? COR_PO[Math.max(0, pedidos.indexOf(g.po)) % COR_PO.length] : 'var(--ink-muted)';
+                return (
+                  <Recolhivel
+                    key={g.po ?? '__sem_po__'}
+                    inicialAberto
+                    tom={cor}
+                    titulo={g.po ? `PO ${g.po}` : 'Itens fora de pedido'}
+                    resumo={`${g.itens.length} item(ns) · ${okG} ok${divG ? ` · ${divG} diverg.` : ''}`}
+                  >
+                    {g.itens.map(({ l, idx }) => renderItem(l, idx))}
+                  </Recolhivel>
+                );
+              });
+            })()}
           </div>
 
           {resumo.temNc && (
@@ -1778,10 +2522,7 @@ function ModalConferencia({
         </div>
       </ModalBody>
       <ModalFooter>
-        <button onClick={onClose} disabled={salvando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-          Cancelar
-        </button>
-        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50 sm:w-auto sm:py-2" style={{ background: 'var(--brand)' }}>
           {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
           {ed ? 'Salvar alterações' : resumo.temNc ? 'Registrar com NCR' : 'Registrar conferência'}
         </button>

@@ -254,15 +254,24 @@ export class PdfTextWriter {
 
     this.y = startY - 56;
 
-    // 3. Título Principal do Documento
-    this.page.drawText(sanitizeText(opts.title), {
-      x: MARGIN,
-      y: this.y,
-      size: 16,
-      font: this.fontBold,
-      color: PDF_COLORS.primaryNavy,
-    });
-    this.y -= 8;
+    // 3. Título Principal do Documento com ajuste dinâmico de tamanho e quebra
+    const rawTitle = sanitizeText(opts.title);
+    let titleFontSize = 16;
+    while (titleFontSize > 12 && this.fontBold.widthOfTextAtSize(rawTitle, titleFontSize) > this.contentWidth) {
+      titleFontSize -= 0.5;
+    }
+    const titleLines = wrapText(rawTitle, this.fontBold, titleFontSize, this.contentWidth);
+    for (const line of titleLines) {
+      this.page.drawText(line, {
+        x: MARGIN,
+        y: this.y,
+        size: titleFontSize,
+        font: this.fontBold,
+        color: PDF_COLORS.primaryNavy,
+      });
+      this.y -= (titleFontSize + 4);
+    }
+    this.y -= 2;
 
     // 4. Linha Divisória com Destaque
     this.page.drawRectangle({
@@ -275,14 +284,54 @@ export class PdfTextWriter {
     this.y -= 14;
   }
 
-  /** Desenha Grid Estruturado de Informações (2 ou 3 colunas) */
+  /** Desenha Grid Estruturado de Informações (2 ou 3 colunas) com suporte a fullWidth e multilinhas */
   drawInfoGrid(fields: GridField[], columns: 2 | 3 = 2) {
     if (fields.length === 0) return;
 
-    // Calcula altura necessária
     const colWidth = this.contentWidth / columns;
     const rowHeight = 32;
-    const numRows = Math.ceil(fields.length / columns);
+
+    interface LayoutItem {
+      field: GridField;
+      row: number;
+      col: number;
+      colSpan: number;
+    }
+
+    let currentRow = 0;
+    let currentCol = 0;
+    const layoutItems: LayoutItem[] = [];
+
+    for (const field of fields) {
+      if (field.fullWidth) {
+        if (currentCol > 0) {
+          currentRow++;
+          currentCol = 0;
+        }
+        layoutItems.push({
+          field,
+          row: currentRow,
+          col: 0,
+          colSpan: columns,
+        });
+        currentRow++;
+        currentCol = 0;
+      } else {
+        layoutItems.push({
+          field,
+          row: currentRow,
+          col: currentCol,
+          colSpan: 1,
+        });
+        currentCol++;
+        if (currentCol >= columns) {
+          currentRow++;
+          currentCol = 0;
+        }
+      }
+    }
+
+    const numRows = currentCol > 0 ? currentRow + 1 : currentRow;
     const boxHeight = numRows * rowHeight + 10;
 
     this.ensureSpace(boxHeight + 10);
@@ -301,10 +350,9 @@ export class PdfTextWriter {
     });
 
     // Renderiza cada campo no grid
-    fields.forEach((field, index) => {
-      const col = index % columns;
-      const row = Math.floor(index / columns);
+    layoutItems.forEach(({ field, row, col, colSpan }) => {
       const cellX = MARGIN + col * colWidth + 10;
+      const cellWidth = colSpan * colWidth - 20;
       const cellY = this.y - 12 - row * rowHeight;
 
       // Label
@@ -338,16 +386,38 @@ export class PdfTextWriter {
           color: badgeColors.fg,
         });
       } else {
-        const maxTextWidth = colWidth - 18;
-        const lines = wrapText(valor, this.fontBold, 9, maxTextWidth);
-        const displayLine = lines[0] || valor;
-        this.page.drawText(displayLine, {
-          x: cellX,
-          y: cellY - 12,
-          size: 9,
-          font: this.fontBold,
-          color: PDF_COLORS.darkText,
-        });
+        const lines = wrapText(valor, this.fontBold, 8.5, cellWidth);
+        if (lines.length > 1) {
+          this.page.drawText(lines[0], {
+            x: cellX,
+            y: cellY - 11,
+            size: 8.5,
+            font: this.fontBold,
+            color: PDF_COLORS.darkText,
+          });
+          let secondLine = lines.slice(1).join(' ');
+          if (this.fontBold.widthOfTextAtSize(secondLine, 8) > cellWidth) {
+            while (secondLine.length > 3 && this.fontBold.widthOfTextAtSize(secondLine + '...', 8) > cellWidth) {
+              secondLine = secondLine.slice(0, -1);
+            }
+            secondLine += '...';
+          }
+          this.page.drawText(secondLine, {
+            x: cellX,
+            y: cellY - 20.5,
+            size: 8,
+            font: this.fontBold,
+            color: PDF_COLORS.darkText,
+          });
+        } else {
+          this.page.drawText(lines[0] || valor, {
+            x: cellX,
+            y: cellY - 12,
+            size: 9,
+            font: this.fontBold,
+            color: PDF_COLORS.darkText,
+          });
+        }
       }
     });
 
@@ -521,6 +591,14 @@ export class PdfTextWriter {
 
     this.ensureSpace(headerHeight + rowHeight * 2);
 
+    // Ajusta proporcionalmente as colunas se a soma ultrapassar a largura útil
+    const totalHeaderWidth = headers.reduce((sum, h) => sum + h.width, 0);
+    const scale = totalHeaderWidth > this.contentWidth ? this.contentWidth / totalHeaderWidth : 1;
+    const adjustedHeaders = headers.map(h => ({
+      ...h,
+      width: h.width * scale,
+    }));
+
     // Cabeçalho da Tabela
     this.page.drawRectangle({
       x: MARGIN,
@@ -531,7 +609,7 @@ export class PdfTextWriter {
     });
 
     let currentX = MARGIN;
-    headers.forEach((h) => {
+    adjustedHeaders.forEach((h) => {
       const hText = sanitizeText(h.label);
       let textX = currentX + 6;
       if (h.align === 'center') {
@@ -578,8 +656,15 @@ export class PdfTextWriter {
       });
 
       let cellX = MARGIN;
-      headers.forEach((h, colIndex) => {
-        const cellText = sanitizeText(row[colIndex] || '-');
+      adjustedHeaders.forEach((h, colIndex) => {
+        let cellText = sanitizeText(row[colIndex] || '-');
+        const maxCellWidth = h.width - 10;
+        if (this.font.widthOfTextAtSize(cellText, 8) > maxCellWidth) {
+          while (cellText.length > 3 && this.font.widthOfTextAtSize(cellText + '...', 8) > maxCellWidth) {
+            cellText = cellText.slice(0, -1);
+          }
+          cellText = cellText + '...';
+        }
         const textWidth = this.font.widthOfTextAtSize(cellText, 8);
         let textPosX = cellX + 6;
 

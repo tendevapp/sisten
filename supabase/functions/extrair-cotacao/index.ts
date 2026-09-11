@@ -213,9 +213,15 @@ function comTimeout<T>(promise: Promise<T>, ms: number, rotulo: string): Promise
  * estruturar-cotacao/converter-markdown-ia neste projeto — `responseMimeType:
  * 'application/json'` faz o Gemini devolver JSON puro, sem cercas de código.
  */
-async function chamarGemini(markdown: string, apiKey: string, rotulo: string): Promise<ResultadoProvedor> {
+async function chamarGemini(
+  markdown: string,
+  apiKey: string,
+  rotulo: string,
+  systemPrompt = SYSTEM_PROMPT,
+  modelo = GEMINI_MODEL,
+): Promise<ResultadoProvedor> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: SYSTEM_PROMPT });
+  const model = genAI.getGenerativeModel({ model: modelo, systemInstruction: systemPrompt });
 
   let resultado;
   try {
@@ -319,7 +325,7 @@ async function chamarChatCompletions(params: {
  * `max_tokens`) e omite `temperature`, como esperado pelos modelos mais
  * recentes da OpenAI.
  */
-async function chamarOpenAI(markdown: string, apiKey: string): Promise<ResultadoProvedor> {
+async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://api.openai.com/v1/chat/completions',
     apiKey,
@@ -327,7 +333,7 @@ async function chamarOpenAI(markdown: string, apiKey: string): Promise<Resultado
     body: {
       model: OPENAI_MODEL,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: markdown },
       ],
       response_format: { type: 'json_object' },
@@ -351,7 +357,7 @@ async function chamarOpenAI(markdown: string, apiKey: string): Promise<Resultado
 }
 
 /** Primeiro fallback, entre o Gemini e a OpenAI. */
-async function chamarOpenRouter(markdown: string, apiKey: string): Promise<ResultadoProvedor> {
+async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://openrouter.ai/api/v1/chat/completions',
     apiKey,
@@ -363,7 +369,7 @@ async function chamarOpenRouter(markdown: string, apiKey: string): Promise<Resul
     body: {
       model: OPENROUTER_MODEL,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: markdown },
       ],
       temperature: 0,
@@ -399,12 +405,14 @@ async function extrairComFallback(
   geminiKey2: string | undefined,
   openrouterKey: string | undefined,
   openaiKey: string | undefined,
+  systemPrompt = SYSTEM_PROMPT,
+  modeloGemini = GEMINI_MODEL,
 ): Promise<ResultadoProvedor> {
   const erros: string[] = [];
 
   if (geminiKey1) {
     try {
-      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1');
+      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1', systemPrompt, modeloGemini);
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`Gemini Key 1 (${erro.codigo}): ${erro.message}`);
@@ -414,7 +422,7 @@ async function extrairComFallback(
 
   if (geminiKey2) {
     try {
-      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2');
+      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2', systemPrompt, modeloGemini);
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`Gemini Key 2 (${erro.codigo}): ${erro.message}`);
@@ -424,7 +432,7 @@ async function extrairComFallback(
 
   if (openrouterKey) {
     try {
-      return await chamarOpenRouter(markdown, openrouterKey);
+      return await chamarOpenRouter(markdown, openrouterKey, systemPrompt);
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
@@ -434,7 +442,7 @@ async function extrairComFallback(
 
   if (openaiKey) {
     try {
-      return await chamarOpenAI(markdown, openaiKey);
+      return await chamarOpenAI(markdown, openaiKey, systemPrompt);
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
@@ -511,7 +519,27 @@ Deno.serve(async (req) => {
       throw new ErroExtracao('ENTRADA_GRANDE', `Cole um documento por vez (máximo de ${(MAX_CHARS / 1000).toFixed(0)} mil caracteres).`, 413);
     }
 
-    const resultado = await extrairComFallback(markdown, geminiKey1, geminiKey2, openrouterKey, openaiKey);
+    // Prompt vivo: o que o admin editou em Gestão de APIs vale a partir da
+    // próxima chamada, sem redeploy.
+    let systemPrompt = SYSTEM_PROMPT;
+    let modeloGemini = GEMINI_MODEL;
+    let versaoPrompt = 1;
+    try {
+      const { data: promptRow } = await supabaseUser
+        .from('ops_ia_prompts')
+        .select('prompt, parametros, versao, modelo')
+        .eq('chave', 'extrair-cotacao')
+        .eq('ativo', true)
+        .maybeSingle();
+
+      if (promptRow?.prompt?.trim()) systemPrompt = promptRow.prompt.trim();
+      if (promptRow?.modelo?.trim()) modeloGemini = promptRow.modelo.trim();
+      if (typeof promptRow?.versao === 'number') versaoPrompt = promptRow.versao;
+    } catch (errPrompt) {
+      console.warn('Falha ao carregar ops_ia_prompts, usando SYSTEM_PROMPT padrão:', errPrompt);
+    }
+
+    const resultado = await extrairComFallback(markdown, geminiKey1, geminiKey2, openrouterKey, openaiKey, systemPrompt, modeloGemini);
 
     const propostas = extrairJson(resultado.content, resultado.truncado).map((p: any) => ({ ...p, Arquivo_Origem: p?.Arquivo_Origem ?? arquivoOrigem }));
     const totalItens = propostas.reduce((acc: number, p: any) => acc + (Array.isArray(p.itens) ? p.itens.length : 0), 0);
@@ -552,6 +580,7 @@ Deno.serve(async (req) => {
       duracao_ms: Date.now() - inicio,
       custo_usd: resultado.custoUsd,
       custo_brl: typeof resultado.custoUsd === 'number' ? resultado.custoUsd * TAXA_DOLAR_REAL : null,
+      versao_prompt: versaoPrompt,
     });
   } catch (e) {
     const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);

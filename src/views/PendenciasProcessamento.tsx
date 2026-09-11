@@ -443,9 +443,11 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
     const q = searchQuery.toLowerCase().trim();
 
     return grupos.map(g => {
-      // 1. Filtro de Status
+      // 1. Filtro de Status — no nível do chamado, some quem não tem NADA a
+      //    mostrar na aba. O filtro por linha (passo 6) é o que de fato tira a
+      //    nota já baixada de "Com Pendências" e a nota pendente de "Concluídos".
       if (statusFilter === 'pendentes' && g.concluidas === g.total) return null;
-      if (statusFilter === 'concluidos' && g.concluidas < g.total) return null;
+      if (statusFilter === 'concluidos' && g.concluidas === 0) return null;
 
       // 2. Filtro de Modelo
       if (modeloFilter.size > 0 && !modeloFilter.has(rotuloModelo(g.modelo))) return null;
@@ -471,6 +473,12 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
 
       // 6. Linhas correspondentes dentro do chamado
       const matchingLines = g.linhas.filter(l => {
+        // Status da linha: "Com Pendências" não mostra o que já foi baixado;
+        // "Concluídos" mostra só as baixadas; "Todos" mostra tudo.
+        const baixada = l.status === 'concluido';
+        if (statusFilter === 'pendentes' && baixada) return false;
+        if (statusFilter === 'concluidos' && !baixada) return false;
+
         // Fornecedor
         if (fornecedorFilter.size > 0) {
           const forn = (l.nome_fornecedor || l.fornecedor || '').trim();

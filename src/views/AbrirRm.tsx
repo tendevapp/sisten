@@ -33,7 +33,7 @@ import {
   ChevronDown, ChevronRight, Copy, Download, FileSpreadsheet, Hash, History, Info,
   Link2, Loader2, MessageSquare, MinusCircle, PackageSearch, Pencil, PlusCircle,
   RefreshCw, Search, Square, Tag, Upload, User, HelpCircle, Bug, Lightbulb,
-  Filter, ClipboardCheck, RotateCcw, Wrench, type LucideIcon,
+  Filter, ClipboardCheck, RotateCcw, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import type {
@@ -311,6 +311,17 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   // voltar do SAP — por digitação avulsa ou pela planilha reimportada.
   const [aba, setAba] = useState<'para_abrir' | 'abertas'>('para_abrir');
   const [buscaAbertas, setBuscaAbertas] = useState('');
+  const [itensExpandidosAbertas, setItensExpandidosAbertas] = useState<Set<string>>(new Set());
+
+  const alternarItensAbertas = (id: string) => {
+    setItensExpandidosAbertas(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const [importandoRm, setImportandoRm] = useState(false);
   const [arrastandoRm, setArrastandoRm] = useState(false);
   const inputArquivoRmRef = useRef<HTMLInputElement>(null);
@@ -553,11 +564,19 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     let lista = requests.filter(r => exportacaoVigentePorRequest.has(r.id));
     if (buscaAbertas.trim()) {
       const termo = buscaAbertas.toLowerCase().trim();
-      lista = lista.filter(r =>
-        r.number.toLowerCase().includes(termo) ||
-        (r.solicitante_name || '').toLowerCase().includes(termo) ||
-        (r.linked_rm_number || '').toLowerCase().includes(termo),
-      );
+      lista = lista.filter(r => {
+        if (r.number.toLowerCase().includes(termo)) return true;
+        if ((r.solicitante_name || '').toLowerCase().includes(termo)) return true;
+        if ((r.linked_rm_number || '').toLowerCase().includes(termo)) return true;
+        if ((r.justificativa || '').toLowerCase().includes(termo)) return true;
+        const itens = itensPorRequest[r.id] || [];
+        return itens.some(
+          it =>
+            (it.description || '').toLowerCase().includes(termo) ||
+            (it.sap_code || '').toLowerCase().includes(termo) ||
+            (it.observation || '').toLowerCase().includes(termo),
+        );
+      });
     }
     // Sem RM primeiro — é o que falta resolver.
     return [...lista].sort((a, b) => {
@@ -566,7 +585,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       if (aSemRm !== bSemRm) return aSemRm - bSemRm;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [requests, exportacaoVigentePorRequest, buscaAbertas]);
+  }, [requests, exportacaoVigentePorRequest, buscaAbertas, itensPorRequest]);
 
   const abertasComRm = useMemo(() => abertas.filter(r => r.linked_rm_number).length, [abertas]);
   const abertasSemRm = abertas.length - abertasComRm;
@@ -1925,15 +1944,25 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       )}
 
       {/* Busca */}
-      <div className="relative">
+      <div className="relative max-w-lg">
         <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
         <input
           value={buscaAbertas}
           onChange={e => setBuscaAbertas(e.target.value)}
-          placeholder="Número, solicitante ou RM"
-          className="w-full max-w-md pl-9 pr-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]"
+          placeholder="Número, solicitante, RM, material ou código SAP"
+          className="w-full pl-9 pr-8 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]"
           style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
         />
+        {buscaAbertas && (
+          <button
+            type="button"
+            onClick={() => setBuscaAbertas('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] p-0.5 rounded cursor-pointer"
+            title="Limpar busca"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Lista de Abertas */}
@@ -1954,11 +1983,14 @@ export default function AbrirRm({ user, onNavigate }: Props) {
               const vigente = exportacaoVigentePorRequest.get(r.id);
               const lote = vigente ? loteById.get(vigente.exportacao_id) : undefined;
               const temRm = !!r.linked_rm_number;
+              const estaExpandido = itensExpandidosAbertas.has(r.id) || buscaAbertas.trim().length > 0;
+              const itensExibidos = estaExpandido ? itens : itens.slice(0, 3);
+              const temMaisItens = itens.length > 3;
 
               return (
                 <li
                   key={r.id}
-                  className="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-3 border-b last:border-b-0"
+                  className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-3 py-3 border-b last:border-b-0 transition-colors hover:bg-[var(--surface-sunken)]/30"
                   style={{ borderColor: 'var(--hairline)' }}
                 >
                   <div className="min-w-0 flex-1">
@@ -1978,6 +2010,14 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                         {temRm ? <Link2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
                         {temRm ? `RM ${r.linked_rm_number}` : 'Sem RM'}
                       </span>
+                      {itens.some(it => it.is_generic) && (
+                        <span
+                          className="inline-flex items-center text-[10px] font-black uppercase px-2 py-0.5 rounded shadow-2xs bg-rose-100 text-rose-900 border border-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:border-rose-700"
+                          title="Esta solicitação possui item(ns) genérico(s)"
+                        >
+                          Item Genérico
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] mt-1" style={{ color: 'var(--ink-secondary)' }}>
@@ -1986,20 +2026,105 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                         {requisitanteRm(r.solicitante_name)}
                       </span>
                       <span>{nomeSetor(r.solicitante_sector_id)}</span>
-                      <span>{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
+                      <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                        {itens.length} {itens.length === 1 ? 'item' : 'itens'}
+                      </span>
                       {lote && (
                         <span>
                           Exportada em {lote.arquivo} · {formatDateTimeBR(vigente!.created_at)}
                         </span>
                       )}
                     </div>
+
+                    {/* Exibição detalhada dos itens da solicitação */}
+                    {itens.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {itensExibidos.map((it, idx) => {
+                          const termo = buscaAbertas.trim().toLowerCase();
+                          const bateuBusca = termo && (
+                            (it.description || '').toLowerCase().includes(termo) ||
+                            (it.sap_code || '').toLowerCase().includes(termo) ||
+                            (it.observation || '').toLowerCase().includes(termo)
+                          );
+
+                          return (
+                            <div
+                              key={it.id || idx}
+                              className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+                                bateuBusca
+                                  ? 'border-amber-400 bg-amber-50/90 dark:border-amber-700 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/40'
+                                  : 'border-[var(--hairline)] bg-[var(--surface-sunken)] text-[var(--ink-primary)]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                {it.sap_code ? (
+                                  <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--brand)] border border-[var(--hairline)] shrink-0">
+                                    {it.sap_code}
+                                  </span>
+                                ) : (
+                                  <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0 uppercase">
+                                    Sem Cód. SAP
+                                  </span>
+                                )}
+                                {it.is_generic && (
+                                  <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200 border border-rose-300 dark:border-rose-800 shrink-0 uppercase">
+                                    Genérico
+                                  </span>
+                                )}
+                                <span
+                                  className="font-medium text-[12px] truncate"
+                                  title={it.description}
+                                >
+                                  {it.description}
+                                </span>
+                                {it.observation && (
+                                  <span
+                                    className="text-[10px] text-[var(--ink-muted)] truncate max-w-[240px] hidden md:inline"
+                                    title={it.observation}
+                                  >
+                                    ({it.observation})
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0 text-[11px] font-semibold text-[var(--ink-secondary)]">
+                                <span className="font-mono bg-[var(--surface-raised)] px-1.5 py-0.5 rounded border border-[var(--hairline)]">
+                                  {it.quantity} {it.unit}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {temMaisItens && (
+                          <button
+                            type="button"
+                            onClick={() => alternarItensAbertas(r.id)}
+                            className="text-[11px] font-bold cursor-pointer hover:underline inline-flex items-center gap-1 pt-0.5"
+                            style={{ color: 'var(--brand)' }}
+                          >
+                            {estaExpandido ? (
+                              <>
+                                <ChevronDown className="h-3 w-3 rotate-180" /> Recolher itens
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="h-3 w-3" /> + {itens.length - 3} {itens.length - 3 === 1 ? 'outro item' : 'outros itens'} nesta solicitação (ver todos)
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <CampoRmVinculo
-                    key={`${r.id}-${r.linked_rm_number || ''}`}
-                    valor={r.linked_rm_number || ''}
-                    onSalvar={novo => vincularRm(r, novo)}
-                  />
+                  <div className="shrink-0 self-start sm:self-center pt-1 sm:pt-0">
+                    <CampoRmVinculo
+                      key={`${r.id}-${r.linked_rm_number || ''}`}
+                      valor={r.linked_rm_number || ''}
+                      onSalvar={novo => vincularRm(r, novo)}
+                    />
+                  </div>
                 </li>
               );
             })}

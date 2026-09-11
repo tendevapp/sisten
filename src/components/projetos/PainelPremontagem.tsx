@@ -39,9 +39,12 @@ import { Campo, inputCls } from './campos';
 import CadastroItensDesconsiderados from './CadastroItensDesconsiderados';
 import { formatDateTimeBR, formatInt, formatQtd } from '../../lib/format';
 import { PREFIXO, TRAMOS, type Tramo } from '../../lib/projetos';
-import { subconjuntosDoTramo, type ConsumoItem } from '../../lib/projetosBom';
+import { subconjuntosDoTramo, type ArvoreBom, type ConsumoItem } from '../../lib/projetosBom';
 import { zonasDoTramo, zonaPorId, zonasPendentes, consumoDaZona, rotuloTramoComZona, type ZonaDef, type ZonaId } from '../../lib/projetosZonas';
-import { exportarRomaneioExcel, exportarRomaneioPdf } from '../../lib/projetosRomaneioExport';
+import {
+  exportarRomaneio, fonteDaOrdem,
+  type RomaneioFonte, type RomaneioFormato, type RomaneioVisao,
+} from '../../lib/projetosRomaneioExport';
 import {
   concluirPremontagem, confirmarSeparacaoPremontagem, criarOrdemPremontagem,
   marcarItemSeparado, proximoCodigo, ProjSaldoInsuficienteError,
@@ -160,6 +163,26 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
   const semCadastro = useMemo(
     () => romaneio.flatMap((g) => g.itens).filter((i) => !i.itemId),
     [romaneio],
+  );
+
+  /** Rascunho do romaneio no formato que as exportações consomem — antes da ordem existir. */
+  const fonteRascunho = useMemo<RomaneioFonte>(
+    () => ({
+      codigo: 'RASCUNHO',
+      tramo,
+      zona: zona?.id ?? null,
+      quantidade_kits: kits,
+      criado_por_nome: user.name,
+      itens: romaneio.flatMap((g) =>
+        g.itens.map((i) => ({
+          item_id: i.itemId ?? '',
+          subconjunto: g.nome === 'Avulsos do tramo' ? null : g.nome,
+          localizador: i.localizador,
+          qtd_total: i.total,
+        })),
+      ),
+    }),
+    [tramo, zona, kits, user.name, romaneio],
   );
 
   const limpar = () => { setAlvos([]); setObservacao(''); setFaltantes([]); };
@@ -340,22 +363,6 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                    <button
-                      onClick={() => exportarRomaneioExcel(o, arvore, itemPorId)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer border hover:opacity-80"
-                      style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
-                      title="Exportar romaneio em Excel (por níveis + consolidado)"
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
-                    </button>
-                    <button
-                      onClick={() => void exportarRomaneioPdf(o, arvore, itemPorId)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer border hover:opacity-80"
-                      style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
-                      title="Exportar romaneio em PDF (por níveis + consolidado)"
-                    >
-                      <FileText className="h-3.5 w-3.5" /> PDF
-                    </button>
                     {podeLancar && o.status === 'em_processamento' && !o.separacao_confirmada_em && (
                       <button
                         onClick={() => setOrdemSeparar(o)}
@@ -379,6 +386,9 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                       {prontos}/{total} apontado(s)
                     </span>
                   </div>
+                </div>
+                <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--hairline)' }}>
+                  <ExportarRomaneioBotoes fonte={fonteDaOrdem(o)} arvore={arvore} itemPorId={itemPorId} />
                 </div>
               </div>
             );
@@ -537,6 +547,22 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                 </div>
               )}
 
+              {kits > 0 && (
+                <div className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)' }}>
+                  <ExportarRomaneioBotoes
+                    fonte={fonteRascunho}
+                    arvore={arvore}
+                    itemPorId={itemPorId}
+                    disabled={semCadastro.length > 0}
+                  />
+                  {semCadastro.length > 0 && (
+                    <p className="text-[11px] mt-2" style={{ color: 'var(--abc-c)' }}>
+                      Resolva os {semCadastro.length} item(ns) sem cadastro para liberar a exportação.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <Campo rotulo="Observação (opcional)">
                 <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls()} />
               </Campo>
@@ -602,9 +628,27 @@ function ModalSeparacao({
   const [itens, setItens] = useState<ProjOrdemItem[]>(ordem.itens ?? []);
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  /** Passo de revisão: lista as divergências de quantidade e espera o "confirmar mesmo assim". */
+  const [revisao, setRevisao] = useState(false);
 
   const separados = itens.filter((i) => i.separado).length;
   const faltam = itens.length - separados;
+
+  /** Itens com check cuja quantidade separada difere do previsto — para a formatação condicional e o passo de revisão. */
+  const divergencias = useMemo(
+    () =>
+      itens
+        .filter((i) => i.separado && i.qtd_separada !== i.qtd_total)
+        .map((i) => ({
+          id: i.id,
+          pn: itemPorId.get(i.item_id)?.part_number ?? i.item_id,
+          descricao: itemPorId.get(i.item_id)?.descricao || itemPorId.get(i.item_id)?.description || '',
+          previsto: i.qtd_total,
+          separado: i.qtd_separada,
+          delta: i.qtd_separada - i.qtd_total,
+        })),
+    [itens, itemPorId],
+  );
 
   const alternar = async (item: ProjOrdemItem, qtd: number) => {
     setMarcandoId(item.id);
@@ -625,7 +669,12 @@ function ModalSeparacao({
     setItens((atual) => atual.map((i) => (i.id === item.id ? { ...i, qtd_separada: qtd } : i)));
   };
 
+  const tomDivergencia = (delta: number) => (delta > 0 ? 'var(--abc-b)' : 'var(--abc-c)');
+  const rotuloDelta = (delta: number) => (delta > 0 ? `+${formatQtd(delta)}` : `−${formatQtd(Math.abs(delta))}`);
+
   const confirmar = async () => {
+    // Passo 1: quantidade separada ≠ prevista → revisar as diferenças antes de debitar.
+    if (divergencias.length > 0 && !revisao) { setRevisao(true); return; }
     if (faltam > 0) {
       const ok = window.confirm(
         `${faltam} de ${itens.length} item(ns) ainda sem check — eles NÃO serão debitados e ficam fora do kit. Confirmar mesmo assim?`,
@@ -652,40 +701,79 @@ function ModalSeparacao({
       <ModalHeader onClose={() => !confirmando && onCancelar()}>
         <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Separação física — {ordem.codigo}</h3>
         <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-          Marque cada item conforme separar na bancada. O débito só acontece ao confirmar — pode ser parcial.
+          {revisao
+            ? 'Confira as diferenças de quantidade — o débito usa o que foi separado.'
+            : 'Marque cada item conforme separar na bancada. O débito só acontece ao confirmar — pode ser parcial.'}
         </p>
       </ModalHeader>
 
       <ModalBody>
-        <div className="space-y-3">
-          <p className="text-xs font-bold" style={{ color: separados === itens.length ? 'var(--abc-a)' : 'var(--abc-b)' }}>
-            {separados}/{itens.length} separado(s)
-          </p>
-          <div className="rounded-lg border max-h-[50vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
-            <table className="w-full text-xs">
-              <tbody>
-                {itens.map((oi) => {
-                  const item = itemPorId.get(oi.item_id);
-                  return (
-                    <tr key={oi.id} className="border-b" style={{ borderColor: 'var(--hairline)' }}>
-                      <td className="px-3 py-2 w-10">
-                        <button
-                          onClick={() => void alternar(oi, oi.qtd_separada || oi.qtd_total)}
-                          disabled={marcandoId === oi.id}
-                          className="h-5 w-5 rounded border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
-                          style={{ borderColor: oi.separado ? 'var(--abc-a)' : 'var(--hairline)', background: oi.separado ? 'var(--abc-a)' : 'transparent' }}
-                          aria-label={oi.separado ? 'Desmarcar' : 'Marcar separado'}
-                        >
-                          {marcandoId === oi.id ? <Loader2 className="h-3 w-3 animate-spin" /> : oi.separado && <Check className="h-3.5 w-3.5 text-white" />}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2">
-                        <p className="font-bold" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
+        {revisao ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-300 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/20">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                <strong>{divergencias.length}</strong> item(ns) com quantidade diferente do previsto. O débito no almoxarifado
+                usa a quantidade <strong>separada</strong>, não a prevista. Confira e confirme.
+              </p>
+            </div>
+            <ul className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {divergencias.map((d) => (
+                <li key={d.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+                  <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{d.pn}</p>
+                  {d.descricao && <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{d.descricao}</p>}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums">
+                    <span style={{ color: 'var(--ink-muted)' }}>Previsto <strong style={{ color: 'var(--ink-secondary)' }}>{formatQtd(d.previsto)}</strong></span>
+                    <span style={{ color: 'var(--ink-muted)' }}>Separado <strong style={{ color: 'var(--ink-primary)' }}>{formatQtd(d.separado)}</strong></span>
+                    <span className="px-1.5 py-0.5 rounded font-extrabold" style={{ background: tomDivergencia(d.delta), color: '#fff' }}>
+                      {rotuloDelta(d.delta)} {d.delta > 0 ? 'a mais' : 'a menos'}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs font-bold" style={{ color: separados === itens.length ? 'var(--abc-a)' : 'var(--abc-b)' }}>
+              {separados}/{itens.length} separado(s)
+              {divergencias.length > 0 && (
+                <span style={{ color: 'var(--abc-b)' }}> · {divergencias.length} com quantidade diferente do previsto</span>
+              )}
+            </p>
+            <ul className="rounded-lg border max-h-[55vh] overflow-y-auto" style={{ borderColor: 'var(--hairline)' }}>
+              {itens.map((oi) => {
+                const item = itemPorId.get(oi.item_id);
+                const delta = oi.separado ? oi.qtd_separada - oi.qtd_total : 0;
+                const tom = oi.separado && delta !== 0 ? tomDivergencia(delta) : null;
+                return (
+                  <li key={oi.id} className="flex flex-col gap-2 p-3 border-b last:border-b-0 sm:flex-row sm:items-start" style={{ borderColor: 'var(--hairline)' }}>
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <button
+                        onClick={() => void alternar(oi, oi.qtd_separada || oi.qtd_total)}
+                        disabled={marcandoId === oi.id}
+                        className="h-6 w-6 shrink-0 rounded border flex items-center justify-center cursor-pointer transition-colors disabled:opacity-50"
+                        style={{ borderColor: oi.separado ? 'var(--abc-a)' : 'var(--hairline)', background: oi.separado ? 'var(--abc-a)' : 'transparent' }}
+                        aria-label={oi.separado ? 'Desmarcar' : 'Marcar separado'}
+                      >
+                        {marcandoId === oi.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : oi.separado && <Check className="h-4 w-4 text-white" />}
+                      </button>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{item?.part_number ?? oi.item_id}</p>
                         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                          {item?.descricao || item?.description || '—'}{oi.localizador ? ` · ${oi.localizador}` : ''} · previsto {formatQtd(oi.qtd_total)}
+                          {item?.descricao || item?.description || '—'}{oi.localizador ? ` · ${oi.localizador}` : ''}
                         </p>
-                      </td>
-                      <td className="px-3 py-2 w-24 text-right">
+                        <span
+                          className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold tabular-nums tracking-wide"
+                          style={{ background: 'var(--brand)', color: '#fff' }}
+                        >
+                          PREVISTO = {formatQtd(oi.qtd_total)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="pl-9 sm:pl-0 sm:w-28 shrink-0">
+                      <div className="flex items-center gap-2 sm:justify-end">
+                        <span className="text-[10px] font-bold uppercase tracking-wide sm:hidden" style={{ color: 'var(--ink-muted)' }}>Separado</span>
                         <input
                           value={oi.separado ? oi.qtd_separada : ''}
                           onChange={(e) => {
@@ -696,32 +784,56 @@ function ModalSeparacao({
                           disabled={!oi.separado}
                           inputMode="decimal"
                           placeholder={oi.separado ? undefined : '—'}
-                          className="w-full rounded border px-2 py-1 text-xs text-right tabular-nums font-bold focus:outline-2 disabled:opacity-40"
-                          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
+                          className="w-24 sm:w-full rounded border px-2 py-1.5 text-xs text-right tabular-nums font-bold focus:outline-2 disabled:opacity-40"
+                          style={{ borderColor: tom ?? 'var(--hairline)', background: 'var(--surface-raised)', color: tom ?? 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
                         />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      {oi.separado && delta !== 0 && (
+                        <p className="mt-1 text-[10px] font-extrabold tabular-nums text-right" style={{ color: tom! }}>
+                          {rotuloDelta(delta)} vs previsto
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        </div>
+        )}
       </ModalBody>
 
       <ModalFooter>
-        <button onClick={onCancelar} disabled={confirmando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-          Fechar
-        </button>
-        <button
-          onClick={() => void confirmar()}
-          disabled={confirmando || separados === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50"
-          style={{ background: 'var(--brand)' }}
-        >
-          {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-          Confirmar separação e debitar
-        </button>
+        {revisao ? (
+          <>
+            <button onClick={() => setRevisao(false)} disabled={confirmando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+              Voltar e ajustar
+            </button>
+            <button
+              onClick={() => void confirmar()}
+              disabled={confirmando}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50"
+              style={{ background: 'var(--abc-b)' }}
+            >
+              {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              Confirmar diferenças e debitar
+            </button>
+          </>
+        ) : (
+          <>
+            <button onClick={onCancelar} disabled={confirmando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+              Fechar
+            </button>
+            <button
+              onClick={() => void confirmar()}
+              disabled={confirmando || separados === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50"
+              style={{ background: 'var(--brand)' }}
+            >
+              {confirmando ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+              Confirmar separação e debitar
+            </button>
+          </>
+        )}
       </ModalFooter>
     </Modal>
   );
@@ -831,6 +943,78 @@ function ModalApontamento({
         </button>
       </ModalFooter>
     </Modal>
+  );
+}
+
+/**
+ * As duas visões do romaneio, cada uma em Excel e PDF:
+ *  - "Por BOM" — níveis pai/filho como a estrutura indenta;
+ *  - "Por part number" — duplicatas somadas, uma linha por peça, para separar.
+ * Serve tanto uma ordem gravada quanto o rascunho da tela de abertura.
+ */
+function ExportarRomaneioBotoes({
+  fonte, arvore, itemPorId, disabled,
+}: {
+  fonte: RomaneioFonte;
+  arvore: ArvoreBom;
+  itemPorId: Map<string, ProjItem>;
+  disabled?: boolean;
+}) {
+  const toast = useToast();
+  const [ocupado, setOcupado] = useState(false);
+
+  const baixar = async (visao: RomaneioVisao, formato: RomaneioFormato) => {
+    setOcupado(true);
+    try {
+      await exportarRomaneio(fonte, arvore, itemPorId, visao, formato);
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível exportar o romaneio.');
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const grupos: { visao: RomaneioVisao; rotulo: string }[] = [
+    { visao: 'bom', rotulo: 'Por BOM' },
+    { visao: 'part-number', rotulo: 'Por part number' },
+  ];
+
+  const botaoCls =
+    'inline-flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer border hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed';
+
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wide mb-1.5" style={{ color: 'var(--ink-muted)' }}>
+        Exportar romaneio
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {grupos.map((g) => (
+          <div key={g.visao} className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
+            <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--ink-secondary)' }}>{g.rotulo}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void baixar(g.visao, 'excel')}
+                disabled={disabled || ocupado}
+                className={botaoCls}
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                title={`${g.rotulo} — Excel`}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" /> Excel
+              </button>
+              <button
+                onClick={() => void baixar(g.visao, 'pdf')}
+                disabled={disabled || ocupado}
+                className={botaoCls}
+                style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                title={`${g.rotulo} — PDF`}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0" /> PDF
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -100,9 +100,7 @@ export default function ItemFilaRow({
           {item.status === 'processando' && item.iniciadoEm !== undefined && (
             <>
               {' · '}<CronometroAoVivo iniciadoEm={item.iniciadoEm} />
-              {/* Modelo real só se sabe quando a Edge Function responde — a única coisa
-                  conhecida de antemão é a via (local, determinística, ou IA/OCR). */}
-              {(item.formato === 'pdf' || item.formato === 'imagem') && ' · IA (OCR)'}
+              {item.formato === 'pdf' ? ' · Extraindo texto' : item.formato === 'imagem' ? ' · IA (OCR)' : ' · Local'}
             </>
           )}
           {item.resultado && (
@@ -133,7 +131,7 @@ export default function ItemFilaRow({
           </button>
         )}
 
-        {/* Botão de Ver Arquivo para arquivo recém-carregado (aguardando conversão) */}
+        {/* Botão de Ver Arquivo quando tem o arquivo mas ainda não foi convertido */}
         {!item.resultado && item.file && (
           <button
             type="button"
@@ -146,28 +144,16 @@ export default function ItemFilaRow({
           </button>
         )}
 
-        {/* Botão de Preview do Markdown/Documento para arquivo já concluído */}
+        {/* Botão Ver md quando o arquivo já foi convertido */}
         {item.resultado && (
           <button
             type="button"
             onClick={onVer}
-            title="Visualizar Markdown e documento lado a lado"
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 transition-colors"
+            title="Visualizar o Markdown gerado"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 transition-colors shadow-2xs"
           >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
-        )}
-
-        {/* Botão de Converter Individual quando está aguardando */}
-        {item.status === 'aguardando' && item.file && onConverter && (
-          <button
-            type="button"
-            onClick={onConverter}
-            title="Converter este arquivo agora"
-            className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50 transition-colors"
-          >
-            <Play className="h-3 w-3 fill-current" />
-            Converter
+            <FileText className="h-3.5 w-3.5" />
+            <span>Ver md</span>
           </button>
         )}
 

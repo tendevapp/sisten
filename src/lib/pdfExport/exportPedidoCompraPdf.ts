@@ -7,7 +7,7 @@
  */
 
 import { createDoc, PdfTextWriter, downloadPdf } from './core';
-import { formatarCnpj } from '../cotacoes';
+import { formatarCnpj, nomeFornecedorCurto } from '../cotacoes';
 import type { PedidoFornecedor } from '../pedidoCompra';
 
 const brl = (v: number | null | undefined) =>
@@ -19,8 +19,10 @@ export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProc
   const { doc, font, fontBold, logo } = await createDoc();
   const writer = new PdfTextWriter(doc, font, fontBold, logo);
 
+  const fornecedorTitulo = nomeFornecedorCurto(pedido.fornecedorRazaoSocial) || pedido.fornecedorRazaoSocial;
+
   writer.drawDocumentHeader({
-    title: `Pedido de Compra — ${pedido.fornecedorRazaoSocial}`,
+    title: `Pedido de Compra — ${fornecedorTitulo}`,
     formCode: 'FRM.SUP-0007 (Rev. 00)',
     protocol: numeroProcesso,
   });
@@ -50,12 +52,12 @@ export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProc
   writer.drawSectionHeader('Itens do pedido', pedido.itens.length);
 
   const tableHeaders = [
-    { label: 'ITEM / DESCRIÇÃO', width: 235, align: 'left' as const },
-    { label: 'RI', width: 55, align: 'left' as const },
-    { label: 'MARCA', width: 70, align: 'left' as const },
+    { label: 'ITEM / DESCRIÇÃO', width: 200, align: 'left' as const },
+    { label: 'RI', width: 45, align: 'center' as const },
+    { label: 'MARCA', width: 65, align: 'left' as const },
     { label: 'QTD / UND', width: 65, align: 'center' as const },
-    { label: 'UNIT.', width: 65, align: 'right' as const },
-    { label: 'TOTAL', width: 65, align: 'right' as const },
+    { label: 'UNIT.', width: 70, align: 'right' as const },
+    { label: 'TOTAL', width: 70, align: 'right' as const },
   ];
 
   const tableRows = pedido.itens.map(it => [
@@ -71,7 +73,7 @@ export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProc
 
   writer.drawCallout(
     'Totais',
-    `Subtotal dos itens: ${brl(pedido.subtotal)}${pedido.valorFrete ? ` · Frete: ${brl(pedido.valorFrete)}` : ''} · Total do pedido: ${brl(pedido.total)}`,
+    `Subtotal dos itens: ${brl(pedido.subtotal)}${pedido.valorFrete ? `   |   Frete: ${brl(pedido.valorFrete)}` : ''}   |   Total do pedido: ${brl(pedido.total)}`,
   );
 
   writer.drawSignatures([

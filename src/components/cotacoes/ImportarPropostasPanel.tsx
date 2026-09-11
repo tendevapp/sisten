@@ -30,9 +30,10 @@ import ConfirmDialog from '../ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import {
   ACCEPT_CONVERSOR, detectarFormato, converterArquivoParaMarkdown, consolidarMarkdown,
-  estimarTokens, ConversaoNaoSuportadaError,
+  estimarTokens, ConversaoNaoSuportadaError, type ResultadoConversao,
 } from '../../lib/markdownConvert';
 import { converterComIA, registrarConversaoLocal, buscarUltimaConversaoPorArquivo } from '../../lib/converterMarkdownApi';
+import { converterPdfNativoParaMarkdown } from '../../lib/pdfNativeExtract';
 import { buscarPropostasPorArquivo, buscarPropostasPorNomeArquivo, type PropostaJaExtraida } from '../../lib/cotacoesApi';
 import { propostaParaDraft } from '../../lib/cotacoes';
 import { formatDuration, formatCustoBrl, formatModelo } from '../../lib/format';
@@ -113,6 +114,7 @@ export default function ImportarPropostasPanel({
   const idReselecaoRef = useRef<string | null>(null);
   const restauradoRef = useRef(false);
 
+
   // Cronômetro local para o botão "Extrair cotação com IA" — mesmo padrão do
   // ColarMarkdownPanel, ligado ao `processando` vindo do pai.
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -187,9 +189,33 @@ export default function ImportarPropostasPanel({
 
   async function processarItem(item: ItemFila) {
     if (!item.file) return;
-    const viaIA = item.formato === 'pdf' || item.formato === 'imagem';
     try {
-      const resultado = viaIA ? await converterComIA(item.file) : await converterArquivoParaMarkdown(item.file);
+      let resultado: ResultadoConversao;
+      let viaIA = false;
+
+      if (item.formato === 'pdf') {
+        // Tenta primeiro a extração nativa no navegador (sem IA, custo R$ 0, instantâneo)
+        const resultadoNativo = await converterPdfNativoParaMarkdown(item.file).catch(err => {
+          console.warn('Extração nativa de PDF não aplicável, recorrendo à IA OCR:', err);
+          return null;
+        });
+
+        if (resultadoNativo) {
+          resultado = resultadoNativo;
+          viaIA = false;
+        } else {
+          // Fallback para IA (OCR) caso o PDF seja escaneado ou não tenha camada de texto vetorial
+          resultado = await converterComIA(item.file);
+          viaIA = true;
+        }
+      } else if (item.formato === 'imagem') {
+        resultado = await converterComIA(item.file);
+        viaIA = true;
+      } else {
+        resultado = await converterArquivoParaMarkdown(item.file);
+        viaIA = false;
+      }
+
       const agoraIso = new Date().toISOString();
       const nomeUsuario = user.name || user.email || 'Usuário atual';
       setItens(prev => prev.map(i => (i.id === item.id ? {
@@ -200,6 +226,7 @@ export default function ImportarPropostasPanel({
         usuarioNome: nomeUsuario,
         usuarioId: user.id,
       } : i)));
+
       if (!viaIA) {
         registrarConversaoLocal({
           userId: user.id, userName: user.name, nomeArquivo: item.nome, formato: item.formato,
@@ -212,12 +239,10 @@ export default function ImportarPropostasPanel({
       } else {
         const mensagem = (err as Error).message;
         setItens(prev => prev.map(i => (i.id === item.id ? { ...i, status: 'erro', erro: mensagem } : i)));
-        if (!viaIA) {
-          registrarConversaoLocal({
-            userId: user.id, userName: user.name, nomeArquivo: item.nome, formato: item.formato,
-            tamanhoBytes: item.tamanho, sucesso: false, erroMensagem: mensagem,
-          });
-        }
+        registrarConversaoLocal({
+          userId: user.id, userName: user.name, nomeArquivo: item.nome, formato: item.formato,
+          tamanhoBytes: item.tamanho, sucesso: false, erroMensagem: mensagem,
+        });
       }
     }
   }
@@ -305,28 +330,13 @@ export default function ImportarPropostasPanel({
           .filter(f => !existentes.has(gerarId(f)))
           .map(f => ({
             id: gerarId(f), nome: f.name, tamanho: f.size, formato: detectarFormato(f.name),
-            status: 'aguardando', file: f,
+            status: 'pendente', file: f,
           }));
-        if (novos.length > 0) {
-          toast.info(`${novos.length} arquivo(s) carregado(s). Clique em "Converter tudo" para processar.`);
-        }
         return [...prev, ...novos];
       });
+      toast.info(`${novosParaFila.length} arquivo(s) carregado(s). Convertendo automaticamente...`);
     }
   }
-
-  const handleConverterTodos = () => {
-    const aguardando = itens.filter(i => (i.status === 'aguardando' || i.status === 'erro') && !!i.file);
-    if (aguardando.length === 0) {
-      toast.warning('Nenhum arquivo na fila aguardando conversão.');
-      return;
-    }
-    setItens(prev => prev.map(i => (
-      (i.status === 'aguardando' || i.status === 'erro') && i.file
-        ? { ...i, status: 'pendente', erro: undefined }
-        : i
-    )));
-  };
 
   const removerItem = (id: string) => {
     setItens(prev => prev.filter(i => i.id !== id));
@@ -576,7 +586,7 @@ export default function ImportarPropostasPanel({
     const id = idReselecaoRef.current;
     idReselecaoRef.current = null;
     if (!file || !id) return;
-    setItens(prev => prev.map(i => (i.id === id ? { ...i, file, status: 'aguardando', erro: undefined } : i)));
+    setItens(prev => prev.map(i => (i.id === id ? { ...i, file, status: 'pendente', erro: undefined } : i)));
   };
 
   const copiarMarkdown = async (markdown: string, mensagem: string) => {
@@ -608,10 +618,6 @@ export default function ImportarPropostasPanel({
 
   const total = itens.length;
   const finalizados = itens.filter(i => i.status === 'concluido' || i.status === 'erro' || i.status === 'nao_suportado').length;
-  const itensAguardando = useMemo(
-    () => itens.filter(i => (i.status === 'aguardando' || i.status === 'erro') && !!i.file).length,
-    [itens]
-  );
   const progressoPct = total > 0 ? Math.round((finalizados / total) * 100) : 0;
 
   const { tokensAcumulados, custoAcumuladoBrl } = useMemo(() => {
@@ -627,15 +633,23 @@ export default function ImportarPropostasPanel({
     return { tokensAcumulados: tokens, custoAcumuladoBrl: temCusto ? custo : null };
   }, [itens]);
 
-  const prosseguirExtracao = async () => {
-    onArquivosEnviados?.(itensSelecionados.map(i => ({ nome: i.nome, file: i.file })));
+  const emConversao = useMemo(
+    () => itens.some(i => i.status === 'processando' || (i.status === 'pendente' && !!i.file)),
+    [itens]
+  );
 
-    const label = itensSelecionados.length === 1 ? itensSelecionados[0].nome : `${itensSelecionados.length} arquivos`;
-    const sucesso = await onProcessar(consolidado, label);
+  const prosseguirExtracao = async (itensParaExtrair?: ItemFila[] | unknown) => {
+    const lista = Array.isArray(itensParaExtrair) ? (itensParaExtrair as ItemFila[]) : itensSelecionados;
+    if (!lista || lista.length === 0) return;
+    onArquivosEnviados?.(lista.map(i => ({ nome: i.nome, file: i.file })));
+
+    const md = consolidarMarkdown(lista.map(i => ({ nome: i.nome, markdown: i.resultado!.markdown })));
+    const label = lista.length === 1 ? lista[0].nome : `${lista.length} arquivos`;
+    const sucesso = await onProcessar(md, label);
     if (!sucesso) return; // fila intacta — falhou depois de já converter, não faz o usuário reconverter para tentar de novo
     // Remove só o que foi enviado — arquivos desmarcados ficam na fila para
     // uma extração posterior, em vez de serem descartados.
-    const idsEnviados = new Set(itensSelecionados.map(i => i.id));
+    const idsEnviados = new Set(lista.map(i => i.id));
     setItens(prev => prev.filter(i => !idsEnviados.has(i.id)));
     setDeselecionados(prev => {
       if (![...idsEnviados].some(id => prev.has(id))) return prev;
@@ -645,14 +659,15 @@ export default function ImportarPropostasPanel({
     });
   };
 
-  const handleExtrairCotacao = async () => {
-    if (itensSelecionados.length === 0 || processando) return;
+  const handleExtrairCotacao = async (itensParaExtrair?: ItemFila[] | unknown) => {
+    const alvos = Array.isArray(itensParaExtrair) ? (itensParaExtrair as ItemFila[]) : itensSelecionados;
+    if (!alvos || alvos.length === 0 || processando) return;
 
     // Mesma ideia do aviso de arquivo ja convertido (buscarUltimaConversaoPorArquivo),
     // aplicada a extracao: evita gastar IA e criar proposta duplicada no banco
     // para um arquivo que ja foi extraido e salvo neste processo.
     try {
-      const jaExtraidas = await buscarPropostasPorArquivo(processoId, itensSelecionados.map(i => i.nome));
+      const jaExtraidas = await buscarPropostasPorArquivo(processoId, alvos.map(i => i.nome));
       if (jaExtraidas.length > 0) {
         setConfirmDuplicata({
           nomes: jaExtraidas.map(p => `"${p.arquivo_origem}"`).join(', '),
@@ -664,8 +679,9 @@ export default function ImportarPropostasPanel({
       console.error('Falha ao checar propostas ja extraidas:', err);
     }
 
-    await prosseguirExtracao();
+    await prosseguirExtracao(alvos);
   };
+
 
   const handleCarregarPropostasConfirmadas = async (jaExtraidas: PropostaJaExtraida[]) => {
     if (!onCarregarPropostas) return;
@@ -730,11 +746,11 @@ export default function ImportarPropostasPanel({
           <UploadCloud className="h-6 w-6 text-slate-400" />
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Arraste as propostas aqui ou clique para selecionar</p>
           <p className="text-[11px] text-slate-400">XLSX, XLS, CSV, JSON, XML, PDF, imagens (JPG/PNG/...) · vários de uma vez</p>
-          <p className="text-[11px] text-indigo-600 dark:text-indigo-400">
-            PDF e imagens usam IA (OCR) para converter — mais lento e com custo por arquivo.
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+            PDFs digitais são extraídos instantaneamente no navegador (custo R$ 0). PDFs escaneados e imagens usam IA (OCR) automaticamente.
           </p>
           <p className="text-[11px] text-slate-400">
-            São 2 etapas: primeiro os arquivos são <strong>convertidos</strong>, depois você clica em <strong>"Extrair cotação com IA"</strong> para ler os campos da proposta.
+            Conversão automática: os arquivos são convertidos para Markdown ao carregar. Clique em <strong>"Extrair cotação com IA"</strong> para processar as propostas.
           </p>
         </div>
 
@@ -742,16 +758,29 @@ export default function ImportarPropostasPanel({
           <div className="mt-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
-                {itensAguardando > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleConverterTodos}
-                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Converter tudo ({itensAguardando} {itensAguardando === 1 ? 'arquivo' : 'arquivos'})
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleExtrairCotacao()}
+                  disabled={processando || emConversao || itensSelecionados.length === 0}
+                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700 active:scale-95 transition-all disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {processando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Extraindo propostas com IA...
+                    </>
+                  ) : emConversao ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Convertendo arquivos ({finalizados} de {total})...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Extrair cotação com IA ({itensSelecionados.length} {itensSelecionados.length === 1 ? 'arquivo' : 'arquivos'})
+                    </>
+                  )}
+                </button>
               </div>
 
               <button
@@ -790,7 +819,6 @@ export default function ImportarPropostasPanel({
                   key={item.id}
                   item={item}
                   onVer={() => setItemPreview(item)}
-                  onConverter={() => handleConverterIndividual(item.id)}
                   onCopiar={() => item.resultado && copiarMarkdown(item.resultado.markdown, `Markdown de "${item.nome}" copiado.`)}
                   onReconverter={() => handleConverterIndividual(item.id)}
                   onSelecionarArquivo={() => handleReselecionar(item.id)}
@@ -850,7 +878,7 @@ export default function ImportarPropostasPanel({
             </div>
             <button
               type="button"
-              onClick={handleExtrairCotacao}
+              onClick={() => handleExtrairCotacao()}
               disabled={processando || itensSelecionados.length === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:pointer-events-none disabled:opacity-40"
             >

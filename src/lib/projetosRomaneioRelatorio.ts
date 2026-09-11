@@ -23,7 +23,14 @@
 import type { Tramo } from './projetos';
 import { comAncestrais, folhasDoTramoFiltradas, type ArvoreBom } from './projetosBom';
 import { filtroDaZona, zonaPorId } from './projetosZonas';
-import type { ProjItem, ProjOrdemItem, ProjOrdemPremontagem } from '../types';
+import type { ProjItem, ProjOrdemItem } from '../types';
+
+/**
+ * Campos do item que as duas visões precisam. Uma ordem já gravada
+ * (`ProjOrdemItem`) satisfaz de sobra; um rascunho na tela de abertura da
+ * ordem monta só estes.
+ */
+export type RomaneioItemFonte = Pick<ProjOrdemItem, 'item_id' | 'subconjunto' | 'localizador' | 'qtd_total'>;
 
 export interface LinhaPorNivel {
   id: number;
@@ -53,7 +60,7 @@ export interface LinhaConsolidada {
  */
 export function montarLinhasPorNivel(
   arvore: ArvoreBom,
-  ordem: Pick<ProjOrdemPremontagem, 'tramo' | 'zona' | 'itens'>,
+  ordem: { tramo: string; zona: string | null; itens?: RomaneioItemFonte[] },
   itemPorId: Map<string, ProjItem>,
 ): LinhaPorNivel[] {
   const tramo = ordem.tramo as Tramo;
@@ -85,7 +92,7 @@ export function montarLinhasPorNivel(
 
 /** Visão consolidada: uma linha por item do romaneio congelado, ordenada por part number. */
 export function montarLinhasConsolidadas(
-  itens: ProjOrdemItem[],
+  itens: RomaneioItemFonte[],
   itemPorId: Map<string, ProjItem>,
 ): LinhaConsolidada[] {
   return itens

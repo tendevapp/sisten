@@ -8,10 +8,13 @@ import {
   cargaDivergente,
   classificarDivergencia,
   entregaParcialAnterior,
+  listarFornecedoresDoCache,
   pendentePedido,
+  posAbertosDoFornecedor,
   resumoConferencia,
   tipoItemDaLista,
   tipoNcSugerido,
+  type LinhaCacheSAP,
   type LinhaConferencia,
 } from './recebimentoAlmox';
 
@@ -134,6 +137,58 @@ describe('tipoNcSugerido', () => {
     expect(tipoNcSugerido(['falta', 'avaria'])).toBe('avaria');
     expect(tipoNcSugerido(['excedente', 'falta'])).toBe('falta');
     expect(tipoNcSugerido([])).toBe('outros');
+  });
+});
+
+const cache = (over: Partial<LinhaCacheSAP> = {}): LinhaCacheSAP => ({
+  documento_compra: '4600000001',
+  fornecedor_name: 'PARAFUSOS SÃO PAULO LTDA',
+  material_code: '20000123',
+  texto_breve: 'Parafuso M12',
+  unidade_medida: 'PC',
+  ri_po: '4500000001-4600000001',
+  requisicao_de_compra: '4500000001',
+  qtd_po: 100,
+  qtd_fornecida_po: 0,
+  ...over,
+});
+
+describe('listarFornecedoresDoCache', () => {
+  it('dedup por nome, ignora linha sem PO, ordena', () => {
+    const recs = [
+      cache({ fornecedor_name: 'BETA' }),
+      cache({ fornecedor_name: 'BETA', documento_compra: '4600000009' }),
+      cache({ fornecedor_name: 'ALFA' }),
+      cache({ fornecedor_name: 'SEM PO', documento_compra: '' }),
+    ];
+    expect(listarFornecedoresDoCache(recs)).toEqual(['ALFA', 'BETA']);
+  });
+});
+
+describe('posAbertosDoFornecedor', () => {
+  it('casa por trecho sem acento/caixa e agrupa por PO', () => {
+    const recs = [
+      cache({ documento_compra: '4600000001', ri_po: 'a', qtd_po: 100, qtd_fornecida_po: 40 }),
+      cache({ documento_compra: '4600000001', ri_po: 'b', material_code: '9', qtd_po: 10, qtd_fornecida_po: 0 }),
+      cache({ documento_compra: '4600000002', ri_po: 'c', qtd_po: 5, qtd_fornecida_po: 0 }),
+    ];
+    const pos = posAbertosDoFornecedor(recs, 'sao paulo');
+    expect(pos.map((p) => p.numero)).toEqual(['4600000001', '4600000002']);
+    expect(pos[0].itensPendentes).toBe(2);
+    expect(pos[0].pendenteTotal).toBe(70);
+    expect(pos[0].itens[0].pendente).toBe(60);
+  });
+
+  it('some o PO cujo saldo pendente já zerou', () => {
+    const recs = [
+      cache({ documento_compra: '4600000001', qtd_po: 100, qtd_fornecida_po: 100 }),
+      cache({ documento_compra: '4600000002', ri_po: 'z', qtd_po: 8, qtd_fornecida_po: 3 }),
+    ];
+    expect(posAbertosDoFornecedor(recs, 'PARAFUSOS').map((p) => p.numero)).toEqual(['4600000002']);
+  });
+
+  it('termo vazio devolve nada', () => {
+    expect(posAbertosDoFornecedor([cache()], '  ')).toEqual([]);
   });
 });
 

@@ -125,6 +125,110 @@ export function pendentePedido(qtdPedido: number | null, qtdJaFornecida?: number
   return Math.max(0, qtdPedido - (qtdJaFornecida ?? 0));
 }
 
+// ---------------------------------------------------------------------------
+// Busca por fornecedor — do cache SAP, sem rede
+// ---------------------------------------------------------------------------
+
+/**
+ * Uma linha do cache ZL0132 (`getEnrichedSAPRequisicoes`), reduzida ao que a
+ * busca por fornecedor precisa. Mantida solta (não importa `EnrichedSAPRecord`)
+ * pra função continuar pura e testável.
+ */
+export interface LinhaCacheSAP {
+  documento_compra?: string | null;
+  fornecedor_name?: string | null;
+  material_code?: string | number | null;
+  texto_breve?: string | null;
+  unidade_medida?: string | null;
+  ri_po?: string | null;
+  requisicao_de_compra?: string | null;
+  qtd_po?: number | null;
+  qtd_fornecida_po?: number | null;
+}
+
+export interface ItemPoAberto {
+  linhaRef: string | null;
+  materialCode: string;
+  descricao: string;
+  unidade: string;
+  rm: string | null;
+  qtdPedido: number | null;
+  qtdJaFornecida: number | null;
+  pendente: number;
+}
+
+export interface PoAberto {
+  numero: string;
+  fornecedor: string;
+  itens: ItemPoAberto[];
+  /** Linhas com saldo a receber. */
+  itensPendentes: number;
+  /** Soma do saldo pendente de todas as linhas do PO. */
+  pendenteTotal: number;
+}
+
+const semAcento = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+
+/** Nomes de fornecedor distintos que têm ao menos um PO no cache. */
+export function listarFornecedoresDoCache(records: LinhaCacheSAP[]): string[] {
+  const vistos = new Map<string, string>();
+  for (const r of records) {
+    const nome = String(r.fornecedor_name ?? '').trim();
+    if (!nome || !String(r.documento_compra ?? '').trim()) continue;
+    const k = semAcento(nome);
+    if (!vistos.has(k)) vistos.set(k, nome);
+  }
+  return [...vistos.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * POs abertos (com saldo a receber) de um fornecedor, montados a partir do
+ * cache ZL0132. `termo` casa por trecho do nome, sem acento e sem caixa —
+ * some do resultado o PO cujo saldo pendente já zerou.
+ */
+export function posAbertosDoFornecedor(records: LinhaCacheSAP[], termo: string): PoAberto[] {
+  const alvo = semAcento(termo);
+  if (!alvo) return [];
+
+  const porPo = new Map<string, PoAberto>();
+  for (const r of records) {
+    const numero = String(r.documento_compra ?? '').trim().replace(/^0+/, '');
+    const fornecedor = String(r.fornecedor_name ?? '').trim();
+    if (!numero || !fornecedor || !semAcento(fornecedor).includes(alvo)) continue;
+
+    const qtdPedido = typeof r.qtd_po === 'number' ? r.qtd_po : null;
+    const qtdJaFornecida = typeof r.qtd_fornecida_po === 'number' ? r.qtd_fornecida_po : null;
+    const pendente = pendentePedido(qtdPedido, qtdJaFornecida);
+
+    let po = porPo.get(numero);
+    if (!po) {
+      po = { numero, fornecedor, itens: [], itensPendentes: 0, pendenteTotal: 0 };
+      porPo.set(numero, po);
+    }
+    po.itens.push({
+      linhaRef: r.ri_po || null,
+      materialCode: String(r.material_code ?? ''),
+      descricao: r.texto_breve ?? '',
+      unidade: r.unidade_medida ?? '',
+      rm: r.requisicao_de_compra ?? null,
+      qtdPedido,
+      qtdJaFornecida,
+      pendente,
+    });
+    po.pendenteTotal += pendente;
+    if (pendente > EPSILON_QTD) po.itensPendentes += 1;
+  }
+
+  return [...porPo.values()]
+    .filter((po) => po.pendenteTotal > EPSILON_QTD)
+    .map((po) => ({
+      ...po,
+      itens: [...po.itens].sort((a, b) => Number(b.pendente > 0) - Number(a.pendente > 0)),
+    }))
+    .sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
+}
+
 /** `projeto` (material 100000…), `consumo`, ou `misto` quando a lista tem os dois. */
 export function tipoItemDaLista(materiais: string[]): TipoItemConferencia {
   let temProjeto = false;
