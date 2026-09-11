@@ -231,6 +231,12 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
           fontSize: `min(calc(${largura} * 0.55), ${u(1.35)})`,
           writingMode: 'vertical-rl',
           textOrientation: 'upright',
+          // `writing-mode` só tem efeito em caixa inline ATÔMICA (spec de CSS
+          // Writing Modes) — `<span>` puro é inline não-atômico e a
+          // propriedade era ignorada: o texto saía deitado, largo demais para
+          // a coluna estreita, e o `overflow: hidden` do pai cortava tudo,
+          // deixando a célula "sem número". `inline-block` resolve.
+          display: 'inline-block',
           letterSpacing: u(0.1),
           lineHeight: 1,
         }}
@@ -301,8 +307,19 @@ function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
 
 export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizadoEm, carregando }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
+  const matrizRef = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
+  // Largura da coluna da matriz, medida em px — nunca em `calc(%, ...)`. O
+  // formato antigo (`min(Nu, calc((100% - Nu*(k-1))/k))`) reaproveitava a
+  // mesma string dentro de `font-size`, e `%` em `font-size` resolve contra o
+  // tamanho de fonte do elemento pai, não contra a largura do container. O
+  // cálculo virava um número absurdamente negativo e o navegador travava em
+  // `0px` — os números da matriz nunca apareciam, com ou sem `writing-mode`.
+  // Medir em JS elimina a ambiguidade: vira um número de verdade, reusável
+  // em qualquer propriedade CSS sem recalcular a base.
+  const [wbPx, setWbPx] = useState(10.8);
+  const [matrizWidthPx, setMatrizWidthPx] = useState(0);
 
   const semanaAtual = useMemo(() => semanaISO(new Date().toISOString().slice(0, 10)), []);
   const resumo = useMemo(() => resumoFaturamento(linhas, semanaAtual), [linhas, semanaAtual]);
@@ -313,11 +330,31 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
   // texto numa TV 1080p, e o painel perde o respiro.
   const notas = useMemo(() => ultimasNotas(linhas, 5), [linhas]);
 
-  // Escala: 1 unidade = 1% da altura util do painel.
+  // Escala: 1 unidade = 1% da altura util do painel. Continua via CSS var
+  // (não precisa de estado React: nada de font-size lê --wb diretamente com
+  // `%` misturado) e também alimenta o estado usado no cálculo em JS abaixo.
   useLayoutEffect(() => {
     const el = raiz.current;
     if (!el) return;
-    const aplicar = () => el.style.setProperty('--wb', `${el.clientHeight / 100}px`);
+    const aplicar = () => {
+      const px = el.clientHeight / 100;
+      el.style.setProperty('--wb', `${px}px`);
+      setWbPx(px);
+    };
+    aplicar();
+    const ro = new ResizeObserver(aplicar);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Largura real da faixa de células da matriz, medida diretamente — não
+  // deriva da largura do board (a matriz é só ~65% dela, fração que vem do
+  // grid `1.9fr/1fr`, e replicar essa conta em JS seria tão frágil quanto o
+  // bug que este estado corrige).
+  useLayoutEffect(() => {
+    const el = matrizRef.current;
+    if (!el) return;
+    const aplicar = () => setMatrizWidthPx(el.clientWidth);
     aplicar();
     const ro = new ResizeObserver(aplicar);
     ro.observe(el);
@@ -347,9 +384,17 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
     else void raiz.current?.requestFullscreen?.();
   };
 
-  // Largura da celula da matriz: cabe sempre, de 18 a 69 torres.
+  // Largura da célula da matriz, em px de verdade: cabe sempre, de 18 a 69
+  // torres. Rótulo da linha (T1..T5) + gap saem da faixa medida antes de
+  // dividir pelas colunas.
   const colunas = Math.max(matriz.torres.length, 1);
-  const larguraCelula = `min(${u(4.4)}, calc((100% - ${u(0.5)} * ${colunas - 1}) / ${colunas}))`;
+  const rotuloELacunaPx = 3.4 * wbPx + 1 * wbPx;
+  const faixaPx = Math.max(0, matrizWidthPx - rotuloELacunaPx);
+  const gapCelulaPx = 0.5 * wbPx;
+  const larguraCelulaPx = matrizWidthPx > 0
+    ? Math.max(4, Math.min(4.4 * wbPx, (faixaPx - gapCelulaPx * (colunas - 1)) / colunas))
+    : 4.4 * wbPx;
+  const larguraCelula = `${larguraCelulaPx}px`;
 
   const maxSemana = Math.max(1, ...semanas.map((s) => s.faturados));
   const maxTramo = Math.max(1, ...tramos.map((t) => t.total));
@@ -468,7 +513,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
       <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: '1.9fr 1fr', gap: u(1.6) }}>
         {/* Matriz torre x tramo */}
         <Painel titulo={`Avanço por torre e tramo · ${matriz.torres.length} torres`}>
-          <div className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.5) }}>
+          <div ref={matrizRef} className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.5) }}>
             {/* Régua em cima e embaixo: matriz tem 5 linhas, não dá para
                 descer o olho até o rodapé toda vez que se quer saber a torre. */}
             <ReguaTorres torres={matriz.torres} largura={larguraCelula} />
