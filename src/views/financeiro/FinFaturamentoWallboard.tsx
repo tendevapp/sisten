@@ -41,7 +41,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Maximize2, Minimize2, RefreshCw, Radio } from 'lucide-react';
 import type { FinFatGwjaco } from '../../types';
 import {
-  resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorTramo,
+  resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorMes, faturadosPorTramo,
   ultimasNotas, semanaISO, type EstadoTramo, type CelulaMatriz,
 } from '../../lib/finFaturamentoRelatorio';
 
@@ -94,8 +94,8 @@ function fmtDataHora(d: Date): string {
 /* ------------------------------------------------------------------ */
 
 function Painel({
-  titulo, children, style,
-}: { titulo: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  titulo, acao, children, style,
+}: { titulo: string; acao?: React.ReactNode; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <section
       className="flex min-h-0 min-w-0 flex-col overflow-hidden"
@@ -108,12 +108,15 @@ function Painel({
         ...style,
       }}
     >
-      <h2
-        className="shrink-0 font-bold uppercase"
-        style={{ fontSize: u(1.75), letterSpacing: '0.08em', color: 'var(--ink-muted)' }}
-      >
-        {titulo}
-      </h2>
+      <div className="flex shrink-0 items-center justify-between" style={{ gap: u(1) }}>
+        <h2
+          className="font-bold uppercase"
+          style={{ fontSize: u(1.75), letterSpacing: '0.08em', color: 'var(--ink-muted)' }}
+        >
+          {titulo}
+        </h2>
+        {acao}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </section>
   );
@@ -295,6 +298,38 @@ function ReguaTorres({ torres, largura }: { torres: number[]; largura: string })
   );
 }
 
+type VisaoTemporal = 'mes' | 'semana';
+
+/** Par de botões Mês/Semana — ação no cabeçalho do painel de ritmo. */
+function AlternadorVisao({ visao, onMudar }: { visao: VisaoTemporal; onMudar: (v: VisaoTemporal) => void }) {
+  const opcoes: { valor: VisaoTemporal; rotulo: string }[] = [
+    { valor: 'mes', rotulo: 'Mês' },
+    { valor: 'semana', rotulo: 'Semana' },
+  ];
+  return (
+    <div className="flex shrink-0" style={{ gap: u(0.3), padding: u(0.25), borderRadius: u(0.7), background: 'var(--surface-sunken)' }}>
+      {opcoes.map((o) => (
+        <button
+          key={o.valor}
+          type="button"
+          onClick={() => onMudar(o.valor)}
+          style={{
+            padding: `${u(0.4)} ${u(1)}`,
+            borderRadius: u(0.5),
+            fontSize: u(1.3),
+            fontWeight: 700,
+            background: visao === o.valor ? 'var(--surface-card)' : 'transparent',
+            color: visao === o.valor ? 'var(--ink-primary)' : 'var(--ink-muted)',
+            boxShadow: visao === o.valor ? '0 1px 2px rgba(0,0,0,0.15)' : 'none',
+          }}
+        >
+          {o.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
   return (
     <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
@@ -313,6 +348,8 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
   const matrizRef = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
+  // Mês é o padrão: é o recorte que a diretoria acompanha. Semana fica a um clique.
+  const [visaoTemporal, setVisaoTemporal] = useState<VisaoTemporal>('mes');
   // Largura da coluna da matriz, medida em px — nunca em `calc(%, ...)`. O
   // formato antigo (`min(Nu, calc((100% - Nu*(k-1))/k))`) reaproveitava a
   // mesma string dentro de `font-size`, e `%` em `font-size` resolve contra o
@@ -325,9 +362,15 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
   const [matrizWidthPx, setMatrizWidthPx] = useState(0);
 
   const semanaAtual = useMemo(() => semanaISO(new Date().toISOString().slice(0, 10)), []);
+  const mesAtual = useMemo(() => new Date().toISOString().slice(0, 7), []);
   const resumo = useMemo(() => resumoFaturamento(linhas, semanaAtual), [linhas, semanaAtual]);
   const matriz = useMemo(() => matrizTorreTramo(linhas), [linhas]);
   const semanas = useMemo(() => faturadosPorSemana(linhas, semanaAtual), [linhas, semanaAtual]);
+  const meses = useMemo(() => faturadosPorMes(linhas, mesAtual), [linhas, mesAtual]);
+  // Um único formato para o gráfico de ritmo, mês ou semana: os dois pontos
+  // já compartilham {rotulo, faturados, ehAtual}.
+  const pontosRitmo = visaoTemporal === 'mes' ? meses : semanas;
+  const maxRitmo = Math.max(1, ...pontosRitmo.map((p) => p.faturados));
   const tramos = useMemo(() => faturadosPorTramo(linhas), [linhas]);
   // Cinco, não seis: com seis a linha fica com 25px de altura para 22px de
   // texto numa TV 1080p, e o painel perde o respiro.
@@ -412,7 +455,6 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
     : 4.4 * wbPx;
   const larguraCelula = `${larguraCelulaPx}px`;
 
-  const maxSemana = Math.max(1, ...semanas.map((s) => s.faturados));
   const maxTramo = Math.max(1, ...tramos.map((t) => t.total));
 
   return (
@@ -494,13 +536,19 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
       </header>
 
       {/* Linha de indicadores */}
-      <div className="grid shrink-0 grid-cols-5" style={{ gap: u(1.6), height: u(16) }}>
+      <div className="grid shrink-0 grid-cols-6" style={{ gap: u(1.6), height: u(16) }}>
+        <Kpi
+          valor={`${resumo.faturados}/${resumo.total}`}
+          rotulo="Tramos Faturados"
+          apoio="tramos com NF emitida"
+          marca={FATURADO_CSS}
+          destaque
+        />
         <Kpi
           valor={`${resumo.percentual}%`}
           rotulo="Faturado"
           apoio={`${resumo.faturados} de ${resumo.total} tramos`}
           marca={FATURADO_CSS}
-          destaque
         />
         <Kpi
           valor={String(resumo.expedidos)}
@@ -571,39 +619,42 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
         {/* Coluna direita */}
         <div className="grid min-h-0" style={{ gridTemplateRows: '1.6fr 0.95fr 1.15fr', gap: u(1.6) }}>
           {/*
-            Ritmo semanal: só o total por semana. O detalhe por tramo (seq,
-            restrição) já está na matriz — aqui a pergunta é "quanto saiu",
-            não "o quê".
+            Ritmo de faturamento: só o total por mês (padrão) ou por semana.
+            O detalhe por tramo (seq, restrição) já está na matriz — aqui a
+            pergunta é "quanto saiu", não "o quê".
           */}
-          <Painel titulo="Tramos faturados por semana">
+          <Painel
+            titulo={`Tramos faturados por ${visaoTemporal === 'mes' ? 'mês' : 'semana'}`}
+            acao={<AlternadorVisao visao={visaoTemporal} onMudar={setVisaoTemporal} />}
+          >
             <div className="flex min-h-0 flex-1 items-end" style={{ gap: u(1) }}>
-              {semanas.length === 0 && (
+              {pontosRitmo.length === 0 && (
                 <p style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>Nenhum tramo faturado ainda.</p>
               )}
-              {semanas.map((s) => (
-                <div key={s.semana} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end" style={{ gap: u(0.5) }}>
+              {pontosRitmo.map((p) => (
+                <div key={p.rotulo} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end" style={{ gap: u(0.5) }}>
                   <span
                     className="tabular shrink-0 font-bold"
                     style={{ fontSize: u(1.6), color: 'var(--ink-primary)' }}
                   >
-                    {s.faturados}
+                    {p.faturados}
                   </span>
                   <div
                     className="w-full"
                     style={{
-                      height: `${(s.faturados / maxSemana) * 100}%`,
+                      height: `${(p.faturados / maxRitmo) * 100}%`,
                       minHeight: u(0.4),
                       borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
                       background: SEM_RESTRICAO_CSS,
-                      border: s.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
+                      border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
                       borderBottom: 'none',
                     }}
                   />
                   <span
                     className="shrink-0 text-center font-bold"
-                    style={{ fontSize: u(1.4), color: s.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+                    style={{ fontSize: u(1.4), color: p.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
                   >
-                    {s.rotulo}
+                    {p.rotulo}
                   </span>
                 </div>
               ))}

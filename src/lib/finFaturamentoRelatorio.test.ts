@@ -12,6 +12,8 @@ import {
   resumoFaturamento,
   matrizTorreTramo,
   faturadosPorSemana,
+  faturadosPorMes,
+  rotuloMes,
   faturadosPorTramo,
   ultimasNotas,
 } from './finFaturamentoRelatorio';
@@ -212,6 +214,43 @@ describe('faturadosPorSemana', () => {
     const semCampo = { ...linha({ data_faturado: '2026-08-31', semana_faturamento: 36 }) } as any;
     delete semCampo.restricao;
     expect(faturadosPorSemana([semCampo], 36)[0].tramos[0].restricao).toBe(false);
+  });
+});
+
+describe('rotuloMes', () => {
+  it('formata mes e ano de dois digitos', () => {
+    expect(rotuloMes('2026-09')).toBe('Set/26');
+    expect(rotuloMes('2026-01')).toBe('Jan/26');
+    expect(rotuloMes('2026-12')).toBe('Dez/26');
+  });
+
+  it('devolve a string original se nao reconhecer o formato', () => {
+    expect(rotuloMes('lixo')).toBe('lixo');
+    expect(rotuloMes('2026-13')).toBe('2026-13');
+  });
+});
+
+describe('faturadosPorMes', () => {
+  it('agrupa por mes civil da data de faturamento, nao da semana digitada', () => {
+    const pontos = faturadosPorMes([
+      linha({ data_faturado: '2026-08-31', semana_faturamento: 36 }),
+      linha({ data_faturado: '2026-08-13', semana_faturamento: 33 }),
+      linha({ data_faturado: '2026-09-08', semana_faturamento: 37 }),
+      linha(),
+    ], '2026-09');
+
+    expect(pontos.map((p) => p.mes)).toEqual(['2026-08', '2026-09']);
+    expect(pontos.map((p) => p.faturados)).toEqual([2, 1]);
+    expect(pontos.map((p) => p.rotulo)).toEqual(['Ago/26', 'Set/26']);
+    expect(pontos.find((p) => p.mes === '2026-09')?.ehAtual).toBe(true);
+    expect(pontos.find((p) => p.mes === '2026-08')?.ehAtual).toBe(false);
+  });
+
+  it('mantem so os meses mais recentes dentro do limite', () => {
+    const linhas = ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01'].map((d) =>
+      linha({ data_faturado: d }),
+    );
+    expect(faturadosPorMes(linhas, '2026-09', 2).map((p) => p.mes)).toEqual(['2026-08', '2026-09']);
   });
 });
 

@@ -225,6 +225,52 @@ export function faturadosPorSemana(
     }));
 }
 
+const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+/** `2026-09` → `Set/26`. */
+export function rotuloMes(mesISO: string): string {
+  const [ano, mes] = mesISO.split('-').map(Number);
+  if (!ano || !mes || mes < 1 || mes > 12) return mesISO;
+  return `${MESES_ABREV[mes - 1]}/${String(ano).slice(-2)}`;
+}
+
+export interface PontoMes {
+  mes: string; // YYYY-MM
+  rotulo: string;
+  faturados: number;
+  ehAtual: boolean;
+}
+
+/**
+ * Faturados por mês civil de `data_faturado` — visão padrão da parede, o
+ * recorte que a diretoria acompanha. Mês vem sempre da data, nunca da semana
+ * digitada: mês não é campo do formulário, então não tem "o que a pessoa
+ * quis dizer" para respeitar como em `semanaDaLinha`.
+ */
+export function faturadosPorMes(
+  linhas: FinFatGwjaco[],
+  mesAtual?: string | null,
+  limite = 12,
+): PontoMes[] {
+  const contagem = new Map<string, number>();
+  for (const l of linhas) {
+    if (!l.data_faturado) continue;
+    const mes = l.data_faturado.slice(0, 7);
+    if (mes.length !== 7) continue;
+    contagem.set(mes, (contagem.get(mes) ?? 0) + 1);
+  }
+
+  return [...contagem.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-limite)
+    .map(([mes, faturados]) => ({
+      mes,
+      rotulo: rotuloMes(mes),
+      faturados,
+      ehAtual: mes === mesAtual,
+    }));
+}
+
 export interface PontoTramo {
   tramo: string;
   faturados: number;
