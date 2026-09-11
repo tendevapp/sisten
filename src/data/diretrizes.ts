@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-11',
+    resumo: 'Suprimentos > Cotações e Mapa Comparativo / Navegação e Scroll Superior (`AnaliseCotacoes.tsx`, `MapaComparativo.tsx`, `diretrizes.ts`): 1. Adicionado botão "Ir para o topo" (na barra de ações ao fim da listagem de propostas e como botão flutuante com detecção de rolagem); 2. Duplicado o botão "Mapa comparativo" (com contagem de propostas e atalho) no rodapé após todas as cotações, eliminando a necessidade de rolar de volta para avançar de etapa; 3. Implementada barra de rolagem horizontal sincronizada no topo da tabela do mapa comparativo (`MapaComparativo.tsx`), permitindo navegar pelas colunas de fornecedores diretamente pelo cabeçalho da grade sem ter que rolar até o fim da página.',
+  },
+  {
     data: '2026-09-10',
     resumo: 'Administração > Gestão de APIs & IA — Prompt Editável da Extração Estruturada de Cotações (`ApiManagement.tsx`, `PromptsIaSection.tsx`, `iaPromptsApi.ts`, `extrair-cotacao`, migration `20260910220000_seed_prompt_extrair_cotacao.sql`): 1. Cadastrado o prompt padrão da Edge Function `extrair-cotacao` na tabela `ops_ia_prompts` com chave "extrair-cotacao" e título "Extração Estruturada de Cotações"; 2. A seção "Prompts de IA" no painel Gestão de APIs (/admin/apis) agora exibe a íntegra da instrução, regras de extração de 40 campos e formato JSON esperado, permitindo ao administrador ajustar o prompt, modelo e parâmetros em tempo real com versionamento automático e sem necessidade de deploy; 3. Atualizada a Edge Function `extrair-cotacao` para carregar dinamicamente a versão ativa de `ops_ia_prompts` com fallback seguro para a constante embutida; 4. Alinhada a descrição e segredos da API no catálogo de endpoints da tela.',
   },

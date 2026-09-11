@@ -21,7 +21,7 @@
  *   escondidos num card lá embaixo.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
   Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX,
@@ -475,6 +475,11 @@ export default function MapaComparativo({
   const resetLarguras = () => { setLarguraPreview(null); setLarguras({}); };
   const larguraCustomizada = Object.keys(larguras).length > 0;
 
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [hasHorizontalScroll, setHasHorizontalScroll] = useState(false);
+
   // A seleção é lida do banco na montagem. Recalculá-la a cada mudança em `propostas`
   // apagaria a decisão em andamento assim que o comprador digitasse um frete,
   // mas se houver chaves temporárias (não-UUID) ou se o banco acabou de carregar a decisão,
@@ -497,6 +502,51 @@ export default function MapaComparativo({
       });
     }
   }, [propostas]);
+
+  useEffect(() => {
+    const el = tableContainerRef.current;
+    if (!el) return;
+
+    const atualizarMedidas = () => {
+      const sw = el.scrollWidth;
+      const cw = el.clientWidth;
+      setScrollWidth(sw);
+      setHasHorizontalScroll(sw > cw + 2);
+      if (topScrollRef.current && Math.abs(topScrollRef.current.scrollLeft - el.scrollLeft) > 1) {
+        topScrollRef.current.scrollLeft = el.scrollLeft;
+      }
+    };
+
+    atualizarMedidas();
+
+    const ro = new ResizeObserver(() => {
+      atualizarMedidas();
+    });
+    ro.observe(el);
+    if (el.firstElementChild) {
+      ro.observe(el.firstElementChild);
+    }
+    window.addEventListener('resize', atualizarMedidas);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', atualizarMedidas);
+    };
+  }, [linhasFiltradas, resumos, larguras, larguraPreview]);
+
+  const handleTopScroll = () => {
+    if (!tableContainerRef.current || !topScrollRef.current) return;
+    if (Math.abs(tableContainerRef.current.scrollLeft - topScrollRef.current.scrollLeft) > 1) {
+      tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleBottomScroll = () => {
+    if (!tableContainerRef.current || !topScrollRef.current) return;
+    if (Math.abs(topScrollRef.current.scrollLeft - tableContainerRef.current.scrollLeft) > 1) {
+      topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+    }
+  };
 
   // Seleção para a ação flutuante de juntar/separar linhas — independente da
   // seleção de compra acima. Não persiste: é só um passo de trabalho.
@@ -798,7 +848,25 @@ export default function MapaComparativo({
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      {hasHorizontalScroll && (
+        <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
+          className="overflow-x-auto overflow-y-hidden custom-scrollbar rounded-t-xl border border-b border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/70"
+          style={{ height: '16px' }}
+          title="Barra de rolagem horizontal superior"
+        >
+          <div style={{ width: scrollWidth, height: '1px' }} />
+        </div>
+      )}
+
+      <div
+        ref={tableContainerRef}
+        onScroll={handleBottomScroll}
+        className={`overflow-x-auto custom-scrollbar border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 ${
+          hasHorizontalScroll ? 'rounded-b-xl border-t-0' : 'rounded-xl'
+        }`}
+      >
         <table className="border-collapse" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
           <colgroup>
             <col style={{ width: larguraDe(COL_ITEM) }} />
