@@ -327,6 +327,33 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }));
   };
 
+  const recarregarPropostas = async () => {
+    if (!processo) return;
+    try {
+      const { propostas: propsSalvas } = await buscarProcessoCotacao(processo.id);
+      const propsSalvasDraft = propsSalvas.map(propostaSalvaParaDraft);
+      setPropostas(prev => {
+        const outrosNaoSalvos = prev.filter(p => !p._salvo);
+        return [...propsSalvasDraft, ...outrosNaoSalvos];
+      });
+    } catch (err) {
+      console.error('Falha ao recarregar propostas:', err);
+    }
+  };
+
+  // Se o processo estiver aberto e houver propostas marcadas como salvas com chaves temporárias
+  // (ex: sessão aberta antes da sincronização de UUIDs), recarrega do banco automaticamente.
+  useEffect(() => {
+    if (!processo) return;
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const temChaveInvalida = propostas.some(
+      p => p._salvo && (!UUID_REGEX.test(p._key) || p.itens.some(it => !UUID_REGEX.test(it._key)))
+    );
+    if (temChaveInvalida) {
+      recarregarPropostas();
+    }
+  }, [propostas, processo]);
+
   const handleSalvarProposta = async (key: string) => {
     if (!processo) return;
     const draft = propostas.find(p => p._key === key);
@@ -339,7 +366,30 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         itens: draft.itens.map(it => ({ ...it, extraido_raw: it.extraido_raw })),
       };
       await salvarProcessoCotacao({ processoId: processo.id, propostas: [payload], usuarioId: user.id, usuarioNome: user.name });
-      setPropostas(prev => prev.map(p => (p._key === key ? { ...p, _salvo: true } : p)));
+
+      // Recarrega as propostas salvas do Supabase para obter os IDs reais (UUIDs)
+      // tanto da proposta quanto de cada um dos seus itens cotados.
+      const { propostas: propsSalvas } = await buscarProcessoCotacao(processo.id);
+      const propsSalvasDraft = propsSalvas.map(propostaSalvaParaDraft);
+      setPropostas(prev => {
+        const outrosNaoSalvos = prev.filter(p => !p._salvo && p._key !== key);
+        return [...propsSalvasDraft, ...outrosNaoSalvos];
+      });
+
+      // Remove a proposta salva do rascunho local em localStorage
+      const chave = chaveRascunhoPropostas(processo.id);
+      const rascunhoAtual = lerRascunhoPropostas(processo.id);
+      const rascunhoRestante = rascunhoAtual.filter(p => p._key !== key);
+      try {
+        if (rascunhoRestante.length > 0) {
+          localStorage.setItem(chave, JSON.stringify(rascunhoRestante));
+        } else {
+          localStorage.removeItem(chave);
+        }
+      } catch (err) {
+        console.error('Falha ao atualizar rascunho local de propostas:', err);
+      }
+
       toast.success('Proposta salva.');
       avancarStatusCobertos(draft).catch(() => { /* melhor esforço, não bloqueia o salvamento */ });
     } catch (err) {
@@ -501,6 +551,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           onVoltar={() => setFase('processo')}
           onAtualizarProposta={handleChangeProposta}
           onDecisaoSalva={handleDecisaoMapaSalva}
+          onRecarregarPropostas={recarregarPropostas}
         />
       )}
 

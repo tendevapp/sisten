@@ -391,10 +391,12 @@ interface MapaComparativoProps {
   onAtualizarProposta: (key: string, patch: Partial<CotacaoPropostaDraft>) => void;
   /** Chamado depois que "Salvar decisão" grava com sucesso — leva o comprador à revisão do pedido, por fornecedor. */
   onDecisaoSalva: (itensSelecionados: Set<string>) => void;
+  /** Permite sincronizar do Supabase caso haja propostas com chaves temporárias ainda não persistidas. */
+  onRecarregarPropostas?: () => Promise<void>;
 }
 
 export default function MapaComparativo({
-  processo, escopo, propostas, usuarioNome, onVoltar, onAtualizarProposta, onDecisaoSalva,
+  processo, escopo, propostas, usuarioNome, onVoltar, onAtualizarProposta, onDecisaoSalva, onRecarregarPropostas,
 }: MapaComparativoProps) {
   const toast = useToast();
 
@@ -473,12 +475,28 @@ export default function MapaComparativo({
   const resetLarguras = () => { setLarguraPreview(null); setLarguras({}); };
   const larguraCustomizada = Object.keys(larguras).length > 0;
 
-  // A seleção é lida do banco uma única vez, na montagem. Recalculá-la a
-  // cada mudança em `propostas` apagaria a decisão em andamento assim que o
-  // comprador digitasse um frete — e o mapa remonta a cada entrada na tela,
-  // então não há o que perder.
+  // A seleção é lida do banco na montagem. Recalculá-la a cada mudança em `propostas`
+  // apagaria a decisão em andamento assim que o comprador digitasse um frete,
+  // mas se houver chaves temporárias (não-UUID) ou se o banco acabou de carregar a decisão,
+  // atualizamos a seleção com os dados do banco.
   const [selecaoPersistida, setSelecaoPersistida] = useState<Set<string>>(() => selecaoDoBanco(propostas));
   const [selecionados, setSelecionados] = useState<Set<string>>(() => selecaoDoBanco(propostas));
+
+  useEffect(() => {
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const temChaveInvalida = [...selecionados].some(k => !UUID_REGEX.test(k)) || [...selecaoPersistida].some(k => !UUID_REGEX.test(k));
+    const doBanco = selecaoDoBanco(propostas);
+
+    if (temChaveInvalida || (selecaoPersistida.size === 0 && doBanco.size > 0)) {
+      setSelecaoPersistida(doBanco);
+      setSelecionados(prev => {
+        const next = new Set<string>();
+        for (const k of prev) if (UUID_REGEX.test(k)) next.add(k);
+        for (const k of doBanco) next.add(k);
+        return next;
+      });
+    }
+  }, [propostas]);
 
   // Seleção para a ação flutuante de juntar/separar linhas — independente da
   // seleção de compra acima. Não persiste: é só um passo de trabalho.
@@ -632,8 +650,19 @@ export default function MapaComparativo({
   const handleSalvar = async () => {
     setSalvando(true);
     try {
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const marcar = [...selecionados].filter(k => !selecaoPersistida.has(k));
       const desmarcar = [...selecaoPersistida].filter(k => !selecionados.has(k));
+
+      // Se houver chaves temporárias que ainda não foram sincronizadas com o banco
+      if ([...marcar, ...desmarcar].some(k => !UUID_REGEX.test(k))) {
+        if (onRecarregarPropostas) {
+          toast.info('Sincronizando itens com o banco antes de salvar...');
+          await onRecarregarPropostas();
+          return;
+        }
+      }
+
       await salvarSelecaoMapa({ itensSelecionados: marcar, itensDesmarcados: desmarcar, usuarioNome });
       setSelecaoPersistida(new Set(selecionados));
       if (selecionados.size > 0) {

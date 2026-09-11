@@ -427,6 +427,11 @@ export async function salvarProcessoCotacao(params: {
  * e o frete é preenchido depois, no mapa, sobre uma proposta já salva.
  */
 export async function salvarFreteProposta(propostaId: string, valorFrete: number | null): Promise<void> {
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_REGEX.test(propostaId)) {
+    console.warn('salvarFreteProposta: propostaId não é um UUID válido, ignorando:', propostaId);
+    return;
+  }
   const { error } = await supabase
     .from('sup_cotacao_propostas')
     .update({ valor_frete: valorFrete, updated_at: new Date().toISOString() })
@@ -445,20 +450,30 @@ export async function salvarSelecaoMapa(params: {
   usuarioNome: string;
 }): Promise<void> {
   const agora = new Date().toISOString();
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  if (params.itensSelecionados.length > 0) {
+  const marcar = params.itensSelecionados.filter(id => UUID_REGEX.test(id));
+  const desmarcar = params.itensDesmarcados.filter(id => UUID_REGEX.test(id));
+
+  const invalidos = [...params.itensSelecionados, ...params.itensDesmarcados].filter(id => !UUID_REGEX.test(id));
+  if (invalidos.length > 0) {
+    console.warn('salvarSelecaoMapa: ignorando IDs não-UUID recebidos:', invalidos);
+  }
+
+  if (marcar.length > 0) {
     const { error } = await supabase
       .from('sup_cotacao_proposta_itens')
       .update({ mapa_selecionado: true, mapa_selecionado_em: agora, mapa_selecionado_por: params.usuarioNome })
-      .in('id', params.itensSelecionados);
+      .in('id', marcar);
     if (error) throw new Error(`Falha ao salvar a seleção do mapa: ${error.message}`);
   }
 
-  if (params.itensDesmarcados.length > 0) {
+  if (desmarcar.length > 0) {
     const { error } = await supabase
       .from('sup_cotacao_proposta_itens')
       .update({ mapa_selecionado: false, mapa_selecionado_em: null, mapa_selecionado_por: null })
-      .in('id', params.itensDesmarcados);
+      .in('id', desmarcar);
     if (error) throw new Error(`Falha ao limpar a seleção do mapa: ${error.message}`);
   }
 }
+
