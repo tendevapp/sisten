@@ -27,6 +27,7 @@ export interface FinFatPatch {
   semana_faturamento?: number | null;
   data_expedido?: string | null;
   data_tramos_previstos?: string | null;
+  restricao?: boolean;
   observacao?: string | null;
 }
 

@@ -31,6 +31,7 @@ function linha(over: Partial<FinFatGwjaco> = {}): FinFatGwjaco {
     semana_faturamento: null,
     data_expedido: null,
     data_tramos_previstos: null,
+    restricao: false,
     observacao: null,
     criado_por_id: null,
     criado_por_nome: null,
@@ -149,6 +150,15 @@ describe('matrizTorreTramo', () => {
     const m = matrizTorreTramo([linha({ torre_numero: 1, tramo: 'T1' })]);
     expect(m.linhas[1].celulas[0]).toBeNull();
   });
+
+  it('carrega seq e restrição em cada célula', () => {
+    const m = matrizTorreTramo([
+      linha({ torre_numero: 1, tramo: 'T1', serie: 3143, restricao: true }),
+      linha({ torre_numero: 1, tramo: 'T2', serie: 3144 }),
+    ]);
+    expect(m.linhas[0].celulas[0]).toMatchObject({ serie: 3143, restricao: true });
+    expect(m.linhas[1].celulas[0]).toMatchObject({ serie: 3144, restricao: false });
+  });
 });
 
 describe('faturadosPorSemana', () => {
@@ -171,6 +181,37 @@ describe('faturadosPorSemana', () => {
       linha({ data_faturado: '2026-08-31', semana_faturamento: s }),
     );
     expect(faturadosPorSemana(linhas, 36, 2).map((p) => p.semana)).toEqual([35, 36]);
+  });
+
+  it('devolve os tramos da semana ordenados por seq', () => {
+    const pontos = faturadosPorSemana([
+      linha({ serie: 3158, torre_numero: 4, tramo: 'T1', data_faturado: '2026-08-31', semana_faturamento: 36 }),
+      linha({ serie: 3143, torre_numero: 1, tramo: 'T1', data_faturado: '2026-08-31', semana_faturamento: 36 }),
+      linha({ serie: 3148, torre_numero: 2, tramo: 'T1', data_faturado: '2026-08-31', semana_faturamento: 36 }),
+    ], 36);
+
+    expect(pontos[0].tramos.map((t) => t.serie)).toEqual([3143, 3148, 3158]);
+    expect(pontos[0].tramos[0]).toMatchObject({ torre: 1, tramo: 'T1' });
+  });
+
+  it('conta quantos da semana estão com restrição', () => {
+    const pontos = faturadosPorSemana([
+      linha({ serie: 3143, data_faturado: '2026-08-31', semana_faturamento: 36, restricao: true }),
+      linha({ serie: 3144, data_faturado: '2026-08-31', semana_faturamento: 36 }),
+      linha({ serie: 3145, data_faturado: '2026-08-31', semana_faturamento: 36, restricao: true }),
+    ], 36);
+
+    expect(pontos[0].faturados).toBe(3);
+    expect(pontos[0].comRestricao).toBe(2);
+    expect(pontos[0].tramos.filter((t) => t.restricao).map((t) => t.serie)).toEqual([3143, 3145]);
+  });
+
+  // A coluna é `not null default false`, mas registro antigo lido de cache
+  // pode chegar sem o campo; o segmento não pode virar laranja por undefined.
+  it('trata restrição ausente como falsa', () => {
+    const semCampo = { ...linha({ data_faturado: '2026-08-31', semana_faturamento: 36 }) } as any;
+    delete semCampo.restricao;
+    expect(faturadosPorSemana([semCampo], 36)[0].tramos[0].restricao).toBe(false);
   });
 });
 

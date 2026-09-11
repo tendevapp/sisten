@@ -7,11 +7,20 @@
  * Desenhado para leitura a 3-5 metros, sem ninguém para clicar: nada depende
  * de hover e todo número tem rótulo direto.
  *
- * O estado de cada tramo carrega **glifo e rótulo** além da cor, e isso não é
- * enfeite: o par amarelo/verde (faturado × expedido) separa bem em visão normal
- * (ΔE 27 no `validate_palette.js`) mas desaba para ΔE 3 em protanopia, que
- * atinge perto de 8% dos homens. Quem não distingue as duas cores lê o `✓` e o
- * `●`. Ao mexer em qualquer cor daqui, rode o validador de novo.
+ * A célula da matriz torre × tramo carrega duas informações independentes,
+ * cada uma com a sua legenda:
+ *   - preenchimento = estado no funil (verde expedido, amarelo faturado,
+ *     cinza pendente) — onde o tramo está;
+ *   - borda = restrição (laranja com restrição, azul sem) — se o tramo está
+ *     travado;
+ *   - conteúdo = o seq do tramo, deitado, porque a coluna é estreita (18 a 69
+ *     torres na mesma largura de painel) e o número em pé não caberia.
+ *
+ * Amarelo × verde (faturado × expedido) separa bem em visão normal (ΔE 27 no
+ * `validate_palette.js`) mas desaba para ΔE 3 em protanopia, que atinge perto
+ * de 8% dos homens — por isso o rótulo da legenda nunca é só a cor. O par
+ * azul/laranja da borda não tem esse problema (ΔE 27 em protanopia). Ao mexer
+ * em qualquer cor daqui, rode o validador de novo.
  *
  * O que este painel responde e o BI original não respondia: **onde o projeto
  * travou**. A matriz torre × tramo mostra numa olhada que as primeiras torres
@@ -28,17 +37,12 @@
  */
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList, ResponsiveContainer, Cell,
-} from 'recharts';
 import { Maximize2, Minimize2, RefreshCw, Radio } from 'lucide-react';
 import type { FinFatGwjaco } from '../../types';
 import {
   resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorTramo,
   ultimasNotas, semanaISO, type EstadoTramo, type CelulaMatriz,
 } from '../../lib/finFaturamentoRelatorio';
-import { useChartConfig } from '../../components/charts/chartDefaults';
-import ChartTooltip from '../../components/charts/ChartTooltip';
 
 interface Props {
   linhas: FinFatGwjaco[];
@@ -49,12 +53,6 @@ interface Props {
 
 /** N unidades de escala do painel. 1 unidade = 1% da altura do container. */
 const u = (n: number) => `calc(var(--wb) * ${n})`;
-
-const ESTADO_GLIFO: Record<EstadoTramo, string> = {
-  expedido: '✓',
-  faturado: '●',
-  pendente: '·',
-};
 
 /**
  * Amarelo do "faturado, ainda não expedido". É o `--series-4` do projeto, que
@@ -169,67 +167,74 @@ function Kpi({
   );
 }
 
+const RESTRICAO_CSS = 'var(--series-2)';   // laranja: tramo com restrição
+const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal
+
 /**
- * Uma célula da matriz: cor + glifo, porque cor sozinha não sobrevive a
- * tritanopia. A altura é a da linha (as cinco dividem o painel), a largura vem
- * da contagem de torres — célula retangular enche a parede tanto com 18 torres
- * quanto com as 69 do projeto fechado, o que um quadrado fixo não faria.
+ * Uma célula da matriz carrega duas informações independentes:
+ *   - preenchimento = estado no funil (verde expedido, amarelo faturado,
+ *     cinza pendente);
+ *   - borda = restrição (laranja com restrição, azul sem), sempre presente,
+ *     então também resolve o contraste que a célula pendente precisava contra
+ *     o fundo rebaixado.
+ * O conteúdo é o seq do tramo, deitado (`vertical-rl`): a célula é estreita
+ * (18 a 69 colunas na mesma largura de painel) e o número em pé não caberia
+ * sem alargar a coluna.
  */
 function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura: string }) {
   if (!celula) {
     return <div style={{ width: largura, height: '100%', borderRadius: u(0.4), background: 'transparent' }} />;
   }
 
-  const { fundo, tinta, borda } = pinturaEstado(celula.estado);
+  const { fundo, tinta } = pinturaEstado(celula.estado);
+  const corBorda = celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
 
   return (
     <div
-      className="flex items-center justify-center font-bold"
-      title={`Torre ${celula.torre} ${celula.tramo}: ${ESTADO_ROTULO[celula.estado]}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''}`}
+      className="tabular flex items-center justify-center overflow-hidden font-bold"
+      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'}: ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''}`}
       style={{
         width: largura,
         height: '100%',
         borderRadius: u(0.4),
         background: fundo,
         color: tinta,
-        border: borda,
-        fontSize: `min(calc(${largura} * 0.5), ${u(2.4)})`,
-        lineHeight: 1,
+        border: `${u(0.25)} solid ${corBorda}`,
+        fontSize: `min(calc(${largura} * 0.42), ${u(1.7)})`,
+        writingMode: 'vertical-rl',
+        letterSpacing: '-0.03em',
+        lineHeight: 1.05,
       }}
     >
-      {ESTADO_GLIFO[celula.estado]}
+      {celula.serie ?? ''}
     </div>
   );
 }
 
+/** Chip quadrado preenchido — legenda do estado (funil), cor + rótulo. */
 function ItemLegenda({ estado }: { estado: EstadoTramo }) {
-  const { fundo, tinta, borda } = pinturaEstado(estado);
-
+  const { fundo, borda } = pinturaEstado(estado);
   return (
     <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
       <span
-        className="inline-flex items-center justify-center font-bold"
-        style={{
-          width: u(2), height: u(2), borderRadius: u(0.4), background: fundo,
-          color: tinta, border: borda,
-          fontSize: u(1.2), lineHeight: 1,
-        }}
-      >
-        {ESTADO_GLIFO[estado]}
-      </span>
-      <span style={{ fontSize: u(1.5), color: 'var(--ink-secondary)' }}>{ESTADO_ROTULO[estado]}</span>
+        className="shrink-0"
+        style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: fundo, border: borda }}
+      />
+      <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>{ESTADO_ROTULO[estado]}</span>
     </span>
   );
 }
 
-function TooltipSemana({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0].payload;
+/** Chip com borda — legenda da restrição, para casar com o desenho da célula. */
+function ItemLegendaBorda({ cor, texto }: { cor: string; texto: string }) {
   return (
-    <ChartTooltip
-      title={`Semana ${p.semana}${p.ehAtual ? ' (atual)' : ''}`}
-      rows={[{ label: 'Tramos faturados', value: String(p.faturados) }]}
-    />
+    <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
+      <span
+        className="shrink-0"
+        style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), border: `${u(0.25)} solid ${cor}`, background: 'var(--surface-sunken)' }}
+      />
+      <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>{texto}</span>
+    </span>
   );
 }
 
@@ -238,7 +243,6 @@ function TooltipSemana({ active, payload }: any) {
 /* ------------------------------------------------------------------ */
 
 export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizadoEm, carregando }: Props) {
-  const c = useChartConfig();
   const raiz = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
@@ -450,50 +454,59 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
 
           <div
             className="flex shrink-0 flex-wrap items-center"
-            style={{ gap: u(2), paddingTop: u(1.2), borderTop: '1px solid var(--hairline)' }}
+            style={{ gap: u(1.8), paddingTop: u(1.2), borderTop: '1px solid var(--hairline)' }}
           >
             <ItemLegenda estado="expedido" />
             <ItemLegenda estado="faturado" />
             <ItemLegenda estado="pendente" />
-            <span style={{ fontSize: u(1.35), color: 'var(--ink-muted)', marginLeft: 'auto' }}>
-              Cada quadrado é um tramo. Coluna = torre.
+            <span style={{ width: '1px', height: u(1.6), background: 'var(--hairline)' }} />
+            <ItemLegendaBorda cor={SEM_RESTRICAO_CSS} texto="Sem restrição" />
+            <ItemLegendaBorda cor={RESTRICAO_CSS} texto="Com restrição" />
+            <span style={{ fontSize: u(1.3), color: 'var(--ink-muted)', marginLeft: 'auto' }}>
+              Número = seq do tramo. Coluna = torre.
             </span>
           </div>
         </Painel>
 
         {/* Coluna direita */}
-        <div className="grid min-h-0" style={{ gridTemplateRows: '1.15fr 1fr 1.25fr', gap: u(1.6) }}>
-          {/* Ritmo semanal */}
+        <div className="grid min-h-0" style={{ gridTemplateRows: '1.6fr 0.95fr 1.15fr', gap: u(1.6) }}>
+          {/*
+            Ritmo semanal: só o total por semana. O detalhe por tramo (seq,
+            restrição) já está na matriz — aqui a pergunta é "quanto saiu",
+            não "o quê".
+          */}
           <Painel titulo="Tramos faturados por semana">
-            <div className="min-h-0 flex-1">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={semanas} margin={{ top: 14, right: 4, left: -22, bottom: 0 }}>
-                  <CartesianGrid {...c.grid} />
-                  <XAxis
-                    dataKey="rotulo"
-                    {...c.xAxis}
-                    tick={{ fontSize: 13, fill: c.tokens.labelStrong, fontWeight: 700 }}
+            <div className="flex min-h-0 flex-1 items-end" style={{ gap: u(1) }}>
+              {semanas.length === 0 && (
+                <p style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>Nenhum tramo faturado ainda.</p>
+              )}
+              {semanas.map((s) => (
+                <div key={s.semana} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end" style={{ gap: u(0.5) }}>
+                  <span
+                    className="tabular shrink-0 font-bold"
+                    style={{ fontSize: u(1.6), color: 'var(--ink-primary)' }}
+                  >
+                    {s.faturados}
+                  </span>
+                  <div
+                    className="w-full"
+                    style={{
+                      height: `${(s.faturados / maxSemana) * 100}%`,
+                      minHeight: u(0.4),
+                      borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
+                      background: FATURADO_CSS,
+                      border: s.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
+                      borderBottom: 'none',
+                    }}
                   />
-                  <YAxis {...c.yAxis} domain={[0, maxSemana]} allowDecimals={false} tick={{ fontSize: 11, fill: c.tokens.label }} />
-                  <Tooltip content={<TooltipSemana />} cursor={c.cursor} />
-                  <Bar dataKey="faturados" radius={c.radius.top} {...c.animation} maxBarSize={44}>
-                    {/* Sem hover na TV: todo valor vem impresso. */}
-                    <LabelList dataKey="faturados" position="top" {...c.labelOnSurface} fontSize={13} />
-                    {/* Todas as barras no amarelo de "faturado". A semana atual
-                        se distingue por contorno, não por matiz: verde já é
-                        "expedido" na matriz e não pode significar duas coisas
-                        no mesmo painel. */}
-                    {semanas.map((s) => (
-                      <Cell
-                        key={s.semana}
-                        fill={c.tokens.series[3]}
-                        stroke={s.ehAtual ? c.tokens.inkPrimary : 'none'}
-                        strokeWidth={s.ehAtual ? 2 : 0}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                  <span
+                    className="shrink-0 text-center font-bold"
+                    style={{ fontSize: u(1.4), color: s.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+                  >
+                    {s.rotulo}
+                  </span>
+                </div>
+              ))}
             </div>
           </Painel>
 

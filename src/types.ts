@@ -2868,6 +2868,8 @@ export interface FinFatGwjaco {
   semana_faturamento: number | null;
   data_expedido: string | null;
   data_tramos_previstos: string | null;
+  /** Tramo travado (técnica, comercial, qualidade). Sai em laranja no painel. */
+  restricao: boolean;
   observacao: string | null;
   criado_por_id: string | null;
   criado_por_nome: string | null;

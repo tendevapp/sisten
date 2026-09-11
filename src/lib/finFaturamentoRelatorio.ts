@@ -117,7 +117,9 @@ export function resumoFaturamento(linhas: FinFatGwjaco[], semanaAtual?: number |
 export interface CelulaMatriz {
   torre: number;
   tramo: string;
+  serie: number | null;
   estado: EstadoTramo;
+  restricao: boolean;
   notaFiscal: string | null;
   dataFaturado: string | null;
 }
@@ -148,7 +150,9 @@ export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
         return {
           torre,
           tramo,
+          serie: l.serie,
           estado: estadoTramo(l),
+          restricao: Boolean(l.restricao),
           notaFiscal: l.nota_fiscal,
           dataFaturado: l.data_faturado,
         };
@@ -157,38 +161,67 @@ export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
   };
 }
 
+/** Um tramo dentro da barra da semana — vira um segmento identificável. */
+export interface TramoNaSemana {
+  id: string;
+  serie: number | null;
+  torre: number;
+  tramo: string;
+  restricao: boolean;
+  notaFiscal: string | null;
+}
+
 export interface PontoSemana {
   semana: number;
   rotulo: string;
   faturados: number;
+  comRestricao: number;
   ehAtual: boolean;
+  /** Os tramos da semana, do menor para o maior seq. */
+  tramos: TramoNaSemana[];
 }
 
 /**
  * Faturados por semana, só das semanas com movimento, limitado às `limite`
  * mais recentes — a parede mostra ritmo recente, não o histórico inteiro.
+ *
+ * Devolve os tramos, não só a contagem: na parede cada barra é empilhada num
+ * segmento por tramo, com o seq impresso dentro, então quem olha vê o volume
+ * da semana e *quais* tramos a compõem no mesmo lugar.
  */
 export function faturadosPorSemana(
   linhas: FinFatGwjaco[],
   semanaAtual?: number | null,
   limite = 12,
 ): PontoSemana[] {
-  const contagem = new Map<number, number>();
+  const porSemana = new Map<number, TramoNaSemana[]>();
   for (const l of linhas) {
     if (!l.data_faturado) continue;
     const semana = semanaDaLinha(l);
     if (semana == null) continue;
-    contagem.set(semana, (contagem.get(semana) ?? 0) + 1);
+    const item: TramoNaSemana = {
+      id: l.id,
+      serie: l.serie,
+      torre: l.torre_numero,
+      tramo: l.tramo,
+      restricao: Boolean(l.restricao),
+      notaFiscal: l.nota_fiscal,
+    };
+    const atual = porSemana.get(semana);
+    if (atual) atual.push(item);
+    else porSemana.set(semana, [item]);
   }
 
-  return [...contagem.entries()]
+  return [...porSemana.entries()]
     .sort((a, b) => a[0] - b[0])
     .slice(-limite)
-    .map(([semana, faturados]) => ({
+    .map(([semana, tramos]) => ({
       semana,
       rotulo: `S${semana}`,
-      faturados,
+      faturados: tramos.length,
+      comRestricao: tramos.filter((t) => t.restricao).length,
       ehAtual: semana === semanaAtual,
+      tramos: tramos.slice().sort((a, b) => (a.serie ?? 0) - (b.serie ?? 0)),
     }));
 }
 

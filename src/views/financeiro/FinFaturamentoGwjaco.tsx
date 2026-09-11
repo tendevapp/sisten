@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Receipt, ArrowLeft, Plus, RefreshCw, Loader2, Edit2, Trash2,
-  BarChart3, ClipboardList, Search,
+  BarChart3, ClipboardList, Search, AlertTriangle,
 } from 'lucide-react';
 import type { Profile, FinFatGwjaco, FinFatAlteracao } from '../../types';
 import * as api from '../../lib/finFaturamentoGwjacoApi';
@@ -58,10 +58,12 @@ const ROTULO_CAMPO: Record<string, string> = {
   semana_faturamento: 'Semana',
   data_expedido: 'Expedido',
   data_tramos_previstos: 'Tramos previstos',
+  restricao: 'Restrição',
   observacao: 'Observação',
 };
 
 function fmtValorLog(campo: string, v: string | null): string {
+  if (campo === 'restricao') return v === 'true' ? 'Sim' : 'Não';
   if (!v) return '∅';
   if (['data_faturado', 'data_expedido', 'data_tramos_previstos'].includes(campo)) return fmtDataBR(v);
   return v;
@@ -95,6 +97,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     semana_faturamento: '',
     data_expedido: '',
     data_tramos_previstos: '',
+    restricao: false,
     observacao: '',
   });
 
@@ -121,7 +124,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     setForm({
       torre_numero: '', tramo: 'T1', codigo_cliente: '', projeto_codigo: '',
       nota_fiscal: '', data_faturado: '', semana_faturamento: '',
-      data_expedido: '', data_tramos_previstos: '', observacao: '',
+      data_expedido: '', data_tramos_previstos: '', restricao: false, observacao: '',
     });
     setModalAberto(true);
   };
@@ -138,6 +141,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
       semana_faturamento: row.semana_faturamento != null ? String(row.semana_faturamento) : '',
       data_expedido: row.data_expedido ?? '',
       data_tramos_previstos: row.data_tramos_previstos ?? '',
+      restricao: Boolean(row.restricao),
       observacao: row.observacao ?? '',
     });
     setModalAberto(true);
@@ -159,6 +163,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
       semana_faturamento: form.semana_faturamento ? Number(form.semana_faturamento) : null,
       data_expedido: form.data_expedido || null,
       data_tramos_previstos: form.data_tramos_previstos || null,
+      restricao: form.restricao,
       observacao: form.observacao.trim() || null,
     };
 
@@ -369,6 +374,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                   <th className="px-3 py-2">Semana</th>
                   <th className="px-3 py-2">Expedido</th>
                   <th className="px-3 py-2">Tramos Previstos</th>
+                  <th className="px-3 py-2">Restrição</th>
                   <th className="px-3 py-2">Projeto</th>
                   <th className="px-3 py-2 text-right">Ações</th>
                 </tr>
@@ -389,6 +395,16 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                     <td className="px-3 py-2">{row.semana_faturamento ?? '—'}</td>
                     <td className="px-3 py-2">{fmtDataBR(row.data_expedido)}</td>
                     <td className="px-3 py-2">{fmtDataBR(row.data_tramos_previstos)}</td>
+                    <td className="px-3 py-2">
+                      {row.restricao ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-700 dark:bg-orange-950/50 dark:text-orange-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          Sim
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-slate-500 dark:text-slate-400">{row.projeto_codigo || '—'}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1">
@@ -571,6 +587,28 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                       />
                     </div>
                   </div>
+
+                  <label
+                    htmlFor="finFatRestricao"
+                    className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 p-3 dark:border-slate-700"
+                  >
+                    <input
+                      type="checkbox"
+                      id="finFatRestricao"
+                      checked={form.restricao}
+                      onChange={(e) => setForm((f) => ({ ...f, restricao: e.target.checked }))}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                    />
+                    <span>
+                      <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Tramo com restrição
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
+                        Marca o tramo travado. No relatório de parede ele aparece em laranja em vez
+                        de azul. O motivo, quando houver, vai na observação.
+                      </span>
+                    </span>
+                  </label>
                 </>
               )}
 
