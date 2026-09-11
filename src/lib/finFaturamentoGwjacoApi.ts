@@ -24,6 +24,7 @@ export interface FinFatPatch {
   serie?: number | null;
   codigo_cliente?: string | null;
   projeto_codigo?: string | null;
+  part_number?: string | null;
   nota_fiscal?: string | null;
   data_faturado?: string | null;
   semana_faturamento?: number | null;

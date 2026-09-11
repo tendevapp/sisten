@@ -27,6 +27,7 @@ function linha(over: Partial<FinFatGwjaco> = {}): FinFatGwjaco {
     serie: 3143,
     tramo_id: null,
     codigo_cliente: 'S1 SEC GW5S120M',
+    part_number: null,
     projeto_codigo: 'GW5S120M-001',
     nota_fiscal: null,
     data_faturado: null,

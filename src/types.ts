@@ -2863,6 +2863,8 @@ export interface FinFatGwjaco {
   tramo_id: string | null;
   codigo_cliente: string | null;
   projeto_codigo: string | null;
+  /** Part number do tramo, trazido da planilha de importação. */
+  part_number: string | null;
   nota_fiscal: string | null;
   data_faturado: string | null;
   semana_faturamento: number | null;

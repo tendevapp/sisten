@@ -31,6 +31,7 @@ import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import FinFaturamentoWallboard from './FinFaturamentoWallboard';
+import ImportarFaturamentoGwjaco from '../../components/financeiro/ImportarFaturamentoGwjaco';
 
 interface Props {
   user: Profile;
@@ -58,6 +59,7 @@ const ROTULO_CAMPO: Record<string, string> = {
   tramo: 'Tramo',
   serie: 'Seq.',
   codigo_cliente: 'Código de Cliente',
+  part_number: 'Part Number',
   projeto_codigo: 'Projeto',
   nota_fiscal: 'Nº Nota Fiscal',
   data_faturado: 'Faturado',
@@ -98,6 +100,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     torre_numero: '',
     tramo: 'T1',
     codigo_cliente: '',
+    part_number: '',
     projeto_codigo: '',
     nota_fiscal: '',
     data_faturado: '',
@@ -125,7 +128,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     setEditando(null);
     setModoNovo('todos');
     setForm({
-      torre_numero: '', tramo: 'T1', codigo_cliente: '', projeto_codigo: '',
+      torre_numero: '', tramo: 'T1', codigo_cliente: '', part_number: '', projeto_codigo: '',
       nota_fiscal: '', data_faturado: '', semana_faturamento: '',
       data_expedido: '', data_tramos_previstos: '', restricao: false, observacao: '',
     });
@@ -138,6 +141,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
       torre_numero: String(row.torre_numero),
       tramo: row.tramo,
       codigo_cliente: row.codigo_cliente ?? '',
+      part_number: row.part_number ?? '',
       projeto_codigo: row.projeto_codigo ?? '',
       nota_fiscal: row.nota_fiscal ?? '',
       data_faturado: row.data_faturado ?? '',
@@ -160,6 +164,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
 
     const base = {
       codigo_cliente: form.codigo_cliente.trim() || null,
+      part_number: form.part_number.trim() || null,
       projeto_codigo: form.projeto_codigo.trim() || null,
       nota_fiscal: form.nota_fiscal.trim() || null,
       data_faturado: form.data_faturado || null,
@@ -352,6 +357,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Atualizar
             </button>
+            <ImportarFaturamentoGwjaco linhasExistentes={linhas} user={user} onImportado={carregar} />
             <button
               type="button"
               onClick={abrirNovo}
@@ -530,6 +536,16 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                       placeholder="Ex: S1 SEC GW5S120M"
                       value={form.codigo_cliente}
                       onChange={(e) => setForm((f) => ({ ...f, codigo_cliente: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Part Number</label>
+                    <input
+                      type="text"
+                      value={form.part_number}
+                      onChange={(e) => setForm((f) => ({ ...f, part_number: e.target.value }))}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
                   </div>
