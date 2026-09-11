@@ -80,6 +80,9 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [paraExcluir, setParaExcluir] = useState<FinFatGwjaco | null>(null);
 
+  /** Só vale para cadastro novo: uma torre inteira (5 tramos) ou um tramo avulso. */
+  const [modoNovo, setModoNovo] = useState<'todos' | 'individual'>('todos');
+
   const [form, setForm] = useState({
     torre_numero: '',
     tramo: 'T1',
@@ -111,6 +114,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
 
   const abrirNovo = () => {
     setEditando(null);
+    setModoNovo('todos');
     setForm({
       torre_numero: '', tramo: 'T1', codigo_cliente: '', projeto_codigo: '',
       nota_fiscal: '', data_faturado: '', semana_faturamento: '',
@@ -143,9 +147,8 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
       toast.warning('Informe o número da torre.');
       return;
     }
-    const patch: api.FinFatPatch = {
-      torre_numero: torreNum,
-      tramo: form.tramo,
+
+    const base = {
       codigo_cliente: form.codigo_cliente.trim() || null,
       projeto_codigo: form.projeto_codigo.trim() || null,
       nota_fiscal: form.nota_fiscal.trim() || null,
@@ -159,8 +162,32 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     setSalvando(true);
     try {
       if (editando) {
+        const patch: api.FinFatPatch = { torre_numero: torreNum, tramo: form.tramo, ...base };
         const res = await api.editarLancamentoFaturamento(editando.id, patch, { id: user.id, nome: user.name });
         toast.success(res.alteracoes > 0 ? `Lançamento atualizado (${res.alteracoes} campo(s)).` : 'Nada mudou.');
+      } else if (modoNovo === 'todos') {
+        // Torre inteira: cadastra os 5 tramos de uma vez (dados de lançamento
+        // ficam vazios — cada tramo fatura em data/NF diferente, edita depois).
+        const jaExistem = new Set(linhas.filter((l) => l.torre_numero === torreNum).map((l) => l.tramo));
+        const faltantes = TRAMOS.filter((t) => !jaExistem.has(t));
+        if (faltantes.length === 0) {
+          toast.warning(`Torre ${torreNum} já tem os 5 tramos cadastrados.`);
+          setSalvando(false);
+          return;
+        }
+        for (const t of faltantes) {
+          await api.criarLancamentoFaturamento({
+            torre_numero: torreNum,
+            tramo: t,
+            projeto_codigo: base.projeto_codigo,
+            observacao: base.observacao,
+          });
+        }
+        toast.success(
+          faltantes.length === TRAMOS.length
+            ? `Torre ${torreNum} cadastrada com os 5 tramos.`
+            : `Torre ${torreNum}: ${faltantes.length} tramo(s) cadastrado(s) (${jaExistem.size} já existiam).`,
+        );
       } else {
         const duplicado = linhas.some((l) => l.torre_numero === torreNum && l.tramo === form.tramo);
         if (duplicado) {
@@ -168,7 +195,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
           setSalvando(false);
           return;
         }
-        await api.criarLancamentoFaturamento(patch);
+        await api.criarLancamentoFaturamento({ torre_numero: torreNum, tramo: form.tramo, ...base });
         toast.success(`Torre ${torreNum} / ${form.tramo} cadastrada.`);
       }
       setModalAberto(false);
@@ -406,6 +433,33 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
           </ModalHeader>
           <form onSubmit={salvar} className="flex min-h-0 flex-1 flex-col">
             <ModalBody className="space-y-4">
+              {!editando && (
+                <div className="flex gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-950">
+                  <button
+                    type="button"
+                    onClick={() => setModoNovo('todos')}
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                      modoNovo === 'todos'
+                        ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-900 dark:text-emerald-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    Torre inteira (5 tramos)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModoNovo('individual')}
+                    className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                      modoNovo === 'individual'
+                        ? 'bg-white text-emerald-700 shadow-xs dark:bg-slate-900 dark:text-emerald-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    Um tramo
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Torre *</label>
@@ -419,95 +473,109 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none disabled:opacity-60 sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramo *</label>
-                  <select
-                    required
-                    disabled={!!editando}
-                    value={form.tramo}
-                    onChange={(e) => setForm((f) => ({ ...f, tramo: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 disabled:opacity-60 sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  >
-                    {TRAMOS.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
+                {(editando || modoNovo === 'individual') && (
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramo *</label>
+                    <select
+                      required
+                      disabled={!!editando}
+                      value={form.tramo}
+                      onChange={(e) => setForm((f) => ({ ...f, tramo: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 disabled:opacity-60 sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    >
+                      {TRAMOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
+              {!editando && modoNovo === 'todos' && (
+                <p className="rounded-lg bg-emerald-50 p-2.5 text-[11px] text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                  Cria os tramos T1 a T5 da torre {form.torre_numero || '—'} de uma vez, sem os dados de lançamento
+                  (NF, faturamento, expedição) — cada tramo fatura em data diferente, então isso se edita depois,
+                  tramo a tramo, na tabela.
+                </p>
+              )}
+
+              {(editando || modoNovo === 'individual') && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Código de Cliente</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: S1 SEC GW5S120M"
+                      value={form.codigo_cliente}
+                      onChange={(e) => setForm((f) => ({ ...f, codigo_cliente: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Nº Nota Fiscal</label>
+                    <input
+                      type="text"
+                      value={form.nota_fiscal}
+                      onChange={(e) => setForm((f) => ({ ...f, nota_fiscal: e.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Faturado (data)</label>
+                      <input
+                        type="date"
+                        value={form.data_faturado}
+                        onChange={(e) => setForm((f) => ({ ...f, data_faturado: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Semana (faturamento)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={53}
+                        value={form.semana_faturamento}
+                        onChange={(e) => setForm((f) => ({ ...f, semana_faturamento: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Expedido (data)</label>
+                      <input
+                        type="date"
+                        value={form.data_expedido}
+                        onChange={(e) => setForm((f) => ({ ...f, data_expedido: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramos Previstos (data)</label>
+                      <input
+                        type="date"
+                        value={form.data_tramos_previstos}
+                        onChange={(e) => setForm((f) => ({ ...f, data_tramos_previstos: e.target.value }))}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Projeto e observação valem para a torre inteira, então ficam nos dois modos. */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Código de Cliente</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Projeto</label>
                 <input
                   type="text"
-                  placeholder="Ex: S1 SEC GW5S120M"
-                  value={form.codigo_cliente}
-                  onChange={(e) => setForm((f) => ({ ...f, codigo_cliente: e.target.value }))}
+                  placeholder="Ex: GW5S120M-001"
+                  value={form.projeto_codigo}
+                  onChange={(e) => setForm((f) => ({ ...f, projeto_codigo: e.target.value }))}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Nº Nota Fiscal</label>
-                  <input
-                    type="text"
-                    value={form.nota_fiscal}
-                    onChange={(e) => setForm((f) => ({ ...f, nota_fiscal: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Projeto</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: GW5S120M-001"
-                    value={form.projeto_codigo}
-                    onChange={(e) => setForm((f) => ({ ...f, projeto_codigo: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Faturado (data)</label>
-                  <input
-                    type="date"
-                    value={form.data_faturado}
-                    onChange={(e) => setForm((f) => ({ ...f, data_faturado: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Semana (faturamento)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={53}
-                    value={form.semana_faturamento}
-                    onChange={(e) => setForm((f) => ({ ...f, semana_faturamento: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Expedido (data)</label>
-                  <input
-                    type="date"
-                    value={form.data_expedido}
-                    onChange={(e) => setForm((f) => ({ ...f, data_expedido: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramos Previstos (data)</label>
-                  <input
-                    type="date"
-                    value={form.data_tramos_previstos}
-                    onChange={(e) => setForm((f) => ({ ...f, data_tramos_previstos: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
               </div>
 
               <div>
@@ -537,7 +605,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
-                {editando ? 'Salvar Alterações' : 'Cadastrar'}
+                {editando ? 'Salvar Alterações' : modoNovo === 'todos' ? 'Cadastrar Torre (5 tramos)' : 'Cadastrar Tramo'}
               </button>
             </ModalFooter>
           </form>
