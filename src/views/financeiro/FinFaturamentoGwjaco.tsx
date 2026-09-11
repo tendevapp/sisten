@@ -14,7 +14,7 @@
  * lançamento ou admin (`fin_fat_editar`), com log campo a campo.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Receipt, ArrowLeft, Plus, RefreshCw, Loader2, Edit2, Trash2,
   BarChart3, ClipboardList, Search,
@@ -24,6 +24,7 @@ import * as api from '../../lib/finFaturamentoGwjacoApi';
 import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import FinFaturamentoWallboard from './FinFaturamentoWallboard';
 
 interface Props {
   user: Profile;
@@ -74,6 +75,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
   const [linhas, setLinhas] = useState<FinFatGwjaco[]>([]);
   const [loading, setLoading] = useState(false);
   const [busca, setBusca] = useState('');
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<FinFatGwjaco | null>(null);
@@ -96,16 +98,17 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     observacao: '',
   });
 
-  const carregar = async () => {
+  const carregar = useCallback(async () => {
     setLoading(true);
     try {
       setLinhas(await api.listarFaturamentoGwjaco());
+      setAtualizadoEm(new Date());
     } catch (err: any) {
       toast.error('Erro ao carregar o faturamento: ' + (err.message || ''));
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => { carregar(); }, []);
 
@@ -291,11 +294,16 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
       </div>
 
       {aba === 'relatorio' ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-10 text-center dark:border-slate-800 dark:bg-slate-950/40">
-          <BarChart3 className="mx-auto h-8 w-8 text-slate-400" />
-          <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Relatório em breve</p>
+        <div className="space-y-3">
+          <FinFaturamentoWallboard
+            linhas={linhas}
+            onAtualizar={carregar}
+            atualizadoEm={atualizadoEm}
+            carregando={loading}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            O painel consolidado de faturamento (por semana, torre e projeto) entra aqui numa próxima etapa.
+            Painel desenhado para TV: use o botão de tela cheia no canto do painel. Ele se atualiza
+            sozinho a cada 2 minutos e segue o tema do app (para a TV, deixe no tema escuro).
           </p>
         </div>
       ) : (
