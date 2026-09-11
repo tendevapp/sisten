@@ -74,10 +74,16 @@ export interface ResumoFaturamento {
   totalTorres: number;
   /** Faturados na semana passada como referência (`semanaAtual`). */
   naSemana: number;
+  /** Faturados no mês passado como referência (`mesAtual`, formato YYYY-MM). */
+  noMes: number;
   ultimaNota: FinFatGwjaco | null;
 }
 
-export function resumoFaturamento(linhas: FinFatGwjaco[], semanaAtual?: number | null): ResumoFaturamento {
+export function resumoFaturamento(
+  linhas: FinFatGwjaco[],
+  semanaAtual?: number | null,
+  mesAtual?: string | null,
+): ResumoFaturamento {
   const faturados = linhas.filter((l) => l.data_faturado);
   const expedidos = linhas.filter((l) => l.data_expedido);
 
@@ -110,6 +116,7 @@ export function resumoFaturamento(linhas: FinFatGwjaco[], semanaAtual?: number |
     torresConcluidas,
     totalTorres: porTorre.size,
     naSemana: semanaAtual == null ? 0 : faturados.filter((l) => semanaDaLinha(l) === semanaAtual).length,
+    noMes: mesAtual == null ? 0 : faturados.filter((l) => l.data_faturado?.slice(0, 7) === mesAtual).length,
     ultimaNota: ordenadasPorData[0] ?? null,
   };
 }

@@ -42,7 +42,7 @@ import { Maximize2, Minimize2, RefreshCw, Radio } from 'lucide-react';
 import type { FinFatGwjaco } from '../../types';
 import {
   resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorMes, faturadosPorTramo,
-  ultimasNotas, semanaISO, type EstadoTramo, type CelulaMatriz,
+  ultimasNotas, semanaISO, rotuloMes, type EstadoTramo, type CelulaMatriz,
 } from '../../lib/finFaturamentoRelatorio';
 
 interface Props {
@@ -363,7 +363,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
 
   const semanaAtual = useMemo(() => semanaISO(new Date().toISOString().slice(0, 10)), []);
   const mesAtual = useMemo(() => new Date().toISOString().slice(0, 7), []);
-  const resumo = useMemo(() => resumoFaturamento(linhas, semanaAtual), [linhas, semanaAtual]);
+  const resumo = useMemo(() => resumoFaturamento(linhas, semanaAtual, mesAtual), [linhas, semanaAtual, mesAtual]);
   const matriz = useMemo(() => matrizTorreTramo(linhas), [linhas]);
   const semanas = useMemo(() => faturadosPorSemana(linhas, semanaAtual), [linhas, semanaAtual]);
   const meses = useMemo(() => faturadosPorMes(linhas, mesAtual), [linhas, mesAtual]);
@@ -567,8 +567,8 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           apoio={`${resumo.torresIniciadas} em andamento`}
         />
         <Kpi
-          valor={String(resumo.naSemana)}
-          rotulo={`Semana ${semanaAtual ?? ''}`}
+          valor={String(resumo.noMes)}
+          rotulo={`Mês ${rotuloMes(mesAtual)}`}
           apoio={resumo.ultimaNota ? `Última NF ${resumo.ultimaNota.nota_fiscal}` : 'Sem nota emitida'}
         />
       </div>

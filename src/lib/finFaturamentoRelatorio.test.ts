@@ -119,6 +119,12 @@ describe('resumoFaturamento', () => {
     expect(resumoFaturamento(linhas, null).naSemana).toBe(0);
   });
 
+  it('conta o que saiu no mês de referência', () => {
+    expect(resumoFaturamento(linhas, 36, '2026-08').noMes).toBe(3);
+    expect(resumoFaturamento(linhas, 36, '2026-09').noMes).toBe(0);
+    expect(resumoFaturamento(linhas, 36, null).noMes).toBe(0);
+  });
+
   it('pega a nota mais recente', () => {
     const comNota = [
       linha({ data_faturado: '2026-08-13', nota_fiscal: '20949-1' }),
