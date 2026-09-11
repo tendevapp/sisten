@@ -225,10 +225,10 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
         className="tabular font-bold"
         style={{
           color: tinta,
-          // "T1-3143" tem 7 caracteres empilhados — cap mais baixo que o do
-          // seq sozinho (que tinha só 4 dígitos), senão a coluna de texto
-          // estoura a altura da linha.
-          fontSize: `min(calc(${largura} * 0.55), ${u(1.35)})`,
+          // Só o seq (4 dígitos) — o "T1-" era redundante com o rótulo da
+          // própria linha (T1..T5), então cabe uma fonte maior que a do
+          // rótulo "T1-3143" que veio antes.
+          fontSize: `min(calc(${largura} * 0.68), ${u(2.3)})`,
           writingMode: 'vertical-rl',
           textOrientation: 'upright',
           // `writing-mode` só tem efeito em caixa inline ATÔMICA (spec de CSS
@@ -237,11 +237,11 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
           // a coluna estreita, e o `overflow: hidden` do pai cortava tudo,
           // deixando a célula "sem número". `inline-block` resolve.
           display: 'inline-block',
-          letterSpacing: u(0.1),
+          letterSpacing: u(0.15),
           lineHeight: 1,
         }}
       >
-        {celula.tramo}-{celula.serie ?? '?'}
+        {celula.serie ?? ''}
       </span>
       {/* Reforço para quem não distingue verde de amarelo (ΔE 3,0 em
           protanopia — ver comentário de RESTRICAO_CSS): sem isso, expedido e
