@@ -2847,3 +2847,40 @@ export interface ProjSobressalente {
   created_at: string;
   itens?: ProjSobressalenteItem[];
 }
+
+// =====================================================================
+// Financeiro > Faturamento GW Jacobina — `fin_fat_gwjaco`.
+// Mesma chave torre+tramo de `ProjTramoUnidade`, lançada numa tabela própria
+// do Financeiro. Ver `src/lib/finFaturamentoGwjacoApi.ts`.
+// =====================================================================
+
+export interface FinFatGwjaco {
+  id: string;
+  projeto: string;
+  torre_numero: number;
+  tramo: string;
+  serie: number | null;
+  tramo_id: string | null;
+  codigo_cliente: string | null;
+  projeto_codigo: string | null;
+  nota_fiscal: string | null;
+  data_faturado: string | null;
+  semana_faturamento: number | null;
+  data_expedido: string | null;
+  data_tramos_previstos: string | null;
+  observacao: string | null;
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinFatAlteracao {
+  id: string;
+  fat_id: string;
+  alteracoes: { campo: string; de: string | null; para: string | null }[];
+  resumo: string | null;
+  alterado_por_id: string | null;
+  alterado_por_nome: string | null;
+  created_at: string;
+}

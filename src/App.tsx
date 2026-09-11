@@ -40,6 +40,7 @@ const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
+const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturamentoGwjaco'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
@@ -763,6 +764,12 @@ export default function App() {
       case '/financeiro/reconciliacao-pedidos':
         if (canAccessPage(user, 'fin_reconciliacao_pedidos')) {
           return <ReconciliacaoPedidos user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/faturamento-gwjaco':
+        if (canAccessPage(user, 'fin_faturamento_gwjaco')) {
+          return <FinFaturamentoGwjaco user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
