@@ -225,17 +225,17 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
         className="tabular font-bold"
         style={{
           color: tinta,
-          // Cap de altura bem mais generoso que o de largura: a linha da
-          // matriz tem folga de sobra (a célula ocupa 100% da altura da
-          // linha), quem geralmente aperta é a largura em muitas torres.
-          fontSize: `min(calc(${largura} * 0.68), ${u(2.3)})`,
+          // "T1-3143" tem 7 caracteres empilhados — cap mais baixo que o do
+          // seq sozinho (que tinha só 4 dígitos), senão a coluna de texto
+          // estoura a altura da linha.
+          fontSize: `min(calc(${largura} * 0.55), ${u(1.35)})`,
           writingMode: 'vertical-rl',
           textOrientation: 'upright',
-          letterSpacing: u(0.15),
+          letterSpacing: u(0.1),
           lineHeight: 1,
         }}
       >
-        {celula.serie ?? ''}
+        {celula.tramo}-{celula.serie ?? '?'}
       </span>
       {/* Reforço para quem não distingue verde de amarelo (ΔE 3,0 em
           protanopia — ver comentário de RESTRICAO_CSS): sem isso, expedido e
@@ -257,7 +257,6 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
   );
 }
 
-/** Chip quadrado sólido — legenda da restrição (preenchimento, sem borda). */
 /**
  * Régua com o número de todas as torres. A fonte acompanha a largura da
  * coluna, então continua cabendo quando o projeto crescer das 18 torres

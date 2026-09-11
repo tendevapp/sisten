@@ -6,9 +6,11 @@
  *
  * Segue o padrão dos módulos próprios (`projetosApi`, `recebimentoAlmoxApi`):
  * Supabase direto, `.from()` com `as any` porque a tabela ainda não está em
- * `database.types.ts`. Cadastro de torre/tramo novo é INSERT direto (RLS
- * garante autor/admin); edição de um lançamento existente passa pela RPC
- * `fin_fat_editar`, que grava o diff em `fin_fat_alteracoes`.
+ * `database.types.ts`. Cadastro de torre/tramo novo é INSERT direto; edição
+ * de um lançamento existente passa pela RPC `fin_fat_editar`, que grava o
+ * diff em `fin_fat_alteracoes`. Qualquer usuário com acesso à página edita
+ * qualquer linha — a RLS não trava por autor aqui (ver
+ * `20260911180000_fin_fat_edicao_livre.sql`).
  */
 
 import { supabase } from '../db/supabaseClient';
@@ -41,7 +43,7 @@ export async function listarFaturamentoGwjaco(projeto = 'GW_JACOBINA'): Promise<
   return (data ?? []) as FinFatGwjaco[];
 }
 
-/** Cadastra uma torre+tramo nova (INSERT direto — RLS trava autor/admin no update depois). */
+/** Cadastra uma torre+tramo nova — INSERT direto. */
 export async function criarLancamentoFaturamento(
   patch: FinFatPatch & { projeto?: string },
 ): Promise<FinFatGwjaco> {

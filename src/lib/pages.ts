@@ -339,6 +339,17 @@ export function isUserSetorRh(user: Profile): boolean {
   return user.sector_id === SETOR_RH_ID;
 }
 
+/**
+ * Setores donos do módulo Financeiro em `core_setores`: Financeiro (6),
+ * Contabilidade (7) e Controladoria (18).
+ */
+export const SETORES_FINANCEIRO_IDS = ['6', '7', '18'];
+
+/** O usuário pertence a um dos setores do Financeiro? */
+export function isUserSetorFinanceiro(user: Profile): boolean {
+  return SETORES_FINANCEIRO_IDS.includes(user.sector_id);
+}
+
 export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
 
@@ -357,6 +368,16 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   // Módulo Facilities: restrito estritamente a Administradores e ao Adriano
   if (def.group === 'FACILITIES' || pageId.startsWith('facilities')) {
     if (!isUserAdriano(user)) return false;
+    const override = user.page_access?.[pageId];
+    if (override !== undefined) return override;
+    return true;
+  }
+
+  // Módulo Financeiro: além dos papéis já configurados por página (comprador,
+  // coordenador_suprimentos), libera todo o módulo para quem é dos setores
+  // Financeiro/Contabilidade/Controladoria — aditivo, não substitui os
+  // `defaultRoles` abaixo para quem estiver em outro setor.
+  if (def.group === 'FINANCEIRO' && isUserSetorFinanceiro(user)) {
     const override = user.page_access?.[pageId];
     if (override !== undefined) return override;
     return true;

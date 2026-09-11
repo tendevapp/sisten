@@ -289,6 +289,37 @@ describe('pages.ts - Controle de Acesso', () => {
     });
   });
 
+  describe('Módulo Financeiro — setores Financeiro, Contabilidade e Controladoria', () => {
+    // sector_id 6 = Financeiro, 7 = Contabilidade, 18 = Controladoria em core_setores.
+    it.each(['6', '7', '18'])('libera todo o módulo para o setor %s', (setorId) => {
+      const user = mockUser({ roles: ['requisitante'], sector_id: setorId });
+      expect(canAccessPage(user, 'financeiro_home')).toBe(true);
+      expect(canAccessPage(user, 'fin_contas_pagar')).toBe(true);
+      expect(canAccessPage(user, 'fin_faturamento_gwjaco')).toBe(true);
+    });
+
+    it('mantém o acesso de quem já tinha por papel, fora desses setores', () => {
+      // comprador/coordenador_suprimentos continuam liberados pelo defaultRoles
+      // já existente — a regra por setor é aditiva, não substitui.
+      const comprador = mockUser({ roles: ['comprador'], sector_id: '5' });
+      expect(canAccessPage(comprador, 'financeiro_home')).toBe(true);
+      // fin_contas_pagar é só admin no defaultRoles; comprador de outro setor não entra.
+      expect(canAccessPage(comprador, 'fin_contas_pagar')).toBe(false);
+    });
+
+    it('bloqueia quem não é dos setores nem tem o papel exigido pela página', () => {
+      const forasteiro = mockUser({ roles: ['requisitante'], sector_id: '5' });
+      expect(canAccessPage(forasteiro, 'financeiro_home')).toBe(false);
+      expect(canAccessPage(forasteiro, 'fin_faturamento_gwjaco')).toBe(false);
+    });
+
+    it('respeita bloqueio página a página feito pelo admin, mesmo sendo do setor', () => {
+      const user = mockUser({ roles: ['requisitante'], sector_id: '6', page_access: { fin_faturamento_gwjaco: false } });
+      expect(canAccessPage(user, 'financeiro_home')).toBe(true);
+      expect(canAccessPage(user, 'fin_faturamento_gwjaco')).toBe(false);
+    });
+  });
+
   describe('GROUP_ORDER — ordem dos módulos no menu', () => {
     it('cobre todos os grupos de PAGES', () => {
       // Grupo fora desta lista simplesmente não é renderizado no Sidebar, sem

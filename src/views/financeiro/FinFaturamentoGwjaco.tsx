@@ -10,8 +10,14 @@
  *
  * Mesma chave torre+tramo de `proj_tramos_gwjaco` (Almoxarifado > Projetos),
  * mas lançada em tabela própria do Financeiro (`fin_fat_gwjaco`), para não
- * misturar o fluxo de fabricação com o de faturamento. Edição só do autor do
- * lançamento ou admin (`fin_fat_editar`), com log campo a campo.
+ * misturar o fluxo de fabricação com o de faturamento.
+ *
+ * Edição livre para quem tem acesso à página — foge do padrão autor-ou-admin
+ * dos demais formulários de propósito (ver `20260911180000_fin_fat_edicao_livre.sql`):
+ * o time de Faturamento é pequeno e lança o mesmo tramo em conjunto (quem
+ * cadastra a torre não é sempre quem lança a NF depois). A página já é a
+ * barreira; toda edição continua registrada campo a campo em
+ * `fin_fat_alteracoes` (`fin_fat_editar`).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -114,9 +120,6 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
   }, [toast]);
 
   useEffect(() => { carregar(); }, []);
-
-  const podeEditar = (row: FinFatGwjaco) =>
-    user.roles.includes('admin') || row.criado_por_id === user.id;
 
   const abrirNovo = () => {
     setEditando(null);
@@ -411,18 +414,16 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
                         <button
                           type="button"
                           onClick={() => abrirEdicao(row)}
-                          disabled={!podeEditar(row)}
-                          title={podeEditar(row) ? 'Editar lançamento' : 'Só o autor ou um admin pode editar'}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 disabled:opacity-30 dark:hover:bg-slate-800"
+                          title="Editar lançamento"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setParaExcluir(row)}
-                          disabled={!podeEditar(row)}
-                          title={podeEditar(row) ? 'Excluir' : 'Só o autor ou um admin pode excluir'}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950/40"
+                          title="Excluir"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
