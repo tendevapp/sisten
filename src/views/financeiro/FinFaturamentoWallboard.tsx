@@ -228,7 +228,7 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
           // Só o seq (4 dígitos) — o "T1-" era redundante com o rótulo da
           // própria linha (T1..T5), então cabe uma fonte maior que a do
           // rótulo "T1-3143" que veio antes.
-          fontSize: `min(calc(${largura} * 0.68), ${u(2.3)})`,
+          fontSize: `min(calc(${largura} * 0.42), ${u(1.5)})`,
           writingMode: 'vertical-rl',
           textOrientation: 'upright',
           // `writing-mode` só tem efeito em caixa inline ATÔMICA (spec de CSS
@@ -237,7 +237,7 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
           // a coluna estreita, e o `overflow: hidden` do pai cortava tudo,
           // deixando a célula "sem número". `inline-block` resolve.
           display: 'inline-block',
-          letterSpacing: u(0.15),
+          letterSpacing: u(0.08),
           lineHeight: 1,
         }}
       >
