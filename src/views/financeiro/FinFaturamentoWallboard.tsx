@@ -7,20 +7,21 @@
  * Desenhado para leitura a 3-5 metros, sem ninguém para clicar: nada depende
  * de hover e todo número tem rótulo direto.
  *
- * A célula da matriz torre × tramo carrega duas informações independentes,
- * cada uma com a sua legenda:
- *   - preenchimento = estado no funil (verde expedido, amarelo faturado,
- *     cinza pendente) — onde o tramo está;
- *   - borda = restrição (laranja com restrição, azul sem) — se o tramo está
- *     travado;
- *   - conteúdo = o seq do tramo, deitado, porque a coluna é estreita (18 a 69
- *     torres na mesma largura de painel) e o número em pé não caberia.
+ * A célula da matriz torre × tramo é toda preenchimento, nunca borda:
+ *   - expedido = verde — venceu o funil, a restrição deixa de ser a pergunta
+ *     relevante nesse ponto (ela segue visível para "faturado" e na coluna
+ *     Restrição da tabela/log);
+ *   - faturado, ainda não expedido = azul sem restrição, laranja com;
+ *   - conteúdo = o seq do tramo, em pé (`vertical-rl` + `text-orientation:
+ *     upright`), grande o bastante para ler a 3-5m — a coluna é estreita
+ *     (18 a 69 torres na mesma largura de painel) e o número deitado não
+ *     caberia sem alargar.
+ * Tramo pendente fica com a célula vazia (cinza, sem número): o pedido era
+ * "que número já foi faturado e expedido", não listar os 90 tramos.
  *
- * Amarelo × verde (faturado × expedido) separa bem em visão normal (ΔE 27 no
- * `validate_palette.js`) mas desaba para ΔE 3 em protanopia, que atinge perto
- * de 8% dos homens — por isso o rótulo da legenda nunca é só a cor. O par
- * azul/laranja da borda não tem esse problema (ΔE 27 em protanopia). Ao mexer
- * em qualquer cor daqui, rode o validador de novo.
+ * O par azul/laranja passa no `validate_palette.js` até em protanopia
+ * (ΔE 27), que atinge perto de 8% dos homens — não precisou de reforço. Ao
+ * mexer em qualquer cor daqui, rode o validador de novo.
  *
  * O que este painel responde e o BI original não respondia: **onde o projeto
  * travou**. A matriz torre × tramo mostra numa olhada que as primeiras torres
@@ -66,7 +67,7 @@ const u = (n: number) => `calc(var(--wb) * ${n})`;
  */
 const FATURADO_CSS = 'var(--series-4)';
 
-/** Tinta sobre o preenchimento amarelo: branco não teria contraste. */
+/** Tinta sobre qualquer preenchimento amarelo: branco não teria contraste. */
 const TINTA_SOBRE_AMARELO = '#0f172a';
 
 const ESTADO_ROTULO: Record<EstadoTramo, string> = {
@@ -74,13 +75,6 @@ const ESTADO_ROTULO: Record<EstadoTramo, string> = {
   faturado: 'Faturado',
   pendente: 'Pendente',
 };
-
-/** Preenchimento, tinta e borda de um estado. Fonte única: célula e legenda leem daqui. */
-function pinturaEstado(estado: EstadoTramo): { fundo: string; tinta: string; borda: string } {
-  if (estado === 'expedido') return { fundo: 'var(--status-good)', tinta: '#ffffff', borda: 'none' };
-  if (estado === 'faturado') return { fundo: FATURADO_CSS, tinta: TINTA_SOBRE_AMARELO, borda: 'none' };
-  return { fundo: 'var(--surface-sunken)', tinta: 'var(--ink-muted)', borda: '1px solid var(--hairline)' };
-}
 
 function fmtDataBR(iso?: string | null): string {
   if (!iso) return '-';
@@ -167,72 +161,136 @@ function Kpi({
   );
 }
 
-const RESTRICAO_CSS = 'var(--series-2)';   // laranja: tramo com restrição
-const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal
+/**
+ * Amarelo do "faturado, com restrição" — pedido explícito por esse tom em vez
+ * do laranja original. É o mesmo `--series-4` de `FATURADO_CSS` (link, não
+ * cópia): declarar antes deste ponto no arquivo.
+ *
+ * ATENÇÃO ao trocar: verde (expedido) × amarelo (restrição) reprova o
+ * `validate_palette.js` no tema escuro — ΔE 3,0 em protanopia, abaixo até do
+ * piso de 6-8 que a skill de dataviz exige reforço secundário. Por isso
+ * "expedido" carrega o selo `✓` além da cor: sem ele, quem não distingue
+ * verde de amarelo não teria como separar as duas células.
+ */
+const RESTRICAO_CSS = FATURADO_CSS;
+const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal, sem restrição
 
 /**
- * Uma célula da matriz carrega duas informações independentes:
- *   - preenchimento = estado no funil (verde expedido, amarelo faturado,
- *     cinza pendente);
- *   - borda = restrição (laranja com restrição, azul sem), sempre presente,
- *     então também resolve o contraste que a célula pendente precisava contra
- *     o fundo rebaixado.
- * O conteúdo é o seq do tramo, deitado (`vertical-rl`): a célula é estreita
- * (18 a 69 colunas na mesma largura de painel) e o número em pé não caberia
- * sem alargar a coluna.
+ * Uma célula da matriz mostra o seq do tramo — mas só quando há algo a
+ * mostrar: pendente fica vazia de propósito, porque o pedido era "saber qual
+ * número já foi faturado e expedido", não listar os 90 tramos.
+ *
+ * Preenchimento, nunca borda: verde para expedido (venceu o funil, restrição
+ * deixa de ser a pergunta ali); azul/laranja por restrição para "faturado,
+ * ainda não expedido".
+ *
+ * O número fica em pé (`vertical-rl` + `text-orientation: upright`): cada
+ * dígito continua legível sem virar a cabeça, grande o bastante para ler a
+ * distância, e a pilha de dígitos cabe numa coluna estreita sem precisar
+ * alargar a célula — a razão de ser vertical.
  */
 function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura: string }) {
-  if (!celula) {
-    return <div style={{ width: largura, height: '100%', borderRadius: u(0.4), background: 'transparent' }} />;
+  if (!celula || celula.estado === 'pendente') {
+    return (
+      <div
+        title={celula ? `Torre ${celula.torre} ${celula.tramo} · ${ESTADO_ROTULO.pendente}` : undefined}
+        style={{
+          width: largura,
+          height: '100%',
+          borderRadius: u(0.4),
+          background: celula ? 'var(--surface-sunken)' : 'transparent',
+          border: celula ? '1px solid var(--hairline)' : 'none',
+        }}
+      />
+    );
   }
 
-  const { fundo, tinta } = pinturaEstado(celula.estado);
-  const corBorda = celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
+  // Expedido é sempre verde — já venceu o funil, a restrição deixa de ser a
+  // pergunta relevante nesse ponto (ela continua visível para "faturado" e na
+  // coluna Restrição da tabela). Só "faturado" (ainda não expedido) usa
+  // azul/amarelo.
+  const expedido = celula.estado === 'expedido';
+  const fundo = expedido ? 'var(--status-good)' : celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
+  // Amarelo é claro; texto branco nele reprova contraste (2,17:1 no
+  // validador). Verde e azul são escuros o bastante para texto branco.
+  const tinta = fundo === RESTRICAO_CSS ? TINTA_SOBRE_AMARELO : '#ffffff';
 
   return (
     <div
-      className="tabular flex items-center justify-center overflow-hidden font-bold"
-      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'}: ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''}`}
-      style={{
-        width: largura,
-        height: '100%',
-        borderRadius: u(0.4),
-        background: fundo,
-        color: tinta,
-        border: `${u(0.25)} solid ${corBorda}`,
-        fontSize: `min(calc(${largura} * 0.42), ${u(1.7)})`,
-        writingMode: 'vertical-rl',
-        letterSpacing: '-0.03em',
-        lineHeight: 1.05,
-      }}
+      className="relative flex items-center justify-center overflow-hidden"
+      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'} · ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''}`}
+      style={{ width: largura, height: '100%', borderRadius: u(0.4), background: fundo }}
     >
-      {celula.serie ?? ''}
+      <span
+        className="tabular font-bold"
+        style={{
+          color: tinta,
+          // Cap de altura bem mais generoso que o de largura: a linha da
+          // matriz tem folga de sobra (a célula ocupa 100% da altura da
+          // linha), quem geralmente aperta é a largura em muitas torres.
+          fontSize: `min(calc(${largura} * 0.68), ${u(2.3)})`,
+          writingMode: 'vertical-rl',
+          textOrientation: 'upright',
+          letterSpacing: u(0.15),
+          lineHeight: 1,
+        }}
+      >
+        {celula.serie ?? ''}
+      </span>
+      {/* Reforço para quem não distingue verde de amarelo (ΔE 3,0 em
+          protanopia — ver comentário de RESTRICAO_CSS): sem isso, expedido e
+          faturado-com-restrição ficam indistinguíveis por cor sozinha. */}
+      {expedido && (
+        <span
+          className="absolute flex items-center justify-center font-black leading-none"
+          style={{
+            bottom: u(0.15), right: u(0.15),
+            width: u(1.1), height: u(1.1), borderRadius: '999px',
+            background: '#ffffff', color: fundo,
+            fontSize: u(0.75),
+          }}
+        >
+          ✓
+        </span>
+      )}
     </div>
   );
 }
 
-/** Chip quadrado preenchido — legenda do estado (funil), cor + rótulo. */
-function ItemLegenda({ estado }: { estado: EstadoTramo }) {
-  const { fundo, borda } = pinturaEstado(estado);
+/** Chip quadrado sólido — legenda da restrição (preenchimento, sem borda). */
+/**
+ * Régua com o número de todas as torres. A fonte acompanha a largura da
+ * coluna, então continua cabendo quando o projeto crescer das 18 torres
+ * atuais para as 69. Usada em cima e embaixo da matriz.
+ */
+function ReguaTorres({ torres, largura }: { torres: number[]; largura: string }) {
   return (
-    <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
-      <span
-        className="shrink-0"
-        style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: fundo, border: borda }}
-      />
-      <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>{ESTADO_ROTULO[estado]}</span>
-    </span>
+    <div className="flex shrink-0 items-center" style={{ gap: u(1) }}>
+      <span className="shrink-0" style={{ width: u(3.4) }} />
+      <div className="flex min-w-0 flex-1" style={{ gap: u(0.5) }}>
+        {torres.map((torre) => (
+          <span
+            key={torre}
+            className="tabular text-center font-bold"
+            style={{
+              width: largura,
+              fontSize: `min(calc(${largura} * 0.62), ${u(1.5)})`,
+              lineHeight: 1.2,
+              color: 'var(--ink-secondary)',
+            }}
+          >
+            {torre}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
-/** Chip com borda — legenda da restrição, para casar com o desenho da célula. */
-function ItemLegendaBorda({ cor, texto }: { cor: string; texto: string }) {
+function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
   return (
     <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
-      <span
-        className="shrink-0"
-        style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), border: `${u(0.25)} solid ${cor}`, background: 'var(--surface-sunken)' }}
-      />
+      <span className="shrink-0" style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: cor }} />
       <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>{texto}</span>
     </span>
   );
@@ -412,6 +470,10 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
         {/* Matriz torre x tramo */}
         <Painel titulo={`Avanço por torre e tramo · ${matriz.torres.length} torres`}>
           <div className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.5) }}>
+            {/* Régua em cima e embaixo: matriz tem 5 linhas, não dá para
+                descer o olho até o rodapé toda vez que se quer saber a torre. */}
+            <ReguaTorres torres={matriz.torres} largura={larguraCelula} />
+
             {matriz.linhas.map((linhaTramo) => (
               <div key={linhaTramo.tramo} className="flex min-h-0 flex-1 items-stretch" style={{ gap: u(1) }}>
                 <span
@@ -428,42 +490,20 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
               </div>
             ))}
 
-            {/* Regua com o numero de todas as torres. A fonte acompanha a
-                largura da coluna, entao continua cabendo quando o projeto
-                crescer das 18 torres atuais para as 69. */}
-            <div className="flex shrink-0 items-center" style={{ gap: u(1) }}>
-              <span className="shrink-0" style={{ width: u(3.4) }} />
-              <div className="flex min-w-0 flex-1" style={{ gap: u(0.5) }}>
-                {matriz.torres.map((torre) => (
-                  <span
-                    key={torre}
-                    className="tabular text-center font-bold"
-                    style={{
-                      width: larguraCelula,
-                      fontSize: `min(calc(${larguraCelula} * 0.62), ${u(1.5)})`,
-                      lineHeight: 1.2,
-                      color: 'var(--ink-secondary)',
-                    }}
-                  >
-                    {torre}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <ReguaTorres torres={matriz.torres} largura={larguraCelula} />
           </div>
 
           <div
             className="flex shrink-0 flex-wrap items-center"
             style={{ gap: u(1.8), paddingTop: u(1.2), borderTop: '1px solid var(--hairline)' }}
           >
-            <ItemLegenda estado="expedido" />
-            <ItemLegenda estado="faturado" />
-            <ItemLegenda estado="pendente" />
-            <span style={{ width: '1px', height: u(1.6), background: 'var(--hairline)' }} />
-            <ItemLegendaBorda cor={SEM_RESTRICAO_CSS} texto="Sem restrição" />
-            <ItemLegendaBorda cor={RESTRICAO_CSS} texto="Com restrição" />
+            <ItemLegendaCor cor="var(--status-good)" texto="Expedido" />
+            <ItemLegendaCor cor={SEM_RESTRICAO_CSS} texto="Faturado, sem restrição" />
+            <ItemLegendaCor cor={RESTRICAO_CSS} texto="Faturado, com restrição" />
+            <span className="shrink-0" style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: 'var(--surface-sunken)', border: '1px solid var(--hairline)' }} />
+            <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>Pendente</span>
             <span style={{ fontSize: u(1.3), color: 'var(--ink-muted)', marginLeft: 'auto' }}>
-              Número = seq do tramo. Coluna = torre.
+              Número = seq (faturado ou expedido). Coluna = torre.
             </span>
           </div>
         </Painel>
