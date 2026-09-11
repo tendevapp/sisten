@@ -5,10 +5,13 @@
  * Financeiro > Faturamento GW Jacobina — painel de parede (TV).
  *
  * Desenhado para leitura a 3-5 metros, sem ninguém para clicar: nada depende
- * de hover, todo número tem rótulo direto e o estado de cada tramo carrega
- * glifo além da cor (o par azul/verde passa no validador da paleta com ΔE 30
- * em visão normal, mas cai para ~5 em tritanopia — então cor sozinha não pode
- * ser a única codificação).
+ * de hover e todo número tem rótulo direto.
+ *
+ * O estado de cada tramo carrega **glifo e rótulo** além da cor, e isso não é
+ * enfeite: o par amarelo/verde (faturado × expedido) separa bem em visão normal
+ * (ΔE 27 no `validate_palette.js`) mas desaba para ΔE 3 em protanopia, que
+ * atinge perto de 8% dos homens. Quem não distingue as duas cores lê o `✓` e o
+ * `●`. Ao mexer em qualquer cor daqui, rode o validador de novo.
  *
  * O que este painel responde e o BI original não respondia: **onde o projeto
  * travou**. A matriz torre × tramo mostra numa olhada que as primeiras torres
@@ -53,11 +56,33 @@ const ESTADO_GLIFO: Record<EstadoTramo, string> = {
   pendente: '·',
 };
 
+/**
+ * Amarelo do "faturado, ainda não expedido". É o `--series-4` do projeto, que
+ * já vem com passo por tema (`#eda100` claro, `#c98500` escuro) e já está no
+ * conjunto validado — em vez de `--status-warning`, que é amarelo mais puro mas
+ * dá 1,83:1 sobre branco e reprovaria o contraste no tema claro.
+ *
+ * Amarelo contra o verde do expedido é um par fraco em protanopia (ΔE 3,0 no
+ * validador). Por isso todo estado aqui carrega glifo e rótulo: a cor é reforço,
+ * nunca a única codificação.
+ */
+const FATURADO_CSS = 'var(--series-4)';
+
+/** Tinta sobre o preenchimento amarelo: branco não teria contraste. */
+const TINTA_SOBRE_AMARELO = '#0f172a';
+
 const ESTADO_ROTULO: Record<EstadoTramo, string> = {
   expedido: 'Expedido',
   faturado: 'Faturado',
   pendente: 'Pendente',
 };
+
+/** Preenchimento, tinta e borda de um estado. Fonte única: célula e legenda leem daqui. */
+function pinturaEstado(estado: EstadoTramo): { fundo: string; tinta: string; borda: string } {
+  if (estado === 'expedido') return { fundo: 'var(--status-good)', tinta: '#ffffff', borda: 'none' };
+  if (estado === 'faturado') return { fundo: FATURADO_CSS, tinta: TINTA_SOBRE_AMARELO, borda: 'none' };
+  return { fundo: 'var(--surface-sunken)', tinta: 'var(--ink-muted)', borda: '1px solid var(--hairline)' };
+}
 
 function fmtDataBR(iso?: string | null): string {
   if (!iso) return '-';
@@ -99,9 +124,14 @@ function Painel({
   );
 }
 
+/**
+ * O número fica sempre em tinta de texto, nunca na cor da série: amarelo como
+ * texto dá 2,17:1 sobre branco. Quando o indicador tem identidade de cor, ela
+ * vem num quadradinho ao lado do rótulo, que é marca e não texto.
+ */
 function Kpi({
-  valor, rotulo, apoio, cor, destaque,
-}: { valor: string; rotulo: string; apoio?: string; cor?: string; destaque?: boolean }) {
+  valor, rotulo, apoio, marca, destaque,
+}: { valor: string; rotulo: string; apoio?: string; marca?: string; destaque?: boolean }) {
   return (
     <div
       className="flex min-w-0 flex-col justify-center"
@@ -113,17 +143,22 @@ function Kpi({
         gap: u(0.4),
       }}
     >
-      <span
-        className="tabular font-bold leading-none"
-        style={{ fontSize: u(6), color: cor ?? 'var(--ink-primary)' }}
-      >
+      <span className="tabular font-bold leading-none" style={{ fontSize: u(6), color: 'var(--ink-primary)' }}>
         {valor}
       </span>
-      <span
-        className="truncate font-bold uppercase"
-        style={{ fontSize: u(1.5), letterSpacing: '0.06em', color: 'var(--ink-secondary)' }}
-      >
-        {rotulo}
+      <span className="flex min-w-0 items-center" style={{ gap: u(0.6) }}>
+        {marca && (
+          <span
+            className="shrink-0"
+            style={{ width: u(1.2), height: u(1.2), borderRadius: u(0.3), background: marca }}
+          />
+        )}
+        <span
+          className="truncate font-bold uppercase"
+          style={{ fontSize: u(1.5), letterSpacing: '0.06em', color: 'var(--ink-secondary)' }}
+        >
+          {rotulo}
+        </span>
       </span>
       {apoio && (
         <span className="truncate" style={{ fontSize: u(1.4), color: 'var(--ink-muted)' }}>
@@ -145,12 +180,7 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
     return <div style={{ width: largura, height: '100%', borderRadius: u(0.4), background: 'transparent' }} />;
   }
 
-  const fundo =
-    celula.estado === 'expedido' ? 'var(--status-good)'
-    : celula.estado === 'faturado' ? 'var(--series-1)'
-    : 'var(--surface-sunken)';
-
-  const tinta = celula.estado === 'pendente' ? 'var(--ink-muted)' : '#ffffff';
+  const { fundo, tinta, borda } = pinturaEstado(celula.estado);
 
   return (
     <div
@@ -162,7 +192,7 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
         borderRadius: u(0.4),
         background: fundo,
         color: tinta,
-        border: celula.estado === 'pendente' ? '1px solid var(--hairline)' : 'none',
+        border: borda,
         fontSize: `min(calc(${largura} * 0.5), ${u(2.4)})`,
         lineHeight: 1,
       }}
@@ -173,10 +203,7 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
 }
 
 function ItemLegenda({ estado }: { estado: EstadoTramo }) {
-  const fundo =
-    estado === 'expedido' ? 'var(--status-good)'
-    : estado === 'faturado' ? 'var(--series-1)'
-    : 'var(--surface-sunken)';
+  const { fundo, tinta, borda } = pinturaEstado(estado);
 
   return (
     <span className="inline-flex items-center" style={{ gap: u(0.6) }}>
@@ -184,8 +211,7 @@ function ItemLegenda({ estado }: { estado: EstadoTramo }) {
         className="inline-flex items-center justify-center font-bold"
         style={{
           width: u(2), height: u(2), borderRadius: u(0.4), background: fundo,
-          color: estado === 'pendente' ? 'var(--ink-muted)' : '#ffffff',
-          border: estado === 'pendente' ? '1px solid var(--hairline)' : 'none',
+          color: tinta, border: borda,
           fontSize: u(1.2), lineHeight: 1,
         }}
       >
@@ -351,14 +377,14 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
           valor={`${resumo.percentual}%`}
           rotulo="Faturado"
           apoio={`${resumo.faturados} de ${resumo.total} tramos`}
-          cor="var(--series-1)"
+          marca={FATURADO_CSS}
           destaque
         />
         <Kpi
           valor={String(resumo.expedidos)}
           rotulo="Expedidos"
           apoio={`${resumo.faturados - resumo.expedidos} faturados sem expedir`}
-          cor="var(--status-good)"
+          marca="var(--status-good)"
         />
         <Kpi
           valor={String(resumo.pendentes)}
@@ -398,19 +424,21 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
               </div>
             ))}
 
-            {/* Regua de torres: rotulo a cada 5, senao vira faixa preta de texto. */}
+            {/* Regua com o numero de todas as torres. A fonte acompanha a
+                largura da coluna, entao continua cabendo quando o projeto
+                crescer das 18 torres atuais para as 69. */}
             <div className="flex shrink-0 items-center" style={{ gap: u(1) }}>
               <span className="shrink-0" style={{ width: u(3.4) }} />
               <div className="flex min-w-0 flex-1" style={{ gap: u(0.5) }}>
-                {matriz.torres.map((torre, i) => (
+                {matriz.torres.map((torre) => (
                   <span
                     key={torre}
-                    className="tabular text-center"
+                    className="tabular text-center font-bold"
                     style={{
                       width: larguraCelula,
-                      fontSize: u(1.25),
-                      color: 'var(--ink-muted)',
-                      visibility: i === 0 || (torre % 5 === 0) ? 'visible' : 'hidden',
+                      fontSize: `min(calc(${larguraCelula} * 0.62), ${u(1.5)})`,
+                      lineHeight: 1.2,
+                      color: 'var(--ink-secondary)',
                     }}
                   >
                     {torre}
@@ -451,10 +479,16 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
                   <Bar dataKey="faturados" radius={c.radius.top} {...c.animation} maxBarSize={44}>
                     {/* Sem hover na TV: todo valor vem impresso. */}
                     <LabelList dataKey="faturados" position="top" {...c.labelOnSurface} fontSize={13} />
+                    {/* Todas as barras no amarelo de "faturado". A semana atual
+                        se distingue por contorno, não por matiz: verde já é
+                        "expedido" na matriz e não pode significar duas coisas
+                        no mesmo painel. */}
                     {semanas.map((s) => (
                       <Cell
                         key={s.semana}
-                        fill={s.ehAtual ? c.tokens.status.good : c.tokens.series[0]}
+                        fill={c.tokens.series[3]}
+                        stroke={s.ehAtual ? c.tokens.inkPrimary : 'none'}
+                        strokeWidth={s.ehAtual ? 2 : 0}
                       />
                     ))}
                   </Bar>
@@ -483,7 +517,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
                         width: `${(t.faturados / maxTramo) * 100}%`,
                         height: '100%',
                         borderRadius: u(0.4),
-                        background: 'var(--series-1)',
+                        background: FATURADO_CSS,
                         transition: 'width var(--dur-slow) var(--ease-out)',
                       }}
                     />
