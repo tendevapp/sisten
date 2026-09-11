@@ -48,7 +48,6 @@ import {
 interface Props {
   linhas: FinFatGwjaco[];
   onAtualizar: () => void | Promise<void>;
-  atualizadoEm: Date | null;
   carregando?: boolean;
 }
 
@@ -84,6 +83,10 @@ function fmtDataBR(iso?: string | null): string {
 
 function fmtHora(d: Date): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDataHora(d: Date): string {
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 /* ------------------------------------------------------------------ */
@@ -305,7 +308,7 @@ function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
 /* Painel                                                              */
 /* ------------------------------------------------------------------ */
 
-export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizadoEm, carregando }: Props) {
+export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregando }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const matrizRef = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
@@ -329,6 +332,19 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
   // Cinco, não seis: com seis a linha fica com 25px de altura para 22px de
   // texto numa TV 1080p, e o painel perde o respiro.
   const notas = useMemo(() => ultimasNotas(linhas, 5), [linhas]);
+
+  // "Atualizado" na parede é a última EDIÇÃO do dado, não a última vez que a
+  // página buscou do banco (isso já é automático a cada 2 minutos e não diz
+  // nada sobre se alguém mexeu no lançamento). Vem do próprio updated_at das
+  // linhas já carregadas — sem consulta extra.
+  const ultimaEdicaoEm = useMemo(() => {
+    let maisRecente: number | null = null;
+    for (const l of linhas) {
+      const t = Date.parse(l.updated_at);
+      if (!isNaN(t) && (maisRecente === null || t > maisRecente)) maisRecente = t;
+    }
+    return maisRecente ? new Date(maisRecente) : null;
+  }, [linhas]);
 
   // Escala: 1 unidade = 1% da altura util do painel. Continua via CSS var
   // (não precisa de estado React: nada de font-size lê --wb diretamente com
@@ -442,7 +458,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
               {fmtHora(agora)}
             </p>
             <p style={{ fontSize: u(1.4), color: 'var(--ink-muted)', marginTop: u(0.5) }}>
-              Semana {semanaAtual ?? '-'} · atualizado {atualizadoEm ? fmtHora(atualizadoEm) : '-'}
+              Semana {semanaAtual ?? '-'} · última edição {ultimaEdicaoEm ? fmtDataHora(ultimaEdicaoEm) : '-'}
             </p>
           </div>
           {/* Sinal de vivo: numa parede, a duvida e sempre "isso congelou?". */}
@@ -578,7 +594,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
                       height: `${(s.faturados / maxSemana) * 100}%`,
                       minHeight: u(0.4),
                       borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
-                      background: FATURADO_CSS,
+                      background: SEM_RESTRICAO_CSS,
                       border: s.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
                       borderBottom: 'none',
                     }}
@@ -614,7 +630,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, atualizad
                         width: `${(t.faturados / maxTramo) * 100}%`,
                         height: '100%',
                         borderRadius: u(0.4),
-                        background: FATURADO_CSS,
+                        background: SEM_RESTRICAO_CSS,
                         transition: 'width var(--dur-slow) var(--ease-out)',
                       }}
                     />

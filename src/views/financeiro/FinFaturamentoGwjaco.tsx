@@ -79,11 +79,12 @@ type Aba = 'dados' | 'relatorio';
 
 export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
   const toast = useToast();
-  const [aba, setAba] = useState<Aba>('dados');
+  // Relatório é a aba de entrada: quem abre essa página quer ver o painel de
+  // parede, não a tabela de cadastro. Dados fica a um clique.
+  const [aba, setAba] = useState<Aba>('relatorio');
   const [linhas, setLinhas] = useState<FinFatGwjaco[]>([]);
   const [loading, setLoading] = useState(false);
   const [busca, setBusca] = useState('');
-  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<FinFatGwjaco | null>(null);
@@ -111,7 +112,6 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
     setLoading(true);
     try {
       setLinhas(await api.listarFaturamentoGwjaco());
-      setAtualizadoEm(new Date());
     } catch (err: any) {
       toast.error('Erro ao carregar o faturamento: ' + (err.message || ''));
     } finally {
@@ -306,7 +306,6 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
           <FinFaturamentoWallboard
             linhas={linhas}
             onAtualizar={carregar}
-            atualizadoEm={atualizadoEm}
             carregando={loading}
           />
           <p className="text-xs text-slate-500 dark:text-slate-400">
