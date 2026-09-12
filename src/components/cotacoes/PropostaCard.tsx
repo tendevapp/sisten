@@ -10,15 +10,16 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch } from 'lucide-react';
+import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban } from 'lucide-react';
 import PropostaItensGrid from './PropostaItensGrid';
 import FornecedorMatchBadge from './FornecedorMatchBadge';
 import CoberturaEscopoPanel from './CoberturaEscopoPanel';
 import VerArquivoOriginalModal from './VerArquivoOriginalModal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { validarProposta, conferirTotais, podeSalvar } from '../../lib/cotacoes';
-import { formatDateTimeBR } from '../../lib/format';
-import type { CotacaoProcessoItem, CotacaoPropostaDraft, FornecedorMatch } from '../../types';
+import { simularFreteCotacao, ROTULO_SEM_FRETE } from '../../lib/freteCotacao';
+import { formatDateTimeBR, formatBRL } from '../../lib/format';
+import type { CotacaoProcessoItem, CotacaoPropostaDraft, FornecedorMatch, TabelaFrete } from '../../types';
 
 interface CampoDef {
   key: keyof CotacaoPropostaDraft;
@@ -95,10 +96,13 @@ interface PropostaCardProps {
   onExcluirSalva: () => void;
   /** Arquivo original (PDF/imagem) por trás desta proposta, se ainda estiver na memória da sessão — ver VerArquivoOriginalModal. */
   arquivoOriginal?: File | null;
+  /** Tabela contratual da Bahia Sul, para explicar de onde saiu o frete teórico dos itens. */
+  tabelaFrete?: TabelaFrete[];
 }
 
 export default function PropostaCard({
   proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando, onExcluirSalva, arquivoOriginal,
+  tabelaFrete,
 }: PropostaCardProps) {
   const [soFaltando, setSoFaltando] = useState(false);
   const [previewArquivoAberto, setPreviewArquivoAberto] = useState(false);
@@ -116,11 +120,21 @@ export default function PropostaCard({
     ? CAMPOS.filter(c => !proposta[c.key])
     : CAMPOS;
 
-  const itensSemVinculo = proposta.itens.filter(it => !it.processo_item_id && !it.fora_escopo);
+  const itensSemVinculo = proposta.itens.filter(it => !it.processo_item_id && !it.fora_escopo && !it.desconsiderado);
+  const itensComDivergencia = proposta.itens.filter(it => !it.desconsiderado && it.vinculo_divergencias.length > 0);
+  const itensDesconsiderados = proposta.itens.filter(it => it.desconsiderado);
+
+  // Simulação do frete da carga inteira: o mesmo cálculo que preencheu o
+  // frete teórico de cada item, mostrado aqui para o comprador saber de onde
+  // o número veio — e o que falta quando ele não aparece.
+  const simulacaoFrete = useMemo(
+    () => simularFreteCotacao({ proposta, tabela: tabelaFrete ?? [] }),
+    [proposta, tabelaFrete],
+  );
 
   const handleMarcarSemVinculoForaEscopo = () => {
     itensSemVinculo.forEach(it => {
-      onChangeItem(it._key, { processo_item_id: null, ri: null, material_code: null, fora_escopo: true, vinculo_origem: 'manual', vinculo_score: null });
+      onChangeItem(it._key, { processo_item_id: null, ri: null, material_code: null, fora_escopo: true, desconsiderado: false, vinculo_origem: 'manual', vinculo_score: null });
     });
   };
 
@@ -266,6 +280,37 @@ export default function PropostaCard({
       </dl>
 
       <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+          <span
+            className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400"
+            title={simulacaoFrete.motivo ? ROTULO_SEM_FRETE[simulacaoFrete.motivo] : `${simulacaoFrete.origem} → ${simulacaoFrete.destino} · ${simulacaoFrete.detalhe?.faixaDesc ?? ''}${simulacaoFrete.rotaAproximada ? ' · cidade não cadastrada, usando a média das rotas da UF' : ''}`}
+          >
+            <Truck className="h-3.5 w-3.5 shrink-0" />
+            {simulacaoFrete.freteTotal != null ? (
+              <>
+                Frete teórico da carga: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(simulacaoFrete.freteTotal)}</strong>
+                {' '}({simulacaoFrete.pesoTotalKg.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg, {simulacaoFrete.modalidade})
+                {simulacaoFrete.rotaAproximada && (
+                  <span className="ml-1 text-amber-600 dark:text-amber-400">· aproximado (média da UF)</span>
+                )}
+              </>
+            ) : (
+              <>Frete teórico não simulado — {ROTULO_SEM_FRETE[simulacaoFrete.motivo ?? 'sem_tabela']}</>
+            )}
+          </span>
+          {itensComDivergencia.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              {itensComDivergencia.length} {itensComDivergencia.length === 1 ? 'item com divergência' : 'itens com divergência'} em relação à RM
+            </span>
+          )}
+          {itensDesconsiderados.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-slate-400">
+              <Ban className="h-3.5 w-3.5 shrink-0" />
+              {itensDesconsiderados.length} desconsiderado(s)
+            </span>
+          )}
+        </div>
         {!proposta._salvo && itensSemVinculo.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-rose-600 dark:text-rose-400">

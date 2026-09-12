@@ -23,6 +23,9 @@ function item(p: Partial<CotacaoPropostaItemDraft> & { descricao_produto: string
     quantidade: 1, preco_unitario: 10, preco_total_item: null,
     aliquota_icms_pct: null, aliquota_pis_pct: null, aliquota_cofins_pct: null, aliquota_ipi_pct: null,
     extraido_raw: {} as any,
+    desconsiderado: false, vinculo_divergencias: [],
+    peso_unitario_kg: null, peso_origem: null, frete_teorico: null,
+    codigo_fiscal: null, preco_liquido_unitario: null, preco_liquido_total: null, custo_total_item: null,
     ...p,
   };
 }
@@ -218,6 +221,48 @@ describe('opcoesDaBase', () => {
 
 describe('agruparLinhasMapa', () => {
   const opcoes = OPCOES_CUSTO_PADRAO;
+
+  it('usa o frete teórico do item quando o comprador ainda não informou frete cotado', () => {
+    const linhas = agruparLinhasMapa({
+      escopo: [],
+      opcoes,
+      propostas: [
+        proposta('FOB', [item({ descricao_produto: 'FITA ISOLANTE 19MM', preco_unitario: 100, quantidade: 1, frete_teorico: 40 })]),
+        proposta('CIF', [item({ descricao_produto: 'FITA ISOLANTE 19MM', preco_unitario: 120, quantidade: 1 })]),
+      ],
+    });
+
+    const [fob, cif] = linhas[0].celulas;
+    expect(fob.custo.freteRateado).toBe(40);
+    expect(fob.custo.comparavel).toBe(140);
+    // Com o frete na conta, a proposta FOB mais barata na etiqueta perde.
+    expect(cif.melhor).toBe(true);
+  });
+
+  it('frete informado pelo comprador substitui o teórico', () => {
+    const linhas = agruparLinhasMapa({
+      escopo: [],
+      opcoes,
+      propostas: [proposta('FOB', [item({ descricao_produto: 'FITA', preco_unitario: 100, quantidade: 1, frete_teorico: 40 })])],
+      fretePorProposta: { FOB: 10 },
+    });
+    expect(linhas[0].celulas[0].custo.freteRateado).toBe(10);
+  });
+
+  it('deixa fora do mapa o item que o comprador desconsiderou', () => {
+    const linhas = agruparLinhasMapa({
+      escopo: [],
+      opcoes,
+      propostas: [
+        proposta('A', [
+          item({ descricao_produto: 'FITA ISOLANTE 19MM X 10M', preco_unitario: 25.9 }),
+          item({ descricao_produto: 'BRINDE - CANECA', preco_unitario: 0, desconsiderado: true }),
+        ]),
+      ],
+    });
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].celulas[0].item.descricao_produto).toBe('FITA ISOLANTE 19MM X 10M');
+  });
 
   it('põe o mesmo material de três fornecedores na mesma linha', () => {
     const linhas = agruparLinhasMapa({

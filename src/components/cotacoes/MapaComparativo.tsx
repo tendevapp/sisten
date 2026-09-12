@@ -503,37 +503,6 @@ export default function MapaComparativo({
     }
   }, [propostas]);
 
-  useEffect(() => {
-    const el = tableContainerRef.current;
-    if (!el) return;
-
-    const atualizarMedidas = () => {
-      const sw = el.scrollWidth;
-      const cw = el.clientWidth;
-      setScrollWidth(sw);
-      setHasHorizontalScroll(sw > cw + 2);
-      if (topScrollRef.current && Math.abs(topScrollRef.current.scrollLeft - el.scrollLeft) > 1) {
-        topScrollRef.current.scrollLeft = el.scrollLeft;
-      }
-    };
-
-    atualizarMedidas();
-
-    const ro = new ResizeObserver(() => {
-      atualizarMedidas();
-    });
-    ro.observe(el);
-    if (el.firstElementChild) {
-      ro.observe(el.firstElementChild);
-    }
-    window.addEventListener('resize', atualizarMedidas);
-
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', atualizarMedidas);
-    };
-  }, [linhasFiltradas, resumos, larguras, larguraPreview]);
-
   const handleTopScroll = () => {
     if (!tableContainerRef.current || !topScrollRef.current) return;
     if (Math.abs(tableContainerRef.current.scrollLeft - topScrollRef.current.scrollLeft) > 1) {
@@ -586,6 +555,41 @@ export default function MapaComparativo({
       }),
     [linhas, propostasMapa, fretePorProposta],
   );
+
+  // Recalcula a largura/scroll da tabela quando o conteúdo (linhas filtradas,
+  // resumos por fornecedor) ou as larguras de coluna mudam — precisa vir
+  // depois de `linhasFiltradas` e `resumos` estarem declarados, senão o
+  // array de dependências os referencia antes da inicialização (TDZ).
+  useEffect(() => {
+    const el = tableContainerRef.current;
+    if (!el) return;
+
+    const atualizarMedidas = () => {
+      const sw = el.scrollWidth;
+      const cw = el.clientWidth;
+      setScrollWidth(sw);
+      setHasHorizontalScroll(sw > cw + 2);
+      if (topScrollRef.current && Math.abs(topScrollRef.current.scrollLeft - el.scrollLeft) > 1) {
+        topScrollRef.current.scrollLeft = el.scrollLeft;
+      }
+    };
+
+    atualizarMedidas();
+
+    const ro = new ResizeObserver(() => {
+      atualizarMedidas();
+    });
+    ro.observe(el);
+    if (el.firstElementChild) {
+      ro.observe(el.firstElementChild);
+    }
+    window.addEventListener('resize', atualizarMedidas);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', atualizarMedidas);
+    };
+  }, [linhasFiltradas, resumos, larguras, larguraPreview]);
 
   const cenarios = useMemo(() => {
     const lista: Cenario[] = [cenarioMenorPreco(linhas, resumos)];

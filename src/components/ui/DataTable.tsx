@@ -221,9 +221,11 @@ interface TrProps {
   /** Marca a linha como alterada/destacada, com uma faixa na borda esquerda. */
   accent?: string;
   title?: string;
+  /** Classes extras da linha (ex.: esmaecer a linha que o usuário desativou). */
+  className?: string;
 }
 
-export function Tr({ children, onClick, accent, title }: TrProps) {
+export function Tr({ children, onClick, accent, title, className = '' }: TrProps) {
   return (
     <tr
       onClick={onClick}
@@ -237,7 +239,7 @@ export function Tr({ children, onClick, accent, title }: TrProps) {
       // "linha 12 de 340" e a posição das colunas), e um <tr> focável sem role
       // é pior ainda — recebe foco sem anunciar o que faz.
       className={`align-top transition-colors duration-150 hover:bg-[var(--surface-raised)]
-        ${onClick ? 'cursor-pointer' : ''}`}
+        ${onClick ? 'cursor-pointer' : ''} ${className}`}
       style={{
         borderColor: 'var(--hairline)',
         ...(accent ? { boxShadow: `inset 3px 0 0 0 ${accent}` } : null),

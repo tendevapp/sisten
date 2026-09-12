@@ -21,14 +21,16 @@ import PropostaCard from '../components/cotacoes/PropostaCard';
 import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao } from '../lib/cotacoes';
+import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
+import { simularFreteCotacao, aplicarFreteTeorico } from '../lib/freteCotacao';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
-  excluirProcessoCotacao,
+  excluirProcessoCotacao, atualizarItensCotacao,
 } from '../lib/cotacoesApi';
 import type {
   Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
-  CotacaoProposta, CotacaoPropostaDraft, ExtracaoUso,
+  CotacaoProposta, CotacaoPropostaDraft, ExtracaoUso, TabelaFrete,
 } from '../types';
 
 interface AnaliseCotacoesProps {
@@ -70,6 +72,15 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
       aliquota_icms_pct: it.aliquota_icms_pct, aliquota_pis_pct: it.aliquota_pis_pct,
       aliquota_cofins_pct: it.aliquota_cofins_pct, aliquota_ipi_pct: it.aliquota_ipi_pct,
       mapa_selecionado: it.mapa_selecionado ?? false,
+      desconsiderado: it.desconsiderado ?? false,
+      vinculo_divergencias: it.vinculo_divergencias ?? [],
+      peso_unitario_kg: it.peso_unitario_kg ?? null,
+      peso_origem: it.peso_origem ?? null,
+      frete_teorico: it.frete_teorico ?? null,
+      codigo_fiscal: it.codigo_fiscal ?? null,
+      preco_liquido_unitario: it.preco_liquido_unitario ?? null,
+      preco_liquido_total: it.preco_liquido_total ?? null,
+      custo_total_item: it.custo_total_item ?? null,
       extraido_raw: it.extraido_raw as any,
     })),
   };
@@ -102,6 +113,9 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const [escopo, setEscopo] = useState<CotacaoProcessoItem[]>([]);
   const [propostas, setPropostas] = useState<CotacaoPropostaDraft[]>([]);
   const [carregandoProcesso, setCarregandoProcesso] = useState(false);
+  // Tabela contratual da Bahia Sul, do cache local — é o que transforma o
+  // peso estimado pela IA em frete teórico por item (só faz sentido em FOB).
+  const [tabelaFrete, setTabelaFrete] = useState<TabelaFrete[]>([]);
   // Arquivos originais (PDF/imagem) por nome, só para "ver arquivo original" no
   // card — dura só a sessão do navegador, o File não sobrevive a um F5.
   const [arquivosOriginais, setArquivosOriginais] = useState<Map<string, File>>(new Map());
@@ -190,6 +204,14 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
+  useEffect(() => {
+    try {
+      setTabelaFrete(localDb.getTabelaFrete() as TabelaFrete[]);
+    } catch (err) {
+      console.error('Falha ao carregar a tabela de frete da Bahia Sul:', err);
+    }
+  }, []);
+
   // Ao montar: se veio um rascunho de escopo da Central de Compras, prioriza
   // a confirmação dele. Lê e apaga imediatamente — um rascunho ressurgindo
   // dias depois confundiria mais do que ajudaria.
@@ -247,6 +269,47 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     }
   };
 
+  /**
+   * Recalcula o frete teórico da proposta inteira e devolve o rascunho com a
+   * parcela de cada item. Roda na proposta toda (e não item a item) porque a
+   * tabela é escalonada: mudar o peso de uma linha muda a faixa de tarifa da
+   * carga e, com ela, o frete de todas as outras.
+   */
+  const comFreteTeorico = (draft: CotacaoPropostaDraft): CotacaoPropostaDraft => {
+    const simulacao = simularFreteCotacao({ proposta: draft, tabela: tabelaFrete });
+    return { ...draft, itens: aplicarFreteTeorico(draft.itens, simulacao) };
+  };
+
+  /**
+   * Resolve o vínculo com a RM em duas camadas, da mais informada para a
+   * menos: primeiro a sugestão da IA (que leu o PDF inteiro), depois o
+   * trigrama/memória para o que sobrou sem vínculo. O cruzamento das duas
+   * vira aviso de divergência quando discordam.
+   */
+  const resolverVinculos = async (draft: CotacaoPropostaDraft): Promise<CotacaoPropostaDraft> => {
+    if (!processo || draft.itens.length === 0) return draft;
+
+    let sugestoes: Awaited<ReturnType<typeof sugerirVinculos>> | undefined;
+    try {
+      sugestoes = await sugerirVinculos({
+        processoId: processo.id,
+        fornecedorCnpj: draft.fornecedor_cnpj,
+        descricoes: draft.itens.map((it, idx) => ({ idx, descricao: it.descricao_produto, codigoProduto: it.codigo_produto })),
+      });
+    } catch (err) {
+      console.error('Falha ao buscar sugestões de vínculo:', err);
+    }
+
+    const { itens, resumo } = aplicarVinculosIa({ itens: draft.itens, escopo, sugestoes });
+    const comTrigrama = sugestoes ? aplicarSugestoes(itens, sugestoes) : itens;
+
+    if (resumo.riInexistente > 0) {
+      console.warn(`Extração: ${resumo.riInexistente} vínculo(s) sugerido(s) pela IA citam RI fora deste processo e foram descartados.`);
+    }
+
+    return { ...draft, itens: comTrigrama.map(it => revisarDivergencias(it, escopo)) };
+  };
+
   /** Retorna se a extração deu certo — quem chama (upload ou colagem manual) só deve descartar o markdown de origem em caso de sucesso, senão o usuário perde um arquivo já convertido (às vezes com custo de IA) por uma falha na etapa seguinte. */
   const handleProcessarMarkdown = async (markdown: string, arquivoOrigem: string | null): Promise<boolean> => {
     if (!processo) return false;
@@ -256,7 +319,12 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     setModeloExtracao(null);
     setCustoExtracaoBrl(null);
     try {
-      const resposta = await extrairCotacao({ markdown, arquivoOrigem: arquivoOrigem ?? undefined, processoId: processo.id });
+      const resposta = await extrairCotacao({
+        markdown,
+        arquivoOrigem: arquivoOrigem ?? undefined,
+        processoId: processo.id,
+        escopo,
+      });
       setUsoExtracao(resposta.uso);
       setModeloExtracao(resposta.modelo);
       const custoBrl = resposta.custo_brl ?? (typeof resposta.custo_usd === 'number' ? resposta.custo_usd * 6 : null);
@@ -273,21 +341,12 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
       // Sugestão de vínculo por proposta — cada fornecedor pode ter um match
       // diferente na memória (cotacao_descricao_map é por CNPJ).
+      const processadas: CotacaoPropostaDraft[] = [];
       for (const draft of novasDrafts) {
-        if (draft.itens.length === 0) continue;
-        try {
-          const sugestoes = await sugerirVinculos({
-            processoId: processo.id,
-            fornecedorCnpj: draft.fornecedor_cnpj,
-            descricoes: draft.itens.map((it, idx) => ({ idx, descricao: it.descricao_produto, codigoProduto: it.codigo_produto })),
-          });
-          draft.itens = aplicarSugestoes(draft.itens, sugestoes);
-        } catch (err) {
-          console.error('Falha ao buscar sugestões de vínculo:', err);
-        }
+        processadas.push(comFreteTeorico(await resolverVinculos(draft)));
       }
 
-      setPropostas(prev => [...prev, ...novasDrafts]);
+      setPropostas(prev => [...prev, ...processadas]);
       return true;
     } catch (err) {
       setErroExtracao((err as Error).message);
@@ -302,20 +361,9 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     const processadas: CotacaoPropostaDraft[] = [];
 
     for (const draft of novasPropostas) {
-      const precisaVinculo = draft.itens.some(it => !it.processo_item_id);
-      if (precisaVinculo) {
-        try {
-          const sugestoes = await sugerirVinculos({
-            processoId: processo.id,
-            fornecedorCnpj: draft.fornecedor_cnpj,
-            descricoes: draft.itens.map((it, idx) => ({ idx, descricao: it.descricao_produto, codigoProduto: it.codigo_produto })),
-          });
-          draft.itens = aplicarSugestoes(draft.itens, sugestoes);
-        } catch (err) {
-          console.error('Falha ao buscar sugestões de vínculo ao carregar proposta:', err);
-        }
-      }
-      processadas.push(draft);
+      const precisaVinculo = draft.itens.some(it => !it.processo_item_id && !it.fora_escopo && !it.desconsiderado);
+      const comVinculo = precisaVinculo ? await resolverVinculos(draft) : draft;
+      processadas.push(comFreteTeorico(comVinculo));
     }
 
     setPropostas(prev => {
@@ -333,11 +381,42 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     setPropostas(prev => prev.map(p => (p._key === key ? { ...p, ...patch } : p)));
   };
 
+  /** Campos cuja edição muda o frete da carga inteira, e não só a linha editada. */
+  const CAMPOS_QUE_MUDAM_O_FRETE = ['peso_unitario_kg', 'quantidade', 'desconsiderado', 'preco_unitario', 'preco_total_item'] as const;
+  /** Campos que a RPC de salvamento só grava na inserção — depois de salvo, vão por UPDATE. */
+  const CAMPOS_PERSISTIDOS_APOS_SALVAR = ['peso_unitario_kg', 'peso_origem', 'desconsiderado'] as const;
+
   const handleChangeItem = (propostaKey: string, itemKey: string, patch: Partial<CotacaoPropostaDraft['itens'][number]>) => {
+    const afetaFrete = CAMPOS_QUE_MUDAM_O_FRETE.some(c => c in patch);
+    const afetaVinculo = afetaFrete || 'unidade_medida' in patch || 'processo_item_id' in patch || 'fora_escopo' in patch;
+    let atualizada: CotacaoPropostaDraft | null = null;
+
     setPropostas(prev => prev.map(p => {
       if (p._key !== propostaKey) return p;
-      return { ...p, itens: p.itens.map(it => (it._key === itemKey ? { ...it, ...patch } : it)) };
+      const itens = p.itens.map(it => {
+        if (it._key !== itemKey) return it;
+        const novo = { ...it, ...patch };
+        return afetaVinculo ? revisarDivergencias(novo, escopo) : novo;
+      });
+      atualizada = afetaFrete ? comFreteTeorico({ ...p, itens }) : { ...p, itens };
+      return atualizada;
     }));
+
+    // Proposta já salva: `salvar_processo_cotacao` só insere, então peso,
+    // frete recalculado e item desconsiderado precisam de UPDATE próprio —
+    // senão a edição some no próximo recarregamento da tela.
+    const proposta = atualizada as CotacaoPropostaDraft | null;
+    if (!proposta?._salvo || !CAMPOS_PERSISTIDOS_APOS_SALVAR.some(c => c in patch)) return;
+
+    atualizarItensCotacao(
+      proposta.itens.map(it => ({
+        id: it._key,
+        desconsiderado: it.desconsiderado,
+        peso_unitario_kg: it.peso_unitario_kg,
+        peso_origem: it.peso_origem,
+        frete_teorico: it.frete_teorico,
+      })),
+    ).catch(err => toast.error((err as Error).message));
   };
 
   const handleRemoverProposta = (key: string) => {
@@ -657,6 +736,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 salvando={salvandoKey === p._key}
                 onExcluirSalva={() => handleExcluirProposta(p._key)}
                 arquivoOriginal={p.arquivo_origem ? arquivosOriginais.get(p.arquivo_origem) : undefined}
+                tabelaFrete={tabelaFrete}
               />
             ))}
 

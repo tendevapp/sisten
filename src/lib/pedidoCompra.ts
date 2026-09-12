@@ -14,6 +14,8 @@
  */
 
 import { diasAteValidade } from './mapaCotacao';
+import { calcularCustoCompraItem, somarCustoCompra } from './custoCompra';
+import type { CustoCompraItem, CustoCompraTotais } from './custoCompra';
 import type { CotacaoPropostaDraft, CotacaoPropostaItemDraft } from '../types';
 
 export interface ItemPedido {
@@ -32,6 +34,12 @@ export interface ItemPedido {
   aliquotaIpiPct: number | null;
   /** Item cotado sem vínculo com a RM do processo (cotação avulsa ou excedente de escopo). */
   foraDoEscopo: boolean;
+  /** Peso estimado por unidade (kg) — base do frete teórico. */
+  pesoUnitarioKg: number | null;
+  /** Parcela do frete simulado pela tabela Bahia Sul atribuída a este item (só em proposta FOB). */
+  freteTeorico: number | null;
+  /** Composição do custo, apurada pela Calc Impostos ao salvar o pedido. */
+  custo: CustoCompraItem | null;
 }
 
 export interface PedidoFornecedor {
@@ -66,6 +74,10 @@ export interface PedidoFornecedor {
   subtotal: number;
   /** `subtotal` + `valorFrete`. */
   total: number;
+  /** Soma do frete teórico dos itens — o que a tabela da Bahia Sul prevê para trazer esta carga (FOB). */
+  freteTeorico: number;
+  /** Preço + impostos + frete de todos os itens, pelos critérios da Calc Impostos. */
+  custo: CustoCompraTotais;
   /** `null` quando o fornecedor não impõe mínimo. */
   atingeFaturamentoMinimo: boolean | null;
 }
@@ -76,7 +88,7 @@ function precoTotalDoItem(item: CotacaoPropostaItemDraft): number | null {
   return null;
 }
 
-function itemParaPedido(item: CotacaoPropostaItemDraft): ItemPedido {
+function itemParaPedido(item: CotacaoPropostaItemDraft, custo: CustoCompraItem | null): ItemPedido {
   return {
     itemKey: item._key,
     ri: item.ri,
@@ -91,6 +103,9 @@ function itemParaPedido(item: CotacaoPropostaItemDraft): ItemPedido {
     aliquotaIcmsPct: item.aliquota_icms_pct,
     aliquotaIpiPct: item.aliquota_ipi_pct,
     foraDoEscopo: !item.processo_item_id,
+    pesoUnitarioKg: item.peso_unitario_kg,
+    freteTeorico: item.frete_teorico,
+    custo,
   };
 }
 
@@ -105,10 +120,14 @@ export function montarPedidosCompra(propostas: CotacaoPropostaDraft[], hojeISO?:
 
   for (const p of propostas) {
     if (!p._salvo) continue;
-    const selecionados = p.itens.filter(it => it.mapa_selecionado);
+    // Desconsiderado nunca deveria estar marcado no mapa (ele nem aparece
+    // lá), mas o filtro fica: a decisão pode ter sido gravada antes de o
+    // comprador desconsiderar o item.
+    const selecionados = p.itens.filter(it => it.mapa_selecionado && !it.desconsiderado);
     if (selecionados.length === 0) continue;
 
-    const itens = selecionados.map(itemParaPedido);
+    const custos = selecionados.map(it => calcularCustoCompraItem(it, p));
+    const itens = selecionados.map((it, i) => itemParaPedido(it, custos[i]));
     const subtotal = itens.reduce((soma, it) => soma + (it.precoTotal ?? 0), 0);
     const valorFrete = p.valor_frete ?? null;
     const minimo = p.faturamento_minimo;
@@ -141,6 +160,8 @@ export function montarPedidosCompra(propostas: CotacaoPropostaDraft[], hojeISO?:
       itens,
       subtotal,
       total: subtotal + (valorFrete ?? 0),
+      freteTeorico: itens.reduce((soma, it) => soma + (it.freteTeorico ?? 0), 0),
+      custo: somarCustoCompra(custos),
       atingeFaturamentoMinimo: minimo == null || minimo === 0 ? null : subtotal >= minimo,
     });
   }

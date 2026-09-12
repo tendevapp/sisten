@@ -6,12 +6,22 @@
  * da célula — sem framework de célula, no mesmo estilo de edição inline já
  * usado em Compras.tsx. Uma coluna própria (VinculoCell) resolve o
  * vínculo com o item de RM: mostra a sugestão, o score, e um dropdown com
- * todos os itens do escopo + "fora do escopo" para sempre permitir override.
+ * todos os itens do escopo + "fora do escopo" e "desconsiderar" para sempre
+ * permitir override.
+ *
+ * As três resoluções possíveis do vínculo não são sinônimos:
+ * - um item do escopo   — o preço vai para aquela linha do mapa;
+ * - "fora do escopo"    — cotado, ninguém pediu nesta RM, mas segue no mapa
+ *                         (é o excedente que o comprador pode querer levar);
+ * - "desconsiderar"     — some do mapa e do pedido. Brinde, linha de serviço,
+ *                         item que a IA quebrou em dois: ruído que não deve
+ *                         disputar preço com material de verdade.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, LinkIcon, Search } from 'lucide-react';
+import { AlertTriangle, Ban, ChevronDown, LinkIcon, Search } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td } from '../ui/DataTable';
+import { formatBRL } from '../../lib/format';
 import type { CotacaoProcessoItem, CotacaoPropostaItemDraft } from '../../types';
 
 type CampoNumerico = 'quantidade' | 'preco_unitario' | 'preco_total_item' | 'aliquota_icms_pct' | 'aliquota_pis_pct' | 'aliquota_cofins_pct' | 'aliquota_ipi_pct';
@@ -22,6 +32,14 @@ interface PropostaItensGridProps {
   escopo: CotacaoProcessoItem[];
   camposFaltantesPorItem: (item: CotacaoPropostaItemDraft) => Set<string>;
   onChangeItem: (key: string, patch: Partial<CotacaoPropostaItemDraft>) => void;
+}
+
+/** Por que a célula de frete teórico está vazia — a causa muda o que o comprador tem que fazer. */
+function freteTitulo(item: CotacaoPropostaItemDraft): string {
+  if (item.desconsiderado) return 'Item desconsiderado — não entra na carga.';
+  if (item.frete_teorico != null) return 'Parcela do frete simulado pela tabela da Bahia Sul, rateada por peso.';
+  if (item.peso_unitario_kg == null) return 'Sem peso estimado: informe o peso para o frete ser simulado.';
+  return 'Frete teórico só é simulado em proposta FOB com rota na tabela da Bahia Sul.';
 }
 
 function InputTexto({ value, onChange, faltando, className = '' }: { value: string | null; onChange: (v: string) => void; faltando?: boolean; className?: string }) {
@@ -88,12 +106,14 @@ function VinculoCell({ item, escopo, onResolver }: {
     );
   }, [escopo, filtro]);
 
-  const resolvido = escopoItem || item.fora_escopo;
+  const resolvido = escopoItem || item.fora_escopo || item.desconsiderado;
   const scoreClasses = item.vinculo_origem === 'aprendido'
     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-    : item.vinculo_origem === 'sugerido'
-      ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+    : item.vinculo_origem === 'ia'
+      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+      : item.vinculo_origem === 'sugerido'
+        ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+        : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
 
   const fechar = () => { setAberto(false); setFiltro(''); };
 
@@ -117,13 +137,29 @@ function VinculoCell({ item, escopo, onResolver }: {
             : 'border-rose-300 bg-rose-50 hover:bg-rose-100/60 dark:border-rose-800 dark:bg-rose-950/30'
         }`}
       >
-        <LinkIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+        {item.desconsiderado
+          ? <Ban className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          : <LinkIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
         <span className="min-w-0 flex-1 truncate font-medium">
-          {escopoItem ? (escopoItem.texto_breve || escopoItem.ri) : item.fora_escopo ? 'Fora do escopo' : 'Vincular'}
+          {item.desconsiderado
+            ? 'Desconsiderado'
+            : escopoItem ? (escopoItem.texto_breve || escopoItem.ri) : item.fora_escopo ? 'Fora do escopo' : 'Vincular'}
         </span>
+        {item.vinculo_divergencias.length > 0 && !item.desconsiderado && (
+          <span
+            title={['Confira antes de salvar:', ...item.vinculo_divergencias.map(d => `· ${d}`)].join('\n')}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {item.vinculo_divergencias.length}
+          </span>
+        )}
         {item.vinculo_origem !== 'manual' && item.vinculo_score != null && (
-          <span className={`shrink-0 rounded px-1 text-[10px] font-semibold ${scoreClasses}`}>
-            {Math.round(item.vinculo_score * 100)}%
+          <span
+            title={item.vinculo_origem === 'ia' ? 'Vínculo sugerido pela IA que leu a proposta' : undefined}
+            className={`shrink-0 rounded px-1 text-[10px] font-semibold ${scoreClasses}`}
+          >
+            {item.vinculo_origem === 'ia' ? 'IA ' : ''}{Math.round(item.vinculo_score * 100)}%
           </span>
         )}
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
@@ -161,6 +197,7 @@ function VinculoCell({ item, escopo, onResolver }: {
                       ri: e.ri,
                       material_code: e.material_code,
                       fora_escopo: false,
+                      desconsiderado: false,
                       vinculo_origem: 'manual',
                       vinculo_score: null,
                     });
@@ -188,6 +225,7 @@ function VinculoCell({ item, escopo, onResolver }: {
                 ri: null,
                 material_code: null,
                 fora_escopo: true,
+                desconsiderado: false,
                 vinculo_origem: 'manual',
                 vinculo_score: null,
               });
@@ -195,7 +233,30 @@ function VinculoCell({ item, escopo, onResolver }: {
             }}
             className="block w-full border-t border-slate-200 dark:border-slate-800 px-3 py-2.5 text-left font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
           >
-            ✕ Fora do escopo (não cotado nesta RM)
+            ✕ Fora do escopo (não pedido nesta RM, mas continua no mapa)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onResolver({
+                processo_item_id: null,
+                ri: null,
+                material_code: null,
+                fora_escopo: false,
+                desconsiderado: !item.desconsiderado,
+                vinculo_origem: 'manual',
+                vinculo_score: null,
+                vinculo_divergencias: [],
+                frete_teorico: null,
+              });
+              fechar();
+            }}
+            className="flex w-full items-center gap-1.5 border-t border-slate-200 px-3 py-2.5 text-left font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
+          >
+            <Ban className="h-3.5 w-3.5 shrink-0" />
+            {item.desconsiderado
+              ? 'Voltar a considerar este item'
+              : 'Desconsiderar (não entra no mapa de cotação)'}
           </button>
         </div>
       )}
@@ -229,13 +290,16 @@ export default function PropostaItensGrid({ itens, escopo, camposFaltantesPorIte
           <Th label="PIS%" align="right" />
           <Th label="COFINS%" align="right" />
           <Th label="IPI%" align="right" />
+          <Th label="Peso un. (kg)" align="right" />
+          <Th label="Frete teór." align="right" />
         </TableHeadRow>
         <TableBody>
           {itens.map((item, i) => {
             const faltantes = camposFaltantesPorItem(item);
-            const bloqueado = !item.descricao_produto || item.quantidade == null || item.preco_unitario == null || (!item.processo_item_id && !item.fora_escopo);
+            const bloqueado = !item.desconsiderado
+              && (!item.descricao_produto || item.quantidade == null || item.preco_unitario == null || (!item.processo_item_id && !item.fora_escopo));
             return (
-              <Tr key={item._key} accent={bloqueado ? 'var(--danger, #f43f5e)' : undefined}>
+              <Tr key={item._key} accent={bloqueado ? 'var(--danger, #f43f5e)' : undefined} className={item.desconsiderado ? 'opacity-45' : undefined}>
                 <Td numeric>{item.item_numero ?? i + 1}</Td>
                 <Td>
                   <VinculoCell item={item} escopo={escopo} onResolver={patch => onChangeItem(item._key, patch)} />
@@ -254,6 +318,31 @@ export default function PropostaItensGrid({ itens, escopo, camposFaltantesPorIte
                 <Td numeric><InputNumero value={item.aliquota_pis_pct} onChange={campoNumero(item, 'aliquota_pis_pct')} /></Td>
                 <Td numeric><InputNumero value={item.aliquota_cofins_pct} onChange={campoNumero(item, 'aliquota_cofins_pct')} /></Td>
                 <Td numeric><InputNumero value={item.aliquota_ipi_pct} onChange={campoNumero(item, 'aliquota_ipi_pct')} /></Td>
+                <Td numeric>
+                  <div className="flex items-center justify-end gap-1">
+                    <InputNumero
+                      value={item.peso_unitario_kg}
+                      onChange={v => onChangeItem(item._key, { peso_unitario_kg: v, peso_origem: v == null ? null : 'manual' })}
+                      decimais={4}
+                    />
+                    {item.peso_origem === 'ia' && (
+                      <span
+                        title="Peso estimado pela IA a partir da descrição — ajuste se souber o valor real"
+                        className="shrink-0 rounded bg-indigo-50 px-1 text-[10px] font-semibold text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300"
+                      >
+                        IA
+                      </span>
+                    )}
+                  </div>
+                </Td>
+                <Td numeric>
+                  <span
+                    title={freteTitulo(item)}
+                    className="block px-1.5 py-1 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400"
+                  >
+                    {item.frete_teorico != null ? formatBRL(item.frete_teorico) : '—'}
+                  </span>
+                </Td>
               </Tr>
             );
           })}

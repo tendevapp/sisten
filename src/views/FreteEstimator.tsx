@@ -13,6 +13,8 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
 import { Profile, TabelaFrete } from '../types';
+import { calcularFreteTabela } from '../lib/bahiasul';
+import type { VeiculoDedicado } from '../lib/bahiasul';
 import { useToast } from '../components/ui/Toast';
 import BahiaSulAnalyticsPanel from '../components/frete/BahiaSulAnalyticsPanel';
 
@@ -32,9 +34,7 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
   const [selectedOrigem, setSelectedOrigem] = useState<string>('');
   const [selectedDestinoId, setSelectedDestinoId] = useState<string>('');
   const [modalidade, setModalidade] = useState<'fracionado' | 'dedicado'>('fracionado');
-  const [veiculoTipo, setVeiculoTipo] = useState<
-    'fiorino' | 'veiculo_3_4_ate_2_5t' | 'toco_ate_5_5t' | 'truck_ate_14t' | 'carreta_ate_25t' | 'carreta_acima_27t'
-  >('fiorino');
+  const [veiculoTipo, setVeiculoTipo] = useState<VeiculoDedicado>('fiorino');
   
   const [pesoKg, setPesoKg] = useState<number>(25);
   const [valorMercadoria, setValorMercadoria] = useState<number>(5000);
@@ -149,163 +149,41 @@ export default function FreteEstimator({ user, onNavigate }: FreteEstimatorProps
     toast.info(`Rota selecionada: ${item.origem} ➔ ${item.destino} (${item.uf})`);
   };
 
-  // Calculation Engine
+  // Motor de cálculo: `calcularFreteTabela` (src/lib/bahiasul.ts) é a fonte
+  // única da fórmula contratual — a mesma que audita o CTe já emitido e que
+  // estima o frete teórico dos itens de uma cotação FOB.
   const calculoFrete = useMemo(() => {
     if (!rotaAtiva) return null;
-
-    const peso = Math.max(0, pesoKg || 0);
-    const vMerc = Math.max(0, valorMercadoria || 0);
-
-    // 1. Frete Base / Frete Peso
-    let freteBase = 0;
-    let faixaDesc = '';
-
-    if (modalidade === 'fracionado') {
-      if (peso <= 10) {
-        freteBase = Number(rotaAtiva.kg_1_10) || 0;
-        faixaDesc = 'Faixa 1 - 10 kg';
-      } else if (peso <= 20) {
-        freteBase = Number(rotaAtiva.kg_11_20) || 0;
-        faixaDesc = 'Faixa 11 - 20 kg';
-      } else if (peso <= 30) {
-        freteBase = Number(rotaAtiva.kg_21_30) || 0;
-        faixaDesc = 'Faixa 21 - 30 kg';
-      } else if (peso <= 50) {
-        freteBase = Number(rotaAtiva.kg_31_50) || 0;
-        faixaDesc = 'Faixa 31 - 50 kg';
-      } else if (peso <= 70) {
-        freteBase = Number(rotaAtiva.kg_51_70) || 0;
-        faixaDesc = 'Faixa 51 - 70 kg';
-      } else if (peso <= 100) {
-        freteBase = Number(rotaAtiva.kg_71_100) || 0;
-        faixaDesc = 'Faixa 71 - 100 kg';
-      } else {
-        const taxaExcedente = Number(rotaAtiva.kg_acima_100) || 0;
-        if (taxaExcedente > 0) {
-          freteBase = taxaExcedente * peso;
-          faixaDesc = `Acima de 100 kg (R$ ${taxaExcedente.toFixed(2)}/kg × ${peso}kg)`;
-        } else {
-          freteBase = Number(rotaAtiva.kg_71_100) || 0;
-          faixaDesc = 'Acima de 100 kg (Tarifa Teto 100kg)';
-        }
-      }
-    } else {
-      // Veículo Dedicado
-      freteBase = Number(rotaAtiva[veiculoTipo]) || 0;
-      const veiculoNomes: Record<string, string> = {
-        fiorino: 'Fiorino',
-        veiculo_3_4_ate_2_5t: '3/4 (até 2,5 ton)',
-        toco_ate_5_5t: 'Toco (até 5,5 ton)',
-        truck_ate_14t: 'Truck (até 14 ton)',
-        carreta_ate_25t: 'Carreta (até 25 ton)',
-        carreta_acima_27t: 'Carreta (acima de 27 ton)'
-      };
-      faixaDesc = `Dedicado: ${veiculoNomes[veiculoTipo] || veiculoTipo}`;
-    }
-
-    // 2. Ad Valorem
-    const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
-    const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
-    const adValoresValor = Math.round(((vMerc * adValoresPct) / 100) * 100) / 100;
-
-    // 3. GRIS (Gerenciamento de Risco)
-    const rawGris = rotaAtiva.gris !== undefined && rotaAtiva.gris !== null && !isNaN(Number(rotaAtiva.gris)) && Number(rotaAtiva.gris) > 0
-      ? Number(rotaAtiva.gris)
-      : 0.5; // Padrão contratual Bahia Sul: 0,5%
-    const grisPct = rawGris < 0.05 && rawGris > 0 ? rawGris * 100 : rawGris;
-    const grisValor = Math.round(((vMerc * grisPct) / 100) * 100) / 100;
-
-    // 4. Pedágio por fração de 100kg
-    const taxaPedagioFracao = Number(rotaAtiva.pedagio_fracao_100kg) || 0;
-    const fracoes100kg = Math.ceil(peso / 100) || 1;
-    const pedagioTotal = Math.round((fracoes100kg * taxaPedagioFracao) * 100) / 100;
-
-    // 5. Taxas Fixas e Especiais
-    const cat = Number(rotaAtiva.cat) || 0;
-    const itrTas = Number(rotaAtiva.itr_tas) || 0;
-    const taxaFixa = Number(rotaAtiva.taxa_fixa_itr_redespacho) || 0;
-
-    // 6. Subtotal Sem ICMS
-    const subtotalSemIcms = Math.round((freteBase + adValoresValor + grisValor + pedagioTotal + cat + itrTas + taxaFixa) * 100) / 100;
-
-    // 7. ICMS
-    const icmsCleanStr = String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
-    const rawIcms = parseFloat(icmsCleanStr) || 0;
-    const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
-    
-    let totalComIcms = subtotalSemIcms;
-    let valorIcms = 0;
-
-    if (icmsPct > 0 && icmsPct < 100) {
-      totalComIcms = Math.round((subtotalSemIcms / (1 - (icmsPct / 100))) * 100) / 100;
-      valorIcms = Math.round((totalComIcms - subtotalSemIcms) * 100) / 100;
-    }
-
+    const base = calcularFreteTabela(rotaAtiva, {
+      pesoKg,
+      valorMercadoria,
+      modalidade,
+      veiculo: veiculoTipo,
+    });
     return {
-      freteBase,
-      faixaDesc,
-      adValoresPct,
-      adValoresValor,
-      grisPct,
-      grisValor,
-      fracoes100kg,
-      taxaPedagioFracao,
-      pedagioTotal,
-      cat,
-      itrTas,
-      taxaFixa,
-      subtotalSemIcms,
-      icmsPct,
-      valorIcms,
-      totalComIcms,
+      ...base,
       leadTime: rotaAtiva.lead_time_entrega || '—',
-      leadTime2: rotaAtiva.lead_time_entrega_2 || ''
+      leadTime2: rotaAtiva.lead_time_entrega_2 || '',
     };
   }, [rotaAtiva, pesoKg, valorMercadoria, modalidade, veiculoTipo]);
 
-  // Comparison logic: Fracionado vs Dedicado
+  // Comparativo: carga fracionada contra o menor veículo dedicado (Fiorino).
   const comparativo = useMemo(() => {
     if (!rotaAtiva) return null;
 
-    let fBaseFrac = 0;
-    if (pesoKg <= 10) fBaseFrac = Number(rotaAtiva.kg_1_10) || 0;
-    else if (pesoKg <= 20) fBaseFrac = Number(rotaAtiva.kg_11_20) || 0;
-    else if (pesoKg <= 30) fBaseFrac = Number(rotaAtiva.kg_21_30) || 0;
-    else if (pesoKg <= 50) fBaseFrac = Number(rotaAtiva.kg_31_50) || 0;
-    else if (pesoKg <= 70) fBaseFrac = Number(rotaAtiva.kg_51_70) || 0;
-    else if (pesoKg <= 100) fBaseFrac = Number(rotaAtiva.kg_71_100) || 0;
-    else fBaseFrac = (Number(rotaAtiva.kg_acima_100) || 0) * pesoKg;
+    const fracionado = calcularFreteTabela(rotaAtiva, { pesoKg, valorMercadoria, modalidade: 'fracionado' });
+    const dedicado = calcularFreteTabela(rotaAtiva, { pesoKg, valorMercadoria, modalidade: 'dedicado', veiculo: 'fiorino' });
 
-    const rawAdVal = Number(rotaAtiva.ad_valores) || 0;
-    const adValPct = rawAdVal < 0.05 && rawAdVal > 0 ? rawAdVal * 100 : rawAdVal;
-    const adVal = (valorMercadoria * adValPct) / 100;
-
-    const rawGris = rotaAtiva.gris !== undefined && rotaAtiva.gris !== null && !isNaN(Number(rotaAtiva.gris)) && Number(rotaAtiva.gris) > 0
-      ? Number(rotaAtiva.gris)
-      : 0.5;
-    const grisPct = rawGris < 0.05 && rawGris > 0 ? rawGris * 100 : rawGris;
-    const gris = (valorMercadoria * grisPct) / 100;
-
-    const pedag = Math.ceil(pesoKg / 100) * (Number(rotaAtiva.pedagio_fracao_100kg) || 0);
-    const taxas = (Number(rotaAtiva.cat) || 0) + (Number(rotaAtiva.itr_tas) || 0) + (Number(rotaAtiva.taxa_fixa_itr_redespacho) || 0);
-    const subtotalFrac = fBaseFrac + adVal + gris + pedag + taxas;
-
-    const rawIcms = parseFloat(String(rotaAtiva.icms_aplicado || '').replace(/%/g, '').replace(',', '.')) || 0;
-    const icmsPct = rawIcms <= 1 && rawIcms > 0 ? rawIcms * 100 : rawIcms;
-    const totalFrac = icmsPct > 0 ? subtotalFrac / (1 - (icmsPct / 100)) : subtotalFrac;
-
+    const totalFrac = fracionado.totalComIcms;
+    const totalFiorino = dedicado.totalComIcms;
     const fiorinoBase = Number(rotaAtiva.fiorino) || 0;
-    const subtotalFiorino = fiorinoBase + adVal + gris + pedag + taxas;
-    const totalFiorino = icmsPct > 0 ? subtotalFiorino / (1 - (icmsPct / 100)) : subtotalFiorino;
-
-    const recomendacao = totalFrac <= totalFiorino || fiorinoBase === 0 ? 'fracionado' : 'dedicado';
-    const economia = Math.abs(totalFrac - totalFiorino);
 
     return {
       totalFrac,
       totalFiorino,
-      recomendacao,
-      economia
+      // Rota sem tarifa de Fiorino cadastrada não é opção — fracionado ganha por ausência.
+      recomendacao: totalFrac <= totalFiorino || fiorinoBase === 0 ? 'fracionado' : 'dedicado',
+      economia: Math.abs(totalFrac - totalFiorino),
     };
   }, [rotaAtiva, pesoKg, valorMercadoria]);
 

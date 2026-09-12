@@ -246,6 +246,19 @@ function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
     aliquota_cofins_pct: parsePercentual(item.Aliquota_COFINS_Pct),
     aliquota_ipi_pct: parsePercentual(item.Aliquota_IPI_pct),
 
+    desconsiderado: false,
+    // O vínculo sugerido pela IA e suas divergências só viram estado do item
+    // depois de resolvidos contra o escopo real do processo (vinculoCotacao.ts):
+    // a IA devolve um RI em texto, que pode não existir neste processo.
+    vinculo_divergencias: [],
+    peso_unitario_kg: parseMoeda(item.Peso_Unitario_Kg),
+    peso_origem: temValor(item.Peso_Unitario_Kg) ? 'ia' : null,
+    frete_teorico: null,
+    codigo_fiscal: null,
+    preco_liquido_unitario: null,
+    preco_liquido_total: null,
+    custo_total_item: null,
+
     extraido_raw: item,
   };
 }
@@ -334,6 +347,15 @@ export function propostaParaDraft(
       _key: mesmoProcesso ? i.id : `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       valor_unitario: i.valor_unitario ?? null,
       quantidade: i.quantidade ?? null,
+      desconsiderado: i.desconsiderado ?? false,
+      vinculo_divergencias: i.vinculo_divergencias ?? [],
+      peso_unitario_kg: i.peso_unitario_kg ?? null,
+      peso_origem: i.peso_origem ?? null,
+      frete_teorico: i.frete_teorico ?? null,
+      codigo_fiscal: i.codigo_fiscal ?? null,
+      preco_liquido_unitario: i.preco_liquido_unitario ?? null,
+      preco_liquido_total: i.preco_liquido_total ?? null,
+      custo_total_item: i.custo_total_item ?? null,
       ipi_percentual: i.ipi_percentual ?? null,
       icms_percentual: i.icms_percentual ?? null,
     })),
@@ -390,6 +412,10 @@ export function validarProposta(p: CotacaoPropostaDraft): ValidacaoProposta {
 
   let itensComBloqueio = 0;
   for (const item of p.itens) {
+    // Item desconsiderado não vira linha do mapa nem do pedido: exigir preço,
+    // quantidade ou vínculo dele seria travar o salvamento por causa de uma
+    // linha que o comprador já decidiu ignorar.
+    if (item.desconsiderado) continue;
     let itemBloqueado = false;
     if (!temValor(item.descricao_produto)) { bloqueios.push(campo('descricao_produto', 'bloqueio')); itemBloqueado = true; }
     if (item.quantidade == null) { bloqueios.push(campo('quantidade', 'bloqueio')); itemBloqueado = true; }
@@ -466,12 +492,21 @@ export function deveAutoSelecionar(melhor: SugestaoVinculo | undefined, segundo:
   return true;
 }
 
-/** Aplica as sugestões retornadas por `sugerir_vinculos_cotacao` aos itens do rascunho, respeitando `deveAutoSelecionar`. */
+/**
+ * Aplica as sugestões retornadas por `sugerir_vinculos_cotacao` aos itens do
+ * rascunho, respeitando `deveAutoSelecionar`.
+ *
+ * Só mexe em item ainda sem decisão: vínculo resolvido à mão, vindo da IA
+ * que leu a proposta, marcado como fora do escopo ou desconsiderado já é
+ * informação melhor que a semelhança de texto, e o trigrama não pode
+ * desfazer nenhuma delas por cima.
+ */
 export function aplicarSugestoes(
   itens: CotacaoPropostaItemDraft[],
   sugestoesPorIdx: Map<number, SugestaoVinculo[]>
 ): CotacaoPropostaItemDraft[] {
   return itens.map((item, idx) => {
+    if (item.processo_item_id || item.fora_escopo || item.desconsiderado) return item;
     const candidatos = sugestoesPorIdx.get(idx);
     if (!candidatos || candidatos.length === 0) return item;
     const [melhor, segundo] = candidatos;
@@ -492,7 +527,7 @@ export function coberturaEscopo(
   escopo: CotacaoProcessoItem[],
   itens: CotacaoPropostaItemDraft[]
 ): { cobertos: string[]; semOferta: CotacaoProcessoItem[] } {
-  const cobertosSet = new Set(itens.filter(i => i.processo_item_id).map(i => i.processo_item_id as string));
+  const cobertosSet = new Set(itens.filter(i => i.processo_item_id && !i.desconsiderado).map(i => i.processo_item_id as string));
   const cobertos = escopo.filter(e => cobertosSet.has(e.id)).map(e => e.ri);
   const semOferta = escopo.filter(e => !cobertosSet.has(e.id));
   return { cobertos, semOferta };

@@ -154,6 +154,38 @@ export const PRESETS_CODIGOS_FISCAIS: CodigoFiscalPreset[] = [
   },
 ];
 
+/** Busca um preset pelo codigo (C1..C5, A3, ISENTO). `null` quando o codigo nao existe. */
+export function presetPorCodigo(codigo: string | null | undefined): CodigoFiscalPreset | null {
+  if (!codigo) return null;
+  const alvo = String(codigo).trim().toUpperCase();
+  return PRESETS_CODIGOS_FISCAIS.find(p => p.codigo === alvo) ?? null;
+}
+
+/** UFs do Sul/Sudeste que aplicam 12% nas saidas interestaduais para a Bahia — o ES fica de fora por regra propria (7%). */
+const UFS_SUL_SUDESTE_12 = new Set(['SP', 'RJ', 'MG', 'PR', 'SC', 'RS']);
+
+/**
+ * Escolhe o codigo fiscal provavel a partir da UF de origem da mercadoria,
+ * com destino na Bahia (onde fica a fabrica). A aliquota de ICMS numa compra
+ * interestadual e definida pela origem, nao pelo fornecedor: o mesmo material
+ * comprado em Sao Paulo (12%) e em Salvador (18%) tem preco liquido diferente
+ * com o mesmo preco cotado.
+ *
+ * E sugestao, nao veredito — o comprador troca o codigo na revisao do pedido
+ * quando a nota tiver regime diferente (Simples, substituicao, importado).
+ */
+export function inferirCodigoFiscal(
+  ufOrigem: string | null | undefined,
+  opcoes: { temIpi?: boolean; ufDestino?: string } = {},
+): string {
+  const origem = (ufOrigem ?? '').trim().toUpperCase();
+  const destino = (opcoes.ufDestino ?? 'BA').trim().toUpperCase();
+
+  if (!origem) return opcoes.temIpi ? 'C5' : 'C1';
+  if (origem === destino) return opcoes.temIpi ? 'C5' : 'C1';
+  return UFS_SUL_SUDESTE_12.has(origem) ? 'C2' : 'C3';
+}
+
 export const INPUTS_PADRAO: CalcImpostosInputs = {
   precoComImpostos: 1000,
   aliqIcms: 0,

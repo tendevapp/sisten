@@ -440,6 +440,185 @@ export function matchRotaTabelaFrete(
   return null;
 }
 
+/** Campos numéricos da tabela de frete que entram na média por estado — tudo que vira R$ ou % na conta. */
+const CAMPOS_NUMERICOS_TABELA_FRETE = [
+  'kg_1_10', 'kg_11_20', 'kg_21_30', 'kg_31_50', 'kg_51_70', 'kg_71_100', 'kg_acima_100',
+  'ad_valores', 'pedagio_fracao_100kg', 'gris', 'cat', 'itr_tas', 'taxa_fixa_itr_redespacho',
+  'fiorino', 'veiculo_3_4_ate_2_5t', 'toco_ate_5_5t', 'truck_ate_14t', 'carreta_ate_25t', 'carreta_acima_27t',
+] as const satisfies readonly (keyof TabelaFrete)[];
+
+/**
+ * Rota sintética com a média das rotas cadastradas para uma UF, usada quando
+ * a cidade do fornecedor não tem entrada própria na tabela da Bahia Sul.
+ *
+ * Existe só para a simulação de frete teórico da cotação (antes de o
+ * fornecedor emitir nota) — nunca para a auditoria do CTe já emitido, onde
+ * a rota real do fornecedor é o que importa e uma média mascararia divergência
+ * de verdade. `matchRotaTabelaFrete` continua exigindo cidade cadastrada.
+ */
+export function mediaRotaPorUf(uf: string | null | undefined, tabelaList: TabelaFrete[]): TabelaFrete | null {
+  const ufNorm = (uf ?? '').trim().toUpperCase();
+  if (!ufNorm || !tabelaList || tabelaList.length === 0) return null;
+
+  const rotasDaUf = tabelaList.filter(r => (r.uf || '').trim().toUpperCase() === ufNorm);
+  if (rotasDaUf.length === 0) return null;
+
+  const media = (campo: keyof TabelaFrete): number => {
+    const valores = rotasDaUf.map(r => Number(r[campo]) || 0);
+    return valores.reduce((s, v) => s + v, 0) / valores.length;
+  };
+
+  const icmsValores = rotasDaUf
+    .map(r => parseFloat(String(r.icms_aplicado || '').replace(/%/g, '').replace(',', '.')))
+    .filter(n => Number.isFinite(n) && n > 0);
+  const icmsMedio = icmsValores.length > 0 ? icmsValores.reduce((s, v) => s + v, 0) / icmsValores.length : 0;
+
+  const base = Object.fromEntries(
+    CAMPOS_NUMERICOS_TABELA_FRETE.map(campo => [campo, media(campo)]),
+  ) as Pick<TabelaFrete, typeof CAMPOS_NUMERICOS_TABELA_FRETE[number]>;
+
+  return {
+    ...base,
+    origem: `Média ${ufNorm}`,
+    uf: ufNorm,
+    destino: rotasDaUf[0].destino,
+    rotas: `Média de ${rotasDaUf.length} rota(s) cadastrada(s) para ${ufNorm} — cidade de origem não cadastrada`,
+    icms_aplicado: icmsMedio > 0 ? String(icmsMedio) : rotasDaUf[0].icms_aplicado,
+  };
+}
+
+/** Veículos de frete dedicado, na ordem de capacidade da tabela contratual. */
+export type VeiculoDedicado =
+  | 'fiorino' | 'veiculo_3_4_ate_2_5t' | 'toco_ate_5_5t'
+  | 'truck_ate_14t' | 'carreta_ate_25t' | 'carreta_acima_27t';
+
+export const NOMES_VEICULO_DEDICADO: Record<VeiculoDedicado, string> = {
+  fiorino: 'Fiorino',
+  veiculo_3_4_ate_2_5t: '3/4 (ate 2,5 ton)',
+  toco_ate_5_5t: 'Toco (ate 5,5 ton)',
+  truck_ate_14t: 'Truck (ate 14 ton)',
+  carreta_ate_25t: 'Carreta (ate 25 ton)',
+  carreta_acima_27t: 'Carreta (acima de 27 ton)',
+};
+
+export interface ParamsFreteTabela {
+  /** Peso tarifado em kg (o maior entre real, cubado e declarado, quando houver os tres). */
+  pesoKg: number;
+  valorMercadoria: number;
+  modalidade: 'fracionado' | 'dedicado';
+  /** So usado em `dedicado`; padrao Fiorino, o menor veiculo da tabela. */
+  veiculo?: VeiculoDedicado;
+}
+
+export interface FreteTabelaResultado {
+  freteBase: number;
+  faixaDesc: string;
+  adValoresPct: number;
+  adValoresValor: number;
+  grisPct: number;
+  grisValor: number;
+  fracoes100kg: number;
+  taxaPedagioFracao: number;
+  pedagioTotal: number;
+  cat: number;
+  itrTas: number;
+  taxaFixa: number;
+  subtotalSemIcms: number;
+  icmsPct: number;
+  valorIcms: number;
+  totalComIcms: number;
+}
+
+/** Percentual que pode vir como fracao (0,005) ou como ponto percentual (0,5) na planilha — normaliza para ponto percentual. */
+function pctContratual(bruto: unknown, padrao = 0): number {
+  const n = Number(bruto);
+  const valor = Number.isFinite(n) && n > 0 ? n : padrao;
+  return valor < 0.05 && valor > 0 ? Number((valor * 100).toFixed(4)) : valor;
+}
+
+const arredondar2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Nucleo do calculo de frete pela tabela contratual da Bahia Sul. Fonte unica
+ * das tres telas que precisam do numero: a auditoria do CTe emitido
+ * (`calcularFreteContratual`), o simulador manual (FreteEstimator) e o frete
+ * teorico por item da cotacao (`freteCotacao.ts`). A formula estava copiada
+ * em cada uma delas, o que fazia um reajuste de GRIS precisar de tres edicoes.
+ *
+ * Ordem contratual: frete peso (faixa ou veiculo) + ad valorem + GRIS +
+ * pedagio por fracao de 100 kg + taxas fixas; o ICMS entra por dentro no fim.
+ */
+export function calcularFreteTabela(rota: TabelaFrete, params: ParamsFreteTabela): FreteTabelaResultado {
+  const peso = Math.max(0, Number(params.pesoKg) || 0);
+  const vMerc = Math.max(0, Number(params.valorMercadoria) || 0);
+
+  // 1. Frete base / frete peso
+  let freteBase = 0;
+  let faixaDesc = '';
+
+  if (params.modalidade === 'fracionado') {
+    if (peso <= 10) { freteBase = Number(rota.kg_1_10) || 0; faixaDesc = 'Faixa 1 - 10 kg'; }
+    else if (peso <= 20) { freteBase = Number(rota.kg_11_20) || 0; faixaDesc = 'Faixa 11 - 20 kg'; }
+    else if (peso <= 30) { freteBase = Number(rota.kg_21_30) || 0; faixaDesc = 'Faixa 21 - 30 kg'; }
+    else if (peso <= 50) { freteBase = Number(rota.kg_31_50) || 0; faixaDesc = 'Faixa 31 - 50 kg'; }
+    else if (peso <= 70) { freteBase = Number(rota.kg_51_70) || 0; faixaDesc = 'Faixa 51 - 70 kg'; }
+    else if (peso <= 100) { freteBase = Number(rota.kg_71_100) || 0; faixaDesc = 'Faixa 71 - 100 kg'; }
+    else {
+      const taxaExcedente = Number(rota.kg_acima_100) || 0;
+      if (taxaExcedente > 0) {
+        freteBase = taxaExcedente * peso;
+        faixaDesc = `Acima de 100 kg (R$ ${taxaExcedente.toFixed(2)}/kg x ${peso.toFixed(1)}kg)`;
+      } else {
+        freteBase = Number(rota.kg_71_100) || 0;
+        faixaDesc = 'Acima de 100 kg (Teto 100kg)';
+      }
+    }
+  } else {
+    const veiculo = params.veiculo ?? 'fiorino';
+    freteBase = Number(rota[veiculo]) || 0;
+    faixaDesc = `Dedicado: ${NOMES_VEICULO_DEDICADO[veiculo] ?? veiculo}`;
+  }
+
+  // 2. Ad valorem sobre o valor da carga
+  const adValoresPct = pctContratual(rota.ad_valores);
+  const adValoresValor = arredondar2((vMerc * adValoresPct) / 100);
+
+  // 3. GRIS — padrao contratual Bahia Sul de 0,5% quando a rota nao especifica
+  const grisPct = pctContratual(rota.gris, 0.5);
+  const grisValor = arredondar2((vMerc * grisPct) / 100);
+
+  // 4. Pedagio por fracao de 100 kg (fracao iniciada conta inteira)
+  const taxaPedagioFracao = Number(rota.pedagio_fracao_100kg) || 0;
+  const fracoes100kg = Math.ceil(peso / 100) || 1;
+  const pedagioTotal = arredondar2(fracoes100kg * taxaPedagioFracao);
+
+  // 5. Taxas fixas e contratuais
+  const cat = Number(rota.cat) || 0;
+  const itrTas = Number(rota.itr_tas) || 0;
+  const taxaFixa = Number(rota.taxa_fixa_itr_redespacho) || 0;
+
+  // 6. Subtotal sem ICMS
+  const subtotalSemIcms = arredondar2(freteBase + adValoresValor + grisValor + pedagioTotal + cat + itrTas + taxaFixa);
+
+  // 7. ICMS por dentro
+  const icmsCleanStr = String(rota.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
+  const rawIcms = parseFloat(icmsCleanStr) || 0;
+  const icmsPct = rawIcms <= 1 && rawIcms > 0 ? Number((rawIcms * 100).toFixed(4)) : rawIcms;
+
+  let totalComIcms = subtotalSemIcms;
+  let valorIcms = 0;
+  if (icmsPct > 0 && icmsPct < 100) {
+    totalComIcms = arredondar2(subtotalSemIcms / (1 - icmsPct / 100));
+    valorIcms = arredondar2(totalComIcms - subtotalSemIcms);
+  }
+
+  return {
+    freteBase, faixaDesc, adValoresPct, adValoresValor, grisPct, grisValor,
+    fracoes100kg, taxaPedagioFracao, pedagioTotal, cat, itrTas, taxaFixa,
+    subtotalSemIcms, icmsPct, valorIcms, totalComIcms,
+  };
+}
+
 /**
  * Calcula o frete contratual com base nos criterios do simulador de frete
  */
@@ -491,85 +670,13 @@ export function calcularFreteContratual(
   const isDedicado = (entrega.tpo_embarque || '').toUpperCase().includes('DEDICADO');
   const modalidade: 'fracionado' | 'dedicado' = isDedicado ? 'dedicado' : 'fracionado';
 
-  // 1. Frete Base / Frete Peso
-  let freteBase = 0;
-  let faixaDesc = '';
+  const calc = calcularFreteTabela(rota, { pesoKg: peso, valorMercadoria: vMerc, modalidade });
 
-  if (modalidade === 'fracionado') {
-    if (peso <= 10) {
-      freteBase = Number(rota.kg_1_10) || 0;
-      faixaDesc = 'Faixa 1 - 10 kg';
-    } else if (peso <= 20) {
-      freteBase = Number(rota.kg_11_20) || 0;
-      faixaDesc = 'Faixa 11 - 20 kg';
-    } else if (peso <= 30) {
-      freteBase = Number(rota.kg_21_30) || 0;
-      faixaDesc = 'Faixa 21 - 30 kg';
-    } else if (peso <= 50) {
-      freteBase = Number(rota.kg_31_50) || 0;
-      faixaDesc = 'Faixa 31 - 50 kg';
-    } else if (peso <= 70) {
-      freteBase = Number(rota.kg_51_70) || 0;
-      faixaDesc = 'Faixa 51 - 70 kg';
-    } else if (peso <= 100) {
-      freteBase = Number(rota.kg_71_100) || 0;
-      faixaDesc = 'Faixa 71 - 100 kg';
-    } else {
-      const taxaExcedente = Number(rota.kg_acima_100) || 0;
-      if (taxaExcedente > 0) {
-        freteBase = taxaExcedente * peso;
-        faixaDesc = `Acima de 100 kg (R$ ${taxaExcedente.toFixed(2)}/kg x ${peso.toFixed(1)}kg)`;
-      } else {
-        freteBase = Number(rota.kg_71_100) || 0;
-        faixaDesc = 'Acima de 100 kg (Teto 100kg)';
-      }
-    }
-  } else {
-    freteBase = Number(rota.fiorino) || 0;
-    faixaDesc = 'Veiculo Dedicado';
-  }
-
-  // 2. Ad Valorem (taxa sobre o valor da carga)
-  const rawAdVal = Number(rota.ad_valores) || 0;
-  const adValoresPct = rawAdVal < 0.05 && rawAdVal > 0 ? Number((rawAdVal * 100).toFixed(4)) : rawAdVal;
-  const adValoresValor = Math.round(((vMerc * adValoresPct) / 100) * 100) / 100;
-
-  // 3. GRIS (Gerenciamento de Risco - padrao contratual 0.5% ou especificado na rota)
-  const rawGris = rota.gris !== undefined && rota.gris !== null && !isNaN(Number(rota.gris)) && Number(rota.gris) > 0
-    ? Number(rota.gris)
-    : 0.5; // Padrao contratual Bahia Sul: 0.5%
-  const grisPct = rawGris < 0.05 && rawGris > 0 ? Number((rawGris * 100).toFixed(4)) : rawGris;
-  const grisValor = Math.round(((vMerc * grisPct) / 100) * 100) / 100;
-
-  // 4. Pedagio por fracao de 100kg
-  const taxaPedagioFracao = Number(rota.pedagio_fracao_100kg) || 0;
-  const fracoes100kg = Math.ceil(peso / 100) || 1;
-  const pedagioTotal = Math.round((fracoes100kg * taxaPedagioFracao) * 100) / 100;
-
-  // 5. Taxas fixas e contratuais
-  const cat = Number(rota.cat) || 0;
-  const itrTas = Number(rota.itr_tas) || 0;
-  const taxaFixa = Number(rota.taxa_fixa_itr_redespacho) || 0;
-
-  // 6. Subtotal Sem ICMS
-  const subtotalSemIcms = Math.round((freteBase + adValoresValor + grisValor + pedagioTotal + cat + itrTas + taxaFixa) * 100) / 100;
-
-  // 7. ICMS (calculo por dentro)
-  const icmsCleanStr = String(rota.icms_aplicado || '').replace(/%/g, '').replace(',', '.').trim();
-  const rawIcms = parseFloat(icmsCleanStr) || 0;
-  const icmsPct = rawIcms <= 1 && rawIcms > 0 ? Number((rawIcms * 100).toFixed(4)) : rawIcms;
-
-  let totalComIcms = subtotalSemIcms;
-  let valorIcms = 0;
-
-  if (icmsPct > 0 && icmsPct < 100) {
-    totalComIcms = Math.round((subtotalSemIcms / (1 - (icmsPct / 100))) * 100) / 100;
-    valorIcms = Math.round((totalComIcms - subtotalSemIcms) * 100) / 100;
-  }
-
-  // 8. Comparativo e Auditoria
-  const diferenca = frtCobrado > 0 ? Math.round((frtCobrado - totalComIcms) * 100) / 100 : 0;
-  const diferencaPct = totalComIcms > 0 && frtCobrado > 0 ? Number((((frtCobrado - totalComIcms) / totalComIcms) * 100).toFixed(2)) : 0;
+  // Comparativo e auditoria: o CTe cobrado contra o que a tabela previa.
+  const diferenca = frtCobrado > 0 ? Math.round((frtCobrado - calc.totalComIcms) * 100) / 100 : 0;
+  const diferencaPct = calc.totalComIcms > 0 && frtCobrado > 0
+    ? Number((((frtCobrado - calc.totalComIcms) / calc.totalComIcms) * 100).toFixed(2))
+    : 0;
 
   let statusAuditoria: StatusAuditoriaFrete = 'conforme';
   if (frtCobrado <= 0) {
@@ -578,8 +685,6 @@ export function calcularFreteContratual(
     statusAuditoria = 'sobrepreco';
   } else if (diferenca < -1.00 && diferencaPct < -1.5) {
     statusAuditoria = 'desconto';
-  } else {
-    statusAuditoria = 'conforme';
   }
 
   return {
@@ -587,21 +692,21 @@ export function calcularFreteContratual(
     pesoConsiderado: peso,
     vlrMercadoria: vMerc,
     modalidade,
-    faixaDesc,
-    freteBase,
-    adValoresPct,
-    adValoresValor,
-    grisPct,
-    grisValor,
-    pedagioTotal,
-    fracoes100kg,
-    cat,
-    itrTas,
-    taxaFixa,
-    subtotalSemIcms,
-    icmsPct,
-    valorIcms,
-    totalComIcms,
+    faixaDesc: calc.faixaDesc,
+    freteBase: calc.freteBase,
+    adValoresPct: calc.adValoresPct,
+    adValoresValor: calc.adValoresValor,
+    grisPct: calc.grisPct,
+    grisValor: calc.grisValor,
+    pedagioTotal: calc.pedagioTotal,
+    fracoes100kg: calc.fracoes100kg,
+    cat: calc.cat,
+    itrTas: calc.itrTas,
+    taxaFixa: calc.taxaFixa,
+    subtotalSemIcms: calc.subtotalSemIcms,
+    icmsPct: calc.icmsPct,
+    valorIcms: calc.valorIcms,
+    totalComIcms: calc.totalComIcms,
     frtCobrado,
     diferenca,
     diferencaPct,

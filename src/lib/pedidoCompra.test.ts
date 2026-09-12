@@ -13,6 +13,9 @@ function item(p: Partial<CotacaoPropostaItemDraft> & { descricao_produto: string
     quantidade: 1, preco_unitario: 10, preco_total_item: null,
     aliquota_icms_pct: null, aliquota_pis_pct: null, aliquota_cofins_pct: null, aliquota_ipi_pct: null,
     mapa_selecionado: false,
+    desconsiderado: false, vinculo_divergencias: [],
+    peso_unitario_kg: null, peso_origem: null, frete_teorico: null,
+    codigo_fiscal: null, preco_liquido_unitario: null, preco_liquido_total: null, custo_total_item: null,
     extraido_raw: {} as any,
     ...p,
   };
@@ -115,6 +118,40 @@ describe('montarPedidosCompra', () => {
     const p = proposta('A', [item({ descricao_produto: 'X', mapa_selecionado: true })], { validade_data: '2026-09-10' });
     const [pedido] = montarPedidosCompra([p], '2026-09-05');
     expect(pedido.validadeDias).toBe(5);
+  });
+});
+
+describe('montarPedidosCompra — composição do custo', () => {
+  it('ignora item desconsiderado mesmo que tenha ficado marcado no mapa', () => {
+    const pedidos = montarPedidosCompra([
+      proposta('Fornecedor A', [
+        item({ descricao_produto: 'Item bom', mapa_selecionado: true, preco_unitario: 100, quantidade: 1 }),
+        item({ descricao_produto: 'Item desconsiderado', mapa_selecionado: true, desconsiderado: true, preco_unitario: 999, quantidade: 1 }),
+      ]),
+    ]);
+    expect(pedidos[0].itens).toHaveLength(1);
+    expect(pedidos[0].subtotal).toBe(100);
+  });
+
+  it('apura preço líquido e custo (preço + impostos + frete) de cada item', () => {
+    const pedidos = montarPedidosCompra([
+      proposta('Fornecedor A', [
+        item({
+          descricao_produto: 'Eletrodo',
+          mapa_selecionado: true,
+          quantidade: 10, preco_unitario: 100, preco_total_item: 1000,
+          aliquota_icms_pct: 12, aliquota_pis_pct: 1.65, aliquota_cofins_pct: 7.6,
+          frete_teorico: 150,
+        }),
+      ], { fornecedor_uf: 'SP' }),
+    ]);
+
+    const item0 = pedidos[0].itens[0];
+    expect(item0.custo).not.toBeNull();
+    expect(item0.custo!.precoLiquido).toBeCloseTo(787.50, 2);
+    expect(item0.custo!.custoTotal).toBeCloseTo(937.50, 2);
+    expect(pedidos[0].freteTeorico).toBe(150);
+    expect(pedidos[0].custo.custoTotal).toBeCloseTo(937.50, 2);
   });
 });
 

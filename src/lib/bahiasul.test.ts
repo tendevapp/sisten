@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizarLocalidade,
   matchRotaTabelaFrete,
+  mediaRotaPorUf,
   calcularFreteContratual,
   calcularKpisBahiaSul,
   enriquecerEntregasComPedidos,
@@ -95,6 +96,42 @@ describe('matchRotaTabelaFrete', () => {
   it('retorna null se a rota nao existir na tabela', () => {
     const rota = matchRotaTabelaFrete('MANAUS/AM', 'JACOBINA/BA', mockTabela);
     expect(rota).toBeNull();
+  });
+});
+
+describe('mediaRotaPorUf', () => {
+  it('retorna null quando a UF não tem nenhuma rota cadastrada', () => {
+    expect(mediaRotaPorUf('AM', mockTabela)).toBeNull();
+  });
+
+  it('retorna null sem UF informada', () => {
+    expect(mediaRotaPorUf(null, mockTabela)).toBeNull();
+    expect(mediaRotaPorUf('', mockTabela)).toBeNull();
+  });
+
+  it('com uma única rota na UF, a média é a própria rota', () => {
+    const media = mediaRotaPorUf('BA', mockTabela);
+    const salvador = mockTabela.find(r => r.uf === 'BA')!;
+    expect(media?.kg_1_10).toBeCloseTo(salvador.kg_1_10, 4);
+    expect(media?.fiorino).toBeCloseTo(salvador.fiorino, 4);
+    expect(media?.uf).toBe('BA');
+  });
+
+  it('com duas rotas na UF, tira a média aritmética de cada faixa', () => {
+    const tabelaComDuasSp: TabelaFrete[] = [
+      ...mockTabela,
+      { ...mockTabela.find(r => r.uf === 'SP')!, origem: 'CAMPINAS', kg_1_10: 100, fiorino: 3000 },
+    ];
+    const spOriginal = mockTabela.find(r => r.uf === 'SP')!;
+    const media = mediaRotaPorUf('SP', tabelaComDuasSp);
+    expect(media?.kg_1_10).toBeCloseTo((spOriginal.kg_1_10 + 100) / 2, 4);
+    expect(media?.fiorino).toBeCloseTo((spOriginal.fiorino + 3000) / 2, 4);
+  });
+
+  it('marca a origem como aproximada e explica a média no campo rotas', () => {
+    const media = mediaRotaPorUf('sp', mockTabela);
+    expect(media?.origem).toContain('SP');
+    expect(media?.rotas).toMatch(/média/i);
   });
 });
 

@@ -217,6 +217,7 @@ function propostaExtraidaBase(): PropostaExtraida {
       Marca_Fabricante: null, Unidade_Medida: 'UN', NCM: null, CST: null, CFOP: null,
       Quantidade: '10', Preco_Unitario: '100.00', Preco_Total_Item: '1000.00',
       Aliquota_ICMS_Pct: '18', Aliquota_PIS_Pct: null, Aliquota_COFINS_Pct: null, Aliquota_IPI_pct: null,
+      Peso_Unitario_Kg: '0.25', Vinculo_RI: null, Vinculo_Divergencias: null,
     }],
   };
 }
@@ -236,6 +237,9 @@ describe('normalizarProposta', () => {
     expect(draft.itens[0].quantidade).toBe(10);
     expect(draft.itens[0].preco_unitario).toBe(100);
     expect(draft.itens[0].aliquota_icms_pct).toBe(18);
+    expect(draft.itens[0].peso_unitario_kg).toBe(0.25);
+    expect(draft.itens[0].peso_origem).toBe('ia');
+    expect(draft.itens[0].desconsiderado).toBe(false);
   });
 });
 
@@ -247,6 +251,9 @@ function itemDraft(overrides: Partial<CotacaoPropostaItemDraft> = {}): CotacaoPr
     unidade_medida: 'UN', ncm: null, cst: null, cfop: null,
     quantidade: 10, preco_unitario: 100, preco_total_item: 1000,
     aliquota_icms_pct: 18, aliquota_pis_pct: null, aliquota_cofins_pct: null, aliquota_ipi_pct: null,
+    desconsiderado: false, vinculo_divergencias: [],
+    peso_unitario_kg: null, peso_origem: null, frete_teorico: null,
+    codigo_fiscal: null, preco_liquido_unitario: null, preco_liquido_total: null, custo_total_item: null,
     extraido_raw: {} as any,
     ...overrides,
   };
@@ -297,6 +304,17 @@ describe('validarProposta', () => {
   it('item sem vínculo e não marcado fora do escopo bloqueia', () => {
     const v = validarProposta(propostaDraft({ itens: [itemDraft({ processo_item_id: null, fora_escopo: false })] }));
     expect(v.bloqueios.some(b => b.campo === 'vinculo')).toBe(true);
+  });
+
+  it('item desconsiderado não bloqueia nada — nem preço, nem vínculo', () => {
+    const v = validarProposta(propostaDraft({
+      itens: [itemDraft({
+        processo_item_id: null, fora_escopo: false, desconsiderado: true,
+        preco_unitario: null, quantidade: null, descricao_produto: '',
+      })],
+    }));
+    expect(v.bloqueios).toHaveLength(0);
+    expect(podeSalvar(v)).toBe(true);
   });
 
   it('alíquota suspeita (<1) gera aviso, não bloqueio', () => {
@@ -368,6 +386,24 @@ describe('aplicarSugestoes', () => {
     const resultado = aplicarSugestoes(itens, sugestoes);
     expect(resultado[0].processo_item_id).toBe('pi-9');
     expect(resultado[0].vinculo_origem).toBe('sugerido');
+  });
+
+  it('não desfaz o vínculo que a IA já resolveu', () => {
+    const itens = [itemDraft({ processo_item_id: 'pi-ia', ri: 'ri-ia', vinculo_origem: 'ia', vinculo_score: 0.8 })];
+    const sugestoes = new Map([[0, [
+      { idx: 0, processo_item_id: 'pi-9', ri: 'ri-9', texto_breve: 'x', material_code: 'mat-9', score: 0.95, origem: 'trigrama' as const },
+    ]]]);
+    const resultado = aplicarSugestoes(itens, sugestoes);
+    expect(resultado[0].processo_item_id).toBe('pi-ia');
+    expect(resultado[0].vinculo_origem).toBe('ia');
+  });
+
+  it('não vincula item desconsiderado', () => {
+    const itens = [itemDraft({ processo_item_id: null, desconsiderado: true })];
+    const sugestoes = new Map([[0, [
+      { idx: 0, processo_item_id: 'pi-9', ri: 'ri-9', texto_breve: 'x', material_code: 'mat-9', score: 0.95, origem: 'trigrama' as const },
+    ]]]);
+    expect(aplicarSugestoes(itens, sugestoes)[0].processo_item_id).toBeNull();
   });
 
   it('não aplica quando ambíguo', () => {

@@ -74,6 +74,14 @@ const json = (body: unknown, status = 200) =>
 const erroResponse = (e: ErroExtracao) =>
   json({ erro: { codigo: e.codigo, mensagem: e.message } }, e.status);
 
+interface ItemEscopo {
+  ri: string;
+  texto_breve: string | null;
+  material_code: string | null;
+  quantidade: number | null;
+  unidade: string | null;
+}
+
 const SYSTEM_PROMPT = `Você extrai dados de propostas comerciais / orçamentos de fornecedores a partir de texto em Markdown (saída de conversão de PDF).
 
 O texto pode conter UM ou VÁRIOS documentos, de fornecedores diferentes. Sempre devolva um ARRAY "propostas" — com um único elemento se houver um só documento.
@@ -109,9 +117,52 @@ FORMATO (responda APENAS com este JSON, sem markdown, sem comentários):
     "Marca_Fabricante":null,"Unidade_Medida":null,"NCM":null,"CST":null,
     "CFOP":null,"Quantidade":null,"Preco_Unitario":null,
     "Preco_Total_Item":null,"Aliquota_ICMS_Pct":null,"Aliquota_PIS_Pct":null,
-    "Aliquota_COFINS_Pct":null,"Aliquota_IPI_pct":null
+    "Aliquota_COFINS_Pct":null,"Aliquota_IPI_pct":null,
+    "Peso_Unitario_Kg":null,"Vinculo_RI":null,"Vinculo_Divergencias":null
   }]
 }]}`;
+
+/**
+ * Instruções que NÃO podem depender do prompt editável em `ops_ia_prompts`:
+ * vão anexadas ao conteúdo do usuário, não ao system prompt, para que o
+ * peso estimado e a sugestão de vínculo continuem vindo mesmo quando um
+ * admin sobrescreve o prompt padrão pela tela de Gestão de APIs.
+ *
+ * O peso é estimativa deliberada, não leitura: a proposta quase nunca traz
+ * peso, e sem ele não há como simular o frete FOB pela tabela da
+ * transportadora antes de fechar a compra. Errar por ordem de grandeza é o
+ * que importa evitar — 2 kg contra 200 kg muda a faixa de tarifa; 1,8 contra
+ * 2,0 não muda nada.
+ */
+function blocoInstrucoesExtras(escopo: ItemEscopo[]): string {
+  const partes: string[] = [
+    '',
+    '---',
+    'INSTRUÇÕES ADICIONAIS (valem sobre o formato acima; devolva estes campos DENTRO de cada item de "itens"):',
+    '',
+    '1. "Peso_Unitario_Kg": ESTIME o peso de UMA unidade do produto, em quilos, a partir da descrição, do material, da bitola/dimensão e da embalagem. Este é o único campo que você pode inferir em vez de ler — nunca devolva null nele, a menos que a descrição não identifique produto físico nenhum (serviço, taxa, mão de obra).',
+    '   - Use a unidade de medida do item: se a UM for CX/PC/FD/RL, estime o peso da EMBALAGEM inteira, não o da peça avulsa.',
+    '   - Só o número, ponto decimal, sem "kg". Ex.: "0.35", "12.5", "1200".',
+    '   - Preferir ordem de grandeza correta a precisão falsa.',
+  ];
+
+  if (escopo.length > 0) {
+    partes.push(
+      '',
+      '2. "Vinculo_RI": diga qual item da REQUISIÇÃO abaixo é o mesmo material que o item cotado. Devolva exatamente o valor do campo "ri" da lista, ou null quando nenhum item da requisição corresponder (o fornecedor cotou algo que ninguém pediu).',
+      '3. "Vinculo_Divergencias": array de frases curtas com o que está DIFERENTE entre o item cotado e o item da requisição que você vinculou — quantidade, unidade, bitola/medida, material, marca exigida, item cotado que agrupa dois da RM. Array vazio [] quando bate em tudo; null quando não houve vínculo.',
+      '   - Vincule pelo MATERIAL, não pelo texto: "ELETRODO 7018 3,25MM" e "ELETRODO REVESTIDO E7018 Ø3,25" são o mesmo item.',
+      '   - Não force vínculo: RI errado custa mais caro que RI vazio.',
+      '',
+      'ITENS DA REQUISIÇÃO (escopo do processo de cotação):',
+      '```json',
+      JSON.stringify(escopo),
+      '```',
+    );
+  }
+
+  return partes.join('\n');
+}
 
 /**
  * Fecha um JSON cortado por `max_tokens` no fim do último objeto completo.
@@ -512,6 +563,18 @@ Deno.serve(async (req) => {
     const markdown = typeof body?.markdown === 'string' ? body.markdown : '';
     processoId = typeof body?.processo_id === 'string' ? body.processo_id : null;
     const arquivoOrigem = typeof body?.arquivo_origem === 'string' ? body.arquivo_origem : null;
+    const escopo: ItemEscopo[] = Array.isArray(body?.escopo)
+      ? body.escopo
+          .filter((e: any) => e && typeof e.ri === 'string')
+          .slice(0, 200)
+          .map((e: any) => ({
+            ri: e.ri,
+            texto_breve: e.texto_breve ?? null,
+            material_code: e.material_code ?? null,
+            quantidade: e.quantidade ?? null,
+            unidade: e.unidade ?? null,
+          }))
+      : [];
     charsEntrada = markdown.length;
 
     if (markdown.trim().length < 50) throw new ErroExtracao('ENTRADA_VAZIA', 'Cole o markdown da cotação antes de processar.', 400);
@@ -539,7 +602,8 @@ Deno.serve(async (req) => {
       console.warn('Falha ao carregar ops_ia_prompts, usando SYSTEM_PROMPT padrão:', errPrompt);
     }
 
-    const resultado = await extrairComFallback(markdown, geminiKey1, geminiKey2, openrouterKey, openaiKey, systemPrompt, modeloGemini);
+    const entrada = markdown + blocoInstrucoesExtras(escopo);
+    const resultado = await extrairComFallback(entrada, geminiKey1, geminiKey2, openrouterKey, openaiKey, systemPrompt, modeloGemini);
 
     const propostas = extrairJson(resultado.content, resultado.truncado).map((p: any) => ({ ...p, Arquivo_Origem: p?.Arquivo_Origem ?? arquivoOrigem }));
     const totalItens = propostas.reduce((acc: number, p: any) => acc + (Array.isArray(p.itens) ? p.itens.length : 0), 0);

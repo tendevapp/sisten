@@ -399,6 +399,10 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
 
   for (const { key: propostaKey, proposta } of propostas) {
     for (const item of proposta.itens) {
+      // Item desconsiderado não existe para o mapa: não abre linha, não
+      // ocupa a coluna do fornecedor e não disputa o menor preço.
+      if (item.desconsiderado) continue;
+
       // 1. Correção manual do comprador ganha de tudo.
       const alvo = overrides[item._key];
       if (alvo) {
@@ -443,11 +447,17 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
   }
 
   // Frete rateado por proposta, proporcional ao valor bruto de cada item.
+  // Quando o comprador ainda não informou o frete cotado, cada item entra com
+  // o frete teórico que a tabela da Bahia Sul previu pelo peso (só existe em
+  // proposta FOB) — sem isso, a proposta FOB aparece artificialmente mais
+  // barata que a CIF na mesma matriz.
   const rateio = new Map<string, number>();
+  const usaFreteTeorico = new Set<string>();
   for (const { key, proposta } of propostas) {
     const frete = params.fretePorProposta?.[key] ?? null;
     const total = brutoDaProposta(proposta);
     rateio.set(key, frete != null && total > 0 ? frete / total : 0);
+    if (frete == null) usaFreteTeorico.add(key);
   }
 
   const resultado: LinhaMapa[] = linhas
@@ -455,7 +465,10 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
     .map(l => {
       const celulas: CelulaMapa[] = l.celulas.map(c => {
         const fator = rateio.get(c.propostaKey) ?? 0;
-        const custo = calcularCustoItem(c.item, opcoes, (brutoDoItem(c.item) ?? 0) * fator);
+        const frete = usaFreteTeorico.has(c.propostaKey)
+          ? (c.item.frete_teorico ?? 0)
+          : (brutoDoItem(c.item) ?? 0) * fator;
+        const custo = calcularCustoItem(c.item, opcoes, frete);
         return { propostaKey: c.propostaKey, item: c.item, custo, score: c.score, deltaPct: null, melhor: false };
       });
 
@@ -581,7 +594,11 @@ export function resumirFornecedores(params: {
     const totalIpi = celulas.reduce((s, c) => s + c.custo.ipi, 0);
     const totalCreditos = celulas.reduce((s, c) => s + c.custo.creditos, 0);
     const totalLiquido = celulas.reduce((s, c) => s + (c.custo.liquido ?? 0), 0);
-    const frete = params.fretePorProposta?.[key] ?? null;
+    // Sem frete cotado, o resumo mostra a soma do frete teórico das células —
+    // é o mesmo número que entrou em cada custo comparável da coluna.
+    const freteTeorico = celulas.reduce((s, c) => s + c.custo.freteRateado, 0);
+    const freteInformado = params.fretePorProposta?.[key] ?? null;
+    const frete = freteInformado ?? (freteTeorico > 0 ? freteTeorico : null);
     const minimo = proposta.faturamento_minimo;
 
     return {

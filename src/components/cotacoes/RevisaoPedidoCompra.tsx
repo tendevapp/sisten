@@ -7,18 +7,24 @@
  * fornecedor**: o comprador confere condições e itens antes de baixar o PDF
  * e efetivamente colocar o pedido (no SAP ou por e-mail, fora deste app) e,
  * quando todos os pedidos saíram, encerra o processo de cotação.
+ *
+ * É aqui que o custo da compra é fechado: ao salvar o pedido, cada item é
+ * apurado pelos critérios da Calc Impostos (`custoCompra.ts`) e o preço
+ * líquido, junto do frete teórico, fica gravado no item. Gravado, e não
+ * recalculado a cada abertura da tela, porque é o número que justificou a
+ * decisão — alíquota que mude depois não pode reescrever o histórico.
  */
 
 import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft, Download, CheckCircle2, AlertTriangle, CalendarClock, CreditCard,
-  Truck, ShieldAlert, PackageX, Loader2, FileWarning,
+  Truck, ShieldAlert, PackageX, Loader2, FileWarning, Save, Calculator,
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd, formatDateBR } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto } from '../../lib/cotacoes';
-import { atualizarStatusProcesso } from '../../lib/cotacoesApi';
+import { atualizarStatusProcesso, atualizarItensCotacao } from '../../lib/cotacoesApi';
 import { exportPedidoCompraPdf } from '../../lib/pdfExport/exportPedidoCompraPdf';
 import { montarPedidosCompra, risSemPedido } from '../../lib/pedidoCompra';
 import type { PedidoFornecedor } from '../../lib/pedidoCompra';
@@ -48,6 +54,30 @@ function CardPedido({
 }) {
   const toast = useToast();
   const [baixando, setBaixando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+
+  const handleSalvarPedido = async () => {
+    setSalvando(true);
+    try {
+      await atualizarItensCotacao(
+        pedido.itens.map(it => ({
+          id: it.itemKey,
+          codigo_fiscal: it.custo?.codigoFiscal ?? null,
+          preco_liquido_unitario: it.custo && !it.custo.incompleto ? it.custo.precoLiquidoUnitario : null,
+          preco_liquido_total: it.custo && !it.custo.incompleto ? it.custo.precoLiquido : null,
+          custo_total_item: it.custo && !it.custo.incompleto ? it.custo.custoTotal : null,
+          frete_teorico: it.freteTeorico,
+        })),
+      );
+      setSalvo(true);
+      toast.success('Pedido salvo com o preço líquido apurado de cada item.');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const handleBaixar = async () => {
     setBaixando(true);
@@ -106,6 +136,17 @@ function CardPedido({
           </div>
         </div>
 
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSalvarPedido}
+          disabled={salvando}
+          title="Apura o preço líquido de cada item pelos critérios da Calc Impostos e grava o custo da compra"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : salvo ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Save className="h-3.5 w-3.5" />}
+          {salvo ? 'Pedido salvo' : 'Salvar pedido'}
+        </button>
         <button
           type="button"
           onClick={handleBaixar}
@@ -115,6 +156,7 @@ function CardPedido({
           {baixando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           Baixar PDF do pedido
         </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
@@ -126,7 +168,9 @@ function CardPedido({
               <th className="px-2 py-2">Marca</th>
               <th className="px-2 py-2 text-center">Qtd / Un</th>
               <th className="px-2 py-2 text-right">Preço unit.</th>
-              <th className="px-4 py-2 text-right">Total</th>
+              <th className="px-2 py-2 text-right">Total</th>
+              <th className="px-2 py-2 text-right" title="Parcela do frete simulado pela tabela da Bahia Sul (proposta FOB)">Frete teór.</th>
+              <th className="px-4 py-2 text-right" title="Preço deduzido dos tributos recuperáveis, pelos critérios da Calc Impostos">Preço líq.</th>
             </tr>
           </thead>
           <tbody>
@@ -144,7 +188,16 @@ function CardPedido({
                   {formatQtd(it.quantidade)} {it.unidadeMedida || ''}
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatBRL(it.precoUnitario)}</td>
-                <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100">{formatBRL(it.precoTotal)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-600 dark:text-slate-300">{formatBRL(it.precoTotal)}</td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                  {it.freteTeorico != null ? formatBRL(it.freteTeorico) : '—'}
+                </td>
+                <td
+                  className="px-4 py-2 text-right font-semibold tabular-nums text-slate-800 dark:text-slate-100"
+                  title={it.custo ? `Código fiscal ${it.custo.codigoFiscal} · impostos ${formatBRL(it.custo.impostos.totalImpostos)} · custo com frete ${formatBRL(it.custo.custoTotal)}` : undefined}
+                >
+                  {it.custo && !it.custo.incompleto ? formatBRL(it.custo.precoLiquido) : '—'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -157,6 +210,25 @@ function CardPedido({
           <span className="text-slate-500 dark:text-slate-400">Frete: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(pedido.valorFrete)}</strong></span>
         )}
         <span className="text-sm font-bold text-slate-900 dark:text-slate-50">Total: {formatBRL(pedido.total)}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-slate-100 px-4 py-3 text-xs dark:border-slate-800">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-slate-500 dark:text-slate-400">
+          <Calculator className="h-3.5 w-3.5" />
+          Composição do custo
+        </span>
+        <span className="text-slate-500 dark:text-slate-400">
+          Impostos apurados: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(pedido.custo.impostos)}</strong>
+        </span>
+        <span className="text-slate-500 dark:text-slate-400">
+          Frete teórico: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(pedido.freteTeorico)}</strong>
+        </span>
+        <span className="text-slate-500 dark:text-slate-400">
+          Preço líquido: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(pedido.custo.precoLiquido)}</strong>
+        </span>
+        <span className="font-bold text-slate-900 dark:text-slate-50">
+          Custo da compra: {formatBRL(pedido.custo.custoTotal)}
+        </span>
       </div>
     </div>
   );

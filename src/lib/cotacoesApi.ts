@@ -36,12 +36,21 @@ export async function extrairCotacao(params: {
   markdown: string;
   arquivoOrigem?: string;
   processoId?: string;
+  /** Itens de RM do processo — a IA usa para já sugerir o RI de cada item cotado e apontar o que difere. */
+  escopo?: CotacaoProcessoItem[];
 }): Promise<ExtracaoResposta> {
   const { data, error } = await supabase.functions.invoke('extrair-cotacao', {
     body: {
       markdown: params.markdown,
       arquivo_origem: params.arquivoOrigem ?? null,
       processo_id: params.processoId ?? null,
+      escopo: (params.escopo ?? []).map(e => ({
+        ri: e.ri,
+        texto_breve: e.texto_breve,
+        material_code: e.material_code,
+        quantidade: e.qtd_solicitada,
+        unidade: e.unidade_medida,
+      })),
     },
   });
 
@@ -395,6 +404,15 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
       aliquota_pis_pct: item.aliquota_pis_pct,
       aliquota_cofins_pct: item.aliquota_cofins_pct,
       aliquota_ipi_pct: item.aliquota_ipi_pct,
+      desconsiderado: item.desconsiderado,
+      vinculo_divergencias: item.vinculo_divergencias,
+      peso_unitario_kg: item.peso_unitario_kg,
+      peso_origem: item.peso_origem,
+      frete_teorico: item.frete_teorico,
+      codigo_fiscal: item.codigo_fiscal,
+      preco_liquido_unitario: item.preco_liquido_unitario,
+      preco_liquido_total: item.preco_liquido_total,
+      custo_total_item: item.custo_total_item,
       extraido_raw: item.extraido_raw,
     })),
   };
@@ -437,6 +455,50 @@ export async function salvarFreteProposta(propostaId: string, valorFrete: number
     .update({ valor_frete: valorFrete, updated_at: new Date().toISOString() })
     .eq('id', propostaId);
   if (error) throw new Error(`Falha ao salvar o frete da proposta: ${error.message}`);
+}
+
+const UUID_REGEX_ITEM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Campos de item que mudam depois de a proposta já estar salva — `salvar_processo_cotacao` só insere. */
+export interface PatchItemCotacao {
+  id: string;
+  desconsiderado?: boolean;
+  peso_unitario_kg?: number | null;
+  peso_origem?: 'ia' | 'manual' | null;
+  frete_teorico?: number | null;
+  codigo_fiscal?: string | null;
+  preco_liquido_unitario?: number | null;
+  preco_liquido_total?: number | null;
+  custo_total_item?: number | null;
+}
+
+/**
+ * Atualiza item a item o que o comprador mexe depois do salvamento: o peso
+ * estimado (e o frete que ele recalcula), o item desconsiderado e a
+ * composição de custo congelada ao fechar o pedido.
+ *
+ * Um UPDATE por item, e não um upsert em lote, porque cada linha muda um
+ * subconjunto diferente de colunas — um upsert precisaria mandar a linha
+ * inteira e apagaria o que a tela não carregou.
+ */
+export async function atualizarItensCotacao(patches: PatchItemCotacao[]): Promise<void> {
+  const validos = patches.filter(p => UUID_REGEX_ITEM.test(p.id));
+  const ignorados = patches.length - validos.length;
+  if (ignorados > 0) {
+    // Item de rascunho ainda não tem linha no banco — o salvamento da
+    // proposta já leva esses campos no payload.
+    console.warn(`atualizarItensCotacao: ${ignorados} item(ns) ainda não salvos, ignorados.`);
+  }
+  if (validos.length === 0) return;
+
+  const resultados = await Promise.all(
+    validos.map(({ id, ...campos }) =>
+      supabase.from('sup_cotacao_proposta_itens').update(campos).eq('id', id)
+    ),
+  );
+
+  const erro = resultados.find(r => r.error)?.error;
+  if (erro) throw new Error(`Falha ao atualizar os itens da cotação: ${erro.message}`);
 }
 
 /**

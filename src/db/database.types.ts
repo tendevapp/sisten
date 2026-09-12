@@ -4937,6 +4937,15 @@ export type Database = {
           mapa_selecionado: boolean
           mapa_selecionado_em: string | null
           mapa_selecionado_por: string | null
+          desconsiderado: boolean
+          vinculo_divergencias: string[]
+          peso_unitario_kg: number | null
+          peso_origem: string | null
+          frete_teorico: number | null
+          codigo_fiscal: string | null
+          preco_liquido_unitario: number | null
+          preco_liquido_total: number | null
+          custo_total_item: number | null
         }
         Insert: {
           aliquota_cofins_pct?: number | null
@@ -4969,6 +4978,15 @@ export type Database = {
           mapa_selecionado?: boolean
           mapa_selecionado_em?: string | null
           mapa_selecionado_por?: string | null
+          desconsiderado?: boolean
+          vinculo_divergencias?: string[]
+          peso_unitario_kg?: number | null
+          peso_origem?: string | null
+          frete_teorico?: number | null
+          codigo_fiscal?: string | null
+          preco_liquido_unitario?: number | null
+          preco_liquido_total?: number | null
+          custo_total_item?: number | null
         }
         Update: {
           aliquota_cofins_pct?: number | null
@@ -5001,6 +5019,15 @@ export type Database = {
           mapa_selecionado?: boolean
           mapa_selecionado_em?: string | null
           mapa_selecionado_por?: string | null
+          desconsiderado?: boolean
+          vinculo_divergencias?: string[]
+          peso_unitario_kg?: number | null
+          peso_origem?: string | null
+          frete_teorico?: number | null
+          codigo_fiscal?: string | null
+          preco_liquido_unitario?: number | null
+          preco_liquido_total?: number | null
+          custo_total_item?: number | null
         }
         Relationships: [
           {

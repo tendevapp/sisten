@@ -1252,6 +1252,12 @@ export interface ItemPropostaExtraido {
   Aliquota_PIS_Pct: string | null;
   Aliquota_COFINS_Pct: string | null;
   Aliquota_IPI_pct: string | null;
+  /** Peso estimado por unidade, em kg — a IA deduz da descrição/embalagem; é o insumo do frete teórico. */
+  Peso_Unitario_Kg: string | null;
+  /** RI do item de RM que a IA reconheceu como sendo o mesmo material. */
+  Vinculo_RI: string | null;
+  /** O que a IA achou diferente entre o item cotado e o item de RM — uma frase curta por divergência. */
+  Vinculo_Divergencias: string[] | null;
 }
 
 export interface PropostaExtraida {
@@ -1310,7 +1316,13 @@ export interface ExtracaoResposta {
 
 export type CotacaoProcessoStatus = 'aberto' | 'em_analise' | 'concluido' | 'cancelado';
 export type FornecedorMatch = 'cnpj' | 'manual' | 'nao_encontrado';
-export type VinculoOrigem = 'manual' | 'sugerido' | 'aprendido';
+/**
+ * De onde veio o vínculo com o item de RM, em ordem crescente de confiança
+ * para o revisor: `sugerido` (trigrama), `ia` (a extração reconheceu o
+ * material), `aprendido` (memória confirmada por gente) e `manual` (alguém
+ * escolheu na tela).
+ */
+export type VinculoOrigem = 'manual' | 'sugerido' | 'aprendido' | 'ia';
 
 export interface CotacaoProcesso {
   id: string;
@@ -1424,6 +1436,19 @@ export interface CotacaoPropostaItem {
   aliquota_pis_pct: number | null;
   aliquota_cofins_pct: number | null;
   aliquota_ipi_pct: number | null;
+  /** Item tirado do mapa pelo comprador — não vira linha, célula nem pedido. Ver `fora_escopo`, que é outra coisa. */
+  desconsiderado: boolean;
+  /** O que ficou diferente entre este item e o item de RM vinculado. */
+  vinculo_divergencias: string[];
+  peso_unitario_kg: number | null;
+  peso_origem: 'ia' | 'manual' | null;
+  /** Parcela do frete simulado (tabela Bahia Sul) atribuída a este item — só em proposta FOB. */
+  frete_teorico: number | null;
+  codigo_fiscal: string | null;
+  preco_liquido_unitario: number | null;
+  preco_liquido_total: number | null;
+  /** Preço líquido + frete teórico: a composição do custo da compra deste item. */
+  custo_total_item: number | null;
   campos_faltantes: string[];
   /** Comprador escolheu este item deste fornecedor no mapa comparativo. */
   mapa_selecionado: boolean;
@@ -1458,6 +1483,16 @@ export interface CotacaoPropostaItemDraft {
   aliquota_pis_pct: number | null;
   aliquota_cofins_pct: number | null;
   aliquota_ipi_pct: number | null;
+  /** Ver `CotacaoPropostaItem.desconsiderado`. */
+  desconsiderado: boolean;
+  vinculo_divergencias: string[];
+  peso_unitario_kg: number | null;
+  peso_origem: 'ia' | 'manual' | null;
+  frete_teorico: number | null;
+  codigo_fiscal: string | null;
+  preco_liquido_unitario: number | null;
+  preco_liquido_total: number | null;
+  custo_total_item: number | null;
   /** Só existe em item já salvo — o mapa comparativo carrega a decisão anterior do comprador. */
   mapa_selecionado?: boolean;
   extraido_raw: ItemPropostaExtraido;
@@ -1530,7 +1565,7 @@ export interface SugestaoVinculo {
   texto_breve: string | null;
   material_code: string | null;
   score: number;
-  origem: 'aprendido' | 'trigrama';
+  origem: 'aprendido' | 'trigrama' | 'ia';
 }
 
 // ---------- Conversor Markdown: log de conversões ----------
