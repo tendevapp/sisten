@@ -55,3 +55,13 @@ está impresso em registro de produção e renumerar quebraria o histórico.
 npx tsc --noEmit     # o repo tem erros pré-existentes; não introduza novos
 npx vitest run
 ```
+
+## Agent skills
+
+### Issue tracker
+
+Issues are managed in GitHub via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the root and `docs/adr/`. See `docs/agents/domain.md`.

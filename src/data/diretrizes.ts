@@ -596,7 +596,9 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'O que é',
             itens: [
               'Função única que transforma as requisições SAP (ME5A) cruas em `EnrichedSAPRecord[]`, calculando status, atraso e alertas. É consumida por praticamente todas as telas de Suprimentos: Painel SAP, Central de Compras, Dashboards de Suprimentos, Rastreio de Compras, Dashboard inicial, e o relatório Novidades.',
-              'Fonte do PO (`documento_compra`): 1º o servidor (`view_enriched_requisicoes`, join com `pedidosforn`/ZL0132); 2º fallback para o cache local de `pedidosforn`; 3º — só para RM de serviço (RM começando com "17") e só quando os dois anteriores não têm PO — o número do campo "Pedido" do próprio ME5A.'
+              'Fonte do PO (`documento_compra`): 1º o servidor (`view_enriched_requisicoes`, join com `pedidosforn`/ZL0132); 2º fallback para o cache local de `pedidosforn`; 3º — só para RM de serviço (RM começando com "17") e só quando os dois anteriores não têm PO — o número do campo "Pedido" do próprio ME5A.',
+              'Fallback ME2L dentro da própria `vw_sap_requisicoes_enriquecidas` (migration `me2l_fallback_sem_po_contrato`, 2026-09-12): a extração ZL0132 do SAP tem uma lacuna real — ~67% dos pedidos que são call-off de contrato simplesmente não existem nela (vs. 0,4% dos pedidos normais), então a RI aparecia "Sem PO" mesmo já tendo pedido e contrato reais. Quando a ZL0132 não acha nenhum PO para a RI, a view casa por "Requisição de compra" com `sap_me2l_pedido` (que não tem número de item de PO, só de requisição — risco aceito de imprecisão se a RC tiver mais de um item) e preenche `documento_compra`/`contrato_po`/`status_requisicao`/`origem_po` a partir dela. Column `origem_po` (\'zl0132\' | \'me2l\' | null) existe só para auditoria/debug, não é consumida no front hoje.',
+              'Fallback ME2L separado em `vw_sap_pedidos_enriquecidos` (migration `me2l_fallback_contrato_pedido_existente`): quando o PO já existe na ZL0132 mas a coluna `contrato` (EKPO-KONNR) vem vazia — bug de extração diferente do anterior —, `contrato_po` é completado via `sap_me2l_pedido.contrato_basico` casado por `documento_compras`. Essa view alimenta a materialized view `mv_pedidos_por_ri`, por isso `importME2LRaw` chama `refreshPedidosMatViews()` ao final — sem isso a correção só apareceria na próxima importação da ZL0132.'
             ]
           },
           {
@@ -706,7 +708,7 @@ export const DIRETRIZES: DiretrizesDominio[] = [
             titulo: 'Padrões de carga: upsert incremental vs. substituição total',
             itens: [
               'Upsert incremental (compara com o que já existe, decide insert/update por chave, sem apagar o resto): ME5A (`onConflict: ri`), ZL0132/PedidosForn (`onConflict: ri,doc_compra`), Contatos (`onConflict: cod_vendor`), CidadeForn (`onConflict: forn_codigo`), ME3N/ME3M (`onConflict: documento_compras,item`), Materiais ZL0169 (`onConflict: material_code`).',
-              'Substituição total (DELETE de tudo + INSERT do arquivo inteiro — usado quando a planilha é uma "foto" pontual, não incremental): ZL0024 (Estoque), FBL1N (Contas a Pagar), Tabela de Frete, ZL0170 (Reconciliação Pedido x MIGO x MIRO).',
+              'Substituição total (DELETE de tudo + INSERT do arquivo inteiro — usado quando a planilha é uma "foto" pontual, não incremental, ou quando não existe chave de linha confiável): ZL0024 (Estoque), FBL1N (Contas a Pagar), Tabela de Frete, ZL0170 (Reconciliação Pedido x MIGO x MIRO), ME2L (Pedidos de Compra).',
               'Toda importação grava um registro em `import_logs` com tipo, usuário, arquivo, contagens (lidos/inseridos/atualizados/eliminados), colunas ausentes/novas detectadas, e o detalhe das linhas ignoradas.'
             ]
           },
@@ -2127,6 +2129,27 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               'RI ausente no arquivo é só CONTABILIZADO como eliminado no log — nada é apagado do banco (para não quebrar a referência de `contratos_detalhes`, que é uma tabela separada amarrada por `documento_compras`).',
               'Tenta gravar em `me3n_contratos`; se a tabela não existir, cai automaticamente para `me3m_contratos` (fallback transparente). Log sempre tipo "ME3N", mesmo no fallback.'
             ]
+          }
+        ]
+      },
+      {
+        id: 'import-me2l',
+        nome: 'ME2L — Pedidos de Compra',
+        arquivo: 'localDb.importME2LRaw',
+        secoes: [
+          {
+            titulo: 'Formato, chave e tabela',
+            itens: [
+              'Única coluna obrigatória: "Documento de compras" — linha sem ela é ignorada e listada em `ignored_rows`.',
+              '"Nº acompanhamento" NÃO é chave de linha, apesar do nome sugerir um identificador único: no relatório real ela vem em branco na grande maioria das linhas e só aparece preenchida (com o texto "ADMIN", não um número) numa fração pequena. A primeira versão desta importação assumiu por engano que era chave única de deduplicação — isso colapsou ~1940 linhas em 1 e gerou erro 500 do Postgres ("ON CONFLICT DO UPDATE command cannot affect row a second time") quando várias linhas com a mesma chave apareciam no mesmo lote.',
+              'Por não existir número de item de PO nem qualquer chave de linha confiável na planilha, a importação é por SUBSTITUIÇÃO TOTAL (delete + insert do arquivo inteiro), igual ao ZL0170/FBL1N — não por upsert incremental.',
+              'Números em formato brasileiro (ex.: "2.400,000", "10.519,88") são convertidos com `parseMb51Number` (`src/lib/mb51.ts`), não com `Number()` puro — a planilha SAP mistura texto formatado e número nativo do Excel conforme a exportação.',
+              'Log sempre tipo "ME2L". Dataset de versão bumped como `pedidos_me2l`.'
+            ]
+          },
+          {
+            titulo: 'Tabelas do banco (Supabase)',
+            itens: ['`sap_me2l_pedido`.']
           }
         ]
       },

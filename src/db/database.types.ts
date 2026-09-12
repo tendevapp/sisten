@@ -3345,6 +3345,93 @@ export type Database = {
         }
         Relationships: []
       }
+      sap_me2l_pedido: {
+        Row: {
+          a_fornecer_qtd: number | null
+          centro: string | null
+          codigo_eliminacao: string | null
+          codigo_imposto: string | null
+          codigo_liberacao: string | null
+          contrato_basico: string | null
+          criado_por: string | null
+          data_documento: string | null
+          deposito: string | null
+          documento_compras: string
+          fornecedor: string | null
+          grupo_liberacao: string | null
+          grupo_mercadorias: string | null
+          id: number
+          imported_at: string
+          material: string | null
+          moeda: string | null
+          n_acompanhamento: string | null
+          organizacao_compras: string | null
+          qtd_pedido: number | null
+          requisicao_compra: string | null
+          requisitante: string | null
+          texto_breve: string | null
+          um_pedido: string | null
+          unidade_preco: string | null
+          valor_liquido_pedido: number | null
+        }
+        Insert: {
+          a_fornecer_qtd?: number | null
+          centro?: string | null
+          codigo_eliminacao?: string | null
+          codigo_imposto?: string | null
+          codigo_liberacao?: string | null
+          contrato_basico?: string | null
+          criado_por?: string | null
+          data_documento?: string | null
+          deposito?: string | null
+          documento_compras: string
+          fornecedor?: string | null
+          grupo_liberacao?: string | null
+          grupo_mercadorias?: string | null
+          id?: number
+          imported_at?: string
+          material?: string | null
+          moeda?: string | null
+          n_acompanhamento?: string | null
+          organizacao_compras?: string | null
+          qtd_pedido?: number | null
+          requisicao_compra?: string | null
+          requisitante?: string | null
+          texto_breve?: string | null
+          um_pedido?: string | null
+          unidade_preco?: string | null
+          valor_liquido_pedido?: number | null
+        }
+        Update: {
+          a_fornecer_qtd?: number | null
+          centro?: string | null
+          codigo_eliminacao?: string | null
+          codigo_imposto?: string | null
+          codigo_liberacao?: string | null
+          contrato_basico?: string | null
+          criado_por?: string | null
+          data_documento?: string | null
+          deposito?: string | null
+          documento_compras?: string
+          fornecedor?: string | null
+          grupo_liberacao?: string | null
+          grupo_mercadorias?: string | null
+          id?: number
+          imported_at?: string
+          material?: string | null
+          moeda?: string | null
+          n_acompanhamento?: string | null
+          organizacao_compras?: string | null
+          qtd_pedido?: number | null
+          requisicao_compra?: string | null
+          requisitante?: string | null
+          texto_breve?: string | null
+          um_pedido?: string | null
+          unidade_preco?: string | null
+          valor_liquido_pedido?: number | null
+        }
+        Relationships: []
+      }
       sap_me5a_rc: {
         Row: {
           apelido: string | null
@@ -9965,6 +10052,7 @@ export type Database = {
           obs_updated_at: string | null
           obs_updated_by: string | null
           organiz_compras: string | null
+          origem_po: string | null
           peca_original: string | null
           pedido: string | null
           por_po: string | null

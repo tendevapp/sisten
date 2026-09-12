@@ -27,7 +27,7 @@ import { generateSAPSeedData } from '../data/sapData';
 import { supabase, supabaseAdmin } from './supabaseClient';
 import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSemEmail';
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
-import { MB51_COLUMNS, mapMb51Row } from '../lib/mb51';
+import { MB51_COLUMNS, mapMb51Row, parseMb51Number } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
 import { parseBahiaSulRows, resumirBahiaSulPorPo, normalizePoNumber } from '../lib/bahiasul';
 import { PreparedAttachment } from '../lib/imageCompression';
@@ -5180,6 +5180,33 @@ class LocalDatabase {
     { header: 'Criado por', field: 'criado_por' }
   ];
 
+  private ME2L_COLUMNS = [
+    { header: 'Organiz.compras', field: 'organizacao_compras' },
+    { header: 'Centro', field: 'centro' },
+    { header: 'Material', field: 'material' },
+    { header: 'Texto breve', field: 'texto_breve' },
+    { header: 'Código de eliminação', field: 'codigo_eliminacao' },
+    { header: 'Depósito', field: 'deposito' },
+    { header: 'Data do documento', field: 'data_documento' },
+    { header: 'Nº acompanhamento', field: 'n_acompanhamento' },
+    { header: 'Requisição de compra', field: 'requisicao_compra' },
+    { header: 'Documento de compras', field: 'documento_compras' },
+    { header: 'Fornecedor/centro fornecedor', field: 'fornecedor' },
+    { header: 'Requisitante', field: 'requisitante' },
+    { header: 'Criado por', field: 'criado_por' },
+    { header: 'Qtd.do pedido', field: 'qtd_pedido' },
+    { header: 'a ser fornecida (quantidade)', field: 'a_fornecer_qtd' },
+    { header: 'UM pedido', field: 'um_pedido' },
+    { header: 'Valor líquido pedido', field: 'valor_liquido_pedido' },
+    { header: 'Moeda', field: 'moeda' },
+    { header: 'Unidade de preço', field: 'unidade_preco' },
+    { header: 'Contrato básico', field: 'contrato_basico' },
+    { header: 'Grupo de liberação', field: 'grupo_liberacao' },
+    { header: 'Código de imposto', field: 'codigo_imposto' },
+    { header: 'Código de liberação', field: 'codigo_liberacao' },
+    { header: 'Grupo de mercadorias', field: 'grupo_mercadorias' }
+  ];
+
   private ZL0132_COLUMNS = [
     { header: 'Nº acomp.', field: 'n_acomp' },
     { header: 'Eflag_e', field: 'eflag_e' },
@@ -7733,6 +7760,207 @@ class LocalDatabase {
   // Alias para retrocompatibilidade
   public async importME3MRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
     return this.importME3NRaw(rawRows, filename, onProgress);
+  }
+
+  public async importME2LRaw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(r => r.some(c => c !== ''));
+
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, this.ME2L_COLUMNS);
+
+    const documentoColIdx = mappedFields.findIndex(f => f === 'documento_compras');
+    if (documentoColIdx === -1) {
+      throw new Error('Formato rejeitado: Coluna obrigatória "Documento de compras" não encontrada.');
+    }
+
+    const colIdx = (field: string) => mappedFields.findIndex(f => f === field);
+
+    // "Nº acompanhamento" só vem preenchido numa fração das linhas do
+    // relatório real (a maioria é branco) — não é chave de linha, é só um
+    // campo informativo quando presente.
+    const nAcompColIdx = colIdx('n_acompanhamento');
+    const organizacaoComprasColIdx = colIdx('organizacao_compras');
+    const centroColIdx = colIdx('centro');
+    const materialColIdx = colIdx('material');
+    const textoBreveColIdx = colIdx('texto_breve');
+    const codigoEliminacaoColIdx = colIdx('codigo_eliminacao');
+    const depositoColIdx = colIdx('deposito');
+    const dataDocumentoColIdx = colIdx('data_documento');
+    const requisicaoCompraColIdx = colIdx('requisicao_compra');
+    const fornecedorColIdx = colIdx('fornecedor');
+    const requisitanteColIdx = colIdx('requisitante');
+    const criadoPorColIdx = colIdx('criado_por');
+    const qtdPedidoColIdx = colIdx('qtd_pedido');
+    const aFornecerQtdColIdx = colIdx('a_fornecer_qtd');
+    const umPedidoColIdx = colIdx('um_pedido');
+    const valorLiquidoPedidoColIdx = colIdx('valor_liquido_pedido');
+    const moedaColIdx = colIdx('moeda');
+    const unidadePrecoColIdx = colIdx('unidade_preco');
+    const contratoBasicoColIdx = colIdx('contrato_basico');
+    const grupoLiberacaoColIdx = colIdx('grupo_liberacao');
+    const codigoImpostoColIdx = colIdx('codigo_imposto');
+    const codigoLiberacaoColIdx = colIdx('codigo_liberacao');
+    const grupoMercadoriasColIdx = colIdx('grupo_mercadorias');
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    const strAt = (row: any[], idx: number) => idx !== -1 ? String(row[idx] ?? '').trim() || null : null;
+    const numAt = (row: any[], idx: number) => idx !== -1 ? parseMb51Number(row[idx]) : null;
+
+    const dateAt = (row: any[], idx: number): string | null => {
+      if (idx === -1) return null;
+      const raw = row[idx];
+      if (raw === null || raw === undefined || raw === '') return null;
+
+      if (typeof raw === 'number') {
+        if (isNaN(raw) || raw <= 0) return null;
+        const dateObj = new Date((raw - 25569) * 86400 * 1000);
+        return isNaN(dateObj.getTime()) ? null : dateObj.toISOString().split('T')[0];
+      }
+
+      if (raw instanceof Date) {
+        return isNaN(raw.getTime()) ? null : raw.toISOString().split('T')[0];
+      }
+
+      const str = String(raw).trim();
+      if (!str) return null;
+
+      // Formato YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+        return str.substring(0, 10);
+      }
+
+      // Formato BR: DD/MM/YYYY, DD.MM.YYYY ou DD-MM-YYYY
+      const brMatch = str.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (brMatch) {
+        const day = brMatch[1].padStart(2, '0');
+        const month = brMatch[2].padStart(2, '0');
+        const year = brMatch[3];
+        return `${year}-${month}-${day}`;
+      }
+
+      const d = new Date(str);
+      return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : null;
+    };
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const documentoCompras = strAt(row, documentoColIdx);
+
+      if (!documentoCompras) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Documento de compras vazio.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        organizacao_compras: strAt(row, organizacaoComprasColIdx),
+        centro: strAt(row, centroColIdx),
+        material: strAt(row, materialColIdx),
+        texto_breve: strAt(row, textoBreveColIdx),
+        codigo_eliminacao: strAt(row, codigoEliminacaoColIdx),
+        deposito: strAt(row, depositoColIdx),
+        data_documento: dateAt(row, dataDocumentoColIdx),
+        n_acompanhamento: strAt(row, nAcompColIdx),
+        requisicao_compra: strAt(row, requisicaoCompraColIdx),
+        documento_compras: documentoCompras,
+        fornecedor: strAt(row, fornecedorColIdx),
+        requisitante: strAt(row, requisitanteColIdx),
+        criado_por: strAt(row, criadoPorColIdx),
+        qtd_pedido: numAt(row, qtdPedidoColIdx),
+        a_fornecer_qtd: numAt(row, aFornecerQtdColIdx),
+        um_pedido: strAt(row, umPedidoColIdx),
+        valor_liquido_pedido: numAt(row, valorLiquidoPedidoColIdx),
+        moeda: strAt(row, moedaColIdx),
+        unidade_preco: strAt(row, unidadePrecoColIdx),
+        contrato_basico: strAt(row, contratoBasicoColIdx),
+        grupo_liberacao: strAt(row, grupoLiberacaoColIdx),
+        codigo_imposto: strAt(row, codigoImpostoColIdx),
+        codigo_liberacao: strAt(row, codigoLiberacaoColIdx),
+        grupo_mercadorias: strAt(row, grupoMercadoriasColIdx),
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const targetTable = 'sap_me2l_pedido';
+
+      // Substituição total: a ME2L não tem um número de item de PO nem uma
+      // chave de linha confiável (Nº acompanhamento vem em branco na maioria
+      // das linhas reais), então cada importação é uma "foto" completa e
+      // substitui integralmente a anterior — mesmo padrão do ZL0170/FBL1N.
+      const { count: previousCount } = await supabase
+        .from(targetTable)
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from(targetTable).delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from(targetTable).insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      // vw_sap_pedidos_enriquecidos usa sap_me2l_pedido como fallback de
+      // "contrato" para POs que já existem na ZL0132 (ver migration
+      // me2l_fallback_contrato_pedido_existente). Essa view alimenta a
+      // materialized view mv_pedidos_por_ri, que só reflete a mudança após
+      // refresh — sem isso, o fallback só apareceria na próxima importação
+      // da ZL0132.
+      await this.refreshPedidosMatViews();
+
+      const logId = 'il_' + Math.random().toString(36).substr(2, 9);
+      const logObj = {
+        id: logId,
+        type: 'ME2L',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('ops_importacoes').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('pedidos_me2l', dbRows.length);
+
+      this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Importar Pedidos ME2L', `Importou Pedidos de Compra ME2L (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`);
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação de pedidos (ME2L) no Supabase:', e);
+      throw e;
+    }
   }
 
   // Métodos antigos legados
