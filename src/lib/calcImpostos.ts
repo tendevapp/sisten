@@ -83,6 +83,16 @@ export interface CodigoFiscalPreset {
 
 export const PRESETS_CODIGOS_FISCAIS: CodigoFiscalPreset[] = [
   {
+    codigo: 'ISENTO',
+    titulo: '0% - Todos os Impostos em 0%',
+    descricao: 'Aliquota zero para todos os tributos (ICMS 0%, PIS 0%, COFINS 0% e IPI 0%)',
+    aliqIcms: 0,
+    aliqPis: 0,
+    aliqCofins: 0,
+    aliqIpi: 0,
+    fatorReducao: 1,
+  },
+  {
     codigo: 'C1',
     titulo: 'C1 - Geral / Interna (18%)',
     descricao: 'Operacao interna padrao com ICMS 18%, PIS 1,65%, COFINS 7,60% e sem IPI',
@@ -142,23 +152,13 @@ export const PRESETS_CODIGOS_FISCAIS: CodigoFiscalPreset[] = [
     aliqIpi: 0,
     fatorReducao: 0.6667,
   },
-  {
-    codigo: 'ISENTO',
-    titulo: 'Isento / Simples / Desonerado',
-    descricao: 'Operacoes sem incidencia ou desoneradas de ICMS, PIS, COFINS e IPI',
-    aliqIcms: 0,
-    aliqPis: 0,
-    aliqCofins: 0,
-    aliqIpi: 0,
-    fatorReducao: 1,
-  },
 ];
 
 export const INPUTS_PADRAO: CalcImpostosInputs = {
   precoComImpostos: 1000,
-  aliqIcms: 18,
-  aliqPis: 1.65,
-  aliqCofins: 7.60,
+  aliqIcms: 0,
+  aliqPis: 0,
+  aliqCofins: 0,
   fatorReducao: 1,
   aliqIpi: 0,
   quantidade: 1,

@@ -48,7 +48,7 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
 
   // Estados dos inputs
   const [inputs, setInputs] = useState<CalcImpostosInputs>(INPUTS_PADRAO);
-  const [presetAtivo, setPresetAtivo] = useState<string>('C1');
+  const [presetAtivo, setPresetAtivo] = useState<string>('ISENTO');
   const [mostrarMemoriaDetalhada, setMostrarMemoriaDetalhada] = useState<boolean>(true);
   const [copiado, setCopiado] = useState<boolean>(false);
 
@@ -97,11 +97,11 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
     toast.info(`Codigo fiscal ${preset.codigo} aplicado com sucesso.`);
   };
 
-  // Reset para configuracao padrao
+  // Reset para configuracao padrao (todos os impostos em 0%)
   const handleReset = () => {
     setInputs(INPUTS_PADRAO);
-    setPresetAtivo('C1');
-    toast.info('Parametros restaurados para o padrao (Preset C1).');
+    setPresetAtivo('ISENTO');
+    toast.info('Parametros restaurados para o padrao (Todos os impostos em 0%).');
   };
 
   // Copiar memoria de calculo para area de transferencia
@@ -478,62 +478,90 @@ export default function CalcImpostos({ user, onNavigate }: CalcImpostosProps) {
               </div>
             </div>
 
-            {/* Fator de Reducao da Base do ICMS */}
+            {/* Percentual da Base do ICMS (Slider interativo de 0% a 100%) */}
             <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 dark:border-slate-800/80 dark:bg-slate-800/50">
               <div className="flex items-center justify-between">
                 <div>
                   <label
-                    htmlFor="fator-reducao"
+                    htmlFor="pct-base-slider"
                     className="block text-xs font-semibold text-slate-800 dark:text-slate-200"
                   >
-                    Fator de Reducao da Base ICMS
+                    % da Base de Calculo do ICMS
                   </label>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Decimal de 0 a 1 (1 = 100% integral / sem reducao)
+                    Deslize para ajustar a proporcao tributada (100% = base integral)
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
-                    {inputs.fatorReducao.toFixed(4)}
+                    {(inputs.fatorReducao * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% da Base
                   </span>
-                  {resultado.temReducaoBaseIcms && (
-                    <span className="block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                      -{resultado.percentualReducaoBase.toFixed(2)}% base
-                    </span>
-                  )}
+                  <span className="block text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                    Fator: {inputs.fatorReducao.toFixed(4)}
+                    {resultado.temReducaoBaseIcms && (
+                      <span className="ml-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        (-{resultado.percentualReducaoBase.toFixed(2)}% reducao)
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-2.5 flex items-center gap-3">
+              {/* Slider de 0% a 100% com campo numerico em porcentagem */}
+              <div className="mt-3 flex items-center gap-3">
                 <input
                   type="range"
                   min="0"
-                  max="1"
-                  step="0.0001"
-                  id="fator-reducao-slider"
-                  value={inputs.fatorReducao}
-                  onChange={e => atualizarCampo('fatorReducao', parseFloat(e.target.value) || 0)}
+                  max="100"
+                  step="0.01"
+                  id="pct-base-slider"
+                  value={Math.round(inputs.fatorReducao * 10000) / 100}
+                  onChange={e => {
+                    const pct = parseFloat(e.target.value) || 0;
+                    atualizarCampo('fatorReducao', Math.min(1, Math.max(0, pct / 100)));
+                  }}
                   className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-amber-600 dark:bg-slate-700"
                 />
-                <input
-                  type="number"
-                  step="0.0001"
-                  min="0"
-                  max="1"
-                  id="fator-reducao"
-                  value={inputs.fatorReducao}
-                  onChange={e => atualizarCampo('fatorReducao', parseFloat(e.target.value) || 0)}
-                  className="w-24 rounded-lg border border-slate-300 bg-white py-1 px-2 text-right font-mono text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                />
+                <div className="relative w-28 shrink-0">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    id="pct-base-input"
+                    value={Number((inputs.fatorReducao * 100).toFixed(2))}
+                    onChange={e => {
+                      const pct = parseFloat(e.target.value);
+                      if (!Number.isNaN(pct)) {
+                        atualizarCampo('fatorReducao', Math.min(1, Math.max(0, pct / 100)));
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-2 pr-6 text-right font-mono text-xs font-bold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-xs font-bold text-slate-400">
+                    %
+                  </span>
+                </div>
               </div>
 
-              {/* Atalhos para Fator de Reducao */}
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              {/* Marcadores de escala do slider */}
+              <div className="mt-1 flex justify-between px-0.5 text-[9px] text-slate-400 font-mono">
+                <span>0% (Isento)</span>
+                <span>33,33%</span>
+                <span>50%</span>
+                <span>66,67%</span>
+                <span>100% (Integral)</span>
+              </div>
+
+              {/* Atalhos para % da Base */}
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {[
-                  { label: 'Sem Reducao (1,00)', val: 1 },
-                  { label: 'Conv. 52/91 (0,6667)', val: 0.6667 },
-                  { label: 'Reducao 50% (0,50)', val: 0.5 },
-                  { label: 'Conv. 52/91 (0,4167)', val: 0.4167 },
+                  { label: '100% (Sem Reducao)', val: 1 },
+                  { label: '66,67% (Conv. 52/91)', val: 0.6667 },
+                  { label: '50% (Reducao 50%)', val: 0.5 },
+                  { label: '41,67% (Conv. 52/91)', val: 0.4167 },
+                  { label: '33,33%', val: 0.3333 },
+                  { label: '0% (Desonerado)', val: 0 },
                 ].map(item => (
                   <button
                     key={item.val}

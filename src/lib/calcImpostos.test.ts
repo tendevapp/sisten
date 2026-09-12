@@ -214,6 +214,22 @@ describe('Motor de Calculo Tributario (calcImpostos)', () => {
     expect(Object.keys(errosVazios).length).toBe(0);
   });
 
+  it('garante que o preset inicial INPUTS_PADRAO inicia com todos os tributos em 0%', () => {
+    expect(INPUTS_PADRAO.aliqIcms).toBe(0);
+    expect(INPUTS_PADRAO.aliqPis).toBe(0);
+    expect(INPUTS_PADRAO.aliqCofins).toBe(0);
+    expect(INPUTS_PADRAO.aliqIpi).toBe(0);
+    expect(INPUTS_PADRAO.fatorReducao).toBe(1);
+
+    const res = calcularImpostos(INPUTS_PADRAO);
+    expect(res.cargaTotalPorDentro).toBe(0);
+    expect(res.icmsApurado).toBe(0);
+    expect(res.pisApurado).toBe(0);
+    expect(res.cofinsApurado).toBe(0);
+    expect(res.ipiApurado).toBe(0);
+    expect(res.precoLiquido).toBe(INPUTS_PADRAO.precoComImpostos);
+  });
+
   it('gera texto legivel e completo da memoria de calculo para exportacao', () => {
     const res = calcularImpostos(INPUTS_PADRAO);
     const texto = gerarTextoMemoriaCalculo(INPUTS_PADRAO, res);
