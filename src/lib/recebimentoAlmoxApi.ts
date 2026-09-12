@@ -15,11 +15,13 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import { comprimirImagemUpload, type PreparedAttachment } from './imageCompression';
 import { apenasVigentes, marcarExcluido } from './softDelete';
 import { isProjetoItem } from './rastreio';
 import type { EnrichedSAPRecord } from '../types';
 import {
+  extrairRiPosConferidos,
   hojeISO,
   type AnexoRecebimento,
   type DestinoPrevisto,
@@ -565,6 +567,32 @@ export async function listarAlteracoes(
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as AlteracaoRow[];
+}
+
+/**
+ * Sincroniza a chegada fisica de itens conferidos na tabela `almoxarifado_chegadas`
+ * (mesma tabela e marcacao utilizada pelo Rastreio de Compras e Central de Compras).
+ *
+ * Para cada item onde `conferido === true`, resolve o `ri_po` correspondente
+ * (via cache SAP `localDb.getEnrichedSAPRequisicoes` ou tabela `vw_sap_requisicoes_enriquecidas`),
+ * e executa a marcacao de chegada em lote via `localDb.setAlmoxarifadoChegada`.
+ */
+export async function sincronizarChegadaItensConferidos(
+  linhas: {
+    conferido?: boolean | null;
+    linhaRef?: string | null;
+    nroPedido?: string | null;
+    materialCode?: string | null;
+  }[],
+  dataChegada: string,
+  user: { id: string; name: string },
+  sapCache: EnrichedSAPRecord[] = [],
+): Promise<{ atualizados: number; riPos: string[] }> {
+  const riPos = extrairRiPosConferidos(linhas, sapCache);
+  if (!riPos.length) return { atualizados: 0, riPos: [] };
+
+  await localDb.setAlmoxarifadoChegada(riPos, dataChegada, user);
+  return { atualizados: riPos.length, riPos };
 }
 
 export { hojeISO };

@@ -8,6 +8,7 @@ import {
   cargaDivergente,
   classificarDivergencia,
   entregaParcialAnterior,
+  extrairRiPosConferidos,
   listarFornecedoresDoCache,
   pendentePedido,
   posAbertosDoFornecedor,
@@ -200,3 +201,78 @@ describe('cargaDivergente', () => {
     expect(cargaDivergente({ qtdVolumesDeclarada: null, qtdVolumesContada: 8, avariaAparente: false })).toBe(false);
   });
 });
+
+describe('extrairRiPosConferidos', () => {
+  const sapMock: LinhaCacheSAP[] = [
+    {
+      documento_compra: '4100460761',
+      material_code: '1434856',
+      ri_po: '120009113100290-4100460761',
+      requisicao_de_compra: '1200091131',
+    },
+    {
+      documento_compra: '4100460761',
+      material_code: '1423717',
+      ri_po: '120009113100580-4100460761',
+      requisicao_de_compra: '1200091131',
+    },
+    {
+      documento_compra: '4500000001',
+      material_code: '20000123',
+      ri_po: '100050010-4500000001',
+      requisicao_de_compra: '1000500',
+    },
+  ];
+
+  it('extrai ri_pos apenas dos itens onde conferido === true', () => {
+    const itens = [
+      { conferido: true, nroPedido: '4100460761', materialCode: '1434856' },
+      { conferido: false, nroPedido: '4100460761', materialCode: '1423717' }, // nao conferido
+    ];
+
+    const res = extrairRiPosConferidos(itens, sapMock);
+    expect(res).toEqual(['120009113100290-4100460761']);
+  });
+
+  it('faz match no cache SAP desconsiderando zeros a esquerda do pedido', () => {
+    const itens = [
+      { conferido: true, nroPedido: '004100460761', materialCode: '1434856' },
+      { conferido: true, nroPedido: '4100460761', materialCode: '1423717' },
+    ];
+
+    const res = extrairRiPosConferidos(itens, sapMock);
+    expect(res).toContain('120009113100290-4100460761');
+    expect(res).toContain('120009113100580-4100460761');
+    expect(res.length).toBe(2);
+  });
+
+  it('utiliza linhaRef quando o item nao existe no cache mas ja contem hifen', () => {
+    const itens = [
+      { conferido: true, linhaRef: '999888-4600000001', nroPedido: '4600000001', materialCode: '999' },
+    ];
+
+    const res = extrairRiPosConferidos(itens, sapMock);
+    expect(res).toEqual(['999888-4600000001']);
+  });
+
+  it('deduplica ri_pos caso haja linhas duplicadas conferidas', () => {
+    const itens = [
+      { conferido: true, nroPedido: '4100460761', materialCode: '1434856' },
+      { conferido: true, nroPedido: '4100460761', materialCode: '1434856' },
+    ];
+
+    const res = extrairRiPosConferidos(itens, sapMock);
+    expect(res).toEqual(['120009113100290-4100460761']);
+  });
+
+  it('retorna array vazio se nenhum item estiver conferido', () => {
+    const itens = [
+      { conferido: false, nroPedido: '4100460761', materialCode: '1434856' },
+      { conferido: null, nroPedido: '4100460761', materialCode: '1423717' },
+    ];
+
+    const res = extrairRiPosConferidos(itens, sapMock);
+    expect(res).toEqual([]);
+  });
+});
+

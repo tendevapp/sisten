@@ -45,7 +45,7 @@ import {
   assinarEvidencias, carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
   excluirCarga, excluirConferencia, hojeISO, listarAlteracoes, listarCargas, listarConferencias,
   listarNaoConformidades, listarTransportadorasSugeridas, marcarEncaminhadoProjetos,
-  registrarCarga, registrarConferencia, subirEvidencia, atualizarNaoConformidade,
+  registrarCarga, registrarConferencia, sincronizarChegadaItensConferidos, subirEvidencia, atualizarNaoConformidade,
   type AlteracaoRow, type CargaRow, type ConferenciaRow,
   type NaoConformidadeRow, type NcAcao,
 } from '../../lib/recebimentoAlmoxApi';
@@ -1205,6 +1205,7 @@ function ModalDetalhe({
           const c = row as ConferenciaRow;
           const pos = c.pedidos?.length ? c.pedidos : c.nro_pedido ? [c.nro_pedido] : [];
           const carga = c.carga_id ? cargas.find((x) => x.id === c.carga_id) : null;
+          const chegadasMap = localDb.getAlmoxarifadoChegadasMap();
           return (
             <div className="space-y-3">
               <div>
@@ -1240,6 +1241,7 @@ function ModalDetalhe({
                   const parcialAnt = entregaParcialAnterior(it.qtd_pedido ?? null, it.qtd_ja_fornecida ?? null);
                   const amberParcial = it.parcial && !it.divergencia;
                   const okVerde = it.conferido && !it.divergencia && !it.parcial;
+                  const chegReg = it.linha_ref ? chegadasMap.get(it.linha_ref) : null;
                   return (
                     <div
                       key={i}
@@ -1265,6 +1267,14 @@ function ModalDetalhe({
                           {okVerde && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-extrabold uppercase" style={{ color: 'var(--status-good)' }}>
                               <Check className="h-3 w-3" /> conferido
+                            </span>
+                          )}
+                          {chegReg && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              title={`Chegada no almoxarifado registrada em ${formatDateBR(chegReg.data_chegada)}${chegReg.registrado_por_nome ? ` · ${chegReg.registrado_por_nome}` : ''}`}
+                            >
+                              <PackageCheck className="h-3 w-3" /> chegada almox
                             </span>
                           )}
                         </span>
@@ -2036,9 +2046,26 @@ function ModalConferencia({
           { id: user.id, nome: user.name },
         );
         [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
+
+        let qtdChegadas = 0;
+        try {
+          const resCheg = await sincronizarChegadaItensConferidos(
+            linhas,
+            data,
+            { id: user.id, name: user.name },
+            sapCache,
+          );
+          qtdChegadas = resCheg.atualizados;
+        } catch (eCheg) {
+          console.error('Falha ao sincronizar chegada no almoxarifado:', eCheg);
+        }
+
         toast.success(
-          alteracoes ? `${ed.codigo}: ${alteracoes} alteração(ões) salva(s).` : `${ed.codigo}: nada mudou.`,
+          alteracoes ? `${ed.codigo}: ${alteracoes} alteração(ões) salva(s).` : `${ed.codigo}: conferência salva.`,
         );
+        if (qtdChegadas > 0) {
+          toast.info(`Chegada no almoxarifado registrada para ${qtdChegadas} item(ns) conferido(s).`);
+        }
         if (tem_nc && nc_codigo) toast.warning(`NCR ${nc_codigo} aberta pela nova divergência.`);
         onSalvo();
         return;
@@ -2084,7 +2111,23 @@ function ModalConferencia({
       if (debounceRascunhoRef.current != null) window.clearTimeout(debounceRascunhoRef.current);
       removerRascunhoConferencia(rascId);
       [...fotosCab, ...linhas.flatMap((l) => l.fotos)].forEach((f) => URL.revokeObjectURL(f.previewUrl));
-      toast.success(`Conferência ${codigo} registrada.${tem_nc ? ` NCR ${nc_codigo} aberta.` : ''}`);
+
+      let qtdChegadas = 0;
+      try {
+        const resCheg = await sincronizarChegadaItensConferidos(
+          linhas,
+          data,
+          { id: user.id, name: user.name },
+          sapCache,
+        );
+        qtdChegadas = resCheg.atualizados;
+      } catch (eCheg) {
+        console.error('Falha ao sincronizar chegada no almoxarifado:', eCheg);
+      }
+
+      toast.success(
+        `Conferência ${codigo} registrada.${qtdChegadas > 0 ? ` Chegada marcada para ${qtdChegadas} item(ns).` : ''}${tem_nc ? ` NCR ${nc_codigo} aberta.` : ''}`,
+      );
       if (resumo.tipoItem !== 'consumo') {
         toast.info('Há itens de projeto — use "Registrar entrada em Projetos" no cartão para explodir a BOM.');
       }
@@ -2387,8 +2430,8 @@ function ModalConferencia({
                       />
                     </label>
                     {([
-                      ['conferido', 'conferido', 'Contagem confere com o pendente.'],
-                      ['parcial', 'parcial', 'Chegou parte do pendente; o resto vem em outra entrega. Não abre NC.'],
+                      ['conferido', 'conferido', 'Contagem confere com o pendente. Ao salvar o formulário, atualiza a marcação de chegada no almoxarifado.'],
+                      ['parcial', 'parcial', 'Chegou parte do pendente; o resto vem em outra entrega. Não abre NC. Ao salvar o formulário, atualiza a marcação de chegada no almoxarifado.'],
                       ['avaria', 'avaria', 'Item danificado — abre NCR.'],
                     ] as const).map(([alvo, rot, dica]) => (
                       <label

@@ -307,3 +307,59 @@ export function cargaDivergente(input: {
   if (input.avariaAparente) return true;
   return input.qtdVolumesDeclarada !== null && input.qtdVolumesDeclarada !== input.qtdVolumesContada;
 }
+
+/**
+ * Extrai os identificadores `ri_po` para marcacao de chegada fisica no almoxarifado
+ * a partir dos itens marcados como conferidos no formulario de recebimento e contagem.
+ *
+ * Prioridade de resolucao de cada item conferido:
+ *  1. Match por pedido + material no cache SAP (para obter o `ri_po` oficial da linha, ex: 120009113100290-4100460761);
+ *  2. `linhaRef` existente que ja contenha hifen (padrao <ri>-<PO>);
+ *  3. Composicao `${linhaRef || materialCode}-${nroPedido}`.
+ *
+ * Linhas nao conferidas (conferido === false) ou avariadas sao ignoradas.
+ */
+export function extrairRiPosConferidos(
+  linhas: {
+    conferido?: boolean | null;
+    linhaRef?: string | null;
+    nroPedido?: string | null;
+    materialCode?: string | null;
+  }[],
+  cacheSap: LinhaCacheSAP[] = [],
+): string[] {
+  const norm = (v: unknown) => String(v ?? '').trim().replace(/^0+/, '');
+  const vistos = new Set<string>();
+
+  for (const l of linhas) {
+    if (!l.conferido) continue;
+
+    const po = norm(l.nroPedido);
+    const mat = String(l.materialCode ?? '').trim();
+
+    // 1. Busca correspondencia exata no cache SAP por pedido e codigo de material
+    if (po && mat && cacheSap.length > 0) {
+      const match = cacheSap.find(
+        (r) => norm(r.documento_compra) === po && String(r.material_code ?? '').trim() === mat,
+      );
+      if (match?.ri_po) {
+        vistos.add(match.ri_po);
+        continue;
+      }
+    }
+
+    // 2. linhaRef ja formatado com hifen (ex: 120009113100290-4100460761)
+    const ref = String(l.linhaRef ?? '').trim();
+    if (ref && ref.includes('-')) {
+      vistos.add(ref);
+      continue;
+    }
+
+    // 3. Fallback se temos ref/mat e po
+    if (po && (ref || mat)) {
+      vistos.add(`${ref || mat}-${po}`);
+    }
+  }
+
+  return Array.from(vistos);
+}

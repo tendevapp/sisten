@@ -2543,23 +2543,28 @@ class LocalDatabase {
   // em dois POs chega em dois momentos, e marcar um não marca o outro. Upsert:
   // marcar de novo uma linha já chegada apenas atualiza a data.
   // Ver db/sql/tables/almoxarifado_chegadas.sql.
-  public async setAlmoxarifadoChegada(riPos: string[], dataChegada: string): Promise<void> {
+  public async setAlmoxarifadoChegada(
+    riPos: string[],
+    dataChegada: string,
+    usuarioOpt?: { id: string; name: string }
+  ): Promise<void> {
     if (!supabase) throw new Error('Sem conexão com o servidor.');
     if (riPos.length === 0) return;
-    const user = this.getCurrentUser();
+    const user = usuarioOpt || this.getCurrentUser();
     if (!user) throw new Error('Usuário não autenticado.');
 
     const porRiPo = new Map(this.getEnrichedSAPRequisicoes().map(r => [r.ri_po, r]));
     const now = new Date().toISOString();
     const rows: AlmoxarifadoChegada[] = riPos.map(riPo => {
       const reg = porRiPo.get(riPo);
+      const partes = riPo.split('-');
       return {
         ri_po: riPo,
         // Sem registro em cache (recorte filtrado), o `ri` sai da própria chave:
         // `ri_po` é `<ri>-<PO>` e o `ri` nunca contém hífen.
-        ri: reg?.ri || riPo.split('-')[0],
-        doc_compra: reg?.documento_compra || null,
-        rm: reg?.requisicao_de_compra,
+        ri: reg?.ri || partes[0],
+        doc_compra: reg?.documento_compra || (partes.length > 1 ? partes.slice(1).join('-') : null),
+        rm: reg?.requisicao_de_compra || null,
         data_chegada: dataChegada,
         registrado_por_id: user.id,
         registrado_por_nome: user.name,
