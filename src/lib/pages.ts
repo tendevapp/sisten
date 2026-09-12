@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -75,6 +75,7 @@ export const PAGES: PageDef[] = [
   { id: 'sup_vinculos_cotacoes', group: 'SUPRIMENTOS', label: 'Vínculos & Auditoria de Cotações', path: '/suprimentos/cotacoes/vinculos', icon: Link2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_historico', group: 'SUPRIMENTOS', label: 'Histórico', path: '/suprimentos/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_contratos', group: 'SUPRIMENTOS', label: 'Contratos', path: '/suprimentos/contratos', icon: FileText, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'sup_calc_impostos', group: 'SUPRIMENTOS', label: 'Calc Impostos', path: '/suprimentos/calc-impostos', icon: Calculator, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   // Diligenciamento não tem página/permissão própria: é o filtro "Sem MIGO"
   // dentro de Central de Compras (sup_central_compras), em
   // components/suprimentos/DiligenciamentoSemMigoTable.tsx.

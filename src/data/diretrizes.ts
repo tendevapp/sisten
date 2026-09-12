@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-11',
+    resumo: 'Suprimentos > Calc Impostos — Calculadora Fiscal para Uso/Consumo e Ativo Imobilizado (`CalcImpostos.tsx`, `calcImpostos.ts`, `calcImpostos.test.ts`, `pages.ts`, `moduleHomes.ts`, `App.tsx`, `diretrizes.ts`): 1. Criada a nova página e ferramenta fiscal `/suprimentos/calc-impostos` com motor rigoroso de apuração tributária (ICMS, PIS, COFINS e IPI) para aquisições destinadas a Uso e Consumo ou Ativo Imobilizado; 2. Implementadas com precisão as 8 fórmulas fiscais de precificação (Preço Bruto com IPI, IPI Apurado, Base de ICMS com fator de redução, ICMS, PIS, COFINS, Preço Líquido deduzindo tributos por dentro e Preço Líquido Unitário ajustado por Price Unit); 3. Presets rápidos de códigos fiscais típicos de ERP/SAP (C1, C2, C3, C4, C5, A3 e Isento); 4. Interface responsiva em duas colunas com cards KPI, barra visual de decomposição da NF, tabela discriminada de impostos e memória analítica passo a passo; 5. Ação de cópia instantânea da memória de cálculo para a área de transferência com toast de confirmação.',
+  },
+  {
+    data: '2026-09-11',
     resumo: 'Suprimentos > Cotações e Mapa Comparativo / Navegação e Scroll Superior (`AnaliseCotacoes.tsx`, `MapaComparativo.tsx`, `diretrizes.ts`): 1. Adicionado botão "Ir para o topo" (na barra de ações ao fim da listagem de propostas e como botão flutuante com detecção de rolagem); 2. Duplicado o botão "Mapa comparativo" (com contagem de propostas e atalho) no rodapé após todas as cotações, eliminando a necessidade de rolar de volta para avançar de etapa; 3. Implementada barra de rolagem horizontal sincronizada no topo da tabela do mapa comparativo (`MapaComparativo.tsx`), permitindo navegar pelas colunas de fornecedores diretamente pelo cabeçalho da grade sem ter que rolar até o fim da página.',
   },
   {
@@ -1386,6 +1390,44 @@ export const DIRETRIZES: DiretrizesDominio[] = [
               '`sup_diligenciamento_itens` (por `ri`: transportadora, faturamento da transportadora, previsão manual — CRUD direto via `lib/diligenciamentoApi.ts`, fora do cache do `localDb`, mesmo padrão de `rhApi.ts`/`portariaApi.ts`).',
               '`sup_prazos_transporte` (chave `uf, transportadora`, ambos podendo ser vazios para os níveis genéricos da cascata; `dias_corridos`), mantida pelo comprador na própria tabela ("Prazos de trânsito").',
               'Leitura: `sap_zl0132_po`/`pedidosforn`, `vw_sap_requisicoes_enriquecidas`, `cidadeforn`, `almoxarifado_chegadas`, `sap_me5a_rc` (via os métodos já existentes do `localDb`).'
+            ]
+          }
+        ]
+      },
+      {
+        id: 'calc-impostos',
+        nome: 'Calc Impostos (Calculadora Fiscal)',
+        arquivo: 'src/views/CalcImpostos.tsx, src/lib/calcImpostos.ts',
+        secoes: [
+          {
+            titulo: 'Visão geral',
+            itens: [
+              'Calculadora tributária e fiscal para simulação, apuração de impostos (ICMS, PIS, COFINS, IPI) e formação do preço líquido para aquisições destinadas a Uso e Consumo ou Ativo Imobilizado.',
+              'Permite aos compradores e gestores simular propostas de fornecedores, conferir notas fiscais e determinar o custo real de aquisição por item e por lote de compras.'
+            ]
+          },
+          {
+            titulo: 'Regras de negócio e fórmulas de cálculo',
+            itens: [
+              'Preço Bruto (Valor da NF): `Preco_com_Impostos * (1 + Aliq_IPI)`.',
+              'IPI Apurado: `(Preco_Bruto / (1 + Aliq_IPI)) * Aliq_IPI`. O IPI compõe a base de cálculo do ICMS para Uso e Consumo ou Imobilizado (art. 13, § 1º, II da LC 87/1996 - Lei Kandir).',
+              'Base de Cálculo do ICMS: `Preco_Bruto * Fator_Reducao` caso o fator esteja entre 0 e 1 (ex: Convênio 52/91, fator 0,6667 / 33,33% desoneração); caso contrário, base integral igual ao Preço Bruto.',
+              'ICMS Apurado: `Base_ICMS * Aliq_ICMS`.',
+              'PIS e COFINS Apurados: calculados sobre o preço da mercadoria (`Preco_com_Impostos * Aliq`).',
+              'Preço Líquido (Dedução de Impostos): `Fator_Efetivo_ICMS = Fator_Reducao * Aliq_ICMS * (1 + Aliq_IPI)`; `Carga_Total_Por_Dentro = Fator_Efetivo_ICMS + Aliq_PIS + Aliq_COFINS`; `Preco_Liquido = (Preco_Bruto / (1 + Aliq_IPI)) * (1 - Carga_Total_Por_Dentro)`.',
+              'Preço Líquido Unitário: `(Preco_Liquido / Quantidade) * Unidade_de_Preco`, com tratamento de segurança contra divisão por zero (assumindo quantidade mínima de 1).',
+              'Presets Fiscais (IVA): C1 (Geral interna 18%), C2 (Interestadual Sul/Sudeste 12%), C3 (Interestadual Norte/NE/CO 7%), C4 (Importados 4%), C5 (Industrializado c/ IPI 10%), A3 (Ativo Imobilizado com redução de base Convênio 52/91) e Isento/Simples.'
+            ]
+          },
+          {
+            titulo: 'Interface e recursos de produtividade',
+            itens: [
+              'Painel em duas colunas responsivas com parâmetros de entrada à esquerda e demonstrativo com memória de cálculo à direita.',
+              'Cards de KPI em destaque para Preço Bruto NF, Preço Líquido Total e Preço Líquido Unitário.',
+              'Barra gráfica de decomposição visual mostrando a proporção percentual da mercadoria líquida e de cada imposto na NF.',
+              'Tabela discriminando cada imposto com base de cálculo, alíquota nominal, alíquota efetiva e valor apurado em R$.',
+              'Memória de cálculo passo a passo exibindo as fórmulas com os valores numéricos reais substituídos.',
+              'Botão "Copiar Memória" com exportação textual formatada para clipboard (pronta para justificativa de compra, RFQ ou pedido SAP).'
             ]
           }
         ]

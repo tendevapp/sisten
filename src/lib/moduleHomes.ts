@@ -67,6 +67,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       sup_dashboards: 'Indicadores de carteira, OTD e análise de compras.',
       sup_estimador_frete: 'Estimativa de custo de frete por rota e modal.',
       sup_pendencias_processamento: 'Baixa das notas fiscais pendentes de processamento abertas via chamado.',
+      sup_calc_impostos: 'Calculadora e memória de cálculo de tributos (ICMS, PIS, COFINS, IPI) para Uso/Consumo e Imobilizado.',
     },
   },
   {
