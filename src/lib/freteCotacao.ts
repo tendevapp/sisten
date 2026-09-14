@@ -68,6 +68,43 @@ export interface SimulacaoFreteCotacao {
   motivo: MotivoSemFrete | null;
 }
 
+/**
+ * Alinha o peso estimado ao vínculo com a RM: o mesmo material físico (mesmo
+ * `processo_item_id`) tem que pesar o mesmo em toda cotação, senão o frete
+ * teórico de duas propostas do mesmo item perde a base de comparação — uma
+ * pesa "3kg" porque a IA leu "ELETRODO 3,25MM" numa proposta e "5kg" porque
+ * leu "ELETRODO REVESTIDO E7018" (mesmo material, descrição diferente) na
+ * outra. Roda depois do vínculo (é o `processo_item_id`, não a descrição,
+ * que diz "mesmo item") e antes do cálculo de frete.
+ *
+ * A primeira estimativa vista para um RI vira a referência da sessão; toda
+ * cotação seguinte que citar o mesmo RI reusa esse valor em vez de confiar
+ * na estimativa própria da IA para aquela proposta especificamente. Pura:
+ * não muta `pesoPorRi`, devolve o mapa atualizado para o chamador carregar
+ * adiante — é assim que a segunda, terceira etc. proposta da mesma sessão
+ * enxergam o que já foi fixado pela primeira.
+ */
+export function alinharPesoComVinculo(
+  itens: CotacaoPropostaItemDraft[],
+  pesoPorRi: ReadonlyMap<string, number>,
+): { itens: CotacaoPropostaItemDraft[]; pesoPorRi: Map<string, number> } {
+  const atualizado = new Map(pesoPorRi);
+
+  const novosItens = itens.map(item => {
+    if (!item.processo_item_id) return item;
+    const canonico = atualizado.get(item.processo_item_id);
+    if (canonico != null) {
+      return item.peso_unitario_kg === canonico ? item : { ...item, peso_unitario_kg: canonico };
+    }
+    if (item.peso_unitario_kg != null) {
+      atualizado.set(item.processo_item_id, item.peso_unitario_kg);
+    }
+    return item;
+  });
+
+  return { itens: novosItens, pesoPorRi: atualizado };
+}
+
 /** Peso total do item: peso unitário estimado × quantidade cotada. Quantidade ausente conta como 1. */
 export function pesoTotalItem(item: CotacaoPropostaItemDraft): number | null {
   if (item.peso_unitario_kg == null || !Number.isFinite(item.peso_unitario_kg)) return null;

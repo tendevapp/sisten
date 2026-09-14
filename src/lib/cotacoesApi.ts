@@ -67,6 +67,58 @@ export async function extrairCotacao(params: {
   return data as ExtracaoResposta;
 }
 
+/**
+ * Pede à IA, sob demanda, o vínculo RI de itens que a extração e o trigrama
+ * não resolveram — usado pelo botão "Pedir à IA" no card da proposta,
+ * quando `itensSemVinculo.length > 0`. Chamada enxuta: não reenvia o
+ * Markdown do documento, só a descrição/código dos itens soltos.
+ */
+export async function sugerirVinculoRiIa(params: {
+  processoId?: string;
+  itens: { _key: string; descricao: string; codigoProduto: string | null; marca: string | null; unidade: string | null; quantidade: number | null }[];
+  escopo: CotacaoProcessoItem[];
+}): Promise<Map<string, { ri: string | null; divergencias: string[] | null }>> {
+  const { itens, escopo } = params;
+  const { data, error } = await supabase.functions.invoke('sugerir-vinculo-ri-ia', {
+    body: {
+      processo_id: params.processoId ?? null,
+      itens: itens.map((it, idx) => ({
+        idx,
+        descricao: it.descricao,
+        codigo_produto: it.codigoProduto,
+        marca: it.marca,
+        unidade: it.unidade,
+        quantidade: it.quantidade,
+      })),
+      escopo: escopo.map(e => ({
+        ri: e.ri,
+        texto_breve: e.texto_breve,
+        material_code: e.material_code,
+        quantidade: e.qtd_solicitada,
+        unidade: e.unidade_medida,
+      })),
+    },
+  });
+
+  if (error) {
+    const contexto = (error as any)?.context;
+    const corpo = typeof contexto?.json === 'function' ? await contexto.json().catch(() => null) : null;
+    throw new Error(corpo?.erro?.mensagem ?? error.message ?? 'Falha ao pedir vínculo à IA.');
+  }
+  if ((data as any)?.erro) {
+    throw new Error((data as any).erro.mensagem ?? 'Falha ao pedir vínculo à IA.');
+  }
+
+  const vinculos = Array.isArray((data as any)?.vinculos) ? (data as any).vinculos : [];
+  const porKey = new Map<string, { ri: string | null; divergencias: string[] | null }>();
+  for (const v of vinculos) {
+    const original = itens[v.idx];
+    if (!original) continue;
+    porKey.set(original._key, { ri: v.ri ?? null, divergencias: v.divergencias ?? null });
+  }
+  return porKey;
+}
+
 // =====================================================================
 // Processos
 // =====================================================================
@@ -379,6 +431,10 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
     revisado: true,
     extracao_id: p.extracao_id,
     extraido_raw: p.extraido_raw,
+    arquivo_storage_path: p.arquivo_storage_path,
+    arquivo_mime_type: p.arquivo_mime_type,
+    arquivo_tamanho_bytes: p.arquivo_tamanho_bytes,
+    arquivo_markdown: p.arquivo_markdown,
     itens: p.itens.map(item => ({
       processo_item_id: item.processo_item_id,
       fora_escopo: item.fora_escopo,
@@ -501,6 +557,74 @@ export async function atualizarItensCotacao(patches: PatchItemCotacao[]): Promis
   if (erro) throw new Error(`Falha ao atualizar os itens da cotação: ${erro.message}`);
 }
 
+// =====================================================================
+// Arquivo original (Storage) e Markdown extraído
+// =====================================================================
+
+const BUCKET_COTACOES_ARQUIVOS = 'cotacoes-arquivos';
+
+/**
+ * Sobe o PDF/imagem original de uma proposta para o Storage — chamado só ao
+ * salvar a proposta (não a cada extração), para um rascunho descartado
+ * nunca deixar arquivo órfão no bucket. Caminho por processo + nome
+ * aleatório: dois fornecedores podem mandar arquivos com o mesmo nome
+ * ("proposta.pdf") no mesmo processo.
+ */
+export async function uploadArquivoCotacao(
+  processoId: string,
+  file: File,
+): Promise<{ path: string; mimeType: string; tamanhoBytes: number }> {
+  const extensao = (file.name.split('.').pop() || 'pdf').toLowerCase();
+  const path = `${processoId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extensao}`;
+  const mimeType = file.type || 'application/pdf';
+
+  const { error } = await supabase.storage
+    .from(BUCKET_COTACOES_ARQUIVOS)
+    .upload(path, file, { contentType: mimeType, upsert: false });
+  if (error) throw new Error(`Falha ao enviar o arquivo original para o Storage: ${error.message}`);
+
+  return { path, mimeType, tamanhoBytes: file.size };
+}
+
+/** URL assinada de 24h para pré-visualizar o arquivo original — o bucket é privado. */
+export async function assinarArquivoCotacao(path: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET_COTACOES_ARQUIVOS)
+    .createSignedUrl(path, 60 * 60 * 24);
+  if (error) {
+    console.warn('Falha ao assinar URL do arquivo original da cotação:', error.message);
+    return null;
+  }
+  return data?.signedUrl ?? null;
+}
+
+/**
+ * Corrige o Markdown extraído de uma proposta já salva — para quando o
+ * comprador identifica um erro de conversão (tabela quebrada, número
+ * trocado pelo OCR) e quer deixar o texto certo para quem consultar depois.
+ * O Markdown "como veio de fato" continua intocado em `ops_conversoes_markdown`;
+ * isto aqui só muda a cópia de trabalho anexada à proposta.
+ */
+export async function atualizarMarkdownProposta(
+  propostaId: string,
+  markdown: string,
+  usuarioNome: string,
+): Promise<void> {
+  if (!UUID_REGEX_ITEM.test(propostaId)) {
+    throw new Error('Só é possível editar o Markdown de uma proposta já salva.');
+  }
+  const { error } = await supabase
+    .from('sup_cotacao_propostas')
+    .update({
+      arquivo_markdown: markdown,
+      arquivo_markdown_editado_em: new Date().toISOString(),
+      arquivo_markdown_editado_por: usuarioNome,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', propostaId);
+  if (error) throw new Error(`Falha ao salvar a correção do Markdown: ${error.message}`);
+}
+
 /**
  * Persiste a decisão do comprador no mapa: quais itens cotados foram
  * escolhidos. Recebe a seleção inteira do processo e grava a diferença nos
@@ -537,5 +661,29 @@ export async function salvarSelecaoMapa(params: {
       .in('id', desmarcar);
     if (error) throw new Error(`Falha ao limpar a seleção do mapa: ${error.message}`);
   }
+}
+
+// =====================================================================
+// Tabelas de referência do export SAP
+// =====================================================================
+
+/** Códigos de condição de pagamento (DDP) do SAP — `sup_ddp`, cadastrada fora deste módulo. Usado no modal de "Exportar SAP". */
+export async function listarDdp(): Promise<{ ddp: string; descricao: string }[]> {
+  const { data, error } = await supabase.from('sup_ddp').select('ddp, descricao').order('ddp');
+  if (error) throw new Error(`Falha ao carregar a tabela de DDP: ${error.message}`);
+  return data ?? [];
+}
+
+/** Códigos de imposto do SAP (série A/B/C/H) — `sup_impostos`. Usado no modal de "Exportar SAP" para sugerir/escolher o código fiscal de cada item. */
+export async function listarImpostosSap(): Promise<{ incoterms: string; descricao: string }[]> {
+  const { data, error } = await supabase.from('sup_impostos').select('incoterms, descricao').order('incoterms');
+  if (error) throw new Error(`Falha ao carregar a tabela de impostos: ${error.message}`);
+  return data ?? [];
+}
+
+/** Cadastra um novo código de DDP em `sup_ddp` — atalho no modal de "Exportar SAP" para quando o código que o comprador precisa ainda não está na tabela. */
+export async function criarDdp(params: { ddp: string; descricao: string }): Promise<void> {
+  const { error } = await supabase.from('sup_ddp').insert({ ddp: params.ddp, descricao: params.descricao });
+  if (error) throw new Error(`Falha ao cadastrar o DDP: ${error.message}`);
 }
 

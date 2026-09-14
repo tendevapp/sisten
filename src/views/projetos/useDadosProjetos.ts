@@ -22,8 +22,18 @@ import {
   listarSubprojetos,
   listarTramos,
   listarEntregas,
+  listarMatrizAutonomia,
+  listarPlanejamentoTorres,
+  salvarCelulaMatriz as salvarCelulaMatrizApi,
+  salvarPlanejamentoTorre as salvarPlanejamentoTorreApi,
+  type ProjMatrizAutonomiaKitRow,
+  type ProjTorrePlanejamentoRow,
 } from '../../lib/projetosApi';
 import { montarArvore, consumoPorTramo, auditarBom, type ArvoreBom, type Pendencia } from '../../lib/projetosBom';
+import {
+  calcularMatrizAutonomia,
+  type MatrizAutonomiaResultado,
+} from '../../lib/projetosKitsAutonomia';
 import {
   autonomiaPorTramo,
   ratearCascata,
@@ -82,6 +92,11 @@ export interface DadosProjetos {
   kitsProntosPorTramo: Map<Tramo, ProjKit[]>;
   /** Tramos do subprojeto ativo, na ordem torre → tramo. */
   tramosDoSubprojeto: ProjTramoUnidade[];
+
+  /** Matriz de Autonomia de Kits por Tramo (idêntica à planilha de fábrica). */
+  matrizAutonomia: MatrizAutonomiaResultado;
+  salvarCelulaMatriz: (params: { torreNumero: number; tramo: Tramo; subkit: string; status: number; serie?: string | null }) => Promise<void>;
+  salvarPlanejamentoTorre: (params: { torreNumero: number; semana?: string | null; dataAlvo?: string | null }) => Promise<void>;
 }
 
 const ARVORE_VAZIA: ArvoreBom = { nos: [], porId: new Map(), raizes: [] };
@@ -100,13 +115,15 @@ export function useDadosProjetos(): DadosProjetos {
   const [kits, setKits] = useState<ProjKit[]>([]);
   const [entregas, setEntregas] = useState<ProjEntregaProducao[]>([]);
   const [sobressalentes, setSobressalentes] = useState<ProjSobressalente[]>([]);
+  const [matrizBanco, setMatrizBanco] = useState<ProjMatrizAutonomiaKitRow[]>([]);
+  const [planejamentosBanco, setPlanejamentosBanco] = useState<ProjTorrePlanejamentoRow[]>([]);
   const [subprojetoId, setSubprojetoId] = useState<string>('SP01');
 
   const recarregar = useCallback(async (silencioso = false) => {
     if (!silencioso) setLoading(true);
     setErro(null);
     try {
-      const [b, i, s, sp, t, n, o, k, e, so] = await Promise.all([
+      const [b, i, s, sp, t, n, o, k, e, so, mb, pb] = await Promise.all([
         listarBom(),
         listarItens(),
         listarSaldos(),
@@ -117,9 +134,12 @@ export function useDadosProjetos(): DadosProjetos {
         listarKits(),
         listarEntregas(),
         listarSobressalentes(),
+        listarMatrizAutonomia(subprojetoId),
+        listarPlanejamentoTorres(subprojetoId),
       ]);
       setBom(b); setItens(i); setSaldos(s); setSubprojetos(sp); setTramos(t);
       setNotas(n); setOrdens(o); setKits(k); setEntregas(e); setSobressalentes(so);
+      setMatrizBanco(mb); setPlanejamentosBanco(pb);
       if (sp.length && !sp.some((x) => x.id === subprojetoId)) setSubprojetoId(sp[0].id);
     } catch (err: any) {
       console.error('Falha ao carregar o módulo Projetos:', err);
@@ -196,6 +216,44 @@ export function useDadosProjetos(): DadosProjetos {
     });
   }, [tramosDoSubprojeto, kitsProntosPorTramo, consumo, saldoPorPn, subprojetoAtivo]);
 
+  const matrizAutonomia = useMemo(() => {
+    return calcularMatrizAutonomia({
+      arvore,
+      saldos: saldoPorPn,
+      torresTotais: subprojetoAtivo?.torres_previstas ?? 23,
+      registrosBanco: matrizBanco,
+      planejamentosBanco,
+    });
+  }, [arvore, saldoPorPn, subprojetoAtivo, matrizBanco, planejamentosBanco]);
+
+  const salvarCelulaMatriz = useCallback(
+    async (params: { torreNumero: number; tramo: Tramo; subkit: string; status: number; serie?: string | null }) => {
+      await salvarCelulaMatrizApi({
+        subprojeto_id: subprojetoAtivo?.id ?? 'SP01',
+        torre_numero: params.torreNumero,
+        tramo: params.tramo,
+        subkit: params.subkit,
+        status: params.status,
+        serie: params.serie,
+      });
+      await recarregar(true);
+    },
+    [subprojetoAtivo, recarregar],
+  );
+
+  const salvarPlanejamentoTorre = useCallback(
+    async (params: { torreNumero: number; semana?: string | null; dataAlvo?: string | null }) => {
+      await salvarPlanejamentoTorreApi({
+        subprojeto_id: subprojetoAtivo?.id ?? 'SP01',
+        torre_numero: params.torreNumero,
+        semana: params.semana,
+        data_alvo: params.dataAlvo,
+      });
+      await recarregar(true);
+    },
+    [subprojetoAtivo, recarregar],
+  );
+
   return {
     loading, erro, recarregar,
     bom, arvore, pendencias, itens, saldos, saldoPorPn, itemPorPn,
@@ -203,5 +261,7 @@ export function useDadosProjetos(): DadosProjetos {
     notas, ordens, kits, entregas, sobressalentes,
     consumo, autonomia, rateio, projecao,
     kitsProntosPorTramo, tramosDoSubprojeto,
+    matrizAutonomia, salvarCelulaMatriz, salvarPlanejamentoTorre,
   };
 }
+

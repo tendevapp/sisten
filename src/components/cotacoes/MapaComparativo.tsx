@@ -24,11 +24,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, AlertTriangle, Truck, CalendarClock, CreditCard, Sparkles,
-  Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX,
+  Scissors, Merge, Award, PackageX, RotateCcw, Link2, Ban, X, ShoppingCart, Plus, Check, SearchX, FileSearch,
+  LayoutGrid, Table2, Rows3, BarChart3, EyeOff, Eye,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import MapaOpcoesBar from './MapaOpcoesBar';
 import MapaCenarios from './MapaCenarios';
+import MapaTabelaPreco from './MapaTabelaPreco';
+import MapaTabelaFornecedor from './MapaTabelaFornecedor';
+import MapaVisaoItem from './MapaVisaoItem';
+import ExportarSapModal from './ExportarSapModal';
+import VerCotacaoOriginalModal from './VerCotacaoOriginalModal';
+import { construirLinhasSap } from '../../lib/exportSapCotacao';
+import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto, normalizarDescricao } from '../../lib/cotacoes';
@@ -44,6 +52,23 @@ import type { CotacaoProcesso, CotacaoProcessoItem, CotacaoPropostaDraft } from 
 
 /** Agrupamentos manuais sobrevivem ao recarregar a página, mas são preferência de análise, não dado do processo — ficam no navegador, como o rascunho de propostas. */
 const chaveOverrides = (processoId: string) => `sisten_cotacao_mapa_overrides_${processoId}`;
+
+/**
+ * 'detalhada': matriz de cards, interativa (marcar compra, juntar/separar
+ * linhas) — a única que grava decisão.
+ * 'preco': planilha clássica, um valor por fornecedor + melhor/vencedor/total.
+ * 'fornecedor': descrição cotada ao lado do preço, agrupado por fornecedor.
+ * 'item': barra horizontal por fornecedor dentro de cada item.
+ * As três últimas são somente leitura.
+ */
+type VisualizacaoMapa = 'detalhada' | 'preco' | 'fornecedor' | 'item';
+
+const OPCOES_VISUALIZACAO: { id: VisualizacaoMapa; rotulo: string; titulo: string; Icone: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'detalhada', rotulo: 'Detalhada', titulo: 'Cards com checkbox — a única que marca o que comprar', Icone: LayoutGrid },
+  { id: 'preco', rotulo: 'Mapa de preço', titulo: 'Planilha clássica: um valor por fornecedor + melhor preço e vencedor', Icone: Table2 },
+  { id: 'fornecedor', rotulo: 'Por fornecedor', titulo: 'Descrição cotada ao lado do preço, agrupado por fornecedor', Icone: Rows3 },
+  { id: 'item', rotulo: 'Visão por item', titulo: 'Barra comparando os preços de cada item — acha o fornecedor fora da curva', Icone: BarChart3 },
+];
 
 const CREDITOS_PADRAO: CreditosHabilitados = { icms: false, pisCofins: false, ipi: false };
 
@@ -61,17 +86,33 @@ function selecaoDoBanco(propostas: CotacaoPropostaDraft[]): Set<string> {
 // Peças pequenas
 // =====================================================================
 
-/** Digita livre (aceita vírgula) e resolve no blur — mesmo padrão dos campos monetários de PropostaCard. */
-function CampoFrete({ valor, onSalvar }: { valor: number | null; onSalvar: (v: number | null) => void }) {
+/**
+ * Digita livre (aceita vírgula) e resolve no blur — mesmo padrão dos campos
+ * monetários de PropostaCard.
+ *
+ * `teorico` marca que o número em tela é a simulação por peso (tabela Bahia
+ * Sul), não um frete que o fornecedor cotou — estilo tracejado + selo
+ * "estim." para o comprador nunca confundir estimativa com cotação real.
+ * Some sozinho assim que ele digitar algo: `onSalvar` grava em `valor_frete`
+ * e a próxima leitura já traz o valor como informado.
+ */
+function CampoFrete({ valor, teorico, onSalvar }: { valor: number | null; teorico?: boolean; onSalvar: (v: number | null) => void }) {
   const [texto, setTexto] = useState(valor != null ? valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '');
   useEffect(() => {
     setTexto(valor != null ? valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '');
   }, [valor]);
 
   return (
-    <div className="flex items-center gap-1 rounded border border-slate-200 px-1.5 focus-within:border-indigo-500 dark:border-slate-700">
-      <Truck className="h-3 w-3 shrink-0 text-slate-400" />
-      <span className="text-[10px] text-slate-400">R$</span>
+    <div
+      className={`flex items-center gap-1 rounded border px-1.5 focus-within:border-indigo-500 ${
+        teorico
+          ? 'border-dashed border-indigo-300 bg-indigo-50/50 dark:border-indigo-800 dark:bg-indigo-950/20'
+          : 'border-slate-200 dark:border-slate-700'
+      }`}
+      title={teorico ? 'Frete estimado pela tabela Bahia Sul a partir do peso dos itens. Digite o frete que o fornecedor cotou para substituir a estimativa.' : undefined}
+    >
+      <Truck className={`h-3 w-3 shrink-0 ${teorico ? 'text-indigo-400' : 'text-slate-400'}`} />
+      <span className={`text-[10px] ${teorico ? 'text-indigo-400' : 'text-slate-400'}`}>R$</span>
       <input
         inputMode="decimal"
         value={texto}
@@ -83,8 +124,13 @@ function CampoFrete({ valor, onSalvar }: { valor: number | null; onSalvar: (v: n
           const n = limpo === '' ? null : Number(limpo);
           onSalvar(n != null && Number.isFinite(n) ? n : null);
         }}
-        className="w-full bg-transparent py-0.5 text-[11px] tabular-nums outline-none"
+        className={`w-full min-w-0 bg-transparent py-0.5 text-[11px] tabular-nums outline-none ${teorico ? 'italic text-indigo-700 dark:text-indigo-300' : ''}`}
       />
+      {teorico && (
+        <span className="shrink-0 rounded bg-indigo-100 px-1 text-[8px] font-bold uppercase tracking-wide text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
+          estim.
+        </span>
+      )}
     </div>
   );
 }
@@ -132,22 +178,42 @@ function ChipsImpostos({ celula }: { celula: CelulaMapa }) {
 // =====================================================================
 
 function CabecalhoFornecedor({
-  resumo, proposta, posicao, melhorTotal, onFrete,
+  resumo, proposta, posicao, melhorTotal, onFrete, arquivoOriginal, onEditarMarkdown,
 }: {
   resumo: ResumoFornecedor;
   proposta: CotacaoPropostaDraft;
   posicao: number;
   melhorTotal: number | null;
   onFrete: (v: number | null) => void;
+  /** Arquivo original (PDF/imagem) desta proposta, se ainda estiver na memória da sessão. */
+  arquivoOriginal?: File;
+  onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
 }) {
   const delta = melhorTotal != null && melhorTotal > 0 ? ((resumo.totalComFrete - melhorTotal) / melhorTotal) * 100 : null;
   const vencedor = posicao === 0 && resumo.itensCotados > 0;
+  const [previewAberto, setPreviewAberto] = useState(false);
+
+  // Posição relativa ao melhor total, para a barra de comparação — 0 no
+  // vencedor, cresce com a distância. Sem melhorTotal (nenhum fornecedor
+  // cobre o processo inteiro ainda) a barra não aparece: não há régua confiável.
+  const proporcaoAcimaDoMelhor = melhorTotal != null && melhorTotal > 0 && delta != null
+    ? Math.min(1, Math.max(0, delta / 40)) // 40% acima já enche a barra — diferenças maiores viram "muito acima" igual
+    : null;
 
   return (
-    <div className="w-full min-w-0 space-y-1.5 p-2 text-left align-top">
+    <div className="w-full min-w-0 space-y-1.5 p-2.5 text-left align-top">
       <div className="flex items-start gap-1.5">
-        {vencedor && <Award className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />}
-        <div className="min-w-0">
+        <span
+          className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+            vencedor
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400'
+              : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
+          }`}
+          title={vencedor ? 'Melhor colocado (mais linhas cobertas, menor custo entre eles)' : `${posicao + 1}º colocado`}
+        >
+          {vencedor ? <Award className="h-3 w-3" /> : posicao + 1}
+        </span>
+        <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-bold text-slate-800 dark:text-slate-100" title={resumo.nome}>
             {nomeFornecedorCurto(resumo.nome)}
           </div>
@@ -156,7 +222,31 @@ function CabecalhoFornecedor({
             {proposta.fornecedor_uf ? ` · ${proposta.fornecedor_uf}` : ''}
           </div>
         </div>
+        {proposta.arquivo_origem && (
+          <button
+            type="button"
+            onClick={() => setPreviewAberto(true)}
+            title="Ver a cotação original — documento e/ou o Markdown extraído dele"
+            className="shrink-0 rounded-md border border-slate-200 p-1 text-slate-400 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+          >
+            <FileSearch className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
+
+      {previewAberto && proposta.arquivo_origem && (
+        <VerCotacaoOriginalModal
+          nome={proposta.arquivo_origem}
+          file={arquivoOriginal}
+          storagePath={proposta.arquivo_storage_path}
+          markdown={proposta.arquivo_markdown}
+          markdownEditadoEm={proposta.arquivo_markdown_editado_em}
+          markdownEditadoPor={proposta.arquivo_markdown_editado_por}
+          propostaId={proposta._salvo ? proposta._key : null}
+          onEditarMarkdown={onEditarMarkdown}
+          onClose={() => setPreviewAberto(false)}
+        />
+      )}
 
       <div className="flex flex-wrap gap-1">
         <Chip tom="neutro" title={proposta.prazo_entrega_texto ?? undefined}>
@@ -184,17 +274,31 @@ function CabecalhoFornecedor({
         )}
       </div>
 
-      <CampoFrete valor={resumo.frete} onSalvar={onFrete} />
+      <CampoFrete valor={resumo.frete} teorico={resumo.freteEhTeorico} onSalvar={onFrete} />
 
-      <div className="border-t border-slate-100 pt-1 dark:border-slate-800">
-        <div className="text-sm font-bold tabular-nums text-slate-900 dark:text-slate-50">
+      <div className="border-t border-slate-100 pt-1.5 dark:border-slate-800">
+        <div
+          className="text-base font-bold tabular-nums text-slate-900 dark:text-slate-50"
+          title={resumo.freteEhTeorico ? 'Inclui frete estimado (peso), ainda não o frete cotado pelo fornecedor.' : undefined}
+        >
           {formatBRL(resumo.totalComFrete)}
+          {resumo.freteEhTeorico && <span className="text-indigo-400">*</span>}
         </div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-slate-500 dark:text-slate-400">
           <span>{resumo.itensCotados}/{resumo.totalLinhas} itens</span>
           {resumo.melhorEm > 0 && <span className="font-semibold text-emerald-600 dark:text-emerald-400">melhor em {resumo.melhorEm}</span>}
           {delta != null && delta > 0.01 && <span className="text-rose-500">+{delta.toFixed(1)}%</span>}
         </div>
+        {/* Régua visual da distância até o melhor total — só quando há uma
+            referência confiável (algum fornecedor cobre o processo inteiro). */}
+        {proporcaoAcimaDoMelhor != null && (
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+            <div
+              className={`h-full rounded-full ${vencedor ? 'bg-emerald-500' : proporcaoAcimaDoMelhor > 0.5 ? 'bg-rose-400' : 'bg-amber-400'}`}
+              style={{ width: `${Math.max(4, (1 - proporcaoAcimaDoMelhor) * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -220,9 +324,9 @@ function Celula({
   return (
     <div
       onClick={() => onMarcar(!marcado)}
-      className={`flex h-full cursor-pointer flex-col gap-1 rounded-lg border p-2 transition-colors ${
+      className={`flex h-full cursor-pointer flex-col gap-1 rounded-xl border p-2 transition-colors ${
         marcado
-          ? 'border-indigo-400 bg-indigo-50/70 dark:border-indigo-600 dark:bg-indigo-950/30'
+          ? 'border-indigo-400 bg-indigo-50/70 shadow-sm shadow-indigo-500/10 dark:border-indigo-600 dark:bg-indigo-950/30'
           : celula.melhor
             ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20'
             : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'
@@ -318,8 +422,12 @@ function Celula({
 const chaveLarguras = (processoId: string) => `sisten_cotacao_mapa_larguras_${processoId}`;
 /** Chave da 1ª coluna (item cotado) no mapa de larguras. */
 const COL_ITEM = '__item__';
-const LARGURA_ITEM_PADRAO = 288;
-const LARGURA_FORN_PADRAO = 264;
+// Defaults pensados para monitor largo (1920px): dão espaço para a
+// descrição do item e para o cabeçalho do fornecedor (selo de posição,
+// chips, campo de frete) sem truncar de cara. Ainda redimensionável por
+// coluna — isto é só o ponto de partida.
+const LARGURA_ITEM_PADRAO = 340;
+const LARGURA_FORN_PADRAO = 300;
 const LARGURA_MIN = 150;
 const LARGURA_MAX = 760;
 
@@ -393,10 +501,17 @@ interface MapaComparativoProps {
   onDecisaoSalva: (itensSelecionados: Set<string>) => void;
   /** Permite sincronizar do Supabase caso haja propostas com chaves temporárias ainda não persistidas. */
   onRecarregarPropostas?: () => Promise<void>;
+  /** Arquivo original (PDF/imagem) de cada proposta, por nome — só existe enquanto durar a sessão em que foi enviado. Ver VerCotacaoOriginalModal. */
+  arquivosOriginais?: Map<string, File>;
+  /** Corrige o Markdown extraído de uma proposta salva — ver VerCotacaoOriginalModal. */
+  onEditarMarkdown?: (propostaId: string, novoMarkdown: string) => Promise<void>;
+  /** Número do grupo de compras SAP do usuário logado (`Profile.grupo_compras`) — só pré-preenche o campo "Comprador" no export SAP; o comprador confere no modal. */
+  compradorPadrao?: string | null;
 }
 
 export default function MapaComparativo({
   processo, escopo, propostas, usuarioNome, onVoltar, onAtualizarProposta, onDecisaoSalva, onRecarregarPropostas,
+  arquivosOriginais, onEditarMarkdown, compradorPadrao,
 }: MapaComparativoProps) {
   const toast = useToast();
 
@@ -406,6 +521,17 @@ export default function MapaComparativo({
   const [ordenacao, setOrdenacao] = useState<OrdenacaoMapa>('alfabetica');
   const [busca, setBusca] = useState('');
   const [salvando, setSalvando] = useState(false);
+  // Como a matriz é exibida — 'detalhada' é a única interativa (marcar
+  // compra, juntar/separar linhas); as outras são leitura rápida, cada uma
+  // para uma pergunta diferente: preço só (planilha clássica), descrição +
+  // preço lado a lado (conferir agrupamento), ou distância visual entre
+  // ofertas (achar o fornecedor fora da curva sem fazer conta).
+  const [visualizacao, setVisualizacao] = useState<VisualizacaoMapa>('detalhada');
+  // Itens da RM que nenhum fornecedor cotou — continuam "precisando de nova
+  // cotação", mas atrapalham a leitura do que já tem oferta. Ocultar é só
+  // preferência de tela, não some do processo nem precisa reconfirmar toda
+  // vez — por isso não persiste: é o mesmo tipo de filtro que a busca.
+  const [ocultarSemCotacao, setOcultarSemCotacao] = useState(false);
 
   // Só proposta salva entra no mapa: a decisão é gravada no item cotado, que
   // só existe no banco depois de "Salvar proposta".
@@ -416,6 +542,8 @@ export default function MapaComparativo({
     () => salvas.map(p => ({ key: p._key, proposta: p })),
     [salvas],
   );
+
+  const propostasPorKey = useMemo(() => new Map(salvas.map(p => [p._key, p])), [salvas]);
 
   const fretePorProposta = useMemo(() => {
     const r: Record<string, number | null> = {};
@@ -547,6 +675,12 @@ export default function MapaComparativo({
     );
   }, [linhasExibidas, busca]);
 
+  // Some com o que ninguém cotou — filtro por cima da busca, mesma ideia.
+  const linhasVisiveis = useMemo(
+    () => (ocultarSemCotacao ? linhasFiltradas.filter(l => l.celulas.length > 0) : linhasFiltradas),
+    [linhasFiltradas, ocultarSemCotacao],
+  );
+
   const resumos = useMemo(
     () => resumirFornecedores({ linhas, propostas: propostasMapa, fretePorProposta })
       .sort((a, b) => {
@@ -589,7 +723,7 @@ export default function MapaComparativo({
       ro.disconnect();
       window.removeEventListener('resize', atualizarMedidas);
     };
-  }, [linhasFiltradas, resumos, larguras, larguraPreview]);
+  }, [linhasVisiveis, resumos, larguras, larguraPreview, visualizacao]);
 
   const cenarios = useMemo(() => {
     const lista: Cenario[] = [cenarioMenorPreco(linhas, resumos)];
@@ -732,34 +866,110 @@ export default function MapaComparativo({
   };
 
   const handleExportar = () => {
-    const cabecalho = ['Item', 'RI', 'Qtd', 'Un'];
-    for (const r of resumos) cabecalho.push(`${r.nome} — unitário`, `${r.nome} — total`, `${r.nome} — Δ%`);
+    const FIXAS = ['Item', 'RI', 'Qtd', 'Un'];
+    const cabecalho = [...FIXAS];
+    for (const r of resumos) cabecalho.push(`${nomeFornecedorCurto(r.nome)} — unitário`, `${nomeFornecedorCurto(r.nome)} — total`, `${nomeFornecedorCurto(r.nome)} — Δ%`);
+    cabecalho.push('Melhor preço', 'Fornecedor vencedor', 'Vlr. total');
 
-    const corpo = linhas.map(l => {
-      const linhaCsv: (string | number | null)[] = [l.titulo, l.ri, l.qtdSolicitada, l.unidade];
+    const linTitulo = [`Mapa comparativo — ${processo.numero}`];
+    const linBase = [`Base: ${base === 'cotado' ? 'preço cotado' : base === 'desembolso' ? 'desembolso (IPI + frete)' : 'custo líquido de créditos'}`];
+
+    const corpo = linhasVisiveis.map(l => {
+      const vencedora = l.celulas.find(c => c.melhor);
+      const linha: (string | number | null)[] = [l.titulo, l.ri, l.qtdSolicitada, l.unidade];
       for (const r of resumos) {
         const c = l.celulas.find(x => x.propostaKey === r.propostaKey);
-        linhaCsv.push(
+        linha.push(
           c?.custo.unitarioComparavel ?? null,
           c?.custo.comparavel ?? null,
-          c?.deltaPct != null ? Number(c.deltaPct.toFixed(2)) : null,
+          c?.deltaPct != null ? Number((c.deltaPct / 100).toFixed(4)) : null,
         );
       }
-      return linhaCsv;
+      linha.push(
+        l.melhorCusto ?? null,
+        vencedora ? nomeFornecedorCurto(resumos.find(r => r.propostaKey === vencedora.propostaKey)?.nome ?? '') : null,
+        vencedora?.custo.comparavel ?? null,
+      );
+      return linha;
     });
 
     const rodape: (string | number | null)[] = ['TOTAL (com frete)', null, null, null];
     for (const r of resumos) rodape.push(null, r.totalComFrete, null);
+    rodape.push(null, null, null);
 
-    const ws = XLSX.utils.aoa_to_sheet([
-      [`Mapa comparativo — ${processo.numero}`],
-      [`Base: ${base === 'cotado' ? 'preço cotado' : base === 'desembolso' ? 'desembolso (IPI + frete)' : 'custo líquido de créditos'}`],
-      [],
-      cabecalho, ...corpo, [], rodape,
-    ]);
+    const linhaCabecalho = 3;
+    const primeiraLinhaDados = linhaCabecalho + 1;
+    const ws = XLSX.utils.aoa_to_sheet([linTitulo, linBase, [], cabecalho, ...corpo, [], rodape]);
+
+    const numCols = cabecalho.length;
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: numCols - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } },
+    ];
+
+    const estiloTitulo = { font: { bold: true, sz: 13, color: { rgb: '0F2952' } } };
+    const estiloBase = { font: { italic: true, sz: 9, color: { rgb: '64748B' } } };
+    const estiloCabecalho = {
+      fill: { fgColor: { rgb: '0F2952' } },
+      font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 9 },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    };
+    const estiloVencedor = { fill: { fgColor: { rgb: 'D1FAE5' } }, font: { bold: true, color: { rgb: '065F46' } } };
+    const estiloPadrao = { font: { sz: 9 } };
+    const estiloRodape = { font: { bold: true, sz: 9 }, fill: { fgColor: { rgb: 'F1F5F9' } } };
+
+    const setStyle = (r: number, c: number, style: object) => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref]) ws[ref].s = style;
+    };
+    const setFormat = (r: number, c: number, z: string) => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = z;
+    };
+
+    setStyle(0, 0, estiloTitulo);
+    setStyle(1, 0, estiloBase);
+    for (let c = 0; c < numCols; c++) setStyle(linhaCabecalho, c, estiloCabecalho);
+
+    corpo.forEach((_, i) => {
+      const r = primeiraLinhaDados + i;
+      const linhaMapa = linhasVisiveis[i];
+      for (let c = 0; c < numCols; c++) setStyle(r, c, estiloPadrao);
+      // Colunas de valor unitário/total por fornecedor: 4 fixas + 3 por fornecedor.
+      resumos.forEach((res, idx) => {
+        const celula = linhaMapa.celulas.find(x => x.propostaKey === res.propostaKey);
+        const colUnit = FIXAS.length + idx * 3;
+        const colTotal = colUnit + 1;
+        const colDelta = colUnit + 2;
+        if (celula?.melhor) { setStyle(r, colUnit, estiloVencedor); setStyle(r, colTotal, estiloVencedor); }
+        setFormat(r, colUnit, '#,##0.00'); setFormat(r, colTotal, '#,##0.00'); setFormat(r, colDelta, '0.00%');
+      });
+      const colMelhor = FIXAS.length + resumos.length * 3;
+      setStyle(r, colMelhor, estiloVencedor); setStyle(r, colMelhor + 1, estiloVencedor); setStyle(r, colMelhor + 2, estiloVencedor);
+      setFormat(r, colMelhor, '#,##0.00'); setFormat(r, colMelhor + 2, '#,##0.00');
+    });
+
+    const linhaRodape = primeiraLinhaDados + corpo.length + 1;
+    for (let c = 0; c < numCols; c++) { setStyle(linhaRodape, c, estiloRodape); setFormat(linhaRodape, c, '#,##0.00'); }
+
+    ws['!cols'] = cabecalho.map((h, i) => ({ wch: i === 0 ? 34 : Math.max(10, Math.min(22, h.length + 2)) }));
+    ws['!freeze'] = { xSplit: 0, ySplit: primeiraLinhaDados };
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: linhaCabecalho, c: 0 }, e: { r: primeiraLinhaDados + corpo.length - 1, c: numCols - 1 } }) };
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Mapa');
     XLSX.writeFile(wb, `mapa_${processo.numero}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
+  const [sapModalLinhas, setSapModalLinhas] = useState<LinhaSapExport[] | null>(null);
+
+  const handleExportarSap = () => {
+    const linhasSap = construirLinhasSap({ linhas: linhasVisiveis, selecionados, escopo, propostasPorKey, compradorPadrao });
+    if (linhasSap.length === 0) {
+      toast.info('Marque ao menos um item na matriz antes de exportar para o SAP.');
+      return;
+    }
+    setSapModalLinhas(linhasSap);
   };
 
   // -------------------------------------------------------------------
@@ -786,21 +996,30 @@ export default function MapaComparativo({
   const agrupadasPorIa = linhas.filter(l => l.origem !== 'escopo' && l.celulas.length > 1).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={onVoltar} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200">
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Voltar às propostas
-        </button>
-        <span className="text-xs text-slate-400">
-          {busca.trim() ? `${linhasFiltradas.length} de ${linhas.length}` : linhas.length} {linhas.length === 1 ? 'item' : 'itens'} · {resumos.length} {resumos.length === 1 ? 'fornecedor' : 'fornecedores'}
-          {agrupadasPorIa > 0 && ` · ${agrupadasPorIa} ${agrupadasPorIa === 1 ? 'linha agrupada' : 'linhas agrupadas'} por similaridade`}
-        </span>
+    <div className="mx-auto max-w-[1880px] space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={onVoltar}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Propostas
+          </button>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">Mapa comparativo</h2>
+            <p className="truncate text-[11px] text-slate-400">
+              {busca.trim() || ocultarSemCotacao ? `${linhasVisiveis.length} de ${linhas.length}` : linhas.length} {linhas.length === 1 ? 'item' : 'itens'} · {resumos.length} {resumos.length === 1 ? 'fornecedor' : 'fornecedores'}
+              {agrupadasPorIa > 0 && ` · ${agrupadasPorIa} ${agrupadasPorIa === 1 ? 'linha agrupada' : 'linhas agrupadas'} por similaridade`}
+            </p>
+          </div>
+        </div>
         {Object.keys(overrides).length > 0 && (
           <button
             type="button"
             onClick={limparAgrupamentosManuais}
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+            className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
           >
             <RotateCcw className="h-3 w-3" />
             Desfazer meus agrupamentos
@@ -811,19 +1030,37 @@ export default function MapaComparativo({
       {(naoSalvas > 0 || semOferta > 0) && (
         <div className="space-y-1.5">
           {naoSalvas > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {naoSalvas} {naoSalvas === 1 ? 'proposta ainda não foi salva e ficou' : 'propostas ainda não foram salvas e ficaram'} fora do mapa.
             </div>
           )}
           {semOferta > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">
-              <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {semOferta} {semOferta === 1 ? 'item da RM não recebeu nenhuma oferta' : 'itens da RM não receberam nenhuma oferta'} — precisam de nova cotação.
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">
+              <span className="flex items-start gap-2">
+                <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {semOferta} {semOferta === 1 ? 'item da RM não recebeu nenhuma oferta' : 'itens da RM não receberam nenhuma oferta'} — precisam de nova cotação.
+              </span>
+              <button
+                type="button"
+                onClick={() => setOcultarSemCotacao(v => !v)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-200 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
+              >
+                {ocultarSemCotacao ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                {ocultarSemCotacao ? 'Mostrar na tabela' : 'Retirar da tabela'}
+              </button>
             </div>
           )}
         </div>
       )}
+
+      {/* Cenários antes da barra de filtros — não sticky, de propósito: sobe
+          e some da tela ao rolar. A barra logo abaixo é que fica fixa
+          (`sticky top-0`) para o comprador continuar filtrando/marcando
+          com a matriz longa rolando por baixo dela. Na ordem inversa, o
+          card de cenários ficava "por trás" da barra fixa ao rolar,
+          cortado na metade — parecia bug de layout. */}
+      <MapaCenarios cenarios={cenarios} onAplicar={aplicarCenario} />
 
       <MapaOpcoesBar
         base={base} onBase={setBase}
@@ -836,140 +1073,198 @@ export default function MapaComparativo({
         salvando={salvando}
         onSalvar={handleSalvar}
         onExportar={handleExportar}
+        onExportarSap={handleExportarSap}
       />
 
-      <MapaCenarios cenarios={cenarios} onAplicar={aplicarCenario} />
-
-      <div className="flex items-center justify-end">
-        <button
-          type="button"
-          onClick={resetLarguras}
-          disabled={!larguraCustomizada}
-          title="Voltar todas as colunas à largura padrão"
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800"
-        >
-          <RotateCcw className="h-3 w-3" /> Redefinir larguras
-        </button>
-      </div>
-
-      {hasHorizontalScroll && (
-        <div
-          ref={topScrollRef}
-          onScroll={handleTopScroll}
-          className="overflow-x-auto overflow-y-hidden custom-scrollbar rounded-t-xl border border-b border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/70"
-          style={{ height: '16px' }}
-          title="Barra de rolagem horizontal superior"
-        >
-          <div style={{ width: scrollWidth, height: '1px' }} />
-        </div>
-      )}
-
-      <div
-        ref={tableContainerRef}
-        onScroll={handleBottomScroll}
-        className={`overflow-x-auto custom-scrollbar border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 ${
-          hasHorizontalScroll ? 'rounded-b-xl border-t-0' : 'rounded-xl'
-        }`}
-      >
-        <table className="border-collapse" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
-          <colgroup>
-            <col style={{ width: larguraDe(COL_ITEM) }} />
-            {resumos.map(r => (
-              <col key={r.propostaKey} style={{ width: larguraDe(r.propostaKey) }} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800">
-              <th className="sticky left-0 z-20 bg-slate-50 p-2 pr-3 text-left align-bottom text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
-                Item cotado
-                <AlcaColuna
-                  largura={larguraDe(COL_ITEM)}
-                  onArrastar={px => setLarguraPreview({ col: COL_ITEM, px })}
-                  onFim={px => fixarLargura(COL_ITEM, px)}
-                />
-              </th>
-              {resumos.map((r, i) => (
-                <th key={r.propostaKey} className="relative border-l border-slate-100 bg-slate-50/60 align-top dark:border-slate-800 dark:bg-slate-800/40">
-                  <CabecalhoFornecedor
-                    resumo={r}
-                    proposta={salvas.find(p => p._key === r.propostaKey)!}
-                    posicao={i}
-                    melhorTotal={melhorTotalFornecedor}
-                    onFrete={v => handleFrete(r.propostaKey, v)}
-                  />
-                  <AlcaColuna
-                    largura={larguraDe(r.propostaKey)}
-                    onArrastar={px => setLarguraPreview({ col: r.propostaKey, px })}
-                    onFim={px => fixarLargura(r.propostaKey, px)}
-                  />
-                </th>
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-2xl border border-b-0 border-slate-200 bg-slate-50/80 px-3.5 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Comparativo item × fornecedor
+            </span>
+            <div className="flex items-center gap-0.5 rounded-lg bg-slate-200/60 p-0.5 dark:bg-slate-900/50">
+              {OPCOES_VISUALIZACAO.map(op => (
+                <button
+                  key={op.id}
+                  type="button"
+                  onClick={() => setVisualizacao(op.id)}
+                  title={op.titulo}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-colors ${
+                    visualizacao === op.id
+                      ? 'bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <op.Icone className="h-3 w-3" />
+                  {op.rotulo}
+                </button>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {linhasFiltradas.length === 0 && (
-              <tr>
-                <td colSpan={resumos.length + 1} className="py-10 text-center text-xs text-slate-400">
-                  <SearchX className="mx-auto mb-1.5 h-5 w-5 text-slate-300 dark:text-slate-700" />
-                  Nenhum item bate com &quot;{busca}&quot;.
-                </td>
-              </tr>
-            )}
-            {linhasFiltradas.map(linha => (
-              <tr key={linha.key} className="border-b border-slate-100 last:border-0 dark:border-slate-800/70">
-                <td className="sticky left-0 z-10 overflow-hidden bg-white p-2 align-top dark:bg-slate-900">
-                  <div className="break-words text-xs font-semibold leading-snug text-slate-800 dark:text-slate-100">{linha.titulo}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    {linha.ri && <Chip tom="neutro"><Link2 className="h-3 w-3" />{linha.ri}</Chip>}
-                    {linha.qtdSolicitada != null && (
-                      <Chip tom="neutro">{formatQtd(linha.qtdSolicitada)} {linha.unidade || 'un'}</Chip>
-                    )}
-                    {linha.origem !== 'escopo' && linha.celulas.length > 1 && (
-                      <Chip tom="neutro" title={`Agrupado por similaridade de descrição (mínimo ${Math.round(linha.confiancaMinima * 100)}%)`}>
-                        <Sparkles className="h-3 w-3" />
-                        {Math.round(linha.confiancaMinima * 100)}%
-                      </Chip>
-                    )}
-                    {linha.quantidadeDivergente && (
-                      <Chip tom="aviso" title="Os fornecedores cotaram quantidades diferentes — o total não é comparável direto.">
-                        qtd divergente
-                      </Chip>
-                    )}
-                    {linha.unidadeDivergente && (
-                      <Chip tom="aviso" title="Unidades de medida diferentes entre fornecedores.">un divergente</Chip>
-                    )}
-                  </div>
-                  {linha.dispersao != null && linha.dispersao > 0 && (
-                    <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                      entre a melhor e a pior oferta: <span className="font-semibold">{formatBRL(linha.dispersao)}</span>
-                    </div>
-                  )}
-                </td>
+            </div>
+          </div>
+          {visualizacao === 'detalhada' && (
+            <button
+              type="button"
+              onClick={resetLarguras}
+              disabled={!larguraCustomizada}
+              title="Voltar todas as colunas à largura padrão"
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-500 hover:bg-white disabled:opacity-40 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              <RotateCcw className="h-3 w-3" /> Redefinir larguras
+            </button>
+          )}
+        </div>
 
-                {resumos.map(r => {
-                  const celula = linha.celulas.find(c => c.propostaKey === r.propostaKey);
-                  return (
-                    <td key={r.propostaKey} className="overflow-hidden border-l border-slate-100 p-1 align-top dark:border-slate-800">
-                      {celula ? (
-                        <Celula
-                          celula={celula}
-                          marcado={selecionados.has(celula.item._key)}
-                          onMarcar={v => alternarSelecao(celula, linha, v)}
-                          selecionadoAgrupamento={selecaoAgrupamento.has(celula.item._key)}
-                          onToggleAgrupamento={v => alternarAgrupamento(celula.item._key, v)}
-                        />
-                      ) : (
-                        <div className="flex h-full min-h-[70px] items-center justify-center text-[10px] text-slate-300 dark:text-slate-700">
-                          não cotou
+        {linhasVisiveis.length === 0 ? (
+          <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white py-10 text-center dark:border-slate-800 dark:bg-slate-900">
+            <SearchX className="mx-auto mb-1.5 h-5 w-5 text-slate-300 dark:text-slate-700" />
+            <p className="text-xs text-slate-400">
+              {busca.trim() ? <>Nenhum item bate com &quot;{busca}&quot;.</> : 'Nenhum item para mostrar — todos foram retirados por não ter cotação.'}
+            </p>
+          </div>
+        ) : visualizacao === 'preco' ? (
+          <MapaTabelaPreco
+            linhas={linhasVisiveis}
+            resumos={resumos}
+            propostasPorKey={propostasPorKey}
+            selecionados={selecionados}
+            onMarcar={(celula, linha, marcar) => alternarSelecao(celula, linha, marcar)}
+          />
+        ) : visualizacao === 'fornecedor' ? (
+          <MapaTabelaFornecedor
+            linhas={linhasVisiveis}
+            resumos={resumos}
+            selecionados={selecionados}
+            onMarcar={(celula, linha, marcar) => alternarSelecao(celula, linha, marcar)}
+          />
+        ) : visualizacao === 'item' ? (
+          <MapaVisaoItem
+            linhas={linhasVisiveis}
+            resumos={resumos}
+            selecionados={selecionados}
+            onMarcar={(celula, linha, marcar) => alternarSelecao(celula, linha, marcar)}
+          />
+        ) : (
+          <>
+            {hasHorizontalScroll && (
+              <div
+                ref={topScrollRef}
+                onScroll={handleTopScroll}
+                className="overflow-x-auto overflow-y-hidden custom-scrollbar border-x border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/70"
+                style={{ height: '16px' }}
+                title="Barra de rolagem horizontal superior"
+              >
+                <div style={{ width: scrollWidth, height: '1px' }} />
+              </div>
+            )}
+
+            <div
+              ref={tableContainerRef}
+              onScroll={handleBottomScroll}
+              className="overflow-x-auto custom-scrollbar rounded-b-2xl border border-t-0 border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03] dark:border-slate-800 dark:bg-slate-900"
+            >
+            <table className="border-collapse" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
+              <colgroup>
+                <col style={{ width: larguraDe(COL_ITEM) }} />
+                {resumos.map(r => (
+                  <col key={r.propostaKey} style={{ width: larguraDe(r.propostaKey) }} />
+                ))}
+              </colgroup>
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800">
+                  <th className="sticky left-0 z-20 bg-slate-50 p-2 pr-3 text-left align-bottom text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+                    Item cotado
+                    <AlcaColuna
+                      largura={larguraDe(COL_ITEM)}
+                      onArrastar={px => setLarguraPreview({ col: COL_ITEM, px })}
+                      onFim={px => fixarLargura(COL_ITEM, px)}
+                    />
+                  </th>
+                  {resumos.map((r, i) => {
+                    const propostaDoFornecedor = salvas.find(p => p._key === r.propostaKey)!;
+                    return (
+                    <th key={r.propostaKey} className="relative border-l border-slate-100 bg-slate-50/60 align-top dark:border-slate-800 dark:bg-slate-800/40">
+                      <CabecalhoFornecedor
+                        resumo={r}
+                        proposta={propostaDoFornecedor}
+                        posicao={i}
+                        melhorTotal={melhorTotalFornecedor}
+                        onFrete={v => handleFrete(r.propostaKey, v)}
+                        arquivoOriginal={
+                          propostaDoFornecedor.arquivo_origem
+                            ? arquivosOriginais?.get(propostaDoFornecedor.arquivo_origem)
+                            : undefined
+                        }
+                        onEditarMarkdown={onEditarMarkdown ? (md => onEditarMarkdown(r.propostaKey, md)) : undefined}
+                      />
+                      <AlcaColuna
+                        largura={larguraDe(r.propostaKey)}
+                        onArrastar={px => setLarguraPreview({ col: r.propostaKey, px })}
+                        onFim={px => fixarLargura(r.propostaKey, px)}
+                      />
+                    </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {linhasVisiveis.map(linha => (
+                  <tr key={linha.key} className="border-b border-slate-100 last:border-0 dark:border-slate-800/70">
+                    <td className="sticky left-0 z-10 overflow-hidden bg-white p-2 align-top dark:bg-slate-900">
+                      <div className="break-words text-xs font-semibold leading-snug text-slate-800 dark:text-slate-100">{linha.titulo}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {linha.ri && <Chip tom="neutro"><Link2 className="h-3 w-3" />{linha.ri}</Chip>}
+                        {linha.qtdSolicitada != null && (
+                          <Chip tom="neutro">{formatQtd(linha.qtdSolicitada)} {linha.unidade || 'un'}</Chip>
+                        )}
+                        {linha.origem !== 'escopo' && linha.celulas.length > 1 && (
+                          <Chip tom="neutro" title={`Agrupado por similaridade de descrição (mínimo ${Math.round(linha.confiancaMinima * 100)}%)`}>
+                            <Sparkles className="h-3 w-3" />
+                            {Math.round(linha.confiancaMinima * 100)}%
+                          </Chip>
+                        )}
+                        {linha.quantidadeDivergente && (
+                          <Chip tom="aviso" title="Os fornecedores cotaram quantidades diferentes — o total não é comparável direto.">
+                            qtd divergente
+                          </Chip>
+                        )}
+                        {linha.unidadeDivergente && (
+                          <Chip tom="aviso" title="Unidades de medida diferentes entre fornecedores.">un divergente</Chip>
+                        )}
+                      </div>
+                      {linha.dispersao != null && linha.dispersao > 0 && (
+                        <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                          entre a melhor e a pior oferta: <span className="font-semibold">{formatBRL(linha.dispersao)}</span>
                         </div>
                       )}
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+                    {resumos.map(r => {
+                      const celula = linha.celulas.find(c => c.propostaKey === r.propostaKey);
+                      return (
+                        <td key={r.propostaKey} className="overflow-hidden border-l border-slate-100 p-1 align-top dark:border-slate-800">
+                          {celula ? (
+                            <Celula
+                              celula={celula}
+                              marcado={selecionados.has(celula.item._key)}
+                              onMarcar={v => alternarSelecao(celula, linha, v)}
+                              selecionadoAgrupamento={selecaoAgrupamento.has(celula.item._key)}
+                              onToggleAgrupamento={v => alternarAgrupamento(celula.item._key, v)}
+                            />
+                          ) : (
+                            <div className="flex h-full min-h-[70px] items-center justify-center text-[10px] text-slate-300 dark:text-slate-700">
+                              não cotou
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </>
+        )}
       </div>
 
       {selecaoAgrupamento.size > 0 && (
@@ -1005,6 +1300,14 @@ export default function MapaComparativo({
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      )}
+
+      {sapModalLinhas && (
+        <ExportarSapModal
+          linhasIniciais={sapModalLinhas}
+          numeroProcesso={processo.numero}
+          onClose={() => setSapModalLinhas(null)}
+        />
       )}
     </div>
   );

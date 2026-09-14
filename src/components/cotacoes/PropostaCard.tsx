@@ -10,14 +10,17 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban } from 'lucide-react';
+import { FileText, AlertTriangle, EyeOff, Eye, Trash2, Save, Loader2, Clock, FileSearch, Truck, Ban, Sparkles } from 'lucide-react';
 import PropostaItensGrid from './PropostaItensGrid';
 import FornecedorMatchBadge from './FornecedorMatchBadge';
 import CoberturaEscopoPanel from './CoberturaEscopoPanel';
-import VerArquivoOriginalModal from './VerArquivoOriginalModal';
+import VerCotacaoOriginalModal from './VerCotacaoOriginalModal';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import { useToast } from '../ui/Toast';
 import { validarProposta, conferirTotais, podeSalvar } from '../../lib/cotacoes';
 import { simularFreteCotacao, ROTULO_SEM_FRETE } from '../../lib/freteCotacao';
+import { aplicarSugestoesVinculoRi } from '../../lib/vinculoCotacao';
+import { sugerirVinculoRiIa } from '../../lib/cotacoesApi';
 import { formatDateTimeBR, formatBRL } from '../../lib/format';
 import type { CotacaoProcessoItem, CotacaoPropostaDraft, FornecedorMatch, TabelaFrete } from '../../types';
 
@@ -94,21 +97,27 @@ interface PropostaCardProps {
   salvando: boolean;
   /** Exclui do Supabase — só se aplica a uma proposta já salva (`_salvo: true`). Otimista + com janela de "Desfazer" no chamador; aqui é só disparar. */
   onExcluirSalva: () => void;
-  /** Arquivo original (PDF/imagem) por trás desta proposta, se ainda estiver na memória da sessão — ver VerArquivoOriginalModal. */
+  /** Arquivo original (PDF/imagem) por trás desta proposta, se ainda estiver na memória da sessão — ver VerCotacaoOriginalModal. */
   arquivoOriginal?: File | null;
   /** Tabela contratual da Bahia Sul, para explicar de onde saiu o frete teórico dos itens. */
   tabelaFrete?: TabelaFrete[];
+  /** Corrige o Markdown extraído — só disponível com proposta já salva; ver VerCotacaoOriginalModal. */
+  onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
+  /** Processo desta proposta — só para telemetria do "Pedir à IA" (sup_cotacao_extracoes). */
+  processoId?: string;
 }
 
 export default function PropostaCard({
   proposta, escopo, onChange, onChangeItem, onRemover, onSalvar, salvando, onExcluirSalva, arquivoOriginal,
-  tabelaFrete,
+  tabelaFrete, onEditarMarkdown, processoId,
 }: PropostaCardProps) {
+  const toast = useToast();
   const [soFaltando, setSoFaltando] = useState(false);
   const [previewArquivoAberto, setPreviewArquivoAberto] = useState(false);
   const [confirmSalvarAberto, setConfirmSalvarAberto] = useState(false);
   const [confirmExcluirAberto, setConfirmExcluirAberto] = useState(false);
   const [confirmRemoverAberto, setConfirmRemoverAberto] = useState(false);
+  const [pedindoVinculoIa, setPedindoVinculoIa] = useState(false);
 
   const validacao = useMemo(() => validarProposta(proposta), [proposta]);
   const totais = useMemo(() => conferirTotais(proposta), [proposta]);
@@ -136,6 +145,50 @@ export default function PropostaCard({
     itensSemVinculo.forEach(it => {
       onChangeItem(it._key, { processo_item_id: null, ri: null, material_code: null, fora_escopo: true, desconsiderado: false, vinculo_origem: 'manual', vinculo_score: null });
     });
+  };
+
+  /**
+   * Sob demanda: a extração e o trigrama já tentaram sozinhos (ver
+   * `resolverVinculos` em AnaliseCotacoes.tsx); isto entra só quando sobrou
+   * item sem vínculo e o comprador decide gastar uma chamada de IA nele.
+   */
+  const handlePedirVinculoIa = async () => {
+    if (itensSemVinculo.length === 0 || pedindoVinculoIa) return;
+    setPedindoVinculoIa(true);
+    try {
+      const sugestoes = await sugerirVinculoRiIa({
+        processoId,
+        itens: itensSemVinculo.map(it => ({
+          _key: it._key,
+          descricao: it.descricao_produto,
+          codigoProduto: it.codigo_produto,
+          marca: it.marca_fabricante,
+          unidade: it.unidade_medida,
+          quantidade: it.quantidade,
+        })),
+        escopo,
+      });
+
+      const { itens: itensAtualizados, resumo } = aplicarSugestoesVinculoRi({
+        itens: proposta.itens,
+        escopo,
+        sugestoes,
+      });
+
+      itensAtualizados.forEach((atualizado, idx) => {
+        if (atualizado !== proposta.itens[idx]) onChangeItem(atualizado._key, atualizado);
+      });
+
+      if (resumo.vinculados === 0) {
+        toast.info('A IA não encontrou vínculo confiável para os itens restantes.');
+      } else {
+        toast.success(`IA vinculou ${resumo.vinculados} ${resumo.vinculados === 1 ? 'item' : 'itens'}${resumo.comDivergencia > 0 ? `, ${resumo.comDivergencia} com divergência para conferir` : ''}.`);
+      }
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setPedindoVinculoIa(false);
+    }
   };
 
   const handleClicarSalvar = () => {
@@ -178,15 +231,15 @@ export default function PropostaCard({
             {formatDateTimeBR(proposta._extraido_em)}
           </span>
         )}
-        {arquivoOriginal && (
+        {proposta.arquivo_origem && (
           <button
             type="button"
             onClick={() => setPreviewArquivoAberto(true)}
-            title="Ver o arquivo original (PDF/imagem) desta proposta"
+            title="Ver a cotação original — documento e/ou o Markdown extraído dele"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-400 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
           >
             <FileSearch className="h-3.5 w-3.5" />
-            Ver arquivo original
+            Ver cotação original
           </button>
         )}
 
@@ -316,13 +369,25 @@ export default function PropostaCard({
             <span className="text-xs text-rose-600 dark:text-rose-400">
               {itensSemVinculo.length} {itensSemVinculo.length === 1 ? 'item sem vínculo' : 'itens sem vínculo'}
             </span>
-            <button
-              type="button"
-              onClick={handleMarcarSemVinculoForaEscopo}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              Marcar sem vínculo como "fora do escopo"
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePedirVinculoIa}
+                disabled={pedindoVinculoIa}
+                title="Manda os itens sem vínculo para a IA analisar contra a RM do processo"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950/70"
+              >
+                {pedindoVinculoIa ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {pedindoVinculoIa ? 'Pedindo à IA…' : 'Pedir à IA'}
+              </button>
+              <button
+                type="button"
+                onClick={handleMarcarSemVinculoForaEscopo}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Marcar sem vínculo como "fora do escopo"
+              </button>
+            </div>
           </div>
         )}
         <PropostaItensGrid
@@ -354,10 +419,16 @@ export default function PropostaCard({
         </div>
       )}
 
-      {previewArquivoAberto && arquivoOriginal && (
-        <VerArquivoOriginalModal
-          nome={proposta.arquivo_origem ?? arquivoOriginal.name}
+      {previewArquivoAberto && proposta.arquivo_origem && (
+        <VerCotacaoOriginalModal
+          nome={proposta.arquivo_origem}
           file={arquivoOriginal}
+          storagePath={proposta.arquivo_storage_path}
+          markdown={proposta.arquivo_markdown}
+          markdownEditadoEm={proposta.arquivo_markdown_editado_em}
+          markdownEditadoPor={proposta.arquivo_markdown_editado_por}
+          propostaId={proposta._salvo ? proposta._key : null}
+          onEditarMarkdown={onEditarMarkdown}
           onClose={() => setPreviewArquivoAberto(false)}
         />
       )}

@@ -157,10 +157,17 @@ export function aplicarVinculosIa(params: ParamsVinculoIa): {
 
     if (riSugerido && !alvoIa) resumo.riInexistente += 1;
 
+    // `vinculo_origem` nasce 'manual' por padrão em todo item recém-extraído
+    // (ver `itemParaDraft`) — não é só o valor de um clique real do usuário.
+    // Como esta função roda logo depois da extração, antes de qualquer
+    // interação, "manual" aqui quase sempre significa "ainda não decidido",
+    // não "o comprador escolheu". O sinal confiável de decisão já tomada é
+    // `processo_item_id` (ou `fora_escopo`/`desconsiderado`) já estar
+    // preenchido — é isso que a IA não pode atropelar, exceto quando quem
+    // preencheu foi o trigrama ('sugerido'), que ela supera em confiança.
     const podeVincular =
       !item.desconsiderado
       && !item.fora_escopo
-      && item.vinculo_origem !== 'manual'
       && item.vinculo_origem !== 'aprendido'
       && (!item.processo_item_id || item.vinculo_origem === 'sugerido');
 
@@ -200,6 +207,68 @@ export function aplicarVinculosIa(params: ParamsVinculoIa): {
       processo_item_id: alvoIa!.id,
       ri: alvoIa!.ri,
       material_code: alvoIa!.material_code,
+      fora_escopo: false,
+      vinculo_origem: 'ia' as const,
+      vinculo_score: SCORE_VINCULO_IA,
+      vinculo_divergencias: divergencias,
+    };
+  });
+
+  return { itens, resumo };
+}
+
+export interface VinculoRiSugeridoIa {
+  ri: string | null;
+  divergencias: string[] | null;
+}
+
+/**
+ * Aplica, sob demanda, as sugestões de vínculo que o comprador pediu à IA
+ * depois da extração — quando a similaridade automática (trigrama) não
+ * achou nada para um item. Mesma regra de "o que pode ser sobrescrito" de
+ * `aplicarVinculosIa`, mas lendo de um mapa já resolvido pela API
+ * (chave = `_key` do item) em vez de `item.extraido_raw`, porque esta
+ * chamada não tem o `raw` da extração original — só os itens que o
+ * comprador escolheu mandar para a IA analisar.
+ */
+export function aplicarSugestoesVinculoRi(params: {
+  itens: CotacaoPropostaItemDraft[];
+  escopo: CotacaoProcessoItem[];
+  /** Chave: `_key` do item enviado à IA. */
+  sugestoes: Map<string, VinculoRiSugeridoIa>;
+}): {
+  itens: CotacaoPropostaItemDraft[];
+  resumo: ResumoVinculoIa;
+} {
+  const porRi = indexarEscopoPorRi(params.escopo);
+  const resumo: ResumoVinculoIa = { vinculados: 0, riInexistente: 0, comDivergencia: 0 };
+
+  const itens = params.itens.map((item) => {
+    const sugestao = params.sugestoes.get(item._key);
+    if (!sugestao) return item;
+
+    const riSugerido = sugestao.ri ? normalizarDescricao(sugestao.ri) : '';
+    const alvoIa = riSugerido ? porRi.get(riSugerido) : undefined;
+    if (riSugerido && !alvoIa) resumo.riInexistente += 1;
+
+    const podeVincular =
+      !item.desconsiderado
+      && !item.fora_escopo
+      && item.vinculo_origem !== 'aprendido'
+      && (!item.processo_item_id || item.vinculo_origem === 'sugerido');
+
+    if (!alvoIa || !podeVincular) return item;
+
+    const divergencias = mesclarDivergencias(sugestao.divergencias, analisarDivergenciasVinculo(item, alvoIa));
+
+    resumo.vinculados += 1;
+    if (divergencias.length > 0) resumo.comDivergencia += 1;
+
+    return {
+      ...item,
+      processo_item_id: alvoIa.id,
+      ri: alvoIa.ri,
+      material_code: alvoIa.material_code,
       fora_escopo: false,
       vinculo_origem: 'ia' as const,
       vinculo_score: SCORE_VINCULO_IA,

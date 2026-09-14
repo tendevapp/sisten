@@ -193,9 +193,10 @@ const RE_SUFIXO_SOCIETARIO = new RegExp(`\\s*(${SUFIXOS_SOCIETARIOS.join('|')})\
 /**
  * Nome curto de exibição para coluna estreita (mapa comparativo): tira os
  * qualificadores societários do fim da razão social, repetindo enquanto
- * houver mais de um (ex.: "... SOCIEDADE UNIPESSOAL LTDA" tem dois). Nunca
- * mexe no resto do nome — "COMERCIO", "IMPORTACAO" etc. costumam ser o que
- * diferencia dois fornecedores parecidos, então ficam. Devolve a razão
+ * houver mais de um (ex.: "... SOCIEDADE UNIPESSOAL LTDA" tem dois), e fica
+ * só com as duas primeiras palavras do que sobrar — o mapa tem pouco espaço
+ * por coluna/fornecedor, e a razão social inteira ("COMERCIO E INDUSTRIA DE
+ * FERRAGENS TAL LTDA") não cabe em lugar nenhum da tela. Devolve a razão
  * social original se a limpeza esvaziar tudo (nome só com sigla societária).
  */
 export function nomeFornecedorCurto(razaoSocial: string | null | undefined): string {
@@ -207,7 +208,8 @@ export function nomeFornecedorCurto(razaoSocial: string | null | undefined): str
     if (cortado === atual) break;
     atual = cortado;
   }
-  return atual || bruto;
+  if (!atual) return bruto;
+  return atual.split(/\s+/).slice(0, 2).join(' ');
 }
 
 // =====================================================================
@@ -264,7 +266,10 @@ function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
 }
 
 /** Converte uma proposta extraída pela IA (tudo `string|null`) no rascunho editável persistido pela grade. */
-export function normalizarProposta(bruta: PropostaExtraida, ctx: { arquivoOrigem?: string } = {}): CotacaoPropostaDraft {
+export function normalizarProposta(
+  bruta: PropostaExtraida,
+  ctx: { arquivoOrigem?: string; arquivoMarkdown?: string } = {},
+): CotacaoPropostaDraft {
   const validade = parseValidade(bruta.Validade_Proposta);
   const cidadeUfFornecedor = parseCidadeUF(bruta.Fornecedor_Cidade_UF);
   const cidadeUfCliente = parseCidadeUF(bruta.Cliente_Cidade_UF);
@@ -319,6 +324,17 @@ export function normalizarProposta(bruta: PropostaExtraida, ctx: { arquivoOrigem
     revisado: false,
     extracao_id: null,
     extraido_raw: bruta,
+
+    // O upload do arquivo original só acontece ao salvar a proposta (rascunho
+    // descartado não deveria deixar arquivo órfão no Storage) — path/mime/
+    // tamanho ficam nulos até lá. O Markdown já existe agora (é o que a IA
+    // leu para extrair os campos) e entra direto.
+    arquivo_storage_path: null,
+    arquivo_mime_type: null,
+    arquivo_tamanho_bytes: null,
+    arquivo_markdown: ctx.arquivoMarkdown ?? null,
+    arquivo_markdown_editado_em: null,
+    arquivo_markdown_editado_por: null,
 
     itens: (bruta.itens ?? []).map(itemParaDraft),
   };

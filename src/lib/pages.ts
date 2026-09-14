@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -93,6 +93,19 @@ export const PAGES: PageDef[] = [
   // `/almoxarifado/movimentacoes/giro`. Oito itens de menu para um módulo só
   // afogariam o grupo.
   { id: 'almox_projetos', group: 'ALMOXARIFADO', label: 'Projetos', path: '/almoxarifado/projetos', icon: Factory, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+
+  // Módulo Produção — liberação de qualidade da fabricação de torres (corte a
+  // plasma, chanfro, calandra, solda e as etapas seguintes), migrado do
+  // sistema NAV1 (TEN Nordeste). Sem role própria no catálogo hoje — acesso
+  // ao hub fica com admin por padrão, e o admin libera usuário a usuário pelo
+  // painel de Módulos de Acesso, mesmo desenho do RH/Facilities.
+  { id: 'producao_home', group: 'PRODUÇÃO', label: 'Produção', path: '/producao', icon: Flame, defaultRoles: ['admin'] },
+  { id: 'prod_lancamentos', group: 'PRODUÇÃO', label: 'Lançamentos', path: '/producao/lancamentos', icon: ClipboardPlus, defaultRoles: ['admin'] },
+  { id: 'prod_pendencias', group: 'PRODUÇÃO', label: 'Controle de Liberações', path: '/producao/pendencias', icon: ListChecks, defaultRoles: ['admin'] },
+  { id: 'prod_consulta', group: 'PRODUÇÃO', label: 'Consulta', path: '/producao/consulta', icon: Search, defaultRoles: ['admin'] },
+  { id: 'prod_entrega', group: 'PRODUÇÃO', label: 'Controle de Entrega', path: '/producao/entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
+  { id: 'prod_painel', group: 'PRODUÇÃO', label: 'Painel de Qualidade', path: '/producao/painel', icon: Activity, defaultRoles: ['admin'] },
+  { id: 'prod_cadastros', group: 'PRODUÇÃO', label: 'Cadastros de Qualidade', path: '/producao/cadastros', icon: Settings, defaultRoles: ['admin'] },
 
   // Módulo Facilities — tela inicial (hub) + páginas de cadastro e relatórios
   // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
@@ -213,6 +226,65 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'proj_lancar_sobressalente',
     group: 'ALMOXARIFADO',
     label: 'Projetos: solicitar sobressalente / refugo',
+    defaultRoles: [],
+  },
+  // Produção separa CONSULTAR de LANÇAR (mesmo desenho de
+  // `proj_lancar_*` acima): quem abre o módulo vê fila e consulta; lançar
+  // uma etapa é ato de quem está na máquina. Sem role padrão: o admin libera
+  // usuário a usuário. Uma flag por etapa — Bloco 3+ acrescenta EVS/UT/Flange
+  // aqui do mesmo jeito, sem mexer no restante do cadastro.
+  {
+    id: 'prod_lancar_corte',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar Corte a Plasma',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_chanfro',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar Chanfro',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_calandra',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar Calandra',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_solda',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar Solda SAW',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_evs',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar EVS',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_ut',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar UT',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_lancar_flange',
+    group: 'PRODUÇÃO',
+    label: 'Produção: lançar Flange',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_editar_todos',
+    group: 'PRODUÇÃO',
+    label: 'Produção: editar lançamentos de outros autores',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_refugar',
+    group: 'PRODUÇÃO',
+    label: 'Produção: registrar refugo',
     defaultRoles: [],
   },
   // Sem role padrão: quem recebe notificação de chamado jurídico é decidido
@@ -503,7 +575,7 @@ export function pageIdForPath(path: string): string | undefined {
  * `pages.test.ts` garante que todo grupo de `PAGES` esteja listado.
  */
 export const GROUP_ORDER = [
-  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'FACILITIES', 'RH',
+  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PRODUÇÃO', 'FACILITIES', 'RH',
   'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
 ] as const;
 

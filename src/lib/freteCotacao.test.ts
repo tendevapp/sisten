@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   pesoTotalItem, ratear, simularFreteCotacao, aplicarFreteTeorico,
-  itensTransportados, PESO_LIMITE_FRACIONADO_KG,
+  itensTransportados, PESO_LIMITE_FRACIONADO_KG, alinharPesoComVinculo,
 } from './freteCotacao';
 import type { CotacaoPropostaDraft, CotacaoPropostaItemDraft, TabelaFrete } from '../types';
 
@@ -45,6 +45,8 @@ function proposta(itens: CotacaoPropostaItemDraft[], p: Partial<CotacaoPropostaD
     dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null,
     observacoes_gerais: null, campos_faltantes: [], revisado: false,
     extracao_id: null, extraido_raw: {} as any,
+    arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
+    arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
     itens,
     ...p,
   };
@@ -74,6 +76,48 @@ const ROTA_CAMPINAS: TabelaFrete = {
 
 const TABELA = [ROTA_SP];
 const TABELA_COM_MEDIA_UF = [ROTA_SP, ROTA_CAMPINAS];
+
+describe('alinharPesoComVinculo', () => {
+  it('primeira vez que vê o RI: adota o peso do item e memoriza no mapa', () => {
+    const alvo = item({ processo_item_id: 'pi-1', peso_unitario_kg: 3.2 });
+    const { itens, pesoPorRi } = alinharPesoComVinculo([alvo], new Map());
+    expect(itens[0]).toBe(alvo); // nada muda — é a própria referência
+    expect(pesoPorRi.get('pi-1')).toBe(3.2);
+  });
+
+  it('RI já visto: sobrescreve o peso da proposta para bater com o que já foi fixado', () => {
+    const alvo = item({ processo_item_id: 'pi-1', peso_unitario_kg: 5 });
+    const { itens, pesoPorRi } = alinharPesoComVinculo([alvo], new Map([['pi-1', 3.2]]));
+    expect(itens[0].peso_unitario_kg).toBe(3.2);
+    expect(pesoPorRi.get('pi-1')).toBe(3.2);
+  });
+
+  it('não mexe em item sem vínculo (processo_item_id nulo)', () => {
+    const alvo = item({ processo_item_id: null, peso_unitario_kg: 5 });
+    const { itens } = alinharPesoComVinculo([alvo], new Map([['pi-1', 3.2]]));
+    expect(itens[0]).toBe(alvo);
+    expect(itens[0].peso_unitario_kg).toBe(5);
+  });
+
+  it('não muta o mapa recebido — devolve uma cópia atualizada', () => {
+    const original = new Map([['pi-1', 3.2]]);
+    const alvo = item({ processo_item_id: 'pi-2', peso_unitario_kg: 7 });
+    const { pesoPorRi } = alinharPesoComVinculo([alvo], original);
+    expect(original.has('pi-2')).toBe(false);
+    expect(pesoPorRi.get('pi-2')).toBe(7);
+  });
+
+  it('duas propostas com descrições diferentes do mesmo RI acabam com o mesmo peso', () => {
+    const propostaA = item({ _key: 'a', processo_item_id: 'pi-1', descricao_produto: 'ELETRODO 3,25MM', peso_unitario_kg: 3 });
+    const propostaB = item({ _key: 'b', processo_item_id: 'pi-1', descricao_produto: 'ELETRODO REVESTIDO E7018', peso_unitario_kg: 5 });
+
+    const passo1 = alinharPesoComVinculo([propostaA], new Map());
+    const passo2 = alinharPesoComVinculo([propostaB], passo1.pesoPorRi);
+
+    expect(passo1.itens[0].peso_unitario_kg).toBe(3);
+    expect(passo2.itens[0].peso_unitario_kg).toBe(3);
+  });
+});
 
 describe('pesoTotalItem', () => {
   it('multiplica o peso unitário estimado pela quantidade cotada', () => {

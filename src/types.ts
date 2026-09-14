@@ -1405,6 +1405,15 @@ export interface CotacaoProposta {
   revisado: boolean;
   extracao_id: string | null;
   extraido_raw: PropostaExtraida | null;
+  /** Caminho do PDF/imagem original no bucket `cotacoes-arquivos` — nulo em proposta colada manualmente ou salva antes desta funcionalidade. */
+  arquivo_storage_path: string | null;
+  arquivo_mime_type: string | null;
+  arquivo_tamanho_bytes: number | null;
+  /** Markdown extraído do documento — cópia editável; ver `arquivo_markdown_editado_em`. */
+  arquivo_markdown: string | null;
+  /** `null` enquanto for a extração original, sem correção manual. */
+  arquivo_markdown_editado_em: string | null;
+  arquivo_markdown_editado_por: string | null;
   criado_por: string | null;
   criado_por_nome: string;
   created_at: string;
@@ -1541,6 +1550,13 @@ export interface CotacaoPropostaDraft {
   revisado: boolean;
   extracao_id: string | null;
   extraido_raw: PropostaExtraida;
+  /** Ver `CotacaoProposta.arquivo_storage_path` e vizinhos — mesmo significado. */
+  arquivo_storage_path: string | null;
+  arquivo_mime_type: string | null;
+  arquivo_tamanho_bytes: number | null;
+  arquivo_markdown: string | null;
+  arquivo_markdown_editado_em: string | null;
+  arquivo_markdown_editado_por: string | null;
   itens: CotacaoPropostaItemDraft[];
 }
 

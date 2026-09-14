@@ -22,11 +22,11 @@ import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
 import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao } from '../lib/cotacoes';
 import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
-import { simularFreteCotacao, aplicarFreteTeorico } from '../lib/freteCotacao';
+import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo } from '../lib/freteCotacao';
 import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
-  excluirProcessoCotacao, atualizarItensCotacao,
+  excluirProcessoCotacao, atualizarItensCotacao, uploadArquivoCotacao, atualizarMarkdownProposta,
 } from '../lib/cotacoesApi';
 import type {
   Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
@@ -63,6 +63,9 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
     valor_total_orcamento: p.valor_total_orcamento, observacoes_gerais: p.observacoes_gerais,
     campos_faltantes: p.campos_faltantes, revisado: p.revisado, extracao_id: p.extracao_id,
     extraido_raw: p.extraido_raw as any,
+    arquivo_storage_path: p.arquivo_storage_path, arquivo_mime_type: p.arquivo_mime_type,
+    arquivo_tamanho_bytes: p.arquivo_tamanho_bytes, arquivo_markdown: p.arquivo_markdown,
+    arquivo_markdown_editado_em: p.arquivo_markdown_editado_em, arquivo_markdown_editado_por: p.arquivo_markdown_editado_por,
     itens: (p.itens ?? []).map(it => ({
       _key: it.id, processo_item_id: it.processo_item_id, fora_escopo: it.fora_escopo,
       vinculo_origem: it.vinculo_origem, vinculo_score: it.vinculo_score, ri: it.ri, material_code: it.material_code,
@@ -135,6 +138,26 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   const pendentesExclusaoRef = useRef<Map<string, { timeoutId: number; draft: CotacaoPropostaDraft; processoId: string }>>(new Map());
   const processoIdAtualRef = useRef<string | null>(null);
   useEffect(() => { processoIdAtualRef.current = processo?.id ?? null; }, [processo]);
+
+  // Peso canônico por RI (processo_item_id) desta sessão de análise — a
+  // primeira estimativa vista para um item vira a referência para toda
+  // cotação seguinte que citar o mesmo RI (ver `alinharPesoComVinculo`).
+  // Precisa ser ref, não state: é bookkeeping interno que não deve disparar
+  // re-render sozinho, só junto da proposta que o atualizou.
+  const pesoPorRiRef = useRef<Map<string, number>>(new Map());
+
+  /** Semeia o mapa de peso canônico a partir de propostas já existentes (salvas ou em rascunho) — chamado ao abrir um processo. */
+  const construirPesoPorRi = (drafts: CotacaoPropostaDraft[]): Map<string, number> => {
+    const mapa = new Map<string, number>();
+    for (const draft of drafts) {
+      for (const item of draft.itens) {
+        if (item.processo_item_id && item.peso_unitario_kg != null && !mapa.has(item.processo_item_id)) {
+          mapa.set(item.processo_item_id, item.peso_unitario_kg);
+        }
+      }
+    }
+    return mapa;
+  };
 
   const topRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -241,7 +264,9 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       setProcesso(p);
       setEscopo(itens);
       const rascunho = lerRascunhoPropostas(id);
-      setPropostas([...props.map(propostaSalvaParaDraft), ...rascunho]);
+      const propostasIniciais = [...props.map(propostaSalvaParaDraft), ...rascunho];
+      pesoPorRiRef.current = construirPesoPorRi(propostasIniciais);
+      setPropostas(propostasIniciais);
       if (rascunho.length > 0) {
         toast.info(`${rascunho.length} proposta(s) extraída(s) por IA recuperada(s) do rascunho local — ainda não salvas.`);
       }
@@ -310,6 +335,20 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     return { ...draft, itens: comTrigrama.map(it => revisarDivergencias(it, escopo)) };
   };
 
+  /**
+   * Trava o peso no mesmo valor para o mesmo RI em toda cotação da sessão —
+   * roda depois de `resolverVinculos` (precisa do `processo_item_id` já
+   * resolvido) e antes de `comFreteTeorico` (o frete depende do peso final).
+   * Sem isso, duas propostas do mesmo item pesam diferente só porque a IA
+   * leu descrições diferentes, e o frete teórico simulado deixa de ser
+   * comparável entre fornecedores — que é o único motivo dele existir.
+   */
+  const alinharPeso = (draft: CotacaoPropostaDraft): CotacaoPropostaDraft => {
+    const { itens, pesoPorRi } = alinharPesoComVinculo(draft.itens, pesoPorRiRef.current);
+    pesoPorRiRef.current = pesoPorRi;
+    return { ...draft, itens };
+  };
+
   /** Retorna se a extração deu certo — quem chama (upload ou colagem manual) só deve descartar o markdown de origem em caso de sucesso, senão o usuário perde um arquivo já convertido (às vezes com custo de IA) por uma falha na etapa seguinte. */
   const handleProcessarMarkdown = async (markdown: string, arquivoOrigem: string | null): Promise<boolean> => {
     if (!processo) return false;
@@ -334,7 +373,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       }
 
       const novasDrafts = resposta.propostas.map(bruta => {
-        const draft = normalizarProposta(bruta, { arquivoOrigem: arquivoOrigem ?? undefined });
+        const draft = normalizarProposta(bruta, { arquivoOrigem: arquivoOrigem ?? undefined, arquivoMarkdown: markdown });
         draft.extracao_id = resposta.extracao_id;
         return draft;
       });
@@ -343,7 +382,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       // diferente na memória (cotacao_descricao_map é por CNPJ).
       const processadas: CotacaoPropostaDraft[] = [];
       for (const draft of novasDrafts) {
-        processadas.push(comFreteTeorico(await resolverVinculos(draft)));
+        processadas.push(comFreteTeorico(alinharPeso(await resolverVinculos(draft))));
       }
 
       setPropostas(prev => [...prev, ...processadas]);
@@ -363,7 +402,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     for (const draft of novasPropostas) {
       const precisaVinculo = draft.itens.some(it => !it.processo_item_id && !it.fora_escopo && !it.desconsiderado);
       const comVinculo = precisaVinculo ? await resolverVinculos(draft) : draft;
-      processadas.push(comFreteTeorico(comVinculo));
+      processadas.push(comFreteTeorico(alinharPeso(comVinculo)));
     }
 
     setPropostas(prev => {
@@ -379,6 +418,20 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
   const handleChangeProposta = (key: string, patch: Partial<CotacaoPropostaDraft>) => {
     setPropostas(prev => prev.map(p => (p._key === key ? { ...p, ...patch } : p)));
+  };
+
+  /**
+   * Corrige o Markdown extraído de uma proposta — o comprador identificou um
+   * erro de conversão (tabela quebrada, número trocado pelo OCR) ao conferir
+   * a cotação original. `propostaId` é o UUID real: só proposta salva pode
+   * ser editada, `VerCotacaoOriginalModal` só mostra a opção nesse caso.
+   */
+  const handleEditarMarkdown = async (propostaId: string, novoMarkdown: string) => {
+    await atualizarMarkdownProposta(propostaId, novoMarkdown, user.name);
+    const agora = new Date().toISOString();
+    setPropostas(prev => prev.map(p => (p._key === propostaId
+      ? { ...p, arquivo_markdown: novoMarkdown, arquivo_markdown_editado_em: agora, arquivo_markdown_editado_por: user.name }
+      : p)));
   };
 
   /** Campos cuja edição muda o frete da carga inteira, e não só a linha editada. */
@@ -473,10 +526,34 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
 
     setSalvandoKey(key);
     try {
-      const payload: CotacaoPropostaDraft = {
+      let payload: CotacaoPropostaDraft = {
         ...draft,
         itens: draft.itens.map(it => ({ ...it, extraido_raw: it.extraido_raw })),
       };
+
+      // O upload só acontece aqui — no primeiro salvamento — nunca antes: um
+      // rascunho descartado sem "Salvar proposta" não deve deixar arquivo
+      // órfão no Storage. Melhor esforço: se o upload falhar (rede, arquivo
+      // já não está mais na memória do navegador), salva a proposta do
+      // mesmo jeito — o comprador não pode perder uma extração já pronta por
+      // causa da cópia de arquivo, que dá para tentar de novo depois.
+      if (!payload.arquivo_storage_path && payload.arquivo_origem) {
+        const arquivo = arquivosOriginais.get(payload.arquivo_origem);
+        if (arquivo) {
+          try {
+            const enviado = await uploadArquivoCotacao(processo.id, arquivo);
+            payload = {
+              ...payload,
+              arquivo_storage_path: enviado.path,
+              arquivo_mime_type: enviado.mimeType,
+              arquivo_tamanho_bytes: enviado.tamanhoBytes,
+            };
+          } catch (err) {
+            console.error('Falha ao enviar o arquivo original da proposta para o Storage:', err);
+          }
+        }
+      }
+
       await salvarProcessoCotacao({ processoId: processo.id, propostas: [payload], usuarioId: user.id, usuarioNome: user.name });
 
       // Recarrega as propostas salvas do Supabase para obter os IDs reais (UUIDs)
@@ -664,6 +741,9 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           onAtualizarProposta={handleChangeProposta}
           onDecisaoSalva={handleDecisaoMapaSalva}
           onRecarregarPropostas={recarregarPropostas}
+          arquivosOriginais={arquivosOriginais}
+          onEditarMarkdown={handleEditarMarkdown}
+          compradorPadrao={user.grupo_compras}
         />
       )}
 
@@ -737,6 +817,8 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
                 onExcluirSalva={() => handleExcluirProposta(p._key)}
                 arquivoOriginal={p.arquivo_origem ? arquivosOriginais.get(p.arquivo_origem) : undefined}
                 tabelaFrete={tabelaFrete}
+                onEditarMarkdown={md => handleEditarMarkdown(p._key, md)}
+                processoId={processo.id}
               />
             ))}
 

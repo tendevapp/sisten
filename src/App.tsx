@@ -82,6 +82,9 @@ const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 const DemandasWorkspace = lazy(() => import('./views/demandas/DemandasWorkspace'));
 const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
+const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
+const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
+const ProducaoOperacao = lazy(() => import('./views/producao/ProducaoOperacao'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
 // estado local dela: formulário preenchido, filtros, busca, seleção, edição
@@ -97,6 +100,7 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
   '/relatorios',
   '/suprimentos',
   '/almoxarifado',
+  '/producao',
   '/financeiro',
   '/admin',
   '/facilities',
@@ -931,6 +935,44 @@ export default function App() {
         if (canAccessPage(user, 'almoxarifado_home')) {
           return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="almoxarifado" />;
         }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      // Módulo Produção — liberação de qualidade da fabricação de torres,
+      // migrado do sistema NAV1. Hub genérico (ModuleHome) + duas subpáginas;
+      // as etapas em si (Corte, Chanfro, Calandra, Solda) vivem dentro de
+      // Lançamentos, no mesmo desenho de Projetos (uma rota, abas internas).
+      case '/producao':
+        if (canAccessPage(user, 'producao_home')) {
+          return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="producao" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/lancamentos':
+        if (canAccessPage(user, 'prod_lancamentos')) {
+          return <ProducaoLancamentos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/consulta':
+        if (canAccessPage(user, 'prod_consulta')) {
+          return <ProducaoConsulta user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/pendencias':
+        if (canAccessPage(user, 'prod_pendencias')) return <ProducaoOperacao modo="pendencias" user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/entrega':
+        if (canAccessPage(user, 'prod_entrega')) return <ProducaoOperacao modo="entrega" user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/painel':
+        if (canAccessPage(user, 'prod_painel')) return <ProducaoOperacao modo="painel" user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/cadastros':
+        if (canAccessPage(user, 'prod_cadastros')) return <ProducaoOperacao modo="cadastros" user={user} onNavigate={handleNavigate} />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/financeiro':

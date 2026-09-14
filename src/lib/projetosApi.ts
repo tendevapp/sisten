@@ -550,3 +550,98 @@ export async function estornarDocumento(
   const { error } = await db(tabela).update(marca).eq('id', documentoId);
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------------------
+// Matriz de Autonomia de Kits por Tramo
+// ---------------------------------------------------------------------------
+
+export interface ProjMatrizAutonomiaKitRow {
+  id: string;
+  subprojeto_id: string;
+  torre_numero: number;
+  tramo: string;
+  subkit: string;
+  status: number;
+  serie: string | null;
+  observacao: string | null;
+  atualizado_por_nome: string | null;
+  updated_at: string;
+}
+
+export interface ProjTorrePlanejamentoRow {
+  id: string;
+  subprojeto_id: string;
+  torre_numero: number;
+  semana: string | null;
+  data_alvo: string | null;
+  observacao: string | null;
+  updated_at: string;
+}
+
+export async function listarMatrizAutonomia(subprojetoId = 'SP01'): Promise<ProjMatrizAutonomiaKitRow[]> {
+  const { data, error } = await db('proj_matriz_autonomia_kits')
+    .select('*')
+    .eq('subprojeto_id', subprojetoId)
+    .order('torre_numero')
+    .order('tramo');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ProjMatrizAutonomiaKitRow[];
+}
+
+export async function listarPlanejamentoTorres(subprojetoId = 'SP01'): Promise<ProjTorrePlanejamentoRow[]> {
+  const { data, error } = await db('proj_torres_planejamento')
+    .select('*')
+    .eq('subprojeto_id', subprojetoId)
+    .order('torre_numero');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ProjTorrePlanejamentoRow[];
+}
+
+export async function salvarCelulaMatriz(params: {
+  subprojeto_id: string;
+  torre_numero: number;
+  tramo: string;
+  subkit: string;
+  status: number;
+  serie?: string | null;
+  observacao?: string | null;
+  atualizado_por_nome?: string | null;
+}): Promise<void> {
+  const { error } = await db('proj_matriz_autonomia_kits').upsert(
+    {
+      subprojeto_id: params.subprojeto_id,
+      torre_numero: params.torre_numero,
+      tramo: params.tramo,
+      subkit: params.subkit,
+      status: params.status,
+      serie: params.serie ?? null,
+      observacao: params.observacao ?? null,
+      atualizado_por_nome: params.atualizado_por_nome ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'subprojeto_id,torre_numero,tramo,subkit' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function salvarPlanejamentoTorre(params: {
+  subprojeto_id: string;
+  torre_numero: number;
+  semana?: string | null;
+  data_alvo?: string | null;
+  observacao?: string | null;
+}): Promise<void> {
+  const { error } = await db('proj_torres_planejamento').upsert(
+    {
+      subprojeto_id: params.subprojeto_id,
+      torre_numero: params.torre_numero,
+      semana: params.semana ?? null,
+      data_alvo: params.data_alvo ?? null,
+      observacao: params.observacao ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'subprojeto_id,torre_numero' },
+  );
+  if (error) throw new Error(error.message);
+}
+

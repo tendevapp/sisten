@@ -47,6 +47,8 @@ function proposta(nome: string, itens: CotacaoPropostaItemDraft[], p: Partial<Co
       frete_modalidade: null, transportadora_indicada: null, faturamento_minimo: null,
       dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, observacoes_gerais: null,
       campos_faltantes: [], revisado: true, extracao_id: null, extraido_raw: {} as any,
+      arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
+      arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
       itens,
       ...p,
     },
@@ -493,6 +495,45 @@ describe('resumirFornecedores e cenários', () => {
 
   it('não inventa cenário de fornecedor único quando não há proposta', () => {
     expect(cenarioFornecedorUnico([], [])).toBeNull();
+  });
+
+  it('marca freteEhTeorico como falso quando o comprador já informou o frete', () => {
+    const a = resumos.find(r => r.propostaKey === 'A')!;
+    expect(a.freteEhTeorico).toBe(false);
+    const parcela = cenarioFornecedorUnico(linhas, resumos)!.parcelas[0];
+    expect(parcela.freteEhTeorico).toBe(false);
+  });
+});
+
+describe('freteEhTeorico — distingue estimativa de frete informado', () => {
+  const propostasFob = [
+    proposta('FOB', [item({ _key: 'f1', descricao_produto: 'FITA ISOLANTE 19MM', preco_unitario: 100, quantidade: 1, frete_teorico: 40 })]),
+  ];
+
+  it('é true quando o total do fornecedor veio só do frete teórico dos itens', () => {
+    const linhas = agruparLinhasMapa({ escopo: [], propostas: propostasFob, opcoes: OPCOES_CUSTO_PADRAO });
+    const resumos = resumirFornecedores({ linhas, propostas: propostasFob });
+    const fob = resumos.find(r => r.propostaKey === 'FOB')!;
+    expect(fob.freteEhTeorico).toBe(true);
+    expect(fob.frete).toBe(40);
+  });
+
+  it('vira false assim que o comprador informa o frete cotado, mesmo que o valor seja igual ao teórico', () => {
+    const fretePorProposta = { FOB: 40 };
+    const linhas = agruparLinhasMapa({ escopo: [], propostas: propostasFob, opcoes: OPCOES_CUSTO_PADRAO, fretePorProposta });
+    const resumos = resumirFornecedores({ linhas, propostas: propostasFob, fretePorProposta });
+    const fob = resumos.find(r => r.propostaKey === 'FOB')!;
+    expect(fob.freteEhTeorico).toBe(false);
+    expect(fob.frete).toBe(40);
+  });
+
+  it('é false quando não há frete nenhum (nem teórico, nem informado)', () => {
+    const propostasSemPeso = [proposta('SEM_PESO', [item({ descricao_produto: 'ITEM QUALQUER', preco_unitario: 10 })])];
+    const linhas = agruparLinhasMapa({ escopo: [], propostas: propostasSemPeso, opcoes: OPCOES_CUSTO_PADRAO });
+    const resumos = resumirFornecedores({ linhas, propostas: propostasSemPeso });
+    const r = resumos.find(x => x.propostaKey === 'SEM_PESO')!;
+    expect(r.freteEhTeorico).toBe(false);
+    expect(r.frete).toBeNull();
   });
 });
 

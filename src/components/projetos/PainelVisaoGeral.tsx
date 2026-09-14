@@ -13,9 +13,10 @@ import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, CheckCircle2, Factory, PackageCheck, TriangleAlert } from 'lucide-react';
 import KpiCard from '../charts/KpiCard';
 import { formatInt, formatQtd } from '../../lib/format';
-import { COR_ESTADO, ROTULO_ESTADO, TRAMOS, type EstadoCelula, type Tramo } from '../../lib/projetos';
+import { TRAMOS, type EstadoCelula, type Tramo } from '../../lib/projetos';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 import type { AbaProjetos } from '../../views/projetos/Projetos';
+import MatrizAutonomiaKits from './MatrizAutonomiaKits';
 
 interface Props {
   dados: DadosProjetos;
@@ -23,13 +24,10 @@ interface Props {
 }
 
 export default function PainelVisaoGeral({ dados, onIrPara }: Props) {
-  const { tramosDoSubprojeto, autonomia, rateio, projecao, kits, subprojetoAtivo, loading } = dados;
-  const [celulaAberta, setCelulaAberta] = useState<string | null>(null);
+  const { tramosDoSubprojeto, autonomia, rateio, projecao, kits, subprojetoAtivo } = dados;
 
   /**
-   * Estado de cada célula. `disponivel_separar` é derivado — o tramo está
-   * pendente E a autonomia daquele tramo cobre pelo menos um kit. Guardar isso
-   * no banco seria guardar uma conta que muda a cada NF recebida.
+   * Estado de cada célula para o indicador de torres entregues.
    */
   const estadoDaCelula = useMemo(() => {
     const podeSeparar = new Map<Tramo, boolean>(
@@ -53,14 +51,6 @@ export default function PainelVisaoGeral({ dados, onIrPara }: Props) {
     }
     return Array.from(porTorre.entries()).sort((a, b) => a[0] - b[0]);
   }, [tramosDoSubprojeto]);
-
-  const contagem = useMemo(() => {
-    const c: Record<EstadoCelula, number> = {
-      pendente: 0, disponivel_separar: 0, em_premontagem: 0, kit_pronto: 0, entregue: 0,
-    };
-    estadoDaCelula.forEach((estado) => { c[estado] += 1; });
-    return c;
-  }, [estadoDaCelula]);
 
   const torresCompletas = useMemo(
     () => torres.filter(([, linha]) => TRAMOS.every((t) => estadoDaCelula.get(linha[t]) === 'entregue')).length,
@@ -135,82 +125,8 @@ export default function PainelVisaoGeral({ dados, onIrPara }: Props) {
         </button>
       )}
 
-      {/* Legenda + matriz */}
-      <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h3 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-              Matriz de progresso — {subprojetoAtivo?.nome ?? 'Subprojeto'}
-            </h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
-              Uma linha por torre, uma coluna por tramo. Clique numa célula para ver a série.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {(Object.keys(ROTULO_ESTADO) as EstadoCelula[]).map((estado) => (
-              <span key={estado} className="inline-flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
-                <span className="h-3 w-3 rounded" style={{ background: COR_ESTADO[estado] }} aria-hidden="true" />
-                {ROTULO_ESTADO[estado]} ({contagem[estado]})
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {loading && <div className="h-40 rounded-lg animate-pulse" style={{ background: 'var(--hairline)' }} />}
-
-        {!loading && !torres.length && (
-          <p className="text-sm py-8 text-center" style={{ color: 'var(--ink-muted)' }}>
-            Nenhum tramo cadastrado para este subprojeto.
-          </p>
-        )}
-
-        {!loading && torres.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-separate" style={{ borderSpacing: '3px' }}>
-              <thead>
-                <tr>
-                  <th className="text-left font-bold px-2 py-1" style={{ color: 'var(--ink-muted)' }}>Torre</th>
-                  {TRAMOS.map((t) => (
-                    <th key={t} className="font-bold px-2 py-1" style={{ color: 'var(--ink-muted)' }}>{t}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {torres.map(([numero, linha]) => (
-                  <tr key={numero}>
-                    <td className="px-2 py-1 font-bold whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
-                      Torre {String(numero).padStart(2, '0')}
-                    </td>
-                    {TRAMOS.map((tramo) => {
-                      const id = linha[tramo];
-                      const estado = id ? estadoDaCelula.get(id) ?? 'pendente' : 'pendente';
-                      const aberta = celulaAberta === id;
-                      return (
-                        <td key={tramo} className="p-0">
-                          <button
-                            onClick={() => setCelulaAberta(aberta ? null : id)}
-                            disabled={!id}
-                            title={id ? `${id} — ${ROTULO_ESTADO[estado]}` : 'Sem cadastro'}
-                            className="w-full min-w-[64px] rounded px-2 py-2 text-[10px] font-bold transition-transform hover:scale-105 cursor-pointer disabled:opacity-30 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-1"
-                            style={{
-                              background: COR_ESTADO[estado],
-                              color: '#fff',
-                              outlineColor: 'var(--brand)',
-                              boxShadow: aberta ? '0 0 0 2px var(--ink-primary)' : undefined,
-                            }}
-                          >
-                            {aberta ? id : ROTULO_ESTADO[estado].split(' ')[0]}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Matriz de Autonomia de Kits por Tramo — substitui a antiga matriz de progresso */}
+      <MatrizAutonomiaKits dados={dados} />
 
       {/* Top gargalos: o que impede o próximo kit de cada tramo */}
       <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>

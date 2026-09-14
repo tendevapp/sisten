@@ -561,6 +561,13 @@ export interface ResumoFornecedor {
   /** Soma dos itens sem frete (bruto + IPI − créditos). */
   totalLiquido: number;
   frete: number | null;
+  /**
+   * `true` quando `frete` veio da simulação por peso (tabela Bahia Sul) e não
+   * de um valor que o comprador digitou. É a diferença entre "o frete que a
+   * IA estimou" e "o frete que o fornecedor cotou" — a matriz não pode tratar
+   * os dois como a mesma certeza.
+   */
+  freteEhTeorico: boolean;
   /** `totalLiquido` + frete — o desembolso se comprar tudo deste fornecedor. */
   totalComFrete: number;
   prazoEntregaDias: number | null;
@@ -599,6 +606,7 @@ export function resumirFornecedores(params: {
     const freteTeorico = celulas.reduce((s, c) => s + c.custo.freteRateado, 0);
     const freteInformado = params.fretePorProposta?.[key] ?? null;
     const frete = freteInformado ?? (freteTeorico > 0 ? freteTeorico : null);
+    const freteEhTeorico = freteInformado == null && freteTeorico > 0;
     const minimo = proposta.faturamento_minimo;
 
     return {
@@ -614,6 +622,7 @@ export function resumirFornecedores(params: {
       totalCreditos,
       totalLiquido,
       frete,
+      freteEhTeorico,
       totalComFrete: totalLiquido + (frete ?? 0),
       prazoEntregaDias: proposta.prazo_entrega_dias,
       condicaoPagamento: proposta.condicao_pagamento,
@@ -634,6 +643,8 @@ export interface ParcelaCenario {
   itens: number;
   subtotal: number;
   frete: number;
+  /** Ver `ResumoFornecedor.freteEhTeorico` — mesmo significado, herdado do fornecedor. */
+  freteEhTeorico: boolean;
   total: number;
   /** Fornecedor exige faturamento mínimo que esta parcela não atinge. */
   abaixoDoMinimo: boolean;
@@ -684,6 +695,7 @@ function montarCenario(
       itens: celulas.length,
       subtotal,
       frete,
+      freteEhTeorico: resumo?.freteEhTeorico ?? false,
       total: subtotal + frete,
       abaixoDoMinimo: minimo != null && minimo > 0 && bruto < minimo,
     };

@@ -15,10 +15,14 @@ const brl = (v: number | null | undefined) =>
 
 const FRETE_LABEL: Record<string, string> = { CIF: 'CIF (por conta do fornecedor)', FOB: 'FOB (por conta do comprador)', OUTRO: 'A combinar' };
 
-export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProcesso: string): Promise<void> {
-  const { doc, font, fontBold, logo } = await createDoc();
-  const writer = new PdfTextWriter(doc, font, fontBold, logo);
-
+/**
+ * Desenha um pedido inteiro (cabeçalho, itens, totais, assinaturas) na
+ * página atual do `writer`. Extraído de `exportPedidoCompraPdf` para poder
+ * desenhar vários pedidos em sequência no MESMO documento — ver
+ * `exportPedidosCompraPdfUnico`, usado quando o comprador escolhe baixar um
+ * PDF só com todos os pedidos em vez de um arquivo por fornecedor.
+ */
+function desenharPedidoCompra(writer: PdfTextWriter, pedido: PedidoFornecedor, numeroProcesso: string): void {
   const fornecedorTitulo = nomeFornecedorCurto(pedido.fornecedorRazaoSocial) || pedido.fornecedorRazaoSocial;
 
   writer.drawDocumentHeader({
@@ -80,9 +84,37 @@ export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProc
     { role: 'Comprador Responsável' },
     { role: 'Aprovação de Compras' },
   ]);
+}
 
+const nomeArquivoFornecedor = (razaoSocial: string) =>
+  razaoSocial.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
+
+/** Um PDF por fornecedor — o padrão de sempre, para quando o comprador vai colocar cada pedido separadamente. */
+export async function exportPedidoCompraPdf(pedido: PedidoFornecedor, numeroProcesso: string): Promise<void> {
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  desenharPedidoCompra(writer, pedido, numeroProcesso);
   writer.finalizeDoc('FRM.SUP-0007');
 
-  const nomeArquivo = pedido.fornecedorRazaoSocial.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 40);
-  await downloadPdf(doc, `pedido-${numeroProcesso}-${nomeArquivo}.pdf`);
+  await downloadPdf(doc, `pedido-${numeroProcesso}-${nomeArquivoFornecedor(pedido.fornecedorRazaoSocial)}.pdf`);
+}
+
+/**
+ * Todos os pedidos do processo num único PDF — cada fornecedor começa numa
+ * página nova, mas é um arquivo só para baixar. Alternativa a chamar
+ * `exportPedidoCompraPdf` pedido por pedido, quando o comprador prefere um
+ * arquivo consolidado a vários downloads separados.
+ */
+export async function exportPedidosCompraPdfUnico(pedidos: PedidoFornecedor[], numeroProcesso: string): Promise<void> {
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  pedidos.forEach((pedido, idx) => {
+    if (idx > 0) writer.addNewPage();
+    desenharPedidoCompra(writer, pedido, numeroProcesso);
+  });
+
+  writer.finalizeDoc('FRM.SUP-0007');
+  await downloadPdf(doc, `pedidos-${numeroProcesso}-todos.pdf`);
 }

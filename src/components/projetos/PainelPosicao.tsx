@@ -11,7 +11,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Boxes, Check, Download, Pencil, Search, X } from 'lucide-react';
+import { Boxes, Check, Download, Layers, LayoutGrid, Pencil, Search, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { TableEmpty } from '../ui/DataTable';
 import { useToast } from '../ui/Toast';
@@ -19,6 +19,7 @@ import { atualizarItem } from '../../lib/projetosApi';
 import { formatInt, formatQtd } from '../../lib/format';
 import { TRAMOS } from '../../lib/projetos';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
+import MatrizAutonomiaKits from './MatrizAutonomiaKits';
 
 interface Props { dados: DadosProjetos }
 
@@ -131,55 +132,97 @@ export default function PainelPosicao({ dados }: Props) {
     XLSX.writeFile(wb, `posicao-projetos-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  const [modoAutonomia, setModoAutonomia] = useState<'matriz' | 'resumo'>('resumo');
+
   return (
     <div className="space-y-5">
-      {/* Autonomia de kitting */}
-      <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-          <h3 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>Autonomia de kitting</h3>
+      {/* Seletor de visualização da autonomia */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 p-1 rounded-xl border bg-[var(--surface-raised)]" style={{ borderColor: 'var(--hairline)' }}>
+          <button
+            onClick={() => setModoAutonomia('matriz')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+            style={{
+              background: modoAutonomia === 'matriz' ? 'var(--brand)' : 'transparent',
+              color: modoAutonomia === 'matriz' ? '#fff' : 'var(--ink-secondary)',
+            }}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Matriz de Autonomia (Torres × Kits)
+          </button>
+          <button
+            onClick={() => setModoAutonomia('resumo')}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+            style={{
+              background: modoAutonomia === 'resumo' ? 'var(--brand)' : 'transparent',
+              color: modoAutonomia === 'resumo' ? '#fff' : 'var(--ink-secondary)',
+            }}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Resumo por Tramo (T1 a T5)
+          </button>
+        </div>
+
+        {modoAutonomia === 'resumo' && (
           <p className="text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>
             Rateado T1→T5: <span style={{ color: 'var(--brand)' }}>{formatInt(rateio.torresCompletas)} torre(s) completa(s)</span>
           </p>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--ink-muted)' }}>
-          A coluna "isolada" é quantos kits cada tramo faria se tivesse o estoque todo para si; a "rateada" divide as
-          peças compartilhadas na fila de montagem. Somar as isoladas conta o mesmo parafuso mais de uma vez — foi o erro
-          da planilha.
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {autonomia.map((a) => {
-            const rateada = rateio.porTramo.find((r) => r.tramo === a.tramo);
-            const prontos = dados.kitsProntosPorTramo.get(a.tramo)?.length ?? 0;
-            return (
-              <div key={a.tramo} className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)' }}>
-                <p className="text-xs font-extrabold mb-2" style={{ color: 'var(--ink-primary)' }}>Kit {a.tramo}</p>
-                <dl className="space-y-1 text-[11px]">
-                  <Linha rotulo="Separáveis (isolada)" valor={formatInt(a.kitsPossiveis)} destaque />
-                  <Linha rotulo="Separáveis (rateada)" valor={formatQtd(rateada?.kits ?? 0)} />
-                  <Linha rotulo="Prontos no buffer" valor={formatInt(prontos)} />
-                  <Linha rotulo="Itens no romaneio" valor={formatInt(a.itensNoKit)} />
-                </dl>
-                {a.criticos.length > 0 && (
-                  <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
-                    <p className="text-[10px] font-bold mb-1" style={{ color: 'var(--ink-muted)' }}>Top 5 críticos</p>
-                    <ul className="space-y-0.5">
-                      {a.criticos.map((c) => (
-                        <li key={c.partNumberNorm} className="flex justify-between gap-2 text-[10px]" title={c.descricao}>
-                          <span className="truncate" style={{ color: 'var(--ink-secondary)' }}>{c.partNumber}</span>
-                          <span className="tabular-nums font-bold shrink-0" style={{ color: c.kitsPossiveis > 0 ? 'var(--ink-muted)' : 'var(--abc-c)' }}>
-                            {formatInt(c.kitsPossiveis)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        )}
       </div>
+
+      {/* Visualização da Matriz Operacional */}
+      {modoAutonomia === 'matriz' && <MatrizAutonomiaKits dados={dados} />}
+
+      {/* Visualização de Resumo com Cards por Tramo */}
+      {modoAutonomia === 'resumo' && (
+        <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+            <h3 className="text-sm font-extrabold" style={{ color: 'var(--ink-primary)' }}>Autonomia de kitting consolidada</h3>
+            <p className="text-xs font-bold" style={{ color: 'var(--ink-secondary)' }}>
+              Rateado T1→T5: <span style={{ color: 'var(--brand)' }}>{formatInt(rateio.torresCompletas)} torre(s) completa(s)</span>
+            </p>
+          </div>
+          <p className="text-xs mb-4" style={{ color: 'var(--ink-muted)' }}>
+            A coluna "isolada" é quantos kits cada tramo faria se tivesse o estoque todo para si; a "rateada" divide as
+            peças compartilhadas na fila de montagem. Somar as isoladas conta o mesmo parafuso mais de uma vez — foi o erro
+            da planilha.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {autonomia.map((a) => {
+              const rateada = rateio.porTramo.find((r) => r.tramo === a.tramo);
+              const prontos = dados.kitsProntosPorTramo.get(a.tramo)?.length ?? 0;
+              return (
+                <div key={a.tramo} className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)' }}>
+                  <p className="text-xs font-extrabold mb-2" style={{ color: 'var(--ink-primary)' }}>Kit {a.tramo}</p>
+                  <dl className="space-y-1 text-[11px]">
+                    <Linha rotulo="Separáveis (isolada)" valor={formatInt(a.kitsPossiveis)} destaque />
+                    <Linha rotulo="Separáveis (rateada)" valor={formatQtd(rateada?.kits ?? 0)} />
+                    <Linha rotulo="Prontos no buffer" valor={formatInt(prontos)} />
+                    <Linha rotulo="Itens no romaneio" valor={formatInt(a.itensNoKit)} />
+                  </dl>
+                  {a.criticos.length > 0 && (
+                    <div className="mt-2 pt-2 border-t" style={{ borderColor: 'var(--hairline)' }}>
+                      <p className="text-[10px] font-bold mb-1" style={{ color: 'var(--ink-muted)' }}>Top 5 críticos</p>
+                      <ul className="space-y-0.5">
+                        {a.criticos.map((c) => (
+                          <li key={c.partNumberNorm} className="flex justify-between gap-2 text-[10px]" title={c.descricao}>
+                            <span className="truncate" style={{ color: 'var(--ink-secondary)' }}>{c.partNumber}</span>
+                            <span className="tabular-nums font-bold shrink-0" style={{ color: c.kitsPossiveis > 0 ? 'var(--ink-muted)' : 'var(--abc-c)' }}>
+                              {formatInt(c.kitsPossiveis)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
 
       {/* Posição do almoxarifado */}
       <div className="flex flex-wrap items-center gap-2">

@@ -638,6 +638,16 @@ export default function ImportarPropostasPanel({
     [itens]
   );
 
+  /**
+   * Um único arquivo pode ser só uma página de uma cotação de várias
+   * páginas (scanner separa em vários arquivos) — por isso o lote inteiro
+   * vai consolidado numa chamada só, e é a própria IA quem decide, lendo o
+   * texto, se aquilo é uma proposta ou várias. Chamar a extração um arquivo
+   * por vez quebraria esse caso: uma "página 2 de 4" sozinha não é uma
+   * cotação completa, e o usuário pagaria N chamadas de IA lentas em vez de
+   * uma. (Tentativa anterior de separar por arquivo piorou o tempo total
+   * sem resolver timeout — ver commit que reverteu isso.)
+   */
   const prosseguirExtracao = async (itensParaExtrair?: ItemFila[] | unknown) => {
     const lista = Array.isArray(itensParaExtrair) ? (itensParaExtrair as ItemFila[]) : itensSelecionados;
     if (!lista || lista.length === 0) return;

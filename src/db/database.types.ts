@@ -5200,6 +5200,12 @@ export type Database = {
           vendedor_nome: string | null
           vendedor_telefone: string | null
           valor_frete: number | null
+          arquivo_storage_path: string | null
+          arquivo_mime_type: string | null
+          arquivo_tamanho_bytes: number | null
+          arquivo_markdown: string | null
+          arquivo_markdown_editado_em: string | null
+          arquivo_markdown_editado_por: string | null
         }
         Insert: {
           arquivo_origem?: string | null
@@ -5246,6 +5252,12 @@ export type Database = {
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
           valor_frete?: number | null
+          arquivo_storage_path?: string | null
+          arquivo_mime_type?: string | null
+          arquivo_tamanho_bytes?: number | null
+          arquivo_markdown?: string | null
+          arquivo_markdown_editado_em?: string | null
+          arquivo_markdown_editado_por?: string | null
         }
         Update: {
           arquivo_origem?: string | null
@@ -5292,6 +5304,12 @@ export type Database = {
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
           valor_frete?: number | null
+          arquivo_storage_path?: string | null
+          arquivo_mime_type?: string | null
+          arquivo_tamanho_bytes?: number | null
+          arquivo_markdown?: string | null
+          arquivo_markdown_editado_em?: string | null
+          arquivo_markdown_editado_por?: string | null
         }
         Relationships: [
           {

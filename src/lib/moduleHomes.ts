@@ -13,7 +13,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { PackageSearch, Boxes, Receipt, Radio, Settings } from 'lucide-react';
+import { PackageSearch, Boxes, Receipt, Radio, Settings, Flame } from 'lucide-react';
 
 export interface ModuleHomeDef {
   /** Identificador passado em `<ModuleHome moduleId="..." />`. */
@@ -90,6 +90,28 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       almox_consumo_semanal: 'Consumo de cada material ao longo das semanas.',
       almox_dashboards: 'Painéis consolidados de estoque e movimentação.',
       almox_projetos: 'Fabricação de torres: BOM, kits por tramo, autonomia e progresso das 69 torres.',
+    },
+  },
+  {
+    id: 'producao',
+    group: 'PRODUÇÃO',
+    homePath: '/producao',
+    title: 'Produção',
+    description: 'Liberação de qualidade da fabricação de torres: corte a plasma, chanfro, calandra e solda.',
+    icon: Flame,
+    accent: {
+      tile: 'bg-orange-600 shadow-orange-500/25',
+      hoverBorder: 'hover:border-orange-400/60 dark:hover:border-orange-400/40',
+      ring: 'focus-visible:ring-orange-500',
+      arrow: 'group-hover:text-orange-500',
+    },
+    cardDescriptions: {
+      prod_lancamentos: 'Filas por etapa e lançamento de liberação de cada peça.',
+      prod_pendencias: 'Reprovações abertas aguardando correção e reinspeção.',
+      prod_consulta: 'Consulta de lançamentos e ficha completa de cada virola.',
+      prod_entrega: 'Matriz de prontidão por torre e tramo para a Expedição.',
+      prod_painel: 'FPY, retrabalho, WIP e Pareto de qualidade.',
+      prod_cadastros: 'Etapas, defeitos, tolerâncias e recursos da fábrica.',
     },
   },
   {

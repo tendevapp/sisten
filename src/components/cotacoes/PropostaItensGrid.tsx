@@ -19,6 +19,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Ban, ChevronDown, LinkIcon, Search } from 'lucide-react';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td } from '../ui/DataTable';
 import { formatBRL } from '../../lib/format';
@@ -73,24 +74,65 @@ function InputNumero({ value, onChange, faltando, decimais = 2 }: { value: numbe
   );
 }
 
+/** Posição do painel do vínculo, em coordenadas de viewport — recalculada a cada abertura e a cada scroll/resize enquanto aberto (ver `VinculoCell`). */
+interface PosicaoPainel {
+  top: number;
+  left: number;
+  width: number;
+  maxHeight: number;
+}
+
 function VinculoCell({ item, escopo, onResolver }: {
   item: CotacaoPropostaItemDraft;
   escopo: CotacaoProcessoItem[];
   onResolver: (patch: Partial<CotacaoPropostaItemDraft>) => void;
 }) {
   const [aberto, setAberto] = useState(false);
-  const [abrirParaCima, setAbrirParaCima] = useState(false);
   const [filtro, setFiltro] = useState('');
+  const [posicao, setPosicao] = useState<PosicaoPainel | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const painelRef = useRef<HTMLDivElement>(null);
   const escopoItem = item.processo_item_id ? escopo.find(e => e.id === item.processo_item_id) : null;
+
+  // O painel vive num portal em `document.body` — a grade tem scroll próprio
+  // (horizontal e vertical) e um dropdown `absolute` dentro dela é cortado
+  // pela borda do container assim que a linha não está perto do topo. Fora
+  // da árvore da tabela, sobreposto à página inteira, ele nunca é cortado.
+  // Sempre abre para baixo: mais simples de prever, e o painel encolhe a
+  // própria lista (scroll interno) em vez de virar para cima quando o botão
+  // está perto do rodapé da tela.
+  useEffect(() => {
+    if (!aberto) return;
+    const atualizarPosicao = () => {
+      const botao = containerRef.current;
+      if (!botao) return;
+      const rect = botao.getBoundingClientRect();
+      const largura = Math.min(384, window.innerWidth - 16);
+      const esquerda = Math.min(Math.max(8, rect.left), window.innerWidth - largura - 8);
+      const topo = rect.bottom + 6;
+      const alturaMax = Math.max(160, window.innerHeight - topo - 12);
+      setPosicao({ top: topo, left: esquerda, width: largura, maxHeight: alturaMax });
+    };
+    atualizarPosicao();
+    // `capture: true` — o scroll que precisa reposicionar o painel acontece
+    // no container interno da tabela, não na window; só chega até aqui na
+    // fase de captura.
+    window.addEventListener('scroll', atualizarPosicao, true);
+    window.addEventListener('resize', atualizarPosicao);
+    return () => {
+      window.removeEventListener('scroll', atualizarPosicao, true);
+      window.removeEventListener('resize', atualizarPosicao);
+    };
+  }, [aberto]);
 
   useEffect(() => {
     if (!aberto) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setAberto(false);
-        setFiltro('');
-      }
+      const alvo = e.target as Node;
+      if (containerRef.current?.contains(alvo)) return;
+      if (painelRef.current?.contains(alvo)) return;
+      setAberto(false);
+      setFiltro('');
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -117,20 +159,11 @@ function VinculoCell({ item, escopo, onResolver }: {
 
   const fechar = () => { setAberto(false); setFiltro(''); };
 
-  const handleToggle = () => {
-    if (!aberto && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      const espacoAbaixo = window.innerHeight - rect.bottom;
-      setAbrirParaCima(espacoAbaixo < 290 && rect.top > 290);
-    }
-    setAberto(v => !v);
-  };
-
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef}>
       <button
         type="button"
-        onClick={handleToggle}
+        onClick={() => setAberto(v => !v)}
         className={`flex w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors ${
           resolvido
             ? 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600'
@@ -165,14 +198,14 @@ function VinculoCell({ item, escopo, onResolver }: {
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${aberto ? 'rotate-180' : ''}`} />
       </button>
 
-      {aberto && (
+      {aberto && posicao && createPortal(
         <div
-          className={`absolute z-30 w-96 max-w-[90vw] overflow-hidden rounded-xl border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-900 ${
-            abrirParaCima ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-          }`}
+          ref={painelRef}
+          style={{ position: 'fixed', top: posicao.top, left: posicao.left, width: posicao.width, maxHeight: posicao.maxHeight }}
+          className="z-[100] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-xs shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >
           {escopo.length > 5 && (
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
               <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
               <input
                 autoFocus
@@ -183,7 +216,7 @@ function VinculoCell({ item, escopo, onResolver }: {
               />
             </div>
           )}
-          <div className="max-h-64 overflow-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+          <div className="min-h-0 flex-1 overflow-auto divide-y divide-slate-100 dark:divide-slate-800/60">
             {escopoFiltrado.length === 0 ? (
               <p className="px-3 py-3 text-slate-400 text-center">Nenhum item do escopo bate com "{filtro}".</p>
             ) : (
@@ -231,7 +264,7 @@ function VinculoCell({ item, escopo, onResolver }: {
               });
               fechar();
             }}
-            className="block w-full border-t border-slate-200 dark:border-slate-800 px-3 py-2.5 text-left font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+            className="block w-full shrink-0 border-t border-slate-200 dark:border-slate-800 px-3 py-2.5 text-left font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
           >
             ✕ Fora do escopo (não pedido nesta RM, mas continua no mapa)
           </button>
@@ -251,14 +284,15 @@ function VinculoCell({ item, escopo, onResolver }: {
               });
               fechar();
             }}
-            className="flex w-full items-center gap-1.5 border-t border-slate-200 px-3 py-2.5 text-left font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
+            className="flex w-full shrink-0 items-center gap-1.5 border-t border-slate-200 px-3 py-2.5 text-left font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
           >
             <Ban className="h-3.5 w-3.5 shrink-0" />
             {item.desconsiderado
               ? 'Voltar a considerar este item'
               : 'Desconsiderar (não entra no mapa de cotação)'}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

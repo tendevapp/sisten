@@ -36,6 +36,8 @@ function proposta(key: string, itens: CotacaoPropostaItemDraft[], p: Partial<Cot
     frete_modalidade: null, transportadora_indicada: null, faturamento_minimo: null,
     dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, observacoes_gerais: null,
     campos_faltantes: [], revisado: true, extracao_id: null, extraido_raw: {} as any,
+      arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
+      arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
     itens,
     ...p,
   } as CotacaoPropostaDraft;

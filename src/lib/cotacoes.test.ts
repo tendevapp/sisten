@@ -4,12 +4,35 @@ import {
   parseDataBR, parseValidade, parsePrazoDias, parseCidadeUF, parseFreteModalidade,
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
-  repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao,
+  repararJsonTruncado, gerarCodigoCotacao, proximoIndiceCotacao, nomeFornecedorCurto,
 } from './cotacoes';
 import type {
   CotacaoPropostaDraft, CotacaoPropostaItemDraft, CotacaoProcessoItem,
   PropostaExtraida, SugestaoVinculo,
 } from '../types';
+
+describe('nomeFornecedorCurto', () => {
+  it('tira o sufixo societário e fica só com as duas primeiras palavras', () => {
+    expect(nomeFornecedorCurto('Anhanguera Ferramentas e Equipamentos Industriais LTDA')).toBe('Anhanguera Ferramentas');
+  });
+
+  it('tira mais de um sufixo societário em sequência', () => {
+    expect(nomeFornecedorCurto('Comercio de Pecas Sociedade Unipessoal LTDA')).toBe('Comercio de');
+  });
+
+  it('nome já curto passa direto', () => {
+    expect(nomeFornecedorCurto('Ferimport Comercio')).toBe('Ferimport Comercio');
+  });
+
+  it('nome de uma palavra só não quebra', () => {
+    expect(nomeFornecedorCurto('Alcoolmaq')).toBe('Alcoolmaq');
+  });
+
+  it('vazio ou nulo devolve vazio', () => {
+    expect(nomeFornecedorCurto(null)).toBe('');
+    expect(nomeFornecedorCurto('')).toBe('');
+  });
+});
 
 describe('temValor', () => {
   it('trata placeholders como vazio', () => {
@@ -273,6 +296,8 @@ function propostaDraft(overrides: Partial<CotacaoPropostaDraft> = {}): CotacaoPr
     frete_modalidade: 'CIF', transportadora_indicada: null, faturamento_minimo: null, dados_bancarios_pix: null,
     valor_total_orcamento: 1000, valor_frete: null, observacoes_gerais: null,
     campos_faltantes: [], revisado: false, extracao_id: null, extraido_raw: {} as any,
+    arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
+    arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
     itens: [itemDraft()],
     ...overrides,
   };

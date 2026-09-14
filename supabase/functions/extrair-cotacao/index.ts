@@ -123,6 +123,22 @@ FORMATO (responda APENAS com este JSON, sem markdown, sem comentários):
 }]}`;
 
 /**
+ * Formato compacto do escopo para o prompt: uma linha por item, campos
+ * separados por `|`, em vez de `JSON.stringify` repetindo os cinco nomes de
+ * campo a cada item. Para 100-200 itens isso é uma fração dos tokens do
+ * JSON equivalente — o suficiente, em entradas grandes, para tirar a
+ * extração da faixa de latência que estoura o orçamento de tempo da
+ * function (ver `ORCAMENTO_TOTAL_MS`). Um LLM lê tabela tão bem quanto JSON;
+ * a IA já foi instruída a devolver exatamente o valor de "ri" da lista.
+ */
+function formatarEscopoCompacto(escopo: ItemEscopo[]): string {
+  const linha = (v: string | number | null) => String(v ?? '—').replace(/\|/g, '/').replace(/\n/g, ' ');
+  const cabecalho = 'ri|descricao|material_code|quantidade|unidade';
+  const linhas = escopo.map(e => [linha(e.ri), linha(e.texto_breve), linha(e.material_code), linha(e.quantidade), linha(e.unidade)].join('|'));
+  return [cabecalho, ...linhas].join('\n');
+}
+
+/**
  * Instruções que NÃO podem depender do prompt editável em `ops_ia_prompts`:
  * vão anexadas ao conteúdo do usuário, não ao system prompt, para que o
  * peso estimado e a sugestão de vínculo continuem vindo mesmo quando um
@@ -154,9 +170,9 @@ function blocoInstrucoesExtras(escopo: ItemEscopo[]): string {
       '   - Vincule pelo MATERIAL, não pelo texto: "ELETRODO 7018 3,25MM" e "ELETRODO REVESTIDO E7018 Ø3,25" são o mesmo item.',
       '   - Não force vínculo: RI errado custa mais caro que RI vazio.',
       '',
-      'ITENS DA REQUISIÇÃO (escopo do processo de cotação):',
-      '```json',
-      JSON.stringify(escopo),
+      'ITENS DA REQUISIÇÃO (escopo do processo de cotação; colunas separadas por "|"):',
+      '```',
+      formatarEscopoCompacto(escopo),
       '```',
     );
   }
@@ -270,6 +286,7 @@ async function chamarGemini(
   rotulo: string,
   systemPrompt = SYSTEM_PROMPT,
   modelo = GEMINI_MODEL,
+  timeoutMs = TIMEOUT_GEMINI_MS,
 ): Promise<ResultadoProvedor> {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: modelo, systemInstruction: systemPrompt });
@@ -281,7 +298,7 @@ async function chamarGemini(
         contents: [{ role: 'user', parts: [{ text: markdown }] }],
         generationConfig: { temperature: 0, responseMimeType: 'application/json', maxOutputTokens: MAX_TOKENS_RESPOSTA },
       }),
-      TIMEOUT_GEMINI_MS,
+      timeoutMs,
       rotulo,
     );
   } catch (err) {
@@ -319,9 +336,10 @@ async function chamarChatCompletions(params: {
   nomeProvedor: string;
   body: Record<string, unknown>;
   headersExtra?: Record<string, string>;
+  timeoutMs?: number;
 }): Promise<{ data: any; truncado: boolean; content: string }> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), params.timeoutMs ?? TIMEOUT_MS);
 
   let resposta: Response;
   try {
@@ -376,11 +394,12 @@ async function chamarChatCompletions(params: {
  * `max_tokens`) e omite `temperature`, como esperado pelos modelos mais
  * recentes da OpenAI.
  */
-async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT): Promise<ResultadoProvedor> {
+async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT, timeoutMs?: number): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://api.openai.com/v1/chat/completions',
     apiKey,
     nomeProvedor: 'OpenAI',
+    timeoutMs,
     body: {
       model: OPENAI_MODEL,
       messages: [
@@ -408,11 +427,12 @@ async function chamarOpenAI(markdown: string, apiKey: string, systemPrompt = SYS
 }
 
 /** Primeiro fallback, entre o Gemini e a OpenAI. */
-async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT): Promise<ResultadoProvedor> {
+async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt = SYSTEM_PROMPT, timeoutMs?: number): Promise<ResultadoProvedor> {
   const { data, truncado, content } = await chamarChatCompletions({
     url: 'https://openrouter.ai/api/v1/chat/completions',
     apiKey,
     nomeProvedor: 'OpenRouter',
+    timeoutMs,
     headersExtra: {
       'HTTP-Referer': Deno.env.get('SUPABASE_URL') ?? '',
       'X-Title': 'SISTEN Extração de Cotação',
@@ -449,6 +469,23 @@ async function chamarOpenRouter(markdown: string, apiKey: string, systemPrompt =
   };
 }
 
+/**
+ * Orçamento de tempo para a extração inteira, somando todas as tentativas —
+ * bem abaixo do limite de execução de Edge Function da plataforma.
+ *
+ * Antes, cada provedor tinha seu próprio timeout fixo (45s Gemini, 150s
+ * chat completions) e o fallback somava os quatro: Gemini x2 + OpenRouter +
+ * OpenAI dava até 390s no pior caso — a plataforma mata a function bem antes
+ * disso e devolve um 504 cru pro navegador, sem a mensagem de erro que esta
+ * função tentaria montar. Repartir um orçamento único entre as tentativas
+ * garante que a function sempre responde (sucesso ou erro decifrável) dentro
+ * de um tempo previsível, e para de tentar fallback assim que não sobra
+ * tempo para uma chance real de resposta.
+ */
+const ORCAMENTO_TOTAL_MS = 100_000;
+/** Abaixo disso não vale a pena começar mais uma tentativa — não dá tempo de um provedor responder de verdade. */
+const TEMPO_MINIMO_TENTATIVA_MS = 12_000;
+
 /** Gemini é o provedor primário (duas chaves); falhando as duas, cai para OpenRouter e, por último, para OpenAI. */
 async function extrairComFallback(
   markdown: string,
@@ -460,10 +497,12 @@ async function extrairComFallback(
   modeloGemini = GEMINI_MODEL,
 ): Promise<ResultadoProvedor> {
   const erros: string[] = [];
+  const inicio = Date.now();
+  const tempoRestante = () => ORCAMENTO_TOTAL_MS - (Date.now() - inicio);
 
-  if (geminiKey1) {
+  if (geminiKey1 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
     try {
-      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1', systemPrompt, modeloGemini);
+      return await chamarGemini(markdown, geminiKey1, 'Gemini Key 1', systemPrompt, modeloGemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`Gemini Key 1 (${erro.codigo}): ${erro.message}`);
@@ -471,9 +510,9 @@ async function extrairComFallback(
     }
   }
 
-  if (geminiKey2) {
+  if (geminiKey2 && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
     try {
-      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2', systemPrompt, modeloGemini);
+      return await chamarGemini(markdown, geminiKey2, 'Gemini Key 2', systemPrompt, modeloGemini, Math.min(TIMEOUT_GEMINI_MS, tempoRestante()));
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`Gemini Key 2 (${erro.codigo}): ${erro.message}`);
@@ -481,9 +520,9 @@ async function extrairComFallback(
     }
   }
 
-  if (openrouterKey) {
+  if (openrouterKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
     try {
-      return await chamarOpenRouter(markdown, openrouterKey, systemPrompt);
+      return await chamarOpenRouter(markdown, openrouterKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()));
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`OpenRouter (${erro.codigo}): ${erro.message}`);
@@ -491,13 +530,17 @@ async function extrairComFallback(
     }
   }
 
-  if (openaiKey) {
+  if (openaiKey && tempoRestante() > TEMPO_MINIMO_TENTATIVA_MS) {
     try {
-      return await chamarOpenAI(markdown, openaiKey, systemPrompt);
+      return await chamarOpenAI(markdown, openaiKey, systemPrompt, Math.min(TIMEOUT_MS, tempoRestante()));
     } catch (e) {
       const erro = e instanceof ErroExtracao ? e : new ErroExtracao('ERRO_INTERNO', e instanceof Error ? e.message : String(e), 500);
       erros.push(`OpenAI (${erro.codigo}): ${erro.message}`);
     }
+  }
+
+  if (erros.length === 0 && tempoRestante() <= TEMPO_MINIMO_TENTATIVA_MS) {
+    erros.push('Orçamento de tempo esgotado antes de tentar qualquer provedor configurado — entrada grande demais ou requisições anteriores já consumiram o tempo da function.');
   }
 
   throw new ErroExtracao(

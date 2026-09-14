@@ -56,6 +56,10 @@ export function resolverRotaNotificacao(notif: Notification, user: Profile): str
     return `/demandas/minhas?id=${encodeURIComponent(id)}`;
   }
 
+  if (contextKey.startsWith('producao:')) {
+    return '/producao/pendencias';
+  }
+
   if (
     contextKey.startsWith('importacao:') ||
     contextKey.startsWith('exportacao:') ||

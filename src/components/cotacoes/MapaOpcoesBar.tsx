@@ -14,7 +14,7 @@
  */
 
 import React, { useState } from 'react';
-import { Percent, SlidersHorizontal, Save, Download, Loader2, Info, ArrowUpDown, Search, X } from 'lucide-react';
+import { Percent, SlidersHorizontal, Save, Download, Loader2, Info, ArrowUpDown, Search, X, FileSpreadsheet } from 'lucide-react';
 import type { BaseComparacao, CreditosHabilitados, OrdenacaoMapa } from '../../lib/mapaCotacao';
 
 const BASES: { id: BaseComparacao; rotulo: string; ajuda: string }[] = [
@@ -47,6 +47,9 @@ interface MapaOpcoesBarProps {
   salvando: boolean;
   onSalvar: () => void;
   onExportar: () => void;
+  /** Exporta os itens marcados para compra no layout de importação SAP — abre um modal de conferência antes. */
+  onExportarSap: () => void;
+  carregandoSap?: boolean;
 }
 
 function Segmento({ ativo, onClick, children, title }: { ativo: boolean; onClick: () => void; children: React.ReactNode; title: string }) {
@@ -82,7 +85,7 @@ function Caixa({ marcado, onChange, children }: { marcado: boolean; onChange: (v
 
 export default function MapaOpcoesBar({
   base, onBase, creditos, onCreditos, limiar, onLimiar, ordenacao, onOrdenacao, busca, onBusca,
-  itensSelecionados, alteracoesPendentes, salvando, onSalvar, onExportar,
+  itensSelecionados, alteracoesPendentes, salvando, onSalvar, onExportar, onExportarSap, carregandoSap,
 }: MapaOpcoesBarProps) {
   const [ajustesAbertos, setAjustesAbertos] = useState(false);
 
@@ -152,10 +155,21 @@ export default function MapaOpcoesBar({
           <button
             type="button"
             onClick={onExportar}
+            title="Baixa o mapa comparativo inteiro em Excel, formatado"
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
           >
             <Download className="h-3.5 w-3.5" />
             Exportar
+          </button>
+          <button
+            type="button"
+            onClick={onExportarSap}
+            disabled={itensSelecionados === 0 || carregandoSap}
+            title="Monta a planilha de importação SAP com os itens marcados para compra — abre uma conferência antes de baixar"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+          >
+            {carregandoSap ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+            Exportar SAP
           </button>
           <button
             type="button"

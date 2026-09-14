@@ -18,14 +18,15 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft, Download, CheckCircle2, AlertTriangle, CalendarClock, CreditCard,
-  Truck, ShieldAlert, PackageX, Loader2, FileWarning, Save, Calculator,
+  Truck, ShieldAlert, PackageX, Loader2, FileWarning, Save, Calculator, Files, FileStack,
 } from 'lucide-react';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd, formatDateBR } from '../../lib/format';
 import { formatarCnpj, nomeFornecedorCurto } from '../../lib/cotacoes';
 import { atualizarStatusProcesso, atualizarItensCotacao } from '../../lib/cotacoesApi';
-import { exportPedidoCompraPdf } from '../../lib/pdfExport/exportPedidoCompraPdf';
+import { exportPedidoCompraPdf, exportPedidosCompraPdfUnico } from '../../lib/pdfExport/exportPedidoCompraPdf';
 import { montarPedidosCompra, risSemPedido } from '../../lib/pedidoCompra';
 import type { PedidoFornecedor } from '../../lib/pedidoCompra';
 import type { CotacaoProcesso, CotacaoProcessoItem, CotacaoPropostaDraft } from '../../types';
@@ -249,9 +250,51 @@ export default function RevisaoPedidoCompra({
   const toast = useToast();
   const [concluindo, setConcluindo] = useState(false);
   const [confirmConcluirAberto, setConfirmConcluirAberto] = useState(false);
+  const [escolhaDownloadAberta, setEscolhaDownloadAberta] = useState(false);
+  const [baixandoTodos, setBaixandoTodos] = useState(false);
 
   const pedidos = useMemo(() => montarPedidosCompra(propostas), [propostas]);
   const semPedido = useMemo(() => risSemPedido(escopo.map(e => e.ri), pedidos), [escopo, pedidos]);
+
+  /**
+   * Cada pedido é um PDF, porque é isso que sai por fornecedor (ver
+   * `pedidoCompra.ts`) — mas baixar um por um clicando em cada card é
+   * trabalhoso quando o processo tem 4-5 fornecedores. Este atalho pergunta
+   * ao comprador se prefere os arquivos separados (o que efetivamente vai
+   * para cada fornecedor) ou um PDF só, consolidado, para arquivar/imprimir
+   * de uma vez.
+   */
+  const handleBaixarSeparados = async () => {
+    setBaixandoTodos(true);
+    try {
+      // Sequencial, com uma pequena pausa entre downloads — vários
+      // `link.click()` disparados juntos fazem o navegador bloquear os
+      // downloads seguintes como se fossem pop-up.
+      for (const pedido of pedidos) {
+        await exportPedidoCompraPdf(pedido, processo.numero);
+        await new Promise(resolve => setTimeout(resolve, 350));
+      }
+      setEscolhaDownloadAberta(false);
+      toast.success(`${pedidos.length} PDF(s) baixado(s), um por fornecedor.`);
+    } catch (err) {
+      toast.error(`Falha ao gerar os PDFs: ${(err as Error).message}`);
+    } finally {
+      setBaixandoTodos(false);
+    }
+  };
+
+  const handleBaixarUnico = async () => {
+    setBaixandoTodos(true);
+    try {
+      await exportPedidosCompraPdfUnico(pedidos, processo.numero);
+      setEscolhaDownloadAberta(false);
+      toast.success('PDF único com todos os pedidos baixado.');
+    } catch (err) {
+      toast.error(`Falha ao gerar o PDF: ${(err as Error).message}`);
+    } finally {
+      setBaixandoTodos(false);
+    }
+  };
 
   const totalGeral = pedidos.reduce((s, p) => s + p.total, 0);
   const totalItens = pedidos.reduce((s, p) => s + p.itens.length, 0);
@@ -302,6 +345,16 @@ export default function RevisaoPedidoCompra({
         {jaConcluido && (
           <Chip tom="ok"><CheckCircle2 className="h-3 w-3" />processo concluído</Chip>
         )}
+        {pedidos.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setEscolhaDownloadAberta(true)}
+            className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Files className="h-3.5 w-3.5" />
+            Baixar todos os pedidos
+          </button>
+        )}
       </div>
 
       {semPedido.length > 0 && (
@@ -346,6 +399,65 @@ export default function RevisaoPedidoCompra({
           onConfirmar={handleConcluir}
           onCancelar={() => setConfirmConcluirAberto(false)}
         />
+      )}
+
+      {escolhaDownloadAberta && (
+        <Modal onClose={() => !baixandoTodos && setEscolhaDownloadAberta(false)} maxWidth="max-w-md" ariaLabel="Baixar todos os pedidos">
+          <ModalHeader onClose={() => !baixandoTodos && setEscolhaDownloadAberta(false)}>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Baixar todos os pedidos</h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Cada pedido é de um fornecedor diferente — escolha como quer os arquivos.
+            </p>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-2.5">
+              <button
+                type="button"
+                onClick={handleBaixarSeparados}
+                disabled={baixandoTodos}
+                className="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3.5 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/20"
+              >
+                <Files className="mt-0.5 h-4.5 w-4.5 shrink-0 text-indigo-500" />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Arquivos separados</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    Um PDF por fornecedor ({pedidos.length} {pedidos.length === 1 ? 'arquivo' : 'arquivos'}) — o que efetivamente vai para cada um.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleBaixarUnico}
+                disabled={baixandoTodos}
+                className="flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3.5 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/20"
+              >
+                <FileStack className="mt-0.5 h-4.5 w-4.5 shrink-0 text-indigo-500" />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Um PDF único</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    Todos os pedidos consolidados num arquivo só, um fornecedor por página — para arquivar ou imprimir de uma vez.
+                  </span>
+                </span>
+              </button>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            {baixandoTodos ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Gerando PDF(s)...
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEscolhaDownloadAberta(false)}
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Cancelar
+              </button>
+            )}
+          </ModalFooter>
+        </Modal>
       )}
     </div>
   );

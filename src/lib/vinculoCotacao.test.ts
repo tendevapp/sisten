@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  aplicarVinculosIa, analisarDivergenciasVinculo, revisarDivergencias,
+  aplicarVinculosIa, aplicarSugestoesVinculoRi, analisarDivergenciasVinculo, revisarDivergencias,
   SCORE_VINCULO_IA,
 } from './vinculoCotacao';
 import type {
@@ -40,10 +40,10 @@ function escopoItem(p: Partial<CotacaoProcessoItem> = {}): CotacaoProcessoItem {
 }
 
 describe('aplicarVinculosIa', () => {
-  it('vincula ao RI que a IA reconheceu', () => {
+  it('vincula ao RI que a IA reconheceu — item recém-extraído, no estado real em que chega (vinculo_origem "manual" de fábrica, não um clique do usuário)', () => {
     const escopo = [escopoItem()];
     const { itens, resumo } = aplicarVinculosIa({
-      itens: [item({ vinculo_origem: 'sugerido' }, { Vinculo_RI: 'ri-001' })],
+      itens: [item({}, { Vinculo_RI: 'ri-001' })],
       escopo,
     });
 
@@ -116,6 +116,67 @@ describe('aplicarVinculosIa', () => {
 
     expect(itens[0].processo_item_id).toBe('pi-1');
     expect(itens[0].vinculo_divergencias.some(d => d.includes('RI-002'))).toBe(true);
+  });
+});
+
+describe('aplicarSugestoesVinculoRi', () => {
+  it('vincula ao RI que veio da resposta sob demanda da IA', () => {
+    const alvo = item({ _key: 'alvo' });
+    const { itens, resumo } = aplicarSugestoesVinculoRi({
+      itens: [alvo],
+      escopo: [escopoItem()],
+      sugestoes: new Map([['alvo', { ri: 'ri-001', divergencias: null }]]),
+    });
+
+    expect(itens[0].processo_item_id).toBe('pi-1');
+    expect(itens[0].ri).toBe('RI-001');
+    expect(itens[0].vinculo_origem).toBe('ia');
+    expect(itens[0].vinculo_score).toBe(SCORE_VINCULO_IA);
+    expect(resumo.vinculados).toBe(1);
+  });
+
+  it('ignora item que não está no mapa de sugestões (não foi enviado à IA)', () => {
+    const base = item({ _key: 'sem-sugestao' });
+    const { itens, resumo } = aplicarSugestoesVinculoRi({
+      itens: [base],
+      escopo: [escopoItem()],
+      sugestoes: new Map(),
+    });
+    expect(itens[0]).toBe(base);
+    expect(resumo.vinculados).toBe(0);
+  });
+
+  it('descarta RI sugerido que não existe neste processo', () => {
+    const alvo = item({ _key: 'alvo' });
+    const { itens, resumo } = aplicarSugestoesVinculoRi({
+      itens: [alvo],
+      escopo: [escopoItem()],
+      sugestoes: new Map([['alvo', { ri: 'RI-999', divergencias: null }]]),
+    });
+    expect(itens[0].processo_item_id).toBeNull();
+    expect(resumo.riInexistente).toBe(1);
+  });
+
+  it('não sobrescreve vínculo já existente (item resolvido entre o pedido e a resposta)', () => {
+    const escopo = [escopoItem(), escopoItem({ id: 'pi-2', ri: 'RI-002', texto_breve: 'OUTRO' })];
+    const alvo = item({ _key: 'alvo', processo_item_id: 'pi-2', ri: 'RI-002', vinculo_origem: 'manual' });
+    const { itens } = aplicarSugestoesVinculoRi({
+      itens: [alvo],
+      escopo,
+      sugestoes: new Map([['alvo', { ri: 'RI-001', divergencias: null }]]),
+    });
+    expect(itens[0].processo_item_id).toBe('pi-2');
+  });
+
+  it('registra as divergências que vieram junto da sugestão', () => {
+    const alvo = item({ _key: 'alvo' });
+    const { itens, resumo } = aplicarSugestoesVinculoRi({
+      itens: [alvo],
+      escopo: [escopoItem()],
+      sugestoes: new Map([['alvo', { ri: 'RI-001', divergencias: ['Marca cotada diverge da RM'] }]]),
+    });
+    expect(itens[0].vinculo_divergencias).toContain('Marca cotada diverge da RM');
+    expect(resumo.comDivergencia).toBe(1);
   });
 });
 
