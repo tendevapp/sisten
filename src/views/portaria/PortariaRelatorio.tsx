@@ -37,6 +37,7 @@ import { listarVeiculosLeves } from '../../lib/facilitiesApi';
 import { exportRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFields';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -304,7 +305,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     turno: api.sugerirTurno(),
     horario_inicio: '06:00',
     horario_fim: '18:00',
-    vigilante_principal: '',
+    vigilante_principal: user.name,
     vigilante_ronda01: '',
     vigilante_ronda02: '',
     observacoes_gerais: '',
@@ -358,7 +359,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   // Form Registrar Saída Rápida
   const [formSaidaRapida, setFormSaidaRapida] = useState({
     hora_saida: api.horaAgora(),
-    vigilante_saida: '',
+    vigilante_saida: user.name,
     motivo_observacao: '',
   });
 
@@ -584,10 +585,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   const handleCriarRelatorio = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formRelatorio.vigilante_principal.trim()) {
-      toast.error('Selecione o vigilante principal da portaria.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -688,7 +685,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       vigilante_saida: '',
       local_setor: 'PORTARIA',
       severidade: 'INFO',
-      vigilante: '', // Exibe "Selecione o vigilante..." conforme solicitado
+      vigilante: user.name,
       empresa: '',
       placa_veiculo: '',
       autorizado_por: '',
@@ -738,7 +735,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       vigilante_saida: oc.vigilante_saida || '',
       local_setor: oc.local_setor,
       severidade: oc.severidade,
-      vigilante: oc.vigilante || '',
+      vigilante: oc.vigilante || user.name,
       empresa: (oc.empresa || '').toUpperCase(),
       placa_veiculo: (oc.placa || '').toUpperCase(),
       autorizado_por: (oc.autorizado_por || '').toUpperCase(),
@@ -757,7 +754,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     setOcorrenciaParaSaida(oc);
     setFormSaidaRapida({
       hora_saida: api.horaAgora(),
-      vigilante_saida: '',
+      vigilante_saida: user.name,
       motivo_observacao: '',
     });
     setModalRegistrarSaida(true);
@@ -766,11 +763,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const handleSalvarSaidaRapida = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ocorrenciaParaSaida || !relatorioAtivo) return;
-
-    if (!formSaidaRapida.vigilante_saida.trim()) {
-      toast.error('Selecione o vigilante que está liberando a saída.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -818,11 +810,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
   const handleSalvarOcorrencia = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!formOcorrencia.vigilante.trim()) {
-      toast.error('Por favor, selecione o vigilante responsável.');
-      return;
-    }
 
     const descricaoFinal = textoPrevia.trim();
     if (!descricaoFinal) {
@@ -1145,7 +1132,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     turno: api.sugerirTurno(),
                     horario_inicio: '06:00',
                     horario_fim: '18:00',
-                    vigilante_principal: '',
+                    vigilante_principal: user.name,
                     vigilante_ronda01: '',
                     vigilante_ronda02: '',
                     observacoes_gerais: '',
@@ -1644,13 +1631,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 </div>
 
                 <div>
-                  <VigilanteSelect
-                    label="Vigilante Responsável *"
-                    placeholder="Selecione o vigilante..."
-                    required
-                    value={formOcorrencia.vigilante}
-                    onChange={(val) => setFormOcorrencia({ ...formOcorrencia, vigilante: val })}
-                  />
+                  <VigilanteOperadorAtual nome={formOcorrencia.vigilante} label="Vigilante Responsável" />
                 </div>
               </div>
 
@@ -2486,13 +2467,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 </div>
 
                 <div>
-                  <VigilanteSelect
-                    label="Vigilante de Saída *"
-                    placeholder="Selecione o vigilante..."
-                    required
-                    value={formSaidaRapida.vigilante_saida}
-                    onChange={(val) => setFormSaidaRapida({ ...formSaidaRapida, vigilante_saida: val })}
-                  />
+                  <VigilanteOperadorAtual nome={formSaidaRapida.vigilante_saida} label="Vigilante de Saída" />
                 </div>
               </div>
 
@@ -2625,14 +2600,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               </div>
 
               <div>
-                <VigilanteSelect
-                  label="Vigilante Responsável (Portaria)"
-                  placeholder="Selecione o vigilante..."
-                  required
-                  value={formRelatorio.vigilante_principal}
-                  onChange={(val) => setFormRelatorio({ ...formRelatorio, vigilante_principal: val })}
-                  excludeNames={[formRelatorio.vigilante_ronda01, formRelatorio.vigilante_ronda02]}
-                />
+                <VigilanteOperadorAtual nome={formRelatorio.vigilante_principal} label="Vigilante Responsável (Portaria)" />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
