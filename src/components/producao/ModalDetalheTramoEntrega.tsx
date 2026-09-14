@@ -13,7 +13,7 @@ import {
   Truck,
   X,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { useToast } from '../ui/Toast';
 import {
   CONFIG_CATEGORIAS,
   avaliarCriticidadeEspera,
@@ -70,6 +70,8 @@ export default function ModalDetalheTramoEntrega({
   aoFechar,
   aoSalvar,
 }: ModalDetalheTramoEntregaProps) {
+  const toast = useToast();
+
   if (!tramo) return null;
 
   const [categoria, setCategoria] = useState<CategoriaEtapa>(tramo.etapa_categoria);
