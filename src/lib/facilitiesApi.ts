@@ -224,11 +224,12 @@ export async function listarVeiculosLeves(incluirExcluidos = false): Promise<Fac
   return (data || []) as FacVeiculoLeve[];
 }
 
-export async function criarVeiculoLeve(dados: Pick<FacVeiculoLeve, 'modelo' | 'placa'>): Promise<FacVeiculoLeve> {
-  const { data, error } = await dbVeiculosLeves()
+export async function criarVeiculoLeve(dados: Pick<FacVeiculoLeve, 'modelo' | 'placa' | 'data_licenciamento'>): Promise<FacVeiculoLeve> {
+    const { data, error } = await dbVeiculosLeves()
     .insert({
       modelo: normalizarModeloVeiculoLeve(dados.modelo),
       placa: normalizarPlacaVeiculoLeve(dados.placa),
+      data_licenciamento: dados.data_licenciamento || null,
     })
     .select('*')
     .single();
@@ -238,11 +239,12 @@ export async function criarVeiculoLeve(dados: Pick<FacVeiculoLeve, 'modelo' | 'p
 
 export async function atualizarVeiculoLeve(
   id: string,
-  dados: Partial<Pick<FacVeiculoLeve, 'modelo' | 'placa' | 'ativo'>>,
+  dados: Partial<Pick<FacVeiculoLeve, 'modelo' | 'placa' | 'data_licenciamento' | 'ativo'>>,
 ): Promise<FacVeiculoLeve> {
   const payload = {
     ...(dados.modelo !== undefined ? { modelo: normalizarModeloVeiculoLeve(dados.modelo) } : {}),
     ...(dados.placa !== undefined ? { placa: normalizarPlacaVeiculoLeve(dados.placa) } : {}),
+    ...(dados.data_licenciamento !== undefined ? { data_licenciamento: dados.data_licenciamento || null } : {}),
     ...(dados.ativo !== undefined ? { ativo: dados.ativo } : {}),
     updated_at: new Date().toISOString(),
   };

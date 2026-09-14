@@ -10,7 +10,7 @@ import {
   sugerirPoBahiaSul,
   resumirBahiaSulPorPo,
 } from './bahiasul';
-import type { BahiaSulEntrega, TabelaFrete } from '../types';
+import type { BahiaSulEntrega, SAPPedido, TabelaFrete } from '../types';
 
 const mockTabela: TabelaFrete[] = [
   {
@@ -500,3 +500,100 @@ describe('resumirBahiaSulPorPo', () => {
     expect(resumirBahiaSulPorPo([mkEntrega({ nro_pedido: null })]).size).toBe(0);
   });
 });
+
+describe('enriquecerEntregasComPedidos com itens do pedido (itensPedido)', () => {
+  it('agrupa itens do pedido SAP em itensPedido para cada CTe vinculado', () => {
+    const entregas: BahiaSulEntrega[] = [
+      mkEntrega({ cto_numero: 'CT1', nro_pedido: '4500123456' }),
+      mkEntrega({ cto_numero: 'CT2', nro_pedido: null }),
+    ];
+
+    const pedidos: SAPPedido[] = [
+      {
+        ri: 'R1',
+        documento_compra: '4500123456',
+        item_pedido: '10',
+        fornecedor_code: 'F1',
+        fornecedor_name: 'Fornecedor A',
+        data_pedido: '2026-06-01',
+        data_entrega_sap: '2026-06-15',
+        material: '1002345',
+        txt_breve: 'PARAFUSO SEXTAVADO M16',
+        qtd_pedido: 100,
+        campos_extras: {},
+      },
+      {
+        ri: 'R2',
+        documento_compra: '4500123456',
+        item_pedido: '20',
+        fornecedor_code: 'F1',
+        fornecedor_name: 'Fornecedor A',
+        data_pedido: '2026-06-01',
+        data_entrega_sap: '2026-06-15',
+        material: '1002346',
+        txt_breve: 'PORCA SEXTAVADA M16',
+        qtd_pedido: 200,
+        campos_extras: {},
+      }
+    ];
+
+    const enriquecidas = enriquecerEntregasComPedidos(entregas, pedidos);
+    expect(enriquecidas[0].itensPedido).toHaveLength(2);
+    expect(enriquecidas[0].itensPedido[0].material).toBe('1002345');
+    expect(enriquecidas[0].itensPedido[0].descricao).toBe('PARAFUSO SEXTAVADO M16');
+    expect(enriquecidas[0].itensPedido[1].material).toBe('1002346');
+    expect(enriquecidas[0].itensPedido[1].descricao).toBe('PORCA SEXTAVADA M16');
+
+    // CTe sem pedido deve ter itensPedido vazio
+    expect(enriquecidas[1].itensPedido).toEqual([]);
+  });
+
+  it('permite busca e filtro por código ou descrição do item vinculado ao pedido', () => {
+    const entregas: BahiaSulEntrega[] = [
+      mkEntrega({ cto_numero: 'CT1', nro_pedido: '4500123456' }),
+      mkEntrega({ cto_numero: 'CT2', nro_pedido: '4500999999' }),
+    ];
+
+    const pedidos: SAPPedido[] = [
+      {
+        ri: 'R1',
+        documento_compra: '4500123456',
+        item_pedido: '10',
+        fornecedor_code: 'F1',
+        fornecedor_name: 'Fornecedor A',
+        data_pedido: '2026-06-01',
+        data_entrega_sap: '2026-06-15',
+        material: '1009876',
+        txt_breve: 'VALVULA DE RETENCAO',
+        campos_extras: {},
+      }
+    ];
+
+    const enriquecidas = enriquecerEntregasComPedidos(entregas, pedidos);
+
+    // Simula a lógica de busca por item
+    const query = 'valvula';
+    const matches = enriquecidas.filter(e =>
+      e.itensPedido.some(it =>
+        (it.material && it.material.toLowerCase().includes(query)) ||
+        (it.descricao && it.descricao.toLowerCase().includes(query))
+      )
+    );
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0].cto_numero).toBe('CT1');
+
+    // Busca por código do material
+    const queryCod = '1009876';
+    const matchesCod = enriquecidas.filter(e =>
+      e.itensPedido.some(it =>
+        (it.material && it.material.toLowerCase().includes(queryCod)) ||
+        (it.descricao && it.descricao.toLowerCase().includes(queryCod))
+      )
+    );
+
+    expect(matchesCod).toHaveLength(1);
+    expect(matchesCod[0].cto_numero).toBe('CT1');
+  });
+});
+

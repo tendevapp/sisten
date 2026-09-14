@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type { FacVeiculoLeve, Profile } from '../../types';
 import * as api from '../../lib/facilitiesApi';
-import { normalizarModeloVeiculoLeve, normalizarPlacaVeiculoLeve } from '../../lib/veiculosLeves';
+import { normalizarModeloVeiculoLeve, normalizarPlacaVeiculoLeve, obterStatusLicenciamento } from '../../lib/veiculosLeves';
 import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -29,6 +29,7 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
   const [editando, setEditando] = useState<FacVeiculoLeve | null>(null);
   const [modelo, setModelo] = useState('');
   const [placa, setPlaca] = useState('');
+  const [dataLicenciamento, setDataLicenciamento] = useState('');
   const [ativo, setAtivo] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [excluindo, setExcluindo] = useState<FacVeiculoLeve | null>(null);
@@ -50,6 +51,7 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
     setEditando(null);
     setModelo('');
     setPlaca('');
+    setDataLicenciamento('');
     setAtivo(true);
     setModalAberto(true);
   };
@@ -58,6 +60,7 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
     setEditando(veiculo);
     setModelo(veiculo.modelo);
     setPlaca(veiculo.placa);
+    setDataLicenciamento(veiculo.data_licenciamento || '');
     setAtivo(veiculo.ativo);
     setModalAberto(true);
   };
@@ -68,6 +71,10 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
     const placaNormalizada = normalizarPlacaVeiculoLeve(placa);
     if (!modeloNormalizado || !placaNormalizada) {
       toast.warning('Informe o modelo e a placa do veículo.');
+      return;
+    }
+    if (!dataLicenciamento) {
+      toast.warning('Informe a data de licenciamento do veículo.');
       return;
     }
     if (placaNormalizada.length < 7) {
@@ -84,10 +91,10 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
     setSalvando(true);
     try {
       if (editando) {
-        await api.atualizarVeiculoLeve(editando.id, { modelo: modeloNormalizado, placa: placaNormalizada, ativo });
+        await api.atualizarVeiculoLeve(editando.id, { modelo: modeloNormalizado, placa: placaNormalizada, data_licenciamento: dataLicenciamento, ativo });
         toast.success('Veículo leve atualizado.');
       } else {
-        await api.criarVeiculoLeve({ modelo: modeloNormalizado, placa: placaNormalizada });
+        await api.criarVeiculoLeve({ modelo: modeloNormalizado, placa: placaNormalizada, data_licenciamento: dataLicenciamento });
         toast.success('Veículo leve cadastrado.');
       }
       setModalAberto(false);
@@ -179,16 +186,29 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {filtrados.map((veiculo) => (
               <div key={veiculo.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                {(() => {
+                  const licenciamento = obterStatusLicenciamento(veiculo.data_licenciamento);
+                  const alerta = licenciamento.status === 'vencido'
+                    ? { texto: 'Licenciamento vencido', classe: 'bg-rose-100 text-rose-700' }
+                    : licenciamento.status === 'proximo'
+                      ? { texto: licenciamento.diasRestantes === 0 ? 'Vence hoje' : `Vence em ${licenciamento.diasRestantes} dias`, classe: 'bg-amber-100 text-amber-800' }
+                      : licenciamento.status === 'sem_data'
+                        ? { texto: 'Sem data informada', classe: 'bg-slate-100 text-slate-600' }
+                        : { texto: 'Licenciamento regular', classe: 'bg-emerald-100 text-emerald-700' };
+                  return <>
                 <div className="flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400"><Car className="h-4 w-4" /></span>
-                  <div><p className="text-sm font-bold text-slate-900 dark:text-slate-100">{veiculo.modelo}</p><p className="font-mono text-xs font-semibold text-slate-500">{veiculo.placa}</p></div>
+                  <div><p className="text-sm font-bold text-slate-900 dark:text-slate-100">{veiculo.modelo}</p><p className="font-mono text-xs font-semibold text-slate-500">{veiculo.placa}</p><p className="text-[10px] text-slate-500">Licenciamento: {veiculo.data_licenciamento ? veiculo.data_licenciamento.split('-').reverse().join('/') : 'não informado'}</p></div>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${veiculo.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{veiculo.ativo ? 'Ativo' : 'Inativo'}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${alerta.classe}`} title={veiculo.data_licenciamento ? `Licenciamento: ${veiculo.data_licenciamento}` : undefined}>{alerta.texto}</span>
                 </div>
                 <div className="flex items-center gap-1 sm:justify-end">
                   <button type="button" onClick={() => alternarAtivo(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-teal-600" title={veiculo.ativo ? 'Inativar' : 'Ativar'}>{veiculo.ativo ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</button>
                   <button type="button" onClick={() => abrirEdicao(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-teal-600" title="Editar"><Edit2 className="h-4 w-4" /></button>
                   <button type="button" onClick={() => setExcluindo(veiculo)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" title="Excluir"><Trash2 className="h-4 w-4" /></button>
                 </div>
+                  </>;
+                })()}
               </div>
             ))}
           </div>
@@ -200,6 +220,7 @@ export default function FacilitiesVeiculosLeves({ user, onNavigate }: Props) {
         <form onSubmit={salvar}><ModalBody className="space-y-4">
           <div><label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Modelo do carro *</label><input autoFocus required value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="EX.: TOYOTA COROLLA" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm uppercase dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" /></div>
           <div><label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Placa *</label><input required value={placa} onChange={(e) => setPlaca(e.target.value.toUpperCase())} placeholder="EX.: ABC1D23" maxLength={8} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm uppercase dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" /></div>
+          <div><label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Data de licenciamento *</label><input required type="date" value={dataLicenciamento} onChange={(e) => setDataLicenciamento(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" /><p className="mt-1 text-[10px] text-slate-500">O sistema avisa quando faltar até 30 dias ou quando estiver vencido.</p></div>
           {editando && <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Veículo ativo no formulário de ocorrências</label>}
         </ModalBody><ModalFooter><button type="button" onClick={() => setModalAberto(false)} className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button><button type="submit" disabled={salvando} className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-2 text-xs font-bold text-white disabled:opacity-50">{salvando && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Salvar</button></ModalFooter></form>
       </Modal>}

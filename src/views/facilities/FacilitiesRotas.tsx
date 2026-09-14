@@ -14,10 +14,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, BusFront, Search, Plus, Edit2, Trash2, CheckCircle2, XCircle,
-  RefreshCw, MapPin, Clock, Phone, Filter, Loader2, Users,
+  RefreshCw, MapPin, Clock, Phone, Filter, Loader2, Users, FileSpreadsheet,
 } from 'lucide-react';
 import type { Profile, RhRota } from '../../types';
 import { listarRhRotas, criarRhRota, atualizarRhRota, excluirRhRota, restaurarRhRota } from '../../lib/rhApi';
+import { exportarRotasParaExcel } from './facilitiesRotasExport';
 import { useToast } from '../../components/ui/Toast';
 import Modal, { ModalBody, ModalFooter } from '../../components/ui/Modal';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -284,6 +285,23 @@ export default function FacilitiesRotas({
     setFiltroStatus('TODOS');
   };
 
+  const exportarExcel = () => {
+    if (filtradas.length === 0) {
+      toast.warning('Nenhum registro de rota encontrado para exportar.');
+      return;
+    }
+    try {
+      exportarRotasParaExcel(filtradas);
+      toast.success(
+        temFiltro
+          ? `${filtradas.length} rota(s) filtrada(s) exportada(s) com sucesso!`
+          : `${filtradas.length} rota(s) exportada(s) com sucesso!`
+      );
+    } catch (e: any) {
+      toast.error('Falha ao exportar planilha: ' + (e?.message || ''));
+    }
+  };
+
   // -------------------------------------------------------------------------
 
   const StatusPill = ({ r }: { r: RhRota }) => (
@@ -347,20 +365,34 @@ export default function FacilitiesRotas({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={carregar}
             disabled={carregando}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 disabled:opacity-50"
             title="Recarregar"
           >
             <RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />
           </button>
           <button
             type="button"
+            onClick={exportarExcel}
+            disabled={carregando || rotas.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 hover:text-emerald-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-emerald-400 disabled:opacity-50 cursor-pointer"
+            title={
+              temFiltro
+                ? `Exportar ${filtradas.length} rota(s) filtrada(s) em Excel`
+                : 'Exportar todas as rotas em Excel'
+            }
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Exportar Excel</span>
+          </button>
+          <button
+            type="button"
             onClick={abrirNovo}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-700 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             Nova Rota
@@ -476,6 +508,19 @@ export default function FacilitiesRotas({
             >
               {aplicandoLote ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
               Inativar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const rotasSelecionadas = rotas.filter(r => selecionados.has(r.id));
+                if (rotasSelecionadas.length === 0) return;
+                exportarRotasParaExcel(rotasSelecionadas);
+                toast.success(`${rotasSelecionadas.length} rota(s) selecionada(s) exportada(s) com sucesso!`);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-[11px] font-bold text-blue-700 shadow-2xs transition-colors hover:bg-blue-50 dark:border-blue-900 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-slate-800"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              Exportar selecionados
             </button>
             <button
               type="button"

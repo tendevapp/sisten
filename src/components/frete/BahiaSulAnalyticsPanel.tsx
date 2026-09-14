@@ -14,7 +14,7 @@ import {
 import * as XLSX from 'xlsx';
 import { localDb } from '../../db/localDb';
 import { supabase } from '../../db/supabaseClient';
-import { BahiaSulEntrega, SAPPedido, Profile, TabelaFrete, StatusAuditoriaFrete } from '../../types';
+import { BahiaSulEntrega, SAPPedido, SAPRequisicao, Profile, TabelaFrete, StatusAuditoriaFrete } from '../../types';
 import {
   enriquecerEntregasComPedidos,
   calcularKpisBahiaSul,
@@ -23,7 +23,8 @@ import {
   BahiaSulEnriquecida,
   BahiaSulKpis,
   SugestaoPoBahiaSul,
-  ConfiancaSugestao
+  ConfiancaSugestao,
+  ItemPedidoBahiaSul
 } from '../../lib/bahiasul';
 import { useToast } from '../ui/Toast';
 import BahiaSulUploadModal from './BahiaSulUploadModal';
@@ -67,6 +68,7 @@ export default function BahiaSulAnalyticsPanel({
   const toast = useToast();
   const [entregas, setEntregas] = useState<BahiaSulEntrega[]>([]);
   const [pedidosSap, setPedidosSap] = useState<SAPPedido[]>([]);
+  const [requisicoesSap, setRequisicoesSap] = useState<SAPRequisicao[]>([]);
   const [tabelaFreteList, setTabelaFreteList] = useState<TabelaFrete[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -106,12 +108,14 @@ export default function BahiaSulAnalyticsPanel({
       }
       setTabelaFreteList(listFretes || []);
 
-      const [listEntregas, listPedidos] = await Promise.all([
+      const [listEntregas, listPedidos, listReqs] = await Promise.all([
         localDb.getBahiaSulEntregas(),
-        Promise.resolve(localDb.getPedidos())
+        Promise.resolve(localDb.getPedidos()),
+        Promise.resolve(localDb.getRequisicoes())
       ]);
       setEntregas(listEntregas);
       setPedidosSap(listPedidos);
+      setRequisicoesSap(listReqs);
     } catch (e: any) {
       console.error('Erro ao carregar dados Bahia Sul:', e);
       toast.error('Não foi possível carregar as entregas da Bahia Sul.');
@@ -120,10 +124,20 @@ export default function BahiaSulAnalyticsPanel({
     }
   };
 
-  // Enriquecimento das entregas com os pedidos SAP e cálculo contratual de frete
+  // Enriquecimento das entregas com os pedidos SAP, itens e cálculo contratual de frete
   const entregasEnriquecidas = useMemo(() => {
-    return enriquecerEntregasComPedidos(entregas, pedidosSap, tabelaFreteList);
-  }, [entregas, pedidosSap, tabelaFreteList]);
+    return enriquecerEntregasComPedidos(entregas, pedidosSap, tabelaFreteList, requisicoesSap);
+  }, [entregas, pedidosSap, tabelaFreteList, requisicoesSap]);
+
+  // Auxiliar para identificar quais itens do pedido bateram com o termo pesquisado
+  const getMatchedItens = (item: BahiaSulEnriquecida, query: string): ItemPedidoBahiaSul[] => {
+    if (!query.trim() || !item.itensPedido || item.itensPedido.length === 0) return [];
+    const q = query.toLowerCase().trim();
+    return item.itensPedido.filter(it =>
+      (it.material && it.material.toLowerCase().includes(q)) ||
+      (it.descricao && it.descricao.toLowerCase().includes(q))
+    );
+  };
 
   // Indicadores (KPIs)
   const kpis: BahiaSulKpis = useMemo(() => {
@@ -203,10 +217,10 @@ export default function BahiaSulAnalyticsPanel({
         if (auditoriaFilter === 'sem_rota' && auditStatus !== 'sem_rota') return false;
       }
 
-      // Busca textual
+      // Busca textual (CTe, Fornecedor, Cidade, NFs, Pedido SAP ou Itens do Pedido)
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
-        const matches =
+        const matchesField =
           (item.cto_numero || '').toLowerCase().includes(q) ||
           (item.cto_filial || '').toLowerCase().includes(q) ||
           (item.rmt_nome || '').toLowerCase().includes(q) ||
@@ -216,7 +230,13 @@ export default function BahiaSulAnalyticsPanel({
           (item.nfs_embarcadas || '').toLowerCase().includes(q) ||
           (item.nro_pedido || '').toLowerCase().includes(q) ||
           (item.pedidoSap?.documento_compra || '').toLowerCase().includes(q);
-        if (!matches) return false;
+
+        const matchesItem = (item.itensPedido || []).some(it =>
+          (it.material && it.material.toLowerCase().includes(q)) ||
+          (it.descricao && it.descricao.toLowerCase().includes(q))
+        );
+
+        if (!matchesField && !matchesItem) return false;
       }
 
       return true;
@@ -313,6 +333,7 @@ export default function BahiaSulAnalyticsPanel({
       'NFs Embarcadas': it.nfs_embarcadas,
       'Pedido SAP': it.nro_pedido || (it.pedidoSap?.documento_compra ?? ''),
       'Fornecedor SAP': it.pedidoSap?.fornecedor_name ?? '',
+      'Itens do Pedido (PO)': (it.itensPedido || []).map(i => `${i.material ? i.material + ' - ' : ''}${i.descricao}`).join('; '),
       'Status Prazo': it.statusPrazo,
       'Peso Real (kg)': it.kgs_real,
       'Peso Cubado (kg)': it.kgs_cubado,
@@ -576,7 +597,7 @@ export default function BahiaSulAnalyticsPanel({
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por CTe, Fornecedor, Cidade, NF ou Pedido SAP..."
+            placeholder="Buscar por CTe, Fornecedor, Cidade, NF, Pedido SAP ou Item (código/descrição)..."
             className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
           />
           {searchTerm && (
@@ -702,6 +723,26 @@ export default function BahiaSulAnalyticsPanel({
               Abaixo ({kpis.qtdDesconto})
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Banner de Ressalva sobre vinculação por Pedido SAP */}
+      <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 px-4 shadow-2xs flex items-start sm:items-center gap-3 text-xs text-amber-900">
+        <div className="p-2 rounded-xl bg-amber-100 text-amber-700 shrink-0 mt-0.5 sm:mt-0 shadow-2xs">
+          <AlertTriangle className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0 space-y-0.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-amber-950">
+              Ressalva de Vínculo por Pedido de Compra (PO):
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200/70 text-amber-900 border border-amber-300">
+              Pesquisa por Item Disponível
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-800 leading-snug">
+            As entregas da transportadora são associadas a nível de <strong>Pedido SAP</strong>. É possível pesquisar pelo código ou pela descrição do material para localizar o pedido correspondente, porém <strong>não é possível garantir que todos os itens do pedido estejam presentes nesta entrega específica</strong> (podem ter ocorrido faturamentos/entregas parciais ou divididas em múltiplos fretes/CTes).
+          </p>
         </div>
       </div>
 
@@ -930,6 +971,26 @@ export default function BahiaSulAnalyticsPanel({
                                 {item.pedidoSap.fornecedor_name}
                               </p>
                             )}
+                            {item.itensPedido && item.itensPedido.length > 0 && (
+                              <p className="text-[10px] text-slate-400 font-medium">
+                                {item.itensPedido.length} {item.itensPedido.length === 1 ? 'item' : 'itens'} no PO
+                              </p>
+                            )}
+                            {(() => {
+                              const matched = getMatchedItens(item, searchTerm);
+                              if (matched.length === 0) return null;
+                              return (
+                                <div
+                                  className="mt-1 flex items-center gap-1 text-[10px] font-medium text-amber-900 bg-amber-50/90 px-1.5 py-0.5 rounded border border-amber-200 max-w-[190px]"
+                                  title={`Item correspondente: ${matched[0].material ? matched[0].material + ' - ' : ''}${matched[0].descricao}. Ressalva: Como o vínculo é por pedido, não é possível garantir que este item específico esteja presente nesta entrega.`}
+                                >
+                                  <AlertTriangle className="h-2.5 w-2.5 text-amber-600 shrink-0" />
+                                  <span className="truncate">
+                                    {matched[0].material ? `${matched[0].material}: ` : ''}{matched[0].descricao}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : sugestaoPorChave.get(item.chave_unica) ? (
                           (() => {
@@ -1172,6 +1233,73 @@ export default function BahiaSulAnalyticsPanel({
                 )}
               </div>
             </div>
+
+            {/* Itens do Pedido SAP Vinculado */}
+            {selectedItem.itensPedido && selectedItem.itensPedido.length > 0 && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Package className="h-4 w-4 text-indigo-600" />
+                    <h4 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">
+                      Itens do Pedido SAP ({selectedItem.itensPedido.length})
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    PO {selectedItem.nro_pedido || selectedItem.pedidoSap?.documento_compra}
+                  </span>
+                </div>
+
+                {/* Ressalva no Modal */}
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/90 text-xs text-amber-900 leading-snug">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block text-amber-950 font-bold">Ressalva de Vínculo por Pedido:</strong>
+                    <p className="text-[11px] text-amber-800 mt-0.5">
+                      Os itens abaixo pertencem ao Pedido de Compra cadastrado no SAP. Como a vinculação deste frete é feita a nível de <strong>pedido</strong>, <strong>não é possível garantir que todos estes itens estejam presentes nesta entrega específica</strong> (podem ter ocorrido faturamentos/entregas parciais ou divididas em múltiplos conhecimentos da transportadora).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tabela de Itens */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80 bg-white max-h-56 overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="sticky top-0 bg-slate-50 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2 px-3">Item</th>
+                        <th className="py-2 px-3">Material</th>
+                        <th className="py-2 px-3">Descrição do Material</th>
+                        <th className="py-2 px-3 text-right">Qtd Pedida</th>
+                        <th className="py-2 px-3 text-center">MIGO</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      {selectedItem.itensPedido.map((it, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-3 font-mono text-slate-500">{it.itemPedido || `${idx + 1}0`}</td>
+                          <td className="py-2 px-3 font-mono font-bold text-slate-800">{it.material || '—'}</td>
+                          <td className="py-2 px-3 text-slate-700 font-medium">{it.descricao || '—'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-slate-800">
+                            {it.qtd !== undefined ? `${it.qtd} ${it.unidade || ''}` : '—'}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            {it.dataMigo ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                {new Date(it.dataMigo + 'T00:00:00').toLocaleDateString('pt-BR')}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                Sem MIGO
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Grid de Informações da Entrega */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">

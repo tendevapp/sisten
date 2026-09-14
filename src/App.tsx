@@ -14,7 +14,6 @@ import ErrorBoundary, { CHUNK_RELOAD_GUARD_KEY } from './components/ErrorBoundar
 import { TourRegistryProvider } from './components/help/TourRegistryContext';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import ForcePasswordChangeModal from './components/auth/ForcePasswordChangeModal';
-import DataUpdateModal from './components/DataUpdateModal';
 import ResumoLoginGate from './components/solicitacoes/ResumoLoginGate';
 
 // Views
@@ -1204,7 +1203,6 @@ export default function App() {
         </main>
       </div>
       <FeedbackButton pagePath={currentPath} />
-      <DataUpdateModal currentPath={currentPath} />
       {activeUser && <ResumoLoginGate user={activeUser} onNavigate={handleNavigate} />}
     </div>
     </TourRegistryProvider>

@@ -6,7 +6,7 @@
  * para a tabela `sup_bahiasul_entregas`.
  */
 
-import { BahiaSulEntrega, SAPPedido, TabelaFrete, FreteCalculadoDetalhes, StatusAuditoriaFrete } from '../types';
+import { BahiaSulEntrega, SAPPedido, SAPRequisicao, TabelaFrete, FreteCalculadoDetalhes, StatusAuditoriaFrete } from '../types';
 
 export interface ColumnDefinition {
   field: keyof BahiaSulEntrega;
@@ -315,8 +315,18 @@ export function parseBahiaSulRows(rawRows: unknown[][]): {
   };
 }
 
+export interface ItemPedidoBahiaSul {
+  material: string;
+  descricao: string;
+  itemPedido?: string;
+  qtd?: number;
+  unidade?: string;
+  dataMigo?: string | null;
+}
+
 export interface BahiaSulEnriquecida extends BahiaSulEntrega {
   pedidoSap?: SAPPedido | null;
+  itensPedido: ItemPedidoBahiaSul[];
   pedidoEncontrado: boolean;
   statusPrazo: 'entregue' | 'no_prazo' | 'atrasado' | 'sem_previsao';
   diasAtraso?: number;
@@ -747,21 +757,71 @@ export function getStatusPrazo(entrega: BahiaSulEntrega, hojeStr?: string): { st
 }
 
 /**
- * Cruza a base de entregas da Bahia Sul com a lista de pedidos do SAP e a tabela de frete contratual
+ * Cruza a base de entregas da Bahia Sul com a lista de pedidos do SAP, itens e a tabela de frete contratual
  */
 export function enriquecerEntregasComPedidos(
   entregas: BahiaSulEntrega[],
   pedidosSap: SAPPedido[],
-  tabelaFreteList: TabelaFrete[] = []
+  tabelaFreteList: TabelaFrete[] = [],
+  requisicoesSap: SAPRequisicao[] = []
 ): BahiaSulEnriquecida[] {
   // Cria mapa de pedidos por PO normalizado
   const mapPedidos = new Map<string, SAPPedido>();
+  const mapItensPorPo = new Map<string, ItemPedidoBahiaSul[]>();
 
   pedidosSap.forEach(ped => {
     if (ped.documento_compra) {
       const norm = normalizePoNumber(ped.documento_compra);
-      if (norm && !mapPedidos.has(norm)) {
-        mapPedidos.set(norm, ped);
+      if (norm) {
+        if (!mapPedidos.has(norm)) {
+          mapPedidos.set(norm, ped);
+        }
+        const mat = String(ped.material || (ped as any).material_code || '').trim();
+        const desc = String(ped.txt_breve || (ped as any).texto_breve || '').trim();
+        if (mat || desc) {
+          const list = mapItensPorPo.get(norm) || [];
+          const itm = ped.item_pedido || (ped as any).item || '';
+          if (!list.some(it => it.material === mat && (itm ? it.itemPedido === itm : true))) {
+            list.push({
+              material: mat,
+              descricao: desc,
+              itemPedido: itm,
+              qtd: ped.qtd_pedido !== undefined && ped.qtd_pedido !== null ? Number(ped.qtd_pedido) : undefined,
+              unidade: (ped as any).unidade_medida_pedido || (ped as any).unidade_medida || 'UN',
+              dataMigo: ped.data_migo || null,
+            });
+            mapItensPorPo.set(norm, list);
+          }
+        }
+      }
+    }
+  });
+
+  requisicoesSap.forEach(req => {
+    const docCompra = String((req as any).documento_compra || (req as any).doc_compra || req.pedido || '').trim();
+    if (docCompra) {
+      const norm = normalizePoNumber(docCompra);
+      if (norm) {
+        const mat = String(req.material_code || (req as any).material || '').trim();
+        const desc = String(req.texto_breve || '').trim();
+        if (mat || desc) {
+          const list = mapItensPorPo.get(norm) || [];
+          const itm = (req as any).item_pedido || req.item_reqc || '';
+          const existing = list.find(it => it.material === mat && (itm ? it.itemPedido === itm : true));
+          if (!existing) {
+            list.push({
+              material: mat,
+              descricao: desc,
+              itemPedido: itm,
+              qtd: req.qtd_requisicao ? Number(req.qtd_requisicao) : undefined,
+              unidade: req.unidade_medida || 'UN',
+              dataMigo: null,
+            });
+            mapItensPorPo.set(norm, list);
+          } else if (!existing.descricao && desc) {
+            existing.descricao = desc;
+          }
+        }
       }
     }
   });
@@ -778,12 +838,17 @@ export function enriquecerEntregasComPedidos(
       }
     }
 
+    const poEfetivo = ent.nro_pedido || (pedidoSap?.documento_compra);
+    const normPo = poEfetivo ? normalizePoNumber(poEfetivo) : '';
+    const itensPedido = normPo ? (mapItensPorPo.get(normPo) || []) : [];
+
     const { status: statusPrazo, diasAtraso } = getStatusPrazo(ent);
     const freteCalculado = calcularFreteContratual(ent, tabelaFreteList);
 
     return {
       ...ent,
       pedidoSap,
+      itensPedido,
       pedidoEncontrado,
       statusPrazo,
       diasAtraso,

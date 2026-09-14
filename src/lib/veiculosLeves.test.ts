@@ -8,6 +8,7 @@ import {
   filtrarVeiculosLeves,
   normalizarModeloVeiculoLeve,
   normalizarPlacaVeiculoLeve,
+  obterStatusLicenciamento,
 } from './veiculosLeves';
 
 describe('Veículos leves', () => {
@@ -26,5 +27,12 @@ describe('Veículos leves', () => {
     expect(filtrarVeiculosLeves(veiculos, 'corolla').map((v) => v.id)).toEqual(['1']);
     expect(filtrarVeiculosLeves(veiculos, 'ghi3j45').map((v) => v.id)).toEqual(['3']);
     expect(filtrarVeiculosLeves(veiculos, '').map((v) => v.id)).toEqual(['1', '3']);
+  });
+
+  it('classifica o licenciamento por proximidade, vencimento e ausência de data', () => {
+    expect(obterStatusLicenciamento('2026-09-13', '2026-09-14')).toMatchObject({ status: 'vencido', diasRestantes: -1 });
+    expect(obterStatusLicenciamento('2026-10-14', '2026-09-14')).toMatchObject({ status: 'proximo', diasRestantes: 30 });
+    expect(obterStatusLicenciamento('2026-10-15', '2026-09-14')).toMatchObject({ status: 'regular', diasRestantes: 31 });
+    expect(obterStatusLicenciamento(null, '2026-09-14')).toMatchObject({ status: 'sem_data', diasRestantes: null });
   });
 });

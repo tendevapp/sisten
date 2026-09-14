@@ -39,7 +39,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-14',
+    resumo: 'Suprimentos > Frete Bahia Sul / Pesquisa por Item e Ressalva de Vínculo por Pedido (`BahiaSulAnalyticsPanel.tsx`, `bahiasul.ts`, `types.ts`, `bahiasul.test.ts`): 1. Implementada pesquisa textual por código de material e texto breve dos itens do Pedido de Compra SAP (PO) vinculado no Acompanhamento de Entregas da Bahia Sul; 2. Inserido banner visual com ressalva explícita destacando que a amarração das entregas ocorre a nível de Pedido de Compra (PO) e que a pesquisa por item localiza as remessas daquele pedido, sem garantia de que todos os itens do pedido estejam na entrega específica (devido a remessas parciais ou desdobramentos de frete); 3. Coluna de Pedido SAP na tabela de entregas enriquecida com contagem de itens do pedido e badge do item correspondente à pesquisa com alerta/tooltip da ressalva; 4. Nova seção no modal de detalhes do CTe listando todos os itens do Pedido SAP com quantidades, status MIGO e banner de ressalva; 5. Inclusão dos itens do pedido na exportação Excel.',
+  },
+  {
+    data: '2026-09-14',
     resumo: 'Suprimentos > Central de Compras — Correção do Fallback ME2L por Material (`vw_sap_requisicoes_enriquecidas`, migration `20260914150000_fix_me2l_fallback_material_match.sql`, `diretrizes.ts`): 1. Corrigida falha de associação na view `vw_sap_requisicoes_enriquecidas` onde requisições com múltiplos itens (como a RM 1100334325) tinham todos os seus itens em aberto marcados indevidamente como "Processado" / com pedido se qualquer item daquela RM possuísse pedido no relatório ME2L; 2. O CTE `me2l_por_reqc` e o JOIN correspondente passam a casar estritamente por `(requisicao_compra, material)`, garantindo que itens com materiais distintos não herdem o pedido uns dos outros; 3. Para RMs de serviço (prefixo 17), onde não há código de material, o casamento continua preservado por requisição; 4. Eliminação de 126 falsos positivos de pedidos gerados em itens abertos em toda a base de Suprimentos.',
+  },
+  {
+    data: '2026-09-14',
+    resumo: 'Facilities > Cadastro de Rotas — Exportação para Planilha Excel (`FacilitiesRotas.tsx`, `facilitiesRotasExport.ts`, `facilitiesRotasExport.test.ts`, `diretrizes.ts`): 1. Adicionado botão "Exportar Excel" no cabeçalho principal de Cadastro de Rotas (/facilities/rotas), permitindo exportar a listagem completa ou respeitar os filtros ativos de busca, rota, ponto de embarque e status; 2. Adicionada ação dedicada de "Exportar selecionados" na barra de ações em lote para exportação pontual dos colaboradores marcados; 3. Planilha formatada com largura de colunas otimizada (Colaborador, Rota, Ponto de Embarque, Horário, Contato, Status e Data de Cadastro); 4. Cobertura de testes unitários para formatação e estruturação do workbook.',
   },
   {
     data: '2026-09-14',
@@ -2664,19 +2672,20 @@ export const DIRETRIZES: DiretrizesDominio[] = [
       {
         id: 'facilities-rotas',
         nome: 'Cadastro de Rotas de Transporte',
-        arquivo: 'src/views/facilities/FacilitiesRotas.tsx · src/lib/facilitiesApi.ts',
+        arquivo: 'src/views/facilities/FacilitiesRotas.tsx · src/views/facilities/facilitiesRotasExport.ts · src/lib/facilitiesApi.ts · src/lib/rhApi.ts',
         secoes: [
           {
             titulo: 'Gestão de transporte fretado',
             itens: [
               'Mapeamento de itinerários de ônibus e vans para transporte de colaboradores das cidades e bairros vizinhos até a fábrica.',
-              'Cadastro de empresa transportadora, placa, capacidade de passageiros, turnos de atendimento e paradas intermediárias.',
+              'Cadastro de colaboradores, pontos de embarque, horários, contato e rotas.',
+              'Exportação das rotas cadastradas (total ou filtradas) para planilha Excel (.xlsx), com largura otimizada de colunas e ação em lote para exportar registros selecionados.',
               'Alimenta os seletores de rotas utilizados no formulário de ASE (Horas Extras) e no registro de transportes da portaria.'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`fac_rotas`.']
+            itens: ['`rh_rotas`.']
           }
         ]
       },

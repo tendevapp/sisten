@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Car, Search } from 'lucide-react';
 import type { FacVeiculoLeve, RhPessoa } from '../../types';
+import { obterStatusLicenciamento } from '../../lib/veiculosLeves';
 
 interface Condutor {
   nome: string;
@@ -32,6 +33,8 @@ export default function VeiculoLeveFormFields({
   const [busca, setBusca] = useState('');
   const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
   const manual = origem === 'manual';
+  const veiculoSelecionado = veiculos.find((veiculo) => veiculo.id === veiculoId);
+  const statusLicenciamento = veiculoSelecionado ? obterStatusLicenciamento(veiculoSelecionado.data_licenciamento) : null;
   const sugestoes = useMemo(() => {
     const termo = busca.trim().toUpperCase();
     if (!termo) return [];
@@ -49,7 +52,11 @@ export default function VeiculoLeveFormFields({
             <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Veículo leve *</label>
             <select required disabled={carregando} value={veiculoId} onChange={(e) => onVeiculoChange(veiculos.find((veiculo) => veiculo.id === e.target.value))} className="w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-semibold uppercase text-slate-900 disabled:cursor-wait disabled:opacity-60 dark:border-cyan-800 dark:bg-slate-950 dark:text-slate-100">
               <option value="">Selecione o carro alugado...</option>
-              {veiculos.map((veiculo) => <option key={veiculo.id} value={veiculo.id}>{veiculo.modelo} · {veiculo.placa}</option>)}
+              {veiculos.map((veiculo) => {
+                const status = obterStatusLicenciamento(veiculo.data_licenciamento);
+                const alerta = status.status === 'vencido' ? ' · LICENCIAMENTO VENCIDO' : status.status === 'proximo' ? ` · VENCE EM ${status.diasRestantes} DIAS` : status.status === 'sem_data' ? ' · SEM DATA' : '';
+                return <option key={veiculo.id} value={veiculo.id}>{veiculo.modelo} · {veiculo.placa}{alerta}</option>;
+              })}
             </select>
             {carregando && <p className="mt-1 text-[10px] font-semibold text-cyan-700">Carregando veículos cadastrados...</p>}
             {!carregando && veiculos.length === 0 && <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-semibold text-amber-700"><span>{erro || 'Nenhum veículo ativo cadastrado em Facilities.'}</span>{onRecarregar && <button type="button" onClick={onRecarregar} className="rounded border border-amber-300 px-1.5 py-0.5 text-amber-800 hover:bg-amber-100">Tentar novamente</button>}</div>}
@@ -57,6 +64,9 @@ export default function VeiculoLeveFormFields({
           <div><label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Placa</label><input readOnly value={placa} placeholder="Preenchida pelo cadastro" className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 font-mono text-xs font-bold uppercase text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200" /></div>
         </div>
         {modelo && <p className="mt-2 text-[11px] font-semibold text-cyan-800 dark:text-cyan-300">Modelo selecionado: {modelo}</p>}
+        {statusLicenciamento?.status === 'vencido' && <p className="mt-2 rounded-lg bg-rose-100 px-2.5 py-2 text-[11px] font-bold text-rose-800">Atenção: o licenciamento deste veículo está vencido.</p>}
+        {statusLicenciamento?.status === 'proximo' && <p className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[11px] font-bold text-amber-800">Atenção: o licenciamento vence em {statusLicenciamento.diasRestantes} dias.</p>}
+        {statusLicenciamento?.status === 'sem_data' && <p className="mt-2 rounded-lg bg-slate-100 px-2.5 py-2 text-[11px] font-semibold text-slate-700">Data de licenciamento não informada no cadastro.</p>}
       </div>
 
       <div className="rounded-2xl border border-purple-200 bg-purple-50/30 p-4 dark:border-purple-900/40 dark:bg-purple-950/20">

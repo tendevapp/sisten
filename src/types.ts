@@ -478,6 +478,9 @@ export interface SAPPedido {
   data_doc?: string | null;
   data_migo?: string | null;
   valor_liquido?: number | null;
+  material?: string | null;
+  txt_breve?: string | null;
+  qtd_pedido?: number | null;
 }
 
 export interface SAPObsHistory {
@@ -1933,6 +1936,7 @@ export interface FacVeiculoLeve {
   id: string;
   modelo: string;
   placa: string;
+  data_licenciamento: string | null;
   ativo: boolean;
   created_at: string;
   updated_at: string;
