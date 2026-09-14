@@ -1,0 +1,8 @@
+# Ignorar pastas que não fazem parte do build web frontend
+supabase/
+.agents/
+.claude/
+.playwright-mcp/
+scratch/
+docs/
+*.log
