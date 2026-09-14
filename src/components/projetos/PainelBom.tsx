@@ -11,7 +11,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, GitBranch, Network, Search, ShieldAlert, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch, Network, Rows3, Search, ShieldAlert, X } from 'lucide-react';
 import { TableEmpty } from '../ui/DataTable';
 import Modal, { ModalHeader, ModalBody } from '../ui/Modal';
 import { SELECT_CLS } from './campos';
@@ -34,6 +34,11 @@ export default function PainelBom({ dados }: Props) {
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
   const [auditoriaAberta, setAuditoriaAberta] = useState(false);
   const [mapaAberto, setMapaAberto] = useState(false);
+  // 'arvore' navega a hierarquia de engenharia; 'partnumber' achata em uma
+  // linha por peça — é a pergunta "quanto tem no total desse item na BOM
+  // inteira", que a árvore não responde de cara porque o mesmo part number
+  // se repete em vários tramos e subconjuntos.
+  const [visao, setVisao] = useState<'arvore' | 'partnumber'>('arvore');
 
   const torres = subprojetoAtivo?.torres_previstas ?? 1;
 
@@ -48,30 +53,83 @@ export default function PainelBom({ dados }: Props) {
 
   const temFiltro = Boolean(busca.trim() || tramoFiltro || grupoFiltro || fornecedorFiltro || soFolhas);
 
+  /** Busca/tramo/grupo/fornecedor — os critérios comuns à árvore e à visão por part number. */
+  const casaFiltrosBase = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return (n: NoBom) =>
+      (!termo ||
+        n.partNumber.toLowerCase().includes(termo) ||
+        (n.codSap ?? '').toLowerCase().includes(termo) ||
+        n.descricao.toLowerCase().includes(termo) ||
+        n.description.toLowerCase().includes(termo) ||
+        n.fornecedor.toLowerCase().includes(termo)) &&
+      (!tramoFiltro || n.tramo === tramoFiltro) &&
+      (!grupoFiltro || n.grupoNorm === grupoFiltro) &&
+      (!fornecedorFiltro || n.fornecedor === fornecedorFiltro);
+  }, [busca, tramoFiltro, grupoFiltro, fornecedorFiltro]);
+
   /**
    * Com filtro, a árvore vira lista achatada: mostrar só os nós que casam é o
    * que se quer procurando, e desenhar a hierarquia com buracos no meio seria
    * pior que não desenhar. Sem filtro, é árvore de verdade com expansão.
    */
   const visiveis = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-
-    const casa = (n: NoBom) =>
-      (!termo ||
-        n.partNumber.toLowerCase().includes(termo) ||
-        (n.codSap ?? '').toLowerCase().includes(termo) ||
-        n.descricao.toLowerCase().includes(termo) ||
-        n.description.toLowerCase().includes(termo)) &&
-      (!tramoFiltro || n.tramo === tramoFiltro) &&
-      (!grupoFiltro || n.grupoNorm === grupoFiltro) &&
-      (!fornecedorFiltro || n.fornecedor === fornecedorFiltro) &&
-      (!soFolhas || n.folha);
+    const casa = (n: NoBom) => casaFiltrosBase(n) && (!soFolhas || n.folha);
 
     if (temFiltro) return arvore.nos.filter(casa);
 
     // Sem filtro: só o que está aberto (raízes sempre visíveis).
     return arvore.nos.filter((n) => n.parentId === null || estaAberto(n, arvore, expandidos));
-  }, [arvore, busca, tramoFiltro, grupoFiltro, fornecedorFiltro, soFolhas, temFiltro, expandidos]);
+  }, [arvore, casaFiltrosBase, soFolhas, temFiltro, expandidos]);
+
+  /**
+   * Visão "por part number": uma linha por peça, somando todas as ocorrências
+   * na BOM (a mesma peça repete entre tramos e subconjuntos). Só folhas —
+   * conjunto (nível intermediário) não tem saldo próprio no almoxarifado.
+   */
+  interface LinhaPorPartNumber {
+    partNumberNorm: string;
+    partNumber: string;
+    codSap: string | null;
+    descricao: string;
+    description: string;
+    fornecedor: string;
+    uom: string;
+    tramos: Tramo[];
+    linhasBom: number;
+    qtdPorTorre: number;
+    saldo: number;
+  }
+
+  const porPartNumber = useMemo<LinhaPorPartNumber[]>(() => {
+    const mapa = new Map<string, LinhaPorPartNumber>();
+    for (const n of arvore.nos) {
+      if (!n.folha || !n.partNumberNorm || !casaFiltrosBase(n)) continue;
+      const atual = mapa.get(n.partNumberNorm);
+      if (atual) {
+        atual.linhasBom += 1;
+        if (n.qtdPorTorre !== null) atual.qtdPorTorre += n.qtdPorTorre;
+        if (n.tramo && !atual.tramos.includes(n.tramo)) atual.tramos.push(n.tramo);
+      } else {
+        mapa.set(n.partNumberNorm, {
+          partNumberNorm: n.partNumberNorm,
+          partNumber: n.partNumber,
+          codSap: n.codSap,
+          descricao: n.descricao,
+          description: n.description,
+          fornecedor: n.fornecedor,
+          uom: n.uom,
+          tramos: n.tramo ? [n.tramo] : [],
+          linhasBom: 1,
+          qtdPorTorre: n.qtdPorTorre ?? 0,
+          saldo: saldoPorPn.get(n.partNumberNorm) ?? 0,
+        });
+      }
+    }
+    const linhas = Array.from(mapa.values());
+    for (const l of linhas) l.tramos.sort((a, b) => TRAMOS.indexOf(a) - TRAMOS.indexOf(b));
+    return linhas.sort((a, b) => a.partNumber.localeCompare(b.partNumber));
+  }, [arvore, casaFiltrosBase, saldoPorPn]);
 
   /**
    * O mapa mental usa o mesmo recorte que a tabela: com filtro, fecha por
@@ -101,6 +159,32 @@ export default function PainelBom({ dados }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Visão: árvore de engenharia ou lista consolidada por part number */}
+      <div className="flex items-center gap-1 p-1 rounded-xl border bg-[var(--surface-raised)] w-fit" style={{ borderColor: 'var(--hairline)' }}>
+        <button
+          onClick={() => setVisao('arvore')}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+          style={{
+            background: visao === 'arvore' ? 'var(--brand)' : 'transparent',
+            color: visao === 'arvore' ? '#fff' : 'var(--ink-secondary)',
+          }}
+        >
+          <GitBranch className="h-3.5 w-3.5" />
+          Árvore
+        </button>
+        <button
+          onClick={() => setVisao('partnumber')}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors"
+          style={{
+            background: visao === 'partnumber' ? 'var(--brand)' : 'transparent',
+            color: visao === 'partnumber' ? '#fff' : 'var(--ink-secondary)',
+          }}
+        >
+          <Rows3 className="h-3.5 w-3.5" />
+          Por part number
+        </button>
+      </div>
+
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
@@ -108,7 +192,7 @@ export default function PainelBom({ dados }: Props) {
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Part number, código SAP ou descrição"
+            placeholder="Part number, código SAP, descrição ou fornecedor"
             className="w-full rounded-lg border py-2 pl-9 pr-3 text-xs font-medium focus:outline-2 focus:outline-offset-1"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
           />
@@ -125,10 +209,12 @@ export default function PainelBom({ dados }: Props) {
           <option value="">Todos os fornecedores</option>
           {fornecedores.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
-        <label className="inline-flex items-center gap-2 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
-          <input type="checkbox" checked={soFolhas} onChange={(e) => setSoFolhas(e.target.checked)} className="cursor-pointer" />
-          Só itens estocáveis
-        </label>
+        {visao === 'arvore' && (
+          <label className="inline-flex items-center gap-2 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+            <input type="checkbox" checked={soFolhas} onChange={(e) => setSoFolhas(e.target.checked)} className="cursor-pointer" />
+            Só itens estocáveis
+          </label>
+        )}
         {temFiltro && (
           <button onClick={limparFiltros} className="inline-flex items-center gap-1 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border hover:opacity-80" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
             <X className="h-3.5 w-3.5" /> Limpar
@@ -169,18 +255,74 @@ export default function PainelBom({ dados }: Props) {
       )}
 
       <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-        {formatQtd(arvore.nos.length)} linhas · {formatQtd(totalFolhas)} itens estocáveis (folhas) ·
-        mostrando {formatQtd(visiveis.length)}
-        {temFiltro ? ' (lista achatada pelo filtro)' : ' (clique para expandir)'}
+        {visao === 'arvore' ? (
+          <>
+            {formatQtd(arvore.nos.length)} linhas · {formatQtd(totalFolhas)} itens estocáveis (folhas) ·
+            mostrando {formatQtd(visiveis.length)}
+            {temFiltro ? ' (lista achatada pelo filtro)' : ' (clique para expandir)'}
+          </>
+        ) : (
+          <>{formatQtd(totalFolhas)} itens estocáveis na BOM · {formatQtd(porPartNumber.length)} part number(s) único(s)</>
+        )}
       </p>
 
       {loading && <div className="h-64 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
 
-      {!loading && !visiveis.length && (
+      {!loading && visao === 'arvore' && !visiveis.length && (
         <TableEmpty icon={GitBranch} title="Nenhuma linha encontrada" hint="Ajuste os filtros ou limpe a busca." />
       )}
 
-      {!loading && visiveis.length > 0 && (
+      {!loading && visao === 'partnumber' && !porPartNumber.length && (
+        <TableEmpty icon={Rows3} title="Nenhum part number encontrado" hint="Ajuste os filtros ou limpe a busca." />
+      )}
+
+      {!loading && visao === 'partnumber' && porPartNumber.length > 0 && (
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
+          <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 z-10" style={{ background: 'var(--surface-raised)' }}>
+                <tr className="border-b" style={{ borderColor: 'var(--hairline)' }}>
+                  <Cabecalho>Item</Cabecalho>
+                  <Cabecalho>Fornecedor</Cabecalho>
+                  <Cabecalho>Tramos</Cabecalho>
+                  <Cabecalho align="right">Linhas na BOM</Cabecalho>
+                  <Cabecalho align="right">Total por torre</Cabecalho>
+                  <Cabecalho align="right">Subprojeto ({torres}T)</Cabecalho>
+                  <Cabecalho align="right">Saldo</Cabecalho>
+                </tr>
+              </thead>
+              <tbody>
+                {porPartNumber.map((l) => (
+                  <tr
+                    key={l.partNumberNorm}
+                    className="border-b transition-colors hover:bg-[var(--surface-hover,rgba(127,127,127,0.06))]"
+                    style={{ borderColor: 'var(--hairline)' }}
+                  >
+                    <td className="px-3 py-1.5">
+                      <p className="font-bold truncate" style={{ color: 'var(--ink-primary)' }}>{l.partNumber}</p>
+                      <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }} title={l.description}>
+                        {l.descricao || l.description || '—'}
+                        {l.codSap ? ` · SAP ${l.codSap}` : ''}
+                      </p>
+                    </td>
+                    <Celula>{l.fornecedor || '—'}</Celula>
+                    <Celula>{l.tramos.length ? l.tramos.join(', ') : '—'}</Celula>
+                    <Celula align="right">{formatQtd(l.linhasBom)}</Celula>
+                    <Celula align="right" forte>{formatQtd(l.qtdPorTorre)}</Celula>
+                    <Celula align="right">{formatQtd(l.qtdPorTorre * torres)}</Celula>
+                    <td className="px-3 py-1.5 text-right tabular-nums font-bold whitespace-nowrap"
+                        style={{ color: l.saldo > 0 ? 'var(--abc-a)' : 'var(--abc-c)' }}>
+                      {formatQtd(l.saldo)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!loading && visao === 'arvore' && visiveis.length > 0 && (
         <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
           <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-xs">

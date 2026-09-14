@@ -20,6 +20,7 @@ import { formatInt, formatQtd } from '../../lib/format';
 import { TRAMOS } from '../../lib/projetos';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 import MatrizAutonomiaKits from './MatrizAutonomiaKits';
+import { SELECT_CLS } from './campos';
 
 interface Props { dados: DadosProjetos }
 
@@ -37,6 +38,7 @@ export default function PainelPosicao({ dados }: Props) {
   const { saldos, autonomia, rateio, consumo, subprojetoAtivo, projecao, loading, recarregar } = dados;
   const toast = useToast();
   const [busca, setBusca] = useState('');
+  const [fornecedorFiltro, setFornecedorFiltro] = useState('');
   const [recorte, setRecorte] = useState<Recorte>('todos');
   // Localizador e estoque mínimo são do almoxarifado, não da BOM: editáveis
   // aqui mesmo, na linha, porque quem sabe a prateleira é quem lê esta tela.
@@ -78,6 +80,13 @@ export default function PainelPosicao({ dados }: Props) {
     return m;
   }, [consumo]);
 
+  // Fornecedor é a chave que amarra o item físico ao subkit (Forte Fixadores,
+  // Avanti...); listar os cadastrados evita depender de digitar o nome certo.
+  const fornecedores = useMemo(
+    () => Array.from(new Set(saldos.map((s) => s.fornecedor).filter(Boolean))).sort(),
+    [saldos],
+  );
+
   const linhas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return saldos
@@ -100,8 +109,10 @@ export default function PainelPosicao({ dados }: Props) {
           s.part_number.toLowerCase().includes(termo) ||
           (s.cod_sap ?? '').toLowerCase().includes(termo) ||
           (s.descricao ?? '').toLowerCase().includes(termo) ||
-          (s.description ?? '').toLowerCase().includes(termo)
+          (s.description ?? '').toLowerCase().includes(termo) ||
+          (s.fornecedor ?? '').toLowerCase().includes(termo)
         )) return false;
+        if (fornecedorFiltro && s.fornecedor !== fornecedorFiltro) return false;
         if (recorte === 'com_saldo') return s.saldo > 0;
         if (recorte === 'zerados') return s.saldo === 0;
         if (recorte === 'abaixo_minimo') return s.estoque_minimo > 0 && s.saldo < s.estoque_minimo;
@@ -109,7 +120,7 @@ export default function PainelPosicao({ dados }: Props) {
         return true;
       })
       .sort((a, b) => (a.torresCobertas ?? Infinity) - (b.torresCobertas ?? Infinity) || a.part_number.localeCompare(b.part_number));
-  }, [saldos, consumoPorTorre, busca, recorte, torres]);
+  }, [saldos, consumoPorTorre, busca, fornecedorFiltro, recorte, torres]);
 
   const exportar = () => {
     const planilha = linhas.map((l) => ({
@@ -231,11 +242,15 @@ export default function PainelPosicao({ dados }: Props) {
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Part number, SAP ou descrição"
+            placeholder="Part number, SAP, descrição ou fornecedor"
             className="w-full rounded-lg border py-2 pl-9 pr-3 text-xs font-medium focus:outline-2 focus:outline-offset-1"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)', outlineColor: 'var(--brand)' }}
           />
         </div>
+        <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className={SELECT_CLS} aria-label="Fornecedor">
+          <option value="">Todos os fornecedores</option>
+          {fornecedores.map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
         <div className="flex gap-1 flex-wrap">
           {RECORTES.map((r) => (
             <button
@@ -251,8 +266,8 @@ export default function PainelPosicao({ dados }: Props) {
             </button>
           ))}
         </div>
-        {busca && (
-          <button onClick={() => setBusca('')} className="inline-flex items-center gap-1 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border hover:opacity-80" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+        {(busca || fornecedorFiltro) && (
+          <button onClick={() => { setBusca(''); setFornecedorFiltro(''); }} className="inline-flex items-center gap-1 text-xs font-bold cursor-pointer px-3 py-2 rounded-lg border hover:opacity-80" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
             <X className="h-3.5 w-3.5" /> Limpar
           </button>
         )}
