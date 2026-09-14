@@ -957,6 +957,21 @@ export interface CompradorCadastro {
 }
 
 /**
+ * Vínculo entre Setor Solicitante e Código do Comprador Responsável.
+ * Tabela `sup_setor_compradores`.
+ */
+export interface SetorComprador {
+  id: string;
+  setor_id: string;
+  setor_nome: string;
+  grupo_compras: string;
+  nome_comprador: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
  * Grupo de Mercadoria (SAP) classificado em níveis hierárquicos.
  * Tabela `cadastro_grupo_mercadoria`.
  */

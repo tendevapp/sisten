@@ -11,13 +11,14 @@ import {
   Boxes, Users, Plus, Search, Trash2, Edit2, CheckCircle2, XCircle,
   RefreshCw, Filter, Layers, Download, ChevronLeft, ChevronRight,
   TrendingUp, ShoppingCart, FileText, Check, AlertCircle, Sparkles,
-  ArrowUp, ArrowDown, ArrowUpDown, X
+  ArrowUp, ArrowDown, ArrowUpDown, X, Building2
 } from 'lucide-react';
-import type { Profile, GrupoCompradorMercadoria, CompradorCadastro } from '../../types';
+import type { Profile, GrupoCompradorMercadoria, CompradorCadastro, SetorComprador } from '../../types';
 import * as api from '../../lib/grupoCompradorApi';
 import * as apiNiveis from '../../lib/grupoMercadoriaApi';
+import * as apiSetor from '../../lib/setorCompradorApi';
 import { useToast } from '../ui/Toast';
-import Modal, { ModalBody, ModalFooter } from '../ui/Modal';
+import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import ConfirmDialog from '../ui/ConfirmDialog';
 
 interface Props {
@@ -56,7 +57,19 @@ const CORES_NIVEL_1: Record<string, { badge: string; text: string }> = {
 export default function GestaoGrupoComprador({ user }: Props) {
   const toast = useToast();
 
-  // Estados principais
+  // Seletor de janela: 'setores' (Janela Inicial / Regra Ativa) vs 'grupos_mercadorias' (Janela Secundária)
+  const [janelaAtiva, setJanelaAtiva] = useState<'setores' | 'grupos_mercadorias'>('setores');
+
+  // Estados da Janela Inicial: Gestão de Compradores por Setor Solicitante
+  const [setoresCompradores, setSetoresCompradores] = useState<SetorComprador[]>(apiSetor.SETOR_COMPRADOR_PADRAO);
+  const [buscaSetor, setBuscaSetor] = useState('');
+  const [filtroCompradorSetor, setFiltroCompradorSetor] = useState<string>('TODOS');
+  const [setorEditando, setSetorEditando] = useState<SetorComprador | null>(null);
+  const [modalSetorAberto, setModalSetorAberto] = useState(false);
+  const [formSetorGrupoCompras, setFormSetorGrupoCompras] = useState('575');
+  const [salvandoSetor, setSalvandoSetor] = useState(false);
+
+  // Estados principais da Janela Secundária (Grupos de Mercadorias SAP)
   const [vinculos, setVinculos] = useState<GrupoCompradorMercadoria[]>([]);
   const [compradores, setCompradores] = useState<CompradorCadastro[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -124,12 +137,14 @@ export default function GestaoGrupoComprador({ user }: Props) {
     setCarregando(true);
     setErro(null);
     try {
-      const [comps, vincs] = await Promise.all([
+      const [comps, vincs, setoresDb] = await Promise.all([
         api.listarCompradores(),
         api.listarGruposCompradoresMercadorias(),
+        apiSetor.listarSetoresCompradores(),
       ]);
       setCompradores(comps);
       setVinculos(vincs);
+      setSetoresCompradores(setoresDb);
     } catch (err: any) {
       console.error('Erro ao carregar dados de grupos compradores:', err);
       setErro(err.message || 'Falha ao carregar vínculos.');
@@ -734,10 +749,424 @@ export default function GestaoGrupoComprador({ user }: Props) {
     );
   };
 
+  // Estatísticas de setores por comprador
+  const estatisticasSetores = useMemo(() => {
+    const totalSetores = setoresCompradores.length;
+    const mapa = new Map<string, number>();
+    compradores.forEach((c) => mapa.set(c.grupo_compras, 0));
+    setoresCompradores.forEach((s) => {
+      if (s.ativo) {
+        mapa.set(s.grupo_compras, (mapa.get(s.grupo_compras) || 0) + 1);
+      }
+    });
+    return { totalSetores, mapa };
+  }, [setoresCompradores, compradores]);
+
+  // Filtragem de setores
+  const setoresFiltrados = useMemo(() => {
+    return setoresCompradores.filter((s) => {
+      if (filtroCompradorSetor !== 'TODOS' && s.grupo_compras !== filtroCompradorSetor) {
+        return false;
+      }
+      if (buscaSetor.trim()) {
+        const termo = buscaSetor.trim().toLowerCase();
+        const bateNome = s.setor_nome.toLowerCase().includes(termo);
+        const bateComp = s.nome_comprador.toLowerCase().includes(termo);
+        const bateCod = s.grupo_compras.includes(termo);
+        if (!bateNome && !bateComp && !bateCod) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const numA = Number(a.setor_id) || 999;
+      const numB = Number(b.setor_id) || 999;
+      return numA - numB;
+    });
+  }, [setoresCompradores, buscaSetor, filtroCompradorSetor]);
+
+  // Reatribuição rápida na linha do setor
+  const mudarCompradorSetorLinha = async (item: SetorComprador, novoGrupoCompras: string) => {
+    if (item.grupo_compras === novoGrupoCompras) return;
+    const compInfo = compradores.find((c) => c.grupo_compras === novoGrupoCompras);
+    const novoNome = compInfo?.nome_comprador || `Comprador ${novoGrupoCompras}`;
+
+    try {
+      await apiSetor.reatribuirSetorComprador(item.setor_id, novoGrupoCompras, novoNome);
+      setSetoresCompradores((prev) =>
+        prev.map((s) =>
+          s.setor_id === item.setor_id
+            ? { ...s, grupo_compras: novoGrupoCompras, nome_comprador: novoNome }
+            : s
+        )
+      );
+      toast.success(`Setor ${item.setor_nome} reatribuído para ${novoNome} (${novoGrupoCompras})`);
+    } catch (err: any) {
+      toast.error('Erro ao reatribuir setor: ' + (err.message || ''));
+    }
+  };
+
+  const abrirModalEditarSetor = (item: SetorComprador) => {
+    setSetorEditando(item);
+    setFormSetorGrupoCompras(item.grupo_compras);
+    setModalSetorAberto(true);
+  };
+
+  const salvarEdicaoSetor = async () => {
+    if (!setorEditando) return;
+    setSalvandoSetor(true);
+    try {
+      const compInfo = compradores.find((c) => c.grupo_compras === formSetorGrupoCompras);
+      const novoNome = compInfo?.nome_comprador || `Comprador ${formSetorGrupoCompras}`;
+
+      const salvo = await apiSetor.salvarSetorComprador({
+        id: setorEditando.id,
+        setor_id: setorEditando.setor_id,
+        setor_nome: setorEditando.setor_nome,
+        grupo_compras: formSetorGrupoCompras,
+        nome_comprador: novoNome,
+        ativo: setorEditando.ativo,
+      });
+
+      setSetoresCompradores((prev) =>
+        prev.map((s) => (s.setor_id === salvo.setor_id ? salvo : s))
+      );
+      toast.success(`Setor ${salvo.setor_nome} atualizado para ${novoNome} (${salvo.grupo_compras})`);
+      setModalSetorAberto(false);
+    } catch (err: any) {
+      toast.error('Erro ao salvar setor: ' + (err.message || ''));
+    } finally {
+      setSalvandoSetor(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      {/* Banner Explicativo */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      {/* Sub-Navegação: Janela Inicial (Setores Solicitantes - Ativa) vs Janela Secundária (Grupos Mercadorias SAP) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-800">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setJanelaAtiva('setores')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+              janelaAtiva === 'setores'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Building2 className="h-4 w-4" />
+            <span>Compradores por Setor Solicitante</span>
+            <span
+              className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                janelaAtiva === 'setores'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+              }`}
+            >
+              REGRA ATIVA NA RM ({setoresCompradores.length})
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setJanelaAtiva('grupos_mercadorias')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+              janelaAtiva === 'grupos_mercadorias'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            <Boxes className="h-4 w-4" />
+            <span>Grupos de Mercadorias SAP</span>
+            <span
+              className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                janelaAtiva === 'grupos_mercadorias'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+              }`}
+            >
+              SECUNDÁRIA (PAUSADA) ({vinculos.length || '123'})
+            </span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          {janelaAtiva === 'setores' ? (
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Regra ativa: comprador da RM determinado pelo setor solicitante
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3.5 w-3.5" /> Janela secundária: sem efeito na abertura da RM no momento
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* JANELA INICIAL (REGRA ATIVA): COMPRADORES POR SETOR       */}
+      {/* ========================================================= */}
+      {janelaAtiva === 'setores' && (
+        <div className="space-y-4">
+          {/* Banner Explicativo da Regra Ativa */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                <Building2 className="h-5 w-5" />
+              </span>
+              <div className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-slate-900 dark:text-slate-50">
+                    Classificação do Comprador Responsável por Setor Solicitante
+                  </p>
+                  <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    Ativo na Abertura de RM
+                  </span>
+                </div>
+                <p className="mt-1">
+                  O código do comprador responsável (<strong>EKGRP</strong>) na abertura da RM (Almoxarifado) passa a ser
+                  atribuído automaticamente com base no <strong>setor dono da solicitação</strong>. A tabela por grupos de itens/materiais
+                  SAP está mantida na janela secundária como referência histórica, sem efeito no fluxo atual de abertura de RM.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Cards de Resumo / Filtro Rápido por Comprador */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {/* Card Total Geral */}
+            <button
+              type="button"
+              onClick={() => setFiltroCompradorSetor('TODOS')}
+              className={`flex flex-col rounded-2xl border p-3 text-left transition-all cursor-pointer ${
+                filtroCompradorSetor === 'TODOS'
+                  ? 'border-blue-500 bg-blue-50/50 shadow-sm ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30'
+                  : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Todos os Setores
+                </span>
+                <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <span className="mt-2 text-2xl font-extrabold text-slate-900 dark:text-slate-50">
+                {estatisticasSetores.totalSetores}
+              </span>
+              <span className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                Setores cadastrados
+              </span>
+            </button>
+
+            {/* Cards por Comprador */}
+            {compradores.filter((c) => c.ativo !== false).map((comp) => {
+              const count = estatisticasSetores.mapa.get(comp.grupo_compras) || 0;
+              const selecionado = filtroCompradorSetor === comp.grupo_compras;
+              return (
+                <button
+                  key={comp.grupo_compras}
+                  type="button"
+                  onClick={() => setFiltroCompradorSetor(comp.grupo_compras)}
+                  className={`flex flex-col rounded-2xl border p-3 text-left transition-all cursor-pointer ${
+                    selecionado
+                      ? 'border-blue-500 bg-blue-50/50 shadow-sm ring-2 ring-blue-500/20 dark:border-blue-500 dark:bg-blue-950/30'
+                      : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-extrabold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      Cód. {comp.grupo_compras}
+                    </span>
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  </div>
+                  <span className="mt-1.5 truncate text-xs font-bold text-slate-900 dark:text-slate-50">
+                    {comp.nome_comprador}
+                  </span>
+                  <div className="mt-1 flex items-baseline justify-between">
+                    <span className="text-lg font-black text-slate-900 dark:text-slate-50">
+                      {count}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {count === 1 ? 'setor' : 'setores'}
+                    </span>
+                  </div>
+                  <div className="mt-1 truncate border-t border-slate-100 pt-1 text-[10px] text-slate-500 dark:border-slate-800/80 dark:text-slate-400">
+                    {comp.usuario_sistema || comp.email}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Barra de Busca e Filtros de Setor */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="relative min-w-[240px] flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={buscaSetor}
+                  onChange={(e) => setBuscaSetor(e.target.value)}
+                  placeholder="Buscar por setor, comprador ou código..."
+                  className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                <select
+                  value={filtroCompradorSetor}
+                  onChange={(e) => setFiltroCompradorSetor(e.target.value)}
+                  className="h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 cursor-pointer"
+                >
+                  <option value="TODOS">Todos os Compradores</option>
+                  {compradores.filter((c) => c.ativo !== false).map((c) => (
+                    <option key={c.grupo_compras} value={c.grupo_compras}>
+                      {c.grupo_compras} - {c.nome_comprador}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(buscaSetor || filtroCompradorSetor !== 'TODOS') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuscaSetor('');
+                    setFiltroCompradorSetor('TODOS');
+                  }}
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" /> Limpar filtros
+                </button>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Exibindo <strong>{setoresFiltrados.length}</strong> de {setoresCompradores.length} setores
+            </div>
+          </div>
+
+          {/* Tabela dos 19 Setores */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-slate-100 bg-slate-50/75 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-4 py-3">Setor Dono da Solicitação</th>
+                    <th className="px-4 py-3">Comprador Responsável</th>
+                    <th className="px-4 py-3 text-center">Código EKGRP</th>
+                    <th className="px-4 py-3">Usuário SAP / E-mail</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {setoresFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400">
+                        Nenhum setor encontrado para os filtros selecionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    setoresFiltrados.map((item) => {
+                      const compInfo = compradores.find((c) => c.grupo_compras === item.grupo_compras);
+                      return (
+                        <tr key={item.setor_id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                          <td className="px-4 py-3 font-mono font-bold text-slate-400">
+                            {item.setor_id}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                                {item.setor_nome.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="font-bold text-slate-900 dark:text-slate-100">
+                                {item.setor_nome}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <select
+                              value={item.grupo_compras}
+                              onChange={(e) => mudarCompradorSetorLinha(item, e.target.value)}
+                              className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 transition-colors focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 cursor-pointer"
+                            >
+                              {compradores.map((c) => (
+                                <option
+                                  key={c.grupo_compras}
+                                  value={c.grupo_compras}
+                                  disabled={c.ativo === false}
+                                >
+                                  {c.grupo_compras} - {c.nome_comprador} {c.ativo === false ? '(Inativo)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center font-mono font-bold px-2.5 py-0.5 rounded-full text-[11px] bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60">
+                              {item.grupo_compras}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                            {compInfo?.usuario_sistema || compInfo?.email || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" /> Ativo
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarSetor(item)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                              title="Editar comprador deste setor"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* JANELA SECUNDÁRIA (PAUSADA): GRUPOS DE MERCADORIAS SAP   */}
+      {/* ========================================================= */}
+      {janelaAtiva === 'grupos_mercadorias' && (
+        <div className="space-y-4">
+          {/* Banner de Janela Secundária / Pausada */}
+          <div className="rounded-2xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-800/60 dark:bg-amber-950/30">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                <AlertCircle className="h-5 w-5" />
+              </span>
+              <div className="text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold">
+                    Regra Secundária: Grupos de Mercadorias SAP (Itens/Materiais)
+                  </p>
+                  <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 ring-1 ring-inset ring-amber-600/30 dark:bg-amber-900/50 dark:text-amber-300">
+                    Pausada na Abertura de RM
+                  </span>
+                </div>
+                <p className="mt-1">
+                  Esta tabela mantém os vínculos de grupos de mercadorias SAP (<strong>grp_mercads</strong>) aos compradores,
+                  mas está <strong>temporariamente secundária e sem função na geração de RM</strong>, onde vigora a atribuição por setor solicitante.
+                  Você pode consultar e realizar manutenções normalmente.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Banner Explicativo */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
             <Boxes className="h-5 w-5" />
@@ -1313,6 +1742,8 @@ export default function GestaoGrupoComprador({ user }: Props) {
           </div>
         )}
       </div>
+    </div>
+  )}
 
       {/* Modal Novo / Editar Vinculo */}
       {modalAberto && (
@@ -1750,6 +2181,88 @@ export default function GestaoGrupoComprador({ user }: Props) {
           onConfirmar={confirmarExclusao}
           onCancelar={() => setItemParaExcluir(null)}
         />
+      )}
+
+      {/* Modal de Edição de Comprador do Setor */}
+      {modalSetorAberto && setorEditando && (
+        <Modal
+          onClose={() => !salvandoSetor && setModalSetorAberto(false)}
+          maxWidth="max-w-md"
+          ariaLabel="Editar Comprador do Setor"
+        >
+          <ModalHeader onClose={() => !salvandoSetor && setModalSetorAberto(false)}>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                Editar Comprador do Setor: {setorEditando.setor_nome}
+              </h3>
+            </div>
+          </ModalHeader>
+          <ModalBody>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Setor Solicitante
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${setorEditando.setor_nome} (ID ${setorEditando.setor_id})`}
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Comprador Responsável (EKGRP)
+                </label>
+                <select
+                  value={formSetorGrupoCompras}
+                  onChange={(e) => setFormSetorGrupoCompras(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                >
+                  {compradores.map((c) => (
+                    <option
+                      key={c.grupo_compras}
+                      value={c.grupo_compras}
+                      disabled={c.ativo === false}
+                    >
+                      {c.grupo_compras} - {c.nome_comprador} ({c.usuario_sistema}) {c.ativo === false ? '(Inativo)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300">
+                <p className="font-semibold">Efeito na abertura de RM:</p>
+                <p className="mt-0.5 text-[11px] text-blue-700 dark:text-blue-400">
+                  Todas as solicitações abertas por este setor terão suas linhas de RM exportadas com o código de compras selecionado acima.
+                </p>
+              </div>
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <div className="flex w-full items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalSetorAberto(false)}
+                disabled={salvandoSetor}
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={salvarEdicaoSetor}
+                disabled={salvandoSetor}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 shadow-sm cursor-pointer"
+              >
+                {salvandoSetor ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Salvar Alteração
+              </button>
+            </div>
+          </ModalFooter>
+        </Modal>
       )}
     </div>
   );

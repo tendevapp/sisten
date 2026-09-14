@@ -155,25 +155,61 @@ export interface SolicitacaoRm {
  */
 export interface ContextoRm {
   sectors: Sector[];
-  /** Código SAP do material (MATNR) → código do grupo de mercadorias. */
+  /** Código SAP do material (MATNR) → código do grupo de mercadorias. (Regra secundária) */
   grupoMercadoriaPorMaterial: Map<string, string>;
-  /** Código do grupo de mercadorias → grupo de compras (EKGRP) do responsável. */
+  /** Código do grupo de mercadorias → grupo de compras (EKGRP) do responsável. (Regra secundária) */
   grupoComprasPorMercadoria: Map<string, string>;
+  /** Setor solicitante (id ou nome) → grupo de compras (EKGRP) do responsável. (Regra ativa) */
+  grupoComprasPorSetor?: Map<string, string>;
 }
 
 /**
- * Grupo de compras (EKGRP) do item: o comprador responsável pelo grupo de
- * mercadorias daquele material.
+ * Grupo de compras (EKGRP) da solicitação/item:
  *
- * Devolve `null` quando a corrente se rompe em qualquer elo — é assim que a
- * tela sabe quantos itens vão sair no padrão de recurso e avisa antes.
+ * REGRA ATIVA: classificado pelo setor dono da solicitação (`request.solicitante_sector_id`).
+ * REGRA SECUNDÁRIA (temporariamente pausada / fallback): classificado pelo grupo de mercadorias do material.
+ *
+ * Devolve `null` quando não for possível determinar o comprador — a tela então aplica `RM_GRUPO_COMPRAS_PADRAO`.
  */
-export function grupoComprasRm(item: RequestItem, ctx: ContextoRm): string | null {
+export function grupoComprasRm(
+  item: RequestItem,
+  ctx: ContextoRm,
+  solicitacaoOuSetor?: Request | { solicitante_sector_id?: string } | string | null,
+): string | null {
+  // 1. Regra primária ativa: pelo setor dono da solicitação
+  if (ctx.grupoComprasPorSetor && ctx.grupoComprasPorSetor.size > 0) {
+    let setorId: string | undefined;
+    if (typeof solicitacaoOuSetor === 'string') {
+      setorId = solicitacaoOuSetor.trim();
+    } else if (solicitacaoOuSetor && 'solicitante_sector_id' in solicitacaoOuSetor) {
+      setorId = solicitacaoOuSetor.solicitante_sector_id?.trim();
+    }
+
+    if (setorId) {
+      // Busca direta pelo ID do setor (ex.: '1', '2', '8', '13'...)
+      const porId = ctx.grupoComprasPorSetor.get(setorId);
+      if (porId) return porId;
+
+      // Fallback pelo nome do setor correspondente
+      const setorObj = ctx.sectors.find(s => s.id === setorId);
+      if (setorObj) {
+        const porNome = ctx.grupoComprasPorSetor.get(setorObj.name.trim().toLowerCase());
+        if (porNome) return porNome;
+      }
+    }
+  }
+
+  // 2. Regra secundária (ou para compatibilidade com chamadas sem setor): por grupo de mercadoria SAP
   const matnr = (item.sap_code || '').trim();
-  if (!matnr) return null;
-  const grupoMercadoria = ctx.grupoMercadoriaPorMaterial.get(matnr);
-  if (!grupoMercadoria) return null;
-  return ctx.grupoComprasPorMercadoria.get(grupoMercadoria) || null;
+  if (matnr && ctx.grupoMercadoriaPorMaterial && ctx.grupoComprasPorMercadoria) {
+    const grupoMercadoria = ctx.grupoMercadoriaPorMaterial.get(matnr);
+    if (grupoMercadoria) {
+      const porMercadoria = ctx.grupoComprasPorMercadoria.get(grupoMercadoria);
+      if (porMercadoria) return porMercadoria;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -199,15 +235,14 @@ export function montarLinhasRm(solicitacoes: SolicitacaoRm[], ctx: ContextoRm): 
       'Status / Nº da RM': '',
     };
 
-    // O grupo de compras é por item, não por solicitação: uma mesma RM pode
-    // misturar materiais de compradores diferentes. O número do item segue o
-    // padrão SAP com incremento de 10 (10, 20, 30...).
+    // O grupo de compras agora é definido pelo setor solicitante como regra ativa,
+    // garantindo atribuição precisa e uniforme por centro de custo/área.
     return itens.map((it, idx): LinhaRm => ({
       ...cabecalho,
       'Item': (idx + 1) * 10,
       'Material (MATNR)': it.sap_code || '',
       'Quantidade (MENGE)': it.quantity,
-      'Grupo Compras (EKGRP)': grupoComprasRm(it, ctx) || RM_GRUPO_COMPRAS_PADRAO,
+      'Grupo Compras (EKGRP)': grupoComprasRm(it, ctx, request) || RM_GRUPO_COMPRAS_PADRAO,
     }));
   });
 }
@@ -227,7 +262,7 @@ export function itensSemCodigoSap(solicitacoes: SolicitacaoRm[]): number {
  */
 export function itensSemGrupoComprador(solicitacoes: SolicitacaoRm[], ctx: ContextoRm): number {
   return solicitacoes.reduce(
-    (acc, s) => acc + s.itens.filter(it => it.sap_code && !grupoComprasRm(it, ctx)).length,
+    (acc, s) => acc + s.itens.filter(it => it.sap_code && !grupoComprasRm(it, ctx, s.request)).length,
     0,
   );
 }

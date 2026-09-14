@@ -55,6 +55,7 @@ import {
   registrarExportacaoRm,
 } from '../lib/almoxarifadoRmApi';
 import { mapaGrupoComprasPorMercadoria } from '../lib/grupoCompradorApi';
+import { mapaGrupoComprasPorSetor } from '../lib/setorCompradorApi';
 import { useToast } from '../components/ui/Toast';
 import { TableEmpty } from '../components/ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -281,6 +282,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [grupoMercadoriaPorMaterial, setGrupoMercadoriaPorMaterial] = useState<Map<string, string>>(new Map());
   const [grupoComprasPorMercadoria, setGrupoComprasPorMercadoria] = useState<Map<string, string>>(new Map());
+  const [grupoComprasPorSetor, setGrupoComprasPorSetor] = useState<Map<string, string>>(new Map());
 
   const [marcas, setMarcas] = useState<AlmoxRmExportacaoSolicitacao[]>([]);
   const [exportacoes, setExportacoes] = useState<AlmoxRmExportacao[]>([]);
@@ -374,17 +376,18 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     setCarregandoLog(true);
     setErroLog('');
     try {
-      // O segundo salto (grupo de mercadorias → comprador) vem junto: sem ele
-      // a planilha sai com o EKGRP errado, então é carga obrigatória e não
-      // um enfeite que pode falhar em silêncio.
-      const [marcasDb, lotes, compradores] = await Promise.all([
+      // Carrega compradores por setor (regra primária ativa) e por grupo de mercadorias
+      // para garantir que a planilha saia com o EKGRP correto.
+      const [marcasDb, lotes, compradoresMercadorias, compradoresSetores] = await Promise.all([
         listarMarcasExportacaoRm(),
         listarExportacoesRm(),
         mapaGrupoComprasPorMercadoria(),
+        mapaGrupoComprasPorSetor(),
       ]);
       setMarcas(marcasDb);
       setExportacoes(lotes);
-      setGrupoComprasPorMercadoria(compradores);
+      setGrupoComprasPorMercadoria(compradoresMercadorias);
+      setGrupoComprasPorSetor(compradoresSetores);
     } catch (err: any) {
       // Sem o log, a tela ainda serve para exportar — só perde o "já saiu".
       setErroLog(err?.message || 'Não foi possível carregar o log de exportações.');
@@ -410,8 +413,13 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const loteById = useMemo(() => new Map(exportacoes.map(e => [e.id, e])), [exportacoes]);
 
   const contexto: ContextoRm = useMemo(
-    () => ({ sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria }),
-    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria],
+    () => ({
+      sectors,
+      grupoMercadoriaPorMaterial,
+      grupoComprasPorMercadoria,
+      grupoComprasPorSetor,
+    }),
+    [sectors, grupoMercadoriaPorMaterial, grupoComprasPorMercadoria, grupoComprasPorSetor],
   );
 
   const nomeSetor = (id?: string) => (id ? sectors.find(s => s.id === id)?.name || id : '—');
@@ -1519,7 +1527,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                               {itens.map((it, idx) => {
                                 const matnr = (it.sap_code || '').trim();
                                 const grupoMercadoria = matnr ? contexto.grupoMercadoriaPorMaterial.get(matnr) : null;
-                                const ekgrp = grupoComprasRm(it, contexto);
+                                const ekgrp = grupoComprasRm(it, contexto, r);
                                 const ehGen = Boolean(it.is_generic);
 
                                 return (
@@ -1572,10 +1580,8 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                                       style={{ color: ekgrp ? 'var(--ink-primary)' : 'var(--status-serious)' }}
                                       title={
                                         ekgrp
-                                          ? `Grupo de Mercadoria: ${grupoMercadoria || '—'} — Comprador: ${ekgrp}`
-                                          : grupoMercadoria
-                                            ? `Grupo ${grupoMercadoria} sem comprador ativo no cadastro — sai como ${RM_GRUPO_COMPRAS_PADRAO}`
-                                            : `Material não localizado no catálogo SAP — sai como ${RM_GRUPO_COMPRAS_PADRAO}`
+                                          ? `Setor Solicitante: ${nomeSetor(r.solicitante_sector_id)} — Comprador: ${ekgrp}`
+                                          : `Setor sem comprador cadastrado — sai como ${RM_GRUPO_COMPRAS_PADRAO}`
                                       }
                                     >
                                       {ekgrp || `${RM_GRUPO_COMPRAS_PADRAO} *`}
