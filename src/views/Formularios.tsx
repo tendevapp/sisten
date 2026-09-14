@@ -154,14 +154,14 @@ const MODULOS: ModuloFormulario[] = [
     icon: ShieldAlert,
     desc: 'Registro de Identificação de Desvio (RID), classificação de riscos comportamentais e condições inseguras, evidências fotográficas e ações preventivas.',
     path: '/formularios/ssma',
-    badge: '1 Formulário Ativo',
+    badge: '2 Formulários Ativos',
     badgeCor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
     corIcone: 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-500/20 shadow-lg',
     corBordaHover: 'hover:border-emerald-500/50 hover:shadow-emerald-500/10',
     itensResumo: [
       'RID - Identificação de Desvio (FRM.SSMA-0001)',
+      'Alcoolemia & Termo Psicoativo (FRM.SOC-0042)',
       'Classificação de Riscos & Evidências',
-      'Acompanhamento e Histórico de Ações',
     ],
   },
   {

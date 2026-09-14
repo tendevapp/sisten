@@ -19,6 +19,7 @@ import type {
   PortRelatorioPortaria,
   PortPassagemPlantao,
   PortBriefingSessao,
+  PortAlcoolemiaTeste,
 } from '../../types';
 
 function formatDataBR(iso?: string | null): string {
@@ -463,3 +464,67 @@ export async function exportPassagensPlantaoConsolidadoPdf(plantoes: PortPassage
   writer.finalizeDoc('FRM.SGP-0010');
   await downloadPdf(doc, `consolidado-passagens-plantao-${datas[0]}-${datas[datas.length - 1]}.pdf`);
 }
+
+// =====================================================================
+// 7. FRM.SGP-0015: Teste de Alcoolemia / Livro Diário de Sorteados
+// =====================================================================
+export async function exportAlcoolemiaDiaPdf(
+  testes: PortAlcoolemiaTeste[],
+  dataISO: string,
+  vigilanteNome?: string
+): Promise<void> {
+  const { doc, font, fontBold, logo } = await createDoc();
+  const writer = new PdfTextWriter(doc, font, fontBold, logo);
+
+  writer.drawDocumentHeader({
+    title: 'Livro Diário de Testes de Alcoolemia',
+    formCode: 'FRM.SGP-0015',
+    protocol: `ALC-${dataISO.replace(/-/g, '')}`,
+    statusBadge: `${testes.length} REGISTRO(S)`,
+    statusColor: 'blue',
+  });
+
+  const negativos = testes.filter((t) => t.resultado === 'NEGATIVO').length;
+  const positivos = testes.filter((t) => t.resultado === 'POSITIVO').length;
+  const recusas = testes.filter((t) => t.resultado === 'RECUSA').length;
+  const pendentes = testes.filter((t) => t.resultado === 'PENDENTE').length;
+
+  writer.drawInfoGrid(
+    [
+      { label: 'Data de Aferição', value: formatDataBR(dataISO) },
+      { label: 'Total de Sorteados', value: `${testes.length} pessoas` },
+      { label: 'Aptos / Negativos', value: `${negativos}` },
+      { label: 'Positivos / Recusas / Pendentes', value: `${positivos} / ${recusas} / ${pendentes}` },
+    ],
+    2
+  );
+
+  if (testes.length > 0) {
+    const headers = [
+      { label: 'CÓDIGO', width: 90, align: 'left' as const },
+      { label: 'HORA', width: 45, align: 'center' as const },
+      { label: 'VÍNCULO', width: 55, align: 'center' as const },
+      { label: 'NOME / COLABORADOR', width: 160, align: 'left' as const },
+      { label: 'EMPRESA', width: 85, align: 'left' as const },
+      { label: 'RESULTADO', width: 80, align: 'center' as const },
+    ];
+    const rows = testes.map((t) => [
+      t.codigo_formulario,
+      t.horario,
+      t.tipo_vinculo,
+      t.matricula ? `${t.nome} (${t.matricula})` : t.nome,
+      t.empresa || 'TEN',
+      t.resultado + (t.valor_medido > 0 ? ` (${t.valor_medido.toFixed(2)})` : ''),
+    ]);
+    writer.drawTable(headers, rows);
+  }
+
+  writer.drawSignatures([
+    { role: 'Vigilante / Operador do Etilômetro', name: vigilanteNome },
+    { role: 'Técnico de Segurança / SSMA' },
+  ]);
+
+  writer.finalizeDoc('FRM.SGP-0015');
+  await downloadPdf(doc, `livro-alcoolemia-${dataISO}.pdf`);
+}
+

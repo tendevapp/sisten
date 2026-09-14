@@ -42,13 +42,16 @@ import { Maximize2, Minimize2, RefreshCw, Radio } from 'lucide-react';
 import type { FinFatGwjaco } from '../../types';
 import {
   resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorMes, faturadosPorTramo,
-  ultimasNotas, semanaISO, rotuloMes, type EstadoTramo, type CelulaMatriz,
+  ultimasNotas, semanaISO, rotuloMes, semanaDaLinha, type EstadoTramo, type CelulaMatriz,
+  type PontoMes, type PontoSemana,
 } from '../../lib/finFaturamentoRelatorio';
+import FinFaturamentoDetalhesModal, { type DetalheModalTipo } from '../../components/financeiro/FinFaturamentoDetalhesModal';
 
 interface Props {
   linhas: FinFatGwjaco[];
   onAtualizar: () => void | Promise<void>;
   carregando?: boolean;
+  onEditarLinha?: (linha: FinFatGwjaco) => void;
 }
 
 /** N unidades de escala do painel. 1 unidade = 1% da altura do container. */
@@ -128,11 +131,15 @@ function Painel({
  * vem num quadradinho ao lado do rótulo, que é marca e não texto.
  */
 function Kpi({
-  valor, rotulo, apoio, marca, destaque,
-}: { valor: string; rotulo: string; apoio?: string; marca?: string; destaque?: boolean }) {
+  valor, rotulo, apoio, marca, destaque, onClick,
+}: { valor: string; rotulo: string; apoio?: string; marca?: string; destaque?: boolean; onClick?: () => void }) {
   return (
     <div
-      className="flex min-w-0 flex-col justify-center"
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
+      className={`flex min-w-0 flex-col justify-center select-none ${onClick ? 'cursor-pointer hover:brightness-105 active:scale-[0.98] transition-all' : ''}`}
       style={{
         background: destaque ? 'color-mix(in srgb, var(--brand) 12%, var(--surface-card))' : 'var(--surface-card)',
         border: `1px solid ${destaque ? 'color-mix(in srgb, var(--brand) 40%, var(--hairline))' : 'var(--hairline)'}`,
@@ -140,6 +147,7 @@ function Kpi({
         padding: `${u(1.4)} ${u(1.8)}`,
         gap: u(0.4),
       }}
+      title={onClick ? `Clique para ver detalhes de ${rotulo}` : undefined}
     >
       <span className="tabular font-bold leading-none" style={{ fontSize: u(6), color: 'var(--ink-primary)' }}>
         {valor}
@@ -195,11 +203,14 @@ const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal, sem 
  * distância, e a pilha de dígitos cabe numa coluna estreita sem precisar
  * alargar a célula — a razão de ser vertical.
  */
-function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura: string }) {
+function CelulaTramo({ celula, largura, onClick }: { celula: CelulaMatriz | null; largura: string; onClick?: () => void }) {
   if (!celula || celula.estado === 'pendente') {
     return (
       <div
-        title={celula ? `Torre ${celula.torre} ${celula.tramo} · ${ESTADO_ROTULO.pendente}` : undefined}
+        onClick={onClick}
+        role={onClick ? 'button' : undefined}
+        title={celula ? `Torre ${celula.torre} ${celula.tramo} · ${ESTADO_ROTULO.pendente} (clique para ver detalhes)` : undefined}
+        className={onClick ? 'cursor-pointer transition-transform hover:scale-105' : ''}
         style={{
           width: largura,
           height: '100%',
@@ -223,8 +234,10 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
 
   return (
     <div
-      className="relative flex items-center justify-center overflow-hidden"
-      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'} · ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      className={`relative flex items-center justify-center overflow-hidden ${onClick ? 'cursor-pointer transition-transform hover:scale-110 hover:z-10 shadow-sm' : ''}`}
+      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'} · ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''} (clique para ver detalhes)`}
       style={{ width: largura, height: '100%', borderRadius: u(0.4), background: fundo }}
     >
       <span
@@ -274,15 +287,18 @@ function CelulaTramo({ celula, largura }: { celula: CelulaMatriz | null; largura
  * coluna, então continua cabendo quando o projeto crescer das 18 torres
  * atuais para as 69. Usada em cima e embaixo da matriz.
  */
-function ReguaTorres({ torres, largura }: { torres: number[]; largura: string }) {
+function ReguaTorres({ torres, largura, onCliqueTorre }: { torres: number[]; largura: string; onCliqueTorre?: (torre: number) => void }) {
   return (
     <div className="flex shrink-0 items-center" style={{ gap: u(1) }}>
       <span className="shrink-0" style={{ width: u(3.4) }} />
       <div className="flex min-w-0 flex-1" style={{ gap: u(0.5) }}>
         {torres.map((torre) => (
-          <span
+          <button
             key={torre}
-            className="tabular text-center font-bold"
+            type="button"
+            onClick={onCliqueTorre ? () => onCliqueTorre(torre) : undefined}
+            title={onCliqueTorre ? `Torre ${torre} · Clique para ver todos os tramos` : undefined}
+            className={`tabular text-center font-bold ${onCliqueTorre ? 'cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-700/40 rounded transition-colors' : ''}`}
             style={{
               width: largura,
               fontSize: `min(calc(${largura} * 0.62), ${u(1.5)})`,
@@ -291,7 +307,7 @@ function ReguaTorres({ torres, largura }: { torres: number[]; largura: string })
             }}
           >
             {torre}
-          </span>
+          </button>
         ))}
       </div>
     </div>
@@ -343,13 +359,24 @@ function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
 /* Painel                                                              */
 /* ------------------------------------------------------------------ */
 
-export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregando }: Props) {
+export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregando, onEditarLinha }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const matrizRef = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
   const [agora, setAgora] = useState(() => new Date());
   // Mês é o padrão: é o recorte que a diretoria acompanha. Semana fica a um clique.
   const [visaoTemporal, setVisaoTemporal] = useState<VisaoTemporal>('mes');
+  const [detalheAberto, setDetalheAberto] = useState<DetalheModalTipo | null>(null);
+
+  // Mapa rápido por chave "torre|tramo"
+  const indiceLinhas = useMemo(() => {
+    const mapa = new Map<string, FinFatGwjaco>();
+    for (const l of linhas) {
+      mapa.set(`${l.torre_numero}|${l.tramo}`, l);
+    }
+    return mapa;
+  }, [linhas]);
+
   // Largura da coluna da matriz, medida em px — nunca em `calc(%, ...)`. O
   // formato antigo (`min(Nu, calc((100% - Nu*(k-1))/k))`) reaproveitava a
   // mesma string dentro de `font-size`, e `%` em `font-size` resolve contra o
@@ -543,33 +570,83 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           apoio="tramos com NF emitida"
           marca={FATURADO_CSS}
           destaque
+          onClick={() => setDetalheAberto({
+            tipo: 'kpi_filtro',
+            titulo: 'Tramos Faturados',
+            subtitulo: `${resumo.faturados} tramo(s) com nota fiscal emitida`,
+            linhas: linhas.filter((l) => Boolean(l.data_faturado)),
+          })}
         />
         <Kpi
           valor={`${resumo.percentual}%`}
           rotulo="Faturado"
           apoio={`${resumo.faturados} de ${resumo.total} tramos`}
           marca={FATURADO_CSS}
+          onClick={() => setDetalheAberto({
+            tipo: 'kpi_filtro',
+            titulo: 'Tramos Faturados',
+            subtitulo: `${resumo.faturados} de ${resumo.total} tramos (${resumo.percentual}%)`,
+            linhas: linhas.filter((l) => Boolean(l.data_faturado)),
+          })}
         />
         <Kpi
           valor={String(resumo.expedidos)}
           rotulo="Expedidos"
           apoio={`${resumo.faturados - resumo.expedidos} faturados sem expedir`}
           marca="var(--status-good)"
+          onClick={() => setDetalheAberto({
+            tipo: 'kpi_filtro',
+            titulo: 'Tramos Expedidos',
+            subtitulo: `${resumo.expedidos} tramo(s) expedidos da fábrica`,
+            linhas: linhas.filter((l) => Boolean(l.data_expedido)),
+          })}
         />
         <Kpi
           valor={String(resumo.pendentes)}
           rotulo="A faturar"
           apoio={`${resumo.totalTorres - resumo.torresIniciadas} torres não iniciadas`}
+          onClick={() => setDetalheAberto({
+            tipo: 'kpi_filtro',
+            titulo: 'Tramos A Faturar (Pendentes)',
+            subtitulo: `${resumo.pendentes} tramo(s) aguardando faturamento`,
+            linhas: linhas.filter((l) => !l.data_faturado),
+          })}
         />
         <Kpi
           valor={`${resumo.torresConcluidas}/${resumo.totalTorres}`}
           rotulo="Torres completas"
           apoio={`${resumo.torresIniciadas} em andamento`}
+          onClick={() => {
+            const porTorre = new Map<number, FinFatGwjaco[]>();
+            for (const l of linhas) {
+              const arr = porTorre.get(l.torre_numero) ?? [];
+              arr.push(l);
+              porTorre.set(l.torre_numero, arr);
+            }
+            const concluidas: FinFatGwjaco[] = [];
+            for (const [, arr] of porTorre) {
+              if (arr.length === 5 && arr.every((l) => Boolean(l.data_faturado))) {
+                concluidas.push(...arr);
+              }
+            }
+            setDetalheAberto({
+              tipo: 'kpi_filtro',
+              titulo: 'Torres Completas (5 Tramos Faturados)',
+              subtitulo: `${resumo.torresConcluidas} de ${resumo.totalTorres} torres concluídas (${concluidas.length} tramos)`,
+              linhas: concluidas,
+            });
+          }}
         />
         <Kpi
           valor={String(resumo.noMes)}
           rotulo={`Mês ${rotuloMes(mesAtual)}`}
           apoio={resumo.ultimaNota ? `Última NF ${resumo.ultimaNota.nota_fiscal}` : 'Sem nota emitida'}
+          onClick={() => setDetalheAberto({
+            tipo: 'periodo_ritmo',
+            visao: 'mes',
+            rotulo: rotuloMes(mesAtual),
+            linhasDoPeriodo: linhas.filter((l) => (l.data_faturado ?? '').slice(0, 7) === mesAtual),
+          })}
         />
       </div>
 
@@ -580,7 +657,15 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           <div ref={matrizRef} className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.5) }}>
             {/* Régua em cima e embaixo: matriz tem 5 linhas, não dá para
                 descer o olho até o rodapé toda vez que se quer saber a torre. */}
-            <ReguaTorres torres={matriz.torres} largura={larguraCelula} />
+            <ReguaTorres
+              torres={matriz.torres}
+              largura={larguraCelula}
+              onCliqueTorre={(torre) => setDetalheAberto({
+                tipo: 'torre_completa',
+                torre,
+                linhasDaTorre: linhas.filter((l) => l.torre_numero === torre),
+              })}
+            />
 
             {matriz.linhas.map((linhaTramo) => (
               <div key={linhaTramo.tramo} className="flex min-h-0 flex-1 items-stretch" style={{ gap: u(1) }}>
@@ -591,14 +676,37 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                   {linhaTramo.tramo}
                 </span>
                 <div className="flex min-w-0 flex-1" style={{ gap: u(0.5) }}>
-                  {linhaTramo.celulas.map((celula, i) => (
-                    <CelulaTramo key={i} celula={celula} largura={larguraCelula} />
-                  ))}
+                  {linhaTramo.celulas.map((celula, i) => {
+                    const torreNumero = celula?.torre ?? matriz.torres[i];
+                    const chave = `${torreNumero}|${linhaTramo.tramo}`;
+                    const linhaExistente = indiceLinhas.get(chave) ?? null;
+                    return (
+                      <CelulaTramo
+                        key={i}
+                        celula={celula}
+                        largura={larguraCelula}
+                        onClick={() => setDetalheAberto({
+                          tipo: 'tramo_individual',
+                          linha: linhaExistente,
+                          torre: torreNumero,
+                          tramo: linhaTramo.tramo,
+                        })}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             ))}
 
-            <ReguaTorres torres={matriz.torres} largura={larguraCelula} />
+            <ReguaTorres
+              torres={matriz.torres}
+              largura={larguraCelula}
+              onCliqueTorre={(torre) => setDetalheAberto({
+                tipo: 'torre_completa',
+                torre,
+                linhasDaTorre: linhas.filter((l) => l.torre_numero === torre),
+              })}
+            />
           </div>
 
           <div
@@ -632,15 +740,41 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                 <p style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>Nenhum tramo faturado ainda.</p>
               )}
               {pontosRitmo.map((p) => (
-                <div key={p.rotulo} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end" style={{ gap: u(0.5) }}>
+                <div
+                  key={p.rotulo}
+                  onClick={() => {
+                    if (visaoTemporal === 'mes') {
+                      const pMes = p as PontoMes;
+                      setDetalheAberto({
+                        tipo: 'periodo_ritmo',
+                        visao: 'mes',
+                        rotulo: p.rotulo,
+                        linhasDoPeriodo: linhas.filter((l) => (l.data_faturado ?? '').slice(0, 7) === pMes.mes),
+                      });
+                    } else {
+                      const pSem = p as PontoSemana;
+                      setDetalheAberto({
+                        tipo: 'periodo_ritmo',
+                        visao: 'semana',
+                        rotulo: p.rotulo,
+                        linhasDoPeriodo: linhas.filter((l) => semanaDaLinha(l) === pSem.semana),
+                      });
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  title={`Clique para ver os tramos faturados em ${p.rotulo}`}
+                  className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end cursor-pointer transition-transform hover:scale-[1.03]"
+                  style={{ gap: u(0.5) }}
+                >
                   <span
-                    className="tabular shrink-0 font-bold"
+                    className="tabular shrink-0 font-bold group-hover:text-emerald-500 transition-colors"
                     style={{ fontSize: u(1.6), color: 'var(--ink-primary)' }}
                   >
                     {p.faturados}
                   </span>
                   <div
-                    className="w-full"
+                    className="w-full group-hover:brightness-125 transition-all"
                     style={{
                       height: `${(p.faturados / maxRitmo) * 100}%`,
                       minHeight: u(0.4),
@@ -651,7 +785,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                     }}
                   />
                   <span
-                    className="shrink-0 text-center font-bold"
+                    className="shrink-0 text-center font-bold group-hover:text-emerald-500 transition-colors"
                     style={{ fontSize: u(1.4), color: p.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
                   >
                     {p.rotulo}
@@ -665,9 +799,21 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           <Painel titulo="Faturado por tramo">
             <div className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.6) }}>
               {tramos.map((t) => (
-                <div key={t.tramo} className="flex min-h-0 flex-1 items-center" style={{ gap: u(1) }}>
+                <div
+                  key={t.tramo}
+                  onClick={() => setDetalheAberto({
+                    tipo: 'tramo_tipo',
+                    tramo: t.tramo,
+                    linhasDoTramo: linhas.filter((l) => l.tramo === t.tramo),
+                  })}
+                  role="button"
+                  tabIndex={0}
+                  title={`Clique para ver todos os lançamentos do tramo ${t.tramo}`}
+                  className="group flex min-h-0 flex-1 items-center cursor-pointer px-1 py-0.5 rounded-lg hover:bg-slate-100/40 dark:hover:bg-slate-800/40 transition-colors"
+                  style={{ gap: u(1) }}
+                >
                   <span
-                    className="tabular shrink-0 font-bold"
+                    className="tabular shrink-0 font-bold group-hover:text-emerald-500 transition-colors"
                     style={{ width: u(3.4), fontSize: u(1.6), color: 'var(--ink-secondary)' }}
                   >
                     {t.tramo}
@@ -677,6 +823,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                     style={{ height: `min(${u(2.2)}, 62%)`, borderRadius: u(0.4), background: 'var(--surface-sunken)' }}
                   >
                     <div
+                      className="group-hover:brightness-125 transition-all"
                       style={{
                         width: `${(t.faturados / maxTramo) * 100}%`,
                         height: '100%',
@@ -687,7 +834,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                     />
                   </div>
                   <span
-                    className="shrink-0 text-right font-bold tabular"
+                    className="shrink-0 text-right font-bold tabular group-hover:text-emerald-500 transition-colors"
                     style={{ width: u(5), fontSize: u(1.7), color: 'var(--ink-primary)' }}
                   >
                     {t.faturados}
@@ -707,7 +854,16 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
               {notas.map((n) => (
                 <div
                   key={n.id}
-                  className="flex min-h-0 flex-1 items-center justify-between overflow-hidden"
+                  onClick={() => setDetalheAberto({
+                    tipo: 'tramo_individual',
+                    linha: n,
+                    torre: n.torre_numero,
+                    tramo: n.tramo,
+                  })}
+                  role="button"
+                  tabIndex={0}
+                  title={`Clique para ver os detalhes da NF ${n.nota_fiscal}`}
+                  className="flex min-h-0 flex-1 items-center justify-between overflow-hidden cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/80 transition-colors"
                   style={{
                     gap: u(1),
                     padding: `0 ${u(1)}`,
@@ -730,6 +886,18 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           </Painel>
         </div>
       </div>
+
+      {/* Janela modal de detalhes ao clicar nos graficos */}
+      {detalheAberto && (
+        <FinFaturamentoDetalhesModal
+          detalhe={detalheAberto}
+          onFechar={() => setDetalheAberto(null)}
+          onEditarLinha={onEditarLinha}
+          onVerTramo={(linha, torre, tramo) => {
+            setDetalheAberto({ tipo: 'tramo_individual', linha, torre, tramo });
+          }}
+        />
+      )}
 
       {/*
         `--wb` mora numa classe, não no objeto de estilo do React: o

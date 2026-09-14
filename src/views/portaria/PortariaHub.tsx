@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  DoorOpen, Wrench, Bus, Truck, ClipboardList, ShieldCheck,
+  DoorOpen, Wrench, Bus, Truck, ClipboardList, ShieldCheck, Shield,
   ArrowRight, ArrowLeft, Activity, Clock,
   HelpCircle, Bug, Lightbulb
 } from 'lucide-react';
@@ -24,6 +24,7 @@ import PortariaCarretas from './PortariaCarretas';
 import PortariaRelatorio from './PortariaRelatorio';
 import PortariaBriefing from './PortariaBriefing';
 import PortariaPassagemPlantao from './PortariaPassagemPlantao';
+import PortariaAlcoolemia from './PortariaAlcoolemia';
 
 interface Props {
   user: Profile;
@@ -150,6 +151,15 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
       cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
       badge: `${metricas?.briefingsHoje || 0} hoje`,
     },
+    {
+      id: 'alcoolemia',
+      codigo: 'FRM.SGP-0015',
+      title: 'Teste de Alcoolemia',
+      desc: 'Livro diário de sorteados, pesquisa no RH Pessoas e aferição com etilômetro para TEN e PJs.',
+      icon: Shield,
+      cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
+      badge: `${metricas?.alcoolemiaHoje || 0} sorteados hoje`,
+    },
   ];
 
   useEffect(() => {
@@ -182,6 +192,9 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
   }
   if (activeTab === 'briefing') {
     return <PortariaBriefing user={user} onNavigate={handleChildNavigate} />;
+  }
+  if (activeTab === 'alcoolemia') {
+    return <PortariaAlcoolemia user={user} onNavigate={handleChildNavigate} />;
   }
 
   return (

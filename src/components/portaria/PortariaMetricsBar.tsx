@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Wrench, Bus, Truck, ClipboardList, ShieldCheck } from 'lucide-react';
+import { Wrench, Bus, Truck, ClipboardList, ShieldCheck, Shield } from 'lucide-react';
 import type { PortariaMetricas } from '../../lib/portariaApi';
 
 interface PortariaMetricsBarProps {
@@ -77,10 +77,20 @@ export default function PortariaMetricsBar({ metricas, onSelectTab, activeTab }:
       bg: 'bg-emerald-50 dark:bg-emerald-950/40',
       border: 'border-emerald-200/70 dark:border-emerald-800/40',
     },
+    {
+      id: 'alcoolemia',
+      label: 'Alcoolemia',
+      sub: 'Sorteados hoje',
+      val: metricas.alcoolemiaHoje || 0,
+      icon: Shield,
+      color: 'text-rose-600 dark:text-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-950/40',
+      border: 'border-rose-200/70 dark:border-rose-800/40',
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
       {cards.map((c) => {
         const Icon = c.icon;
         const isSelected = activeTab === c.id;

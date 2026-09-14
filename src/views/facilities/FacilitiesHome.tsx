@@ -14,7 +14,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Route, ArrowRight, Clock, DoorOpen, Timer, ClipboardList,
-  BusFront, BarChart3, Shield, Wrench,
+  BusFront, BarChart3, Shield, Wrench, Car,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -76,6 +76,16 @@ const SECOES: Secao[] = [
         fonte: 'Base fac_servicos',
       },
       {
+        id: 'veiculos_leves',
+        label: 'Veículos Leves',
+        icon: Car,
+        desc: 'Cadastro dos carros alugados que entram e saem pelo formulário de ocorrências da Portaria, com modelo e placa.',
+        cor: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-400',
+        path: '/facilities/veiculos-leves',
+        gateId: 'facilities_veiculos_leves',
+        fonte: 'Base fac_veiculos_leves',
+      },
+      {
         id: 'materiais_vigilancia',
         label: 'Materiais da Vigilância',
         icon: Shield,
@@ -84,6 +94,16 @@ const SECOES: Secao[] = [
         path: '/facilities/materiais',
         gateId: 'facilities_materiais',
         fonte: 'Base port_materiais_seguranca',
+      },
+      {
+        id: 'vigilantes',
+        label: 'Vigilantes da Portaria',
+        icon: Shield,
+        desc: 'Equipe de vigilantes que abastece o seletor usado em todos os formulários da Portaria — matrícula, empresa, turno e status.',
+        cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
+        path: '/facilities/vigilantes',
+        gateId: 'facilities_vigilantes',
+        fonte: 'Base port_vigilantes',
       },
     ],
   },

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { gerarProtocolo, hojeISO, horaAgora, sugerirTurno } from './portariaApi';
+import { formatarTextoOcorrencia, gerarProtocolo, hojeISO, horaAgora, sugerirTurno } from './portariaApi';
 
 describe('Módulo Portaria — Utilitários de API', () => {
   it('deve gerar protocolos únicos no formato esperado', () => {
@@ -36,5 +36,25 @@ describe('Módulo Portaria — Utilitários de API', () => {
   it('deve sugerir turno válido', () => {
     const turno = sugerirTurno();
     expect(['MANHA', 'TARDE', 'NOITE']).toContain(turno);
+  });
+
+  it('deve formatar entrada e saída de veículo leve com modelo, placa e condutor', () => {
+    const texto = formatarTextoOcorrencia({
+      tipo_registro: 'VEICULO_LEVE' as any,
+      horario: '08:15',
+      hora_saida: '17:40',
+      vigilante_saida: 'JOAO',
+      empresa: 'LOCADORA ABC',
+      placa_veiculo: 'ABC1D23',
+      nome_pessoa: 'MARIA SILVA',
+      motivo_observacao: 'VISITA AO PROJETO',
+      veiculo_leve_modelo: 'Toyota Corolla',
+    } as any);
+
+    expect(texto).toContain('VEÍCULO LEVE');
+    expect(texto).toContain('TOYOTA COROLLA');
+    expect(texto).toContain('ABC1D23');
+    expect(texto).toContain('MARIA SILVA');
+    expect(texto).toContain('Saída registrada às 17:40');
   });
 });

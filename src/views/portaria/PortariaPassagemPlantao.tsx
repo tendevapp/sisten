@@ -27,6 +27,7 @@ import type {
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -217,7 +218,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const [formTurno, setFormTurno] = useState('DIURNO');
   const [formHoraInicio, setFormHoraInicio] = useState('06:00');
   const [formHoraFim, setFormHoraFim] = useState('18:00');
-  const [formPreenchedor, setFormPreenchedor] = useState('');
+  const [formPreenchedor, setFormPreenchedor] = useState(user.name);
   const [formPortaria, setFormPortaria] = useState('');
   const [formRonda01, setFormRonda01] = useState('');
   const [formRonda02, setFormRonda02] = useState('');
@@ -271,7 +272,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
     setFormTurno(new Date().getHours() >= 6 && new Date().getHours() < 18 ? 'DIURNO' : 'NOTURNO');
     setFormHoraInicio(new Date().getHours() >= 6 && new Date().getHours() < 18 ? '06:00' : '18:00');
     setFormHoraFim(new Date().getHours() >= 6 && new Date().getHours() < 18 ? '18:00' : '06:00');
-    setFormPreenchedor('');
+    setFormPreenchedor(user.name);
     setFormPortaria('');
     setFormRonda01('');
     setFormRonda02('');
@@ -322,10 +323,6 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   // Salvar Plantão
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formPreenchedor.trim()) {
-      toast.warning('Selecione quem está preenchendo o formulário.');
-      return;
-    }
     if (!formPortaria.trim()) {
       toast.warning('Selecione o vigilante responsável pela Portaria.');
       return;
@@ -803,12 +800,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
             <ModalBody className="space-y-5">
               {/* 1. Vigilante Preenchedor */}
               <div data-tour="passagem-form-preenchedor" className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3.5 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                <VigilanteSelect
-                  label="Vigilante que está Preenchendo o Formulário"
-                  required
-                  value={formPreenchedor}
-                  onChange={setFormPreenchedor}
-                />
+                <VigilanteOperadorAtual nome={formPreenchedor} label="Vigilante que está Preenchendo o Formulário" />
               </div>
 
               {/* 2. Dados do Turno e Horário */}

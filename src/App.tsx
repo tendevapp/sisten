@@ -67,11 +67,15 @@ const PortariaTransportes = lazy(() => import('./views/portaria/PortariaTranspor
 const PortariaCarretas = lazy(() => import('./views/portaria/PortariaCarretas'));
 const PortariaRelatorio = lazy(() => import('./views/portaria/PortariaRelatorio'));
 const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'));
+const PortariaAlcoolemia = lazy(() => import('./views/portaria/PortariaAlcoolemia'));
+const SsmaAlcoolemiaView = lazy(() => import('./views/ssma/SsmaAlcoolemiaView'));
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
 const FacilitiesMateriais = lazy(() => import('./views/facilities/FacilitiesMateriais'));
+const FacilitiesVigilantes = lazy(() => import('./views/facilities/FacilitiesVigilantes'));
 const FacilitiesServicos = lazy(() => import('./views/facilities/FacilitiesServicos'));
+const FacilitiesVeiculosLeves = lazy(() => import('./views/facilities/FacilitiesVeiculosLeves'));
 const RhHome = lazy(() => import('./views/rh/RhHome'));
 const RhColaboradores = lazy(() => import('./views/rh/RhColaboradores'));
 const RhSetores = lazy(() => import('./views/rh/RhSetores'));
@@ -605,6 +609,12 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/formularios/portaria-alcoolemia':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+          return <PortariaAlcoolemia user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/logistica-expedicao':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
           return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
@@ -634,6 +644,13 @@ export default function App() {
       case '/formularios/ssma/rid':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
           return <SsmaRidView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/ssma-alcoolemia':
+      case '/formularios/ssma/alcoolemia':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
+          return <SsmaAlcoolemiaView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -1013,9 +1030,21 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/facilities/vigilantes':
+        if (canAccessPage(user, 'facilities_vigilantes')) {
+          return <FacilitiesVigilantes user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/facilities/servicos':
         if (canAccessPage(user, 'facilities_servicos')) {
           return <FacilitiesServicos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/facilities/veiculos-leves':
+        if (canAccessPage(user, 'facilities_veiculos_leves')) {
+          return <FacilitiesVeiculosLeves user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

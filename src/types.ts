@@ -1928,6 +1928,18 @@ export interface PortControleCarreta {
   excluido_por?: string | null;
 }
 
+// 4.1 Veículos Leves / Carros Alugados (Facilities)
+export interface FacVeiculoLeve {
+  id: string;
+  modelo: string;
+  placa: string;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
 // 4. Relatório de Ocorrências da Portaria (FRM.SGP-0010)
 export type PortRelatorioStatus = 'EM_ANDAMENTO' | 'CONCLUIDO' | 'PASSADO' | 'CANCELADO';
 export type PortLocalSetor = 'PORTARIA' | 'RONDA_01' | 'RONDA_02' | 'PATIO_CHAPAS' | 'PATIO_TRAMOS' | 'FABRICA' | 'OUTRO';
@@ -1935,6 +1947,7 @@ export type PortSeveridade = 'INFO' | 'ALERTA' | 'GRAVE';
 
 export type PortTipoRegistroOcorrencia =
   | 'ENTRADA_VEICULO'      // Veículo / Fornecedor / Prestador (com saída pendente)
+  | 'VEICULO_LEVE'         // Carro alugado / Veículo leve da empresa
   | 'ENTRADA_VISITANTE'    // Visitante / Terceiro a Pé (com saída pendente)
   | 'SAIDA_COLABORADOR'    // Saída Temporária de Colaborador TEN (com retorno pendente)
   | 'RONDA_PATRIMONIAL'    // Ronda Patrimonial (texto livre + foto)
@@ -1980,6 +1993,10 @@ export interface PortRelatorioOcorrencia {
   fara_briefing?: boolean;
   motivo_observacao?: string;
   pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
+  veiculo_leve_id?: string | null;
+  veiculo_leve_modelo?: string | null;
+  condutor_pessoa_id?: string | null;
+  condutor_origem?: 'rh_pessoas' | 'manual' | null;
   created_at: string;
   updated_at?: string;
   excluido_em?: string | null;
@@ -2119,6 +2136,46 @@ export interface PortVigilante {
   criado_por?: string | null;
   created_at?: string;
   updated_at?: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
+// 6.1. Teste de Alcoolemia (FRM.SGP-0015 / FRM.SOC-0042)
+export type PortAlcoolemiaResultado = 'NEGATIVO' | 'POSITIVO' | 'RECUSA' | 'PENDENTE';
+export type PortAlcoolemiaVinculo = 'TEN' | 'PJ';
+export type PortAlcoolemiaRazao = 'ALEATORIO' | 'MOTIVADO' | 'POS_ACIDENTE';
+
+export interface PortAlcoolemiaTeste {
+  id: string;
+  codigo_formulario: string;
+  numero_protocolo?: string | null;
+  data: string;
+  horario: string;
+  turno: string;
+  tipo_vinculo: PortAlcoolemiaVinculo;
+  pessoa_id?: string | null;
+  matricula?: string | null;
+  nome: string;
+  empresa: string;
+  cargo_funcao?: string | null;
+  setor_area?: string | null;
+  documento?: string | null;
+  resultado: PortAlcoolemiaResultado;
+  valor_medido: number;
+  etilometro_codigo?: string | null;
+  vigilante?: string | null;
+  testemunha?: string | null;
+  observacoes?: string | null;
+  razao_teste?: PortAlcoolemiaRazao;
+  local_teste?: string | null;
+  examinador_nome?: string | null;
+  examinador_cargo?: string | null;
+  termo_assinado_fisicamente?: boolean;
+  termo_impresso_em?: string | null;
+  criado_por?: string | null;
+  criado_por_nome?: string | null;
+  created_at: string;
+  updated_at: string;
   excluido_em?: string | null;
   excluido_por?: string | null;
 }

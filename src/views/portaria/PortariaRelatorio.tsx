@@ -28,14 +28,16 @@ import type {
   Profile, PortRelatorioPortaria, PortRelatorioOcorrencia,
   PortRelatorioStatus, PortTurno, PortLocalSetor, PortSeveridade,
   PortTipoRegistroOcorrencia, PortPessoaVeiculoHistorico, RhPessoa,
-  PortStatusPermanencia
+  PortStatusPermanencia, FacVeiculoLeve
 } from '../../types';
 import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { listarRhPessoas } from '../../lib/rhApi';
+import { listarVeiculosLeves } from '../../lib/facilitiesApi';
 import { exportRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFields';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -134,6 +136,15 @@ const TIPOS_REGISTRO: {
     icon: UserCheck,
     cor: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 dark:text-indigo-400',
     badgeCor: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300',
+    isLivre: false,
+  },
+  {
+    id: 'VEICULO_LEVE',
+    label: 'Veículo leve',
+    sublabel: 'Carro alugado cadastrado no Facilities',
+    icon: Car,
+    cor: 'text-cyan-600 bg-cyan-50 dark:bg-cyan-950/60 dark:text-cyan-400',
+    badgeCor: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300',
     isLivre: false,
   },
   {
@@ -320,6 +331,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     motivo_observacao: string;
     fara_briefing: boolean;
     foto_url: string | null;
+    veiculo_leve_id?: string | null;
+    veiculo_leve_modelo?: string | null;
+    condutor_pessoa_id?: string | null;
+    condutor_origem?: 'rh_pessoas' | 'manual' | null;
   }>({
     tipo_registro: 'ENTRADA_VEICULO',
     horario: api.horaAgora(),
@@ -334,6 +349,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     motivo_observacao: '',
     fara_briefing: false,
     foto_url: null,
+    veiculo_leve_id: null,
+    veiculo_leve_modelo: null,
+    condutor_pessoa_id: null,
+    condutor_origem: null,
   });
 
   // Form Registrar Saída Rápida
@@ -353,12 +372,43 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [buscaColaborador, setBuscaColaborador] = useState('');
   const [mostrandoSugestoesColab, setMostrandoSugestoesColab] = useState(false);
 
+  // Veículos leves do cadastro Facilities e condutor do lançamento.
+  const [veiculosLeves, setVeiculosLeves] = useState<FacVeiculoLeve[]>([]);
+  const [carregandoVeiculosLeves, setCarregandoVeiculosLeves] = useState(false);
+  const [erroVeiculosLeves, setErroVeiculosLeves] = useState<string | null>(null);
+
   // Carrega lista de colaboradores do RH ao iniciar
   useEffect(() => {
     listarRhPessoas()
       .then((data) => setColaboradoresRh(data || []))
       .catch((err) => console.error('Erro ao carregar colaboradores do RH:', err));
   }, []);
+
+  const carregarVeiculosLeves = useCallback(async () => {
+    setCarregandoVeiculosLeves(true);
+    try {
+      const data = await listarVeiculosLeves();
+      setVeiculosLeves(data.filter((veiculo) => veiculo.ativo));
+      setErroVeiculosLeves(null);
+    } catch (err) {
+      const mensagem = err instanceof Error ? err.message : 'Falha ao consultar o cadastro de veículos leves.';
+      console.error('Erro ao carregar veículos leves:', err);
+      setVeiculosLeves([]);
+      setErroVeiculosLeves(mensagem);
+    } finally {
+      setCarregandoVeiculosLeves(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarVeiculosLeves();
+  }, [carregarVeiculosLeves]);
+
+  useEffect(() => {
+    if (formOcorrencia.tipo_registro === 'VEICULO_LEVE') {
+      void carregarVeiculosLeves();
+    }
+  }, [carregarVeiculosLeves, formOcorrencia.tipo_registro]);
 
   const colaboradoresFiltrados = useMemo(() => {
     if (!buscaColaborador.trim()) return [];
@@ -645,6 +695,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       motivo_observacao: '',
       fara_briefing: false,
       foto_url: null,
+      veiculo_leve_id: null,
+      veiculo_leve_modelo: null,
+      condutor_pessoa_id: null,
+      condutor_origem: null,
     });
     setBuscaHistorico('');
     setMostrandoSugestoes(false);
@@ -691,6 +745,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       motivo_observacao: (oc.motivo_observacao || oc.descricao).toUpperCase(),
       fara_briefing: !!oc.fara_briefing,
       foto_url: oc.foto_url || null,
+      veiculo_leve_id: oc.veiculo_leve_id || null,
+      veiculo_leve_modelo: oc.veiculo_leve_modelo || null,
+      condutor_pessoa_id: oc.condutor_pessoa_id || null,
+      condutor_origem: oc.condutor_origem || null,
     });
     setModalNovaOcorrencia(true);
   };
@@ -733,6 +791,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         motivo_observacao: (formSaidaRapida.motivo_observacao || ocorrenciaParaSaida.motivo_observacao || '').toUpperCase(),
         fara_briefing: ocorrenciaParaSaida.fara_briefing,
         pessoas: ocorrenciaParaSaida.pessoas,
+        veiculo_leve_modelo: ocorrenciaParaSaida.veiculo_leve_modelo || undefined,
       });
 
       await api.atualizarOcorrencia(ocorrenciaParaSaida.id, {
@@ -774,6 +833,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     const pessoasValidas = pessoasForm.filter((p) => p.nome.trim());
     if (!tipoAtual.isLivre && pessoasValidas.length === 0) {
       toast.error('Informe ao menos o nome de uma pessoa / visitante.');
+      return;
+    }
+    if (formOcorrencia.tipo_registro === 'VEICULO_LEVE' && !formOcorrencia.veiculo_leve_id) {
+      toast.error('Selecione o veículo leve no cadastro de Facilities.');
       return;
     }
 
@@ -822,6 +885,10 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
         fara_briefing: formOcorrencia.fara_briefing,
         motivo_observacao: formOcorrencia.motivo_observacao.toUpperCase(),
         pessoas: pessoasValidas,
+        veiculo_leve_id: formOcorrencia.veiculo_leve_id || null,
+        veiculo_leve_modelo: formOcorrencia.veiculo_leve_modelo || null,
+        condutor_pessoa_id: formOcorrencia.condutor_pessoa_id || null,
+        condutor_origem: formOcorrencia.condutor_origem || null,
       };
 
       if (ocorrenciaEmEdicao?.id) {
@@ -948,13 +1015,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
       return lista.filter(
         (o) =>
           o.status_permanencia === 'NO_PATIO' ||
-          (!o.hora_saida && (o.tipo_registro === 'ENTRADA_VEICULO' || o.tipo_registro === 'ENTRADA_VISITANTE'))
+          (!o.hora_saida && (o.tipo_registro === 'ENTRADA_VEICULO' || o.tipo_registro === 'VEICULO_LEVE' || o.tipo_registro === 'ENTRADA_VISITANTE'))
       );
     }
     if (filtroCategoria === 'VEICULOS') {
       return lista.filter(
         (o) =>
           o.tipo_registro === 'ENTRADA_VEICULO' ||
+          o.tipo_registro === 'VEICULO_LEVE' ||
           o.descricao.toLowerCase().includes('veículo') ||
           o.descricao.toLowerCase().includes('placa')
       );
@@ -1120,7 +1188,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 const countNoPatio = (rel.ocorrencias || []).filter(
                   (o) =>
                     o.status_permanencia === 'NO_PATIO' ||
-                    (!o.hora_saida && (o.tipo_registro === 'ENTRADA_VEICULO' || o.tipo_registro === 'ENTRADA_VISITANTE'))
+                    (!o.hora_saida && (o.tipo_registro === 'ENTRADA_VEICULO' || o.tipo_registro === 'VEICULO_LEVE' || o.tipo_registro === 'ENTRADA_VISITANTE'))
                 ).length;
 
                 return (
@@ -1301,7 +1369,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       const isAlerta = oc.severidade === 'ALERTA' || oc.severidade === 'GRAVE';
                       const tipoObj = TIPOS_REGISTRO.find((t) => t.id === oc.tipo_registro);
                       const temSaidaPendente =
-                        (oc.tipo_registro === 'ENTRADA_VEICULO' || oc.tipo_registro === 'ENTRADA_VISITANTE') &&
+                        (oc.tipo_registro === 'ENTRADA_VEICULO' || oc.tipo_registro === 'VEICULO_LEVE' || oc.tipo_registro === 'ENTRADA_VISITANTE') &&
                         !oc.hora_saida;
 
                       return (
@@ -1504,7 +1572,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                   Tipo de Lançamento *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2">
                   {TIPOS_REGISTRO.map((tipo) => {
                     const Icon = tipo.icon;
                     const isSelected = formOcorrencia.tipo_registro === tipo.id;
@@ -1684,6 +1752,35 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     )}
                   </div>
                 </div>
+              ) : formOcorrencia.tipo_registro === 'VEICULO_LEVE' ? (
+                <VeiculoLeveFormFields
+                  veiculos={veiculosLeves}
+                  carregando={carregandoVeiculosLeves}
+                  erro={erroVeiculosLeves}
+                  onRecarregar={() => void carregarVeiculosLeves()}
+                  veiculoId={formOcorrencia.veiculo_leve_id || ''}
+                  modelo={formOcorrencia.veiculo_leve_modelo || ''}
+                  placa={formOcorrencia.placa_veiculo}
+                  onVeiculoChange={(veiculo) => setFormOcorrencia((prev) => ({
+                    ...prev,
+                    veiculo_leve_id: veiculo?.id || null,
+                    veiculo_leve_modelo: veiculo?.modelo || null,
+                    placa_veiculo: veiculo?.placa || '',
+                  }))}
+                  condutor={{
+                    nome: pessoasForm[0]?.nome || '',
+                    cpf: pessoasForm[0]?.cpf || '',
+                    funcao: pessoasForm[0]?.funcao || '',
+                  }}
+                  colaboradores={colaboradoresRh}
+                  origem={formOcorrencia.condutor_origem}
+                  onCondutorChange={(condutor) => setPessoasForm((prev) => [{ ...(prev[0] || { cnh: '' }), ...condutor }])}
+                  onCondutorSelecionado={(pessoa) => {
+                    setPessoasForm([{ nome: pessoa.nome.toUpperCase(), cpf: pessoa.registro, cnh: '', funcao: (pessoa.cargo || '').toUpperCase() }]);
+                    setFormOcorrencia((prev) => ({ ...prev, condutor_pessoa_id: pessoa.id, condutor_origem: 'rh_pessoas' }));
+                  }}
+                  onOrigemChange={(origem) => setFormOcorrencia((prev) => ({ ...prev, condutor_origem: origem, condutor_pessoa_id: origem === 'rh_pessoas' ? prev.condutor_pessoa_id : null }))}
+                />
               ) : formOcorrencia.tipo_registro === 'SAIDA_COLABORADOR' ? (
                 /* CASO B: Saída de Colaborador (TEN) integrado à tabela rh_pessoas */
                 <div className="space-y-4">

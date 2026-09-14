@@ -11,16 +11,13 @@ import {
   ShieldAlert,
   AlertTriangle,
   ClipboardCheck,
-  Flame,
-  HardHat,
-  FileCheck,
   Activity,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
   HelpCircle,
   Bug,
   Lightbulb,
+  FileSignature,
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -29,6 +26,7 @@ import type { Profile, SsmaRidMetricas } from '../../types';
 import { obterMetricasRid } from '../../lib/ssmaApi';
 import SsmaMetricsBar from '../../components/ssma/SsmaMetricsBar';
 import SsmaRidView from './SsmaRidView';
+import SsmaAlcoolemiaView from './SsmaAlcoolemiaView';
 import { useToast } from '../../components/ui/Toast';
 
 interface SsmaHubProps {
@@ -63,7 +61,7 @@ const SSMA_HUB_TOUR_STEPS: TourStep[] = [
     icon: ClipboardCheck,
     title: 'Catálogo de formulários SSMA',
     description:
-      'Acesse o RID (FRM.SSMA-0001) já ativo e acompanhe os formulários planejados (Inspeção 5S, Quase Acidente, EPIs, Permissão de Trabalho e CPI).',
+      'Acesse os formulários operacionais oficiais: RID (FRM.SSMA-0001) para desvios e Teste de Alcoolemia (FRM.SOC-0042) integrado à Portaria.',
   },
   {
     target: 'help-button',
@@ -124,69 +122,28 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
       icon: AlertTriangle,
       cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
       badge: `${metricas?.total || 0} registrados`,
-      ativo: true,
       badgeCor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     },
     {
-      id: 'inspecao_5s',
-      codigo: 'FRM.SSMA-0002',
-      title: 'Inspeção de Segurança & 5S',
-      desc: 'Checklist diário e semanal de organização, rotas de fuga, extintores, desobstrução e boas práticas de 5S no chão de fábrica.',
-      icon: ClipboardCheck,
-      cor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400',
-      badge: 'Em Breve',
-      ativo: false,
-      badgeCor: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-    },
-    {
-      id: 'quase_acidente',
-      codigo: 'FRM.SSMA-0003',
-      title: 'Relato de Quase Acidente (Near Miss)',
-      desc: 'Comunicação imediata de quase acidentes e situações de alto potencial de dano com intervenção preventiva rápida.',
-      icon: Flame,
-      cor: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400',
-      badge: 'Em Breve',
-      ativo: false,
-      badgeCor: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-    },
-    {
-      id: 'epi',
-      codigo: 'FRM.SSMA-0004',
-      title: 'Auditoria & Inspeção de EPI',
-      desc: 'Acompanhamento do uso correto de EPIs por setor, estado de conservação, CA válido e controle de entrega.',
-      icon: HardHat,
-      cor: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400',
-      badge: 'Em Breve',
-      ativo: false,
-      badgeCor: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-    },
-    {
-      id: 'permissao_trabalho',
-      codigo: 'FRM.SSMA-0005',
-      title: 'Permissão de Trabalho (PT / APR)',
-      desc: 'Liberação formal e análise preliminar de risco para trabalhos em altura, espaço confinado, a quente e eletricidade.',
-      icon: FileCheck,
-      cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
-      badge: 'Em Breve',
-      ativo: false,
-      badgeCor: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-    },
-    {
-      id: 'incidente',
-      codigo: 'FRM.SSMA-0006',
-      title: 'Comunicação Preliminar de Incidente (CPI)',
-      desc: 'Abertura oficial de ocorrência com primeiros socorros, danos materiais ou ambientais para investigação formal.',
-      icon: Activity,
-      cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
-      badge: 'Em Breve',
-      ativo: false,
-      badgeCor: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700',
+      id: 'alcoolemia',
+      codigo: 'FRM.SOC-0042',
+      title: 'Teste de Alcoolemia & Termo Psicoativo',
+      desc: 'Execução de teste de alcoolemia por etilômetro, emissão do termo para assinatura física e controle de sorteados da portaria.',
+      icon: FileSignature,
+      cor: 'bg-teal-100 text-teal-700 dark:bg-teal-950/60 dark:text-teal-400',
+      badge: 'Ativo • Portaria & SSMA',
+      badgeCor: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     },
   ];
 
   // Se a aba for RID, exibe a subpágina completa do formulário
   if (activeTab === 'rid') {
     return <SsmaRidView user={user} onNavigate={handleChildNavigate} />;
+  }
+
+  // Se a aba for alcoolemia, exibe o formulário do Termo FRM.SOC-0042
+  if (activeTab === 'alcoolemia') {
+    return <SsmaAlcoolemiaView user={user} onNavigate={handleChildNavigate} />;
   }
 
   return (
@@ -223,25 +180,15 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
       </div>
 
       {/* Forms Grid */}
-      <div data-tour="ssma-hub-grid" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div data-tour="ssma-hub-grid" className="grid gap-4 sm:grid-cols-2">
         {FORMULARIOS_SSMA.map((form) => {
           const Icon = form.icon;
           return (
             <button
               key={form.id}
               type="button"
-              onClick={() => {
-                if (form.ativo) {
-                  setActiveTab(form.id);
-                } else {
-                  toast.info(`O formulário ${form.title} está em fase de homologação.`);
-                }
-              }}
-              className={`group flex flex-col items-start justify-between rounded-2xl border p-5 text-left transition-all duration-200 ${
-                form.ativo
-                  ? 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-slate-900/5 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-400/40 cursor-pointer'
-                  : 'border-slate-200/60 bg-slate-50/50 opacity-80 hover:opacity-100 hover:border-slate-300 dark:border-slate-800/60 dark:bg-slate-900/40 cursor-pointer'
-              }`}
+              onClick={() => setActiveTab(form.id)}
+              className="group flex flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-slate-900/5 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-400/40 cursor-pointer"
             >
               <div className="w-full">
                 <div className="flex w-full items-center justify-between">
@@ -253,13 +200,7 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
                   </span>
                 </div>
 
-                <h3
-                  className={`mt-3.5 text-base font-bold transition-colors ${
-                    form.ativo
-                      ? 'text-slate-900 group-hover:text-emerald-700 dark:text-slate-100 dark:group-hover:text-emerald-400'
-                      : 'text-slate-700 dark:text-slate-300'
-                  }`}
-                >
+                <h3 className="mt-3.5 text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors dark:text-slate-100 dark:group-hover:text-emerald-400">
                   {form.title}
                 </h3>
 
@@ -273,17 +214,10 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
                   {form.badge}
                 </span>
 
-                {form.ativo ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 transition-transform group-hover:translate-x-1 dark:text-emerald-400">
-                    Acessar
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400">
-                    <Sparkles className="h-3 w-3" />
-                    Planejado
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 transition-transform group-hover:translate-x-1 dark:text-emerald-400">
+                  Acessar
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </span>
               </div>
             </button>
           );

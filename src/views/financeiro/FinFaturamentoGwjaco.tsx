@@ -312,6 +312,10 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
             linhas={linhas}
             onAtualizar={carregar}
             carregando={loading}
+            onEditarLinha={(row) => {
+              setAba('dados');
+              abrirEdicao(row);
+            }}
           />
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Painel desenhado para TV: use o botão de tela cheia no canto do painel. Ele se atualiza

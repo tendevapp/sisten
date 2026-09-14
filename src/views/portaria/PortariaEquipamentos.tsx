@@ -19,7 +19,7 @@ import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportEquipamentoPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
-import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../../components/ui/Modal';
@@ -171,14 +171,14 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     funcionario: '',
     descricao_materiais: '',
     responsavel: '',
-    vigilante_entrada: '',
+    vigilante_entrada: user.name,
     data_entrada: api.hojeISO(),
     hora_entrada: api.horaAgora(),
     observacoes: '',
   });
 
   const [formSaida, setFormSaida] = useState({
-    vigilante_saida: '',
+    vigilante_saida: user.name,
     data_saida: api.hojeISO(),
     hora_saida: api.horaAgora(),
     observacoes: '',
@@ -210,10 +210,6 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Empresa, Funcionário e Descrição dos materiais.');
       return;
     }
-    if (!formEntrada.vigilante_entrada.trim()) {
-      toast.error('Selecione o vigilante da portaria.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -228,7 +224,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
         funcionario: '',
         descricao_materiais: '',
         responsavel: '',
-        vigilante_entrada: '',
+        vigilante_entrada: user.name,
         data_entrada: api.hojeISO(),
         hora_entrada: api.horaAgora(),
         observacoes: '',
@@ -244,10 +240,6 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
   const handleSalvarSaida = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemSelecionado) return;
-    if (!formSaida.vigilante_saida.trim()) {
-      toast.error('Selecione o vigilante que efetuou a conferência de saída.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -583,12 +575,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   />
                 </div>
                 <div className="sm:col-span-1">
-                  <VigilanteSelect
-                    label="Vigilante Portaria"
-                    required
-                    value={formEntrada.vigilante_entrada}
-                    onChange={(val) => setFormEntrada({ ...formEntrada, vigilante_entrada: val })}
-                  />
+                  <VigilanteOperadorAtual nome={formEntrada.vigilante_entrada} label="Vigilante Portaria" />
                 </div>
               </div>
 
@@ -688,12 +675,7 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
               </div>
 
               <div>
-                <VigilanteSelect
-                  label="Vigilante que Conferiu a Saída"
-                  required
-                  value={formSaida.vigilante_saida}
-                  onChange={(val) => setFormSaida({ ...formSaida, vigilante_saida: val })}
-                />
+                <VigilanteOperadorAtual nome={formSaida.vigilante_saida} label="Vigilante que Conferiu a Saída" />
               </div>
 
               <div>

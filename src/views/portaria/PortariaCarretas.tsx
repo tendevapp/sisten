@@ -19,7 +19,7 @@ import * as api from '../../lib/portariaApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportCarretasPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
-import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import SignaturePadModal from '../../components/portaria/SignaturePadModal';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
@@ -182,14 +182,14 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     hora_entrada: api.horaAgora(),
     nome_motorista: '',
     cpf_motorista: '',
-    vigilante_entrada: '',
+    vigilante_entrada: user.name,
     numero_nf: '',
     peso_bruto: '',
     observacoes: '',
   });
 
   const [formSaida, setFormSaida] = useState({
-    vigilante_saida: '',
+    vigilante_saida: user.name,
     data_saida: api.hojeISO(),
     hora_saida: api.horaAgora(),
     ass_motorista: '',
@@ -222,11 +222,6 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Empresa, Placa Cavalo e Nome do Motorista.');
       return;
     }
-    if (!formNovo.vigilante_entrada.trim()) {
-      toast.error('Selecione o vigilante da portaria.');
-      return;
-    }
-
     setSalvando(true);
     try {
       await api.criarCarreta({
@@ -244,7 +239,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
         hora_entrada: api.horaAgora(),
         nome_motorista: '',
         cpf_motorista: '',
-        vigilante_entrada: '',
+        vigilante_entrada: user.name,
         numero_nf: '',
         peso_bruto: '',
         observacoes: '',
@@ -260,10 +255,6 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
   const handleSalvarSaida = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemSelecionado) return;
-    if (!formSaida.vigilante_saida.trim()) {
-      toast.error('Selecione o vigilante de saída.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -636,12 +627,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   />
                 </div>
                 <div className="sm:col-span-1">
-                  <VigilanteSelect
-                    label="Vigilante Portaria"
-                    required
-                    value={formNovo.vigilante_entrada}
-                    onChange={(val) => setFormNovo({ ...formNovo, vigilante_entrada: val })}
-                  />
+                  <VigilanteOperadorAtual nome={formNovo.vigilante_entrada} label="Vigilante Portaria" />
                 </div>
               </div>
 
@@ -737,12 +723,7 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
               </div>
 
               <div>
-                <VigilanteSelect
-                  label="Vigilante de Saída"
-                  required
-                  value={formSaida.vigilante_saida}
-                  onChange={(val) => setFormSaida({ ...formSaida, vigilante_saida: val })}
-                />
+                <VigilanteOperadorAtual nome={formSaida.vigilante_saida} label="Vigilante de Saída" />
               </div>
 
               {/* Assinatura do Motorista */}

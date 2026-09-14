@@ -20,7 +20,7 @@ import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportTransportesPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
 import SugestoesChegadaTransporte from '../../components/portaria/SugestoesChegadaTransporte';
-import VigilanteSelect from '../../components/portaria/VigilanteSelect';
+import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { MostrarExcluidosToggle, BadgeExcluido, RestaurarButton, classeLinhaExcluida } from '../../components/ui/ExcluidosControls';
@@ -183,7 +183,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   const tour = usePageTour('portaria-transportes', PORTARIA_TRANSPORTES_TOUR_STEPS.length, !modalNovoAberto);
   const tourNovo = usePageTour('portaria-transportes-novo', PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS.length, modalNovoAberto);
 
-  const [formNovo, setFormNovo] = useState(formTransporteVazio);
+  const [formNovo, setFormNovo] = useState(() => ({ ...formTransporteVazio(), vigilante: user.name }));
   // Enquanto false, os dropdowns de sugestão ficam fechados — evita reabri-los
   // logo após um preenchimento. Volta a true assim que o usuário digita.
   const [sugestoesAtivas, setSugestoesAtivas] = useState(true);
@@ -239,10 +239,6 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       toast.error('Preencha os campos obrigatórios: Placa, Empresa e Motorista.');
       return;
     }
-    if (!formNovo.vigilante.trim()) {
-      toast.error('Selecione o vigilante da portaria.');
-      return;
-    }
 
     setSalvando(true);
     try {
@@ -252,7 +248,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       });
       toast.success('Chegada de transporte registrada!');
       setModalNovoAberto(false);
-      setFormNovo(formTransporteVazio());
+      setFormNovo({ ...formTransporteVazio(), vigilante: user.name });
       setSugestoesAtivas(true);
       setRotaModoOutro(false);
       carregarDados();
@@ -356,7 +352,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
           <button
             type="button"
-            onClick={() => { setFormNovo(formTransporteVazio()); setSugestoesAtivas(true); setRotaModoOutro(false); setModalNovoAberto(true); }}
+            onClick={() => { setFormNovo({ ...formTransporteVazio(), vigilante: user.name }); setSugestoesAtivas(true); setRotaModoOutro(false); setModalNovoAberto(true); }}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400"
           >
             <Plus className="h-4 w-4" />
@@ -721,12 +717,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <VigilanteSelect
-                      label="Vigilante Portaria"
-                      required
-                      value={formNovo.vigilante}
-                      onChange={(val) => setFormNovo({ ...formNovo, vigilante: val })}
-                    />
+                    <VigilanteOperadorAtual nome={formNovo.vigilante} label="Vigilante Portaria" />
                   </div>
                 </div>
               </div>

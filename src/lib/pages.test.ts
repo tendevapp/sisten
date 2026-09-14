@@ -85,6 +85,7 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessPage(admin, 'facilities')).toBe(true);
       expect(canAccessPage(admin, 'facilities_rotas')).toBe(true);
       expect(canAccessPage(admin, 'facilities_materiais')).toBe(true);
+      expect(canAccessPage(admin, 'facilities_veiculos_leves')).toBe(true);
 
       const adriano = mockUser({
         name: 'ADRIANO DA SILVA COSTA OLIVEIRA',
@@ -95,11 +96,13 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessPage(adriano, 'facilities')).toBe(true);
       expect(canAccessPage(adriano, 'facilities_rotas')).toBe(true);
       expect(canAccessPage(adriano, 'facilities_materiais')).toBe(true);
+      expect(canAccessPage(adriano, 'facilities_veiculos_leves')).toBe(true);
 
       const gestor = mockUser({ roles: ['gestor'] });
       expect(canAccessPage(gestor, 'facilities')).toBe(false);
       expect(canAccessPage(gestor, 'facilities_rotas')).toBe(false);
       expect(canAccessPage(gestor, 'facilities_materiais')).toBe(false);
+      expect(canAccessPage(gestor, 'facilities_veiculos_leves')).toBe(false);
 
       const coord = mockUser({ roles: ['coordenador_suprimentos'] });
       expect(canAccessPage(coord, 'facilities')).toBe(false);

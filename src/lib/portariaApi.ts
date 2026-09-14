@@ -12,6 +12,9 @@
 
 import { supabase } from '../db/supabaseClient';
 import type {
+  PortAlcoolemiaResultado,
+  PortAlcoolemiaTeste,
+  PortAlcoolemiaVinculo,
   PortBriefingParticipante,
   PortBriefingSessao,
   PortBriefingStatus,
@@ -35,6 +38,7 @@ import type {
   PortTurno,
   PortVigilante,
 } from '../types';
+import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 
 export function formatarDataDDMMAA(dataISO?: string | null): string {
@@ -461,6 +465,7 @@ export async function restaurarCarreta(id: string): Promise<void> {
 // =====================================================================
 
 const KEY_OCORRENCIA_EXTRA = 'port_ocorrencias_extra_meta_v1';
+const dbOcorrencias = () => (supabase.from as any)('port_relatorio_ocorrencias');
 
 export function obterMetadadosOcorrencia(id: string): Partial<PortRelatorioOcorrencia> {
   try {
@@ -597,14 +602,31 @@ export async function adicionarOcorrencia(
   const payload = {
     relatorio_id,
     horario: dados.horario || horaAgora(),
+    hora_saida: dados.hora_saida || null,
+    vigilante_saida: dados.vigilante_saida || null,
+    tipo_registro: dados.tipo_registro || 'OUTRO_REGISTRO',
+    status_permanencia: dados.status_permanencia || 'NAO_APLICA',
     local_setor: dados.local_setor || 'PORTARIA',
     descricao: dados.descricao || '',
     severidade: dados.severidade || 'INFO',
     vigilante: dados.vigilante || '',
+    foto_url: dados.foto_url || null,
+    empresa: dados.empresa || null,
+    nome_pessoa: dados.nome_pessoa || null,
+    documento_cpf: dados.documento_cpf || null,
+    documento_cnh: dados.documento_cnh || null,
+    placa: dados.placa || null,
+    autorizado_por: dados.autorizado_por || null,
+    fara_briefing: dados.fara_briefing ?? false,
+    motivo_observacao: dados.motivo_observacao || null,
+    pessoas: dados.pessoas || [],
+    veiculo_leve_id: dados.veiculo_leve_id || null,
+    veiculo_leve_modelo: dados.veiculo_leve_modelo || null,
+    condutor_pessoa_id: dados.condutor_pessoa_id || null,
+    condutor_origem: dados.condutor_origem || null,
   };
 
-  const { data, error } = await supabase
-    .from('port_relatorio_ocorrencias')
+  const { data, error } = await dbOcorrencias()
     .insert(payload)
     .select('*')
     .single();
@@ -627,13 +649,23 @@ export async function atualizarOcorrencia(
 ): Promise<PortRelatorioOcorrencia> {
   const payload: Record<string, any> = {};
   if (dados.horario) payload.horario = dados.horario;
+  if (dados.hora_saida !== undefined) payload.hora_saida = dados.hora_saida || null;
+  if (dados.vigilante_saida !== undefined) payload.vigilante_saida = dados.vigilante_saida || null;
+  if (dados.tipo_registro) payload.tipo_registro = dados.tipo_registro;
+  if (dados.status_permanencia) payload.status_permanencia = dados.status_permanencia;
   if (dados.local_setor) payload.local_setor = dados.local_setor;
   if (dados.descricao) payload.descricao = dados.descricao;
   if (dados.severidade) payload.severidade = dados.severidade;
   if (dados.vigilante) payload.vigilante = dados.vigilante;
+  for (const campo of [
+    'foto_url', 'empresa', 'nome_pessoa', 'documento_cpf', 'documento_cnh', 'placa',
+    'autorizado_por', 'fara_briefing', 'motivo_observacao', 'pessoas', 'veiculo_leve_id',
+    'veiculo_leve_modelo', 'condutor_pessoa_id', 'condutor_origem',
+  ]) {
+    if (campo in dados) payload[campo] = (dados as any)[campo];
+  }
 
-  const { data, error } = await supabase
-    .from('port_relatorio_ocorrencias')
+  const { data, error } = await dbOcorrencias()
     .update(payload)
     .eq('id', id)
     .select('*')
@@ -704,6 +736,7 @@ export function formatarTextoOcorrencia(dados: {
   motivo_observacao?: string;
   fara_briefing?: boolean;
   pessoas?: { nome: string; cpf?: string; cnh?: string; funcao?: string }[];
+  veiculo_leve_modelo?: string;
 }): string {
   const h = dados.horario ? `${dados.horario} - ` : '';
   const emp = dados.empresa ? `${dados.empresa.trim().toUpperCase()}` : '';
@@ -734,6 +767,11 @@ export function formatarTextoOcorrencia(dados: {
     case 'ENTRADA_VEICULO': {
       const placa = dados.placa_veiculo ? ` - Veículo Placa: ${dados.placa_veiculo.trim().toUpperCase()}` : '';
       return `${h}${emp ? `${emp} - ` : ''}${nome}${cnh}${placa}${briefingTag}${aut}${mot}${saidaTag}`;
+    }
+    case 'VEICULO_LEVE': {
+      const modelo = dados.veiculo_leve_modelo ? ` - Modelo: ${dados.veiculo_leve_modelo.trim().toUpperCase()}` : '';
+      const placa = dados.placa_veiculo ? ` - Placa: ${dados.placa_veiculo.trim().toUpperCase()}` : '';
+      return `${h}VEÍCULO LEVE${modelo}${placa}${nome ? ` - Condutor: ${nome}` : ''}${emp ? ` - ${emp}` : ''}${mot}${saidaTag}`;
     }
     case 'ENTRADA_VISITANTE': {
       return `${h}${nome}${cpf}${emp ? ` - ${emp}` : ''}, acessou a fábrica${aut}${briefingTag}${mot}${saidaTag}`;
@@ -1547,6 +1585,235 @@ export async function restaurarPassagemPlantao(id: string): Promise<void> {
 }
 
 // =====================================================================
+// 7. TESTE DE ALCOOLEMIA (FRM.SGP-0015)
+// =====================================================================
+
+export async function gerarProximoCodigoAlcoolemia(dataISO: string): Promise<string> {
+  const { data, error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .select('codigo_formulario')
+    .eq('data', dataISO);
+
+  if (error) {
+    console.error('Erro ao consultar codigos de alcoolemia:', error);
+  }
+
+  const codigos = (data || []).map((item: any) => item.codigo_formulario);
+  const proximoIndice = proximoIndiceCodigo('ALC', codigos);
+  return gerarCodigoFormulario('ALC', dataISO, proximoIndice);
+}
+
+export async function listarTestesAlcoolemia(filtros?: {
+  data?: string;
+  dataInicio?: string;
+  dataFim?: string;
+  turno?: string;
+  resultado?: string;
+  tipo_vinculo?: string;
+  busca?: string;
+  incluirExcluidos?: boolean;
+}): Promise<PortAlcoolemiaTeste[]> {
+  let query: any = (supabase as any)
+    .from('port_alcoolemia_testes')
+    .select('*');
+
+  query = apenasVigentes(query, filtros?.incluirExcluidos);
+
+  if (filtros?.data) {
+    query = query.eq('data', filtros.data);
+  } else {
+    if (filtros?.dataInicio) {
+      query = query.gte('data', filtros.dataInicio);
+    }
+    if (filtros?.dataFim) {
+      query = query.lte('data', filtros.dataFim);
+    }
+  }
+
+  if (filtros?.turno && filtros.turno !== 'TODOS') {
+    query = query.eq('turno', filtros.turno);
+  }
+
+  if (filtros?.resultado && filtros.resultado !== 'TODOS') {
+    query = query.eq('resultado', filtros.resultado);
+  }
+
+  if (filtros?.tipo_vinculo && filtros.tipo_vinculo !== 'TODOS') {
+    query = query.eq('tipo_vinculo', filtros.tipo_vinculo);
+  }
+
+  if (filtros?.busca && filtros.busca.trim()) {
+    const termo = `%${filtros.busca.trim()}%`;
+    query = query.or(
+      `nome.ilike.${termo},matricula.ilike.${termo},empresa.ilike.${termo},codigo_formulario.ilike.${termo},cargo_funcao.ilike.${termo}`
+    );
+  }
+
+  query = query.order('data', { ascending: false }).order('horario', { ascending: false });
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Erro ao listar testes de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+  return (data || []) as PortAlcoolemiaTeste[];
+}
+
+export async function obterTesteAlcoolemia(id: string): Promise<PortAlcoolemiaTeste | null> {
+  const { data, error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao obter teste de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+  return (data as unknown as PortAlcoolemiaTeste) || null;
+}
+
+export async function criarTesteAlcoolemia(
+  dados: Partial<PortAlcoolemiaTeste>
+): Promise<PortAlcoolemiaTeste> {
+  const dataTeste = dados.data || hojeISO();
+  const codigo = dados.codigo_formulario || (await gerarProximoCodigoAlcoolemia(dataTeste));
+  const horario = dados.horario || horaAgora();
+  const turno = dados.turno || sugerirTurno();
+
+  const payload = {
+    codigo_formulario: codigo,
+    numero_protocolo: dados.numero_protocolo || gerarProtocolo('ALC', dataTeste),
+    data: dataTeste,
+    horario,
+    turno,
+    tipo_vinculo: dados.tipo_vinculo || 'TEN',
+    pessoa_id: dados.pessoa_id || null,
+    matricula: dados.matricula ? dados.matricula.trim() : null,
+    nome: dados.nome ? dados.nome.trim() : '',
+    empresa: dados.empresa ? dados.empresa.trim() : (dados.tipo_vinculo === 'PJ' ? '' : 'TEN'),
+    cargo_funcao: dados.cargo_funcao ? dados.cargo_funcao.trim() : null,
+    setor_area: dados.setor_area ? dados.setor_area.trim() : null,
+    documento: dados.documento ? dados.documento.trim() : null,
+    resultado: dados.resultado || 'NEGATIVO',
+    valor_medido: typeof dados.valor_medido === 'number' ? dados.valor_medido : 0.0,
+    etilometro_codigo: dados.etilometro_codigo ? dados.etilometro_codigo.trim() : null,
+    vigilante: dados.vigilante ? dados.vigilante.trim() : null,
+    testemunha: dados.testemunha ? dados.testemunha.trim() : null,
+    observacoes: dados.observacoes ? dados.observacoes.trim() : null,
+    razao_teste: dados.razao_teste || 'ALEATORIO',
+    local_teste: dados.local_teste ? dados.local_teste.trim() : 'Ambulatório TEN',
+    examinador_nome: dados.examinador_nome ? dados.examinador_nome.trim() : null,
+    examinador_cargo: dados.examinador_cargo ? dados.examinador_cargo.trim() : null,
+    termo_assinado_fisicamente: dados.termo_assinado_fisicamente ?? false,
+    termo_impresso_em: dados.termo_impresso_em || null,
+    criado_por: dados.criado_por || null,
+    criado_por_nome: dados.criado_por_nome || null,
+  };
+
+  const { data, error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .insert(payload as any)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Erro ao criar teste de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+  return data as unknown as PortAlcoolemiaTeste;
+}
+
+export async function atualizarTesteAlcoolemia(
+  id: string,
+  dados: Partial<PortAlcoolemiaTeste>
+): Promise<PortAlcoolemiaTeste> {
+  const { data, error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .update({
+      ...dados,
+      updated_at: new Date().toISOString(),
+    } as any)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Erro ao atualizar teste de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+  return data as unknown as PortAlcoolemiaTeste;
+}
+
+export async function excluirTesteAlcoolemia(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .update(marcarExcluido(excluidoPor))
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao excluir teste de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+}
+
+export async function restaurarTesteAlcoolemia(id: string): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('port_alcoolemia_testes')
+    .update(marcarRestaurado())
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao restaurar teste de alcoolemia:', error);
+    throw new Error(error.message);
+  }
+}
+
+export interface AlcoolemiaMetricas {
+  total: number;
+  negativos: number;
+  positivos: number;
+  recusas: number;
+  pendentes: number;
+  colaboradoresTen: number;
+  terceirosPj: number;
+}
+
+export function calcularMetricasAlcoolemia(testes: PortAlcoolemiaTeste[]): AlcoolemiaMetricas {
+  let negativos = 0;
+  let positivos = 0;
+  let recusas = 0;
+  let pendentes = 0;
+  let colaboradoresTen = 0;
+  let terceirosPj = 0;
+
+  for (const t of testes) {
+    if (t.resultado === 'NEGATIVO') negativos++;
+    else if (t.resultado === 'POSITIVO') positivos++;
+    else if (t.resultado === 'RECUSA') recusas++;
+    else if (t.resultado === 'PENDENTE') pendentes++;
+
+    if (t.tipo_vinculo === 'PJ') terceirosPj++;
+    else colaboradoresTen++;
+  }
+
+  return {
+    total: testes.length,
+    negativos,
+    positivos,
+    recusas,
+    pendentes,
+    colaboradoresTen,
+    terceirosPj,
+  };
+}
+
+export async function obterMetricasAlcoolemia(dataISO: string): Promise<AlcoolemiaMetricas> {
+  const testes = await listarTestesAlcoolemia({ data: dataISO });
+  return calcularMetricasAlcoolemia(testes);
+}
+
+// =====================================================================
 // MÉTRICAS CONSOLIDADAS DO PAINEL DA PORTARIA
 // =====================================================================
 
@@ -1557,6 +1824,7 @@ export interface PortariaMetricas {
   relatoriosEmAberto: number;
   plantoesEmAberto: number;
   briefingsHoje: number;
+  alcoolemiaHoje: number;
 }
 
 export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
@@ -1569,6 +1837,7 @@ export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
     { count: relCount },
     { count: pltCount },
     { count: brfCount },
+    { count: alcCount },
   ] = await Promise.all([
     supabase.from('port_controle_equipamentos').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'NO_PATIO'),
     supabase.from('port_registro_transportes').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'NO_PATIO'),
@@ -1576,6 +1845,7 @@ export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
     supabase.from('port_relatorio_portaria').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'EM_ANDAMENTO'),
     supabase.from('port_passagem_plantao').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('status', 'EM_ANDAMENTO'),
     supabase.from('port_briefing_participantes').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('data', hoje),
+    (supabase as any).from('port_alcoolemia_testes').select('*', { count: 'exact', head: true }).is('excluido_em', null).eq('data', hoje),
   ]);
 
   return {
@@ -1585,7 +1855,6 @@ export async function obterMetricasPortaria(): Promise<PortariaMetricas> {
     relatoriosEmAberto: relCount || 0,
     plantoesEmAberto: pltCount || 0,
     briefingsHoje: brfCount || 0,
+    alcoolemiaHoje: alcCount || 0,
   };
 }
-
-

@@ -11,12 +11,14 @@
  */
 
 import { supabase } from '../db/supabaseClient';
-import type { FacServico } from '../types';
+import type { FacServico, FacVeiculoLeve } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
+import { normalizarModeloVeiculoLeve, normalizarPlacaVeiculoLeve } from './veiculosLeves';
 
 /** `fac_servicos` ainda não está em `database.types.ts` — mesmo atalho usado
  *  pelas demais tabelas novas (ver `ssmaApi.ts`). */
 const dbServicos = () => (supabase.from as any)('fac_servicos');
+const dbVeiculosLeves = () => (supabase.from as any)('fac_veiculos_leves');
 
 /** Lista fixa usada antes do cadastro existir — vale como plano B quando a
  *  consulta falha (offline, tabela ainda não migrada) para o formulário nunca
@@ -209,5 +211,57 @@ export async function salvarOrdenacaoServicosFacilities(
       throw new Error(res.error.message);
     }
   }
+}
+
+export async function listarVeiculosLeves(incluirExcluidos = false): Promise<FacVeiculoLeve[]> {
+  let query = dbVeiculosLeves()
+    .select('*')
+    .order('ativo', { ascending: false })
+    .order('modelo', { ascending: true });
+  query = apenasVigentes(query, incluirExcluidos);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []) as FacVeiculoLeve[];
+}
+
+export async function criarVeiculoLeve(dados: Pick<FacVeiculoLeve, 'modelo' | 'placa'>): Promise<FacVeiculoLeve> {
+  const { data, error } = await dbVeiculosLeves()
+    .insert({
+      modelo: normalizarModeloVeiculoLeve(dados.modelo),
+      placa: normalizarPlacaVeiculoLeve(dados.placa),
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as FacVeiculoLeve;
+}
+
+export async function atualizarVeiculoLeve(
+  id: string,
+  dados: Partial<Pick<FacVeiculoLeve, 'modelo' | 'placa' | 'ativo'>>,
+): Promise<FacVeiculoLeve> {
+  const payload = {
+    ...(dados.modelo !== undefined ? { modelo: normalizarModeloVeiculoLeve(dados.modelo) } : {}),
+    ...(dados.placa !== undefined ? { placa: normalizarPlacaVeiculoLeve(dados.placa) } : {}),
+    ...(dados.ativo !== undefined ? { ativo: dados.ativo } : {}),
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await dbVeiculosLeves()
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as FacVeiculoLeve;
+}
+
+export async function excluirVeiculoLeve(id: string, excluidoPor?: string): Promise<void> {
+  const { error } = await dbVeiculosLeves().update(marcarExcluido(excluidoPor)).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function restaurarVeiculoLeve(id: string): Promise<void> {
+  const { error } = await dbVeiculosLeves().update(marcarRestaurado()).eq('id', id);
+  if (error) throw new Error(error.message);
 }
 

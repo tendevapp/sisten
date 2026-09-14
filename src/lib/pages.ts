@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -114,7 +114,9 @@ export const PAGES: PageDef[] = [
   { id: 'facilities', group: 'FACILITIES', label: 'Facilities', path: '/facilities', icon: Building2, defaultRoles: ['admin'] },
   { id: 'facilities_rotas', group: 'FACILITIES', label: 'Cadastro de Rotas', path: '/facilities/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'facilities_materiais', group: 'FACILITIES', label: 'Materiais da Vigilância', path: '/facilities/materiais', icon: Shield, defaultRoles: ['admin'] },
+  { id: 'facilities_vigilantes', group: 'FACILITIES', label: 'Vigilantes da Portaria', path: '/facilities/vigilantes', icon: Shield, defaultRoles: ['admin'] },
   { id: 'facilities_servicos', group: 'FACILITIES', label: 'Lista de Serviços', path: '/facilities/servicos', icon: Wrench, defaultRoles: ['admin'] },
+  { id: 'facilities_veiculos_leves', group: 'FACILITIES', label: 'Veículos Leves', path: '/facilities/veiculos-leves', icon: Car, defaultRoles: ['admin'] },
 
   // Módulo RH — mesmo desenho do Facilities: o nome do grupo abre o hub e as
   // subpáginas são os cadastros das tabelas de RH. Acesso restrito a
