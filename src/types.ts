@@ -156,7 +156,12 @@ export type RequestStatus =
   | 'resolvido'
   | 'fechado'
   | 'reaberto'
-  | 'cancelada';
+  | 'cancelada'
+  // Andamento pós-aprovação de compra, atualizado automaticamente a partir
+  // dos dados do SAP (ME5A/ME2L/ZL0132) — ver `lib/statusAutomaticoCompra.ts`.
+  | 'em_cotacao'
+  | 'pedido_emitido'
+  | 'concluida';
 
 export interface RequestItem {
   id: string;
@@ -1303,6 +1308,10 @@ export interface PropostaExtraida {
   Faturamento_Minimo: string | null;
   Dados_Bancarios_PIX: string | null;
   Valor_Total_Orcamento: string | null;
+  /** Valor de frete em reais, quando a proposta o destaca no texto (linha própria, somado ao total) — não a modalidade (CIF/FOB). `null` quando não há valor destacado. */
+  Valor_Frete_Destacado: string | null;
+  /** Desconto em reais que a proposta indica sobre o total (ou já convertido, se veio em percentual). `null` quando não há desconto. */
+  Valor_Desconto: string | null;
   Observacoes_Gerais: string | null;
   itens: ItemPropostaExtraido[];
 }
@@ -1416,8 +1425,10 @@ export interface CotacaoProposta {
   faturamento_minimo: number | null;
   dados_bancarios_pix: string | null;
   valor_total_orcamento: number | null;
-  /** Valor do frete cotado, informado pelo comprador no mapa comparativo — a extração por IA não cobre este campo. */
+  /** Valor do frete cotado — vem da extração por IA quando a proposta o destaca no texto, senão o comprador informa no mapa comparativo. */
   valor_frete: number | null;
+  /** Desconto em reais que a proposta declara sobre o total — abatido de `totalComFrete` no mapa comparativo (ver `ResumoFornecedor.valorDesconto`). */
+  valor_desconto: number | null;
   observacoes_gerais: string | null;
   campos_faltantes: string[];
   revisado: boolean;
@@ -1563,6 +1574,8 @@ export interface CotacaoPropostaDraft {
   valor_total_orcamento: number | null;
   /** Ver `CotacaoProposta.valor_frete`. */
   valor_frete: number | null;
+  /** Ver `CotacaoProposta.valor_desconto`. */
+  valor_desconto: number | null;
   observacoes_gerais: string | null;
   campos_faltantes: string[];
   revisado: boolean;

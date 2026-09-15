@@ -15,6 +15,10 @@ import {
   BahiaSulEntrega
 } from '../types';
 import { priorityMeta } from '../lib/rastreio';
+import {
+  calcularEstagioCompraPorSap, normalizarRm, proximoStatusAutomaticoCompra, comentarioStatusAutomaticoCompra,
+  ESTAGIOS_AUTOMATICOS_COMPRA,
+} from '../lib/statusAutomaticoCompra';
 import { CompradorInfo } from '../lib/demandas';
 import { limparCacheBusca, sanitizeTechnicalText } from '../lib/materiais';
 import { canAccessPage } from '../lib/pages';
@@ -379,6 +383,17 @@ class LocalDatabase {
             console.error(`Falha ao sincronizar "${tasks[idx][0]}" com o Supabase:`, result.reason);
           }
         });
+
+        // Depende de 'requisicoes' (vw_sap_requisicoes_enriquecidas) e 'requests'/
+        // 'request_items' já sincronizados acima — por isso roda depois do
+        // Promise.allSettled, não dentro dele. Uma falha aqui (ex.: RLS barrando
+        // a consulta de processos de cotação para este perfil) não deve derrubar
+        // o resto da sincronização.
+        try {
+          await this.aplicarStatusAutomaticoComprasSap();
+        } catch (e) {
+          console.error('Falha ao aplicar status automático das compras via SAP.', e);
+        }
 
         console.log('Sincronização com o Supabase concluída.');
         this.notifyListeners();
@@ -3232,6 +3247,75 @@ class LocalDatabase {
     } catch (err) {
       console.error(`Falha ao publicar a solicitação #${request.number} no Supabase.`, err);
       return false;
+    }
+  }
+
+  /**
+   * Avança sozinho o status das compras já aprovadas, a partir do que o SAP
+   * (ME5A/ME2L/ZL0132, via `vw_sap_requisicoes_enriquecidas`) e o módulo de
+   * Cotações já sabem — sem isso, `request.status` trava em `aprovada` para
+   * sempre e o stepper da Central de Solicitações nunca mostra "Em cotação",
+   * "Pedido emitido" ou "Entregue" (ver `lib/statusAutomaticoCompra.ts` para a
+   * regra pura e os testes).
+   *
+   * Roda a cada sincronização (best-effort, client-side): não há um job de
+   * servidor vigiando isso, então a atualização só acontece quando alguém com
+   * sessão aberta sincroniza. Aceitável para este primeiro corte — múltiplas
+   * sessões convergem para o mesmo resultado, nunca regridem, e o pior caso é
+   * a solicitação demorar até a próxima sincronização de alguém para "andar".
+   */
+  private async aplicarStatusAutomaticoComprasSap(): Promise<void> {
+    const candidatos = this.getRequests().filter(r =>
+      r.type === 'compra' &&
+      ESTAGIOS_AUTOMATICOS_COMPRA.includes(r.status) &&
+      !!r.linked_rm_number && r.linked_rm_number.trim().length > 0
+    );
+    if (candidatos.length === 0) return;
+
+    const registrosPorRm = new Map<string, EnrichedSAPRecord[]>();
+    this.getEnrichedSAPRequisicoes().forEach(rec => {
+      const chave = normalizarRm(rec.requisicao_de_compra);
+      if (!chave) return;
+      const lista = registrosPorRm.get(chave);
+      if (lista) lista.push(rec); else registrosPorRm.set(chave, [rec]);
+    });
+
+    // Consulta enxuta (só a coluna `rm`, só as RMs em jogo): "abriu processo de
+    // cotação" mora numa tabela write-heavy do módulo de Cotações, fora do
+    // cache geral do localDb (ver comentário no topo de `cotacoesApi.ts`).
+    // RLS pode negar a um perfil sem acesso ao módulo — trata como "sem
+    // cotação" e segue: outra sessão com permissão fecha essa lacuna depois.
+    //
+    // Manda a RM como foi digitada E normalizada (sem zero à esquerda): o
+    // `.in()` é comparação exata no servidor, e `linked_rm_number` (digitado à
+    // mão em Abrir RM) e `sup_cotacao_processo_itens.rm` (copiado da ME5A)
+    // nem sempre têm o mesmo zero-padding.
+    const rmsCandidatas = Array.from(new Set(
+      candidatos.flatMap(r => [r.linked_rm_number!.trim(), normalizarRm(r.linked_rm_number)])
+    ));
+    let rmsComCotacao = new Set<string>();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('sup_cotacao_processo_itens')
+          .select('rm')
+          .in('rm', rmsCandidatas);
+        if (!error && data) {
+          rmsComCotacao = new Set(data.map((d: any) => normalizarRm(d.rm)).filter(Boolean));
+        }
+      } catch (e) {
+        console.warn('Falha ao consultar processos de cotação para status automático de compras.', e);
+      }
+    }
+
+    for (const request of candidatos) {
+      const chave = normalizarRm(request.linked_rm_number);
+      const registros = registrosPorRm.get(chave) || [];
+      const estagio = calcularEstagioCompraPorSap(registros, rmsComCotacao.has(chave));
+      const proximo = proximoStatusAutomaticoCompra(request.status, estagio);
+      if (!proximo) continue;
+
+      await this.transitionRequestStatus(request.id, proximo, comentarioStatusAutomaticoCompra(proximo));
     }
   }
 

@@ -285,7 +285,7 @@ export default function RequestDetailPanel({
   const abrirModalDecisao = () => {
     if (request.status === 'em_revisao' || request.status === 'rejeitada' || request.status === 'cancelada') {
       setNovaDecisaoStatus('aprovada');
-    } else if (request.status === 'aprovada') {
+    } else if (['aprovada', 'em_cotacao', 'pedido_emitido'].includes(request.status)) {
       setNovaDecisaoStatus('em_revisao');
     } else {
       setNovaDecisaoStatus('aprovada');

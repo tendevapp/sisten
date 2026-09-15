@@ -307,9 +307,11 @@ export interface LinhaMapa {
   celulas: CelulaMapa[];
   /** Menor confiança de agrupamento da linha — abaixo de 1 o comprador precisa conferir se é o mesmo material. */
   confiancaMinima: number;
+  /** Preço UNITÁRIO da melhor oferta desta linha — não o total da célula (ver `quantidadeDivergente`). */
   melhorCusto: number | null;
+  /** Preço UNITÁRIO da pior oferta desta linha. */
   piorCusto: number | null;
-  /** Quanto se ganha comprando a melhor oferta em vez da pior desta linha. */
+  /** Quanto se ganha por unidade comprando a melhor oferta em vez da pior desta linha. */
   dispersao: number | null;
   /** Quantidades divergentes entre fornecedores (ou contra a RM) — comparar total de quantidades diferentes engana. */
   quantidadeDivergente: boolean;
@@ -472,14 +474,18 @@ export function agruparLinhasMapa(params: ParamsAgrupamento): LinhaMapa[] {
         return { propostaKey: c.propostaKey, item: c.item, custo, score: c.score, deltaPct: null, melhor: false };
       });
 
-      const comparaveis = celulas.map(c => c.custo.comparavel).filter((n): n is number => n != null && n > 0);
+      // Por preço UNITÁRIO, não pelo total da célula: fornecedores cotam
+      // quantidades diferentes da RM (ver `quantidadeDivergente` abaixo) e
+      // comparar total premiaria quem cotou menos unidades, não quem cobra
+      // menos por unidade.
+      const comparaveis = celulas.map(c => c.custo.unitarioComparavel).filter((n): n is number => n != null && n > 0);
       const melhorCusto = comparaveis.length ? Math.min(...comparaveis) : null;
       const piorCusto = comparaveis.length ? Math.max(...comparaveis) : null;
 
       for (const c of celulas) {
-        if (c.custo.comparavel == null || melhorCusto == null || melhorCusto === 0) continue;
-        c.deltaPct = ((c.custo.comparavel - melhorCusto) / melhorCusto) * 100;
-        c.melhor = c.custo.comparavel === melhorCusto;
+        if (c.custo.unitarioComparavel == null || melhorCusto == null || melhorCusto === 0) continue;
+        c.deltaPct = ((c.custo.unitarioComparavel - melhorCusto) / melhorCusto) * 100;
+        c.melhor = c.custo.unitarioComparavel === melhorCusto;
       }
 
       const qtds = new Set(celulas.map(c => c.custo.quantidade).filter((q): q is number => q != null));
@@ -568,7 +574,9 @@ export interface ResumoFornecedor {
    * os dois como a mesma certeza.
    */
   freteEhTeorico: boolean;
-  /** `totalLiquido` + frete — o desembolso se comprar tudo deste fornecedor. */
+  /** Desconto que a proposta declara sobre o total — já abatido de `totalComFrete`. */
+  valorDesconto: number | null;
+  /** `totalLiquido` + frete − desconto — o desembolso se comprar tudo deste fornecedor. */
   totalComFrete: number;
   prazoEntregaDias: number | null;
   condicaoPagamento: string | null;
@@ -608,6 +616,7 @@ export function resumirFornecedores(params: {
     const frete = freteInformado ?? (freteTeorico > 0 ? freteTeorico : null);
     const freteEhTeorico = freteInformado == null && freteTeorico > 0;
     const minimo = proposta.faturamento_minimo;
+    const valorDesconto = proposta.valor_desconto;
 
     return {
       propostaKey: key,
@@ -623,7 +632,8 @@ export function resumirFornecedores(params: {
       totalLiquido,
       frete,
       freteEhTeorico,
-      totalComFrete: totalLiquido + (frete ?? 0),
+      valorDesconto,
+      totalComFrete: totalLiquido + (frete ?? 0) - (valorDesconto ?? 0),
       prazoEntregaDias: proposta.prazo_entrega_dias,
       condicaoPagamento: proposta.condicao_pagamento,
       validadeDias: diasAteValidade(proposta.validade_data, params.hojeISO),

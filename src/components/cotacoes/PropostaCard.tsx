@@ -57,6 +57,8 @@ const CAMPOS: CampoDef[] = [
   { key: 'faturamento_minimo', label: 'Faturamento mínimo' },
   { key: 'dados_bancarios_pix', label: 'Dados bancários / PIX' },
   { key: 'valor_total_orcamento', label: 'Valor total do orçamento' },
+  { key: 'valor_frete', label: 'Frete destacado no documento' },
+  { key: 'valor_desconto', label: 'Desconto declarado' },
   { key: 'observacoes_gerais', label: 'Observações gerais' },
 ];
 
@@ -300,7 +302,8 @@ export default function PropostaCard({
         {camposVisiveis.map(c => {
           const faltando = camposFaltantesCabecalho.has(c.key as string) || (soFaltando && !proposta[c.key]);
           const valor = proposta[c.key];
-          const ehMoeda = c.key === 'valor_total_orcamento' || c.key === 'faturamento_minimo';
+          const ehMoeda = c.key === 'valor_total_orcamento' || c.key === 'faturamento_minimo'
+            || c.key === 'valor_frete' || c.key === 'valor_desconto';
           return (
             <div key={c.key} className="min-w-0">
               <dt className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{c.label}</dt>

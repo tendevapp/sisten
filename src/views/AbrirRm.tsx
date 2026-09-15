@@ -56,6 +56,7 @@ import {
 } from '../lib/almoxarifadoRmApi';
 import { mapaGrupoComprasPorMercadoria } from '../lib/grupoCompradorApi';
 import { mapaGrupoComprasPorSetor } from '../lib/setorCompradorApi';
+import { ESTAGIOS_AUTOMATICOS_COMPRA } from '../lib/statusAutomaticoCompra';
 import { useToast } from '../components/ui/Toast';
 import { TableEmpty } from '../components/ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
@@ -334,7 +335,11 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   // Central de Solicitações e as Aprovações leem; só o log de exportação vem
   // direto do Supabase, porque nasceu nesta tela.
   const carregarLocal = () => {
-    const todas = localDb.getRequests().filter(r => r.type === 'compra' && r.status === 'aprovada');
+    // Inclui os estágios pós-aprovação (`em_cotacao`, `pedido_emitido`,
+    // `concluida` — ver `lib/statusAutomaticoCompra.ts`): sem isso, uma
+    // compra some desta tela (inclusive da aba "Abertas", histórico de RM já
+    // exportada) assim que o comprador avança o processo no SAP.
+    const todas = localDb.getRequests().filter(r => r.type === 'compra' && ESTAGIOS_AUTOMATICOS_COMPRA.includes(r.status));
     setRequests(todas);
     const itensMap: Record<string, RequestItem[]> = {};
     const todosItens: RequestItem[] = [];

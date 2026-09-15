@@ -190,6 +190,14 @@ const RESTRICAO_CSS = FATURADO_CSS;
 const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal, sem restrição
 
 /**
+ * Verde do "expedido" — passo próprio, um tom mais escuro que
+ * `--status-good` (pedido explícito). Só aqui: `--status-good` é token de
+ * status compartilhado com o resto do app e continua servindo o sinal de
+ * "atualização automática" no cabeçalho sem alteração.
+ */
+const EXPEDIDO_CSS = '#0a8b0a';
+
+/**
  * Uma célula da matriz mostra o seq do tramo — mas só quando há algo a
  * mostrar: pendente fica vazia de propósito, porque o pedido era "saber qual
  * número já foi faturado e expedido", não listar os 90 tramos.
@@ -227,7 +235,7 @@ function CelulaTramo({ celula, largura, onClick }: { celula: CelulaMatriz | null
   // coluna Restrição da tabela). Só "faturado" (ainda não expedido) usa
   // azul/amarelo.
   const expedido = celula.estado === 'expedido';
-  const fundo = expedido ? 'var(--status-good)' : celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
+  const fundo = expedido ? EXPEDIDO_CSS : celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
   // Amarelo é claro; texto branco nele reprova contraste (2,17:1 no
   // validador). Verde e azul são escuros o bastante para texto branco.
   const tinta = fundo === RESTRICAO_CSS ? TINTA_SOBRE_AMARELO : '#ffffff';
@@ -504,8 +512,8 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
       <header className="flex shrink-0 items-center justify-between" style={{ gap: u(2) }}>
         <div className="flex min-w-0 items-center" style={{ gap: u(1.6) }}>
           <img
-            src="/logo-ten.png"
-            alt="Torres Eólicas do Nordeste"
+            src="/logo-sisten.png"
+            alt="Sisten"
             style={{ height: u(6), width: 'auto' }}
           />
           <div className="min-w-0" style={{ borderLeft: '1px solid var(--hairline)', paddingLeft: u(1.6) }}>
@@ -593,7 +601,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           valor={String(resumo.expedidos)}
           rotulo="Expedidos"
           apoio={`${resumo.faturados - resumo.expedidos} faturados sem expedir`}
-          marca="var(--status-good)"
+          marca={EXPEDIDO_CSS}
           onClick={() => setDetalheAberto({
             tipo: 'kpi_filtro',
             titulo: 'Tramos Expedidos',
@@ -713,7 +721,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
             className="flex shrink-0 flex-wrap items-center"
             style={{ gap: u(1.8), paddingTop: u(1.2), borderTop: '1px solid var(--hairline)' }}
           >
-            <ItemLegendaCor cor="var(--status-good)" texto="Expedido" />
+            <ItemLegendaCor cor={EXPEDIDO_CSS} texto="Expedido" />
             <ItemLegendaCor cor={SEM_RESTRICAO_CSS} texto="Faturado, sem restrição" />
             <ItemLegendaCor cor={RESTRICAO_CSS} texto="Faturado, com restrição" />
             <span className="shrink-0" style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: 'var(--surface-sunken)', border: '1px solid var(--hairline)' }} />

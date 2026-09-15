@@ -305,7 +305,10 @@ export async function assinarFotosDesvios(desvios: SsmaRidDesvio[]): Promise<Ssm
   const todosPaths: string[] = [];
   desvios.forEach((d) => {
     (d.fotos || []).forEach((f) => {
-      if (f.path && !f.preview_url) todosPaths.push(f.path);
+      // `preview_url` é uma URL assinada e expira. O `path` é a referência
+      // permanente; por isso toda leitura deve pedir uma URL nova, inclusive
+      // quando o JSON salvo ainda contém uma URL antiga.
+      if (f.path) todosPaths.push(f.path);
     });
   });
 
@@ -929,4 +932,3 @@ export async function restaurarConfiguracaoFormularioPadrao(
 ): Promise<SsmaFormConfig> {
   return salvarConfiguracaoFormulario(CONFIG_FORM_PADRAO_RID, userId);
 }
-

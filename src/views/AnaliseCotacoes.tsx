@@ -59,7 +59,7 @@ function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
     prazo_entrega_texto: p.prazo_entrega_texto, prazo_entrega_dias: p.prazo_entrega_dias,
     frete_modalidade: p.frete_modalidade, transportadora_indicada: p.transportadora_indicada,
     faturamento_minimo: p.faturamento_minimo, dados_bancarios_pix: p.dados_bancarios_pix,
-    valor_frete: p.valor_frete,
+    valor_frete: p.valor_frete, valor_desconto: p.valor_desconto,
     valor_total_orcamento: p.valor_total_orcamento, observacoes_gerais: p.observacoes_gerais,
     campos_faltantes: p.campos_faltantes, revisado: p.revisado, extracao_id: p.extracao_id,
     extraido_raw: p.extraido_raw as any,

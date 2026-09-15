@@ -270,6 +270,21 @@ export function obterEstilosStatus(
   }
 
   switch (status) {
+    case 'em_cotacao':
+      return {
+        rotulo: 'Em cotação',
+        classes: 'bg-sky-50 text-sky-600 border border-sky-200/80 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/80',
+      };
+    case 'pedido_emitido':
+      return {
+        rotulo: 'Pedido emitido',
+        classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/80',
+      };
+    case 'concluida':
+      return {
+        rotulo: 'Entregue',
+        classes: 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+      };
     case 'aberto':
       return {
         rotulo: 'Aberta',

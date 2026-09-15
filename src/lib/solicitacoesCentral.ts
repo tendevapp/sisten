@@ -113,13 +113,13 @@ export function podeAprovar(r: Request, user: Profile): boolean {
 /** Aprovador pode alterar uma decisao tomada previamente ou redecidir a compra. */
 export function podeAlterarDecisao(r: Request, user: Profile): boolean {
   if (!podeAprovar(r, user)) return false;
-  if (r.status === 'fechado' || r.status === 'resolvido') return false;
+  if (r.status === 'fechado' || r.status === 'resolvido' || r.status === 'concluida') return false;
   return true;
 }
 
 /** Permite cancelar solicitacao enquanto nao estiver finalizada. */
 export function podeCancelar(r: Request, user: Profile): boolean {
-  if (r.status === 'cancelada' || r.status === 'resolvido' || r.status === 'fechado') {
+  if (r.status === 'cancelada' || r.status === 'resolvido' || r.status === 'fechado' || r.status === 'concluida') {
     return false;
   }
   if (user.roles.includes('admin')) return true;

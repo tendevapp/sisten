@@ -313,9 +313,13 @@ export function normalizarProposta(
     frete_modalidade: parseFreteModalidade(bruta.Frete_Modalidade),
     transportadora_indicada: bruta.Transportadora_Indicada ?? null,
     faturamento_minimo: parseMoeda(bruta.Faturamento_Minimo),
-    // O frete em reais não vem da IA (a proposta raramente destaca) — o
-    // comprador informa no mapa comparativo, onde ele muda a decisão.
-    valor_frete: null,
+    // A maioria das propostas não destaca frete em reais (FOB some no
+    // preço) — quando destaca, a IA já devolve o valor aqui, e o mapa
+    // comparativo passa a usá-lo no lugar do frete teórico (ver
+    // `fretePorProposta` em MapaComparativo.tsx). O comprador ainda pode
+    // corrigir manualmente, seja na revisão, seja depois no mapa.
+    valor_frete: parseMoeda(bruta.Valor_Frete_Destacado),
+    valor_desconto: parseMoeda(bruta.Valor_Desconto),
     dados_bancarios_pix: bruta.Dados_Bancarios_PIX ?? null,
     valor_total_orcamento: parseMoeda(bruta.Valor_Total_Orcamento),
     observacoes_gerais: bruta.Observacoes_Gerais ?? null,
@@ -484,7 +488,10 @@ export function conferirTotais(p: CotacaoPropostaDraft): { somaItens: number; in
   if (p.valor_total_orcamento == null || p.valor_total_orcamento === 0 || parcelas.length === 0) {
     return { somaItens: parcelas.reduce((a, b) => a + b, 0), informado: p.valor_total_orcamento, divergenciaPct: null };
   }
-  const somaItens = parcelas.reduce((a, b) => a + b, 0);
+  // O desconto já identificado abate da soma dos itens antes de comparar —
+  // senão uma proposta com desconto destacado dispara aviso de divergência
+  // por um motivo que a própria extração já explicou.
+  const somaItens = parcelas.reduce((a, b) => a + b, 0) - (p.valor_desconto ?? 0);
   const divergenciaPct = Math.abs(somaItens - p.valor_total_orcamento) / Math.abs(p.valor_total_orcamento) * 100;
   return { somaItens, informado: p.valor_total_orcamento, divergenciaPct };
 }

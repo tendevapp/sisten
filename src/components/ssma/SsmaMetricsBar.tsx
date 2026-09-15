@@ -62,7 +62,7 @@ export default function SsmaMetricsBar({ metricas, onSelectTab, activeTab }: Ssm
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div className="hidden sm:grid grid-cols-2 gap-3 sm:grid-cols-4">
       {cards.map((c) => {
         const Icon = c.icon;
         const isClickable = !!onSelectTab;

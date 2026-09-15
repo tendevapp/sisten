@@ -270,7 +270,11 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
       } else if (statusFiltro === 'aguardando_aprovacao') {
         lista = lista.filter(r => r.type === 'compra' && r.status === 'pendente');
       } else if (statusFiltro === 'concluidas') {
-        lista = lista.filter(r => ['resolvido', 'fechado', 'aprovada'].includes(r.status));
+        // 'aprovada' e os estágios seguintes (em_cotacao/pedido_emitido/concluida —
+        // ver lib/statusAutomaticoCompra.ts) contam como "concluída" aqui porque,
+        // do ponto de vista de quem abriu a compra, não há mais nada a fazer
+        // depois da aprovação do gestor: o resto do andamento é acompanhado, não operado.
+        lista = lista.filter(r => ['resolvido', 'fechado', 'aprovada', 'em_cotacao', 'pedido_emitido', 'concluida'].includes(r.status));
       } else if (statusFiltro === 'canceladas') {
         lista = lista.filter(r => ['cancelada', 'rejeitada'].includes(r.status));
       }
@@ -945,7 +949,7 @@ export default function SolicitacoesCentral({ user, onNavigate, escopoInicial }:
           {([
             { id: 'abertas', titulo: 'Abertas', cor: 'border-sky-500', filtro: (r: Request) => estaEmAberto(r) && !['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
             { id: 'analise', titulo: 'Em análise', cor: 'border-amber-500', filtro: (r: Request) => ['em_atendimento', 'em_revisao', 'aguardando_solicitante'].includes(r.status) },
-            { id: 'concluidas', titulo: 'Concluídas / Encerradas', cor: 'border-emerald-500', filtro: (r: Request) => ['resolvido', 'fechado', 'aprovada', 'cancelada', 'rejeitada'].includes(r.status) },
+            { id: 'concluidas', titulo: 'Concluídas / Encerradas', cor: 'border-emerald-500', filtro: (r: Request) => ['resolvido', 'fechado', 'aprovada', 'em_cotacao', 'pedido_emitido', 'concluida', 'cancelada', 'rejeitada'].includes(r.status) },
           ] as const).map(col => {
             const itensCol = linhas.filter(l => col.filtro(l.request));
             return (

@@ -13,7 +13,8 @@ import {
   Search, ArrowLeft, Download, Building2, Package, FileText,
   DollarSign, TrendingDown, TrendingUp, Filter, RefreshCw,
   Eye, Truck, Calendar, Sparkles, ChevronRight, X, Layers,
-  ListFilter, FileSpreadsheet, Link2, Boxes
+  ListFilter, FileSpreadsheet, Link2, Boxes,
+  ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useToast } from '../components/ui/Toast';
@@ -42,6 +43,65 @@ interface HistoricoCotacoesProps {
   onNavigate: (path: string) => void;
 }
 
+type ColunaOrdenacaoItem =
+  | 'produto'
+  | 'material_sap'
+  | 'fornecedor'
+  | 'frete'
+  | 'quantidade'
+  | 'preco_unitario'
+  | 'preco_total'
+  | 'data';
+
+type ColunaOrdenacaoProposta =
+  | 'proposta'
+  | 'fornecedor'
+  | 'condicao'
+  | 'itens'
+  | 'valor_total'
+  | 'data';
+
+type DirecaoOrdenacao = 'asc' | 'desc';
+
+// Componente para cabecalho de coluna com clique de ordenacao e icones
+function HeaderOrdenavel({
+  titulo,
+  ativo,
+  direcao,
+  alinhamento = 'left',
+  onClick,
+}: {
+  titulo: string;
+  ativo: boolean;
+  direcao: DirecaoOrdenacao;
+  alinhamento?: 'left' | 'center' | 'right';
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group/th inline-flex items-center gap-1 font-bold transition-colors cursor-pointer select-none uppercase tracking-wider ${
+        ativo
+          ? 'text-indigo-600 dark:text-indigo-400'
+          : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+      } ${alinhamento === 'right' ? 'flex-row-reverse' : alinhamento === 'center' ? 'justify-center w-full' : ''}`}
+      title={`Ordenar por ${titulo} (${ativo ? (direcao === 'asc' ? 'crescente' : 'decrescente') : 'clique para alternar ordem'})`}
+    >
+      <span>{titulo}</span>
+      {ativo ? (
+        direcao === 'asc' ? (
+          <ArrowUp className="h-3 w-3 shrink-0 text-indigo-600 dark:text-indigo-400" />
+        ) : (
+          <ArrowDown className="h-3 w-3 shrink-0 text-indigo-600 dark:text-indigo-400" />
+        )
+      ) : (
+        <ArrowUpDown className="h-3 w-3 shrink-0 opacity-35 group-hover/th:opacity-80 transition-opacity" />
+      )}
+    </button>
+  );
+}
+
 export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoesProps) {
   const toast = useToast();
 
@@ -67,7 +127,34 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
   const buscaDiferida = useDeferredValue(busca);
   const [fornecedorFiltro, setFornecedorFiltro] = useState('');
   const [freteFiltro, setFreteFiltro] = useState<'TODOS' | 'CIF' | 'FOB'>('TODOS');
-  const [ordenacao, setOrdenacao] = useState<'recente' | 'preco_asc' | 'preco_desc' | 'qtd_desc'>('recente');
+  
+  // Ordenacao das colunas e sincronizacao
+  const [colunaItem, setColunaItem] = useState<ColunaOrdenacaoItem>('data');
+  const [dirItem, setDirItem] = useState<DirecaoOrdenacao>('desc');
+
+  const [colunaProposta, setColunaProposta] = useState<ColunaOrdenacaoProposta>('data');
+  const [dirProposta, setDirProposta] = useState<DirecaoOrdenacao>('desc');
+
+  const alternarOrdenacaoItem = (coluna: ColunaOrdenacaoItem) => {
+    if (colunaItem === coluna) {
+      setDirItem(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setColunaItem(coluna);
+      const inicialAsc = ['produto', 'material_sap', 'fornecedor', 'frete'].includes(coluna);
+      setDirItem(inicialAsc ? 'asc' : 'desc');
+    }
+  };
+
+  const alternarOrdenacaoProposta = (coluna: ColunaOrdenacaoProposta) => {
+    if (colunaProposta === coluna) {
+      setDirProposta(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setColunaProposta(coluna);
+      const inicialAsc = ['proposta', 'fornecedor', 'condicao'].includes(coluna);
+      setDirProposta(inicialAsc ? 'asc' : 'desc');
+    }
+  };
+
   // Recorte pelo vínculo com o catálogo SAP e, quando o usuário clica num
   // código na tabela, o material fixado — é assim que a base vira histórico de
   // preço de um item só.
@@ -107,6 +194,20 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
       .catch(() => undefined);
   }, []);
 
+  // Mapeia ordenacao selecionada para o parametro da API backend quando compativel
+  const ordenacaoApiItens = useMemo(() => {
+    if (colunaItem === 'preco_unitario') return dirItem === 'asc' ? 'preco_asc' : 'preco_desc';
+    if (colunaItem === 'quantidade' && dirItem === 'desc') return 'qtd_desc';
+    if (colunaItem === 'data') return dirItem === 'asc' ? 'antigo' : 'recente';
+    return 'recente';
+  }, [colunaItem, dirItem]);
+
+  const ordenacaoApiPropostas = useMemo(() => {
+    if (colunaProposta === 'valor_total') return dirProposta === 'asc' ? 'preco_asc' : 'preco_desc';
+    if (colunaProposta === 'data') return dirProposta === 'asc' ? 'antigo' : 'recente';
+    return 'recente';
+  }, [colunaProposta, dirProposta]);
+
   // Carregar itens conforme filtros
   useEffect(() => {
     if (visao !== 'itens') return;
@@ -120,7 +221,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
           frete: freteFiltro,
           vinculo: vinculoFiltro,
           materialCode: materialFixado,
-          ordenacao,
+          ordenacao: ordenacaoApiItens,
           limite: 150,
         });
         if (!cancelado) {
@@ -137,7 +238,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
     }
     carregarItens();
     return () => { cancelado = true; };
-  }, [visao, buscaDiferida, fornecedorFiltro, freteFiltro, vinculoFiltro, materialFixado, ordenacao, toast]);
+  }, [visao, buscaDiferida, fornecedorFiltro, freteFiltro, vinculoFiltro, materialFixado, ordenacaoApiItens, toast]);
 
   // Carregar propostas conforme filtros
   useEffect(() => {
@@ -150,7 +251,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
           termoBusca: buscaDiferida,
           fornecedor: fornecedorFiltro,
           frete: freteFiltro,
-          ordenacao,
+          ordenacao: ordenacaoApiPropostas,
           limite: 100,
         });
         if (!cancelado) {
@@ -167,7 +268,113 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
     }
     carregarPropostas();
     return () => { cancelado = true; };
-  }, [visao, buscaDiferida, fornecedorFiltro, freteFiltro, ordenacao, toast]);
+  }, [visao, buscaDiferida, fornecedorFiltro, freteFiltro, ordenacaoApiPropostas, toast]);
+
+  // Ordenacao dos itens em memoria para suporte completo a todas as colunas
+  const itensOrdenados = useMemo(() => {
+    const lista = [...itens];
+    lista.sort((a, b) => {
+      let valorA: any = null;
+      let valorB: any = null;
+
+      switch (colunaItem) {
+        case 'produto':
+          valorA = a.descricao_produto || '';
+          valorB = b.descricao_produto || '';
+          break;
+        case 'material_sap':
+          valorA = a.vinculo?.material_code || '';
+          valorB = b.vinculo?.material_code || '';
+          break;
+        case 'fornecedor':
+          valorA = a.proposta?.fornecedor_razao_social || '';
+          valorB = b.proposta?.fornecedor_razao_social || '';
+          break;
+        case 'frete':
+          valorA = a.proposta?.frete_modalidade || '';
+          valorB = b.proposta?.frete_modalidade || '';
+          break;
+        case 'quantidade':
+          valorA = a.quantidade ?? 0;
+          valorB = b.quantidade ?? 0;
+          break;
+        case 'preco_unitario':
+          valorA = a.preco_unitario ?? 0;
+          valorB = b.preco_unitario ?? 0;
+          break;
+        case 'preco_total':
+          valorA = a.preco_total_item ?? 0;
+          valorB = b.preco_total_item ?? 0;
+          break;
+        case 'data':
+        default:
+          valorA = a.proposta?.data_emissao
+            ? new Date(a.proposta.data_emissao).getTime()
+            : (a.created_at ? new Date(a.created_at).getTime() : 0);
+          valorB = b.proposta?.data_emissao
+            ? new Date(b.proposta.data_emissao).getTime()
+            : (b.created_at ? new Date(b.created_at).getTime() : 0);
+          break;
+      }
+
+      if (typeof valorA === 'string' && typeof valorB === 'string') {
+        const comp = valorA.localeCompare(valorB, 'pt-BR', { sensitivity: 'base' });
+        return dirItem === 'asc' ? comp : -comp;
+      }
+
+      const numA = Number(valorA) || 0;
+      const numB = Number(valorB) || 0;
+      return dirItem === 'asc' ? numA - numB : numB - numA;
+    });
+    return lista;
+  }, [itens, colunaItem, dirItem]);
+
+  // Ordenacao das propostas em memoria para suporte completo a todas as colunas
+  const propostasOrdenadas = useMemo(() => {
+    const lista = [...propostas];
+    lista.sort((a, b) => {
+      let valorA: any = null;
+      let valorB: any = null;
+
+      switch (colunaProposta) {
+        case 'proposta':
+          valorA = a.numero_proposta || a.arquivo_origem || '';
+          valorB = b.numero_proposta || b.arquivo_origem || '';
+          break;
+        case 'fornecedor':
+          valorA = a.fornecedor_razao_social || '';
+          valorB = b.fornecedor_razao_social || '';
+          break;
+        case 'condicao':
+          valorA = a.condicao_pagamento || a.forma_pagamento || a.frete_modalidade || '';
+          valorB = b.condicao_pagamento || b.forma_pagamento || b.frete_modalidade || '';
+          break;
+        case 'itens':
+          valorA = a.total_itens_catalogados ?? 0;
+          valorB = b.total_itens_catalogados ?? 0;
+          break;
+        case 'valor_total':
+          valorA = a.valor_total_orcamento ?? a.soma_itens_valor ?? 0;
+          valorB = b.valor_total_orcamento ?? b.soma_itens_valor ?? 0;
+          break;
+        case 'data':
+        default:
+          valorA = a.data_emissao ? new Date(a.data_emissao).getTime() : 0;
+          valorB = b.data_emissao ? new Date(b.data_emissao).getTime() : 0;
+          break;
+      }
+
+      if (typeof valorA === 'string' && typeof valorB === 'string') {
+        const comp = valorA.localeCompare(valorB, 'pt-BR', { sensitivity: 'base' });
+        return dirProposta === 'asc' ? comp : -comp;
+      }
+
+      const numA = Number(valorA) || 0;
+      const numB = Number(valorB) || 0;
+      return dirProposta === 'asc' ? numA - numB : numB - numA;
+    });
+    return lista;
+  }, [propostas, colunaProposta, dirProposta]);
 
   // Carregar benchmark quando há busca textual de produto
   useEffect(() => {
@@ -229,7 +436,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
           toast.warning('Nenhum dado disponível para exportar.');
           return;
         }
-        const dados = itens.map(i => ({
+        const dados = itensOrdenados.map(i => ({
           'Número Proposta': i.proposta?.numero_proposta || '—',
           'Data Emissão': i.proposta?.data_emissao || '—',
           'Fornecedor': i.proposta?.fornecedor_razao_social || '—',
@@ -264,7 +471,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
           toast.warning('Nenhum dado disponível para exportar.');
           return;
         }
-        const dados = propostas.map(p => ({
+        const dados = propostasOrdenadas.map(p => ({
           'Número Proposta': p.numero_proposta || '—',
           'Data Emissão': p.data_emissao || '—',
           'Fornecedor': p.fornecedor_razao_social || '—',
@@ -580,14 +787,55 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
             </select>
 
             <select
-              value={ordenacao}
-              onChange={e => setOrdenacao(e.target.value as any)}
+              value={
+                visao === 'itens'
+                  ? `${colunaItem}_${dirItem}`
+                  : `${colunaProposta}_${dirProposta}`
+              }
+              onChange={e => {
+                const val = e.target.value;
+                if (visao === 'itens') {
+                  const [col, dir] = val.split('_') as [ColunaOrdenacaoItem, DirecaoOrdenacao];
+                  setColunaItem(col);
+                  setDirItem(dir);
+                } else {
+                  const [col, dir] = val.split('_') as [ColunaOrdenacaoProposta, DirecaoOrdenacao];
+                  setColunaProposta(col);
+                  setDirProposta(dir);
+                }
+              }}
               className="w-1/2 rounded-xl border border-slate-200 bg-slate-50/70 px-2.5 py-2 text-xs text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             >
-              <option value="recente">Mais recentes</option>
-              <option value="preco_asc">Menor valor</option>
-              <option value="preco_desc">Maior valor</option>
-              {visao === 'itens' && <option value="qtd_desc">Maior quantidade</option>}
+              {visao === 'itens' ? (
+                <>
+                  <option value="data_desc">Mais recentes</option>
+                  <option value="data_asc">Mais antigos</option>
+                  <option value="preco_unitario_asc">Menor preço unitário</option>
+                  <option value="preco_unitario_desc">Maior preço unitário</option>
+                  <option value="preco_total_asc">Menor total</option>
+                  <option value="preco_total_desc">Maior total</option>
+                  <option value="quantidade_desc">Maior quantidade</option>
+                  <option value="quantidade_asc">Menor quantidade</option>
+                  <option value="produto_asc">Produto (A-Z)</option>
+                  <option value="produto_desc">Produto (Z-A)</option>
+                  <option value="fornecedor_asc">Fornecedor (A-Z)</option>
+                  <option value="fornecedor_desc">Fornecedor (Z-A)</option>
+                  <option value="material_sap_asc">Material SAP (A-Z)</option>
+                  <option value="frete_asc">Frete (CIF primeiro)</option>
+                </>
+              ) : (
+                <>
+                  <option value="data_desc">Mais recentes</option>
+                  <option value="data_asc">Mais antigos</option>
+                  <option value="valor_total_asc">Menor valor total</option>
+                  <option value="valor_total_desc">Maior valor total</option>
+                  <option value="fornecedor_asc">Fornecedor (A-Z)</option>
+                  <option value="fornecedor_desc">Fornecedor (Z-A)</option>
+                  <option value="itens_desc">Mais itens</option>
+                  <option value="itens_asc">Menos itens</option>
+                  <option value="proposta_asc">Proposta (A-Z)</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -660,9 +908,9 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
       {visao === 'itens' && (
         <>
         {/* Celular: cada item vira um cartão (a tabela tem 9 colunas). */}
-        {!carregandoItens && itens.length > 0 && (
+        {!carregandoItens && itensOrdenados.length > 0 && (
           <TableCards>
-            {itens.map(it => {
+            {itensOrdenados.map(it => {
               const p = it.proposta;
               const dataFormatada = p?.data_emissao ? formatDateTimeBR(p.data_emissao).split(' ')[0] : '—';
               return (
@@ -708,14 +956,74 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 dark:bg-slate-800/60 dark:border-slate-800 dark:text-slate-300 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Produto & Código</th>
-                  <th className="py-3 px-4">Material SAP</th>
-                  <th className="py-3 px-4">Fornecedor</th>
-                  <th className="py-3 px-4 text-center">Frete</th>
-                  <th className="py-3 px-4 text-right">Qtd</th>
-                  <th className="py-3 px-4 text-right">Preço Unitário</th>
-                  <th className="py-3 px-4 text-right">Total Item</th>
-                  <th className="py-3 px-4">Data Emissão</th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Produto & Código"
+                      ativo={colunaItem === 'produto'}
+                      direcao={dirItem}
+                      onClick={() => alternarOrdenacaoItem('produto')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Material SAP"
+                      ativo={colunaItem === 'material_sap'}
+                      direcao={dirItem}
+                      onClick={() => alternarOrdenacaoItem('material_sap')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Fornecedor"
+                      ativo={colunaItem === 'fornecedor'}
+                      direcao={dirItem}
+                      onClick={() => alternarOrdenacaoItem('fornecedor')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-center">
+                    <HeaderOrdenavel
+                      titulo="Frete"
+                      ativo={colunaItem === 'frete'}
+                      direcao={dirItem}
+                      alinhamento="center"
+                      onClick={() => alternarOrdenacaoItem('frete')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-right">
+                    <HeaderOrdenavel
+                      titulo="Qtd"
+                      ativo={colunaItem === 'quantidade'}
+                      direcao={dirItem}
+                      alinhamento="right"
+                      onClick={() => alternarOrdenacaoItem('quantidade')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-right">
+                    <HeaderOrdenavel
+                      titulo="Preço Unitário"
+                      ativo={colunaItem === 'preco_unitario'}
+                      direcao={dirItem}
+                      alinhamento="right"
+                      onClick={() => alternarOrdenacaoItem('preco_unitario')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-right">
+                    <HeaderOrdenavel
+                      titulo="Total Item"
+                      ativo={colunaItem === 'preco_total'}
+                      direcao={dirItem}
+                      alinhamento="right"
+                      onClick={() => alternarOrdenacaoItem('preco_total')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Data Emissão"
+                      ativo={colunaItem === 'data'}
+                      direcao={dirItem}
+                      onClick={() => alternarOrdenacaoItem('data')}
+                    />
+                  </th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -727,7 +1035,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                       Carregando itens históricos...
                     </td>
                   </tr>
-                ) : itens.length === 0 ? (
+                ) : itensOrdenados.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-slate-400">
                       <Package className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
@@ -735,7 +1043,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                     </td>
                   </tr>
                 ) : (
-                  itens.map(it => {
+                  itensOrdenados.map(it => {
                     const p = it.proposta;
                     const dataFormatada = p?.data_emissao ? formatDateTimeBR(p.data_emissao).split(' ')[0] : '—';
                     return (
@@ -860,9 +1168,9 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
       {visao === 'propostas' && (
         <>
         {/* Celular: cada proposta vira um cartão. */}
-        {!carregandoPropostas && propostas.length > 0 && (
+        {!carregandoPropostas && propostasOrdenadas.length > 0 && (
           <TableCards>
-            {propostas.map(prop => {
+            {propostasOrdenadas.map(prop => {
               const dataEmissao = prop.data_emissao ? formatDateTimeBR(prop.data_emissao).split(' ')[0] : '—';
               return (
                 <TableCardRow key={`m-${prop.id}`} onClick={() => setPropostaSelecionada(prop)}>
@@ -895,12 +1203,56 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 dark:bg-slate-800/60 dark:border-slate-800 dark:text-slate-300 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Proposta / Arquivo</th>
-                  <th className="py-3 px-4">Fornecedor</th>
-                  <th className="py-3 px-4">Condição & Frete</th>
-                  <th className="py-3 px-4 text-center">Itens</th>
-                  <th className="py-3 px-4 text-right">Valor Total</th>
-                  <th className="py-3 px-4">Emissão / Validade</th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Proposta / Arquivo"
+                      ativo={colunaProposta === 'proposta'}
+                      direcao={dirProposta}
+                      onClick={() => alternarOrdenacaoProposta('proposta')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Fornecedor"
+                      ativo={colunaProposta === 'fornecedor'}
+                      direcao={dirProposta}
+                      onClick={() => alternarOrdenacaoProposta('fornecedor')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Condição & Frete"
+                      ativo={colunaProposta === 'condicao'}
+                      direcao={dirProposta}
+                      onClick={() => alternarOrdenacaoProposta('condicao')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-center">
+                    <HeaderOrdenavel
+                      titulo="Itens"
+                      ativo={colunaProposta === 'itens'}
+                      direcao={dirProposta}
+                      alinhamento="center"
+                      onClick={() => alternarOrdenacaoProposta('itens')}
+                    />
+                  </th>
+                  <th className="py-3 px-4 text-right">
+                    <HeaderOrdenavel
+                      titulo="Valor Total"
+                      ativo={colunaProposta === 'valor_total'}
+                      direcao={dirProposta}
+                      alinhamento="right"
+                      onClick={() => alternarOrdenacaoProposta('valor_total')}
+                    />
+                  </th>
+                  <th className="py-3 px-4">
+                    <HeaderOrdenavel
+                      titulo="Emissão / Validade"
+                      ativo={colunaProposta === 'data'}
+                      direcao={dirProposta}
+                      onClick={() => alternarOrdenacaoProposta('data')}
+                    />
+                  </th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -912,7 +1264,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                       Carregando cotações completas...
                     </td>
                   </tr>
-                ) : propostas.length === 0 ? (
+                ) : propostasOrdenadas.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-slate-400">
                       <FileSpreadsheet className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
@@ -920,7 +1272,7 @@ export default function HistoricoCotacoes({ user, onNavigate }: HistoricoCotacoe
                     </td>
                   </tr>
                 ) : (
-                  propostas.map(prop => {
+                  propostasOrdenadas.map(prop => {
                     const dataEmissao = prop.data_emissao ? formatDateTimeBR(prop.data_emissao).split(' ')[0] : '—';
                     return (
                       <tr

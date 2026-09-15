@@ -1215,3 +1215,159 @@ body,
     animation: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Tabelas Responsivas — Modo Cartões (Cards) no Mobile                */
+/* Transforma automaticamente todas as tabelas em cartões no mobile    */
+/* ------------------------------------------------------------------ */
+@media (max-width: 768px) {
+  /* Remove overflow-x forçado para não cortar sombras dos cartões */
+  .overflow-x-auto:has(> table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden)) {
+    overflow-x: visible !important;
+  }
+
+  /* Tabela principal vira bloco 100% fluido */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  /* Oculta o cabeçalho original no mobile */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) thead {
+    display: none !important;
+  }
+
+  /* Tbody vira pilha vertical de cartões */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+    padding: 0.25rem 0 !important;
+  }
+
+  /* Cada linha (tr) vira um cartão isolado e elegante */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 0.875rem 1rem !important;
+    border-radius: 0.875rem !important;
+    border: 1px solid var(--hairline, #e2e8f0) !important;
+    background-color: var(--surface-card, #ffffff) !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease !important;
+  }
+
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr {
+    background-color: var(--surface-card, #0f1422) !important;
+    border-color: var(--hairline, #1e293b) !important;
+    box-shadow: 0 2px 5px 0 rgba(0, 0, 0, 0.3) !important;
+  }
+
+  /* Feedback de toque para linhas clicáveis */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr.cursor-pointer:active,
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr[onclick]:active {
+    background-color: var(--surface-raised, #f8fafc) !important;
+    transform: scale(0.995);
+  }
+
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr.cursor-pointer:active,
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr[onclick]:active {
+    background-color: var(--surface-raised, #171e30) !important;
+  }
+
+  /* Cada célula (td) vira uma linha chave-valor no cartão */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.75rem !important;
+    padding: 0.375rem 0 !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.7) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: right !important;
+    font-size: 0.8125rem !important;
+    min-height: 1.625rem !important;
+  }
+
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td {
+    border-bottom-color: rgba(30, 41, 59, 0.6) !important;
+  }
+
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td:last-child {
+    border-bottom: none !important;
+  }
+
+  /* Rótulo do campo (chave) exibido à esquerda */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.6875rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    color: var(--ink-muted, #64748b) !important;
+    text-align: left !important;
+    flex-shrink: 0 !important;
+    max-width: 48% !important;
+    line-height: 1.35 !important;
+  }
+
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-label]::before {
+    color: #94a3b8 !important;
+  }
+
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-label=""]::before,
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td:not([data-label])::before {
+    display: none !important;
+  }
+
+  /* Células sem rótulo não empurram conteúdo para a direita */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td:not([data-label]),
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-label=""] {
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  /* Célula de Ações ganha divisória de topo e alinhamento especial */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-card-actions="true"] {
+    padding-top: 0.625rem !important;
+    margin-top: 0.25rem !important;
+    border-top: 1px dashed var(--hairline, #e2e8f0) !important;
+    border-bottom: none !important;
+    justify-content: flex-end !important;
+    gap: 0.5rem !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+  }
+
+  .dark table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-card-actions="true"] {
+    border-top-color: var(--hairline, #1e293b) !important;
+  }
+
+  /* Linhas de mensagem inteira ou tabela vazia (colspan) */
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-card-full-width="true"],
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[colspan] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    border-bottom: none !important;
+    padding: 1.5rem 0.75rem !important;
+  }
+
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[data-card-full-width="true"]::before,
+  table:not([data-no-cards]):not(.no-responsive-cards):not(.hidden) tbody tr td[colspan]::before {
+    display: none !important;
+  }
+}
+

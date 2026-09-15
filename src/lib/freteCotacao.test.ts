@@ -42,7 +42,7 @@ function proposta(itens: CotacaoPropostaItemDraft[], p: Partial<CotacaoPropostaD
     condicao_pagamento: null, forma_pagamento: null,
     prazo_entrega_texto: null, prazo_entrega_dias: null,
     frete_modalidade: 'FOB', transportadora_indicada: null, faturamento_minimo: null,
-    dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null,
+    dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, valor_desconto: null,
     observacoes_gerais: null, campos_faltantes: [], revisado: false,
     extracao_id: null, extraido_raw: {} as any,
     arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
@@ -254,6 +254,23 @@ describe('simularFreteCotacao', () => {
       tabela: TABELA,
     });
     expect(sim.motivo).toBe('sem_origem');
+  });
+
+  it('fornecedor de Jacobina não simula frete — já está no destino', () => {
+    const sim = simularFreteCotacao({
+      proposta: proposta([item({ peso_unitario_kg: 5 })], { fornecedor_cidade: 'Jacobina', fornecedor_uf: 'BA' }),
+      tabela: TABELA,
+    });
+    expect(sim.motivo).toBe('fornecedor_local');
+    expect(sim.freteTotal).toBeNull();
+  });
+
+  it('reconhece Jacobina mesmo com grafia/UF diferentes', () => {
+    const sim = simularFreteCotacao({
+      proposta: proposta([item({ peso_unitario_kg: 5 })], { fornecedor_cidade: 'jacobina', fornecedor_uf: null }),
+      tabela: TABELA,
+    });
+    expect(sim.motivo).toBe('fornecedor_local');
   });
 
   it('troca para veículo dedicado acima do limite da carga fracionada', () => {

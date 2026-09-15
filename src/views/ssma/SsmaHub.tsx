@@ -174,13 +174,13 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
         </div>
       </div>
 
-      {/* Metrics Bar */}
-      <div data-tour="ssma-hub-metricas">
+      {/* Metrics Bar: oculto no mobile */}
+      <div data-tour="ssma-hub-metricas" className="hidden sm:block">
         <SsmaMetricsBar metricas={metricas} onSelectTab={(tab) => tab === 'rid' && setActiveTab('rid')} />
       </div>
 
-      {/* Forms Grid */}
-      <div data-tour="ssma-hub-grid" className="grid gap-4 sm:grid-cols-2">
+      {/* Forms Grid: 3 blocos por linha no mobile e descricao oculta */}
+      <div data-tour="ssma-hub-grid" className="grid grid-cols-3 gap-2 sm:gap-4 sm:grid-cols-2">
         {FORMULARIOS_SSMA.map((form) => {
           const Icon = form.icon;
           return (
@@ -188,35 +188,35 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
               key={form.id}
               type="button"
               onClick={() => setActiveTab(form.id)}
-              className="group flex flex-col items-start justify-between rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-slate-900/5 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-400/40 cursor-pointer"
+              className="group flex flex-col items-start justify-between rounded-xl sm:rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-slate-900/5 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-400/40 cursor-pointer"
             >
               <div className="w-full">
-                <div className="flex w-full items-center justify-between">
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${form.cor}`}>
-                    <Icon className="h-5 w-5" />
+                <div className="flex w-full items-center justify-between gap-1">
+                  <span className={`flex h-7 w-7 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl ${form.cor}`}>
+                    <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                   </span>
-                  <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  <span className="font-mono text-[9px] sm:text-[11px] font-bold px-1 sm:px-2 py-0.5 rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 truncate max-w-[65px] sm:max-w-none">
                     {form.codigo}
                   </span>
                 </div>
 
-                <h3 className="mt-3.5 text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors dark:text-slate-100 dark:group-hover:text-emerald-400">
+                <h3 className="mt-2 sm:mt-3.5 text-xs sm:text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors dark:text-slate-100 dark:group-hover:text-emerald-400 leading-snug line-clamp-2 sm:line-clamp-none">
                   {form.title}
                 </h3>
 
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                <p className="hidden sm:block mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   {form.desc}
                 </p>
               </div>
 
-              <div className="mt-5 flex w-full items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
-                <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${form.badgeCor}`}>
+              <div className="mt-2.5 sm:mt-5 flex w-full items-center justify-between border-t border-slate-100 pt-2 sm:pt-3 dark:border-slate-800">
+                <span className={`rounded-full border px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold truncate ${form.badgeCor}`}>
                   {form.badge}
                 </span>
 
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 transition-transform group-hover:translate-x-1 dark:text-emerald-400">
-                  Acessar
-                  <ArrowRight className="h-3.5 w-3.5" />
+                <span className="inline-flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs font-bold text-emerald-700 transition-transform group-hover:translate-x-1 dark:text-emerald-400 shrink-0">
+                  <span className="hidden md:inline">Acessar</span>
+                  <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </span>
               </div>
             </button>

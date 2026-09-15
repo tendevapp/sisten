@@ -34,7 +34,7 @@ function proposta(key: string, itens: CotacaoPropostaItemDraft[], p: Partial<Cot
     cliente_cidade: null, cliente_uf: null,
     condicao_pagamento: null, forma_pagamento: null, prazo_entrega_texto: null, prazo_entrega_dias: null,
     frete_modalidade: null, transportadora_indicada: null, faturamento_minimo: null,
-    dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, observacoes_gerais: null,
+    dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, valor_desconto: null, observacoes_gerais: null,
     campos_faltantes: [], revisado: true, extracao_id: null, extraido_raw: {} as any,
       arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
       arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
@@ -81,6 +81,16 @@ describe('montarPedidosCompra', () => {
     const [pedido] = montarPedidosCompra([p]);
     expect(pedido.subtotal).toBe(100);
     expect(pedido.total).toBe(125);
+  });
+
+  it('abate o desconto declarado do total do pedido', () => {
+    const p = proposta('A', [item({ descricao_produto: 'X', mapa_selecionado: true, quantidade: 1, preco_unitario: 100 })], {
+      valor_frete: 25,
+      valor_desconto: 10,
+    });
+    const [pedido] = montarPedidosCompra([p]);
+    expect(pedido.valorDesconto).toBe(10);
+    expect(pedido.total).toBe(115);
   });
 
   it('marca item sem vínculo de RM como fora do escopo', () => {

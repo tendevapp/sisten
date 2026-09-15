@@ -5200,6 +5200,7 @@ export type Database = {
           vendedor_nome: string | null
           vendedor_telefone: string | null
           valor_frete: number | null
+          valor_desconto: number | null
           arquivo_storage_path: string | null
           arquivo_mime_type: string | null
           arquivo_tamanho_bytes: number | null
@@ -5252,6 +5253,7 @@ export type Database = {
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
           valor_frete?: number | null
+          valor_desconto?: number | null
           arquivo_storage_path?: string | null
           arquivo_mime_type?: string | null
           arquivo_tamanho_bytes?: number | null
@@ -5304,6 +5306,7 @@ export type Database = {
           vendedor_nome?: string | null
           vendedor_telefone?: string | null
           valor_frete?: number | null
+          valor_desconto?: number | null
           arquivo_storage_path?: string | null
           arquivo_mime_type?: string | null
           arquivo_tamanho_bytes?: number | null

@@ -210,6 +210,11 @@ function CardPedido({
         {pedido.valorFrete != null && pedido.valorFrete > 0 && (
           <span className="text-slate-500 dark:text-slate-400">Frete: <strong className="text-slate-700 dark:text-slate-200">{formatBRL(pedido.valorFrete)}</strong></span>
         )}
+        {pedido.valorDesconto != null && pedido.valorDesconto > 0 && (
+          <span className="text-emerald-600 dark:text-emerald-400" title="Desconto identificado na proposta, já abatido do total">
+            Desconto: <strong>-{formatBRL(pedido.valorDesconto)}</strong>
+          </span>
+        )}
         <span className="text-sm font-bold text-slate-900 dark:text-slate-50">Total: {formatBRL(pedido.total)}</span>
       </div>
 

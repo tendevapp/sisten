@@ -16,7 +16,9 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
+import { canAccessPage } from '../lib/pages';
 import { formatBRL, formatDateBR, formatDateTimeBR } from '../lib/format';
+import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
 import KpiCard from '../components/charts/KpiCard';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import {
@@ -71,7 +73,7 @@ function formatTipoDocLabel(l: Fbl1nLancamento): string {
   return code || desc || '—';
 }
 
-export default function ContasPagar({ user: _user }: ContasPagarProps) {
+export default function ContasPagar({ user }: ContasPagarProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lancamentos, setLancamentos] = useState<Fbl1nLancamento[]>([]);
@@ -369,12 +371,23 @@ export default function ContasPagar({ user: _user }: ContasPagarProps) {
             Tabela dinâmica de contas a pagar agrupada por fornecedor com detalhamento expansível (FBL1N).
           </p>
         </div>
-        {lastUpdated && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <Clock className="h-3 w-3" />
-            <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {lastUpdated && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <Clock className="h-3 w-3" />
+              <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
+            </div>
+          )}
+          {canAccessPage(user, 'fin_contas_pagar') && (
+            <PlanilhaSapUploadButton
+              sigla="FBL1N"
+              descricao="Contas a Pagar — substituição total da carga atual"
+              importar={(rawRows, filename, onProgress) => localDb.importFBL1NRaw(rawRows, filename, onProgress)}
+              onImportado={load}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer bg-cyan-600 hover:bg-cyan-700 text-white active:scale-95 disabled:opacity-50"
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

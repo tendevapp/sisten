@@ -111,7 +111,8 @@ FORMATO (responda APENAS com este JSON, sem markdown, sem comentários):
   "Condicao_Pagamento":null,"Forma_Pagamento":null,"Prazo_Entrega":null,
   "Frete_Modalidade":null,"Transportadora_Indicada":null,
   "Faturamento_Minimo":null,"Dados_Bancarios_PIX":null,
-  "Valor_Total_Orcamento":null,"Observacoes_Gerais":null,
+  "Valor_Total_Orcamento":null,"Valor_Frete_Destacado":null,"Valor_Desconto":null,
+  "Observacoes_Gerais":null,
   "itens":[{
     "Item_Numero":null,"Codigo_Produto":null,"Descricao_Produto":null,
     "Marca_Fabricante":null,"Unidade_Medida":null,"NCM":null,"CST":null,
@@ -154,19 +155,25 @@ function blocoInstrucoesExtras(escopo: ItemEscopo[]): string {
   const partes: string[] = [
     '',
     '---',
-    'INSTRUÇÕES ADICIONAIS (valem sobre o formato acima; devolva estes campos DENTRO de cada item de "itens"):',
+    'INSTRUÇÕES ADICIONAIS (valem sobre o formato acima):',
     '',
+    'Campos a seguir DENTRO de cada item de "itens":',
     '1. "Peso_Unitario_Kg": ESTIME o peso de UMA unidade do produto, em quilos, a partir da descrição, do material, da bitola/dimensão e da embalagem. Este é o único campo que você pode inferir em vez de ler — nunca devolva null nele, a menos que a descrição não identifique produto físico nenhum (serviço, taxa, mão de obra).',
     '   - Use a unidade de medida do item: se a UM for CX/PC/FD/RL, estime o peso da EMBALAGEM inteira, não o da peça avulsa.',
     '   - Só o número, ponto decimal, sem "kg". Ex.: "0.35", "12.5", "1200".',
     '   - Preferir ordem de grandeza correta a precisão falsa.',
+    '',
+    'Campos a seguir no NÍVEL DA PROPOSTA (junto de Valor_Total_Orcamento, fora de "itens"):',
+    '2. "Valor_Frete_Destacado": quando o documento cita um valor de FRETE EM REAIS somado ao preço dos produtos (linha "Frete: R$ X", "+ frete R$ X", frete cobrado à parte do total), devolva esse valor. Não é a modalidade (isso já vai em "Frete_Modalidade": CIF/FOB/OUTRO) — só preencha quando houver um número. Frete "a combinar", "por conta do cliente"/"por conta do comprador" sem valor, ou frete embutido no preço (CIF): null.',
+    '3. "Valor_Desconto": quando o documento indica um DESCONTO em reais ou percentual sobre o total do orçamento ou sobre algum item ("desconto de R$ X", "10% de desconto", "abatimento", "menos R$ X"), devolva o valor do desconto CONVERTIDO PARA REAIS — se vier em percentual, calcule sobre o valor a que ele se aplica. null quando a proposta não menciona desconto.',
   ];
 
   if (escopo.length > 0) {
     partes.push(
       '',
-      '2. "Vinculo_RI": diga qual item da REQUISIÇÃO abaixo é o mesmo material que o item cotado. Devolva exatamente o valor do campo "ri" da lista, ou null quando nenhum item da requisição corresponder (o fornecedor cotou algo que ninguém pediu).',
-      '3. "Vinculo_Divergencias": array de frases curtas com o que está DIFERENTE entre o item cotado e o item da requisição que você vinculou — quantidade, unidade, bitola/medida, material, marca exigida, item cotado que agrupa dois da RM. Array vazio [] quando bate em tudo; null quando não houve vínculo.',
+      'Campos a seguir DENTRO de cada item de "itens" (continuação):',
+      '4. "Vinculo_RI": diga qual item da REQUISIÇÃO abaixo é o mesmo material que o item cotado. Devolva exatamente o valor do campo "ri" da lista, ou null quando nenhum item da requisição corresponder (o fornecedor cotou algo que ninguém pediu).',
+      '5. "Vinculo_Divergencias": array de frases curtas com o que está DIFERENTE entre o item cotado e o item da requisição que você vinculou — quantidade, unidade, bitola/medida, material, marca exigida, item cotado que agrupa dois da RM. Array vazio [] quando bate em tudo; null quando não houve vínculo.',
       '   - Vincule pelo MATERIAL, não pelo texto: "ELETRODO 7018 3,25MM" e "ELETRODO REVESTIDO E7018 Ø3,25" são o mesmo item.',
       '   - Não force vínculo: RI errado custa mais caro que RI vazio.',
       '',

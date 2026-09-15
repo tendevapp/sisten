@@ -45,7 +45,7 @@ function proposta(nome: string, itens: CotacaoPropostaItemDraft[], p: Partial<Co
       cliente_cidade: null, cliente_uf: null,
       condicao_pagamento: null, forma_pagamento: null, prazo_entrega_texto: null, prazo_entrega_dias: null,
       frete_modalidade: null, transportadora_indicada: null, faturamento_minimo: null,
-      dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, observacoes_gerais: null,
+      dados_bancarios_pix: null, valor_total_orcamento: null, valor_frete: null, valor_desconto: null, observacoes_gerais: null,
       campos_faltantes: [], revisado: true, extracao_id: null, extraido_raw: {} as any,
       arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
       arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
@@ -335,7 +335,7 @@ describe('agruparLinhasMapa', () => {
     expect(semOferta?.celulas).toHaveLength(0);
   });
 
-  it('marca a melhor oferta e o quanto as outras estão acima', () => {
+  it('marca a melhor oferta e o quanto as outras estão acima, por preço unitário', () => {
     const linhas = agruparLinhasMapa({
       escopo: [],
       opcoes,
@@ -345,11 +345,27 @@ describe('agruparLinhasMapa', () => {
       ],
     });
     const [linha] = linhas;
-    expect(linha.melhorCusto).toBe(150);
-    expect(linha.piorCusto).toBe(165);
-    expect(linha.dispersao).toBe(15);
+    expect(linha.melhorCusto).toBe(30);
+    expect(linha.piorCusto).toBe(33);
+    expect(linha.dispersao).toBe(3);
     expect(linha.celulas.find(c => c.propostaKey === 'A')?.melhor).toBe(true);
     expect(linha.celulas.find(c => c.propostaKey === 'B')?.deltaPct).toBeCloseTo(10, 6);
+  });
+
+  it('preço unitário decide o vencedor mesmo quando o total da célula diz o contrário', () => {
+    // A cotou menos unidades que a RM pediu (30) — o total dela é menor, mas
+    // o preço por unidade é bem mais caro. A vencedora tem que ser B.
+    const linhas = agruparLinhasMapa({
+      escopo: [],
+      opcoes,
+      propostas: [
+        proposta('A', [item({ descricao_produto: 'LANTERNA TATICA', quantidade: 12, preco_unitario: 114.15 })]),
+        proposta('B', [item({ descricao_produto: 'LANTERNA TATICA', quantidade: 30, preco_unitario: 65.04 })]),
+      ],
+    });
+    const [linha] = linhas;
+    expect(linha.celulas.find(c => c.propostaKey === 'A')?.melhor).toBe(false);
+    expect(linha.celulas.find(c => c.propostaKey === 'B')?.melhor).toBe(true);
   });
 
   it('acusa quantidade divergente entre fornecedores', () => {
@@ -502,6 +518,33 @@ describe('resumirFornecedores e cenários', () => {
     expect(a.freteEhTeorico).toBe(false);
     const parcela = cenarioFornecedorUnico(linhas, resumos)!.parcelas[0];
     expect(parcela.freteEhTeorico).toBe(false);
+  });
+});
+
+describe('valorDesconto — desconto declarado na proposta abate do total', () => {
+  it('subtrai o desconto do totalComFrete e o expõe no resumo', () => {
+    const propostas = [
+      proposta('A', [item({ descricao_produto: 'CADEADO SEGREDO 25MM', quantidade: 5, preco_unitario: 30 })], {
+        valor_desconto: 20,
+      }),
+    ];
+    const fretePorProposta = { A: 40 };
+    const linhas = agruparLinhasMapa({ escopo: [], propostas, opcoes: OPCOES_CUSTO_PADRAO, fretePorProposta });
+    const resumos = resumirFornecedores({ linhas, propostas, fretePorProposta });
+    const a = resumos.find(r => r.propostaKey === 'A')!;
+    expect(a.totalLiquido).toBe(150);
+    expect(a.valorDesconto).toBe(20);
+    // 150 (itens) + 40 (frete) - 20 (desconto)
+    expect(a.totalComFrete).toBe(170);
+  });
+
+  it('sem desconto declarado, o total não muda (valorDesconto null)', () => {
+    const propostas = [proposta('A', [item({ descricao_produto: 'X', quantidade: 1, preco_unitario: 100 })])];
+    const linhas = agruparLinhasMapa({ escopo: [], propostas, opcoes: OPCOES_CUSTO_PADRAO });
+    const resumos = resumirFornecedores({ linhas, propostas });
+    const a = resumos.find(r => r.propostaKey === 'A')!;
+    expect(a.valorDesconto).toBeNull();
+    expect(a.totalComFrete).toBe(a.totalLiquido);
   });
 });
 

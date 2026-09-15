@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
+import { useFilterDropdownPosition } from './useFilterDropdownPosition';
 
 /**
  * Filtro de seleção múltipla do SISTEN.
@@ -8,7 +10,8 @@ import { Check, ChevronDown, Search, X } from 'lucide-react';
  * Seleção vazia = "todos" (nenhuma restrição), que é o estado inicial dos filtros.
  *
  * O gatilho mantém o mesmo visual dos selects da barra de filtros (pílula com
- * ícone à esquerda), e o painel abre ancorado abaixo com busca opcional.
+ * ícone à esquerda), e o painel abre sobreposto (portal) ancorado abaixo com busca opcional,
+ * livre de qualquer recorte de overflow-x-auto no mobile.
  */
 
 export interface MultiSelectFilterProps {
@@ -28,11 +31,7 @@ export interface MultiSelectFilterProps {
   className?: string;
   /**
    * Largura do painel sobreposto quando aberto. Por padrão o painel acompanha
-   * a largura do gatilho (`w-full min-w-[200px]`) — suficiente para opções
-   * curtas, mas opções longas (descrições de grupo de mercadoria, por
-   * exemplo) ficam espremidas mesmo com quebra de linha. Passe algo como
-   * `"w-80 sm:w-96"` para esses casos; o painel continua ancorado no gatilho,
-   * só abre mais largo, sobreposto ao resto da barra de filtros.
+   * a largura do gatilho (`w-full min-w-[200px]`).
    */
   panelClassName?: string;
 }
@@ -52,13 +51,31 @@ export default function MultiSelectFilter({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  const preferredWidth = useMemo(() => {
+    if (panelClassName?.includes('w-96')) return 384;
+    if (panelClassName?.includes('w-80')) return 320;
+    if (panelClassName?.includes('w-72')) return 288;
+    if (panelClassName?.includes('w-64')) return 256;
+    return 240;
+  }, [panelClassName]);
+
+  const coords = useFilterDropdownPosition(open, containerRef, preferredWidth);
   const showSearch = searchable ?? options.length >= 8;
 
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        panelRef.current &&
+        !panelRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -127,64 +144,80 @@ export default function MultiSelectFilter({
         </button>
       )}
 
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable
-          className={`absolute z-30 mt-1 max-h-72 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg ${panelClassName || 'w-full min-w-[200px]'}`}
-        >
-          {showSearch && (
-            <div className="relative border-b border-slate-150 dark:border-slate-850 p-2">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <input
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Buscar..."
-                className="w-full pl-8 pr-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none"
-              />
-            </div>
-          )}
-
-          <div className="overflow-y-auto flex-1 p-1">
-            {visibleOptions.length === 0 && (
-              <p className="px-3 py-4 text-xs font-semibold text-slate-400 text-center">Nenhuma opção</p>
+      {open && coords && typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Backdrop mobile para fechar ao tocar fora e dar foco de overlay */}
+          <div
+            className="fixed inset-0 z-40 bg-black/15 sm:bg-transparent"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            ref={panelRef}
+            role="listbox"
+            aria-multiselectable
+            style={{
+              top: coords.top,
+              bottom: coords.bottom,
+              left: coords.left,
+              width: coords.width,
+              maxHeight: coords.maxHeight,
+            }}
+            className={`fixed z-50 overflow-hidden flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl animate-fade-in ${
+              panelClassName || ''
+            }`}
+          >
+            {showSearch && (
+              <div className="relative border-b border-slate-150 dark:border-slate-850 p-2 shrink-0">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Buscar..."
+                  className="w-full pl-8 pr-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:border-[#0056c6] focus:outline-none"
+                />
+              </div>
             )}
-            {visibleOptions.map(option => {
-              const marcado = selected.has(option);
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  role="option"
-                  aria-selected={marcado}
-                  onClick={() => toggle(option)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
-                >
-                  <span className={`h-4 w-4 shrink-0 mt-0.5 rounded border flex items-center justify-center transition-colors ${
-                    marcado ? 'bg-[#0056c6] border-[#0056c6]' : 'border-slate-300 dark:border-slate-700'
-                  }`}>
-                    {marcado && <Check className="h-3 w-3 text-white" />}
-                  </span>
-                  {/* Quebra em vez de truncar: opção cortada com "..." é
-                      inútil quando o que o usuário quer ler é justo o fim do
-                      texto (ex.: descrições de grupo de mercadoria). */}
-                  <span className="break-words leading-snug">{renderOption ? renderOption(option) : option}</span>
-                </button>
-              );
-            })}
-          </div>
 
-          {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange(new Set())}
-              className="border-t border-slate-150 dark:border-slate-850 px-3 py-2 text-xs font-bold text-slate-500 hover:text-[#0056c6] transition-colors cursor-pointer"
-            >
-              Limpar seleção ({selected.size})
-            </button>
-          )}
-        </div>
+            <div className="overflow-y-auto flex-1 p-1 custom-scrollbar">
+              {visibleOptions.length === 0 && (
+                <p className="px-3 py-4 text-xs font-semibold text-slate-400 text-center">Nenhuma opção</p>
+              )}
+              {visibleOptions.map(option => {
+                const marcado = selected.has(option);
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="option"
+                    aria-selected={marcado}
+                    onClick={() => toggle(option)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
+                  >
+                    <span className={`h-4 w-4 shrink-0 mt-0.5 rounded border flex items-center justify-center transition-colors ${
+                      marcado ? 'bg-[#0056c6] border-[#0056c6]' : 'border-slate-300 dark:border-slate-700'
+                    }`}>
+                      {marcado && <Check className="h-3 w-3 text-white" />}
+                    </span>
+                    <span className="break-words leading-snug">{renderOption ? renderOption(option) : option}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selected.size > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange(new Set())}
+                className="border-t border-slate-150 dark:border-slate-850 px-3 py-2 text-xs font-bold text-slate-500 hover:text-[#0056c6] transition-colors cursor-pointer shrink-0"
+              >
+                Limpar seleção ({selected.size})
+              </button>
+            )}
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, X, Clock, AlertTriangle, CalendarDays } from 'lucide-react';
+import { useFilterDropdownPosition } from './useFilterDropdownPosition';
 
 export interface DateRangeValue {
   from: string;
@@ -49,6 +51,8 @@ export default function DateRangeFilter({
 }: DateRangeFilterProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const coords = useFilterDropdownPosition(open, containerRef, 320);
 
   const isActive = useMemo(() => {
     return (
@@ -61,7 +65,13 @@ export default function DateRangeFilter({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent | TouchEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        panelRef.current &&
+        !panelRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -174,157 +184,174 @@ export default function DateRangeFilter({
         </button>
       )}
 
-      {open && (
-        <div
-          role="dialog"
-          aria-label={`Opções do filtro ${label}`}
-          className={`absolute z-30 mt-1 flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-3.5 w-76 sm:w-80 ${
-            panelClassName || ''
-          }`}
-        >
-          <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-150 dark:border-slate-850">
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <CalendarDays className="h-4 w-4 text-[#0056c6]" />
-              Filtro de {label}
-            </span>
-            {isActive && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
-              >
-                Limpar
-              </button>
-            )}
-          </div>
-
-          {/* Status da Promessa */}
-          <div className="space-y-1.5 mb-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Estado da Data
-            </span>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => handlePreset('all')}
-                className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer ${
-                  !isActive || value.preset === 'all'
-                    ? 'bg-[#0056c6] text-white border-[#0056c6] shadow-2xs'
-                    : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                Todas
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePreset('sem_data')}
-                className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer flex items-center justify-between ${
-                  value.preset === 'sem_data'
-                    ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                    : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>Sem data</span>
-                <Clock className="h-3 w-3 opacity-80" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePreset('com_data')}
-                className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer ${
-                  value.preset === 'com_data' && !value.from && !value.to
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                    : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                Com data
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePreset('atrasadas')}
-                className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer flex items-center justify-between ${
-                  value.preset === 'atrasadas'
-                    ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                    : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>Atrasadas</span>
-                <AlertTriangle className="h-3 w-3 opacity-80" />
-              </button>
-            </div>
-          </div>
-
-          {/* Atalhos de Intervalos */}
-          <div className="space-y-1.5 mb-3">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              Prazos Rápidos
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {[
-                { id: 'hoje', label: 'Hoje' },
-                { id: '7dias', label: '7 dias' },
-                { id: '15dias', label: '15 dias' },
-                { id: '30dias', label: '30 dias' },
-                { id: 'este_mes', label: 'Este mês' },
-              ].map(p => (
+      {open && coords && typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Backdrop mobile para fechar ao tocar fora e dar foco de overlay */}
+          <div
+            className="fixed inset-0 z-40 bg-black/15 sm:bg-transparent"
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label={`Opções do filtro ${label}`}
+            style={{
+              top: coords.top,
+              bottom: coords.bottom,
+              left: coords.left,
+              width: coords.width,
+              maxHeight: coords.maxHeight,
+            }}
+            className={`fixed z-50 overflow-y-auto flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-3.5 animate-fade-in custom-scrollbar ${
+              panelClassName || ''
+            }`}
+          >
+            <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-150 dark:border-slate-850">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <CalendarDays className="h-4 w-4 text-[#0056c6]" />
+                Filtro de {label}
+              </span>
+              {isActive && (
                 <button
-                  key={p.id}
                   type="button"
-                  onClick={() => handlePreset(p.id)}
-                  className={`px-2 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
-                    value.preset === p.id
-                      ? 'bg-[#0056c6] text-white border-[#0056c6]'
-                      : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  onClick={handleClear}
+                  className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            {/* Status da Promessa */}
+            <div className="space-y-1.5 mb-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Estado da Data
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handlePreset('all')}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer ${
+                    !isActive || value.preset === 'all'
+                      ? 'bg-[#0056c6] text-white border-[#0056c6] shadow-2xs'
+                      : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
-                  {p.label}
+                  Todas
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => handlePreset('sem_data')}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer flex items-center justify-between ${
+                    value.preset === 'sem_data'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                      : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>Sem data</span>
+                  <Clock className="h-3 w-3 opacity-80" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePreset('com_data')}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer ${
+                    value.preset === 'com_data' && !value.from && !value.to
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                      : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Com data
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePreset('atrasadas')}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-bold border text-left transition-all cursor-pointer flex items-center justify-between ${
+                    value.preset === 'atrasadas'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                      : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>Atrasadas</span>
+                  <AlertTriangle className="h-3 w-3 opacity-80" />
+                </button>
+              </div>
+            </div>
+
+            {/* Atalhos de Intervalos */}
+            <div className="space-y-1.5 mb-3">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Prazos Rápidos
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { id: 'hoje', label: 'Hoje' },
+                  { id: '7dias', label: '7 dias' },
+                  { id: '15dias', label: '15 dias' },
+                  { id: '30dias', label: '30 dias' },
+                  { id: 'este_mes', label: 'Este mês' },
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handlePreset(p.id)}
+                    className={`px-2 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                      value.preset === p.id
+                        ? 'bg-[#0056c6] text-white border-[#0056c6]'
+                        : 'bg-slate-50 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Intervalo Personalizado */}
+            <div className="space-y-2 pt-2.5 border-t border-slate-150 dark:border-slate-850">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
+                Intervalo Personalizado
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                    De:
+                  </label>
+                  <input
+                    type="date"
+                    value={value.from || ''}
+                    max={value.to || undefined}
+                    onChange={e => handleCustomDateChange('from', e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:border-[#0056c6] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
+                    Até:
+                  </label>
+                  <input
+                    type="date"
+                    value={value.to || ''}
+                    min={value.from || undefined}
+                    onChange={e => handleCustomDateChange('to', e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:border-[#0056c6] focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 pt-2.5 border-t border-slate-150 dark:border-slate-850 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="px-3 py-1.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              >
+                Concluir
+              </button>
             </div>
           </div>
-
-          {/* Intervalo Personalizado */}
-          <div className="space-y-2 pt-2.5 border-t border-slate-150 dark:border-slate-850">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-              Intervalo Personalizado
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
-                  De:
-                </label>
-                <input
-                  type="date"
-                  value={value.from || ''}
-                  max={value.to || undefined}
-                  onChange={e => handleCustomDateChange('from', e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:border-[#0056c6] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 block mb-0.5">
-                  Até:
-                </label>
-                <input
-                  type="date"
-                  value={value.to || ''}
-                  min={value.from || undefined}
-                  onChange={e => handleCustomDateChange('to', e.target.value)}
-                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:border-[#0056c6] focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 pt-2.5 border-t border-slate-150 dark:border-slate-850 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="px-3 py-1.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              Concluir
-            </button>
-          </div>
-        </div>
+        </>,
+        document.body
       )}
     </div>
   );

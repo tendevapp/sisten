@@ -66,11 +66,14 @@ export default function MapaVisaoItem({ linhas, resumos, selecionados, onMarcar 
   return (
     <div className="space-y-2 rounded-b-2xl border border-t-0 border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
       {linhas.map(linha => {
+        // Por preço unitário — não pelo total da célula, que premiaria quem
+        // cotou menos unidades que a RM pediu (mesmo raciocínio de `melhor`
+        // em mapaCotacao.ts).
         const cotadas = linha.celulas
-          .filter(c => c.custo.comparavel != null)
-          .sort((a, b) => (a.custo.comparavel ?? 0) - (b.custo.comparavel ?? 0));
+          .filter(c => c.custo.unitarioComparavel != null)
+          .sort((a, b) => (a.custo.unitarioComparavel ?? 0) - (b.custo.unitarioComparavel ?? 0));
         const semCotacao = linha.celulas.length === 0;
-        const maiorValor = cotadas.length ? Math.max(...cotadas.map(c => c.custo.comparavel ?? 0)) : 0;
+        const maiorValor = cotadas.length ? Math.max(...cotadas.map(c => c.custo.unitarioComparavel ?? 0)) : 0;
 
         return (
           <div key={linha.key} className="rounded-xl border border-slate-100 p-3 dark:border-slate-800/70">
@@ -83,7 +86,7 @@ export default function MapaVisaoItem({ linhas, resumos, selecionados, onMarcar 
                 {linha.qtdSolicitada != null && <span>{formatQtd(linha.qtdSolicitada)} {linha.unidade || ''}</span>}
                 {linha.dispersao != null && linha.dispersao > 0 && (
                   <span className="font-medium text-amber-600 dark:text-amber-400">
-                    diferença entre melhor e pior: {formatBRL(linha.dispersao)}
+                    diferença entre melhor e pior (por unidade): {formatBRL(linha.dispersao)}
                   </span>
                 )}
               </div>
@@ -102,7 +105,7 @@ export default function MapaVisaoItem({ linhas, resumos, selecionados, onMarcar 
                     <BarraFornecedor
                       key={c.propostaKey}
                       nome={nomePorChave.get(c.propostaKey) ?? 'Fornecedor'}
-                      valor={c.custo.comparavel ?? 0}
+                      valor={c.custo.unitarioComparavel ?? 0}
                       maiorValor={maiorValor}
                       melhor={c.melhor}
                       marcado={marcado}

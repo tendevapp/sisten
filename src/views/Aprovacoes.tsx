@@ -223,7 +223,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   // Metricas e KPIs Executivos
   const kpis = useMemo(() => {
     const pendentes = comprasElegiveis.filter(r => r.status === 'pendente');
-    const aprovadas = comprasElegiveis.filter(r => ['aprovada', 'pedido_gerado', 'parcialmente_atendido', 'resolvido', 'fechado'].includes(r.status));
+    const aprovadas = comprasElegiveis.filter(r => ['aprovada', 'em_cotacao', 'pedido_emitido', 'concluida', 'resolvido', 'fechado'].includes(r.status));
     const emRevisao = comprasElegiveis.filter(r => r.status === 'em_revisao');
     const rejeitadas = comprasElegiveis.filter(r => r.status === 'rejeitada');
 
@@ -275,7 +275,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
     let lista = comprasElegiveis.filter(r => {
       if (abaAtiva === 'pendentes') return r.status === 'pendente';
       if (abaAtiva === 'aprovadas') {
-        return ['aprovada', 'pedido_gerado', 'parcialmente_atendido', 'resolvido', 'fechado'].includes(r.status);
+        return ['aprovada', 'em_cotacao', 'pedido_emitido', 'concluida', 'resolvido', 'fechado'].includes(r.status);
       }
       if (abaAtiva === 'revisao') return r.status === 'em_revisao';
       if (abaAtiva === 'rejeitadas') return r.status === 'rejeitada';
@@ -515,7 +515,9 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
   // Acao de Redecisao / Alterar Parecer
   const abrirModalRedecisao = () => {
     if (!solicitacaoAtiva) return;
-    setNovoStatusDecisao(solicitacaoAtiva.status === 'aprovada' ? 'em_revisao' : 'aprovada');
+    setNovoStatusDecisao(
+      ['aprovada', 'em_cotacao', 'pedido_emitido'].includes(solicitacaoAtiva.status) ? 'em_revisao' : 'aprovada'
+    );
     setJustificativaRedecidir('');
     setErroRedecidir('');
     setModalRedecidirAberta(true);
@@ -1422,7 +1424,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                         #{solicitacaoAtiva.number}
                       </h2>
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                        solicitacaoAtiva.status === 'aprovada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' :
+                        ['aprovada', 'em_cotacao', 'pedido_emitido', 'concluida'].includes(solicitacaoAtiva.status) ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' :
                         solicitacaoAtiva.status === 'pendente' ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800' :
                         solicitacaoAtiva.status === 'em_revisao' ? 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800' :
                         'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
@@ -1518,7 +1520,7 @@ export default function Aprovacoes({ user, onNavigate }: Props) {
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-base font-mono tracking-tight truncate">#{solicitacaoAtiva.number}</h3>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                    solicitacaoAtiva.status === 'aprovada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' :
+                    ['aprovada', 'em_cotacao', 'pedido_emitido', 'concluida'].includes(solicitacaoAtiva.status) ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' :
                     solicitacaoAtiva.status === 'pendente' ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800' :
                     solicitacaoAtiva.status === 'em_revisao' ? 'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800' :
                     'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'

@@ -272,6 +272,11 @@ function CabecalhoFornecedor({
             abaixo do mínimo
           </Chip>
         )}
+        {resumo.valorDesconto != null && resumo.valorDesconto > 0 && (
+          <Chip tom="ok" title="Desconto identificado na cotação — já abatido do total abaixo.">
+            -{formatBRL(resumo.valorDesconto)} desconto
+          </Chip>
+        )}
       </div>
 
       <CampoFrete valor={resumo.frete} teorico={resumo.freteEhTeorico} onSalvar={onFrete} />
@@ -1233,7 +1238,7 @@ export default function MapaComparativo({
                       </div>
                       {linha.dispersao != null && linha.dispersao > 0 && (
                         <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                          entre a melhor e a pior oferta: <span className="font-semibold">{formatBRL(linha.dispersao)}</span>
+                          entre a melhor e a pior oferta (por unidade): <span className="font-semibold">{formatBRL(linha.dispersao)}</span>
                         </div>
                       )}
                     </td>

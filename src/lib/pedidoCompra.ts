@@ -68,11 +68,13 @@ export interface PedidoFornecedor {
   dadosBancariosPix: string | null;
   faturamentoMinimo: number | null;
   valorFrete: number | null;
+  /** Desconto que a proposta declara sobre o total — já abatido de `total`. */
+  valorDesconto: number | null;
   observacoesGerais: string | null;
   itens: ItemPedido[];
   /** Soma de `precoTotal` dos itens, sem frete. */
   subtotal: number;
-  /** `subtotal` + `valorFrete`. */
+  /** `subtotal` + `valorFrete` − `valorDesconto`. */
   total: number;
   /** Soma do frete teórico dos itens — o que a tabela da Bahia Sul prevê para trazer esta carga (FOB). */
   freteTeorico: number;
@@ -156,10 +158,11 @@ export function montarPedidosCompra(propostas: CotacaoPropostaDraft[], hojeISO?:
       dadosBancariosPix: p.dados_bancarios_pix,
       faturamentoMinimo: minimo,
       valorFrete,
+      valorDesconto: p.valor_desconto ?? null,
       observacoesGerais: p.observacoes_gerais,
       itens,
       subtotal,
-      total: subtotal + (valorFrete ?? 0),
+      total: subtotal + (valorFrete ?? 0) - (p.valor_desconto ?? 0),
       freteTeorico: itens.reduce((soma, it) => soma + (it.freteTeorico ?? 0), 0),
       custo: somarCustoCompra(custos),
       atingeFaturamentoMinimo: minimo == null || minimo === 0 ? null : subtotal >= minimo,

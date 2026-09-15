@@ -53,6 +53,11 @@ export const STATUS_LABEL_DEMANDA: Record<RequestStatus, string> = {
   fechado: 'Fechado',
   reaberto: 'Reaberto',
   cancelada: 'Cancelada',
+  // Andamento automático de compra (ver lib/statusAutomaticoCompra.ts) — não
+  // aparecem no quadro Jurídico, só entram aqui pra satisfazer o Record.
+  em_cotacao: 'Em Cotação',
+  pedido_emitido: 'Pedido Emitido',
+  concluida: 'Entregue',
 };
 
 /** Status relevantes ao ciclo de vida de um chamado — os que fazem sentido escolher no seletor de status da demanda. */

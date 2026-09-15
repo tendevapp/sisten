@@ -20,7 +20,7 @@
  * Nada importa de `db/`: camada pura, testada em `freteCotacao.test.ts`.
  */
 
-import { calcularFreteTabela, matchRotaTabelaFrete, mediaRotaPorUf } from './bahiasul';
+import { calcularFreteTabela, matchRotaTabelaFrete, mediaRotaPorUf, normalizarLocalidade } from './bahiasul';
 import type { FreteTabelaResultado, VeiculoDedicado } from './bahiasul';
 import type { CotacaoPropostaDraft, CotacaoPropostaItemDraft, TabelaFrete } from '../types';
 
@@ -37,6 +37,7 @@ export const PESO_LIMITE_FRACIONADO_KG = 3000;
 export type MotivoSemFrete =
   | 'nao_fob'
   | 'sem_origem'
+  | 'fornecedor_local'
   | 'rota_nao_encontrada'
   | 'sem_peso'
   | 'sem_tabela';
@@ -44,6 +45,7 @@ export type MotivoSemFrete =
 export const ROTULO_SEM_FRETE: Record<MotivoSemFrete, string> = {
   nao_fob: 'Frete por conta do fornecedor (CIF) — nada a simular.',
   sem_origem: 'A proposta não diz a cidade do fornecedor.',
+  fornecedor_local: 'Fornecedor já está em Jacobina — nada a simular.',
   rota_nao_encontrada: 'A cidade de origem não está na tabela da Bahia Sul, e a UF do fornecedor também não tem nenhuma rota cadastrada.',
   sem_peso: 'Nenhum item tem peso estimado.',
   sem_tabela: 'Tabela de frete da Bahia Sul não carregada.',
@@ -210,6 +212,15 @@ export function simularFreteCotacao(params: ParamsSimulacaoFrete): SimulacaoFret
   const cidade = (proposta.fornecedor_cidade ?? '').trim();
   if (!cidade) return semFrete('sem_origem', { destino });
   const origem = proposta.fornecedor_uf ? `${cidade}/${proposta.fornecedor_uf}` : cidade;
+
+  // Fornecedor já está na própria cidade de destino: não há carga para
+  // trazer de fora, e a tabela da Bahia Sul não tem (nem faria sentido ter)
+  // rota Jacobina → Jacobina. Sem este corte a busca de rota cai para a
+  // média das rotas da UF (mediaRotaPorUf) e devolve um frete teórico que
+  // não existe de verdade.
+  if (normalizarLocalidade(cidade).cidade === normalizarLocalidade(destino).cidade) {
+    return semFrete('fornecedor_local', { origem, destino });
+  }
 
   // Cidade cadastrada ganha sempre; sem ela, cai para a média das rotas da
   // UF do fornecedor — aproximação melhor que nenhum frete simulado, mas só

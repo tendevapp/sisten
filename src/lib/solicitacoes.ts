@@ -32,8 +32,15 @@ const PAPEIS_COMENTARIO_INTERNO = ['comprador', 'coordenador_suprimentos', 'aten
 export const podeComentarInternamente = (user: Profile): boolean =>
   user.roles.some(r => PAPEIS_COMENTARIO_INTERNO.includes(r));
 
-/** Status que contam como "em aberto" — o que a página lista por padrão. */
-const STATUS_ENCERRADOS: RequestStatus[] = ['fechado', 'cancelada', 'rejeitada', 'rascunho'];
+/**
+ * Status que contam como "em aberto" — o que a página lista por padrão.
+ *
+ * `concluida` (compra entregue, MIGO batida no SAP — ver
+ * `lib/statusAutomaticoCompra.ts`) entra aqui porque não existe um passo de
+ * fechamento manual depois dela, diferente de `resolvido` (chamado), que
+ * ainda espera a avaliação do solicitante antes de virar `fechado`.
+ */
+const STATUS_ENCERRADOS: RequestStatus[] = ['fechado', 'cancelada', 'rejeitada', 'rascunho', 'concluida'];
 
 export const estaEmAberto = (r: Request): boolean => !STATUS_ENCERRADOS.includes(r.status);
 
@@ -78,6 +85,9 @@ export function rotuloStatus(r: Request): string {
     fechado: 'Fechada',
     reaberto: 'Reaberta',
     cancelada: 'Cancelada',
+    em_cotacao: 'Em cotação',
+    pedido_emitido: 'Pedido emitido',
+    concluida: 'Entregue',
   };
   return rotulos[r.status] || r.status;
 }

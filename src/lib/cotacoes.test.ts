@@ -234,6 +234,7 @@ function propostaExtraidaBase(): PropostaExtraida {
     Cliente_Cidade_UF: null, Condicao_Pagamento: '30/60/90', Forma_Pagamento: 'Boleto',
     Prazo_Entrega: '15 dias úteis', Frete_Modalidade: 'CIF', Transportadora_Indicada: null,
     Faturamento_Minimo: null, Dados_Bancarios_PIX: null, Valor_Total_Orcamento: '1000.00',
+    Valor_Frete_Destacado: null, Valor_Desconto: null,
     Observacoes_Gerais: null,
     itens: [{
       Item_Numero: '1', Codigo_Produto: 'ABC', Descricao_Produto: 'Parafuso M8',
@@ -263,6 +264,22 @@ describe('normalizarProposta', () => {
     expect(draft.itens[0].peso_unitario_kg).toBe(0.25);
     expect(draft.itens[0].peso_origem).toBe('ia');
     expect(draft.itens[0].desconsiderado).toBe(false);
+  });
+
+  it('usa o frete destacado no texto e o desconto declarado, quando a IA os encontra', () => {
+    const draft = normalizarProposta({
+      ...propostaExtraidaBase(),
+      Valor_Frete_Destacado: '85,00',
+      Valor_Desconto: '50.00',
+    });
+    expect(draft.valor_frete).toBe(85);
+    expect(draft.valor_desconto).toBe(50);
+  });
+
+  it('sem frete nem desconto destacados no texto, os dois ficam null', () => {
+    const draft = normalizarProposta(propostaExtraidaBase());
+    expect(draft.valor_frete).toBeNull();
+    expect(draft.valor_desconto).toBeNull();
   });
 });
 
@@ -294,7 +311,7 @@ function propostaDraft(overrides: Partial<CotacaoPropostaDraft> = {}): CotacaoPr
     cliente_razao_social: null, cliente_cnpj: null, cliente_inscricao_estadual: null, cliente_cidade: null, cliente_uf: null,
     condicao_pagamento: '30/60/90', forma_pagamento: null, prazo_entrega_texto: '15 dias', prazo_entrega_dias: 15,
     frete_modalidade: 'CIF', transportadora_indicada: null, faturamento_minimo: null, dados_bancarios_pix: null,
-    valor_total_orcamento: 1000, valor_frete: null, observacoes_gerais: null,
+    valor_total_orcamento: 1000, valor_frete: null, valor_desconto: null, observacoes_gerais: null,
     campos_faltantes: [], revisado: false, extracao_id: null, extraido_raw: {} as any,
     arquivo_storage_path: null, arquivo_mime_type: null, arquivo_tamanho_bytes: null,
     arquivo_markdown: null, arquivo_markdown_editado_em: null, arquivo_markdown_editado_por: null,
@@ -366,6 +383,14 @@ describe('conferirTotais', () => {
       itens: [itemDraft({ preco_total_item: 1000 })],
     }));
     expect(r?.divergenciaPct).toBeCloseTo(50);
+  });
+
+  it('desconto declarado abate da soma antes de comparar com o total informado', () => {
+    // Sem o desconto, a soma dos itens (1000) já bate com o orçamento
+    // (1000) — declarar um desconto de 100 sem o total informado refletir
+    // isso é que deveria acender o aviso.
+    const r = conferirTotais(propostaDraft({ valor_desconto: 100 }));
+    expect(r?.divergenciaPct).toBeCloseTo(10);
   });
 
   it('sem valor_total_orcamento -> informado null, sem chamar erro', () => {

@@ -316,7 +316,7 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
           </button>
         </div>
       ) : (
-        <div data-tour="formularios-grid" className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div data-tour="formularios-grid" className="grid grid-cols-3 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {modulosFiltrados.map((modulo) => {
             const IconComponent = modulo.icon;
             const disponivel = Boolean(modulo.path);
@@ -325,24 +325,24 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
               <div
                 key={modulo.id}
                 onClick={() => handleAcessarModulo(modulo)}
-                className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 bg-white p-3 sm:p-4 shadow-2xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${
+                className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200/90 bg-white p-2 sm:p-4 shadow-2xs transition-all duration-200 cursor-pointer hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${
                   modulo.corBordaHover
                 }`}
               >
-                <div className="space-y-2 sm:space-y-3">
+                <div className="space-y-1.5 sm:space-y-3">
                   {/* Linha Superior: Ícone à esquerda + Badge de Status à direita */}
-                  <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                  <div className="flex items-center justify-between gap-1 sm:gap-2">
                     <div
-                      className={`flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl transition-transform duration-200 group-hover:scale-105 ${
+                      className={`flex h-7 w-7 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl transition-transform duration-200 group-hover:scale-105 ${
                         modulo.corIcone
                       }`}
                     >
-                      <IconComponent className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <IconComponent className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                     </div>
 
                     {modulo.badge && (
                       <span
-                        className={`rounded-full px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold truncate max-w-[90px] sm:max-w-none ${
+                        className={`rounded-full px-1 sm:px-2.5 py-0.5 text-[8px] sm:text-[10px] font-bold truncate max-w-[55px] sm:max-w-none ${
                           modulo.badgeCor || 'bg-slate-100 text-slate-700'
                         }`}
                       >
@@ -354,11 +354,11 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
                   {/* Bloco de Título com Largura Total (sem truncar) */}
                   <div>
                     {modulo.codigo && (
-                      <p className="text-[8px] sm:text-[10px] font-mono font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-0.5 truncate">
+                      <p className="text-[7px] sm:text-[10px] font-mono font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase mb-0.5 truncate">
                         {modulo.codigo}
                       </p>
                     )}
-                    <h2 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors dark:text-slate-100 dark:group-hover:text-blue-400 leading-tight sm:leading-snug">
+                    <h2 className="text-[11px] sm:text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors dark:text-slate-100 dark:group-hover:text-blue-400 leading-tight sm:leading-snug line-clamp-2 sm:line-clamp-none">
                       {modulo.label}
                     </h2>
                   </div>
@@ -370,24 +370,24 @@ export default function Formularios({ user, onNavigate }: FormulariosProps) {
                 </div>
 
                 {/* Rodapé Compacto com Ação e Seta */}
-                <div className="mt-2.5 sm:mt-4 flex items-center justify-between border-t border-slate-100 pt-2 sm:pt-2.5 dark:border-slate-800/80">
+                <div className="mt-2 sm:mt-4 flex items-center justify-between border-t border-slate-100 pt-1.5 sm:pt-2.5 dark:border-slate-800/80">
                   <span
-                    className={`inline-flex items-center text-[10px] sm:text-xs font-semibold ${
+                    className={`inline-flex items-center text-[9px] sm:text-xs font-semibold ${
                       disponivel
                         ? 'text-blue-600 dark:text-blue-400 group-hover:underline'
                         : 'text-slate-400 dark:text-slate-500'
                     }`}
                   >
-                    {disponivel ? 'Acessar' : 'Em breve'}
+                    <span className="hidden xs:inline sm:inline">{disponivel ? 'Acessar' : 'Em breve'}</span>
                   </span>
                   <div
-                    className={`flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md sm:rounded-lg transition-all duration-200 ${
+                    className={`flex h-4 w-4 sm:h-6 sm:w-6 items-center justify-center rounded-md sm:rounded-lg transition-all duration-200 ${
                       disponivel
                         ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:bg-blue-950/80 dark:text-blue-400 dark:group-hover:bg-blue-600 dark:group-hover:text-white'
                         : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
                     }`}
                   >
-                    <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
                   </div>
                 </div>
               </div>

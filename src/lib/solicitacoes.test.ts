@@ -28,7 +28,7 @@ const {
   exportarSolicitacoes, classificarEventoHistorico, foiEditadaAposAprovacao,
   formatarObservacaoItemGenerico, desformatarObservacaoItemGenerico,
   ehItemImobilizado, marcarObservacaoImobilizado, temMarcaImobilizado, MARCA_IMOBILIZADO,
-  temAvisoAlmoxarifado, carimbarAvisoAlmoxarifado,
+  temAvisoAlmoxarifado, carimbarAvisoAlmoxarifado, estaEmAberto,
 } = await import('./solicitacoes');
 const {
   podeAlterarDecisao, podeCancelar,
@@ -138,9 +138,15 @@ describe('podeAlterarDecisao', () => {
     expect(podeAlterarDecisao({ ...req, status: 'cancelada' }, gestorAprovador)).toBe(true);
   });
 
-  it('nao permite alterar decisao se a solicitacao ja estiver fechada/resolvida', () => {
+  it('nao permite alterar decisao se a solicitacao ja estiver fechada/resolvida/entregue', () => {
     expect(podeAlterarDecisao({ ...req, status: 'fechado' }, gestorAprovador)).toBe(false);
     expect(podeAlterarDecisao({ ...req, status: 'resolvido' }, gestorAprovador)).toBe(false);
+    expect(podeAlterarDecisao({ ...req, status: 'concluida' }, gestorAprovador)).toBe(false);
+  });
+
+  it('permite alterar decisao enquanto a compra avanca sozinha no SAP (em_cotacao/pedido_emitido)', () => {
+    expect(podeAlterarDecisao({ ...req, status: 'em_cotacao' }, gestorAprovador)).toBe(true);
+    expect(podeAlterarDecisao({ ...req, status: 'pedido_emitido' }, gestorAprovador)).toBe(true);
   });
 
   it('nao permite que solicitante comum altere a decisao', () => {
@@ -173,6 +179,21 @@ describe('podeCancelar', () => {
   it('nao permite cancelar solicitacao que ja esta cancelada ou fechada', () => {
     expect(podeCancelar({ ...req, status: 'cancelada' }, solicitante)).toBe(false);
     expect(podeCancelar({ ...req, status: 'fechado' }, admin)).toBe(false);
+  });
+
+  it('nao permite cancelar compra ja entregue (MIGO batida no SAP)', () => {
+    expect(podeCancelar({ ...req, status: 'concluida' }, admin)).toBe(false);
+  });
+});
+
+describe('estaEmAberto', () => {
+  it('compra entregue (concluida) conta como encerrada — sem passo manual de fechamento', () => {
+    expect(estaEmAberto({ ...req, status: 'concluida' })).toBe(false);
+  });
+
+  it('compra em cotação ou com pedido emitido ainda conta como em aberto', () => {
+    expect(estaEmAberto({ ...req, status: 'em_cotacao' })).toBe(true);
+    expect(estaEmAberto({ ...req, status: 'pedido_emitido' })).toBe(true);
   });
 });
 

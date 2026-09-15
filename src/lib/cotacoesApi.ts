@@ -426,6 +426,11 @@ function propostaParaPayload(processoId: string, p: CotacaoPropostaDraft) {
     faturamento_minimo: p.faturamento_minimo,
     dados_bancarios_pix: p.dados_bancarios_pix,
     valor_total_orcamento: p.valor_total_orcamento,
+    // Antes só era preenchido depois de salva, pelo mapa comparativo
+    // (`salvarFreteProposta`); agora a extração por IA pode já trazer o
+    // frete destacado no texto, então entra no insert desde o começo.
+    valor_frete: p.valor_frete,
+    valor_desconto: p.valor_desconto,
     observacoes_gerais: p.observacoes_gerais,
     campos_faltantes: p.campos_faltantes,
     revisado: true,
