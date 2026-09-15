@@ -43,8 +43,9 @@ import { formatBRL, formatDateBR } from '../../lib/format';
 import { numeroContratoPO } from '../../lib/contratoPedido';
 import { TableBody, TableEmpty, TableHeadRow, TableShell, TableSkeleton, Td, Th, Tr } from '../ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
+import MultiSelectFilter from '../ui/MultiSelectFilter';
 import {
-  ItemDiligenciamento, dataValida, indexarCidadesPorCodigo, montarItens,
+  ItemDiligenciamento, dataValida, filtrarItensDiligenciamento, indexarCidadesPorCodigo, montarItens,
   normalizarChaveTransportadora, resolverPrazoDias, somarDiasCorridos, transportadorasConhecidas,
 } from '../../lib/diligenciamento';
 import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigApi';
@@ -68,6 +69,8 @@ interface Props {
   registros: EnrichedSAPRecord[];
   chegadasMap: Map<string, AlmoxarifadoChegada>;
   user: Profile;
+  promessaFilter?: { from?: string; to?: string; preset?: string };
+  onCountChange?: (count: number) => void;
 }
 
 /** Valor sentinela do filtro: itens que ainda não têm transportadora atribuída. */
@@ -80,7 +83,7 @@ const campo: React.CSSProperties = {
   outlineColor: 'var(--brand)',
 };
 
-export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, user }: Props) {
+export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, user, promessaFilter, onCountChange }: Props) {
   const toast = useToast();
 
   const [diligItensRaw, setDiligItensRaw] = useState<DiligenciamentoItem[]>([]);
@@ -99,12 +102,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const [enviandoColeta, setEnviandoColeta] = useState(false);
 
   /**
-   * Filtro por transportadora — a lista de coleta é montada por transportadora
-   * ("um caminhão, uma viagem"), então o comprador primeiro recorta a fila de
-   * quem vai buscar e só então marca os itens. `SEM_TRANSPORTADORA` é o recorte
-   * do que ainda não foi atribuído a ninguém.
+   * Filtro por transportadora com seleção múltipla — o comprador pode marcar
+   * uma ou várias transportadoras (ou "Sem transportadora").
+   * Vazio (Set vazio) = Todas as transportadoras.
    */
-  const [filtroTransp, setFiltroTransp] = useState('');
+  const [transpFilter, setTranspFilter] = useState<Set<string>>(new Set());
 
   const cidades = useMemo(() => localDb.getCidadeForn(), []);
   const cidadesPorCodigo = useMemo(() => indexarCidadesPorCodigo(cidades), [cidades]);
@@ -182,17 +184,26 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return a.docCompra.localeCompare(b.docCompra);
   }), [itens]);
 
+  const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
   /**
-   * Recorte visível = fila ordenada filtrada por transportadora. Tudo abaixo
-   * (resumo, seleção, tabela e cartões) trabalha em cima dele, para que
-   * "selecionar todos" nunca marque um item que o comprador não está vendo.
+   * Recorte visível = fila ordenada filtrada por transportadora (seleção múltipla)
+   * e por promessa/previsão de entrega. Tudo abaixo (resumo, seleção, tabela e
+   * cartões) trabalha em cima dele, para que "selecionar todos" nunca marque
+   * um item que o comprador não está vendo.
    */
   const itensVisiveis = useMemo(() => {
-    if (!filtroTransp) return itensOrdenados;
-    if (filtroTransp === SEM_TRANSPORTADORA) return itensOrdenados.filter(i => !(i.transportadora || '').trim());
-    const chave = normalizarChaveTransportadora(filtroTransp);
-    return itensOrdenados.filter(i => normalizarChaveTransportadora(i.transportadora || '') === chave);
-  }, [itensOrdenados, filtroTransp]);
+    return filtrarItensDiligenciamento(itensOrdenados, {
+      transportadoras: transpFilter,
+      sentinelaSemTransportadora: SEM_TRANSPORTADORA,
+      promessa: promessaFilter,
+      hojeISO,
+    });
+  }, [itensOrdenados, transpFilter, promessaFilter, hojeISO]);
+
+  useEffect(() => {
+    onCountChange?.(itensVisiveis.length);
+  }, [itensVisiveis.length, onCountChange]);
 
   const itensPorRi = useMemo(() => new Map(itensVisiveis.map(i => [i.riPo, i])), [itensVisiveis]);
 
@@ -212,7 +223,10 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return Array.from(porChave.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [transportadorasCad, diligItensRaw]);
 
-  const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  /** Opções exibidas no filtro múltiplo de transportadora, incluindo a opção sentinela. */
+  const opcoesFiltroTransp = useMemo(() => {
+    return [SEM_TRANSPORTADORA, ...opcoesTransportadora];
+  }, [opcoesTransportadora]);
 
   const selecionaveis = useMemo(() => itensVisiveis.filter(i => !i.chegou), [itensVisiveis]);
   const todosSelecionados = selecionaveis.length > 0 && selecionaveis.every(i => selecionados.has(i.riPo));
@@ -446,25 +460,22 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           Previsão = remessa do pedido + prazo de trânsito por UF/transportadora. Editar aqui atualiza o Rastreio Compras.
         </p>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <label className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
-              Transportadora
-            </span>
-            <select
-              value={filtroTransp}
-              onChange={e => setFiltroTransp(e.target.value)}
-              className="h-8 rounded-lg border px-2 text-xs font-semibold cursor-pointer"
-              style={campo}
-            >
-              <option value="">Todas</option>
-              <option value={SEM_TRANSPORTADORA}>Sem transportadora</option>
-              {opcoesTransportadora.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </label>
+          <MultiSelectFilter
+            label="Transportadora"
+            icon={Truck}
+            allLabel="Todas as transportadoras"
+            options={opcoesFiltroTransp}
+            selected={transpFilter}
+            onChange={setTranspFilter}
+            renderOption={o => (o === SEM_TRANSPORTADORA ? 'Sem transportadora' : o)}
+            searchable={true}
+            panelClassName="w-80"
+            className="shrink-0 min-w-[200px]"
+          />
           <button
             type="button"
             onClick={() => setPrazosAberto(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
             style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' }}
           >
             <Settings2 className="h-3.5 w-3.5" /> Prazos de trânsito

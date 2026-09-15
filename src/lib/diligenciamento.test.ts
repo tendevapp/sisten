@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AlmoxarifadoChegada, CidadeForn, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte } from '../types';
 import {
-  agruparPorPo, filtrarPedidos, indexarCidadesPorCodigo, montarItens,
+  agruparPorPo, filtrarItensDiligenciamento, filtrarItensPorTransportadoras, filtrarPedidos,
+  indexarCidadesPorCodigo, itemAtendeFiltroPromessa, montarItens,
   normalizarChaveTransportadora, ordenarPedidos, pedidoVencido, resolverPrazoDias,
   somarDiasCorridos, transportadorasConhecidas, ufDoFornecedor,
 } from './diligenciamento';
@@ -264,5 +265,130 @@ describe('pedidoVencido', () => {
       [{ id: '1', uf: '', transportadora: '', dias_corridos: 1 }],
     ));
     expect(pedidoVencido(po, '2026-08-10')).toBe(false);
+  });
+});
+
+describe('filtrarItensPorTransportadoras', () => {
+  const criarItem = (riPo: string, transportadora: string) => ({
+    riPo,
+    ri: riPo,
+    docCompra: '4500001',
+    material: 'MAT-1',
+    descricao: 'Desc',
+    unidade: 'UN',
+    transportadora,
+    previsaoCalculada: null,
+    previsaoEfetiva: null,
+    chegou: false,
+  });
+
+  const itens = [
+    criarItem('1', 'Braspress'),
+    criarItem('2', 'TNT Mercúrio'),
+    criarItem('3', 'Bahia Sul'),
+    criarItem('4', ''), // Sem transportadora
+    criarItem('5', '   '), // Sem transportadora (espaços em branco)
+  ];
+
+  it('retorna todos os itens quando a seleção for vazia', () => {
+    expect(filtrarItensPorTransportadoras(itens, new Set())).toEqual(itens);
+    expect(filtrarItensPorTransportadoras(itens, new Set([]))).toHaveLength(5);
+  });
+
+  it('filtra por uma única transportadora ignorando maiúsculas e minúsculas', () => {
+    const res = filtrarItensPorTransportadoras(itens, new Set(['braspress']));
+    expect(res.map(i => i.riPo)).toEqual(['1']);
+  });
+
+  it('filtra por múltiplas transportadoras selecionadas', () => {
+    const res = filtrarItensPorTransportadoras(itens, new Set(['Braspress', 'Bahia Sul']));
+    expect(res.map(i => i.riPo)).toEqual(['1', '3']);
+  });
+
+  it('filtra itens sem transportadora com o valor sentinela padrão __sem__', () => {
+    const res = filtrarItensPorTransportadoras(itens, new Set(['__sem__']));
+    expect(res.map(i => i.riPo)).toEqual(['4', '5']);
+  });
+
+  it('permite combinar itens sem transportadora com transportadoras selecionadas', () => {
+    const res = filtrarItensPorTransportadoras(itens, new Set(['__sem__', 'TNT Mercúrio']));
+    expect(res.map(i => i.riPo)).toEqual(['2', '4', '5']);
+  });
+
+  it('ignora variações de espaços adicionais na comparação', () => {
+    const res = filtrarItensPorTransportadoras(itens, new Set(['  TNT   Mercúrio  ']));
+    expect(res.map(i => i.riPo)).toEqual(['2']);
+  });
+});
+
+describe('itemAtendeFiltroPromessa e filtrarItensDiligenciamento', () => {
+  const itemAbril = {
+    riPo: 'po-abril',
+    ri: 'r-abril',
+    docCompra: '4100445221',
+    material: '1218465',
+    descricao: 'Gas Dioxido Carbono',
+    unidade: 'UN',
+    transportadora: 'Braspress',
+    previsaoCalculada: '2026-04-26',
+    previsaoEfetiva: '2026-04-26',
+    chegou: false,
+  };
+
+  const itemAgosto = {
+    riPo: 'po-agosto',
+    ri: 'r-agosto',
+    docCompra: '4100445999',
+    material: '1218999',
+    descricao: 'Outro Material',
+    unidade: 'UN',
+    transportadora: 'Bahia Sul',
+    previsaoCalculada: '2026-08-15',
+    previsaoEfetiva: '2026-08-15',
+    chegou: false,
+  };
+
+  const itemSemData = {
+    riPo: 'po-sem-data',
+    ri: 'r-sem-data',
+    docCompra: '4100445000',
+    material: '1218000',
+    descricao: 'Item sem data',
+    unidade: 'UN',
+    transportadora: '',
+    previsaoCalculada: null,
+    previsaoEfetiva: null,
+    chegou: false,
+  };
+
+  const lista = [itemAbril, itemAgosto, itemSemData];
+
+  it('descarta itens fora do intervalo de promessa (ex.: previsão em abril quando filtro é ago-set)', () => {
+    const filtroAgoSet = { from: '2026-08-03', to: '2026-09-15' };
+    expect(itemAtendeFiltroPromessa(itemAbril, filtroAgoSet)).toBe(false);
+    expect(itemAtendeFiltroPromessa(itemAgosto, filtroAgoSet)).toBe(true);
+    expect(itemAtendeFiltroPromessa(itemSemData, filtroAgoSet)).toBe(false);
+
+    const filtrados = filtrarItensDiligenciamento(lista, { promessa: filtroAgoSet });
+    expect(filtrados.map(i => i.riPo)).toEqual(['po-agosto']);
+  });
+
+  it('filtra corretamente itens com preset sem_data e com_data', () => {
+    expect(filtrarItensDiligenciamento(lista, { promessa: { preset: 'sem_data' } }).map(i => i.riPo)).toEqual(['po-sem-data']);
+    expect(filtrarItensDiligenciamento(lista, { promessa: { preset: 'com_data' } }).map(i => i.riPo)).toEqual(['po-abril', 'po-agosto']);
+  });
+
+  it('combina seleção múltipla de transportadora com filtro de promessa', () => {
+    const filtrados = filtrarItensDiligenciamento(lista, {
+      transportadoras: new Set(['Bahia Sul']),
+      promessa: { from: '2026-08-01', to: '2026-08-31' },
+    });
+    expect(filtrados.map(i => i.riPo)).toEqual(['po-agosto']);
+
+    const semMatch = filtrarItensDiligenciamento(lista, {
+      transportadoras: new Set(['Braspress']),
+      promessa: { from: '2026-08-01', to: '2026-08-31' },
+    });
+    expect(semMatch).toHaveLength(0);
   });
 });

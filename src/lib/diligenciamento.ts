@@ -389,3 +389,114 @@ export const pedidoVencido = (p: PedidoDiligenciamento, hojeISO: string): boolea
 
 export const ufsDisponiveis = (pedidos: PedidoDiligenciamento[]): string[] =>
   Array.from(new Set(pedidos.map(p => p.uf).filter(Boolean))).sort();
+
+/**
+ * Filtra itens de diligenciamento por uma seleção múltipla de transportadoras.
+ *
+ * - Se `transportadorasSelecionadas` for vazio (Set vazio), retorna a lista inteira sem restrições.
+ * - Suporta valor sentinela (padrão '__sem__') para identificar itens que ainda não
+ *   possuem transportadora atribuída.
+ * - Para itens com transportadora, compara através de chave normalizada (insensível
+ *   a caixa e espaços duplicados).
+ */
+export function filtrarItensPorTransportadoras(
+  itens: ItemDiligenciamento[],
+  transportadorasSelecionadas: Set<string>,
+  sentinelaSemTransportadora = '__sem__',
+): ItemDiligenciamento[] {
+  if (!transportadorasSelecionadas || transportadorasSelecionadas.size === 0) {
+    return itens;
+  }
+
+  const incluiSem = transportadorasSelecionadas.has(sentinelaSemTransportadora);
+  const chavesSelecionadas = new Set<string>();
+  for (const t of transportadorasSelecionadas) {
+    if (t !== sentinelaSemTransportadora) {
+      chavesSelecionadas.add(normalizarChaveTransportadora(t));
+    }
+  }
+
+  return itens.filter(i => {
+    const nome = (i.transportadora || '').trim();
+    if (!nome) return incluiSem;
+    return chavesSelecionadas.has(normalizarChaveTransportadora(nome));
+  });
+}
+
+export interface FiltroPromessaValor {
+  from?: string;
+  to?: string;
+  preset?: string;
+}
+
+/**
+ * Verifica se um item de diligenciamento atende ao filtro de data de promessa/previsão de entrega.
+ * Opera sobre a `previsaoEfetiva` calculada do item (a mesma data exibida na coluna Remessa & Previsão).
+ */
+export function itemAtendeFiltroPromessa(
+  item: ItemDiligenciamento,
+  filtro?: FiltroPromessaValor | null,
+  hojeISO = new Date().toISOString().slice(0, 10),
+): boolean {
+  if (!filtro) return true;
+  const { from, to, preset } = filtro;
+  const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
+  if (!isActive) return true;
+
+  const data = item.previsaoEfetiva;
+
+  if (preset === 'sem_data') {
+    return !data;
+  }
+  if (preset === 'com_data' && !from && !to) {
+    return Boolean(data);
+  }
+  if (preset === 'atrasadas') {
+    if (!data) return false;
+    return !item.chegou && data < hojeISO;
+  }
+
+  if ((from || to) && !data) {
+    return false;
+  }
+
+  if (from && data < from) return false;
+  if (to && data > to) return false;
+
+  return true;
+}
+
+/**
+ * Filtra a lista de itens de diligenciamento por transportadoras (seleção múltipla)
+ * e opcionalmente por intervalo de promessa/previsão de entrega.
+ */
+export function filtrarItensDiligenciamento(
+  itens: ItemDiligenciamento[],
+  filtros: {
+    transportadoras?: Set<string>;
+    sentinelaSemTransportadora?: string;
+    promessa?: FiltroPromessaValor | null;
+    hojeISO?: string;
+  },
+): ItemDiligenciamento[] {
+  let resultado = itens;
+
+  if (filtros.transportadoras && filtros.transportadoras.size > 0) {
+    resultado = filtrarItensPorTransportadoras(
+      resultado,
+      filtros.transportadoras,
+      filtros.sentinelaSemTransportadora,
+    );
+  }
+
+  if (filtros.promessa) {
+    const { from, to, preset } = filtros.promessa;
+    const isActive = (preset && preset !== 'all') || Boolean(from) || Boolean(to);
+    if (isActive) {
+      const hoje = filtros.hojeISO || new Date().toISOString().slice(0, 10);
+      resultado = resultado.filter(item => itemAtendeFiltroPromessa(item, filtros.promessa, hoje));
+    }
+  }
+
+  return resultado;
+}

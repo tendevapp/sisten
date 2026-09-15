@@ -600,6 +600,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [tipoItemFilter, setTipoItemFilter] = useState<TipoItemFilter>('todos');
   const [prioridadeFilter, setPrioridadeFilter] = useState<Set<string>>(new Set());
   const [promessaFilter, setPromessaFilter] = useState<DateRangeValue>({ from: '', to: '', preset: 'all' });
+  const [semMigoCount, setSemMigoCount] = useState<number | null>(null);
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
   const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
@@ -1341,7 +1342,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   // Obtém a data de promessa de entrega ativa do item (edição pendente ou persistida)
   const getPromessaDate = useCallback((ri: string, record: EnrichedSAPRecord): string => {
-    return (dateInputState[ri] !== undefined ? dateInputState[ri] : (record.data_entrega_prevista || '')).trim();
+    if (dateInputState[ri] !== undefined) return dateInputState[ri].trim();
+    if (record.data_entrega_confirmada) return record.data_entrega_confirmada.trim();
+    if (record.data_entrega_prevista) return record.data_entrega_prevista.trim();
+    if (record.data_entrega_sap) return promessaAutomatica(record).trim();
+    return '';
   }, [dateInputState]);
 
   // Verifica se o item atende ao filtro de promessa de entrega
@@ -1390,7 +1395,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         const nivel = prioridadesMap.get(r.ri)?.nivel;
         if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
       }
-      if (!matchesPromessaFilter(r.ri, r)) return false;
+      if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
       return true;
     };
 
@@ -1428,7 +1433,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
       prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
     };
-  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter]);
+  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, poFilter]);
 
   // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
   // selecionado depois), ele é descartado em vez de zerar a listagem.
@@ -1465,7 +1470,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           const nivel = prioridadesMap.get(r.ri)?.nivel;
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
         }
-        if (!matchesPromessaFilter(r.ri, r)) return false;
+        if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
         if (q) {
           const inRecord =
             (r.material_code || '').toLowerCase().includes(q) ||
@@ -2386,10 +2391,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         <div data-tour="compras-lista-rms" className="space-y-4">
           {/* Summary / Expand Toggles */}
           <div className="flex items-center justify-between text-xs text-slate-550 dark:text-slate-455 px-1 font-bold">
-            <span>Localizados {filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
+            <span>Localizados {poFilter === 'Sem MIGO' && semMigoCount !== null ? semMigoCount : filteredItemCount} item(ns) em aberto de {totalItemCount} totais</span>
           </div>
           {modifiedRis.length > 0 && (
-            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-300 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20">
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-amber-300 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-955/20">
               <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
                 {modifiedRis.length} {modifiedRis.length === 1 ? 'item com alteração não salva' : 'itens com alterações não salvas'}
               </span>
@@ -2488,6 +2493,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               registros={filteredFlatItems.map(({ item }) => item.record)}
               chegadasMap={chegadasMap}
               user={user}
+              promessaFilter={promessaFilter}
+              onCountChange={setSemMigoCount}
             />
           ) : (
           <>
