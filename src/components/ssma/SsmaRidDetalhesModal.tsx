@@ -29,12 +29,30 @@ import {
   Camera,
   Paperclip,
   History,
+  Target,
+  AtSign,
+  UserPlus,
+  Sparkles,
+  Save,
 } from 'lucide-react';
 import type {
-  Profile, SsmaRidDesvio, SsmaRidStatus, SsmaRidFoto, SsmaRidAtualizacao,
+  Profile,
+  SsmaRidDesvio,
+  SsmaRidStatus,
+  SsmaRidFoto,
+  SsmaRidAtualizacao,
+  SsmaRidPlanoAcao,
+  SsmaPlanoAcaoStatus,
 } from '../../types';
 import {
-  atualizarStatusDesvioRid, listarAtualizacoesRid, registrarAtualizacaoRid,
+  atualizarStatusDesvioRid,
+  listarAtualizacoesRid,
+  registrarAtualizacaoRid,
+  atualizarPlanoAcaoRid,
+  buscarUsuariosParaMencao,
+  calcularDiasEmAberto,
+  type UsuarioMencao,
+  SETORES_SSMA,
 } from '../../lib/ssmaApi';
 import { canEditDesvioRid, canDeleteDesvioRid } from '../../lib/pages';
 import { useToast } from '../ui/Toast';
@@ -49,6 +67,10 @@ interface SsmaRidDetalhesModalProps {
   onStatusChange?: (id: string, novoStatus: SsmaRidStatus) => void;
   /** Avisa a lista que o RID mudou (fotos novas, tratamento em andamento). */
   onAtualizacaoLancada?: (id: string) => void;
+  /** Callback para quando o plano de ação for atualizado ou concluído */
+  onPlanoAcaoAtualizado?: (desvioId: string, planoAcao: SsmaRidPlanoAcao) => void;
+  /** Callback opcional para navegar até a aba de Planos de Ação */
+  onVerPlanosAcao?: () => void;
 }
 
 export default function SsmaRidDetalhesModal({
@@ -59,6 +81,8 @@ export default function SsmaRidDetalhesModal({
   onRestore,
   onStatusChange,
   onAtualizacaoLancada,
+  onPlanoAcaoAtualizado,
+  onVerPlanosAcao,
 }: SsmaRidDetalhesModalProps) {
   const toast = useToast();
   const [fotoAmpliada, setFotoAmpliada] = useState<{ url: string; tipo?: 'antes' | 'depois' } | null>(null);
@@ -67,6 +91,209 @@ export default function SsmaRidDetalhesModal({
   const [novoStatus, setNovoStatus] = useState<SsmaRidStatus>(desvio.status);
   const [parecerTexto, setParecerTexto] = useState(desvio.parecer_ssma || '');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+
+  // --- Plano de Ação de Fechamento do RID ---
+  const planoExistente = desvio.plano_acao;
+  const AREALIST_PADRAO = [
+    'MANUTENÇÃO MECÂNICA',
+    'MANUTENÇÃO ELÉTRICA',
+    'PRODUÇÃO',
+    'ENGENHARIA',
+    'QUALIDADE',
+    'SUPRIMENTOS',
+    'SSMA',
+    'LOGÍSTICA',
+    'FACILITIES',
+    'ALMOXARIFADO',
+    'TI',
+    'RH',
+    'ADMINISTRATIVO',
+  ];
+
+  const [areaDestino, setAreaDestino] = useState(() => {
+    if (!planoExistente?.area_destino) return '';
+    return AREALIST_PADRAO.includes(planoExistente.area_destino.toUpperCase())
+      ? planoExistente.area_destino.toUpperCase()
+      : 'OUTRO';
+  });
+  const [areaPersonalizada, setAreaPersonalizada] = useState(() => {
+    if (!planoExistente?.area_destino) return '';
+    return AREALIST_PADRAO.includes(planoExistente.area_destino.toUpperCase())
+      ? ''
+      : planoExistente.area_destino;
+  });
+
+  const [descricaoDemanda, setDescricaoDemanda] = useState(
+    planoExistente?.descricao_demanda || desvio.acao_proposta || ''
+  );
+  const [responsaveisMencionados, setResponsaveisMencionados] = useState<string[]>(
+    planoExistente?.responsaveis_mencionados || []
+  );
+  const [prazoPlano, setPrazoPlano] = useState(planoExistente?.prazo || '');
+  const [statusPlano, setStatusPlano] = useState<SsmaPlanoAcaoStatus>(
+    planoExistente?.status || (desvio.status === 'CONCLUIDO' ? 'CONCLUIDO' : 'PENDENTE')
+  );
+  const [conclusaoTexto, setConclusaoTexto] = useState(planoExistente?.conclusao || '');
+  const [salvandoPlano, setSalvandoPlano] = useState(false);
+
+  // Contagem de dias em aberto da demanda do RID
+  const infoDiasEmAberto = useMemo(() => {
+    const dataRef = desvio.data || desvio.data_registro || desvio.created_at;
+    const dataFim =
+      statusPlano === 'CONCLUIDO'
+        ? planoExistente?.concluido_em || new Date().toISOString()
+        : null;
+    return calcularDiasEmAberto(dataRef, dataFim);
+  }, [desvio.data, desvio.data_registro, desvio.created_at, statusPlano, planoExistente?.concluido_em]);
+
+  // Auto-complete de menções com @
+  const [usuariosParaMencao, setUsuariosParaMencao] = useState<UsuarioMencao[]>([]);
+  const [mencaoFiltro, setMencaoFiltro] = useState('');
+  const [popoverMencaoAberto, setPopoverMencaoAberto] = useState(false);
+  const [dropdownMencaoManual, setDropdownMencaoManual] = useState(false);
+  const [buscaMencaoManual, setBuscaMencaoManual] = useState('');
+  const textareaDemandaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    buscarUsuariosParaMencao()
+      .then(setUsuariosParaMencao)
+      .catch((err) => console.warn('Erro ao buscar usuários para menção:', err));
+  }, []);
+
+  const handleDemandaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setDescricaoDemanda(val);
+
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = val.slice(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+    if (lastAtIndex !== -1 && !textBeforeCursor.slice(lastAtIndex).includes(' ')) {
+      setMencaoFiltro(textBeforeCursor.slice(lastAtIndex + 1));
+      setPopoverMencaoAberto(true);
+    } else {
+      setPopoverMencaoAberto(false);
+    }
+  };
+
+  const selecionarUsuarioMencao = (usuario: UsuarioMencao) => {
+    const nomeLimpo = usuario.nome.trim().toUpperCase();
+    if (!responsaveisMencionados.includes(nomeLimpo)) {
+      setResponsaveisMencionados((prev) => [...prev, nomeLimpo]);
+    }
+
+    if (textareaDemandaRef.current) {
+      const el = textareaDemandaRef.current;
+      const cursorPos = el.selectionStart;
+      const textBeforeCursor = descricaoDemanda.slice(0, cursorPos);
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+      if (lastAtIndex !== -1) {
+        const textAfterCursor = descricaoDemanda.slice(cursorPos);
+        const novoTexto = `${textBeforeCursor.slice(0, lastAtIndex)}@${nomeLimpo} ${textAfterCursor}`;
+        setDescricaoDemanda(novoTexto);
+        setTimeout(() => {
+          el.focus();
+          const novaPosicao = lastAtIndex + nomeLimpo.length + 2;
+          el.setSelectionRange(novaPosicao, novaPosicao);
+        }, 0);
+      }
+    }
+
+    setPopoverMencaoAberto(false);
+    setMencaoFiltro('');
+  };
+
+  const adicionarResponsavelDireto = (usuario: UsuarioMencao) => {
+    const nomeLimpo = usuario.nome.trim().toUpperCase();
+    if (!responsaveisMencionados.includes(nomeLimpo)) {
+      setResponsaveisMencionados((prev) => [...prev, nomeLimpo]);
+    }
+    setDropdownMencaoManual(false);
+    setBuscaMencaoManual('');
+  };
+
+  const removerResponsavelMencao = (nome: string) => {
+    setResponsaveisMencionados((prev) => prev.filter((r) => r !== nome));
+  };
+
+  const usuariosFiltradosPopover = usuariosParaMencao.filter((u) => {
+    if (!mencaoFiltro.trim()) return true;
+    const termo = mencaoFiltro.toLowerCase();
+    return (
+      u.nome.toLowerCase().includes(termo) ||
+      (u.cargo && u.cargo.toLowerCase().includes(termo)) ||
+      (u.setor && u.setor.toLowerCase().includes(termo))
+    );
+  }).slice(0, 8);
+
+  const usuariosFiltradosManual = usuariosParaMencao.filter((u) => {
+    if (!buscaMencaoManual.trim()) return true;
+    const termo = buscaMencaoManual.toLowerCase();
+    return (
+      u.nome.toLowerCase().includes(termo) ||
+      (u.cargo && u.cargo.toLowerCase().includes(termo)) ||
+      (u.setor && u.setor.toLowerCase().includes(termo))
+    );
+  }).slice(0, 15);
+
+  const handleSalvarPlanoAcao = async (marcarConcluido = false) => {
+    const areaFinal = areaDestino === 'OUTRO' ? areaPersonalizada.trim().toUpperCase() : areaDestino.trim().toUpperCase();
+    if (!areaFinal) {
+      toast.warning('Informe para qual área é a demanda do plano de ação.');
+      return;
+    }
+    if (!descricaoDemanda.trim()) {
+      toast.warning('Descreva a demanda ou ação necessária para fechamento.');
+      return;
+    }
+    if (marcarConcluido && !conclusaoTexto.trim()) {
+      toast.warning('Para concluir o plano e fechar o RID, descreva a conclusão realizada.');
+      return;
+    }
+
+    setSalvandoPlano(true);
+    try {
+      const novoStatusPlano: SsmaPlanoAcaoStatus = marcarConcluido ? 'CONCLUIDO' : statusPlano;
+      const novoStatusDesvio = marcarConcluido ? 'CONCLUIDO' : undefined;
+
+      const payloadPlano: SsmaRidPlanoAcao = {
+        area_destino: areaFinal,
+        descricao_demanda: descricaoDemanda.trim(),
+        responsaveis_mencionados: responsaveisMencionados,
+        prazo: prazoPlano || null,
+        status: novoStatusPlano,
+        conclusao: conclusaoTexto.trim() || null,
+        concluido_em: novoStatusPlano === 'CONCLUIDO'
+          ? (planoExistente?.concluido_em || new Date().toISOString())
+          : null,
+        concluido_por_nome: novoStatusPlano === 'CONCLUIDO'
+          ? (planoExistente?.concluido_por_nome || user.name)
+          : null,
+        atualizado_em: new Date().toISOString(),
+        atualizado_por: user.id,
+      };
+
+      await atualizarPlanoAcaoRid(desvio.id, payloadPlano, novoStatusDesvio);
+
+      setStatusPlano(novoStatusPlano);
+      if (marcarConcluido) {
+        setNovoStatus('CONCLUIDO');
+        if (onStatusChange) onStatusChange(desvio.id, 'CONCLUIDO');
+      }
+
+      toast.success(
+        marcarConcluido
+          ? 'Plano de ação concluído e RID finalizado!'
+          : 'Plano de ação de fechamento salvo com sucesso!'
+      );
+      if (onPlanoAcaoAtualizado) onPlanoAcaoAtualizado(desvio.id, payloadPlano);
+    } catch (err: any) {
+      toast.error(`Falha ao salvar plano de ação: ${err.message}`);
+    } finally {
+      setSalvandoPlano(false);
+    }
+  };
 
   // --- Acompanhamento do desvio não sanado de imediato ---
   // Só faz sentido para o RID aberto como NÃO sanado: é ele que fica em aberto
@@ -743,6 +970,335 @@ export default function SsmaRidDetalhesModal({
               )}
             </div>
           )}
+
+          {/* ======================================================= */}
+          {/* PLANO DE AÇÃO PARA FECHAMENTO DO RID                    */}
+          {/* ======================================================= */}
+          <div className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/40 via-white to-indigo-50/20 p-5 dark:border-indigo-900/60 dark:from-indigo-950/20 dark:via-slate-900 dark:to-indigo-950/10 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-indigo-100 pb-3 dark:border-indigo-950/60">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                  <Target className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    Plano de Ação para Fechamento do RID
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                        statusPlano === 'CONCLUIDO'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : statusPlano === 'EM_ANDAMENTO'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                      }`}
+                    >
+                      {statusPlano === 'CONCLUIDO'
+                        ? 'Concluído'
+                        : statusPlano === 'EM_ANDAMENTO'
+                        ? 'Em Andamento'
+                        : 'Pendente'}
+                    </span>
+
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-2xs ${
+                        infoDiasEmAberto.concluido
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+                          : infoDiasEmAberto.alerta
+                          ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                          : 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800'
+                      }`}
+                      title="Tempo decorrido desde a abertura do RID"
+                    >
+                      <Clock className="h-3 w-3" />
+                      {infoDiasEmAberto.texto}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Defina a área de destino da demanda, marque responsáveis com @ e registre a conclusão.
+                  </p>
+                </div>
+              </div>
+
+              {onVerPlanosAcao && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onVerPlanosAcao();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-800 dark:text-indigo-300 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver Janela Planos de Ação
+                </button>
+              )}
+            </div>
+
+            {/* Linha: Área de Destino da Demanda e Prazo */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Destinar demanda para qual área? <span className="text-rose-500">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    disabled={!podeEditar}
+                    value={areaDestino}
+                    onChange={(e) => setAreaDestino(e.target.value)}
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60"
+                  >
+                    <option value="">Selecione o setor de destino da demanda...</option>
+                    {AREALIST_PADRAO.map((ar) => (
+                      <option key={ar} value={ar}>
+                        {ar}
+                      </option>
+                    ))}
+                    <option value="OUTRO">OUTRO (DIGITAR MANUALMENTE)</option>
+                  </select>
+
+                  {areaDestino === 'OUTRO' && (
+                    <input
+                      type="text"
+                      disabled={!podeEditar}
+                      placeholder="Qual área?"
+                      value={areaPersonalizada}
+                      onChange={(e) => setAreaPersonalizada(e.target.value)}
+                      className="w-1/2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Prazo para Conclusão
+                </label>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="date"
+                    disabled={!podeEditar}
+                    value={prazoPlano}
+                    onChange={(e) => setPrazoPlano(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Demanda de Fechamento com suporte a @ mencao */}
+            <div className="relative space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="demanda-descricao"
+                  className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400"
+                >
+                  Descrição da Demanda / Ação de Fechamento <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1">
+                  <AtSign className="h-3 w-3" /> Digite @ para marcar usuários do SISTEN
+                </span>
+              </div>
+
+              <div className="relative">
+                <textarea
+                  id="demanda-descricao"
+                  ref={textareaDemandaRef}
+                  rows={3}
+                  disabled={!podeEditar}
+                  value={descricaoDemanda}
+                  onChange={handleDemandaChange}
+                  placeholder="Descreva detalhadamente o que deve ser feito para fechamento do desvio... Ex: @ANDRE ARAUJO providenciar adequação da proteção..."
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60 font-medium leading-relaxed"
+                />
+
+                {/* Popover flutuante de auto-complete de menção @ */}
+                {popoverMencaoAberto && podeEditar && (
+                  <div className="absolute left-2 bottom-full mb-1 z-30 w-72 max-h-56 overflow-y-auto rounded-2xl border border-indigo-200 bg-white p-1.5 shadow-xl dark:border-indigo-900 dark:bg-slate-900 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <span>Marcar Usuário do SISTEN</span>
+                      <span className="text-[9px] font-normal text-slate-400">Esc para fechar</span>
+                    </div>
+                    {usuariosFiltradosPopover.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400 italic">
+                        Nenhum usuário do SISTEN encontrado
+                      </div>
+                    ) : (
+                      usuariosFiltradosPopover.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => selecionarUsuarioMencao(u)}
+                          className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors cursor-pointer"
+                        >
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                            {u.nome.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 dark:text-slate-100 truncate text-[11px]">
+                              {u.nome}
+                            </p>
+                            <p className="text-[10px] text-slate-400 truncate">
+                              {u.cargo || u.setor || 'SISTEN'}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Responsáveis Marcados com @ */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1 flex items-center gap-1">
+                  <AtSign className="h-3 w-3 text-indigo-500" /> Marcados:
+                </span>
+                {responsaveisMencionados.length === 0 ? (
+                  <span className="text-[11px] text-slate-400 italic">
+                    Nenhum usuário marcado ainda.
+                  </span>
+                ) : (
+                  responsaveisMencionados.map((resp) => (
+                    <span
+                      key={resp}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800 shadow-2xs"
+                    >
+                      <span>@{resp}</span>
+                      {podeEditar && (
+                        <button
+                          type="button"
+                          onClick={() => removerResponsavelMencao(resp)}
+                          className="ml-0.5 rounded p-0.5 hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-950 transition-colors cursor-pointer"
+                          title={`Remover @${resp}`}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  ))
+                )}
+
+                {/* Botão para abrir seletor rápido de usuários */}
+                {podeEditar && (
+                  <div className="relative inline-block ml-1">
+                    <button
+                      type="button"
+                      onClick={() => setDropdownMencaoManual((v) => !v)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-400 transition-colors cursor-pointer"
+                    >
+                      <UserPlus className="h-3 w-3" />
+                      Marcar @
+                    </button>
+
+                    {dropdownMencaoManual && (
+                      <div className="absolute left-0 top-full mt-1 z-30 w-72 max-h-60 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+                        <input
+                          type="text"
+                          placeholder="Buscar usuário do SISTEN por nome ou setor..."
+                          value={buscaMencaoManual}
+                          onChange={(e) => setBuscaMencaoManual(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-800 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 mb-1"
+                        />
+                        <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                          {usuariosFiltradosManual.map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => adicionarResponsavelDireto(u)}
+                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors cursor-pointer"
+                            >
+                              <span className="font-bold text-[11px] text-slate-800 dark:text-slate-200 truncate">
+                                {u.nome}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate">
+                                {u.setor || u.cargo || ''}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Status do Plano de Ação e Conclusão */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-100/80 dark:border-indigo-950/60">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  Status do Plano de Ação
+                </label>
+                <select
+                  disabled={!podeEditar}
+                  value={statusPlano}
+                  onChange={(e) => setStatusPlano(e.target.value as SsmaPlanoAcaoStatus)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60"
+                >
+                  <option value="PENDENTE">PENDENTE (Aguardando)</option>
+                  <option value="EM_ANDAMENTO">EM ANDAMENTO</option>
+                  <option value="CONCLUIDO">CONCLUÍDO (Fechamento)</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label
+                  htmlFor="conclusao-demanda"
+                  className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1"
+                >
+                  Parecer de Conclusão / O que foi realizado
+                </label>
+                <input
+                  id="conclusao-demanda"
+                  type="text"
+                  disabled={!podeEditar}
+                  placeholder="Descreva a conclusão da demanda (obrigatório para fechar o plano)..."
+                  value={conclusaoTexto}
+                  onChange={(e) => setConclusaoTexto(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 disabled:opacity-60 font-medium"
+                />
+              </div>
+            </div>
+
+            {/* Carimbo de Conclusão (se houver) */}
+            {planoExistente?.status === 'CONCLUIDO' && planoExistente.concluido_em && (
+              <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>
+                  Plano concluído em {new Date(planoExistente.concluido_em).toLocaleDateString('pt-BR')} às{' '}
+                  {new Date(planoExistente.concluido_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  {planoExistente.concluido_por_nome && ` por ${planoExistente.concluido_por_nome}`}
+                </span>
+              </div>
+            )}
+
+            {/* Ações do Plano de Ação */}
+            {podeEditar && (
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-indigo-100/60 dark:border-indigo-950/40">
+                <button
+                  type="button"
+                  disabled={salvandoPlano}
+                  onClick={() => handleSalvarPlanoAcao(false)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors shadow-2xs cursor-pointer dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300"
+                >
+                  {salvandoPlano ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Salvar Demanda
+                </button>
+
+                <button
+                  type="button"
+                  disabled={salvandoPlano}
+                  onClick={() => handleSalvarPlanoAcao(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+                  title="Conclui o plano de ação e atualiza o status do RID para CONCLUÍDO"
+                >
+                  {salvandoPlano ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  Concluir Plano & Fechar RID
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Tratamento SSMA / Atualização de Status */}
           {podeEditar ? (

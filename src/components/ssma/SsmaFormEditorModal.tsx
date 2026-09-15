@@ -27,6 +27,9 @@ import {
   CheckCircle2,
   Loader2,
   HelpCircle,
+  Tag,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type {
   Profile,
@@ -126,6 +129,99 @@ export default function SsmaFormEditorModal({
       p.subtitulo.toLowerCase().includes(filtroPerguntas.toLowerCase()) ||
       String(p.numero).includes(filtroPerguntas)
   );
+
+  // Controle de opções por pergunta individual
+  const [novaOpcaoPergunta, setNovaOpcaoPergunta] = useState<Record<string, string>>({});
+  const [expandirOpcoesPergunta, setExpandirOpcoesPergunta] = useState<Record<string, boolean>>({});
+
+  const getCategoriaDaPergunta = (p: SsmaFormPerguntaConfig): CategoriaOpcao | null => {
+    if (p.id === 'empresa' || p.campo === 'empresa') return 'empresas';
+    if (p.id === 'area_desvio' || p.campo === 'area_desvio') return 'areas';
+    if (p.id === 'responsavel_seguranca' || p.campo === 'responsavel_seguranca_informado') return 'responsaveis_seguranca';
+    if (p.id === 'comportamentos_inseguros' || p.campo === 'comportamentos_inseguros') return 'comportamentos_inseguros';
+    if (p.id === 'condicoes_inseguras' || p.campo === 'condicoes_inseguras') return 'condicoes_inseguras';
+    return null;
+  };
+
+  const obterOpcoesDaPergunta = (p: SsmaFormPerguntaConfig): string[] => {
+    const cat = getCategoriaDaPergunta(p);
+    if (cat) return config.opcoes[cat] || [];
+    if (p.tipo === 'boolean') return ['SIM', 'NÃO'];
+    return p.opcoes || [];
+  };
+
+  const handleAdicionarOpcaoNaPergunta = (p: SsmaFormPerguntaConfig) => {
+    const textoLimpo = (novaOpcaoPergunta[p.id] || '').trim().toUpperCase();
+    if (!textoLimpo) return;
+
+    const cat = getCategoriaDaPergunta(p);
+    if (cat) {
+      const atual = config.opcoes[cat] || [];
+      if (atual.some((op) => op.toUpperCase() === textoLimpo)) {
+        toast.error('Esta opção já existe na lista.');
+        return;
+      }
+      let novaLista: string[];
+      if (atual.includes('OUTROS')) {
+        novaLista = [...atual.filter((item) => item !== 'OUTROS'), textoLimpo, 'OUTROS'];
+      } else {
+        novaLista = [...atual, textoLimpo];
+      }
+      setConfig((prev) => ({
+        ...prev,
+        opcoes: { ...prev.opcoes, [cat]: novaLista },
+      }));
+    } else {
+      const atual = p.opcoes || [];
+      if (atual.some((op) => op.toUpperCase() === textoLimpo)) {
+        toast.error('Esta opção já existe na pergunta.');
+        return;
+      }
+      atualizarPergunta(p.id, { opcoes: [...atual, textoLimpo] });
+    }
+
+    setNovaOpcaoPergunta((prev) => ({ ...prev, [p.id]: '' }));
+    toast.success(`Opção "${textoLimpo}" adicionada.`);
+  };
+
+  const handleRemoverOpcaoDaPergunta = (p: SsmaFormPerguntaConfig, opcaoRemover: string) => {
+    const cat = getCategoriaDaPergunta(p);
+    if (cat) {
+      setConfig((prev) => ({
+        ...prev,
+        opcoes: {
+          ...prev.opcoes,
+          [cat]: (prev.opcoes[cat] || []).filter((op) => op !== opcaoRemover),
+        },
+      }));
+    } else {
+      const atual = p.opcoes || [];
+      atualizarPergunta(p.id, { opcoes: atual.filter((op) => op !== opcaoRemover) });
+    }
+    toast.info(`Opção "${opcaoRemover}" removida.`);
+  };
+
+  const handleOrdenarAZPergunta = (p: SsmaFormPerguntaConfig) => {
+    const cat = getCategoriaDaPergunta(p);
+    if (cat) {
+      setConfig((prev) => {
+        const lista = [...(prev.opcoes[cat] || [])];
+        const temOutros = lista.includes('OUTROS');
+        const semOutros = lista.filter((item) => item !== 'OUTROS');
+        semOutros.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        const ordenada = temOutros ? [...semOutros, 'OUTROS'] : semOutros;
+        return {
+          ...prev,
+          opcoes: { ...prev.opcoes, [cat]: ordenada },
+        };
+      });
+    } else {
+      const lista = [...(p.opcoes || [])];
+      lista.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      atualizarPergunta(p.id, { opcoes: lista });
+    }
+    toast.success('Opções ordenadas alfabeticamente (A-Z).');
+  };
 
   // ===================================================================
   // MANIPULAÇÃO DE OPÇÕES DE RESPOSTA
@@ -434,6 +530,161 @@ export default function SsmaFormEditorModal({
                           />
                         </div>
                       </div>
+
+                      {/* Seção de Opções de Resposta vinculada à pergunta */}
+                      {(() => {
+                        const cat = getCategoriaDaPergunta(pergunta);
+                        const ehBooleano = pergunta.tipo === 'boolean';
+                        const opcoes = obterOpcoesDaPergunta(pergunta);
+                        const temOpcoesConfiguraveis = Boolean(
+                          cat ||
+                          pergunta.tipo === 'select' ||
+                          pergunta.tipo === 'checklist' ||
+                          pergunta.tipo === 'radio' ||
+                          (pergunta.opcoes && pergunta.opcoes.length > 0)
+                        );
+
+                        if (!temOpcoesConfiguraveis && !ehBooleano) {
+                          return (
+                            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                              <HelpCircle className="h-3 w-3" />
+                              <span>Campo de preenchimento livre ({pergunta.tipo})</span>
+                            </div>
+                          );
+                        }
+
+                        if (ehBooleano) {
+                          return (
+                            <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                  <Tag className="h-3 w-3 text-indigo-500" /> Opções de Resposta (Binária / Sim ou Não)
+                                </span>
+                                <span className="text-[10px] text-slate-400">Padrão do formulário</span>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+                                  SIM
+                                </span>
+                                <span className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800">
+                                  NÃO
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const expandido = expandirOpcoesPergunta[pergunta.id] ?? false;
+                        const limiteVisivel = 10;
+                        const opcoesExibidas = expandido ? opcoes : opcoes.slice(0, limiteVisivel);
+                        const textoInput = novaOpcaoPergunta[pergunta.id] || '';
+
+                        return (
+                          <div className="mt-3 rounded-xl border border-indigo-200/70 bg-indigo-50/30 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20 space-y-2.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <Tag className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                                  Opções de Resposta ({opcoes.length} cadastradas)
+                                </span>
+                                {cat && (
+                                  <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-100/70 dark:bg-indigo-900/50 px-1.5 py-0.5 rounded">
+                                    Lista: {cat}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOrdenarAZPergunta(pergunta)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300 transition-colors shadow-2xs cursor-pointer"
+                                  title="Ordenar opções de A a Z"
+                                >
+                                  <ArrowDownAZ className="h-3 w-3" /> A-Z
+                                </button>
+                                {opcoes.length > limiteVisivel && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandirOpcoesPergunta((prev) => ({
+                                        ...prev,
+                                        [pergunta.id]: !expandido,
+                                      }))
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 cursor-pointer"
+                                  >
+                                    {expandido ? (
+                                      <>
+                                        <ChevronUp className="h-3 w-3" /> Ver menos
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="h-3 w-3" /> +{opcoes.length - limiteVisivel} mais
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Lista de chips de opções */}
+                            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                              {opcoes.length === 0 ? (
+                                <span className="text-xs text-slate-400 italic">
+                                  Nenhuma opção cadastrada ainda.
+                                </span>
+                              ) : (
+                                opcoesExibidas.map((opcao) => (
+                                  <span
+                                    key={opcao}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-slate-800 border border-slate-200 shadow-2xs dark:bg-slate-900 dark:border-slate-800 dark:text-slate-200"
+                                  >
+                                    <span className="truncate max-w-[200px]">{opcao}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoverOpcaoDaPergunta(pergunta, opcao)}
+                                      className="ml-0.5 rounded p-0.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                                      title={`Remover "${opcao}"`}
+                                    >
+                                      <X className="h-2.5 w-2.5" />
+                                    </button>
+                                  </span>
+                                ))
+                              )}
+                            </div>
+
+                            {/* Input de adição rápida na própria pergunta */}
+                            <div className="flex items-center gap-1.5 pt-1 border-t border-indigo-100/80 dark:border-indigo-950/60">
+                              <input
+                                type="text"
+                                placeholder={`Nova opção para "${pergunta.titulo}"...`}
+                                value={textoInput}
+                                onChange={(e) =>
+                                  setNovaOpcaoPergunta((prev) => ({
+                                    ...prev,
+                                    [pergunta.id]: e.target.value,
+                                  }))
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAdicionarOpcaoNaPergunta(pergunta);
+                                  }
+                                }}
+                                className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs uppercase font-medium placeholder:normal-case placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleAdicionarOpcaoNaPergunta(pergunta)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-500 transition-colors shadow-2xs cursor-pointer"
+                              >
+                                <Plus className="h-3 w-3" /> Adicionar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

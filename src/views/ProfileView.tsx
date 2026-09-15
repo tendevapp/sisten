@@ -3,13 +3,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  User, Shield, KeyRound, Bell, Settings, Lock, Check, AlertTriangle, Building, Briefcase, Mail
+  User, Shield, KeyRound, Bell, Settings, Lock, Check, AlertTriangle, Building, Briefcase, Mail,
+  Headphones, ShoppingCart, ShieldAlert, LayoutList, Building2, Volume2, VolumeX, Laptop,
+  Loader2, CheckCheck, XCircle, SlidersHorizontal, Sparkles
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile } from '../types';
+import { Profile, UserNotificationPreferences } from '../types';
 import { useToast } from '../components/ui/Toast';
+import {
+  obterPreferenciasNotificacao,
+  salvarPreferenciasNotificacao,
+  GRUPOS_NOTIFICACAO,
+  GrupoNotificacaoConfig,
+} from '../lib/userNotificationPreferences';
+import {
+  lerPrefsAviso,
+  gravarPrefsAviso,
+  permissaoDesktop,
+  pedirPermissaoDesktop,
+  tocarBipe,
+  type AvisoPrefs,
+  type PermissaoDesktop,
+} from '../lib/avisosNotificacao';
 
 interface ProfileViewProps {
   user: Profile;
@@ -33,17 +50,26 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
-  // Notification Preference State
-  const [notifPref, setNotifPref] = useState<'in-app' | 'both'>('in-app');
+  // Notification Preferences State (Completo por Módulo)
+  const [preferenciasNotif, setPreferenciasNotif] = useState<UserNotificationPreferences>(() =>
+    obterPreferenciasNotificacao(user.id)
+  );
+  const [salvandoNotif, setSalvandoNotif] = useState(false);
   const [notifSuccess, setNotifSuccess] = useState(false);
+
+  // Alertas de Desktop e Som
+  const [avisoPrefs, setAvisoPrefs] = useState<AvisoPrefs>(() => lerPrefsAviso(user.id));
+  const [permDesktop, setPermDesktop] = useState<PermissaoDesktop>(() => permissaoDesktop());
 
   const sector = localDb.getSectors().find(s => s.id === user.sector_id);
   const buyerGroups = localDb.getBuyerGroupsForUser(user.id);
 
   useEffect(() => {
-    // Load preferences
-    const pref = localDb.getNotificationPreferences(user.id);
-    setNotifPref(pref);
+    // Sincronizar preferências atualizadas caso o perfil mude
+    const prefs = obterPreferenciasNotificacao(user.id);
+    setPreferenciasNotif(prefs);
+    setAvisoPrefs(lerPrefsAviso(user.id));
+    setPermDesktop(permissaoDesktop());
   }, [user.id]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -95,11 +121,117 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
     }
   };
 
-  const handleNotificationChange = (val: 'in-app' | 'both') => {
-    setNotifPref(val);
-    localDb.setNotificationPreferences(user.id, val);
-    setNotifSuccess(true);
-    setTimeout(() => setNotifSuccess(false), 2000);
+  const totalCategorias = useMemo(() => {
+    let total = 0;
+    let ativas = 0;
+    for (const grupo of GRUPOS_NOTIFICACAO) {
+      for (const item of grupo.itens) {
+        total++;
+        if (preferenciasNotif[item.key]) ativas++;
+      }
+    }
+    return { total, ativas };
+  }, [preferenciasNotif]);
+
+  const handleToggleCategoria = (chave: keyof Omit<UserNotificationPreferences, 'channel'>) => {
+    setPreferenciasNotif((prev) => ({
+      ...prev,
+      [chave]: !prev[chave],
+    }));
+  };
+
+  const handleMarcarTodasCategorias = (ativar: boolean) => {
+    setPreferenciasNotif((prev) => {
+      const proximo = { ...prev };
+      for (const grupo of GRUPOS_NOTIFICACAO) {
+        for (const item of grupo.itens) {
+          proximo[item.key] = ativar;
+        }
+      }
+      return proximo;
+    });
+  };
+
+  const handleMarcarGrupo = (grupo: GrupoNotificacaoConfig, ativar: boolean) => {
+    setPreferenciasNotif((prev) => {
+      const proximo = { ...prev };
+      for (const item of grupo.itens) {
+        proximo[item.key] = ativar;
+      }
+      return proximo;
+    });
+  };
+
+  const handleCanalChange = (val: 'in-app' | 'both') => {
+    setPreferenciasNotif((prev) => ({
+      ...prev,
+      channel: val,
+    }));
+  };
+
+  const handleToggleDesktop = async () => {
+    if (!avisoPrefs.desktop) {
+      const perm = await pedirPermissaoDesktop();
+      setPermDesktop(perm);
+      if (perm === 'granted') {
+        const nova = { ...avisoPrefs, desktop: true };
+        setAvisoPrefs(nova);
+        gravarPrefsAviso(user.id, nova);
+        toast.success('Notificações no sistema operacional ativadas!');
+      } else if (perm === 'denied') {
+        toast.error('Notificações bloqueadas pelo navegador. Habilite nas permissões do site.');
+      }
+    } else {
+      const nova = { ...avisoPrefs, desktop: false };
+      setAvisoPrefs(nova);
+      gravarPrefsAviso(user.id, nova);
+    }
+  };
+
+  const handleToggleSom = () => {
+    const nova = { ...avisoPrefs, som: !avisoPrefs.som };
+    setAvisoPrefs(nova);
+    gravarPrefsAviso(user.id, nova);
+    if (nova.som) {
+      tocarBipe();
+    }
+  };
+
+  const handleSalvarNotificacoes = async () => {
+    setSalvandoNotif(true);
+    setNotifSuccess(false);
+
+    const ok = await salvarPreferenciasNotificacao(user.id, preferenciasNotif);
+    gravarPrefsAviso(user.id, avisoPrefs);
+
+    setSalvandoNotif(false);
+    if (ok) {
+      setNotifSuccess(true);
+      toast.success('Preferências de notificação salvas com sucesso!');
+      setTimeout(() => setNotifSuccess(false), 4000);
+      onProfileUpdate?.();
+    } else {
+      toast.error('Falha ao sincronizar com o servidor. As alterações foram salvas localmente.');
+    }
+  };
+
+  const renderIconeGrupo = (icone: string) => {
+    switch (icone) {
+      case 'Headphones':
+        return <Headphones className="h-4 w-4" />;
+      case 'ShoppingCart':
+        return <ShoppingCart className="h-4 w-4" />;
+      case 'ShieldAlert':
+        return <ShieldAlert className="h-4 w-4" />;
+      case 'LayoutList':
+        return <LayoutList className="h-4 w-4" />;
+      case 'Building2':
+        return <Building2 className="h-4 w-4" />;
+      case 'AlertTriangle':
+        return <AlertTriangle className="h-4 w-4" />;
+      default:
+        return <Bell className="h-4 w-4" />;
+    }
   };
 
   const getRoleLabel = (role: string) => {
@@ -290,48 +422,287 @@ export default function ProfileView({ user, onNavigate, onProfileUpdate }: Profi
           </div>
 
           {/* Section: Notification Preferences */}
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm space-y-6">
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <Bell className="h-5 w-5 text-emerald-600" /> Preferências de Notificação
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Defina como você deseja receber os alertas operacionais, como avisos de criticidade elevada ou atribuições de compras e chamados.
-            </p>
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm space-y-6 dark:border-slate-800 dark:bg-slate-900">
+            {/* Cabeçalho da Seção com Contagem e Ações em Lote */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Bell className="h-5 w-5 text-emerald-600" /> Preferências de Notificação
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 shadow-2xs">
+                    {totalCategorias.ativas} de {totalCategorias.total} ativas
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Personalize exatamente quais alertas e avisos operacionais você deseja receber no SISTEN.
+                </p>
+              </div>
 
-            <div className="space-y-3.5 text-xs">
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-100 hover:bg-slate-50/50 cursor-pointer transition-colors">
-                <input
-                  type="radio"
-                  name="notif_pref"
-                  checked={notifPref === 'in-app'}
-                  onChange={() => handleNotificationChange('in-app')}
-                  className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                />
-                <div>
-                  <p className="font-bold text-slate-800">Apenas In-App (Sino no cabeçalho)</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">As notificações serão exibidas apenas no centro de alertas do sistema interno.</p>
-                </div>
-              </label>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => handleMarcarTodasCategorias(true)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition-colors cursor-pointer shadow-2xs"
+                  title="Ativar todas as notificações"
+                >
+                  <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> Ativar Todas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMarcarTodasCategorias(false)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition-colors cursor-pointer shadow-2xs"
+                  title="Desativar todas as notificações"
+                >
+                  <XCircle className="h-3.5 w-3.5 text-rose-500" /> Desativar Todas
+                </button>
+              </div>
+            </div>
 
-              <label className="flex items-start gap-3 p-3.5 rounded-xl border border-slate-100 hover:bg-slate-50/50 cursor-pointer transition-colors">
-                <input
-                  type="radio"
-                  name="notif_pref"
-                  checked={notifPref === 'both'}
-                  onChange={() => handleNotificationChange('both')}
-                  className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                />
-                <div>
-                  <p className="font-bold text-slate-800">Notificação In-App + Notificação de E-mail para eventos críticos</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Receba alertas em tempo real no sistema e avisos imediatos por e-mail para chamados urgentes e criticidades 4 e 5.</p>
-                </div>
-              </label>
+            {/* Canal de Entrega & Dispositivo */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-600" /> Canal de Entrega & Dispositivo
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <label
+                  className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors cursor-pointer ${
+                    preferenciasNotif.channel === 'in-app'
+                      ? 'border-emerald-500/60 bg-emerald-50/20 dark:bg-emerald-950/20'
+                      : 'border-slate-200 hover:bg-slate-50/50 dark:border-slate-800'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="notif_canal"
+                    checked={preferenciasNotif.channel === 'in-app'}
+                    onChange={() => handleCanalChange('in-app')}
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-100">Apenas In-App</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Sino de avisos no cabeçalho e centro de notificações interno do SISTEN.
+                    </p>
+                  </div>
+                </label>
 
-              {notifSuccess && (
-                <div className="text-xs font-bold text-emerald-700 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 max-w-fit">
-                  <Check className="h-4 w-4" /> Preferências atualizadas automaticamente!
+                <label
+                  className={`flex items-start gap-3 p-3.5 rounded-xl border transition-colors cursor-pointer ${
+                    preferenciasNotif.channel === 'both'
+                      ? 'border-emerald-500/60 bg-emerald-50/20 dark:bg-emerald-950/20'
+                      : 'border-slate-200 hover:bg-slate-50/50 dark:border-slate-800'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="notif_canal"
+                    checked={preferenciasNotif.channel === 'both'}
+                    onChange={() => handleCanalChange('both')}
+                    className="mt-0.5 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-100">In-App + E-mail Crítico</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Avisos em tempo real no sistema e e-mails para chamados urgentes e criticidades 4 e 5.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Reforços do Navegador (Desktop e Som) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="flex items-center gap-2">
+                    <Laptop className="h-4 w-4 text-slate-500" />
+                    <div>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                        Avisos no Sistema Operacional
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {permDesktop === 'granted'
+                          ? 'Notificação popup na área de trabalho'
+                          : permDesktop === 'denied'
+                          ? 'Bloqueado no navegador (habilite no cadeado da URL)'
+                          : 'Popup nativo fora da aba do navegador'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={avisoPrefs.desktop}
+                    onClick={handleToggleDesktop}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      avisoPrefs.desktop ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        avisoPrefs.desktop ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
                 </div>
-              )}
+
+                <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="flex items-center gap-2">
+                    {avisoPrefs.som ? (
+                      <Volume2 className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <VolumeX className="h-4 w-4 text-slate-400" />
+                    )}
+                    <div>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">Aviso Sonoro</p>
+                      <p className="text-[10px] text-slate-400">Bipe curto e discreto de 2 notas</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={avisoPrefs.som}
+                    onClick={handleToggleSom}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      avisoPrefs.som ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                        avisoPrefs.som ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Categorias de Notificação por Módulo */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  Escolha o que deseja ser notificado
+                </h4>
+                <span className="text-[11px] text-slate-400 font-medium">
+                  Ative ou desative cada categoria
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {GRUPOS_NOTIFICACAO.map((grupo) => {
+                  const itensAtivos = grupo.itens.filter((it) => preferenciasNotif[it.key]).length;
+
+                  return (
+                    <div
+                      key={grupo.id}
+                      className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs dark:border-slate-800 dark:bg-slate-900/60 space-y-3"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 dark:border-slate-800/80">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`flex h-7 w-7 items-center justify-center rounded-lg border ${grupo.cor}`}
+                          >
+                            {renderIconeGrupo(grupo.icone)}
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                              {grupo.titulo}
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                ({itensAtivos}/{grupo.itens.length} ativos)
+                              </span>
+                            </h5>
+                            <p className="text-[11px] text-slate-400">{grupo.descricao}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleMarcarGrupo(grupo, true)}
+                            className="rounded px-2 py-0.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950 transition-colors cursor-pointer"
+                          >
+                            Todos
+                          </button>
+                          <span className="text-slate-300 dark:text-slate-700">|</span>
+                          <button
+                            type="button"
+                            onClick={() => handleMarcarGrupo(grupo, false)}
+                            className="rounded px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                          >
+                            Nenhum
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-slate-100/80 dark:divide-slate-800/60">
+                        {grupo.itens.map((item) => {
+                          const ativo = preferenciasNotif[item.key];
+
+                          return (
+                            <div
+                              key={item.key}
+                              className="flex items-center justify-between py-2.5 first:pt-1 last:pb-1 group"
+                            >
+                              <div className="flex-1 pr-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                    {item.label}
+                                  </span>
+                                  {item.badge && (
+                                    <span className="rounded bg-slate-100 px-1.5 py-0.2 text-[9px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                      {item.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-0.5 leading-snug">
+                                  {item.descricao}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={ativo}
+                                onClick={() => handleToggleCategoria(item.key)}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                  ativo ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'
+                                }`}
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                    ativo ? 'translate-x-4' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Rodapé da Seção com Botão Salvar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                {notifSuccess && (
+                  <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                    <Check className="h-4 w-4" /> Preferências salvas com sucesso!
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={salvandoNotif}
+                onClick={handleSalvarNotificacoes}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 px-6 cursor-pointer shadow-sm disabled:opacity-50 transition-colors self-end"
+              >
+                {salvandoNotif ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Salvar Preferências de Notificação
+              </button>
             </div>
           </div>
         </div>

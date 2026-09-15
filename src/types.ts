@@ -78,6 +78,28 @@ export interface Profile {
   // (`@sisten.local`). Recuperação de senha por e-mail não se aplica — a
   // redefinição passa pelo administrador.
   login_sem_email?: boolean;
+  // Preferências customizadas de notificação (JSON serializado contendo categorias ativas)
+  notification_preferences?: string | null;
+}
+
+export interface UserNotificationPreferences {
+  channel: 'in-app' | 'both';
+  chamados_novos: boolean;
+  chamados_atualizacoes: boolean;
+  chamados_status: boolean;
+  compras_solicitacoes: boolean;
+  compras_aprovacoes: boolean;
+  compras_rastreio: boolean;
+  compras_cadastros_sap: boolean;
+  compras_abrir_rm: boolean;
+  ssma_mencoes_rid: boolean;
+  ssma_demandas_area: boolean;
+  ssma_conclusao_rid: boolean;
+  demandas_atribuicao: boolean;
+  demandas_prazos: boolean;
+  portaria_alertas: boolean;
+  formularios_campo: boolean;
+  alertas_criticos: boolean;
 }
 
 export interface ActivityLog {
@@ -2388,6 +2410,21 @@ export interface SsmaRidFoto {
   created_at: string;
 }
 
+export type SsmaPlanoAcaoStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDO';
+
+export interface SsmaRidPlanoAcao {
+  area_destino: string;
+  descricao_demanda: string;
+  responsaveis_mencionados: string[];
+  prazo?: string | null;
+  status: SsmaPlanoAcaoStatus;
+  conclusao?: string | null;
+  concluido_em?: string | null;
+  concluido_por_nome?: string | null;
+  atualizado_em?: string;
+  atualizado_por?: string | null;
+}
+
 export interface SsmaRidDesvio {
   id: string;
   numero_registro: string;
@@ -2415,6 +2452,7 @@ export interface SsmaRidDesvio {
   fotos: SsmaRidFoto[];
   status: SsmaRidStatus;
   parecer_ssma: string | null;
+  plano_acao?: SsmaRidPlanoAcao | null;
   criado_por: string | null;
   created_at: string;
   updated_at: string;
@@ -2465,6 +2503,7 @@ export interface SsmaFormPerguntaConfig {
   obrigatorio: boolean;
   ativo: boolean;
   tipo: 'texto' | 'autocomplete' | 'select' | 'data' | 'radio' | 'textarea' | 'boolean' | 'fotos' | 'checklist';
+  opcoes?: string[];
 }
 
 export interface SsmaFormOpcoesConfig {

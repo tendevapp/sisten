@@ -6,7 +6,7 @@
  * Inclui: Novo Registro, Histórico de Desvios, Indicadores, Exportação CSV e Editor de Formulário (Admin).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert,
   PlusCircle,
@@ -25,6 +25,7 @@ import {
   HelpCircle,
   Bug,
   Lightbulb,
+  Target,
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -50,13 +51,14 @@ import {
 import SsmaRidForm from '../../components/ssma/SsmaRidForm';
 import SsmaRidDetalhesModal from '../../components/ssma/SsmaRidDetalhesModal';
 import SsmaFormEditorModal from '../../components/ssma/SsmaFormEditorModal';
+import SsmaRidPlanosAcaoView from '../../components/ssma/SsmaRidPlanosAcaoView';
 import { MostrarExcluidosToggle } from '../../components/ui/ExcluidosControls';
 import { useToast } from '../../components/ui/Toast';
 
 interface SsmaRidViewProps {
   user: Profile;
   onNavigate: (path: string) => void;
-  abaInicial?: 'novo' | 'historico';
+  abaInicial?: 'novo' | 'historico' | 'plano_acao';
 }
 
 const SSMA_RID_TOUR_STEPS: TourStep[] = [
@@ -120,13 +122,24 @@ const SSMA_RID_TOUR_STEPS: TourStep[] = [
 export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: SsmaRidViewProps) {
   const tour = usePageTour('form-ssma-rid', SSMA_RID_TOUR_STEPS.length);
   const toast = useToast();
-  const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>(abaInicial);
+  const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico' | 'plano_acao'>(abaInicial);
 
   // Estados de dados
   const [desvios, setDesvios] = useState<SsmaRidDesvio[]>([]);
   const [metricas, setMetricas] = useState<SsmaRidMetricas | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [incluirExcluidos, setIncluirExcluidos] = useState(false);
+
+  // Contagem de RIDs com plano de ação definido
+  const totalComPlano = useMemo(() => {
+    return desvios.filter(
+      (d) =>
+        d.plano_acao &&
+        (d.plano_acao.area_destino ||
+          d.plano_acao.descricao_demanda ||
+          (d.plano_acao.responsaveis_mencionados && d.plano_acao.responsaveis_mencionados.length > 0))
+    ).length;
+  }, [desvios]);
 
   // Filtros
   const [setoresDisponiveis, setSetoresDisponiveis] = useState<string[]>([...SETORES_SSMA]);
@@ -344,6 +357,19 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
             >
               <List className="h-4 w-4" />
               Histórico ({metricas?.total || 0})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAbaAtiva('plano_acao')}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all ${
+                abaAtiva === 'plano_acao'
+                  ? 'bg-white text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-400'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              <Target className="h-4 w-4" />
+              Planos de Ação ({totalComPlano})
             </button>
           </div>
         </div>
@@ -617,6 +643,16 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
         </div>
       )}
 
+      {/* Conteúdo da Aba 3: Planos de Ação */}
+      {abaAtiva === 'plano_acao' && (
+        <SsmaRidPlanosAcaoView
+          desvios={desvios}
+          user={user}
+          onAbrirDesvio={(d) => setDesvioSelecionado(d)}
+          onIrParaHistorico={() => setAbaAtiva('historico')}
+        />
+      )}
+
       {/* Modal de Detalhes do RID Selecionado */}
       {desvioSelecionado && (
         <SsmaRidDetalhesModal
@@ -633,6 +669,18 @@ export default function SsmaRidView({ user, onNavigate, abaInicial = 'novo' }: S
           }}
           onStatusChange={handleStatusChange}
           onAtualizacaoLancada={() => carregarDados()}
+          onPlanoAcaoAtualizado={(id, novoPlano) => {
+            setDesvios((prev) =>
+              prev.map((d) => (d.id === id ? { ...d, plano_acao: novoPlano } : d))
+            );
+            if (desvioSelecionado?.id === id) {
+              setDesvioSelecionado((prev) => (prev ? { ...prev, plano_acao: novoPlano } : null));
+            }
+          }}
+          onVerPlanosAcao={() => {
+            setDesvioSelecionado(null);
+            setAbaAtiva('plano_acao');
+          }}
         />
       )}
 

@@ -136,9 +136,15 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
     },
   ];
 
-  // Se a aba for RID, exibe a subpágina completa do formulário
-  if (activeTab === 'rid') {
-    return <SsmaRidView user={user} onNavigate={handleChildNavigate} />;
+  // Se a aba for RID ou Planos de Ação, exibe a subpágina completa do formulário
+  if (activeTab === 'rid' || activeTab === 'rid_planos') {
+    return (
+      <SsmaRidView
+        user={user}
+        onNavigate={handleChildNavigate}
+        abaInicial={activeTab === 'rid_planos' ? 'plano_acao' : 'novo'}
+      />
+    );
   }
 
   // Se a aba for alcoolemia, exibe o formulário do Termo FRM.SOC-0042

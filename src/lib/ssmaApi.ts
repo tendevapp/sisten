@@ -6,6 +6,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import type {
   SsmaEmpresa,
   SsmaRidDesvio,
@@ -17,6 +18,8 @@ import type {
   SsmaFormConfig,
   SsmaFormOpcoesConfig,
   SsmaFormPerguntaConfig,
+  SsmaRidPlanoAcao,
+  SsmaPlanoAcaoStatus,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
 import { comprimirImagemUpload } from './imageCompression';
@@ -368,6 +371,173 @@ export async function buscarColaboradoresRh(termo: string): Promise<ColaboradorR
   return (data || []) as ColaboradorRhSugestao[];
 }
 
+export interface UsuarioMencao {
+  id: string;
+  nome: string;
+  setor: string | null;
+  cargo: string | null;
+  email?: string | null;
+  origem?: 'sisten';
+}
+
+export async function buscarUsuariosParaMencao(termo = ''): Promise<UsuarioMencao[]> {
+  const t = termo.trim().toLowerCase();
+  const resultados: UsuarioMencao[] = [];
+  const nomesVistos = new Set<string>();
+
+  // Mapa de setores para exibir nome amigável do setor (ex: "Suprimentos", "Segurança")
+  const setoresMap = new Map<string, string>();
+  try {
+    const setoresLocais = localDb.getSectors();
+    if (Array.isArray(setoresLocais)) {
+      for (const s of setoresLocais) {
+        if (s?.id && s?.name) {
+          setoresMap.set(String(s.id), s.name);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao obter setores locais:', err);
+  }
+
+  // 1. Consulta em core_perfis no Supabase (usuários ativos do SISTEN)
+  try {
+    let queryPerfis = (supabase.from as any)('core_perfis')
+      .select('id, name, cargo, sector_id, email, status')
+      .eq('status', 'ativo');
+
+    if (t) {
+      queryPerfis = queryPerfis.or(`name.ilike.%${t}%,cargo.ilike.%${t}%,email.ilike.%${t}%`);
+    }
+
+    const { data: perfis, error: errPerfis } = await queryPerfis.order('name').limit(50);
+    if (!errPerfis && Array.isArray(perfis)) {
+      for (const p of perfis) {
+        if (p.name) {
+          const nomeNorm = p.name.trim().toUpperCase();
+          if (!nomesVistos.has(nomeNorm)) {
+            nomesVistos.add(nomeNorm);
+            const setorNome = p.sector_id ? (setoresMap.get(String(p.sector_id)) || p.sector_id) : null;
+            resultados.push({
+              id: p.id,
+              nome: nomeNorm,
+              setor: setorNome,
+              cargo: p.cargo || null,
+              email: p.email || null,
+              origem: 'sisten',
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar core_perfis no Supabase:', err);
+  }
+
+  // 2. Complementar/fallback com perfis em cache do localDb
+  try {
+    const perfisLocais = localDb.getProfiles();
+    if (Array.isArray(perfisLocais)) {
+      for (const p of perfisLocais) {
+        if (p && p.name && (p.status === 'ativo' || !p.status)) {
+          const nomeNorm = p.name.trim().toUpperCase();
+          if (!nomesVistos.has(nomeNorm)) {
+            if (t) {
+              const matches =
+                nomeNorm.toLowerCase().includes(t) ||
+                (p.cargo && p.cargo.toLowerCase().includes(t)) ||
+                (p.email && p.email.toLowerCase().includes(t));
+              if (!matches) continue;
+            }
+            nomesVistos.add(nomeNorm);
+            const setorNome = p.sector_id ? (setoresMap.get(String(p.sector_id)) || p.sector_id) : null;
+            resultados.push({
+              id: p.id,
+              nome: nomeNorm,
+              setor: setorNome,
+              cargo: p.cargo || null,
+              email: p.email || null,
+              origem: 'sisten',
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar perfis locais:', err);
+  }
+
+  return resultados.sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+export interface InfoDiasEmAberto {
+  dias: number;
+  texto: string;
+  concluido: boolean;
+  alerta: boolean;
+}
+
+/**
+ * Calcula a contagem de dias em aberto a partir da data de registro do RID (ou criação).
+ * Em caso de plano concluído, contabiliza o tempo decorrido até o encerramento.
+ */
+export function calcularDiasEmAberto(
+  dataAberturaISO?: string | null,
+  dataConclusaoISO?: string | null
+): InfoDiasEmAberto {
+  if (!dataAberturaISO) {
+    return { dias: 0, texto: '0 dias', concluido: false, alerta: false };
+  }
+
+  const inicioStr = dataAberturaISO.slice(0, 10);
+  const partesI = inicioStr.split('-').map(Number);
+  const anoI = partesI[0];
+  const mesI = partesI[1];
+  const diaI = partesI[2];
+
+  if (!anoI || !mesI || !diaI) {
+    return { dias: 0, texto: '0 dias', concluido: false, alerta: false };
+  }
+
+  const dataInicio = new Date(anoI, mesI - 1, diaI);
+
+  let dataFim: Date;
+  let concluido = false;
+
+  if (dataConclusaoISO) {
+    concluido = true;
+    const fimStr = dataConclusaoISO.slice(0, 10);
+    const partesF = fimStr.split('-').map(Number);
+    const anoF = partesF[0];
+    const mesF = partesF[1];
+    const diaF = partesF[2];
+    dataFim = anoF && mesF && diaF ? new Date(anoF, mesF - 1, diaF) : new Date();
+  } else {
+    const agora = new Date();
+    dataFim = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  }
+
+  const diffMs = dataFim.getTime() - dataInicio.getTime();
+  const dias = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (concluido) {
+    return {
+      dias,
+      texto: dias === 1 ? 'Concluído em 1 dia' : `Concluído em ${dias} dias`,
+      concluido: true,
+      alerta: false,
+    };
+  }
+
+  const texto = dias === 0 ? 'Aberto hoje (0 dias)' : dias === 1 ? '1 dia em aberto' : `${dias} dias em aberto`;
+  return {
+    dias,
+    texto,
+    concluido: false,
+    alerta: dias >= 7,
+  };
+}
+
 // =====================================================================
 // OPERAÇÕES CRUD DO RID
 // =====================================================================
@@ -430,6 +600,7 @@ export async function listarDesviosRid(
     comportamentos_inseguros: row.comportamentos_inseguros || [],
     condicoes_inseguras: row.condicoes_inseguras || [],
     fotos: row.fotos || [],
+    plano_acao: row.plano_acao || null,
   })) as SsmaRidDesvio[];
 
   return assinarFotosDesvios(desvios);
@@ -607,6 +778,27 @@ export async function atualizarStatusDesvioRid(
   };
   if (parecerSsma !== undefined) {
     patch.parecer_ssma = parecerSsma;
+  }
+
+  const { error } = await dbDesvios()
+    .update(patch)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function atualizarPlanoAcaoRid(
+  id: string,
+  planoAcao: SsmaRidPlanoAcao | null,
+  novoStatusDesvio?: SsmaRidStatus
+): Promise<void> {
+  const patch: Record<string, any> = {
+    plano_acao: planoAcao,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (novoStatusDesvio) {
+    patch.status = novoStatusDesvio;
   }
 
   const { error } = await dbDesvios()
