@@ -55,7 +55,7 @@ export async function listarCarregamentos(incluirExcluidos = false): Promise<Exp
     // a dica o PostgREST recusa o embed por ambiguidade.
     .select(`
       *,
-      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (id, tramo, ordem, hora_chegada_portaria, hora_entrada_patio, hora_expedicao, excluido_em),
+      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (id, tramo, numero_tramo, motorista, numero_nf, cavalo_placa, carreta_placa, ordem, hora_chegada_portaria, hora_entrada_patio, hora_expedicao, excluido_em),
       fotos:expedicao_fotos!expedicao_fotos_carregamento_id_fkey (id, excluido_em)
     `)
     .order('created_at', { ascending: false })

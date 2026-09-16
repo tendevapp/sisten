@@ -292,14 +292,6 @@ export function calcularMatrizAutonomia(params: {
     }
   }
 
-  // Mapeia torre_numero + tramo para o número de série físico cadastrado em fábrica
-  const seriePorTorreTramo = new Map<string, string>();
-  for (const tf of tramosFisicos) {
-    if (tf.torre_numero && tf.tramo && tf.serie) {
-      seriePorTorreTramo.set(`${tf.torre_numero}::${tf.tramo}`, String(tf.serie).trim());
-    }
-  }
-
   // Mapa de planejamentos por torre (ex: W36, W37)
   const semanasPorTorre = new Map<number, string>();
   for (const p of planejamentosBanco) {
@@ -338,13 +330,12 @@ export function calcularMatrizAutonomia(params: {
         const chaveCelula = `${torreNumero}::${tramo}::${subkit}`;
         const gravado = gravados.get(chaveCelula);
 
-        // Identifica o número de série da célula (do override gravado ou da série física do tramo)
-        const serieFisicaTorre = seriePorTorreTramo.get(`${torreNumero}::${tramo}`) ?? null;
-        const serieCandidata = (gravado?.serie && gravado.serie.trim()) || serieFisicaTorre;
+        // A série física da célula vem estritamente do registro gravado para este sub-kit/torre
+        const serieGravada = gravado?.serie ? gravado.serie.trim() : null;
 
-        // Se o número do tramo foi lançado no formulário de expedição/portaria:
+        // Se o número deste tramo específico foi lançado no formulário de expedição/portaria:
         const foiLancadoExpedicao = Boolean(
-          serieCandidata && numerosExpedidos.has(serieCandidata),
+          serieGravada && numerosExpedidos.has(serieGravada),
         );
 
         if (gravado?.status === 5 || foiLancadoExpedicao) {
@@ -354,7 +345,7 @@ export function calcularMatrizAutonomia(params: {
             tramo,
             subkit,
             status: 5,
-            serie: serieCandidata,
+            serie: serieGravada,
             isManual: Boolean(gravado),
             autonomiaEstoque,
             gargaloPn: comp.gargalo?.partNumber ?? null,

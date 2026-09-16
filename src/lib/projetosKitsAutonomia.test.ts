@@ -195,6 +195,13 @@ describe('calcularMatrizAutonomia', () => {
           status: 3, // Estava como 3 (OK Pátio)
           serie: '3148',
         },
+        {
+          torre_numero: 3,
+          tramo: 'T1',
+          subkit: 'escada_acesso',
+          status: 1, // Não expedido ainda
+          serie: '3153',
+        },
       ],
       tramosFisicos: [
         { torre_numero: 1, tramo: 'T1', serie: 3143 },
@@ -220,11 +227,50 @@ describe('calcularMatrizAutonomia', () => {
     expect(c2?.serie).toBe('3148');
     expect(c2?.origemExpedicao).toBeFalsy();
 
-    // Torre 3: não tinha registro manual, mas seu tramo físico 3153 foi lançado na expedição -> Vira status 5 (Preto)
+    // Torre 3: tinha serie 3153 gravada e foi lançado na expedição -> Vira status 5 (Preto)
     const c3 = resultado.celulas.get('3::T1::escada_acesso');
     expect(c3?.status).toBe(5);
     expect(c3?.serie).toBe('3153');
     expect(c3?.origemExpedicao).toBe(true);
+  });
+
+  it('não propaga número sintético de tramosFisicos para células sem série gravada (evita colisão Torre 10 vs Torre 3)', () => {
+    const saldos = new Map<string, number>();
+    const resultado = calcularMatrizAutonomia({
+      arvore,
+      saldos,
+      torresTotais: 10,
+      registrosBanco: [
+        // Torre 3 T5 gravado com série 3192
+        {
+          torre_numero: 3,
+          tramo: 'T5',
+          subkit: 'plataforma',
+          status: 3,
+          serie: '3192',
+        },
+        // Torre 10 não tem gravação manual
+      ],
+      tramosFisicos: [
+        // No catálogo estático sintético, a Torre 10 T5 tinha 3192 gerado por fórmula
+        { torre_numero: 3, tramo: 'T5', serie: 3155 },
+        { torre_numero: 10, tramo: 'T5', serie: 3192 },
+      ],
+      tramosExpedicao: [
+        // Tramo 3192 foi expedido na portaria
+        { numero_tramo: '3192', tramo: 'T5', data_expedicao: '2026-09-14', hora_expedicao: '14:14' },
+      ],
+    });
+
+    // Torre 3 T5: como tinha a série gravada 3192, vira status 5 (Preto)
+    const celulaTorre3 = resultado.celulas.get('3::T5::plataforma');
+    expect(celulaTorre3?.status).toBe(5);
+    expect(celulaTorre3?.serie).toBe('3192');
+
+    // Torre 10 T5: não tem série gravada na matriz, NÃO pode herdar 3192 nem virar status 5
+    const celulaTorre10 = resultado.celulas.get('10::T5::plataforma');
+    expect(celulaTorre10?.status).not.toBe(5);
+    expect(celulaTorre10?.serie).toBeNull();
   });
 });
 

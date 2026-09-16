@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Mail, Plus, Save, Trash2, Truck, AlertCircle, Check,
-  HelpCircle, Bug, Lightbulb, Clock, Camera,
+  HelpCircle, Bug, Lightbulb, Clock, Camera, Search, X,
 } from 'lucide-react';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -142,6 +142,31 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
   const [itemParaExcluir, setItemParaExcluir] = useState<ExpedicaoCarregamentoResumo | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [busca, setBusca] = useState('');
+
+  const itensFiltrados = useMemo(() => {
+    if (!itens) return null;
+    const q = busca.trim().toLowerCase();
+    if (!q) return itens;
+
+    return itens.filter((c) => {
+      if (c.numero?.toLowerCase().includes(q)) return true;
+      if (c.empresa?.toLowerCase().includes(q)) return true;
+      if (c.criado_por_nome?.toLowerCase().includes(q)) return true;
+      if (c.enviado_por_nome?.toLowerCase().includes(q)) return true;
+      if (c.observacoes?.toLowerCase().includes(q)) return true;
+
+      return c.tramos.some((t) => {
+        if (t.numero_tramo?.toLowerCase().includes(q)) return true;
+        if (t.tramo?.toLowerCase().includes(q)) return true;
+        if (t.motorista?.toLowerCase().includes(q)) return true;
+        if (t.numero_nf?.toLowerCase().includes(q)) return true;
+        if (t.cavalo_placa?.toLowerCase().includes(q)) return true;
+        if (t.carreta_placa?.toLowerCase().includes(q)) return true;
+        return false;
+      });
+    });
+  }, [itens, busca]);
 
   const recarregar = useCallback(async () => {
     try {
@@ -248,6 +273,49 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
         </div>
       </div>
 
+      {itens !== null && itens.length > 0 && (
+        <div className="space-y-2">
+          <div className="relative">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+              <Search className="h-4 w-4" />
+            </div>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar por nº do tramo (ex: 3192), protocolo, transportadora, motorista, placa, NF..."
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 shadow-xs transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-blue-400 dark:focus:ring-blue-400"
+            />
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca('')}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                title="Limpar pesquisa"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {busca.trim() && (
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+              <span>
+                {itensFiltrados?.length === 1
+                  ? '1 carregamento encontrado'
+                  : `${itensFiltrados?.length ?? 0} carregamentos encontrados`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBusca('')}
+                className="text-blue-600 hover:underline dark:text-blue-400 cursor-pointer"
+              >
+                Limpar filtro
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {itens === null ? (
         <div className="flex justify-center py-16 text-slate-400">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -260,17 +328,35 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             Crie um ao chegar o primeiro caminhão — os horários podem ser preenchidos aos poucos.
           </p>
         </div>
+      ) : itensFiltrados && itensFiltrados.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 px-6 py-12 text-center dark:border-slate-700">
+          <Search className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+          <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Nenhum carregamento encontrado para "{busca}"
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Tente buscar pelo número do tramo (ex: 3192), protocolo (EXP-...), transportadora, motorista ou placa.
+          </p>
+          <button
+            type="button"
+            onClick={() => setBusca('')}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+          >
+            Limpar pesquisa
+          </button>
+        </div>
       ) : (
         <ul data-tour="expedicao-lista" className="space-y-3">
-          {itens.map(c => {
+          {itensFiltrados?.map(c => {
             const etapasPreenchidas = c.tramos.reduce(
               (n, t) => n + [t.hora_chegada_portaria, t.hora_entrada_patio, t.hora_expedicao].filter(Boolean).length, 0,
             );
             const etapasTotais = c.tramos.length * 3;
             // O tramo é o que a equipe procura primeiro na lista, então vai no
-            // título, antes da transportadora. Carregamentos antigos podem ter
-            // mais de um; os novos, sempre exatamente um.
-            const rotuloTramos = c.tramos.map(t => t.tramo).join(' + ');
+            // título, antes da transportadora. Se houver número de tramo gravado (ex: 3192), exibe junto.
+            const rotuloTramos = c.tramos
+              .map(t => (t.numero_tramo ? `${t.tramo} (${t.numero_tramo})` : t.tramo))
+              .join(' + ');
             // Distingue os carregamentos que, sem ela, teriam título idêntico:
             // "1º T4 - TRANSPES" e "2º T4 - TRANSPES".
             const ordinal = sequencias[c.id];
@@ -308,6 +394,11 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {c.tramos.length === 0 && (
                         <span className="text-xs text-slate-400">Sem tramos</span>
+                      )}
+                      {c.tramos.some((t) => t.numero_tramo) && (
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                          Nº {c.tramos.filter((t) => t.numero_tramo).map((t) => t.numero_tramo).join(', ')}
+                        </span>
                       )}
                       {etapasTotais > 0 && (
                         <span className="text-[11px] font-medium text-slate-400">

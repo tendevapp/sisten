@@ -1802,7 +1802,7 @@ export interface ExpedicaoCarregamentoCompleto extends ExpedicaoCarregamento {
 
 /** Linha da listagem: o carregamento + o resumo de progresso, sem carregar as fotos. */
 export interface ExpedicaoCarregamentoResumo extends ExpedicaoCarregamento {
-  tramos: Pick<ExpedicaoTramo, 'id' | 'tramo' | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'>[];
+  tramos: Pick<ExpedicaoTramo, 'id' | 'tramo' | 'numero_tramo' | 'motorista' | 'numero_nf' | 'cavalo_placa' | 'carreta_placa' | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'>[];
   total_fotos: number;
 }
 
