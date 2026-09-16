@@ -36,7 +36,6 @@ import { listarRhPessoas } from '../../lib/rhApi';
 import { listarVeiculosLeves } from '../../lib/facilitiesApi';
 import { exportRelatorioPortariaPdf } from '../../lib/pdfExport/exportPortariaPdf';
 import StatusPortariaBadge from '../../components/portaria/StatusPortariaBadge';
-import VigilanteSelect from '../../components/portaria/VigilanteSelect';
 import VigilanteOperadorAtual from '../../components/portaria/VigilanteOperadorAtual';
 import VeiculoLeveFormFields from '../../components/portaria/VeiculoLeveFormFields';
 import { useToast } from '../../components/ui/Toast';
@@ -268,6 +267,23 @@ const PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS: TourStep[] = [
   },
 ];
 
+/**
+ * Um novo lançamento pertence sempre ao livro em andamento da sua própria
+ * data. O livro apenas selecionado na tela pode ser de outro dia e nunca deve
+ * receber a ocorrência por esse motivo.
+ */
+export function localizarRelatorioDoLancamento(
+  relatorios: PortRelatorioPortaria[],
+  data: string,
+): PortRelatorioPortaria | null {
+  return relatorios.find(
+    (relatorio) =>
+      relatorio.data === data &&
+      relatorio.status === 'EM_ANDAMENTO' &&
+      !relatorio.excluido_em,
+  ) || null;
+}
+
 export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -281,7 +297,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const podeEditarAtivo = podeEditarFormulario(user, relatorioAtivo);
 
   // Modais
-  const [modalNovoRelatorio, setModalNovoRelatorio] = useState(false);
   const [modalNovaOcorrencia, setModalNovaOcorrencia] = useState(false);
 
   const tour = usePageTour('portaria-relatorio', PORTARIA_RELATORIO_TOUR_STEPS.length, !modalNovaOcorrencia);
@@ -300,17 +315,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
   // Form Novo Plantão
-  const [formRelatorio, setFormRelatorio] = useState({
-    data: api.hojeISO(),
-    turno: api.sugerirTurno(),
-    horario_inicio: '06:00',
-    horario_fim: '18:00',
-    vigilante_principal: user.name,
-    vigilante_ronda01: '',
-    vigilante_ronda02: '',
-    observacoes_gerais: '',
-  });
-
   // Lista de Pessoas no Form de Ocorrência
   const [pessoasForm, setPessoasForm] = useState<ItemPessoaForm[]>([
     { nome: '', cpf: '', cnh: '', funcao: '' },
@@ -595,26 +599,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     toast.success(`Dados de ${item.nome || item.empresa || item.placa} preenchidos!`);
   };
 
-  const handleCriarRelatorio = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    setSalvando(true);
-    try {
-      const novo = await api.criarRelatorio({
-        ...formRelatorio,
-        criado_por: user.id,
-      });
-      toast.success('Relatório de ocorrências aberto com sucesso!');
-      setModalNovoRelatorio(false);
-      setRelatorioAtivo(novo);
-      carregarRelatorios(novo.id);
-    } catch (e) {
-      toast.error(`Falha ao abrir relatório: ${(e as Error).message}`);
-    } finally {
-      setSalvando(false);
-    }
-  };
-
   // Upload e Câmera com compressão
   const handleSelecionarImagem = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -841,17 +825,38 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
 
     setSalvando(true);
     try {
-      let relId = relatorioAtivo?.id;
+      let relId: string;
 
-      if (!relId) {
-        const novoRel = await api.criarRelatorio({
-          data: api.hojeISO(),
-          turno: api.sugerirTurno(),
-          vigilante_principal: formOcorrencia.vigilante,
-          criado_por: user.id,
+      if (ocorrenciaEmEdicao?.id) {
+        if (!relatorioAtivo) {
+          throw new Error('Livro da ocorrência não encontrado. Atualize a página e tente novamente.');
+        }
+        // Edições preservam o vínculo histórico já gravado.
+        relId = relatorioAtivo.id;
+      } else {
+        const dataLancamento = api.hojeISO();
+        const turnoLancamento = api.sugerirTurno();
+        const relatoriosDoLancamento = await api.listarRelatorios({
+          status: 'EM_ANDAMENTO',
+          dataInicio: dataLancamento,
+          dataFim: dataLancamento,
         });
-        relId = novoRel.id;
-        setRelatorioAtivo(novoRel);
+        const relatorioDoLancamento = localizarRelatorioDoLancamento(
+          relatoriosDoLancamento,
+          dataLancamento,
+        );
+
+        if (relatorioDoLancamento) {
+          relId = relatorioDoLancamento.id;
+        } else {
+          const novoRel = await api.criarRelatorio({
+            data: dataLancamento,
+            turno: turnoLancamento,
+            vigilante_principal: formOcorrencia.vigilante,
+            criado_por: user.id,
+          });
+          relId = novoRel.id;
+        }
       }
 
       const statusPermanencia: PortStatusPermanencia = tipoAtual.isLivre
@@ -1136,27 +1141,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 checked={mostrarExcluidos}
                 onChange={setMostrarExcluidos}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  setFormRelatorio({
-                    data: api.hojeISO(),
-                    turno: api.sugerirTurno(),
-                    horario_inicio: '06:00',
-                    horario_fim: '18:00',
-                    vigilante_principal: user.name,
-                    vigilante_ronda01: '',
-                    vigilante_ronda02: '',
-                    observacoes_gerais: '',
-                  });
-                  setModalNovoRelatorio(true);
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 cursor-pointer"
-                title="Abrir novo período / turno"
-              >
-                <Plus className="h-3 w-3" />
-                Novo Turno
-              </button>
             </div>
           </div>
 
@@ -1548,7 +1532,9 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                     {ocorrenciaEmEdicao ? 'Editar Lançamento no Livro' : 'Novo Lançamento no Livro de Ocorrências'}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {relatorioAtivo ? `Livro ${relatorioAtivo.numero_protocolo} · Turno ${relatorioAtivo.turno}` : 'Registro de Ocorrência — Hoje'}
+                    {ocorrenciaEmEdicao
+                      ? (relatorioAtivo ? `Livro ${relatorioAtivo.numero_protocolo} · Turno ${relatorioAtivo.turno}` : 'Livro da ocorrência')
+                      : `Será lançado no livro de ${api.hojeISO().split('-').reverse().join('/')} · Turno ${api.sugerirTurno()}`}
                   </p>
                 </div>
               </div>
@@ -2574,115 +2560,6 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
               Fechar
             </button>
           </ModalFooter>
-        </Modal>
-      )}
-
-      {/* Modal: Abrir Novo Plantão */}
-      {modalNovoRelatorio && (
-        <Modal onClose={() => setModalNovoRelatorio(false)} maxWidth="max-w-xl">
-          <ModalHeader onClose={() => setModalNovoRelatorio(false)}>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-50">
-              Abrir Novo Plantão — Livro de Ocorrências
-            </h3>
-          </ModalHeader>
-
-          <form onSubmit={handleCriarRelatorio}>
-            <ModalBody className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Data do Plantão *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formRelatorio.data}
-                    onChange={(e) => setFormRelatorio({ ...formRelatorio, data: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Turno *
-                  </label>
-                  <select
-                    value={formRelatorio.turno}
-                    onChange={(e) => setFormRelatorio({ ...formRelatorio, turno: e.target.value as PortTurno })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 uppercase"
-                  >
-                    <option value="MANHA">Manhã</option>
-                    <option value="TARDE">Tarde</option>
-                    <option value="NOITE">Noite</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Horário Início
-                  </label>
-                  <input
-                    type="time"
-                    value={formRelatorio.horario_inicio}
-                    onChange={(e) => setFormRelatorio({ ...formRelatorio, horario_inicio: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Horário Fim
-                  </label>
-                  <input
-                    type="time"
-                    value={formRelatorio.horario_fim}
-                    onChange={(e) => setFormRelatorio({ ...formRelatorio, horario_fim: e.target.value })}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <VigilanteOperadorAtual nome={formRelatorio.vigilante_principal} label="Vigilante Responsável (Portaria)" />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <VigilanteSelect
-                  label="Vigilante Ronda 01 (Opcional)"
-                  placeholder="Selecione o vigilante..."
-                  value={formRelatorio.vigilante_ronda01}
-                  onChange={(val) => setFormRelatorio({ ...formRelatorio, vigilante_ronda01: val })}
-                  excludeNames={[formRelatorio.vigilante_principal, formRelatorio.vigilante_ronda02]}
-                />
-                <VigilanteSelect
-                  label="Vigilante Ronda 02 (Opcional)"
-                  placeholder="Selecione o vigilante..."
-                  value={formRelatorio.vigilante_ronda02}
-                  onChange={(val) => setFormRelatorio({ ...formRelatorio, vigilante_ronda02: val })}
-                  excludeNames={[formRelatorio.vigilante_principal, formRelatorio.vigilante_ronda01]}
-                />
-              </div>
-            </ModalBody>
-
-            <ModalFooter>
-              <button
-                type="button"
-                onClick={() => setModalNovoRelatorio(false)}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={salvando}
-                className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-purple-500 disabled:opacity-50"
-              >
-                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                Abrir Plantão
-              </button>
-            </ModalFooter>
-          </form>
         </Modal>
       )}
 

@@ -294,27 +294,83 @@ export function calcularMatrizAutonomia(params: {
   const totalTorres = Math.max(12, torresTotais || 12);
   const torresDisponiveis = Array.from({ length: totalTorres }, (_, i) => i + 1);
 
-  // Mapa de números de série lançados no formulário de expedição/portaria com saída concluída.
-  // Conforme validação da operação em campo: apenas o tramo T1 (série 3143) realizou saída pela portaria até o momento.
-  // Os demais tramos com apontamentos de carregamento/faturamento permanecem como Faturado (Laranja).
+  const normalizarSerieVisual = (serie?: number | string | null): string | null => {
+    const texto = String(serie ?? '').trim();
+    return /^\d+$/.test(texto) ? texto : null;
+  };
+
+  const seriesPretas = new Set<string>();
+  registrosBanco.forEach((r) => {
+    if (r.status === 5) {
+      const serie = normalizarSerieVisual(r.serie);
+      if (serie) seriesPretas.add(serie);
+    }
+  });
+  tramosExpedicao.forEach((exp) => {
+    const serie = normalizarSerieVisual(exp.numero_tramo);
+    if (serie) seriesPretas.add(serie);
+  });
+
+  /**
+   * A matriz é uma visão de acompanhamento, não a fonte de rastreabilidade.
+   * Os pretos vêm primeiro; dentro de cada status, as séries são ordenadas e
+   * distribuídas sem lacunas: T1 até T5 da Torre 1, depois Torre 2.
+   */
+  const seriesNaFila = new Set<string>();
+  tramosFaturamento.forEach((f) => {
+    if (f.data_faturado || f.nota_fiscal) {
+      const serie = normalizarSerieVisual(f.serie);
+      if (serie) seriesNaFila.add(serie);
+    }
+  });
+  registrosBanco.forEach((r) => {
+    const serie = normalizarSerieVisual(r.serie);
+    if (serie) seriesNaFila.add(serie);
+  });
+  tramosExpedicao.forEach((exp) => {
+    const serie = normalizarSerieVisual(exp.numero_tramo);
+    if (serie) seriesNaFila.add(serie);
+  });
+
+  const chaveVisualPorSerie = new Map<string, string>();
+  Array.from(seriesNaFila)
+    .sort((a, b) => {
+      const prioridadeA = seriesPretas.has(a) ? 0 : 1;
+      const prioridadeB = seriesPretas.has(b) ? 0 : 1;
+      return prioridadeA - prioridadeB || Number(a) - Number(b);
+    })
+    .slice(0, totalTorres * TRAMOS.length)
+    .forEach((serie, indice) => {
+      const torreNumero = Math.floor(indice / TRAMOS.length) + 1;
+      const tramo = TRAMOS[indice % TRAMOS.length];
+      chaveVisualPorSerie.set(serie, `${torreNumero}::${tramo}`);
+    });
+
+  // O formulário de expedição preserva o preto do status 5, sem depender do
+  // tramo de origem que consta no rastreio.
   const numerosExpedidos = new Set<string>();
+  const serieExpedidaPorChaveVisual = new Map<string, string>();
   for (const exp of tramosExpedicao) {
-    const n = String(exp.numero_tramo || '').trim();
-    const t = String(exp.tramo || '').trim().toUpperCase();
-    if (n && (t === 'T1' || n === '3143')) {
-      numerosExpedidos.add(n);
+    const serie = normalizarSerieVisual(exp.numero_tramo);
+    const chaveVisual = serie ? chaveVisualPorSerie.get(serie) : null;
+    if (serie && chaveVisual) {
+      numerosExpedidos.add(serie);
+      serieExpedidaPorChaveVisual.set(chaveVisual, serie);
     }
   }
 
-  // Mapa de tramos faturados no GW Jacobina (por torre+tramo e por série física)
+  // Mapa de tramos faturados no GW Jacobina, reposicionado apenas nesta visão
+  // pela fila compacta de séries.
   const faturadosPorTorreTramo = new Map<string, RegistroFaturamentoGwjaco>();
   const faturadosPorSerie = new Map<string, RegistroFaturamentoGwjaco>();
   for (const f of tramosFaturamento) {
     const temFaturamento = Boolean(f.data_faturado || f.nota_fiscal);
     if (temFaturamento) {
-      faturadosPorTorreTramo.set(`${f.torre_numero}::${f.tramo}`, f);
-      if (f.serie != null) {
-        faturadosPorSerie.set(String(f.serie).trim(), f);
+      const serie = normalizarSerieVisual(f.serie);
+      const chaveVisual = (serie ? chaveVisualPorSerie.get(serie) : null) ?? `${f.torre_numero}::${f.tramo}`;
+      faturadosPorTorreTramo.set(chaveVisual, f);
+      if (serie) {
+        faturadosPorSerie.set(serie, f);
       }
     }
   }
@@ -328,7 +384,9 @@ export function calcularMatrizAutonomia(params: {
   // Mapa de registros gravados
   const gravados = new Map<string, RegistroMatrizBanco>();
   for (const r of registrosBanco) {
-    const chave = `${r.torre_numero}::${r.tramo}::${r.subkit}`;
+    const serie = normalizarSerieVisual(r.serie);
+    const chaveBase = (serie ? chaveVisualPorSerie.get(serie) : null) ?? `${r.torre_numero}::${r.tramo}`;
+    const chave = `${chaveBase}::${r.subkit}`;
     gravados.set(chave, r);
   }
 
@@ -363,7 +421,7 @@ export function calcularMatrizAutonomia(params: {
         const fatInfo = faturadosPorTorreTramo.get(`${torreNumero}::${tramo}`);
         const serieGravada = fatInfo?.serie != null
           ? String(fatInfo.serie).trim()
-          : (gravado?.serie ? gravado.serie.trim() : null);
+          : (gravado?.serie ? gravado.serie.trim() : (serieExpedidaPorChaveVisual.get(`${torreNumero}::${tramo}`) ?? null));
 
         // Se o número deste tramo específico foi lançado no formulário de expedição/portaria com saída confirmada:
         const foiLancadoExpedicao = Boolean(
@@ -409,7 +467,9 @@ export function calcularMatrizAutonomia(params: {
           });
         } else if (gravado) {
           // Se estava gravado como 5 no banco mas não tem série física ou não saiu, rebaixa para 3 (OK Pátio)
-          const statusAjustado = gravado.status === 5 && !serieGravada ? 3 : (gravado.status as StatusKitAutonomia);
+          const statusAjustado = gravado.status === 5
+            ? (serieGravada ? 5 : 3)
+            : (gravado.status as StatusKitAutonomia);
           celulas.set(chaveCelula, {
             torreNumero,
             tramo,

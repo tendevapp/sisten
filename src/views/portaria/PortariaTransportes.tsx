@@ -42,11 +42,29 @@ const formTransporteVazio = () => ({
   placa: '',
   empresa: '',
   hora_chegada: api.horaAgora(),
+  hora_saida: '',
   motorista: '',
   rota: '',
   ocupacao: '',
   observacoes: '',
 });
+
+export function prepararFormEdicaoTransporte(item: PortRegistroTransporte) {
+  return {
+    data: item.data,
+    turno: item.turno,
+    vigilante: item.vigilante,
+    veiculo: item.veiculo,
+    placa: item.placa,
+    empresa: item.empresa,
+    hora_chegada: item.hora_chegada,
+    hora_saida: item.hora_saida || '',
+    motorista: item.motorista,
+    rota: (item.rota || '').toUpperCase(),
+    ocupacao: item.ocupacao || '',
+    observacoes: item.observacoes || '',
+  };
+}
 
 const PORTARIA_TRANSPORTES_TOUR_STEPS: TourStep[] = [
   {
@@ -176,8 +194,11 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [itemEditando, setItemEditando] = useState<PortRegistroTransporte | null>(null);
+  const [itemParaRegistrarSaida, setItemParaRegistrarSaida] = useState<PortRegistroTransporte | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRegistroTransporte | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoSaida, setSalvandoSaida] = useState(false);
+  const [horaSaidaConfirmacao, setHoraSaidaConfirmacao] = useState('');
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
 
@@ -224,19 +245,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     setSugestoesAtivas(false);
     const rota = (item.rota || '').toUpperCase();
     setRotaModoOutro(rota !== '' && !ROTAS.includes(rota as (typeof ROTAS)[number]));
-    setFormNovo({
-      data: item.data,
-      turno: item.turno,
-      vigilante: item.vigilante,
-      veiculo: item.veiculo,
-      placa: item.placa,
-      empresa: item.empresa,
-      hora_chegada: item.hora_chegada,
-      motorista: item.motorista,
-      rota,
-      ocupacao: item.ocupacao || '',
-      observacoes: item.observacoes || '',
-    });
+    setFormNovo(prepararFormEdicaoTransporte(item));
     setItemEditando(item);
     setModalNovoAberto(true);
   };
@@ -280,12 +289,13 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
     setSalvando(true);
     try {
+      const dadosFormulario = { ...formNovo, hora_saida: formNovo.hora_saida || null };
       if (itemEditando) {
-        await api.atualizarTransporte(itemEditando.id, formNovo);
+        await api.atualizarTransporte(itemEditando.id, dadosFormulario);
         toast.success('Chegada de transporte atualizada!');
       } else {
         await api.criarTransporte({
-          ...formNovo,
+          ...dadosFormulario,
           criado_por: user.id,
         });
         toast.success('Chegada de transporte registrada!');
@@ -299,13 +309,24 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
     }
   };
 
-  const handleRegistrarSaida = async (item: PortRegistroTransporte) => {
+  const abrirConfirmacaoSaida = (item: PortRegistroTransporte) => {
+    setHoraSaidaConfirmacao(api.horaAgora());
+    setItemParaRegistrarSaida(item);
+  };
+
+  const handleRegistrarSaida = async () => {
+    if (!itemParaRegistrarSaida || !horaSaidaConfirmacao) return;
+    const item = itemParaRegistrarSaida;
+    setSalvandoSaida(true);
     try {
-      await api.registrarSaidaTransporte(item.id);
-      toast.success(`Saída registrada para ${item.placa} (${item.empresa})!`);
+      await api.registrarSaidaTransporte(item.id, horaSaidaConfirmacao);
+      toast.success(`Saída registrada para ${item.placa} (${item.empresa}) às ${horaSaidaConfirmacao}!`);
+      setItemParaRegistrarSaida(null);
       carregarDados();
     } catch (e) {
       toast.error(`Falha ao registrar saída: ${(e as Error).message}`);
+    } finally {
+      setSalvandoSaida(false);
     }
   };
 
@@ -544,7 +565,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                         {item.status === 'NO_PATIO' && podeEditarFormulario(user, item) && (
                           <button
                             type="button"
-                            onClick={() => handleRegistrarSaida(item)}
+                            onClick={() => abrirConfirmacaoSaida(item)}
                             className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-400"
                             title="Marcar saída agora"
                           >
@@ -674,7 +695,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 </div>
               </div>
 
-              <div data-tour="transportes-form-horarios" className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div data-tour="transportes-form-horarios" className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Data
@@ -697,6 +718,19 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>
+                {itemEditando?.status === 'FINALIZADO' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Hora de Saída
+                    </label>
+                    <input
+                      type="time"
+                      value={formNovo.hora_saida}
+                      onChange={(e) => setFormNovo({ ...formNovo, hora_saida: e.target.value })}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Turno
@@ -795,6 +829,66 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
                 {itemEditando ? 'Salvar Alterações' : 'Salvar Chegada'}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
+      )}
+
+      {itemParaRegistrarSaida && (
+        <Modal onClose={() => !salvandoSaida && setItemParaRegistrarSaida(null)} maxWidth="max-w-md">
+          <ModalHeader onClose={() => !salvandoSaida && setItemParaRegistrarSaida(null)}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Confirmar Saída</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {itemParaRegistrarSaida.placa} · {itemParaRegistrarSaida.empresa}
+                </p>
+              </div>
+            </div>
+          </ModalHeader>
+
+          <form onSubmit={(e) => { e.preventDefault(); void handleRegistrarSaida(); }}>
+            <ModalBody className="space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Confirme a hora da saída ou ajuste-a antes de finalizar o registro.
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Hora de saída
+                </label>
+                <div className="relative">
+                  <Clock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="time"
+                    required
+                    autoFocus
+                    value={horaSaidaConfirmacao}
+                    onChange={(e) => setHoraSaidaConfirmacao(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <button
+                type="button"
+                disabled={salvandoSaida}
+                onClick={() => setItemParaRegistrarSaida(null)}
+                className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvandoSaida || !horaSaidaConfirmacao}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {salvandoSaida && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirmar Saída
               </button>
             </ModalFooter>
           </form>

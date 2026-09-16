@@ -191,14 +191,14 @@ describe('calcularMatrizAutonomia', () => {
         {
           torre_numero: 2,
           tramo: 'T1',
-          subkit: 'escada_acesso',
+          subkit: 'plataforma',
           status: 3, // Estava como 3 (OK Pátio)
           serie: '3148',
         },
         {
           torre_numero: 3,
           tramo: 'T1',
-          subkit: 'escada_acesso',
+          subkit: 'plataforma',
           status: 1, // Não expedido ainda
           serie: '3153',
         },
@@ -216,22 +216,52 @@ describe('calcularMatrizAutonomia', () => {
     });
 
     // Torre 1: tinha status 4, mas foi lançado na expedição com número 3143 -> Vira status 5 (Preto) com origemExpedicao
-    const c1 = resultado.celulas.get('1::T1::escada_acesso');
+    const c1 = resultado.celulas.get('1::T1::plataforma');
     expect(c1?.status).toBe(5);
     expect(c1?.serie).toBe('3143');
     expect(c1?.origemExpedicao).toBe(true);
 
-    // Torre 2: número 3148 não foi lançado na expedição -> Permanece status 3 gravado
-    const c2 = resultado.celulas.get('2::T1::escada_acesso');
-    expect(c2?.status).toBe(3);
-    expect(c2?.serie).toBe('3148');
-    expect(c2?.origemExpedicao).toBeFalsy();
+    // Pretos ocupam as primeiras posições da fila, inclusive 3153.
+    const c2 = resultado.celulas.get('1::T2::plataforma');
+    expect(c2?.status).toBe(5);
+    expect(c2?.serie).toBe('3153');
+    expect(c2?.origemExpedicao).toBe(true);
 
-    // Torre 3: tinha serie 3153 gravada e foi lançado na expedição -> Vira status 5 (Preto)
-    const c3 = resultado.celulas.get('3::T1::escada_acesso');
-    expect(c3?.status).toBe(5);
-    expect(c3?.serie).toBe('3153');
-    expect(c3?.origemExpedicao).toBe(true);
+    // O registro de pátio entra após os pretos.
+    const c3 = resultado.celulas.get('1::T3::plataforma');
+    expect(c3?.status).toBe(3);
+    expect(c3?.serie).toBe('3148');
+    expect(c3?.origemExpedicao).toBeFalsy();
+  });
+
+  it('compacta as séries disponíveis, completando cada torre antes da próxima', () => {
+    const saldos = new Map<string, number>();
+    const resultado = calcularMatrizAutonomia({
+      arvore,
+      saldos,
+      torresTotais: 3,
+      tramosFaturamento: [
+        { torre_numero: 9, tramo: 'T5', serie: 3143, nota_fiscal: 'NF-1' },
+        { torre_numero: 7, tramo: 'T1', serie: 3144, nota_fiscal: 'NF-2' },
+        { torre_numero: 11, tramo: 'T1', serie: 3153, nota_fiscal: 'NF-3' },
+        { torre_numero: 8, tramo: 'T5', serie: 3182, nota_fiscal: 'NF-4' },
+      ],
+      tramosExpedicao: [
+        { numero_tramo: '3153', tramo: 'T1' },
+      ],
+    });
+
+    // Pretos ficam sempre na frente da fila, mesmo que tenham série maior.
+    const primeiro = resultado.celulas.get('1::T1::escada_acesso');
+    expect(primeiro?.serie).toBe('3153');
+    expect(primeiro?.status).toBe(5);
+    expect(primeiro?.origemExpedicao).toBe(true);
+
+    // Os faturados preenchem as posições seguintes sem lacunas.
+    expect(resultado.celulas.get('1::T2::plataforma')?.serie).toBe('3143');
+    expect(resultado.celulas.get('1::T3::plataforma')?.serie).toBe('3144');
+    expect(resultado.celulas.get('1::T4::plataforma')?.serie).toBe('3182');
+    expect(resultado.celulas.get('2::T1::escada_acesso')?.serie).toBeNull();
   });
 
   it('não propaga número sintético de tramosFisicos para células sem série gravada (evita colisão Torre 10 vs Torre 3)', () => {
@@ -262,15 +292,14 @@ describe('calcularMatrizAutonomia', () => {
       ],
     });
 
-    // Torre 3 T5: como não é saída de portaria confirmada (apenas T1 saiu), mantém status gravado ou faturamento (não vira 5)
+    // O catálogo estático tramosFisicos continua sem preencher células sem
+    // série gravada; a única série da fila ocupa a primeira posição visual.
     const celulaTorre3 = resultado.celulas.get('3::T5::plataforma');
-    expect(celulaTorre3?.status).toBe(3);
-    expect(celulaTorre3?.serie).toBe('3192');
+    expect(celulaTorre3?.serie).toBeNull();
 
-    // Torre 10 T5: não tem série gravada na matriz, NÃO pode herdar 3192 nem virar status 5
-    const celulaTorre10 = resultado.celulas.get('10::T5::plataforma');
-    expect(celulaTorre10?.status).not.toBe(5);
-    expect(celulaTorre10?.serie).toBeNull();
+    const celulaPrimeiraPosicao = resultado.celulas.get('1::T1::plataforma');
+    expect(celulaPrimeiraPosicao?.status).toBe(5);
+    expect(celulaPrimeiraPosicao?.serie).toBe('3192');
   });
 });
 
