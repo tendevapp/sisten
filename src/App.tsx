@@ -5,7 +5,7 @@ import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
-import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia } from './lib/sessaoDiaria';
+import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -240,7 +240,9 @@ export default function App() {
         // Expiração diária: se a sessão foi aberta em outro dia (virou a
         // meia-noite), descarta antes de restaurar — o usuário faz login
         // de novo. Zera `session` para cair no fluxo de "sem sessão".
-        if (session && session.user && !isRecovery && sessaoExpirouNoDia()) {
+        // Usuários fixos/TV (como tv.fin) NUNCA expiram a sessão.
+        const isTvSession = session?.user?.email && usuarioSessaoPermanente(session.user.email);
+        if (session && session.user && !isRecovery && !isTvSession && sessaoExpirouNoDia(new Date(), session.user.email)) {
           await supabase.auth.signOut().catch(() => {});
           limparDiaSessao();
           session = null;
@@ -254,7 +256,7 @@ export default function App() {
             setUser(null);
           } else {
             // Buscar profile atualizado
-            const { data: profile } = await supabase
+            const { data: profile, error: profileError } = await supabase
               .from('core_perfis')
               .select('*')
               .eq('id', session.user.id)
@@ -270,6 +272,21 @@ export default function App() {
               localDb.syncFromSupabase().catch(err => {
                 console.error("Falha ao sincronizar cache local com o Supabase:", err);
               });
+            } else if (profile && (profile.status === 'pendente' || profile.status === 'inativo')) {
+              await supabase.auth.signOut();
+              localDb.setCurrentUser(null);
+              setUser(null);
+            } else if (profileError) {
+              console.warn("Falha de rede ao buscar perfil no Supabase:", profileError);
+              const cached = localDb.getCurrentUser();
+              if (cached && cached.id === session.user.id && cached.status === 'ativo') {
+                setUser(cached);
+                marcarDiaSessao();
+              } else {
+                await supabase.auth.signOut();
+                localDb.setCurrentUser(null);
+                setUser(null);
+              }
             } else {
               await supabase.auth.signOut();
               localDb.setCurrentUser(null);
@@ -424,11 +441,37 @@ export default function App() {
   // Expiração diária da sessão: quando vira a meia-noite com o usuário
   // logado, faz logoff. Checa a cada minuto e também ao voltar o foco para
   // a aba (uma aba que passou a madrugada aberta expira assim que reativa).
+  // Usuários de TV (como tv.fin) NUNCA deslogam por virada de dia nem inatividade.
   useEffect(() => {
     if (!user) return;
 
+    if (usuarioSessaoPermanente(user)) {
+      // Para usuários de monitoramento / TV (ex.: tv.fin), nunca encerra a sessão.
+      // Mantém a marcação do dia renovada periodicamente e garante refresh do token Supabase.
+      const renovarSessaoTv = () => {
+        marcarDiaSessao();
+        if (supabase) {
+          supabase.auth.getSession().catch(() => {});
+        }
+      };
+      const intervalId = setInterval(renovarSessaoTv, 30 * 60 * 1000); // a cada 30 min
+      const aoReconectarOuFocar = () => {
+        renovarSessaoTv();
+      };
+      window.addEventListener('online', aoReconectarOuFocar);
+      window.addEventListener('focus', aoReconectarOuFocar);
+
+      renovarSessaoTv();
+
+      return () => {
+        clearInterval(intervalId);
+        window.removeEventListener('online', aoReconectarOuFocar);
+        window.removeEventListener('focus', aoReconectarOuFocar);
+      };
+    }
+
     const encerrarSePassouODia = async () => {
-      if (!sessaoExpirouNoDia()) return;
+      if (!sessaoExpirouNoDia(new Date(), user)) return;
       await localDb.logout();
       handleUserSessionChange();
     };
@@ -447,7 +490,15 @@ export default function App() {
       window.removeEventListener('focus', aoFocar);
       document.removeEventListener('visibilitychange', aoFocar);
     };
-  }, [user?.id]);
+  }, [user?.id, user?.email, user?.cargo]);
+
+  // Usuário de TV (tv.fin) tem o painel /financeiro/faturamento-gwjaco como destino fixo.
+  // Se abrir na raiz (/), direciona direto para o painel de parede da TV.
+  useEffect(() => {
+    if (user && usuarioSessaoPermanente(user) && (currentPath === '/' || currentPath === '')) {
+      handleNavigate('/financeiro/faturamento-gwjaco');
+    }
+  }, [user?.id, currentPath]);
 
   // Telemetria de navegação: registra uma visualização de página sempre que a
   // rota muda com um usuário autenticado (fire-and-forget, não bloqueia a UI).
@@ -473,7 +524,11 @@ export default function App() {
   const handleLoginSuccess = (authenticatedUser: Profile) => {
     setUser(authenticatedUser);
     marcarDiaSessao();
-    handleNavigate('/');
+    if (usuarioSessaoPermanente(authenticatedUser)) {
+      handleNavigate('/financeiro/faturamento-gwjaco');
+    } else {
+      handleNavigate('/');
+    }
   };
 
   const handleUserSessionChange = () => {
