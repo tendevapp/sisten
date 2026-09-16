@@ -64,6 +64,32 @@ export function gerarProtocolo(prefixo: string, dataISO?: string | null, extra?:
   return `${pref}-${ddmmaa}-${sufixo}`;
 }
 
+/**
+ * Insere um registro cujo `numero_protocolo` pode ter sido montado de forma
+ * determinística (prefixo-data-placa/turno, via `gerarProtocolo` com `extra`)
+ * — e por isso colide com a constraint UNIQUE quando o mesmo veículo ou turno
+ * já gerou protocolo igual no mesmo dia (ex.: caminhão que entra duas vezes).
+ * Tenta com o protocolo proposto; se a constraint rejeitar, regenera sem o
+ * sufixo determinístico (`gerarProtocolo` sem `extra` cai no sufixo
+ * aleatório) e tenta de novo, até 3 vezes.
+ */
+async function inserirComProtocoloUnico<T>(
+  inserir: (numeroProtocolo: string) => PromiseLike<{ data: T | null; error: { code?: string; message: string } | null }>,
+  protocoloInicial: string,
+  prefixo: string,
+  dataISO: string,
+): Promise<T> {
+  let protocolo = protocoloInicial;
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    const { data, error } = await inserir(protocolo);
+    if (!error) return data as T;
+    const duplicado = error.code === '23505' && /numero_protocolo/.test(error.message);
+    if (!duplicado || tentativa === 2) throw new Error(error.message);
+    protocolo = gerarProtocolo(prefixo, dataISO);
+  }
+  throw new Error('Falha ao gerar protocolo único.');
+}
+
 export function hojeISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -247,35 +273,37 @@ function normalizarTextoTransporte<T extends Record<string, any>>(dados: T): T {
 export async function criarTransporte(dados: Partial<PortRegistroTransporte>): Promise<PortRegistroTransporte> {
   const dataRegistro = dados.data || hojeISO();
   const placaLimpa = dados.placa ? dados.placa.replace(/[^A-Za-z0-9]/g, '') : undefined;
-  const payload = normalizarTextoTransporte({
-    codigo_formulario: 'FRM.SGP-0009',
-    numero_protocolo: dados.numero_protocolo || gerarProtocolo('TRP', dataRegistro, placaLimpa),
-    data: dataRegistro,
-    turno: dados.turno || sugerirTurno(),
-    vigilante: dados.vigilante || '',
-    veiculo: dados.veiculo || 'Van',
-    placa: dados.placa || '',
-    empresa: dados.empresa || '',
-    hora_chegada: dados.hora_chegada || horaAgora(),
-    hora_saida: dados.hora_saida || null,
-    motorista: dados.motorista || '',
-    rota: dados.rota || null,
-    ocupacao: dados.ocupacao || null,
-    observacoes: dados.observacoes || null,
-    status: dados.status || 'NO_PATIO',
-    criado_por: dados.criado_por || null,
-  });
+  const protocoloInicial = dados.numero_protocolo || gerarProtocolo('TRP', dataRegistro, placaLimpa);
 
   // `rota` ainda não está no database.types gerado (migration pendente) —
   // cast alinhado ao padrão do arquivo para colunas fora dos tipos.
-  const { data, error } = await (supabase as any)
-    .from('port_registro_transportes')
-    .insert(payload)
-    .select('*')
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as PortRegistroTransporte;
+  return inserirComProtocoloUnico<PortRegistroTransporte>(
+    (numero_protocolo) => (supabase as any)
+      .from('port_registro_transportes')
+      .insert(normalizarTextoTransporte({
+        codigo_formulario: 'FRM.SGP-0009',
+        numero_protocolo,
+        data: dataRegistro,
+        turno: dados.turno || sugerirTurno(),
+        vigilante: dados.vigilante || '',
+        veiculo: dados.veiculo || 'Van',
+        placa: dados.placa || '',
+        empresa: dados.empresa || '',
+        hora_chegada: dados.hora_chegada || horaAgora(),
+        hora_saida: dados.hora_saida || null,
+        motorista: dados.motorista || '',
+        rota: dados.rota || null,
+        ocupacao: dados.ocupacao || null,
+        observacoes: dados.observacoes || null,
+        status: dados.status || 'NO_PATIO',
+        criado_por: dados.criado_por || null,
+      }))
+      .select('*')
+      .single(),
+    protocoloInicial,
+    'TRP',
+    dataRegistro,
+  );
 }
 
 export async function atualizarTransporte(id: string, dados: Partial<PortRegistroTransporte>): Promise<PortRegistroTransporte> {
@@ -317,6 +345,40 @@ export async function buscarTransportesAnteriores(termo: string, limite = 8): Pr
     if (vistos.has(chave)) continue;
     vistos.add(chave);
     unicos.push(r);
+    if (unicos.length >= limite) break;
+  }
+  return unicos;
+}
+
+/**
+ * Valores já digitados num campo de texto livre do transporte (ex.:
+ * "ocupacao"), do mais recente para o mais antigo, sem repetir — vira opção
+ * de preenchimento rápido (datalist) em vez do vigilante redigitar o mesmo
+ * motivo toda hora.
+ */
+export async function buscarHistoricoCampoTransporte(
+  campo: 'ocupacao' | 'rota',
+  limite = 30,
+): Promise<string[]> {
+  // `rota` ainda não está no database.types gerado (migration pendente) —
+  // cast alinhado ao padrão do arquivo para colunas fora dos tipos.
+  const { data, error } = await (supabase as any)
+    .from('port_registro_transportes')
+    .select(campo)
+    .is('excluido_em', null)
+    .not(campo, 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (error) throw new Error(error.message);
+
+  const vistos = new Set<string>();
+  const unicos: string[] = [];
+  for (const row of (data || []) as Record<string, string | null>[]) {
+    const v = (row[campo] || '').trim();
+    if (!v || vistos.has(v)) continue;
+    vistos.add(v);
+    unicos.push(v);
     if (unicos.length >= limite) break;
   }
   return unicos;
@@ -386,36 +448,38 @@ export async function listarCarretas(filtros?: {
 export async function criarCarreta(dados: Partial<PortControleCarreta>): Promise<PortControleCarreta> {
   const dataEntrada = dados.data_entrada || hojeISO();
   const placaLimpa = dados.placa_cavalo ? dados.placa_cavalo.replace(/[^A-Za-z0-9]/g, '') : undefined;
-  const payload = {
-    codigo_formulario: 'FRM.SGP-0020',
-    numero_protocolo: dados.numero_protocolo || gerarProtocolo('CRT', dataEntrada, placaLimpa),
-    empresa: dados.empresa || '',
-    placa_cavalo: dados.placa_cavalo ? dados.placa_cavalo.toUpperCase().trim() : '',
-    placa_carreta: dados.placa_carreta ? dados.placa_carreta.toUpperCase().trim() : '',
-    data_entrada: dados.data_entrada || hojeISO(),
-    hora_entrada: dados.hora_entrada || horaAgora(),
-    nome_motorista: dados.nome_motorista || '',
-    cpf_motorista: dados.cpf_motorista || null,
-    data_saida: dados.data_saida || null,
-    hora_saida: dados.hora_saida || null,
-    ass_motorista: dados.ass_motorista || null,
-    vigilante_entrada: dados.vigilante_entrada || '',
-    vigilante_saida: dados.vigilante_saida || null,
-    numero_nf: dados.numero_nf || null,
-    peso_bruto: dados.peso_bruto == null ? null : Number(dados.peso_bruto),
-    status: dados.status || 'NO_PATIO',
-    observacoes: dados.observacoes || null,
-    criado_por: dados.criado_por || null,
-  };
+  const protocoloInicial = dados.numero_protocolo || gerarProtocolo('CRT', dataEntrada, placaLimpa);
 
-  const { data, error } = await supabase
-    .from('port_controle_carretas')
-    .insert(payload)
-    .select('*')
-    .single();
-
-  if (error) throw new Error(error.message);
-  return data as PortControleCarreta;
+  return inserirComProtocoloUnico<PortControleCarreta>(
+    (numero_protocolo) => supabase
+      .from('port_controle_carretas')
+      .insert({
+        codigo_formulario: 'FRM.SGP-0020',
+        numero_protocolo,
+        empresa: dados.empresa || '',
+        placa_cavalo: dados.placa_cavalo ? dados.placa_cavalo.toUpperCase().trim() : '',
+        placa_carreta: dados.placa_carreta ? dados.placa_carreta.toUpperCase().trim() : '',
+        data_entrada: dados.data_entrada || hojeISO(),
+        hora_entrada: dados.hora_entrada || horaAgora(),
+        nome_motorista: dados.nome_motorista || '',
+        cpf_motorista: dados.cpf_motorista || null,
+        data_saida: dados.data_saida || null,
+        hora_saida: dados.hora_saida || null,
+        ass_motorista: dados.ass_motorista || null,
+        vigilante_entrada: dados.vigilante_entrada || '',
+        vigilante_saida: dados.vigilante_saida || null,
+        numero_nf: dados.numero_nf || null,
+        peso_bruto: dados.peso_bruto == null ? null : Number(dados.peso_bruto),
+        status: dados.status || 'NO_PATIO',
+        observacoes: dados.observacoes || null,
+        criado_por: dados.criado_por || null,
+      })
+      .select('*')
+      .single(),
+    protocoloInicial,
+    'CRT',
+    dataEntrada,
+  );
 }
 
 export async function atualizarCarreta(id: string, dados: Partial<PortControleCarreta>): Promise<PortControleCarreta> {
@@ -558,28 +622,31 @@ export async function obterRelatorio(id: string, incluirExcluidos = false): Prom
 export async function criarRelatorio(dados: Partial<PortRelatorioPortaria>): Promise<PortRelatorioPortaria> {
   const dataRelatorio = dados.data || hojeISO();
   const turnoSigla = dados.turno ? dados.turno.substring(0, 3) : undefined;
-  const payload = {
-    codigo_formulario: 'FRM.SGP-0010',
-    numero_protocolo: dados.numero_protocolo || gerarProtocolo('REL', dataRelatorio, turnoSigla),
-    data: dataRelatorio,
-    turno: dados.turno || sugerirTurno(),
-    horario_inicio: dados.horario_inicio || '06:00',
-    horario_fim: dados.horario_fim || '18:00',
-    vigilante_principal: dados.vigilante_principal || '',
-    vigilante_ronda01: dados.vigilante_ronda01 || null,
-    vigilante_ronda02: dados.vigilante_ronda02 || null,
-    status: dados.status || 'EM_ANDAMENTO',
-    observacoes_gerais: dados.observacoes_gerais || null,
-    criado_por: dados.criado_por || null,
-  };
+  const protocoloInicial = dados.numero_protocolo || gerarProtocolo('REL', dataRelatorio, turnoSigla);
 
-  const { data, error } = await supabase
-    .from('port_relatorio_portaria')
-    .insert(payload)
-    .select('*')
-    .single();
-
-  if (error) throw new Error(error.message);
+  const data = await inserirComProtocoloUnico<Omit<PortRelatorioPortaria, 'ocorrencias'>>(
+    (numero_protocolo) => supabase
+      .from('port_relatorio_portaria')
+      .insert({
+        codigo_formulario: 'FRM.SGP-0010',
+        numero_protocolo,
+        data: dataRelatorio,
+        turno: dados.turno || sugerirTurno(),
+        horario_inicio: dados.horario_inicio || '06:00',
+        horario_fim: dados.horario_fim || '18:00',
+        vigilante_principal: dados.vigilante_principal || '',
+        vigilante_ronda01: dados.vigilante_ronda01 || null,
+        vigilante_ronda02: dados.vigilante_ronda02 || null,
+        status: dados.status || 'EM_ANDAMENTO',
+        observacoes_gerais: dados.observacoes_gerais || null,
+        criado_por: dados.criado_por || null,
+      })
+      .select('*')
+      .single(),
+    protocoloInicial,
+    'REL',
+    dataRelatorio,
+  );
   return { ...data, ocorrencias: [] } as PortRelatorioPortaria;
 }
 

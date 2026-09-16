@@ -9,7 +9,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Plus, Search, FileDown, CheckCircle2,
   Trash2, X, Loader2, Bus, Car, Truck, Clock, Calendar, User, Filter,
-  HelpCircle, Bug, Lightbulb
+  HelpCircle, Bug, Lightbulb, Pencil
 } from 'lucide-react';
 import TourSpotlight from '../../components/help/TourSpotlight';
 import { usePageTour } from '../../components/help/TourRegistryContext';
@@ -31,8 +31,8 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
-const TIPOS_VEICULO = ['Van', 'Carro', 'Ônibus', 'Caminhão', 'Caminhonete', 'Micro-ônibus', 'Outro'];
-const ROTAS = ['R1', 'R2', 'R3'] as const;
+const TIPOS_VEICULO = ['Van', 'Carro', 'Táxi', 'Ônibus', 'Caminhão', 'Caminhonete', 'Micro-ônibus', 'Outro'];
+const ROTAS = ['R1', 'R2', 'R3', 'R4', 'BATATA', 'CAATINGA', 'JACOBINA'] as const;
 
 const formTransporteVazio = () => ({
   data: api.hojeISO(),
@@ -175,10 +175,18 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
+  const [itemEditando, setItemEditando] = useState<PortRegistroTransporte | null>(null);
   const [itemParaExcluir, setItemParaExcluir] = useState<PortRegistroTransporte | null>(null);
   const [salvando, setSalvando] = useState(false);
   const podeVerExcluidos = user.roles.includes('admin');
   const [mostrarExcluidos, setMostrarExcluidos] = useState(false);
+
+  // Histórico de valores já digitados em "Ocupação" — vira opção de
+  // preenchimento (datalist) em vez do vigilante redigitar o mesmo motivo.
+  const [historicoOcupacao, setHistoricoOcupacao] = useState<string[]>([]);
+  useEffect(() => {
+    api.buscarHistoricoCampoTransporte('ocupacao').then(setHistoricoOcupacao).catch(() => {});
+  }, []);
 
   const tour = usePageTour('portaria-transportes', PORTARIA_TRANSPORTES_TOUR_STEPS.length, !modalNovoAberto);
   const tourNovo = usePageTour('portaria-transportes-novo', PORTARIA_TRANSPORTES_NOVO_TOUR_STEPS.length, modalNovoAberto);
@@ -209,6 +217,36 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
       rota: rota || f.rota,
       ocupacao: (r.ocupacao || '').toUpperCase(),
     }));
+  };
+
+  // Abre o modal já preenchido com o registro, para edição.
+  const abrirEdicao = (item: PortRegistroTransporte) => {
+    setSugestoesAtivas(false);
+    const rota = (item.rota || '').toUpperCase();
+    setRotaModoOutro(rota !== '' && !ROTAS.includes(rota as (typeof ROTAS)[number]));
+    setFormNovo({
+      data: item.data,
+      turno: item.turno,
+      vigilante: item.vigilante,
+      veiculo: item.veiculo,
+      placa: item.placa,
+      empresa: item.empresa,
+      hora_chegada: item.hora_chegada,
+      motorista: item.motorista,
+      rota,
+      ocupacao: item.ocupacao || '',
+      observacoes: item.observacoes || '',
+    });
+    setItemEditando(item);
+    setModalNovoAberto(true);
+  };
+
+  const fecharModal = () => {
+    setModalNovoAberto(false);
+    setItemEditando(null);
+    setFormNovo({ ...formTransporteVazio(), vigilante: user.name });
+    setSugestoesAtivas(true);
+    setRotaModoOutro(false);
   };
 
   const carregarDados = useCallback(async () => {
@@ -242,15 +280,17 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
     setSalvando(true);
     try {
-      await api.criarTransporte({
-        ...formNovo,
-        criado_por: user.id,
-      });
-      toast.success('Chegada de transporte registrada!');
-      setModalNovoAberto(false);
-      setFormNovo({ ...formTransporteVazio(), vigilante: user.name });
-      setSugestoesAtivas(true);
-      setRotaModoOutro(false);
+      if (itemEditando) {
+        await api.atualizarTransporte(itemEditando.id, formNovo);
+        toast.success('Chegada de transporte atualizada!');
+      } else {
+        await api.criarTransporte({
+          ...formNovo,
+          criado_por: user.id,
+        });
+        toast.success('Chegada de transporte registrada!');
+      }
+      fecharModal();
       carregarDados();
     } catch (e) {
       toast.error(`Falha ao salvar: ${(e as Error).message}`);
@@ -352,7 +392,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
 
           <button
             type="button"
-            onClick={() => { setFormNovo({ ...formTransporteVazio(), vigilante: user.name }); setSugestoesAtivas(true); setRotaModoOutro(false); setModalNovoAberto(true); }}
+            onClick={() => { setItemEditando(null); setFormNovo({ ...formTransporteVazio(), vigilante: user.name }); setSugestoesAtivas(true); setRotaModoOutro(false); setModalNovoAberto(true); }}
             className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400"
           >
             <Plus className="h-4 w-4" />
@@ -515,6 +555,16 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                         {podeEditarFormulario(user, item) && (
                           <button
                             type="button"
+                            onClick={() => abrirEdicao(item)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/50 dark:hover:text-blue-400"
+                            title="Editar registro"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {podeEditarFormulario(user, item) && (
+                          <button
+                            type="button"
                             onClick={() => setItemParaExcluir(item)}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-400"
                             title="Excluir registro"
@@ -534,14 +584,14 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
         </div>
       )}
 
-      {/* Modal Novo Lançamento */}
+      {/* Modal Novo Lançamento / Edição */}
       {modalNovoAberto && (
-        <Modal onClose={() => setModalNovoAberto(false)} maxWidth="max-w-3xl">
-          <ModalHeader onClose={() => setModalNovoAberto(false)}>
+        <Modal onClose={fecharModal} maxWidth="max-w-3xl">
+          <ModalHeader onClose={fecharModal}>
             <div className="flex flex-wrap items-center justify-between gap-2 pr-6 w-full">
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Lançar Chegada de Transporte
+                  {itemEditando ? 'Editar Chegada de Transporte' : 'Lançar Chegada de Transporte'}
                 </h3>
                 <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">Formulário FRM.SGP-0009</p>
               </div>
@@ -693,7 +743,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                         type="text"
                         autoFocus
                         autoCapitalize="characters"
-                        placeholder="Ex: R4, ESPECIAL..."
+                        placeholder="Ex: ESPECIAL, EXTRA..."
                         value={formNovo.rota}
                         onChange={(e) => setFormNovo({ ...formNovo, rota: e.target.value.toUpperCase() })}
                         className="mt-2 w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
@@ -706,12 +756,18 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                     </label>
                     <input
                       type="text"
+                      list="lista-ocupacoes-transporte"
                       autoCapitalize="characters"
                       placeholder="Ex: Entrega de suprimentos / 4 passageiros"
                       value={formNovo.ocupacao}
                       onChange={(e) => setFormNovo({ ...formNovo, ocupacao: e.target.value.toUpperCase() })}
                       className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                     />
+                    <datalist id="lista-ocupacoes-transporte">
+                      {historicoOcupacao.map((v) => (
+                        <option key={v} value={v} />
+                      ))}
+                    </datalist>
                   </div>
                 </div>
 
@@ -726,7 +782,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
             <ModalFooter>
               <button
                 type="button"
-                onClick={() => setModalNovoAberto(false)}
+                onClick={fecharModal}
                 className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 Cancelar
@@ -738,7 +794,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
                 className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50 dark:bg-blue-500"
               >
                 {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
-                Salvar Chegada
+                {itemEditando ? 'Salvar Alterações' : 'Salvar Chegada'}
               </button>
             </ModalFooter>
           </form>
