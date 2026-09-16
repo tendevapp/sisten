@@ -645,3 +645,33 @@ export async function salvarPlanejamentoTorre(params: {
   if (error) throw new Error(error.message);
 }
 
+export interface TramoExpedicaoRegistro {
+  numero_tramo: string;
+  tramo: string;
+  data_expedicao?: string | null;
+  hora_expedicao?: string | null;
+  data_chegada_portaria?: string | null;
+  hora_chegada_portaria?: string | null;
+}
+
+/**
+ * Consulta os tramos lançados no formulário de Logística e Expedição (portaria/expedição).
+ * Usado para sincronizar automaticamente o status 5 (Saída Portaria / Preto) na matriz.
+ */
+export async function listarTramosExpedidosPortaria(): Promise<TramoExpedicaoRegistro[]> {
+  const { data, error } = await supabase
+    .from('expedicao_tramos')
+    .select('numero_tramo, tramo, data_expedicao, hora_expedicao, data_chegada_portaria, hora_chegada_portaria')
+    .is('excluido_em', null)
+    .not('numero_tramo', 'is', null);
+
+  if (error) {
+    console.warn('Falha ao consultar expedicao_tramos:', error.message);
+    return [];
+  }
+
+  return (data || []).filter(
+    (row: any) => Boolean(row.numero_tramo && String(row.numero_tramo).trim()),
+  ) as TramoExpedicaoRegistro[];
+}
+

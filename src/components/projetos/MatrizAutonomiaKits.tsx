@@ -299,7 +299,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                                 color: cor.text,
                                 border: `1px solid ${cor.border}`,
                               }}
-                              title={`Torre ${torreNum} · ${tramo} ${SUBKITS[subkitId].rotulo}\nStatus: ${ROTULO_STATUS_AUTONOMIA[celula.status]}${celula.serie ? ` · Série: ${celula.serie}` : ''}\nClique para editar ou ver detalhes.`}
+                              title={`Torre ${torreNum} · ${tramo} ${SUBKITS[subkitId].rotulo}\nStatus: ${ROTULO_STATUS_AUTONOMIA[celula.status]}${celula.serie ? ` · Série: ${celula.serie}` : ''}${celula.origemExpedicao ? ' · Saída Portaria lançada no formulário de Logística e Expedição' : ''}\nClique para editar ou ver detalhes.`}
                             >
                               {temTexto ? (
                                 <span className="tabular-nums tracking-tight">{celula.serie}</span>
@@ -438,7 +438,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
             <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
               <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5 border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[5].bg }} />
               <span>
-                <strong>Saída Portaria (5):</strong> tramos que já saíram da portaria da fábrica.
+                <strong>Saída Portaria (5):</strong> tramos que já saíram da portaria (sincronizado automaticamente pelo número do tramo lançado no formulário de Logística e Expedição).
               </span>
             </div>
           </div>
@@ -463,6 +463,15 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
 
           <ModalBody>
             <div className="space-y-4">
+              {celulaSelecionada.origemExpedicao && (
+                <div className="p-2.5 rounded-lg bg-zinc-900 text-white text-[11px] flex items-center gap-2 font-medium shadow-xs">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+                  <span>
+                    Status vinculado automaticamente pelo lançamento do Tramo <strong>Nº {celulaSelecionada.serie}</strong> no formulário de Logística e Expedição.
+                  </span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold mb-1.5" style={{ color: 'var(--ink-muted)' }}>
                   Status Operacional

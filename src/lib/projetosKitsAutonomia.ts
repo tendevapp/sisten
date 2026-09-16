@@ -215,6 +215,7 @@ export interface CelulaMatriz {
   isManual: boolean;
   autonomiaEstoque: number;
   gargaloPn: string | null;
+  origemExpedicao?: boolean;
 }
 
 export interface MatrizAutonomiaResultado {
@@ -239,12 +240,26 @@ export interface RegistroPlanejamentoBanco {
   data_alvo?: string | null;
 }
 
+export interface RegistroTramoExpedicao {
+  numero_tramo: string;
+  tramo?: string | null;
+  data_expedicao?: string | null;
+  hora_expedicao?: string | null;
+}
+
+export interface RegistroTramoFisico {
+  torre_numero: number;
+  tramo: string;
+  serie: number | string;
+}
+
 /**
  * Calcula a matriz de autonomia cruzando:
  * 1. Dados gravados no banco (semanas de planejamento e overrides/apontamentos)
  * 2. Composição da BOM por sub-kit
  * 3. Saldo físico em estoque do almoxarifado
  * 4. Tramos já expedidos e kits pagos para produção (Pátio)
+ * 5. Tramos lançados no formulário de Logística e Expedição / Portaria (Preto - Status 5)
  */
 export function calcularMatrizAutonomia(params: {
   arvore: ArvoreBom;
@@ -252,11 +267,38 @@ export function calcularMatrizAutonomia(params: {
   torresTotais: number;
   registrosBanco?: RegistroMatrizBanco[];
   planejamentosBanco?: RegistroPlanejamentoBanco[];
+  tramosFisicos?: RegistroTramoFisico[];
+  tramosExpedicao?: RegistroTramoExpedicao[];
 }): MatrizAutonomiaResultado {
-  const { arvore, saldos, torresTotais, registrosBanco = [], planejamentosBanco = [] } = params;
+  const {
+    arvore,
+    saldos,
+    torresTotais,
+    registrosBanco = [],
+    planejamentosBanco = [],
+    tramosFisicos = [],
+    tramosExpedicao = [],
+  } = params;
 
   const totalTorres = Math.max(12, torresTotais || 12);
   const torresDisponiveis = Array.from({ length: totalTorres }, (_, i) => i + 1);
+
+  // Mapa de números de série lançados no formulário de expedição/portaria
+  const numerosExpedidos = new Set<string>();
+  for (const exp of tramosExpedicao) {
+    const n = String(exp.numero_tramo || '').trim();
+    if (n) {
+      numerosExpedidos.add(n);
+    }
+  }
+
+  // Mapeia torre_numero + tramo para o número de série físico cadastrado em fábrica
+  const seriePorTorreTramo = new Map<string, string>();
+  for (const tf of tramosFisicos) {
+    if (tf.torre_numero && tf.tramo && tf.serie) {
+      seriePorTorreTramo.set(`${tf.torre_numero}::${tf.tramo}`, String(tf.serie).trim());
+    }
+  }
 
   // Mapa de planejamentos por torre (ex: W36, W37)
   const semanasPorTorre = new Map<number, string>();
@@ -296,7 +338,29 @@ export function calcularMatrizAutonomia(params: {
         const chaveCelula = `${torreNumero}::${tramo}::${subkit}`;
         const gravado = gravados.get(chaveCelula);
 
-        if (gravado) {
+        // Identifica o número de série da célula (do override gravado ou da série física do tramo)
+        const serieFisicaTorre = seriePorTorreTramo.get(`${torreNumero}::${tramo}`) ?? null;
+        const serieCandidata = (gravado?.serie && gravado.serie.trim()) || serieFisicaTorre;
+
+        // Se o número do tramo foi lançado no formulário de expedição/portaria:
+        const foiLancadoExpedicao = Boolean(
+          serieCandidata && numerosExpedidos.has(serieCandidata),
+        );
+
+        if (gravado?.status === 5 || foiLancadoExpedicao) {
+          // Status 5: Saída Portaria (Preto)
+          celulas.set(chaveCelula, {
+            torreNumero,
+            tramo,
+            subkit,
+            status: 5,
+            serie: serieCandidata,
+            isManual: Boolean(gravado),
+            autonomiaEstoque,
+            gargaloPn: comp.gargalo?.partNumber ?? null,
+            origemExpedicao: foiLancadoExpedicao,
+          });
+        } else if (gravado) {
           // Registro explícito gravado no banco (ex: Expedido 4 com série, ou OK Pátio 3)
           celulas.set(chaveCelula, {
             torreNumero,
@@ -341,3 +405,4 @@ export function calcularMatrizAutonomia(params: {
     torresDisponiveis,
   };
 }
+

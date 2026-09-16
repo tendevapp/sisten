@@ -173,5 +173,59 @@ describe('calcularMatrizAutonomia', () => {
     expect(c1?.status).toBe(5);
     expect(c1?.serie).toBe('3143');
   });
+
+  it('atualiza automaticamente para status 5 (Preto) puxando pelo numero_tramo lançado na expedicao', () => {
+    const saldos = new Map<string, number>();
+    const resultado = calcularMatrizAutonomia({
+      arvore,
+      saldos,
+      torresTotais: 3,
+      registrosBanco: [
+        {
+          torre_numero: 1,
+          tramo: 'T1',
+          subkit: 'escada_acesso',
+          status: 4, // Estava como 4 (Expedido)
+          serie: '3143',
+        },
+        {
+          torre_numero: 2,
+          tramo: 'T1',
+          subkit: 'escada_acesso',
+          status: 3, // Estava como 3 (OK Pátio)
+          serie: '3148',
+        },
+      ],
+      tramosFisicos: [
+        { torre_numero: 1, tramo: 'T1', serie: 3143 },
+        { torre_numero: 2, tramo: 'T1', serie: 3148 },
+        { torre_numero: 3, tramo: 'T1', serie: 3153 },
+      ],
+      // Lançados no formulário de logística e expedição
+      tramosExpedicao: [
+        { numero_tramo: '3143', tramo: 'T1', data_expedicao: '2026-09-08', hora_expedicao: '11:41' },
+        { numero_tramo: '3153', tramo: 'T1', data_expedicao: '2026-09-14', hora_expedicao: '10:00' },
+      ],
+    });
+
+    // Torre 1: tinha status 4, mas foi lançado na expedição com número 3143 -> Vira status 5 (Preto) com origemExpedicao
+    const c1 = resultado.celulas.get('1::T1::escada_acesso');
+    expect(c1?.status).toBe(5);
+    expect(c1?.serie).toBe('3143');
+    expect(c1?.origemExpedicao).toBe(true);
+
+    // Torre 2: número 3148 não foi lançado na expedição -> Permanece status 3 gravado
+    const c2 = resultado.celulas.get('2::T1::escada_acesso');
+    expect(c2?.status).toBe(3);
+    expect(c2?.serie).toBe('3148');
+    expect(c2?.origemExpedicao).toBeFalsy();
+
+    // Torre 3: não tinha registro manual, mas seu tramo físico 3153 foi lançado na expedição -> Vira status 5 (Preto)
+    const c3 = resultado.celulas.get('3::T1::escada_acesso');
+    expect(c3?.status).toBe(5);
+    expect(c3?.serie).toBe('3153');
+    expect(c3?.origemExpedicao).toBe(true);
+  });
 });
+
 
