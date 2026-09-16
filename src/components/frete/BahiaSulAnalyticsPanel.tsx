@@ -24,7 +24,10 @@ import {
   BahiaSulKpis,
   SugestaoPoBahiaSul,
   ConfiancaSugestao,
-  ItemPedidoBahiaSul
+  ItemPedidoBahiaSul,
+  isCteComMigo,
+  calcularIndicadoresFreteItem,
+  IndicadoresFreteItem
 } from '../../lib/bahiasul';
 import { useToast } from '../ui/Toast';
 import BahiaSulUploadModal from './BahiaSulUploadModal';
@@ -78,6 +81,7 @@ export default function BahiaSulAnalyticsPanel({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'TRANSITO' | 'A ENTREGAR' | 'ENTREGUE'>('todos');
   const [vinculoFilter, setVinculoFilter] = useState<'todos' | 'vinculado' | 'sem_vinculo'>('todos');
+  const [migoFilter, setMigoFilter] = useState<'todos' | 'sem_migo' | 'com_migo'>('todos');
   const [auditoriaFilter, setAuditoriaFilter] = useState<'todos' | 'sobrepreco' | 'conforme' | 'desconto' | 'sem_rota'>('todos');
 
   // Manual PO linking edit
@@ -144,6 +148,20 @@ export default function BahiaSulAnalyticsPanel({
     return calcularKpisBahiaSul(entregasEnriquecidas);
   }, [entregasEnriquecidas]);
 
+  // Contagem de entregas com MIGO completo vs pendentes de MIGO
+  const { semMigoCount, comMigoCount } = useMemo(() => {
+    let semMigo = 0;
+    let comMigo = 0;
+    for (const e of entregasEnriquecidas) {
+      if (isCteComMigo(e)) {
+        comMigo++;
+      } else {
+        semMigo++;
+      }
+    }
+    return { semMigoCount: semMigo, comMigoCount: comMigo };
+  }, [entregasEnriquecidas]);
+
   // PO SUGERIDO (para confirmação): CTe sem vínculo cujo CNPJ do remetente bate
   // com um PO do SAP na janela de datas. Nada é gravado sem o clique em Confirmar.
   const pedidosAgrupados = useMemo(() => agruparPedidosParaSugestao(pedidosSap as any), [pedidosSap]);
@@ -208,6 +226,17 @@ export default function BahiaSulAnalyticsPanel({
         return false;
       }
 
+      // Filtro de MIGO SAP:
+      // Se 'sem_migo': mostra apenas os que NÃO têm MIGO ainda. Como as bases são distintas,
+      // a transportadora pode demorar para atualizar como entregue, mas se já tiver MIGO no SAP
+      // não deve ser exibido nesta tabela.
+      if (migoFilter === 'sem_migo' && isCteComMigo(item)) {
+        return false;
+      }
+      if (migoFilter === 'com_migo' && !isCteComMigo(item)) {
+        return false;
+      }
+
       // Filtro de auditoria de frete
       if (auditoriaFilter !== 'todos') {
         const auditStatus = item.freteCalculado?.statusAuditoria;
@@ -241,7 +270,7 @@ export default function BahiaSulAnalyticsPanel({
 
       return true;
     });
-  }, [entregasEnriquecidas, statusFilter, vinculoFilter, auditoriaFilter, searchTerm]);
+  }, [entregasEnriquecidas, statusFilter, vinculoFilter, migoFilter, auditoriaFilter, searchTerm]);
 
   // Quando há CTe com remetente = TEN, a tabela quebra em duas seções:
   // "Frete Contratado" (compras que chegam) e "Frete Enviado" (carga que sai da
@@ -310,6 +339,12 @@ export default function BahiaSulAnalyticsPanel({
     }
   };
 
+  // Indicadores de frete cobrado por item e por quantidade para o CTe selecionado
+  const indicadoresFrete = useMemo(() => {
+    if (!selectedItem) return null;
+    return calcularIndicadoresFreteItem(selectedItem.frt_cobrado, selectedItem.itensPedido);
+  }, [selectedItem]);
+
   // Exportação Excel
   const handleExportExcel = () => {
     if (entregasFiltradas.length === 0) {
@@ -334,6 +369,7 @@ export default function BahiaSulAnalyticsPanel({
       'Pedido SAP': it.nro_pedido || (it.pedidoSap?.documento_compra ?? ''),
       'Fornecedor SAP': it.pedidoSap?.fornecedor_name ?? '',
       'Itens do Pedido (PO)': (it.itensPedido || []).map(i => `${i.material ? i.material + ' - ' : ''}${i.descricao}`).join('; '),
+      'Status MIGO': isCteComMigo(it) ? 'Com MIGO' : (it.itensPedido?.some(i => Boolean(i.dataMigo)) ? 'MIGO Parcial' : 'Sem MIGO'),
       'Status Prazo': it.statusPrazo,
       'Peso Real (kg)': it.kgs_real,
       'Peso Cubado (kg)': it.kgs_cubado,
@@ -341,6 +377,11 @@ export default function BahiaSulAnalyticsPanel({
       'Volumes': it.qtd_volumes,
       'Valor Mercadoria (R$)': it.vlr_mercadoria,
       'Frete Cobrado (R$)': it.frt_cobrado ?? '',
+      'Frete Médio / Item (R$)': it.frt_cobrado && it.itensPedido?.length ? Number((it.frt_cobrado / it.itensPedido.length).toFixed(2)) : '',
+      'Frete Unitário Est. (R$/un)': (() => {
+        const totQtd = (it.itensPedido || []).reduce((acc, i) => acc + (Number(i.qtd) || 0), 0);
+        return it.frt_cobrado && totQtd > 0 ? Number((it.frt_cobrado / totQtd).toFixed(2)) : '';
+      })(),
       'Frete Calculado (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.totalComIcms : '',
       'Diferença Auditoria (R$)': it.freteCalculado?.rotaEncontrada ? it.freteCalculado.diferenca : '',
       'Diferença Auditoria (%)': it.freteCalculado?.rotaEncontrada ? `${it.freteCalculado.diferencaPct.toFixed(1)}%` : '',
@@ -684,6 +725,37 @@ export default function BahiaSulAnalyticsPanel({
             </button>
           </div>
 
+          {/* Filtro de MIGO SAP */}
+          <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
+            <button
+              onClick={() => setMigoFilter('todos')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                migoFilter === 'todos' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Todas as entregas (com e sem MIGO)"
+            >
+              MIGO: Todos
+            </button>
+            <button
+              onClick={() => setMigoFilter(migoFilter === 'sem_migo' ? 'todos' : 'sem_migo')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                migoFilter === 'sem_migo' ? 'bg-amber-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Exibir apenas entregas/itens que ainda não possuem MIGO lançado no SAP"
+            >
+              Sem MIGO ({semMigoCount})
+            </button>
+            <button
+              onClick={() => setMigoFilter(migoFilter === 'com_migo' ? 'todos' : 'com_migo')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                migoFilter === 'com_migo' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Entregas com MIGO completo no SAP"
+            >
+              Com MIGO ({comMigoCount})
+            </button>
+          </div>
+
           {/* Filtro de Auditoria de Frete */}
           <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
             <button
@@ -972,9 +1044,33 @@ export default function BahiaSulAnalyticsPanel({
                               </p>
                             )}
                             {item.itensPedido && item.itensPedido.length > 0 && (
-                              <p className="text-[10px] text-slate-400 font-medium">
-                                {item.itensPedido.length} {item.itensPedido.length === 1 ? 'item' : 'itens'} no PO
-                              </p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                  {item.itensPedido.length} {item.itensPedido.length === 1 ? 'item' : 'itens'}
+                                </span>
+                                {isCteComMigo(item) ? (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200"
+                                    title="Todos os itens do PO possuem MIGO lançado no SAP"
+                                  >
+                                    <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" /> MIGO OK
+                                  </span>
+                                ) : item.itensPedido.some(it => Boolean(it.dataMigo)) ? (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200"
+                                    title="Parte dos itens do PO já possui MIGO no SAP"
+                                  >
+                                    <Clock className="h-2.5 w-2.5 text-amber-600" /> MIGO Parcial
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-800 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-200/80"
+                                    title="Itens ainda sem MIGO no SAP"
+                                  >
+                                    Sem MIGO
+                                  </span>
+                                )}
+                              </div>
                             )}
                             {(() => {
                               const matched = getMatchedItens(item, searchTerm);
@@ -1234,6 +1330,72 @@ export default function BahiaSulAnalyticsPanel({
               </div>
             </div>
 
+            {/* Indicador de Frete Cobrado por Item e por Quantidade */}
+            {selectedItem.frt_cobrado !== null && selectedItem.frt_cobrado !== undefined && selectedItem.frt_cobrado > 0 && (
+              <div className="rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50/70 via-white to-blue-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-cyan-100 pb-2">
+                  <div className="flex items-center space-x-2">
+                    <Calculator className="h-4 w-4 text-cyan-600" />
+                    <h4 className="text-xs font-bold text-cyan-950 uppercase tracking-wider">
+                      Indicadores de Frete Unitário (Cobrado / Itens & Qtd)
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                    Métrica Indicativa
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Frete Cobrado */}
+                  <div className="bg-white/90 p-3 rounded-xl border border-cyan-100/80 shadow-2xs space-y-0.5">
+                    <span className="text-[10px] text-slate-500 font-semibold block">Frete Cobrado no CTe</span>
+                    <p className="text-base font-black text-slate-900">
+                      {selectedItem.frt_cobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    <span className="text-[10px] text-slate-400">Total faturado no frete</span>
+                  </div>
+
+                  {/* Frete por Item (Linha do PO) */}
+                  <div className="bg-white/90 p-3 rounded-xl border border-cyan-100/80 shadow-2xs space-y-0.5">
+                    <span className="text-[10px] text-cyan-800 font-bold block">Frete Médio / por Item</span>
+                    <p className="text-base font-black text-cyan-700">
+                      {indicadoresFrete && indicadoresFrete.totalItens > 0
+                        ? indicadoresFrete.fretePorLinha.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                        : '—'}
+                    </p>
+                    <span className="text-[10px] text-slate-400">
+                      {indicadoresFrete && indicadoresFrete.totalItens > 0
+                        ? `Divisão por ${indicadoresFrete.totalItens} ${indicadoresFrete.totalItens === 1 ? 'item' : 'itens'} no pedido`
+                        : 'Sem itens de pedido associados'}
+                    </span>
+                  </div>
+
+                  {/* Frete por Quantidade (Peça/Unidade Física) */}
+                  <div className="bg-white/90 p-3 rounded-xl border border-cyan-100/80 shadow-2xs space-y-0.5">
+                    <span className="text-[10px] text-indigo-800 font-bold block">Frete Unitário / por Quantidade</span>
+                    <p className="text-base font-black text-indigo-700">
+                      {indicadoresFrete && indicadoresFrete.fretePorUnidade !== null
+                        ? `${indicadoresFrete.fretePorUnidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / un`
+                        : selectedItem.qtd_volumes && selectedItem.qtd_volumes > 0
+                        ? `${(selectedItem.frt_cobrado / selectedItem.qtd_volumes).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / vol`
+                        : '—'}
+                    </p>
+                    <span className="text-[10px] text-slate-400">
+                      {indicadoresFrete && indicadoresFrete.fretePorUnidade !== null
+                        ? `Divisão por ${indicadoresFrete.totalQuantidade} unidades físicas no pedido`
+                        : selectedItem.qtd_volumes && selectedItem.qtd_volumes > 0
+                        ? `Divisão por ${selectedItem.qtd_volumes} volumes transportados`
+                        : 'Sem quantidade de peças informada'}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-500 italic">
+                  * Indicador referencial de custo unitário estimado: divide o frete total cobrado pela quantidade de itens ou peças do pedido de compras.
+                </p>
+              </div>
+            )}
+
             {/* Itens do Pedido SAP Vinculado */}
             {selectedItem.itensPedido && selectedItem.itensPedido.length > 0 && (
               <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
@@ -1269,17 +1431,29 @@ export default function BahiaSulAnalyticsPanel({
                         <th className="py-2 px-3">Material</th>
                         <th className="py-2 px-3">Descrição do Material</th>
                         <th className="py-2 px-3 text-right">Qtd Pedida</th>
+                        <th className="py-2 px-3 text-right">Frete Est. Linha</th>
+                        <th className="py-2 px-3 text-right">Frete Unit. Est.</th>
                         <th className="py-2 px-3 text-center">MIGO</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-[11px]">
-                      {selectedItem.itensPedido.map((it, idx) => (
+                      {(indicadoresFrete?.itensRateados || selectedItem.itensPedido).map((it, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="py-2 px-3 font-mono text-slate-500">{it.itemPedido || `${idx + 1}0`}</td>
                           <td className="py-2 px-3 font-mono font-bold text-slate-800">{it.material || '—'}</td>
                           <td className="py-2 px-3 text-slate-700 font-medium">{it.descricao || '—'}</td>
                           <td className="py-2 px-3 text-right font-mono text-slate-800">
                             {it.qtd !== undefined ? `${it.qtd} ${it.unidade || ''}` : '—'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-cyan-700">
+                            {'freteLinhaRateado' in it && (it as any).freteLinhaRateado > 0
+                              ? (it as any).freteLinhaRateado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                              : '—'}
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">
+                            {'freteUnitarioRateado' in it && (it as any).freteUnitarioRateado !== null && (it as any).freteUnitarioRateado > 0
+                              ? `${(it as any).freteUnitarioRateado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / ${it.unidade || 'un'}`
+                              : '—'}
                           </td>
                           <td className="py-2 px-3 text-center">
                             {it.dataMigo ? (

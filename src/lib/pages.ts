@@ -69,7 +69,7 @@ export const PAGES: PageDef[] = [
   // Correção de incoerência: menu prometia coordenador_suprimentos, App.tsx
   // só liberava admin/comprador. Padrão alinhado ao menu (permissão sap.fornecedores).
   { id: 'sup_fornecedores', group: 'SUPRIMENTOS', label: 'Fornecedores', path: '/suprimentos/fornecedores', icon: Building2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
-  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Estimador de Frete', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
+  { id: 'sup_estimador_frete', group: 'SUPRIMENTOS', label: 'Fretes', path: '/suprimentos/frete', icon: Truck, defaultRoles: ['admin', 'comprador'] },
   { id: 'sup_dashboards', group: 'SUPRIMENTOS', label: 'Dashboards', path: '/suprimentos/dashboards', icon: LayoutDashboard, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'sup_historico_cotacoes', group: 'SUPRIMENTOS', label: 'Histórico de Cotações', path: '/suprimentos/cotacoes/historico', icon: History, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_vinculos_cotacoes', group: 'SUPRIMENTOS', label: 'Vínculos & Auditoria de Cotações', path: '/suprimentos/cotacoes/vinculos', icon: Link2, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
@@ -132,6 +132,7 @@ export const PAGES: PageDef[] = [
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar_analise', group: 'FINANCEIRO', label: 'Análise', path: '/financeiro/contas-pagar/analise', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_reconciliacao_pedidos', group: 'FINANCEIRO', label: 'Reconciliação PO x Pgto', path: '/financeiro/reconciliacao-pedidos', icon: FileCheck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'fin_realizado_rubricas', group: 'FINANCEIRO', label: 'Realizado por Rubrica', path: '/financeiro/realizado-rubricas', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_faturamento_gwjaco', group: 'FINANCEIRO', label: 'Faturamento GW Jacobina', path: '/financeiro/faturamento-gwjaco', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   // O hub não pode usar `/helpdesk` (já é a tela de Atendimento), então navega
@@ -153,6 +154,7 @@ export const PAGES: PageDef[] = [
   { id: 'admin_importacao_materiais', group: 'ADMINISTRAÇÃO', label: 'Importação de Planilhas', path: '/admin/importacao-materiais', icon: Upload, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_importar_sap_log', group: 'ADMINISTRAÇÃO', label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
+  { id: 'admin_rubricas_financeiro', group: 'ADMINISTRAÇÃO', label: 'Rubricas Financeiro', path: '/financeiro/rubricas', icon: Settings, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_feedback', group: 'ADMINISTRAÇÃO', label: 'Reportes', path: '/admin/feedback', icon: Flag, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_apis', group: 'ADMINISTRAÇÃO', label: 'Gestão de APIs & IA', path: '/admin/apis', icon: Cpu, defaultRoles: ['admin'], alwaysAdmin: true },

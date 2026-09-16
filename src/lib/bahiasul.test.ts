@@ -9,6 +9,8 @@ import {
   agruparPedidosParaSugestao,
   sugerirPoBahiaSul,
   resumirBahiaSulPorPo,
+  isCteComMigo,
+  calcularIndicadoresFreteItem,
 } from './bahiasul';
 import type { BahiaSulEntrega, SAPPedido, TabelaFrete } from '../types';
 
@@ -594,6 +596,105 @@ describe('enriquecerEntregasComPedidos com itens do pedido (itensPedido)', () =>
 
     expect(matchesCod).toHaveLength(1);
     expect(matchesCod[0].cto_numero).toBe('CT1');
+  });
+});
+
+describe('isCteComMigo', () => {
+  it('retorna true quando todos os itens do pedido possuem dataMigo', () => {
+    const item = {
+      ...mkEntrega({ cto_numero: 'CT1', nro_pedido: '4500000001' }),
+      itensPedido: [
+        { material: '100', descricao: 'Item 1', dataMigo: '2026-09-01' },
+        { material: '200', descricao: 'Item 2', dataMigo: '2026-09-02' },
+      ],
+      pedidoEncontrado: true,
+      statusPrazo: 'entregue' as const,
+    };
+    expect(isCteComMigo(item as any)).toBe(true);
+  });
+
+  it('retorna false quando ao menos um item do pedido não possui dataMigo', () => {
+    const item = {
+      ...mkEntrega({ cto_numero: 'CT2', nro_pedido: '4500000001' }),
+      itensPedido: [
+        { material: '100', descricao: 'Item 1', dataMigo: '2026-09-01' },
+        { material: '200', descricao: 'Item 2', dataMigo: null },
+      ],
+      pedidoEncontrado: true,
+      statusPrazo: 'no_prazo' as const,
+    };
+    expect(isCteComMigo(item as any)).toBe(false);
+  });
+
+  it('retorna true quando não há itensPedido mas o pedidoSap tem data_migo', () => {
+    const item = {
+      ...mkEntrega({ cto_numero: 'CT3', nro_pedido: '4500000001' }),
+      itensPedido: [],
+      pedidoSap: { data_migo: '2026-09-01' },
+      pedidoEncontrado: true,
+      statusPrazo: 'entregue' as const,
+    };
+    expect(isCteComMigo(item as any)).toBe(true);
+  });
+
+  it('retorna false quando entrega não tem itens nem pedido com MIGO', () => {
+    const item = {
+      ...mkEntrega({ cto_numero: 'CT4' }),
+      itensPedido: [],
+      pedidoEncontrado: false,
+      statusPrazo: 'no_prazo' as const,
+    };
+    expect(isCteComMigo(item as any)).toBe(false);
+  });
+});
+
+describe('calcularIndicadoresFreteItem', () => {
+  it('calcula corretamente o frete por item e por quantidade', () => {
+    const itens = [
+      { material: 'M1', descricao: 'Parafuso', qtd: 20, unidade: 'UN' },
+      { material: 'M2', descricao: 'Porca', qtd: 80, unidade: 'UN' },
+    ];
+    const frtCobrado = 500;
+
+    const res = calcularIndicadoresFreteItem(frtCobrado, itens);
+
+    expect(res.totalItens).toBe(2);
+    expect(res.totalQuantidade).toBe(100);
+    // Frete médio por item (linha de PO): 500 / 2 = 250
+    expect(res.fretePorLinha).toBe(250);
+    // Frete unitário por peça: 500 / 100 = 5
+    expect(res.fretePorUnidade).toBe(5);
+
+    // Rateio proporcional na lista de itens
+    expect(res.itensRateados[0].freteLinhaRateado).toBe(100); // 20% de 500
+    expect(res.itensRateados[0].freteUnitarioRateado).toBe(5);
+    expect(res.itensRateados[1].freteLinhaRateado).toBe(400); // 80% de 500
+    expect(res.itensRateados[1].freteUnitarioRateado).toBe(5);
+  });
+
+  it('trata itens sem quantidade calculando apenas o frete por linha', () => {
+    const itens = [
+      { material: 'M1', descricao: 'Serviço 1' },
+      { material: 'M2', descricao: 'Serviço 2' },
+    ];
+    const res = calcularIndicadoresFreteItem(300, itens);
+
+    expect(res.totalItens).toBe(2);
+    expect(res.totalQuantidade).toBe(0);
+    expect(res.fretePorLinha).toBe(150);
+    expect(res.fretePorUnidade).toBeNull();
+    expect(res.itensRateados[0].freteLinhaRateado).toBe(150);
+    expect(res.itensRateados[0].freteUnitarioRateado).toBeNull();
+  });
+
+  it('trata frete zerado ou nulo com segurança', () => {
+    const itens = [{ material: 'M1', descricao: 'Peça', qtd: 10 }];
+    const res = calcularIndicadoresFreteItem(null, itens);
+
+    expect(res.totalItens).toBe(1);
+    expect(res.totalQuantidade).toBe(10);
+    expect(res.fretePorLinha).toBe(0);
+    expect(res.fretePorUnidade).toBeNull();
   });
 });
 

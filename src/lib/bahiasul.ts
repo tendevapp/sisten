@@ -815,11 +815,16 @@ export function enriquecerEntregasComPedidos(
               itemPedido: itm,
               qtd: req.qtd_requisicao ? Number(req.qtd_requisicao) : undefined,
               unidade: req.unidade_medida || 'UN',
-              dataMigo: null,
+              dataMigo: (req as any).data_migo || null,
             });
             mapItensPorPo.set(norm, list);
-          } else if (!existing.descricao && desc) {
-            existing.descricao = desc;
+          } else {
+            if (!existing.descricao && desc) {
+              existing.descricao = desc;
+            }
+            if (!existing.dataMigo && (req as any).data_migo) {
+              existing.dataMigo = (req as any).data_migo;
+            }
           }
         }
       }
@@ -1188,4 +1193,94 @@ export function resumirBahiaSulPorPo(entregas: BahiaSulEntrega[]): Map<string, R
   }
 
   return porPo;
+}
+
+/**
+ * Verifica se um CTe já possui MIGO completo no SAP (todos os itens do pedido recebidos).
+ * Se já possui MIGO, a mercadoria física já deu entrada na fábrica, mesmo que a planilha
+ * da transportadora demore para atualizar o status como entregue.
+ */
+export function isCteComMigo(item: BahiaSulEnriquecida): boolean {
+  if (item.itensPedido && item.itensPedido.length > 0) {
+    return item.itensPedido.every(it => Boolean(it.dataMigo && String(it.dataMigo).trim()));
+  }
+  if (item.pedidoSap?.data_migo && String(item.pedidoSap.data_migo).trim()) {
+    return true;
+  }
+  return false;
+}
+
+export interface ItemComFreteRateado extends ItemPedidoBahiaSul {
+  /** Frete cobrado atribuído a este item (R$) */
+  freteLinhaRateado: number;
+  /** Frete unitário estimado por peça/unidade física (R$/un), quando há quantidade informada */
+  freteUnitarioRateado: number | null;
+}
+
+export interface IndicadoresFreteItem {
+  /** Total de itens (linhas distintas de material no pedido) */
+  totalItens: number;
+  /** Soma das quantidades de todos os itens do pedido */
+  totalQuantidade: number;
+  /** Valor do frete cobrado / total de itens (R$/item) */
+  fretePorLinha: number;
+  /** Valor do frete cobrado / total de unidades (R$/un), null se não houver quantidade */
+  fretePorUnidade: number | null;
+  /** Lista de itens com os respectivos fretes estimados rateados */
+  itensRateados: ItemComFreteRateado[];
+}
+
+/**
+ * Calcula o valor do frete cobrado dividido por item e por quantidade,
+ * servindo como indicador de quanto deve ter sido o frete unitário.
+ */
+export function calcularIndicadoresFreteItem(
+  frtCobrado: number | null | undefined,
+  itens: ItemPedidoBahiaSul[] = []
+): IndicadoresFreteItem {
+  const valorFrete = Number(frtCobrado) || 0;
+  const totalItens = itens.length;
+  const totalQuantidade = itens.reduce((acc, it) => acc + (Number(it.qtd) || 0), 0);
+
+  const fretePorLinha = totalItens > 0 && valorFrete > 0
+    ? Math.round((valorFrete / totalItens) * 100) / 100
+    : 0;
+
+  const fretePorUnidade = totalQuantidade > 0 && valorFrete > 0
+    ? Math.round((valorFrete / totalQuantidade) * 100) / 100
+    : null;
+
+  const itensRateados: ItemComFreteRateado[] = itens.map(it => {
+    const qtd = Number(it.qtd) || 0;
+    let freteLinhaRateado = 0;
+    let freteUnitarioRateado: number | null = null;
+
+    if (valorFrete > 0) {
+      if (totalQuantidade > 0 && qtd > 0) {
+        // Rateio proporcional à quantidade do item no pedido
+        freteLinhaRateado = Math.round(((qtd / totalQuantidade) * valorFrete) * 100) / 100;
+        freteUnitarioRateado = fretePorUnidade;
+      } else if (totalItens > 0) {
+        // Rateio igualitário por linha de item
+        freteLinhaRateado = fretePorLinha;
+        if (qtd > 0) {
+          freteUnitarioRateado = Math.round((freteLinhaRateado / qtd) * 100) / 100;
+        }
+      }
+    }
+
+    return {
+      ...it,
+      freteLinhaRateado,
+      freteUnitarioRateado,
+    };
+  });
+
+  return {
+    totalItens,
+    totalQuantidade,
+    fretePorLinha,
+    fretePorUnidade,
+    itensRateados,
+  };
 }

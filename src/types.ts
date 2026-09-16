@@ -1011,6 +1011,44 @@ export interface CadastroGrupoMercadoria {
   codigo_pai?: string | null;
 }
 
+/**
+ * Rubrica orçamentária (catálogo hierárquico). Tabela `fin_rubricas`.
+ */
+export interface FinRubrica {
+  id: string;
+  codigo: string;
+  nome: string;
+  rubrica_pai_id: string | null;
+  ordem: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * De-para pedido/pagamento -> rubrica. Tabela `fin_rubrica_mapeamentos`.
+ */
+export interface FinRubricaMapeamento {
+  id: string;
+  rubrica_id: string;
+  tipo_chave: 'fornecedor' | 'grupo_mercadoria';
+  chave_valor: string;
+  chave_descricao?: string | null;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Linha do relatório de realizado por rubrica, já com rollup dos filhos. */
+export interface FinRealizadoRubricaLinha {
+  rubrica: FinRubrica | null;
+  nivel: number;
+  valorPedidos: number;
+  qtdPedidos: number;
+  valorPagamentos: number;
+  qtdPagamentos: number;
+  filhos: FinRealizadoRubricaLinha[];
+}
+
 
 
 export interface CidadeForn {

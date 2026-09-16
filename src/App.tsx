@@ -40,6 +40,8 @@ const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
 const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturamentoGwjaco'));
+const FinRealizadoPorRubrica = lazy(() => import('./views/financeiro/FinRealizadoPorRubrica'));
+const GestaoRubricasFinanceiro = lazy(() => import('./views/admin/GestaoRubricasFinanceiro'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
@@ -846,6 +848,18 @@ export default function App() {
       case '/financeiro/reconciliacao-pedidos':
         if (canAccessPage(user, 'fin_reconciliacao_pedidos')) {
           return <ReconciliacaoPedidos user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/realizado-rubricas':
+        if (canAccessPage(user, 'fin_realizado_rubricas')) {
+          return <FinRealizadoPorRubrica user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/rubricas':
+        if (canAccessPage(user, 'admin_rubricas_financeiro')) {
+          return <GestaoRubricasFinanceiro user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
