@@ -125,9 +125,9 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Barra de Título, Legenda e Ações */}
+      {/* Barra de Título e Controles de Exibição */}
       <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <Layers className="h-5 w-5" style={{ color: 'var(--brand)' }} />
@@ -136,43 +136,13 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
               </h3>
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>
-              Cruzamento por torre vinculando o estoque físico do almoxarifado à BOM dos kits, destacando pátio e expedição.
+              Cruzamento por torre vinculando o estoque físico do almoxarifado à BOM dos kits, destacando pátio, expedição e saída da portaria.
             </p>
           </div>
 
-          {/* Legenda com as 4 cores */}
-          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[0].bg }}>
-              <span>0</span>
-              <span>Não atende</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[1].bg }}>
-              <span>1</span>
-              <span>Estoque</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[3].bg }}>
-              <span>3</span>
-              <span>OK Pátio</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[4].bg }}>
-              <span>4</span>
-              <span>Expedido</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Nota explicativa sobre Pátio e Estoque */}
-        <div className="mt-3 pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-[11px]" style={{ borderColor: 'var(--hairline)' }}>
-          <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300">
-            <Info className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              <strong>Pátio (3):</strong> kits pagos da pré-montagem para a produção. <strong>Expedido (4):</strong> tramos com expedição registrada.
-            </span>
-          </div>
-
-          {/* Controles de Paginação de Torres */}
-          <div className="flex items-center gap-1.5">
-            <span style={{ color: 'var(--ink-muted)' }}>Exibir:</span>
+          {/* Controles de Paginação de Torres no Topo */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold" style={{ color: 'var(--ink-muted)' }}>Exibir:</span>
             <button
               onClick={() => { setTorresPorPagina(12); setPaginaTorres(0); }}
               className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer"
@@ -197,7 +167,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
             </button>
 
             {torresPorPagina > 0 && totalPaginas > 1 && (
-              <div className="flex items-center gap-1 ml-2">
+              <div className="flex items-center gap-1 ml-1">
                 <button
                   disabled={paginaTorres === 0}
                   onClick={() => setPaginaTorres((p) => Math.max(0, p - 1))}
@@ -415,6 +385,66 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
         </div>
       </div>
 
+      {/* Legenda de Cores e Detalhamento Operacional na Parte Inferior da Tabela */}
+      <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-black uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>
+              Legenda de Cores &amp; Status Operacional
+            </span>
+            <span className="text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+              Clique em qualquer célula para alterar o status ou associar série
+            </span>
+          </div>
+
+          {/* Legenda com as 5 cores (incluindo preto para saída da portaria) */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[0].bg }}>
+              <span className="opacity-90">0</span>
+              <span>{ROTULO_STATUS_AUTONOMIA[0]}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[1].bg }}>
+              <span className="opacity-90">1</span>
+              <span>{ROTULO_STATUS_AUTONOMIA[1]}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[3].bg }}>
+              <span className="opacity-90">3</span>
+              <span>{ROTULO_STATUS_AUTONOMIA[3]}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[4].bg }}>
+              <span className="opacity-90">4</span>
+              <span>{ROTULO_STATUS_AUTONOMIA[4]}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[5].bg }}>
+              <span className="opacity-90">5</span>
+              <span>{ROTULO_STATUS_AUTONOMIA[5]}</span>
+            </div>
+          </div>
+
+          {/* Notas explicativas sobre Pátio, Expedido e Portaria */}
+          <div className="mt-2 pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]" style={{ borderColor: 'var(--hairline)' }}>
+            <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5" style={{ background: COR_STATUS_AUTONOMIA[3].bg }} />
+              <span>
+                <strong>Pátio (3):</strong> kits pagos da pré-montagem para a produção.
+              </span>
+            </div>
+            <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5" style={{ background: COR_STATUS_AUTONOMIA[4].bg }} />
+              <span>
+                <strong>Expedido (4):</strong> tramos com expedição registrada e série física.
+              </span>
+            </div>
+            <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5 border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[5].bg }} />
+              <span>
+                <strong>Saída Portaria (5):</strong> tramos que já saíram da portaria da fábrica.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Modal de Detalhe e Edição de Célula */}
       {celulaSelecionada && (
         <Modal
@@ -437,8 +467,8 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                 <label className="block text-xs font-bold mb-1.5" style={{ color: 'var(--ink-muted)' }}>
                   Status Operacional
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {([0, 1, 3, 4] as StatusKitAutonomia[]).map((st) => {
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {([0, 1, 3, 4, 5] as StatusKitAutonomia[]).map((st) => {
                     const ativo = editStatus === st;
                     const cor = COR_STATUS_AUTONOMIA[st];
                     return (
@@ -446,15 +476,15 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                         key={st}
                         type="button"
                         onClick={() => setEditStatus(st)}
-                        className="flex items-center gap-2 p-2.5 rounded-lg border text-xs font-extrabold cursor-pointer transition-all text-left"
+                        className="flex items-center gap-2 p-2 rounded-lg border text-xs font-extrabold cursor-pointer transition-all text-left"
                         style={{
                           borderColor: ativo ? cor.bg : 'var(--hairline)',
                           background: ativo ? cor.bg : 'var(--surface-raised)',
                           color: ativo ? '#fff' : 'var(--ink-primary)',
                         }}
                       >
-                        <span className="h-3 w-3 rounded-full shrink-0" style={{ background: ativo ? '#fff' : cor.bg }} />
-                        <span>{st}: {ROTULO_STATUS_AUTONOMIA[st]}</span>
+                        <span className="h-3 w-3 rounded-full shrink-0 border" style={{ background: ativo ? '#fff' : cor.bg, borderColor: cor.border }} />
+                        <span className="truncate">{st}: {ROTULO_STATUS_AUTONOMIA[st]}</span>
                       </button>
                     );
                   })}
@@ -478,7 +508,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                   }}
                 />
                 <p className="text-[11px] mt-1" style={{ color: 'var(--ink-muted)' }}>
-                  Geralmente preenchido quando o status é 4 (Expedido) ou 3 (Pátio).
+                  Geralmente preenchido quando o status é 4 (Expedido), 5 (Saída Portaria) ou 3 (Pátio).
                 </p>
               </div>
 

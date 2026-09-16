@@ -151,4 +151,27 @@ describe('calcularMatrizAutonomia', () => {
     const c4 = resultado.celulas.get('4::T1::escada_acesso');
     expect(c4?.status).toBe(0); // Não atende
   });
+
+  it('suporta status 5 (Saída Portaria) com cor preta e rótulo adequado', () => {
+    const saldos = new Map<string, number>();
+    const resultado = calcularMatrizAutonomia({
+      arvore,
+      saldos,
+      torresTotais: 1,
+      registrosBanco: [
+        {
+          torre_numero: 1,
+          tramo: 'T1',
+          subkit: 'escada_acesso',
+          status: 5, // Saída Portaria
+          serie: '3143',
+        },
+      ],
+    });
+
+    const c1 = resultado.celulas.get('1::T1::escada_acesso');
+    expect(c1?.status).toBe(5);
+    expect(c1?.serie).toBe('3143');
+  });
 });
+

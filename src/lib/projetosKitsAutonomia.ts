@@ -16,6 +16,7 @@
  *   - 1: Estoque (Verde - estoque em almoxarifado atende a torre)
  *   - 3: OK Pátio (Azul - kits pagos da pré-montagem para a produção)
  *   - 4: Expedido (Laranja - tramo expedido com série física)
+ *   - 5: Saída Portaria (Preto - tramos que já saíram da portaria da fábrica)
  */
 
 import { Tramo, TRAMOS } from './projetos';
@@ -24,13 +25,14 @@ import type { SaldosPorItem } from './projetosAutonomia';
 
 export type SubkitId = 'fixadores' | 'plataforma' | 'escada_avanti' | 'escada_acesso';
 
-export type StatusKitAutonomia = 0 | 1 | 3 | 4;
+export type StatusKitAutonomia = 0 | 1 | 3 | 4 | 5;
 
 export const ROTULO_STATUS_AUTONOMIA: Record<StatusKitAutonomia, string> = {
   0: 'Não atende',
   1: 'Estoque',
   3: 'OK Pátio',
   4: 'Expedido',
+  5: 'Saída Portaria',
 };
 
 export const COR_STATUS_AUTONOMIA: Record<StatusKitAutonomia, { bg: string; text: string; border: string }> = {
@@ -38,6 +40,7 @@ export const COR_STATUS_AUTONOMIA: Record<StatusKitAutonomia, { bg: string; text
   1: { bg: '#16A34A', text: '#FFFFFF', border: '#15803D' }, // Verde
   3: { bg: '#0284C7', text: '#FFFFFF', border: '#0369A1' }, // Azul Pátio
   4: { bg: '#EA580C', text: '#FFFFFF', border: '#C2410C' }, // Laranja Expedido
+  5: { bg: '#09090B', text: '#FFFFFF', border: '#000000' }, // Preto Saída Portaria
 };
 
 export interface SubkitDef {
