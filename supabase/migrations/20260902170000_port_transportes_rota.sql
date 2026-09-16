@@ -11,3 +11,6 @@ alter table public.port_registro_transportes
 
 create index if not exists port_registro_transportes_rota_idx
   on public.port_registro_transportes (rota);
+
+-- Garante que a Data API reconheça a nova coluna imediatamente.
+notify pgrst, 'reload schema';
