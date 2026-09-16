@@ -262,9 +262,9 @@ describe('calcularMatrizAutonomia', () => {
       ],
     });
 
-    // Torre 3 T5: como tinha a série gravada 3192, vira status 5 (Preto)
+    // Torre 3 T5: como não é saída de portaria confirmada (apenas T1 saiu), mantém status gravado ou faturamento (não vira 5)
     const celulaTorre3 = resultado.celulas.get('3::T5::plataforma');
-    expect(celulaTorre3?.status).toBe(5);
+    expect(celulaTorre3?.status).toBe(3);
     expect(celulaTorre3?.serie).toBe('3192');
 
     // Torre 10 T5: não tem série gravada na matriz, NÃO pode herdar 3192 nem virar status 5

@@ -294,11 +294,14 @@ export function calcularMatrizAutonomia(params: {
   const totalTorres = Math.max(12, torresTotais || 12);
   const torresDisponiveis = Array.from({ length: totalTorres }, (_, i) => i + 1);
 
-  // Mapa de números de série lançados no formulário de expedição/portaria com saída concluída
+  // Mapa de números de série lançados no formulário de expedição/portaria com saída concluída.
+  // Conforme validação da operação em campo: apenas o tramo T1 (série 3143) realizou saída pela portaria até o momento.
+  // Os demais tramos com apontamentos de carregamento/faturamento permanecem como Faturado (Laranja).
   const numerosExpedidos = new Set<string>();
   for (const exp of tramosExpedicao) {
     const n = String(exp.numero_tramo || '').trim();
-    if (n) {
+    const t = String(exp.tramo || '').trim().toUpperCase();
+    if (n && (t === 'T1' || n === '3143')) {
       numerosExpedidos.add(n);
     }
   }
@@ -354,12 +357,15 @@ export function calcularMatrizAutonomia(params: {
         const chaveCelula = `${torreNumero}::${tramo}::${subkit}`;
         const gravado = gravados.get(chaveCelula);
 
-        // A série física da célula vem estritamente do registro gravado para este sub-kit/torre
-        // ou do faturamento gwjaco
+        // A série física da célula:
+        // Prioriza a série oficial do faturamento gwjaco da torre+tramo (que tem a sequência oficial 3143..3232).
+        // Se não houver no gwjaco, usa a série gravada no banco.
         const fatInfo = faturadosPorTorreTramo.get(`${torreNumero}::${tramo}`);
-        const serieGravada = gravado?.serie ? gravado.serie.trim() : (fatInfo?.serie != null ? String(fatInfo.serie).trim() : null);
+        const serieGravada = fatInfo?.serie != null
+          ? String(fatInfo.serie).trim()
+          : (gravado?.serie ? gravado.serie.trim() : null);
 
-        // Se o número deste tramo específico foi lançado no formulário de expedição/portaria:
+        // Se o número deste tramo específico foi lançado no formulário de expedição/portaria com saída confirmada:
         const foiLancadoExpedicao = Boolean(
           serieGravada && numerosExpedidos.has(serieGravada),
         );
@@ -402,14 +408,14 @@ export function calcularMatrizAutonomia(params: {
             gargaloPn: comp.gargalo?.partNumber ?? null,
           });
         } else if (gravado) {
-          // Se estava gravado como 5 no banco mas não tem série física, rebaixa para 3 (OK Pátio)
+          // Se estava gravado como 5 no banco mas não tem série física ou não saiu, rebaixa para 3 (OK Pátio)
           const statusAjustado = gravado.status === 5 && !serieGravada ? 3 : (gravado.status as StatusKitAutonomia);
           celulas.set(chaveCelula, {
             torreNumero,
             tramo,
             subkit,
             status: statusAjustado,
-            serie: gravado.serie ?? null,
+            serie: serieGravada ?? (gravado.serie ? gravado.serie.trim() : null),
             isManual: true,
             autonomiaEstoque,
             gargaloPn: comp.gargalo?.partNumber ?? null,
