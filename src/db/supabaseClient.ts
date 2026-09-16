@@ -16,7 +16,10 @@ export const supabase: SupabaseClient<Database> = supabaseUrl && supabaseAnonKey
   ? createClient<Database>(supabaseUrl, supabaseAnonKey)
   : null as any;
 
-const chaveAdmin = supabaseServiceKey || supabaseAnonKey;
+// Uma chave anônima nunca pode ser promovida a cliente de serviço. Quando a
+// service_role não está disponível (o esperado no browser), operações comuns
+// devem usar `supabase`, que carrega a sessão autenticada do usuário.
+const chaveAdmin = supabaseServiceKey;
 
 /**
  * Cliente de serviço, usado nas operações administrativas (criar usuário,
@@ -45,4 +48,4 @@ export const supabaseAdmin: SupabaseClient<Database> = supabaseUrl && chaveAdmin
         headers: { Authorization: `Bearer ${chaveAdmin}` },
       },
     })
-  : supabase;
+  : null as any;

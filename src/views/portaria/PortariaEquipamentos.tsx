@@ -184,6 +184,17 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
     observacoes: '',
   });
 
+  // Valores já digitados antes, por campo — vira opção de preenchimento
+  // rápido (datalist) em vez de redigitar o mesmo texto toda hora.
+  const [historico, setHistorico] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const tabela = 'port_controle_equipamentos';
+    const campos = ['nome_empresa', 'funcionario', 'responsavel', 'observacoes'];
+    Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
+      .then((pares) => setHistorico(Object.fromEntries(pares)))
+      .catch(() => {});
+  }, []);
+
   const carregarDados = useCallback(async () => {
     setLoading(true);
     try {
@@ -513,11 +524,15 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-equip-nome_empresa"
                     placeholder="Ex: Eletrotécnica Andrade & Silva"
                     value={formEntrada.nome_empresa}
                     onChange={(e) => setFormEntrada({ ...formEntrada, nome_empresa: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-equip-nome_empresa">
+                    {(historico.nome_empresa || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -526,11 +541,15 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-equip-funcionario"
                     placeholder="Nome completo do responsável pelas ferramentas"
                     value={formEntrada.funcionario}
                     onChange={(e) => setFormEntrada({ ...formEntrada, funcionario: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-equip-funcionario">
+                    {(historico.funcionario || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
               </div>
 
@@ -586,11 +605,15 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-equip-responsavel"
                     placeholder="Nome do colaborador TEN que acompanha"
                     value={formEntrada.responsavel}
                     onChange={(e) => setFormEntrada({ ...formEntrada, responsavel: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-equip-responsavel">
+                    {(historico.responsavel || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -598,11 +621,15 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-equip-observacoes"
                     placeholder="Ex: Autorizado pelo setor de manutenção"
                     value={formEntrada.observacoes}
                     onChange={(e) => setFormEntrada({ ...formEntrada, observacoes: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-equip-observacoes">
+                    {(historico.observacoes || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
               </div>
             </ModalBody>
@@ -684,11 +711,15 @@ export default function PortariaEquipamentos({ user, onNavigate }: Props) {
                 </label>
                 <input
                   type="text"
+                  list="lista-equip-observacoes"
                   placeholder="Ex: Conferido e liberado sem pendências"
                   value={formSaida.observacoes}
                   onChange={(e) => setFormSaida({ ...formSaida, observacoes: e.target.value.toUpperCase() })}
                   className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
+                <datalist id="lista-equip-observacoes">
+                  {(historico.observacoes || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
             </ModalBody>
 

@@ -227,6 +227,13 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
   const [formObs, setFormObs] = useState('');
   const [formItens, setFormItens] = useState<PortItemConferido[]>([]);
 
+  // Justificativas já digitadas antes nos itens conferidos — vira opção de
+  // preenchimento rápido (datalist) em vez de redigitar o mesmo motivo.
+  const [historicoObsItem, setHistoricoObsItem] = useState<string[]>([]);
+  useEffect(() => {
+    api.buscarHistoricoObservacaoItemPlantao().then(setHistoricoObsItem).catch(() => {});
+  }, []);
+
   // Carregar dados
   const carregarDados = async () => {
     setLoading(true);
@@ -1021,6 +1028,7 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                           <input
                             type="text"
                             required={!item.conferido}
+                            list="lista-plantao-obs-item"
                             placeholder={!item.conferido ? '* Justificativa obrigatória (falta/avaria)...' : 'Obs / avaria (opcional)...'}
                             value={item.observacao || ''}
                             onChange={(e) => atualizarObsItem(idx, e.target.value)}
@@ -1035,6 +1043,9 @@ export default function PortariaPassagemPlantao({ user, onNavigate }: Props) {
                     </div>
                   ))}
                 </div>
+                <datalist id="lista-plantao-obs-item">
+                  {historicoObsItem.map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
 
               {/* 6. Observações Gerais */}

@@ -196,6 +196,17 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
     observacoes: '',
   });
 
+  // Valores já digitados antes, por campo — vira opção de preenchimento
+  // rápido (datalist) em vez de redigitar o mesmo texto toda hora.
+  const [historico, setHistorico] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const tabela = 'port_controle_carretas';
+    const campos = ['empresa', 'placa_cavalo', 'placa_carreta', 'nome_motorista', 'cpf_motorista', 'observacoes'];
+    Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
+      .then((pares) => setHistorico(Object.fromEntries(pares)))
+      .catch(() => {});
+  }, []);
+
   const carregarDados = useCallback(async () => {
     setLoading(true);
     try {
@@ -540,11 +551,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 <input
                   type="text"
                   required
+                  list="lista-carreta-empresa"
                   placeholder="Ex: Usiminas / ArcelorMittal / Transportadora Rodonaves"
                   value={formNovo.empresa}
                   onChange={(e) => setFormNovo({ ...formNovo, empresa: e.target.value.toUpperCase() })}
                   className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
+                <datalist id="lista-carreta-empresa">
+                  {(historico.empresa || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
 
               <div data-tour="carretas-form-placas" className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -555,11 +570,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-carreta-placa_cavalo"
                     placeholder="Ex: BRA2E19"
                     value={formNovo.placa_cavalo}
                     onChange={(e) => setFormNovo({ ...formNovo, placa_cavalo: e.target.value.toUpperCase() })}
                     className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-carreta-placa_cavalo">
+                    {(historico.placa_cavalo || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -567,11 +586,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-carreta-placa_carreta"
                     placeholder="Ex: XYZ9F88"
                     value={formNovo.placa_carreta}
                     onChange={(e) => setFormNovo({ ...formNovo, placa_carreta: e.target.value.toUpperCase() })}
                     className="w-full font-mono rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm uppercase text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-carreta-placa_carreta">
+                    {(historico.placa_carreta || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
               </div>
 
@@ -583,11 +606,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-carreta-nome_motorista"
                     placeholder="Ex: José Carlos da Silva"
                     value={formNovo.nome_motorista}
                     onChange={(e) => setFormNovo({ ...formNovo, nome_motorista: e.target.value.toUpperCase() })}
                     className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-carreta-nome_motorista">
+                    {(historico.nome_motorista || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -595,11 +622,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-carreta-cpf_motorista"
                     placeholder="Ex: 012.345.678-90"
                     value={formNovo.cpf_motorista}
                     onChange={(e) => setFormNovo({ ...formNovo, cpf_motorista: e.target.value })}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                   />
+                  <datalist id="lista-carreta-cpf_motorista">
+                    {(historico.cpf_motorista || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
               </div>
 
@@ -765,11 +796,15 @@ export default function PortariaCarretas({ user, onNavigate }: Props) {
                 </label>
                 <input
                   type="text"
+                  list="lista-carreta-observacoes"
                   placeholder="Ex: Descarregado e liberado pelo pátio de chapas"
                   value={formSaida.observacoes}
                   onChange={(e) => setFormSaida({ ...formSaida, observacoes: e.target.value.toUpperCase() })}
                   className="w-full uppercase rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 sm:py-2 text-base sm:text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                 />
+                <datalist id="lista-carreta-observacoes">
+                  {(historico.observacoes || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
             </ModalBody>
 

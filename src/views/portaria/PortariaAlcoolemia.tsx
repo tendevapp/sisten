@@ -145,6 +145,17 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
   const [afericaoObservacoes, setAfericaoObservacoes] = useState<string>('');
   const [salvandoAfericao, setSalvandoAfericao] = useState<boolean>(false);
 
+  // Valores já digitados antes, por campo — vira opção de preenchimento
+  // rápido (datalist) em vez de redigitar o mesmo texto toda hora.
+  const [historico, setHistorico] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const tabela = 'port_alcoolemia_testes';
+    const campos = ['nome', 'empresa', 'documento', 'cargo_funcao', 'setor_area', 'etilometro_codigo', 'testemunha', 'observacoes'];
+    Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
+      .then((pares) => setHistorico(Object.fromEntries(pares)))
+      .catch(() => {});
+  }, []);
+
   // Carregar RH Pessoas uma vez
   useEffect(() => {
     listarRhPessoas()
@@ -1099,11 +1110,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-alc-nome"
                     placeholder="Ex: Carlos Eduardo de Oliveira"
                     value={formNome}
                     onChange={(e) => setFormNome(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
+                  <datalist id="lista-alc-nome">
+                    {(historico.nome || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1113,11 +1128,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   <input
                     type="text"
                     required
+                    list="lista-alc-empresa"
                     placeholder="Ex: Manserv, Apoio, LogTen, Expresso..."
                     value={formEmpresa}
                     onChange={(e) => setFormEmpresa(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
+                  <datalist id="lista-alc-empresa">
+                    {(historico.empresa || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1126,11 +1145,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-alc-documento"
                     placeholder="Ex: 000.000.000-00"
                     value={formDocumento}
                     onChange={(e) => setFormDocumento(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
+                  <datalist id="lista-alc-documento">
+                    {(historico.documento || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1139,11 +1162,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-alc-cargo_funcao"
                     placeholder="Ex: Motorista Carreta, Motorista Ônibus, Eletricista..."
                     value={formCargo}
                     onChange={(e) => setFormCargo(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
+                  <datalist id="lista-alc-cargo_funcao">
+                    {(historico.cargo_funcao || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1152,11 +1179,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                   </label>
                   <input
                     type="text"
+                    list="lista-alc-setor_area"
                     placeholder="Ex: Pátio, Portaria, Logística..."
                     value={formSetor}
                     onChange={(e) => setFormSetor(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
+                  <datalist id="lista-alc-setor_area">
+                    {(historico.setor_area || []).map((v) => <option key={v} value={v} />)}
+                  </datalist>
                 </div>
               </div>
             )}
@@ -1247,11 +1278,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                       </label>
                       <input
                         type="text"
+                        list="lista-alc-etilometro_codigo"
                         placeholder="Ex: ETIL-01"
                         value={formEtilometro}
                         onChange={(e) => setFormEtilometro(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                       />
+                      <datalist id="lista-alc-etilometro_codigo">
+                        {(historico.etilometro_codigo || []).map((v) => <option key={v} value={v} />)}
+                      </datalist>
                     </div>
 
                     <div>
@@ -1346,11 +1381,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                     </label>
                     <input
                       type="text"
+                      list="lista-alc-testemunha"
                       placeholder="Ex: Nome da testemunha ou fiscal"
                       value={formTestemunha}
                       onChange={(e) => setFormTestemunha(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                     />
+                    <datalist id="lista-alc-testemunha">
+                      {(historico.testemunha || []).map((v) => <option key={v} value={v} />)}
+                    </datalist>
                   </div>
 
                   {/* Observações */}
@@ -1477,11 +1516,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 </label>
                 <input
                   type="text"
+                  list="lista-alc-etilometro_codigo-afericao"
                   placeholder="Ex: ETIL-01"
                   value={afericaoEtilometro}
                   onChange={(e) => setAfericaoEtilometro(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 />
+                <datalist id="lista-alc-etilometro_codigo-afericao">
+                  {(historico.etilometro_codigo || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
             </div>
 
@@ -1580,11 +1623,15 @@ export default function PortariaAlcoolemia({ user, onNavigate }: Props) {
                 </label>
                 <input
                   type="text"
+                  list="lista-alc-testemunha-afericao"
                   placeholder="Ex: Nome da testemunha ou fiscal"
                   value={afericaoTestemunha}
                   onChange={(e) => setAfericaoTestemunha(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                 />
+                <datalist id="lista-alc-testemunha-afericao">
+                  {(historico.testemunha || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
             </div>
 

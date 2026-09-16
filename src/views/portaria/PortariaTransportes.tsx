@@ -185,7 +185,7 @@ export default function PortariaTransportes({ user, onNavigate }: Props) {
   // preenchimento (datalist) em vez do vigilante redigitar o mesmo motivo.
   const [historicoOcupacao, setHistoricoOcupacao] = useState<string[]>([]);
   useEffect(() => {
-    api.buscarHistoricoCampoTransporte('ocupacao').then(setHistoricoOcupacao).catch(() => {});
+    api.buscarHistoricoCampoPortaria('port_registro_transportes', 'ocupacao').then(setHistoricoOcupacao).catch(() => {});
   }, []);
 
   const tour = usePageTour('portaria-transportes', PORTARIA_TRANSPORTES_TOUR_STEPS.length, !modalNovoAberto);

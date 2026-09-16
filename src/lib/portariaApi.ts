@@ -351,19 +351,23 @@ export async function buscarTransportesAnteriores(termo: string, limite = 8): Pr
 }
 
 /**
- * Valores já digitados num campo de texto livre do transporte (ex.:
- * "ocupacao"), do mais recente para o mais antigo, sem repetir — vira opção
- * de preenchimento rápido (datalist) em vez do vigilante redigitar o mesmo
- * motivo toda hora.
+ * Valores já digitados num campo de texto livre de qualquer formulário da
+ * Portaria (ex.: "ocupacao" do transporte, "nome_empresa" do equipamento), do
+ * mais recente para o mais antigo, sem repetir — vira opção de preenchimento
+ * rápido (datalist) em vez do vigilante redigitar o mesmo texto toda hora.
+ * Assume a mesma convenção de soft delete de todo `listar*` deste arquivo
+ * (`excluido_em is null`) — não use para tabela sem essa coluna.
  */
-export async function buscarHistoricoCampoTransporte(
-  campo: 'ocupacao' | 'rota',
+export async function buscarHistoricoCampoPortaria(
+  tabela: string,
+  campo: string,
   limite = 30,
 ): Promise<string[]> {
-  // `rota` ainda não está no database.types gerado (migration pendente) —
-  // cast alinhado ao padrão do arquivo para colunas fora dos tipos.
+  // Cast por causa de `tabela`/`campo` dinâmicos — não dá pra tipar contra o
+  // schema gerado sem um union type por tabela, o que tiraria a reutilização
+  // que é a razão de existir desta função.
   const { data, error } = await (supabase as any)
-    .from('port_registro_transportes')
+    .from(tabela)
     .select(campo)
     .is('excluido_em', null)
     .not(campo, 'is', null)
@@ -1556,6 +1560,38 @@ export async function obterPassagemPlantao(id: string): Promise<PortPassagemPlan
     throw new Error(error.message);
   }
   return (data as unknown as PortPassagemPlantao) || null;
+}
+
+/**
+ * Justificativas já digitadas no campo "observação" dos itens conferidos de
+ * plantões anteriores — o mesmo punhado de motivos ("AVARIA NO TRANSPORTE",
+ * "EQUIPAMENTO EM MANUTENÇÃO"...) se repete a cada plantão. `observacao` fica
+ * dentro do array JSONB `itens_conferidos`, por isso não dá pra usar
+ * `buscarHistoricoCampoPortaria` (que só lê coluna escalar) — busca as linhas
+ * mais recentes e extrai as observações client-side.
+ */
+export async function buscarHistoricoObservacaoItemPlantao(limite = 30): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('port_passagem_plantao')
+    .select('itens_conferidos')
+    .is('excluido_em', null)
+    .order('created_at', { ascending: false })
+    .limit(60);
+
+  if (error) throw new Error(error.message);
+
+  const vistos = new Set<string>();
+  const unicos: string[] = [];
+  for (const row of (data || []) as unknown as { itens_conferidos: PortItemConferido[] | null }[]) {
+    for (const item of row.itens_conferidos || []) {
+      const v = (item.observacao || '').trim();
+      if (!v || vistos.has(v)) continue;
+      vistos.add(v);
+      unicos.push(v);
+      if (unicos.length >= limite) return unicos;
+    }
+  }
+  return unicos;
 }
 
 export async function criarPassagemPlantao(

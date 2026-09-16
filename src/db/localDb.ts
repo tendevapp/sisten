@@ -1809,7 +1809,10 @@ class LocalDatabase {
     let updated = 0;
     let syncFailed = 0;
 
-    const client = supabaseAdmin || supabase;
+    // A importação é autorizada pela RLS a partir do usuário autenticado
+    // (admin ou coordenador de suprimentos). Não use o cliente de serviço,
+    // que pode não existir no browser e não carrega a sessão do usuário.
+    const client = supabase;
     const BATCH_SIZE = 1000;
     const totalBatches = Math.ceil(itemsToImport.length / BATCH_SIZE);
 
@@ -2010,7 +2013,8 @@ class LocalDatabase {
       }
     });
 
-    const client = supabaseAdmin || supabase;
+    // A RPC valida o papel do usuário autenticado; use o cliente de sessão.
+    const client = supabase;
     const itemsToUpdate = Array.from(dedupedMap.values());
     const BATCH_SIZE = 2000;
     const totalBatches = Math.ceil(itemsToUpdate.length / BATCH_SIZE);

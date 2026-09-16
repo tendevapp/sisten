@@ -81,6 +81,10 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
 
   const confirmarSalvarCelula = async () => {
     if (!celulaSelecionada) return;
+    if (editStatus === 5 && !editSerie.trim()) {
+      toast.error('Para marcar como Saída Portaria (5), informe o número de série do tramo.');
+      return;
+    }
     setSalvandoCelula(true);
     try {
       await salvarCelulaMatriz({
@@ -432,7 +436,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
             <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
               <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5" style={{ background: COR_STATUS_AUTONOMIA[4].bg }} />
               <span>
-                <strong>Expedido (4):</strong> tramos com expedição registrada e série física.
+                <strong>Faturado (4):</strong> tramos que foram faturados no gwjaco.
               </span>
             </div>
             <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
@@ -517,7 +521,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                   }}
                 />
                 <p className="text-[11px] mt-1" style={{ color: 'var(--ink-muted)' }}>
-                  Geralmente preenchido quando o status é 4 (Expedido), 5 (Saída Portaria) ou 3 (Pátio).
+                  Geralmente preenchido quando o status é 4 (Faturado), 5 (Saída Portaria) ou 3 (Pátio).
                 </p>
               </div>
 

@@ -15,10 +15,45 @@ import { useToast } from '../components/ui/Toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import Modal, { ModalBody, ModalHeader } from '../components/ui/Modal';
 import { exportCadastroSapPdf } from '../lib/pdfExport/exportCadastroSapPdf';
+import { exportIndicacaoContaPdf } from '../lib/pdfExport/exportIndicacaoContaPdf';
 import { formatDateTimeBR } from '../lib/format';
 
 interface CadastrosSapProps {
   user: Profile;
+}
+
+interface IndicacaoContaSalva {
+  cidade: string;
+  banco: string;
+  agencia: string;
+  conta: string;
+}
+
+const INDICACAO_CONTA_STORAGE_PREFIX = 'sisten:indicacaoConta:';
+
+// Chave por CNPJ (dígitos) do fornecedor — assim a ficha preenchida numa
+// solicitação já vem pronta em outra solicitação do mesmo fornecedor. Sem
+// CNPJ (ex.: dado ainda não digitado), cai para o id da solicitação.
+function chaveIndicacaoConta(req: Request): string {
+  const cnpjDigits = (req.brand || '').replace(/\D/g, '');
+  return INDICACAO_CONTA_STORAGE_PREFIX + (cnpjDigits || req.id);
+}
+
+function carregarIndicacaoContaSalva(req: Request): IndicacaoContaSalva | null {
+  try {
+    const raw = localStorage.getItem(chaveIndicacaoConta(req));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarIndicacaoContaLocal(req: Request, dados: IndicacaoContaSalva) {
+  try {
+    localStorage.setItem(chaveIndicacaoConta(req), JSON.stringify(dados));
+  } catch {
+    // localStorage indisponível (modo privado, quota etc.) — segue sem persistir
+  }
 }
 
 export default function CadastrosSap({ user }: CadastrosSapProps) {
@@ -27,6 +62,12 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [selectedReq, setSelectedReq] = useState<Request | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showIndicacaoConta, setShowIndicacaoConta] = useState(false);
+  const [exportingIndicacaoConta, setExportingIndicacaoConta] = useState(false);
+  const [indicacaoCidade, setIndicacaoCidade] = useState('');
+  const [indicacaoBanco, setIndicacaoBanco] = useState('');
+  const [indicacaoAgencia, setIndicacaoAgencia] = useState('');
+  const [indicacaoConta, setIndicacaoConta] = useState('');
   
   // Carrega do cache
   const pageCache = localDb.getPageCache('cadastros_sap', {
@@ -151,6 +192,11 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     setTicketExterno(req.ticket_externo || '');
     setActionSuccess('');
     setActionError('');
+    setShowIndicacaoConta(false);
+    setIndicacaoCidade('');
+    setIndicacaoBanco('');
+    setIndicacaoAgencia('');
+    setIndicacaoConta('');
     setComments(localDb.getRequestComments(req.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
   };
 
@@ -436,6 +482,33 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
   };
 
+  const handleExportIndicacaoConta = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReq) return;
+    if (!indicacaoCidade.trim() || !indicacaoBanco.trim() || !indicacaoAgencia.trim() || !indicacaoConta.trim()) {
+      toast.error('Preencha cidade, banco, agência e conta corrente.');
+      return;
+    }
+    setExportingIndicacaoConta(true);
+    try {
+      const dados = {
+        cidade: indicacaoCidade.trim(),
+        banco: indicacaoBanco.trim(),
+        agencia: indicacaoAgencia.trim(),
+        conta: indicacaoConta.trim(),
+      };
+      await exportIndicacaoContaPdf(selectedReq, { ...dados, contaCorrente: dados.conta });
+      salvarIndicacaoContaLocal(selectedReq, dados);
+      toast.success('PDF de indicação de conta exportado com sucesso.');
+      setShowIndicacaoConta(false);
+    } catch (e) {
+      console.error('Falha ao exportar PDF de indicação de conta:', e);
+      toast.error('Não foi possível gerar o PDF. Tente novamente.');
+    } finally {
+      setExportingIndicacaoConta(false);
+    }
+  };
+
   const getItemSummary = (req: Request): string => {
     const texto = req.justificativa || '';
     const itemMatch = texto.match(/^Nome:\s*(.*?)\.\s*Specs:/i);
@@ -666,14 +739,35 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                 </p>
               </div>
 
-              <button
-                onClick={handleExportPdf}
-                disabled={exportingPdf}
-                className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <FileText className="h-3.5 w-3.5 text-slate-500" />
-                {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportPdf}
+                  disabled={exportingPdf}
+                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5 text-slate-500" />
+                  {exportingPdf ? 'Gerando...' : 'Exportar PDF'}
+                </button>
+
+                {selectedReq.registration_type === 'Fornecedor' && (
+                  <button
+                    onClick={() => {
+                      const salvo = carregarIndicacaoContaSalva(selectedReq);
+                      if (salvo) {
+                        setIndicacaoCidade(salvo.cidade);
+                        setIndicacaoBanco(salvo.banco);
+                        setIndicacaoAgencia(salvo.agencia);
+                        setIndicacaoConta(salvo.conta);
+                      }
+                      setShowIndicacaoConta(true);
+                    }}
+                    className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-emerald-600" />
+                    Exportar Ficha
+                  </button>
+                )}
+              </div>
             </div>
           </ModalHeader>
 
@@ -1048,6 +1142,75 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
 
               </div>
 
+          </ModalBody>
+        </Modal>
+      )}
+
+      {showIndicacaoConta && selectedReq && (
+        <Modal onClose={() => setShowIndicacaoConta(false)} maxWidth="max-w-md" ariaLabel="Indicação de Conta para Pagamento" zIndexClassName="z-[110]">
+          <ModalHeader onClose={() => setShowIndicacaoConta(false)}>
+            <span className="text-sm font-bold text-slate-800">Indicação de Conta para Pagamento</span>
+          </ModalHeader>
+          <ModalBody className="p-5 space-y-4">
+            <p className="text-[11px] text-slate-500 leading-snug">
+              Dados bancários não fazem parte do cadastro — são usados só para montar esta carta e não ficam salvos na solicitação.
+            </p>
+            <form onSubmit={handleExportIndicacaoConta} className="space-y-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500">Cidade (para data da carta) *</label>
+                <input
+                  type="text"
+                  value={indicacaoCidade}
+                  onChange={(e) => setIndicacaoCidade(e.target.value)}
+                  placeholder="Ex: Jacobina"
+                  className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-500">Banco *</label>
+                <input
+                  type="text"
+                  value={indicacaoBanco}
+                  onChange={(e) => setIndicacaoBanco(e.target.value)}
+                  placeholder="Ex: Banco do Brasil"
+                  className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none mt-1"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500">Agência *</label>
+                  <input
+                    type="text"
+                    value={indicacaoAgencia}
+                    onChange={(e) => setIndicacaoAgencia(e.target.value)}
+                    placeholder="Ex: 2305-1"
+                    className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none mt-1 font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500">Conta Corrente *</label>
+                  <input
+                    type="text"
+                    value={indicacaoConta}
+                    onChange={(e) => setIndicacaoConta(e.target.value)}
+                    placeholder="Ex: 12.001-4"
+                    className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none mt-1 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={exportingIndicacaoConta}
+                className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs py-2.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                {exportingIndicacaoConta ? 'Gerando...' : 'Gerar PDF'}
+              </button>
+            </form>
           </ModalBody>
         </Modal>
       )}

@@ -663,7 +663,8 @@ export async function listarTramosExpedidosPortaria(): Promise<TramoExpedicaoReg
     .from('expedicao_tramos')
     .select('numero_tramo, tramo, data_expedicao, hora_expedicao, data_chegada_portaria, hora_chegada_portaria')
     .is('excluido_em', null)
-    .not('numero_tramo', 'is', null);
+    .not('numero_tramo', 'is', null)
+    .not('hora_expedicao', 'is', null);
 
   if (error) {
     console.warn('Falha ao consultar expedicao_tramos:', error.message);
@@ -671,7 +672,7 @@ export async function listarTramosExpedidosPortaria(): Promise<TramoExpedicaoReg
   }
 
   return (data || []).filter(
-    (row: any) => Boolean(row.numero_tramo && String(row.numero_tramo).trim()),
+    (row: any) => Boolean(row.numero_tramo && String(row.numero_tramo).trim() && row.hora_expedicao),
   ) as TramoExpedicaoRegistro[];
 }
 

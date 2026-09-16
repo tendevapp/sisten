@@ -378,6 +378,18 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
   const [carregandoVeiculosLeves, setCarregandoVeiculosLeves] = useState(false);
   const [erroVeiculosLeves, setErroVeiculosLeves] = useState<string | null>(null);
 
+  // Valores já digitados antes nos campos livres da ocorrência (empresa,
+  // autorizado por, placa, motivo) — vira opção de preenchimento rápido
+  // (datalist) em vez de redigitar o mesmo texto toda hora.
+  const [historicoOcorrencia, setHistoricoOcorrencia] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const tabela = 'port_relatorio_ocorrencias';
+    const campos = ['empresa', 'autorizado_por', 'placa', 'motivo_observacao'];
+    Promise.all(campos.map((c) => api.buscarHistoricoCampoPortaria(tabela, c).then((v) => [c, v] as const)))
+      .then((pares) => setHistoricoOcorrencia(Object.fromEntries(pares)))
+      .catch(() => {});
+  }, []);
+
   // Carrega lista de colaboradores do RH ao iniciar
   useEffect(() => {
     listarRhPessoas()
@@ -1878,10 +1890,14 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         </label>
                         <input
                           type="text"
+                          list="lista-ocorrencia-empresa"
                           value={formOcorrencia.empresa || 'TEN - TORRES EÓLICAS DO NORDESTE'}
                           onChange={(e) => setFormOcorrencia({ ...formOcorrencia, empresa: e.target.value.toUpperCase() })}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
+                        <datalist id="lista-ocorrencia-empresa">
+                          {(historicoOcorrencia.empresa || []).map((v) => <option key={v} value={v} />)}
+                        </datalist>
                       </div>
 
                       <div>
@@ -1891,11 +1907,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         <input
                           type="text"
                           required
+                          list="lista-ocorrencia-autorizado_por"
                           placeholder="EX: SUPERVISOR MARCOS, DR. ROBERTO (AMBULATÓRIO)..."
                           value={formOcorrencia.autorizado_por}
                           onChange={(e) => setFormOcorrencia({ ...formOcorrencia, autorizado_por: e.target.value.toUpperCase() })}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
+                        <datalist id="lista-ocorrencia-autorizado_por">
+                          {(historicoOcorrencia.autorizado_por || []).map((v) => <option key={v} value={v} />)}
+                        </datalist>
                       </div>
                     </div>
 
@@ -1906,11 +1926,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       <input
                         type="text"
                         required
+                        list="lista-ocorrencia-motivo_observacao"
                         placeholder="EX: CONSULTA MÉDICA, SERVIÇO EXTERNO, PARTICULAR..."
                         value={formOcorrencia.motivo_observacao}
                         onChange={(e) => setFormOcorrencia({ ...formOcorrencia, motivo_observacao: e.target.value.toUpperCase() })}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                       />
+                      <datalist id="lista-ocorrencia-motivo_observacao">
+                        {(historicoOcorrencia.motivo_observacao || []).map((v) => <option key={v} value={v} />)}
+                      </datalist>
 
                       {/* Motivos Rápidos */}
                       <div className="mt-2 flex flex-wrap gap-1.5 items-center">
@@ -2041,11 +2065,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         <input
                           type="text"
                           required
+                          list="lista-ocorrencia-empresa"
                           placeholder="EX: PADARIA IDEAL, BAHIA SUL, TEN..."
                           value={formOcorrencia.empresa}
                           onChange={(e) => setFormOcorrencia({ ...formOcorrencia, empresa: e.target.value.toUpperCase() })}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
+                        <datalist id="lista-ocorrencia-empresa">
+                          {(historicoOcorrencia.empresa || []).map((v) => <option key={v} value={v} />)}
+                        </datalist>
                       </div>
 
                       {formOcorrencia.tipo_registro === 'ENTRADA_VEICULO' && (
@@ -2056,11 +2084,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                           <input
                             type="text"
                             required
+                            list="lista-ocorrencia-placa"
                             placeholder="EX: ABC1D23"
                             value={formOcorrencia.placa_veiculo}
                             onChange={(e) => setFormOcorrencia({ ...formOcorrencia, placa_veiculo: e.target.value.toUpperCase() })}
                             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase font-mono font-bold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                           />
+                          <datalist id="lista-ocorrencia-placa">
+                            {(historicoOcorrencia.placa || []).map((v) => <option key={v} value={v} />)}
+                          </datalist>
                         </div>
                       )}
 
@@ -2070,11 +2102,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                         </label>
                         <input
                           type="text"
+                          list="lista-ocorrencia-autorizado_por"
                           placeholder="EX: ADEMIR, AMBULATÓRIO..."
                           value={formOcorrencia.autorizado_por}
                           onChange={(e) => setFormOcorrencia({ ...formOcorrencia, autorizado_por: e.target.value.toUpperCase() })}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                         />
+                        <datalist id="lista-ocorrencia-autorizado_por">
+                          {(historicoOcorrencia.autorizado_por || []).map((v) => <option key={v} value={v} />)}
+                        </datalist>
                       </div>
 
                       <div>
@@ -2100,11 +2136,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       </label>
                       <input
                         type="text"
+                        list="lista-ocorrencia-motivo_observacao"
                         placeholder="EX: ENTREGA DE MATERIAIS, MANUTENÇÃO, REUNIÃO..."
                         value={formOcorrencia.motivo_observacao}
                         onChange={(e) => setFormOcorrencia({ ...formOcorrencia, motivo_observacao: e.target.value.toUpperCase() })}
                         className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
                       />
+                      <datalist id="lista-ocorrencia-motivo_observacao">
+                        {(historicoOcorrencia.motivo_observacao || []).map((v) => <option key={v} value={v} />)}
+                      </datalist>
                     </div>
 
                     {/* Checkbox Fará Briefing de Segurança & Botão Checar Validade (30 dias) */}
@@ -2477,11 +2517,15 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                 </label>
                 <input
                   type="text"
+                  list="lista-ocorrencia-motivo_observacao-saida"
                   placeholder="EX: SAÍDA NORMAL, INSPEÇÃO REALIZADA SEM ALTERAÇÕES..."
                   value={formSaidaRapida.motivo_observacao}
                   onChange={(e) => setFormSaidaRapida({ ...formSaidaRapida, motivo_observacao: e.target.value.toUpperCase() })}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 />
+                <datalist id="lista-ocorrencia-motivo_observacao-saida">
+                  {(historicoOcorrencia.motivo_observacao || []).map((v) => <option key={v} value={v} />)}
+                </datalist>
               </div>
             </ModalBody>
 

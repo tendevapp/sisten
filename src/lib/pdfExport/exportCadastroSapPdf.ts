@@ -12,7 +12,7 @@ export interface ExportCadastroSapPdfResult {
   failedAttachments: string[];
 }
 
-function parseNomeEspecificacoes(request: Request): { nome: string; especificacoes: string } {
+export function parseNomeEspecificacoes(request: Request): { nome: string; especificacoes: string } {
   const texto = request.justificativa || '';
   const itemMatch = texto.match(/^Nome: (.*?)\. Specs: (.*?)\. Justificativa: [\s\S]*$/);
   if (itemMatch) return { nome: itemMatch[1], especificacoes: itemMatch[2] };
