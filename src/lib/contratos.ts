@@ -11,7 +11,7 @@
  * os valores somados, mantendo os itens originais para o detalhamento.
  */
 
-import { ContratoME3N, ContratoDetalhes, ContratoStatus } from '../types';
+import { ContratoME3N, ContratoDetalhes, ContratoStatus, ContratoTipo } from '../types';
 import { toDate } from './format';
 
 export type StatusVigencia = 'Vigente' | 'Vencendo em breve' | 'Vencido' | 'Sem vigência informada';
@@ -28,6 +28,7 @@ export interface Contrato {
   requisitante: string;
   criado_por: string;
   moeda: string;
+  tipo: string | null;
   data_documento: string | null;
   inicio_validade: string | null;
   fim_validade: string | null;
@@ -93,6 +94,7 @@ export function agruparContratos(linhas: ContratoME3N[], hoje: Date = new Date()
       requisitante: itens.find(i => i.requisitante)?.requisitante || '—',
       criado_por: itens.find(i => i.criado_por)?.criado_por || '—',
       moeda: itens.find(i => i.moeda)?.moeda || '—',
+      tipo: itens.find(i => i.tipo)?.tipo || null,
       data_documento: itens.find(i => i.data_documento)?.data_documento ?? null,
       inicio_validade,
       fim_validade,
@@ -122,6 +124,7 @@ export function statusSugerido(statusVigencia: StatusVigencia): ContratoStatus {
 export interface ContratoComDetalhes extends Contrato {
   detalhes: ContratoDetalhes | undefined;
   status_exibido: ContratoStatus;
+  tipo_exibido: ContratoTipo | null;
 }
 
 /** Combina os contratos (ME3N) com os campos complementares editáveis, por `documento_compras`. */
@@ -133,6 +136,7 @@ export function mesclarDetalhes(contratos: Contrato[], detalhesList: ContratoDet
       ...c,
       detalhes,
       status_exibido: detalhes?.status || statusSugerido(c.status_vigencia),
+      tipo_exibido: ((detalhes?.tipo || c.tipo || null) as ContratoTipo | null),
     };
   });
 }

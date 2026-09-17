@@ -106,7 +106,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
     }));
     setAvisos(prev => [...cartoes, ...prev.filter(p => p.id !== 'resumo')]);
 
-    // Três batidas de 1 s: o cabeçalho pisca, o selo aparece e o sino sacode.
+    // Três batidas de 1 s: o selo aparece e o sino sacode.
     setSinoTocando(true);
     window.clearTimeout(timerSinoRef.current);
     timerSinoRef.current = window.setTimeout(() => setSinoTocando(false), 3200);
@@ -280,11 +280,7 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
       onDispensar={id => setAvisos(prev => prev.filter(a => a.id !== id))}
       onDispensarTodos={() => setAvisos([])}
     />
-    <header className={`sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b px-3 sm:px-6 shadow-sm transition-colors gap-2 ${
-      sinoTocando
-        ? 'border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-950/30 animate-cabecalho-pisca'
-        : 'border-gray-100 dark:border-slate-850 bg-white dark:bg-slate-900'
-    }`}>
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-gray-100 bg-white px-3 shadow-sm transition-colors gap-2 dark:border-slate-850 dark:bg-slate-900 sm:px-6">
       {/* Mobile menu trigger */}
       <button
         onClick={onOpenMobileMenu}
@@ -338,12 +334,11 @@ export default function Header({ user, simulatedRole, onSimulateRole, onUserChan
           </button>
         )}
 
-        {/* Selo de chegada: enquanto o cabeçalho pisca, ele diz em palavras o
-            que mudou e leva ao sino em um clique. */}
+        {/* Selo de chegada: diz em palavras o que mudou e leva ao sino em um clique. */}
         {sinoTocando && (
           <button
             onClick={() => { setShowNotifications(true); setShowProfileMenu(false); }}
-            className="animate-selo-pisca hidden sm:flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 cursor-pointer"
+            className="hidden sm:flex items-center gap-1.5 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 cursor-pointer"
           >
             <BellRing className="h-3.5 w-3.5" />
             Nova notificação

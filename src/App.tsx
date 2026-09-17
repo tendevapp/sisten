@@ -41,6 +41,7 @@ const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
 const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturamentoGwjaco'));
 const FinRealizadoPorRubrica = lazy(() => import('./views/financeiro/FinRealizadoPorRubrica'));
+const FinPepView = lazy(() => import('./views/financeiro/FinPepView'));
 const GestaoRubricasFinanceiro = lazy(() => import('./views/admin/GestaoRubricasFinanceiro'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
@@ -54,6 +55,7 @@ const AlmoxarifadoDashboards = lazy(() => import('./views/AlmoxarifadoDashboards
 const Sobre = lazy(() => import('./views/Sobre'));
 const Formularios = lazy(() => import('./views/Formularios'));
 const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
+const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/ExpedicaoRelatorioLeadTime'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
@@ -70,6 +72,7 @@ const PortariaRelatorio = lazy(() => import('./views/portaria/PortariaRelatorio'
 const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'));
 const PortariaAlcoolemia = lazy(() => import('./views/portaria/PortariaAlcoolemia'));
 const SsmaAlcoolemiaView = lazy(() => import('./views/ssma/SsmaAlcoolemiaView'));
+const QualidadeRncView = lazy(() => import('./views/qualidade/QualidadeRncView'));
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
@@ -677,6 +680,18 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/formularios/logistica-expedicao/relatorio':
+      case '/formularios/logistica-expedicao-relatorio':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
+          return (
+            <ExpedicaoRelatorioLeadTime
+              user={user}
+              onVoltar={() => handleNavigate('/formularios/logistica-expedicao')}
+            />
+          );
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/almoxarifado':
       case '/formularios/almoxarifado-recebimento':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'almoxarifado')) {
@@ -707,6 +722,19 @@ export default function App() {
       case '/formularios/ssma/alcoolemia':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
           return <SsmaAlcoolemiaView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/qualidade':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'qualidade')) {
+          return <QualidadeRncView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/qualidade-rnc':
+      case '/formularios/qualidade/rnc':
+        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'qualidade')) {
+          return <QualidadeRncView user={user} onNavigate={handleNavigate} abaInicial="historico" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -866,6 +894,12 @@ export default function App() {
       case '/financeiro/faturamento-gwjaco':
         if (canAccessPage(user, 'fin_faturamento_gwjaco')) {
           return <FinFaturamentoGwjaco user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/pep':
+        if (canAccessPage(user, 'fin_pep')) {
+          return <FinPepView user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ETAPAS_CHECKLIST_LIBERACAO,
   agruparTramosPorTorre,
   avaliarCriticidadeEspera,
   calcularIndicadoresDecisao,
+  calcularProgressoChecklist,
+  type ApontamentoChecklistLiberacao,
   type TramoEntrega,
 } from './producaoEntrega';
 
@@ -117,5 +120,47 @@ describe('producaoEntrega - Controle de Entrega e Tomada de Decisão', () => {
     expect(kpis.contagemCategorias.expedido).toBe(9);
     expect(kpis.contagemCategorias.white).toBe(2);
     expect(kpis.contagemCategorias.patio).toBe(4);
+  });
+});
+
+describe('producaoEntrega - Checklist de Liberação (White → Expedido)', () => {
+  const criarApontamento = (
+    etapa: ApontamentoChecklistLiberacao['etapa_codigo'],
+    excluidoEm: string | null = null,
+  ): ApontamentoChecklistLiberacao => ({
+    id: `evt-${etapa}`,
+    tramo_entrega_id: 'T1-3143',
+    etapa_codigo: etapa,
+    concluida_em: new Date().toISOString(),
+    concluida_por: 'Fulano',
+    observacao: null,
+    excluido_em: excluidoEm,
+    created_at: new Date().toISOString(),
+  });
+
+  it('começa em 0/total quando não há apontamentos', () => {
+    const progresso = calcularProgressoChecklist([]);
+    expect(progresso.concluidas).toBe(0);
+    expect(progresso.total).toBe(ETAPAS_CHECKLIST_LIBERACAO.length);
+    expect(progresso.percentual).toBe(0);
+  });
+
+  it('conta apenas apontamentos ativos (ignora os desmarcados)', () => {
+    const apontamentos = [
+      criarApontamento('estrutura_multiviga'),
+      criarApontamento('tampas_flange'),
+      criarApontamento('limpeza', new Date().toISOString()), // desmarcada
+    ];
+
+    const progresso = calcularProgressoChecklist(apontamentos);
+    expect(progresso.concluidas).toBe(2);
+    expect(progresso.total).toBe(ETAPAS_CHECKLIST_LIBERACAO.length);
+  });
+
+  it('chega a 100% quando todas as etapas estão apontadas', () => {
+    const apontamentos = ETAPAS_CHECKLIST_LIBERACAO.map(e => criarApontamento(e.codigo));
+    const progresso = calcularProgressoChecklist(apontamentos);
+    expect(progresso.concluidas).toBe(ETAPAS_CHECKLIST_LIBERACAO.length);
+    expect(progresso.percentual).toBe(100);
   });
 });

@@ -31,12 +31,14 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertCircle, Check, ClipboardList, FileSpreadsheet, FileText, Loader2, PackageX, PackageCheck, Plus, Wrench } from 'lucide-react';
+import { AlertCircle, Check, ClipboardList, FileSpreadsheet, FileText, Loader2, PackageX, PackageCheck, Pencil, Plus, Wrench } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { TableEmpty } from '../ui/DataTable';
 import { useToast } from '../ui/Toast';
 import { Campo, inputCls } from './campos';
 import CadastroItensDesconsiderados from './CadastroItensDesconsiderados';
+import ModalEditarOrdemPremontagem from './ModalEditarOrdemPremontagem';
+import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { formatDateTimeBR, formatInt, formatQtd } from '../../lib/format';
 import { PREFIXO, TRAMOS, type Tramo } from '../../lib/projetos';
 import { subconjuntosDoTramo, type ArvoreBom, type ConsumoItem } from '../../lib/projetosBom';
@@ -90,6 +92,7 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
   const [faltantes, setFaltantes] = useState<Faltante[]>([]);
   const [ordemApontar, setOrdemApontar] = useState<ProjOrdemPremontagem | null>(null);
   const [ordemSeparar, setOrdemSeparar] = useState<ProjOrdemPremontagem | null>(null);
+  const [ordemEditar, setOrdemEditar] = useState<ProjOrdemPremontagem | null>(null);
 
   const opcao = OPCOES_ALVO.find((o) => o.chave === opcaoChave) ?? OPCOES_ALVO[0];
   const { tramo, zona } = opcao;
@@ -385,6 +388,15 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
                     <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>
                       {prontos}/{total} apontado(s)
                     </span>
+                    {podeEditarFormulario(user, o) && (
+                      <button
+                        onClick={() => setOrdemEditar(o)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer border hover:opacity-80"
+                        style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Editar
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--hairline)' }}>
@@ -603,6 +615,19 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
           salvando={salvando}
           onCancelar={() => setOrdemApontar(null)}
           onConfirmar={(marcados, nc, pendencia) => void apontar(ordemApontar, marcados, nc, pendencia)}
+        />
+      )}
+
+      {ordemEditar && (
+        <ModalEditarOrdemPremontagem
+          ordem={ordemEditar}
+          user={user}
+          arvore={arvore}
+          itens={itens}
+          itemPorPn={itemPorPn}
+          saldoPorPn={saldoPorPn}
+          onFechar={() => setOrdemEditar(null)}
+          onSalvo={() => { void recarregar(true); }}
         />
       )}
     </div>

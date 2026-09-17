@@ -655,6 +655,8 @@ export interface ParcelaCenario {
   frete: number;
   /** Ver `ResumoFornecedor.freteEhTeorico` — mesmo significado, herdado do fornecedor. */
   freteEhTeorico: boolean;
+  /** Desconto informado na cotação (proposta inteira), já abatido em `total`. */
+  desconto: number;
   total: number;
   /** Fornecedor exige faturamento mínimo que esta parcela não atinge. */
   abaixoDoMinimo: boolean;
@@ -698,6 +700,10 @@ function montarCenario(
     const subtotal = celulas.reduce((s, c) => s + (c.custo.liquido ?? 0), 0);
     const bruto = celulas.reduce((s, c) => s + (c.custo.bruto ?? 0), 0);
     const frete = resumo?.frete ?? 0;
+    // Desconto é da proposta inteira, não rateável por item — mesma lógica do
+    // frete fixo por fornecedor (ver comentário da função): quem compra deste
+    // fornecedor neste cenário leva o desconto inteiro, não uma fração dele.
+    const desconto = resumo?.valorDesconto ?? 0;
     const minimo = resumo?.faturamentoMinimo ?? null;
     return {
       propostaKey,
@@ -706,7 +712,8 @@ function montarCenario(
       subtotal,
       frete,
       freteEhTeorico: resumo?.freteEhTeorico ?? false,
-      total: subtotal + frete,
+      desconto,
+      total: subtotal + frete - desconto,
       abaixoDoMinimo: minimo != null && minimo > 0 && bruto < minimo,
     };
   }).sort((a, b) => b.total - a.total);

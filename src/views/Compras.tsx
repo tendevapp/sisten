@@ -2050,7 +2050,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
       <div data-tour="compras-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <PackageSearch className="h-7 w-7 text-[#0056c6] dark:text-blue-500" />
             Central de Compras
@@ -2064,7 +2064,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             </p>
           )}
         </div>
-        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Filtro PO (Todos / Sem PO / Sem MIGO) */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-900 rounded-xl p-1 mr-2 border border-slate-200/50 dark:border-slate-850">
             <button

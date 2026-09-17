@@ -16,7 +16,7 @@ import {
   Paperclip, X, ImageIcon, Package, Camera,
 } from 'lucide-react';
 import { localDb } from '../../db/localDb';
-import { ContratoAnexo, ContratoDetalhes, ContratoStatus } from '../../types';
+import { ContratoAnexo, ContratoDetalhes, ContratoStatus, ContratoTipo } from '../../types';
 import { ContratoComDetalhes } from '../../lib/contratos';
 import { usePonteiroGrosso } from '../../lib/usePonteiroGrosso';
 import { formatBRL, formatDateBR, formatFileSize } from '../../lib/format';
@@ -29,6 +29,7 @@ import {
 
 const MODALIDADE_OPCOES = ['Anual', 'Mensal', 'Por Demanda'];
 const STATUS_OPCOES: ContratoStatus[] = ['Ativo', 'Inativo', 'Em Processamento'];
+const TIPO_OPCOES: ContratoTipo[] = ['PJ', 'Serviço', 'Material'];
 
 interface ContratoDetailModalProps {
   contrato: ContratoComDetalhes;
@@ -62,6 +63,7 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
   const [modalidade, setModalidade] = useState(d?.modalidade || '');
   const [vigenciaLabel, setVigenciaLabel] = useState(d?.vigencia_label || '');
   const [status, setStatus] = useState<ContratoStatus>(d?.status || contrato.status_exibido);
+  const [tipo, setTipo] = useState<ContratoTipo | ''>((d?.tipo as ContratoTipo) || (contrato.tipo_exibido as ContratoTipo) || '');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -81,6 +83,7 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
         modalidade: modalidade || null,
         vigencia_label: vigenciaLabel.trim() || null,
         status,
+        tipo: (tipo || null) as ContratoTipo | null,
       };
       const salvo = await localDb.saveContratoDetalhes(patch);
       toast.success('Contrato atualizado.');
@@ -186,6 +189,13 @@ export default function ContratoDetailModal({ contrato, onClose, onSaved }: Cont
                   <option value="">— Selecione —</option>
                   {MODALIDADE_OPCOES.map(m => <option key={m} value={m}>{m}</option>)}
                   {modalidade && !MODALIDADE_OPCOES.includes(modalidade) && <option value={modalidade}>{modalidade}</option>}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="ctr_tipo" className={labelClass}>Tipo do Contrato</label>
+                <select id="ctr_tipo" value={tipo} onChange={e => setTipo(e.target.value as ContratoTipo)} className={`${inputClass} appearance-none cursor-pointer`}>
+                  <option value="">— Selecione (PJ, Serviço, Material) —</option>
+                  {TIPO_OPCOES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="space-y-1.5 md:col-span-2">

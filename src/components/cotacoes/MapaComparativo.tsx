@@ -135,6 +135,8 @@ function CampoFrete({ valor, teorico, onSalvar }: { valor: number | null; teoric
   );
 }
 
+const FRETE_MODALIDADE_LABEL: Record<string, string> = { CIF: 'CIF · frete incluso', FOB: 'FOB · frete à parte', OUTRO: 'frete a combinar' };
+
 function Chip({ tom, children, title }: { tom: 'neutro' | 'ok' | 'aviso' | 'ruim'; children: React.ReactNode; title?: string }) {
   const classes = {
     neutro: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -249,6 +251,12 @@ function CabecalhoFornecedor({
       )}
 
       <div className="flex flex-wrap gap-1">
+        {proposta.frete_modalidade && (
+          <Chip tom={proposta.frete_modalidade === 'CIF' ? 'ok' : 'neutro'} title="Modalidade de frete informada na cotação">
+            <Truck className="h-3 w-3" />
+            {FRETE_MODALIDADE_LABEL[proposta.frete_modalidade] ?? proposta.frete_modalidade}
+          </Chip>
+        )}
         <Chip tom="neutro" title={proposta.prazo_entrega_texto ?? undefined}>
           <CalendarClock className="h-3 w-3" />
           {resumo.prazoEntregaDias != null ? `${resumo.prazoEntregaDias} dias` : 'prazo n/i'}

@@ -641,6 +641,12 @@ export interface HistoricoPedidoView {
   rua?: string;
   codigo_postal?: string;
   data_migo?: string | null;
+  /** Área solicitante da RC de origem (sap_me5a_rc.area_solicitante), texto livre do SAP. */
+  area_solicitante?: string;
+  /** Classificação de categoria (cadastro_grupo_mercadoria), nível 1 — ex.: CONSUMÍVEL, ESTRUTURAL, SERVIÇO. */
+  classificacao_nivel1?: string;
+  /** Classificação de categoria, nível 2 — ex.: "EPI - Segurança", "MRO - Manutenção". */
+  classificacao_nivel2?: string;
 }
 
 
@@ -864,12 +870,14 @@ export interface ContratoME3N {
   requisitante?: string | null;
   historico_pedido?: string | null;
   criado_por?: string | null;
+  tipo?: string | null;
   imported_at?: string;
 }
 
 /** Rótulo livre — o SAP não padroniza; "Anual"/"Mensal"/"Por Demanda" são só sugestão na UI. */
 export type ContratoModalidade = string;
 export type ContratoStatus = 'Ativo' | 'Inativo' | 'Em Processamento';
+export type ContratoTipo = 'PJ' | 'Serviço' | 'Material';
 
 /**
  * Campos complementares de um contrato (ME3N), preenchidos manualmente por
@@ -887,6 +895,7 @@ export interface ContratoDetalhes {
   modalidade?: ContratoModalidade | null;
   vigencia_label?: string | null;
   status?: ContratoStatus | null;
+  tipo?: ContratoTipo | string | null;
   updated_by?: string | null;
   updated_at?: string;
 }
@@ -1205,6 +1214,9 @@ export interface MB51Classificado {
   razao_social_fornecedor?: string | null;
   nome_usuario?: string | null;
   elemento_pep?: string | null;
+  pep_nome?: string | null;
+  pep_projeto?: string | null;
+  pep_nivel?: number | null;
   chave_unica?: string | null;
   descricao_tipo_movimento: string;
   categoria: CategoriaMovimento;
@@ -1728,6 +1740,28 @@ export interface ExpedicaoFoto {
   excluido_por?: string | null;
 }
 
+export type TipoObservacaoTramo = 'justificativa_atraso' | 'ocorrencia' | 'observacao' | 'outro';
+
+export interface ExpedicaoTramoEvidencia {
+  id: string;
+  nome_arquivo: string;
+  storage_path: string;
+  tipo?: string;
+  tamanho?: number;
+  url?: string;
+  criado_em: string;
+}
+
+export interface ExpedicaoTramoObservacao {
+  id: string;
+  texto: string;
+  tipo?: TipoObservacaoTramo;
+  usuario_id: string;
+  usuario_nome: string;
+  criado_em: string;
+  evidencias?: ExpedicaoTramoEvidencia[];
+}
+
 export interface ExpedicaoTramo {
   id: string;
   carregamento_id: string;
@@ -1760,6 +1794,10 @@ export interface ExpedicaoTramo {
   obs_chegada_portaria: string | null;
   obs_entrada_patio: string | null;
   obs_expedicao: string | null;
+  /** Observações consolidadas / último apontamento da carreta. */
+  observacoes?: string | null;
+  /** Histórico completo de observações, justificativas e evidências. */
+  historico_observacoes?: ExpedicaoTramoObservacao[] | null;
   created_at: string;
   updated_at: string;
   excluido_em?: string | null;
@@ -2562,7 +2600,109 @@ export interface SsmaFormConfig {
   atualizado_por?: string | null;
 }
 
+// ---------------------------------------------------------------------
+// Qualidade — RNC (Relatório de Não Conformidade)
+// ---------------------------------------------------------------------
 
+export type QuaRncOrigem = 'PROCESSO' | 'FORNECEDOR';
+
+export type QuaRncStatus = 'ABERTA' | 'EM_TRATAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+
+export type QuaAtividadeStatus = 'PENDENTE' | 'EM_ANDAMENTO' | 'CONCLUIDA';
+
+/** Anexo de RNC ou de atividade do plano de ação — imagem comprimida ou PDF. */
+export interface QuaRncAnexo {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  mime_type: string;
+  preview_url?: string;
+  created_at: string;
+}
+
+/**
+ * Uma linha do plano de ação da RNC ("O quê / Quem / Quando / Início real /
+ * Término real" do formulário de referência). `atrasada` é derivado no
+ * cliente a partir de `quando_fim` x `termino_real`/hoje, não gravado.
+ */
+export interface QuaPlanoAcaoAtividade {
+  id: string;
+  sequencial: number;
+  o_que: string;
+  quem_id?: string | null;
+  quem_nome: string;
+  quando_inicio?: string | null;
+  quando_fim?: string | null;
+  inicio_real?: string | null;
+  termino_real?: string | null;
+  status: QuaAtividadeStatus;
+  observacao?: string | null;
+  anexos: QuaRncAnexo[];
+  atualizado_em?: string;
+  atualizado_por_nome?: string | null;
+}
+
+export interface QuaRnc {
+  id: string;
+  numero_registro: string;
+  numero_rnc_externo: string | null;
+
+  emissor_id: string | null;
+  emissor_nome: string;
+  data_emissao: string;
+  data_ocorrencia: string | null;
+
+  origem_nc: QuaRncOrigem;
+  documento_origem: string | null;
+  area_geradora: string | null;
+  fornecedor: string | null;
+  numero_pedido_compra: string | null;
+  tipo_nc: string | null;
+  cliente: string | null;
+  projeto: string | null;
+  responsavel_id: string | null;
+  responsavel_nome: string | null;
+  tramo_sequencial: string | null;
+
+  descricao: string;
+  status: QuaRncStatus;
+
+  anexos: QuaRncAnexo[];
+  plano_acao: QuaPlanoAcaoAtividade[];
+
+  criado_por: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em?: string | null;
+  excluido_por?: string | null;
+}
+
+export interface QuaRncFiltros {
+  termo?: string;
+  status?: QuaRncStatus | 'TODOS';
+  origem?: QuaRncOrigem | 'TODAS';
+  fornecedor?: string;
+  dataInicio?: string;
+  dataFim?: string;
+}
+
+export interface QuaRncMetricas {
+  total: number;
+  abertas: number;
+  emTratamento: number;
+  concluidas: number;
+  atividadesAtrasadas: number;
+}
+
+/** Campos que o usuário pode escolher incluir no relatório consolidado em PDF. */
+export interface QuaRelatorioCampos {
+  descricao: boolean;
+  identificacao: boolean;
+  planoAcao: boolean;
+  fotos: boolean;
+}
 
 // ---------------------------------------------------------------------
 // Facilities — cadastros do módulo
@@ -3105,3 +3245,35 @@ export interface FinFatAlteracao {
   alterado_por_nome: string | null;
   created_at: string;
 }
+
+// =====================================================================
+// Financeiro > Estrutura PEP (WBS Element) — `fin_pep`.
+// =====================================================================
+
+export interface FinPep {
+  id: string;
+  centro_lucro: string | null;
+  definicao_projeto: string | null;
+  wbs_element: string;
+  nome: string | null;
+  nivel: number | null;
+  unidade_medida: string | null;
+  moeda: string | null;
+  empresa: string | null;
+  classificacao_contabil: string | null;
+  elemento_faturamento: string | null;
+  status: string | null;
+  ifrs15_od: string | null;
+  importado_em: string;
+  importado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FinPepInput = Omit<FinPep, 'id' | 'created_at' | 'updated_at' | 'importado_em'> & {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+  importado_em?: string;
+};
+

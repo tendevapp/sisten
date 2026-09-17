@@ -5,15 +5,17 @@
  * Exportação detalhada do relatório de Realizado por Rubrica (Financeiro),
  * para auditoria: uma aba com o resumo por rubrica (mesma árvore da tela) e
  * duas abas linha-a-linha (`vw_fin_pedidos_detalhe_rubrica` e
- * `vw_fin_pagamentos_detalhe_rubrica`) mostrando, para cada pedido/pagamento,
- * qual rubrica foi atribuída e por qual regra (fornecedor ou grupo de
- * mercadoria) — para conferir se a classificação está correta.
+ * `vw_fin_pagamentos_detalhe_rubrica`) com o máximo de campos do SAP
+ * disponíveis — quantidade, preço unitário, requisitante, centro, depósito,
+ * região, moeda, elemento PEP, vencimento, compensação etc. — além de qual
+ * rubrica foi atribuída e por qual regra (fornecedor ou grupo de
+ * mercadoria), para conferir a classificação sem precisar voltar ao banco.
  */
 
 import * as XLSX from 'xlsx-js-style';
 import { supabase } from '../db/supabaseClient';
 import type { FinRealizadoRubricaLinha } from '../types';
-import { obterRelatorioRealizadoPorRubrica } from './rubricasFinanceiroApi';
+import { obterRelatorioRealizadoPorRubrica, DetalhePedidoLinha, DetalhePagamentoLinha } from './rubricasFinanceiroApi';
 
 const ESTILO_CABECALHO = {
   fill: { fgColor: { rgb: '0F2952' } },
@@ -69,46 +71,123 @@ function achatarResumo(linhas: FinRealizadoRubricaLinha[]): (string | number | n
   return resultado;
 }
 
-interface PedidoDetalheRow {
-  doc_compra: string | null;
-  item: string | null;
-  data_doc: string | null;
-  fornecedor_codigo: string | null;
-  fornecedor_nome: string | null;
-  grupo_mercadoria_codigo: string | null;
-  grupo_mercadoria_nome: string | null;
-  material_descricao: string | null;
-  contrato: string | null;
-  valor: number | null;
-  rubrica_nome: string | null;
-  origem_mapeamento: string | null;
-}
-
-interface PagamentoDetalheRow {
-  numero_documento: string | null;
-  documento_compras: string | null;
-  data_pagamento: string | null;
-  data_lancamento: string | null;
-  fornecedor_codigo: string | null;
-  fornecedor_nome: string | null;
-  grupo_mercadoria_codigo: string | null;
-  grupo_mercadoria_nome: string | null;
-  tipo_documento: string | null;
-  valor: number | null;
-  rubrica_nome: string | null;
-  origem_mapeamento: string | null;
-}
-
 const rotuloOrigem = (o: string | null) => {
   if (o === 'fornecedor') return 'Fornecedor';
   if (o === 'grupo_mercadoria') return 'Grupo de Mercadoria';
   return 'Sem mapeamento';
 };
 
+const CABECALHO_PEDIDOS = [
+  'Rubrica', 'Origem do Mapeamento', 'Classificação Nível 1', 'Classificação Nível 2',
+  'Doc. Compra', 'Item', 'Data Documento', 'Data RC', 'Requisição de Compra', 'Tipo Doc. Compra',
+  'Contrato', 'Item Contrato',
+  'Material (Código)', 'Material (Descrição)', 'Grupo Mercadoria (Código)', 'Grupo Mercadoria (Nome)',
+  'Quantidade', 'Unidade', 'Preço Unitário (R$)', 'Valor (R$)',
+  'Fornecedor (Código)', 'Fornecedor (Nome)', 'CNPJ Fornecedor',
+  'Requisitante', 'Criado Por', 'Centro', 'Depósito', 'Região/UF', 'Moeda',
+];
+
+const LARGURA_PEDIDOS = [
+  30, 18, 16, 26,
+  14, 8, 12, 12, 16, 14,
+  14, 12,
+  14, 34, 16, 26,
+  12, 10, 16, 16,
+  16, 32, 18,
+  14, 14, 10, 10, 10, 8,
+];
+
+function linhaPedido(p: DetalhePedidoLinha): (string | number | null)[] {
+  return [
+    p.rubrica_nome || 'Sem rubrica',
+    rotuloOrigem(p.origem_mapeamento),
+    p.classificacao_nivel1,
+    p.classificacao_nivel2,
+    p.doc_compra,
+    p.item,
+    p.data_doc,
+    p.data_rc,
+    p.requisicao_compra,
+    p.tipo_doc_compra,
+    p.contrato,
+    p.item_contrato,
+    p.material_codigo,
+    p.material_descricao,
+    p.grupo_mercadoria_codigo,
+    p.grupo_mercadoria_nome,
+    p.qtd_pedido,
+    p.unidade_medida_pedido,
+    p.preco_liquido_unit,
+    p.valor ?? 0,
+    p.fornecedor_codigo,
+    p.fornecedor_nome,
+    p.cnpj_fornecedor,
+    p.requisitante,
+    p.criado_por_pedido,
+    p.centro,
+    p.deposito,
+    p.regiao_uf,
+    p.moeda,
+  ];
+}
+
+const CABECALHO_PAGAMENTOS = [
+  'Rubrica', 'Origem do Mapeamento', 'Classificação Nível 1', 'Classificação Nível 2',
+  'Nº Documento', 'Doc. Compras (PO)', 'Empresa', 'Tipo Documento',
+  'Data Documento', 'Data Lançamento', 'Data Pagamento',
+  'Vencimento Original', 'Vencimento Líquido', 'Doc. Compensação', 'Data Compensação',
+  'Fornecedor (Código)', 'Fornecedor (Nome)', 'Grupo Mercadoria (Código)', 'Grupo Mercadoria (Nome)',
+  'Centro', 'Centro de Lucro', 'Elemento PEP', 'Conta', 'Condições Pagamento', 'Moeda',
+  'NF (Referência)', 'Texto', 'Valor (R$)',
+];
+
+const LARGURA_PAGAMENTOS = [
+  30, 18, 16, 26,
+  16, 16, 10, 22,
+  12, 12, 12,
+  14, 14, 14, 14,
+  16, 32, 16, 26,
+  10, 14, 14, 12, 16, 8,
+  14, 28, 16,
+];
+
+function linhaPagamento(p: DetalhePagamentoLinha): (string | number | null)[] {
+  return [
+    p.rubrica_nome || 'Sem rubrica',
+    rotuloOrigem(p.origem_mapeamento),
+    p.classificacao_nivel1,
+    p.classificacao_nivel2,
+    p.numero_documento,
+    p.documento_compras,
+    p.empresa,
+    p.tipo_documento,
+    p.data_documento,
+    p.data_lancamento,
+    p.data_pagamento,
+    p.vencimento_original,
+    p.vencimento_liquido,
+    p.doc_compensacao,
+    p.data_compensacao,
+    p.fornecedor_codigo,
+    p.fornecedor_nome,
+    p.grupo_mercadoria_codigo,
+    p.grupo_mercadoria_nome,
+    p.centro,
+    p.centro_lucro,
+    p.elemento_pep,
+    p.conta,
+    p.condicoes_pagamento,
+    p.moeda_documento,
+    p.nf_referencia,
+    p.texto,
+    p.valor ?? 0,
+  ];
+}
+
 /**
- * Busca o resumo + o detalhe linha-a-linha de pedidos e pagamentos e gera o
- * Excel de auditoria (3 abas: Resumo, Pedidos, Pagamentos). Mesmo recorte de
- * data das views (>= 2026-01-01).
+ * Busca o resumo + o detalhe linha-a-linha de pedidos e pagamentos, com o
+ * máximo de campos do SAP disponíveis, e gera o Excel de auditoria (3 abas:
+ * Resumo, Pedidos, Pagamentos). Mesmo recorte de data das views (>= 2026-01-01).
  */
 export async function exportarRealizadoPorRubricaXlsx(): Promise<void> {
   const [relatorio, pedidosRes, pagamentosRes] = await Promise.all([
@@ -128,8 +207,8 @@ export async function exportarRealizadoPorRubricaXlsx(): Promise<void> {
   if (pedidosRes.error) throw new Error(`Erro ao consultar detalhe de pedidos: ${pedidosRes.error.message}`);
   if (pagamentosRes.error) throw new Error(`Erro ao consultar detalhe de pagamentos: ${pagamentosRes.error.message}`);
 
-  const pedidos = (pedidosRes.data || []) as PedidoDetalheRow[];
-  const pagamentos = (pagamentosRes.data || []) as PagamentoDetalheRow[];
+  const pedidos = (pedidosRes.data || []) as DetalhePedidoLinha[];
+  const pagamentos = (pagamentosRes.data || []) as DetalhePagamentoLinha[];
 
   const wb = XLSX.utils.book_new();
 
@@ -145,47 +224,13 @@ export async function exportarRealizadoPorRubricaXlsx(): Promise<void> {
 
   XLSX.utils.book_append_sheet(
     wb,
-    montarPlanilha(
-      ['Rubrica', 'Origem do Mapeamento', 'Doc. Compra', 'Item', 'Data', 'Fornecedor (Código)', 'Fornecedor (Nome)', 'Grupo Mercadoria (Código)', 'Grupo Mercadoria (Nome)', 'Material (Descrição)', 'Contrato', 'Valor (R$)'],
-      pedidos.map(p => [
-        p.rubrica_nome || 'Sem rubrica',
-        rotuloOrigem(p.origem_mapeamento),
-        p.doc_compra,
-        p.item,
-        p.data_doc,
-        p.fornecedor_codigo,
-        p.fornecedor_nome,
-        p.grupo_mercadoria_codigo,
-        p.grupo_mercadoria_nome,
-        p.material_descricao,
-        p.contrato,
-        p.valor ?? 0,
-      ]),
-      [30, 18, 14, 8, 12, 16, 32, 16, 26, 34, 14, 16],
-    ),
+    montarPlanilha(CABECALHO_PEDIDOS, pedidos.map(linhaPedido), LARGURA_PEDIDOS),
     'Pedidos',
   );
 
   XLSX.utils.book_append_sheet(
     wb,
-    montarPlanilha(
-      ['Rubrica', 'Origem do Mapeamento', 'Nº Documento', 'Doc. Compras (PO)', 'Data Pagamento', 'Data Lançamento', 'Fornecedor (Código)', 'Fornecedor (Nome)', 'Grupo Mercadoria (Código)', 'Grupo Mercadoria (Nome)', 'Tipo Documento', 'Valor (R$)'],
-      pagamentos.map(p => [
-        p.rubrica_nome || 'Sem rubrica',
-        rotuloOrigem(p.origem_mapeamento),
-        p.numero_documento,
-        p.documento_compras,
-        p.data_pagamento,
-        p.data_lancamento,
-        p.fornecedor_codigo,
-        p.fornecedor_nome,
-        p.grupo_mercadoria_codigo,
-        p.grupo_mercadoria_nome,
-        p.tipo_documento,
-        p.valor ?? 0,
-      ]),
-      [30, 18, 16, 16, 14, 14, 16, 32, 16, 26, 16, 16],
-    ),
+    montarPlanilha(CABECALHO_PAGAMENTOS, pagamentos.map(linhaPagamento), LARGURA_PAGAMENTOS),
     'Pagamentos',
   );
 

@@ -360,6 +360,132 @@ export async function separarTudoEConfirmar(ordemId: string, usuario: { id?: str
   await confirmarSeparacaoPremontagem(ordemId, usuario);
 }
 
+// ---------------------------------------------------------------------------
+// Edição de ordem de pré-montagem — autor ou admin (RLS + RPC checam
+// `form_pode_editar`). 4 RPCs dedicadas, uma por implicação de estoque:
+// cabeçalho (sem estoque), item (estorna e relança, só pós-confirmação),
+// zona (estorna tudo e recalcula o romaneio) e cancelamento (estorna tudo).
+// ---------------------------------------------------------------------------
+
+export interface AlteracaoOrdemPremontagem {
+  id: string;
+  ordem_id: string;
+  tipo: 'cabecalho' | 'item' | 'zona' | 'cancelamento';
+  alteracoes: { campo: string; de: unknown; para: unknown; motivo?: string }[];
+  criado_por_id: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
+}
+
+/** Observação e quantidade de kits — sem impacto em estoque. */
+export async function editarCabecalhoPremontagem(
+  ordemId: string,
+  campos: { observacao?: string | null; quantidade_kits?: number | null },
+  usuario: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('proj_editar_cabecalho_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_observacao: campos.observacao ?? null,
+    p_quantidade_kits: campos.quantidade_kits ?? null,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao editar o cabeçalho da ordem');
+}
+
+/**
+ * Corrige a quantidade separada de um item **depois** que a separação já
+ * foi confirmada (estorna o débito antigo e relança o corrigido, validando
+ * saldo). Antes da confirmação, use `marcarItemSeparado` — o check físico
+ * normal, sem trava de autor.
+ */
+export async function editarItemPremontagem(
+  ordemItemId: string,
+  novaQtdSeparada: number,
+  usuario: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('proj_editar_item_premontagem' as any, {
+    p_ordem_item_id: ordemItemId,
+    p_nova_qtd_separada: novaQtdSeparada,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao corrigir o item da ordem');
+}
+
+export interface TrocarZonaItemInput {
+  item_id: string;
+  subconjunto?: string | null;
+  qtd_por_kit: number;
+  qtd_total: number;
+  localizador?: string | null;
+}
+
+/**
+ * Troca a zona de uma ordem T1: estorna tudo que já foi debitado (de
+ * qualquer zona) e substitui o romaneio pelo novo — calculado no cliente
+ * (mesma lógica de `consumoDaZona`/`projetosZonas.ts` usada na abertura),
+ * não em SQL. Reabre a separação do zero.
+ */
+export async function trocarZonaPremontagem(
+  ordemId: string,
+  novaZona: string,
+  itens: TrocarZonaItemInput[],
+  usuario: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('proj_trocar_zona_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_nova_zona: novaZona,
+    p_itens: itens,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao trocar a zona da ordem');
+}
+
+/** Estorna todo o débito da ordem e marca `status = 'cancelada'`. */
+export async function cancelarOrdemPremontagem(
+  ordemId: string,
+  motivo: string,
+  usuario: { id?: string | null; nome: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('proj_cancelar_ordem_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_motivo: motivo,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao cancelar a ordem');
+}
+
+/**
+ * Adiciona um item novo ao romaneio de uma ordem já aberta (item esquecido
+ * na abertura, ou avulso). Não debita sozinho — nasce com qtd_separada = 0;
+ * some para o check físico normal se a ordem ainda não confirmou separação,
+ * ou fica pronto para `editarItemPremontagem` se já confirmou.
+ */
+export async function adicionarItemPremontagem(
+  ordemId: string,
+  campos: { item_id: string; subconjunto?: string | null; qtd_total: number; localizador?: string | null },
+  usuario: { id?: string | null; nome: string },
+): Promise<string> {
+  const { data, error } = await supabase.rpc('proj_adicionar_item_premontagem' as any, {
+    p_ordem_id: ordemId,
+    p_item_id: campos.item_id,
+    p_subconjunto: campos.subconjunto ?? null,
+    p_qtd_total: campos.qtd_total,
+    p_localizador: campos.localizador ?? null,
+    p_usuario: usuario,
+  } as any);
+  if (error) lancarErroRpc(error, 'Falha ao adicionar o item à ordem');
+  return data as string;
+}
+
+export async function listarAlteracoesPremontagem(ordemId: string): Promise<AlteracaoOrdemPremontagem[]> {
+  const { data, error } = await db('proj_ordens_premontagem_alteracoes')
+    .select('*')
+    .eq('ordem_id', ordemId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AlteracaoOrdemPremontagem[];
+}
+
 export async function listarOrdens(
   projeto = PROJETO_PADRAO,
   incluirExcluidas = false,

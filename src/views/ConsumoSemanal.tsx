@@ -170,7 +170,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
     <div className="space-y-5 select-text max-w-[1600px] mx-auto pb-12">
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5 reveal" style={{ borderColor: 'var(--hairline)' }}>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
               <CalendarDays className="h-7 w-7" style={{ color: 'var(--brand)' }} />

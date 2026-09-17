@@ -920,7 +920,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5"
         style={{ borderColor: 'var(--hairline)' }}
       >
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
             <Boxes className="h-7 w-7" style={{ color: 'var(--brand)' }} />
             Abrir RM

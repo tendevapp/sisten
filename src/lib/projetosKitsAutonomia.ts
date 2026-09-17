@@ -9,6 +9,7 @@
  *   - Fixadores (parafusos, porcas, arruelas, estojos - Forte Fixadores)
  *   - Plataforma (chapas, alçapão, vigas - Atlanta / Qindao)
  *   - Escada | Avanti (seções de escada, suportes e descansos - Avanti / Atlanta)
+ *   - Plataforma Inferior (somente em T1 - Qindao)
  *   - Escada Acesso (somente em T1 - Qindao)
  *
  * Vincula o estoque disponível em almoxarifado com a BOM, diferenciando:
@@ -23,7 +24,7 @@ import { Tramo, TRAMOS } from './projetos';
 import type { ArvoreBom, NoBom } from './projetosBom';
 import type { SaldosPorItem } from './projetosAutonomia';
 
-export type SubkitId = 'fixadores' | 'plataforma' | 'escada_avanti' | 'escada_acesso';
+export type SubkitId = 'fixadores' | 'plataforma' | 'plataforma_inferior' | 'escada_avanti' | 'escada_acesso';
 
 export type StatusKitAutonomia = 0 | 1 | 3 | 4 | 5;
 
@@ -52,21 +53,32 @@ export interface SubkitDef {
 export const SUBKITS: Record<SubkitId, SubkitDef> = {
   fixadores: { id: 'fixadores', rotulo: 'Fixadores', ordem: 1 },
   plataforma: { id: 'plataforma', rotulo: 'Plataforma', ordem: 2 },
-  escada_avanti: { id: 'escada_avanti', rotulo: 'Escada | Avanti', ordem: 3 },
-  escada_acesso: { id: 'escada_acesso', rotulo: 'Escada Acesso', ordem: 4 },
+  plataforma_inferior: { id: 'plataforma_inferior', rotulo: 'Plataforma Inferior', ordem: 3 },
+  escada_avanti: { id: 'escada_avanti', rotulo: 'Escada | Avanti', ordem: 4 },
+  escada_acesso: { id: 'escada_acesso', rotulo: 'Escada Acesso', ordem: 5 },
 };
 
 /**
  * T5 a T2 têm 3 sub-kits: Fixadores, Plataforma, Escada | Avanti.
- * T1 tem os 3 mais a Escada de Acesso.
+ * T1 tem ainda Plataforma Inferior e Escada de Acesso.
  */
 export const SUBKITS_POR_TRAMO: Record<Tramo, SubkitId[]> = {
   T5: ['fixadores', 'plataforma', 'escada_avanti'],
   T4: ['fixadores', 'plataforma', 'escada_avanti'],
   T3: ['fixadores', 'plataforma', 'escada_avanti'],
   T2: ['fixadores', 'plataforma', 'escada_avanti'],
-  T1: ['fixadores', 'plataforma', 'escada_avanti', 'escada_acesso'],
+  T1: ['fixadores', 'plataforma', 'plataforma_inferior', 'escada_avanti', 'escada_acesso'],
 };
+
+/** A Plataforma Inferior é uma frente própria apenas no T1. */
+function pertenceAoSubkit(no: NoBom, tramo: Tramo, subkit: SubkitId): boolean {
+  const ehPlataformaInferiorT1 = tramo === 'T1' && no.grupoNorm === 'PLATAFORMA INFERIOR';
+
+  if (subkit === 'plataforma_inferior') return ehPlataformaInferiorT1;
+  if (ehPlataformaInferiorT1) return false;
+
+  return classificarItemSubkit(no) === subkit;
+}
 
 /**
  * Classifica uma folha da BOM para o seu respectivo sub-kit interno.
@@ -151,8 +163,7 @@ export function obterComposicaoSubkit(
 
   for (const no of arvore.nos) {
     if (!no.folha || no.tramo !== tramo || !no.partNumberNorm || !no.qtdPorTorre) continue;
-    const classificado = classificarItemSubkit(no);
-    if (classificado !== subkit) continue;
+    if (!pertenceAoSubkit(no, tramo, subkit)) continue;
 
     const atual = acumuladoPorPn.get(no.partNumberNorm);
     if (atual) {

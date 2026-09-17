@@ -6,15 +6,18 @@
 import { describe, it, expect } from 'vitest';
 import {
   cargaDivergente,
+  buscarPedidosParaNc,
   classificarDivergencia,
   entregaParcialAnterior,
   extrairRiPosConferidos,
   listarFornecedoresDoCache,
   pendentePedido,
+  podeExcluirNaoConformidade,
   posAbertosDoFornecedor,
   resumoConferencia,
   tipoItemDaLista,
   tipoNcSugerido,
+  validarNovaNcAvulsa,
   type LinhaCacheSAP,
   type LinhaConferencia,
 } from './recebimentoAlmox';
@@ -141,6 +144,29 @@ describe('tipoNcSugerido', () => {
   });
 });
 
+describe('validarNovaNcAvulsa', () => {
+  it('exige descrição, mas não exige vínculo com recebimento nem pedido', () => {
+    expect(validarNovaNcAvulsa({ descricao: '   ' })).toBe('Informe a descrição da não conformidade.');
+    expect(validarNovaNcAvulsa({ descricao: 'Avaria identificada no estoque.' })).toBeNull();
+  });
+
+  it('exige quantidade verificada nos itens de uma NC de quantidade', () => {
+    expect(validarNovaNcAvulsa({
+      descricao: 'Falta de parafusos.',
+      tipo: 'falta',
+      itens: [{ qtd_pedido: 20, qtd_verificada: null }],
+    })).toBe('Informe a quantidade verificada para cada item selecionado.');
+  });
+});
+
+describe('podeExcluirNaoConformidade', () => {
+  it('permite exclusão somente enquanto a NCR está aberta', () => {
+    expect(podeExcluirNaoConformidade('aberta')).toBe(true);
+    expect(podeExcluirNaoConformidade('em_tratativa')).toBe(false);
+    expect(podeExcluirNaoConformidade('resolvida')).toBe(false);
+  });
+});
+
 const cache = (over: Partial<LinhaCacheSAP> = {}): LinhaCacheSAP => ({
   documento_compra: '4600000001',
   fornecedor_name: 'PARAFUSOS SÃO PAULO LTDA',
@@ -190,6 +216,17 @@ describe('posAbertosDoFornecedor', () => {
 
   it('termo vazio devolve nada', () => {
     expect(posAbertosDoFornecedor([cache()], '  ')).toEqual([]);
+  });
+});
+
+describe('buscarPedidosParaNc', () => {
+  it('localiza POs pelo número ou pelo fornecedor, mesmo quando já foram atendidos', () => {
+    const recs = [
+      cache({ documento_compra: '4600000001', fornecedor_name: 'ALFA INDUSTRIAL' }),
+      cache({ documento_compra: '4600000002', fornecedor_name: 'BETA SERVICOS', qtd_fornecida_po: 100 }),
+    ];
+    expect(buscarPedidosParaNc(recs, '000002').map((p) => p.numero)).toEqual(['4600000002']);
+    expect(buscarPedidosParaNc(recs, 'alfa').map((p) => p.numero)).toEqual(['4600000001']);
   });
 });
 

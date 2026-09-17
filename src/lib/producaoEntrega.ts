@@ -142,6 +142,120 @@ export const CONFIG_CATEGORIAS: Record<CategoriaEtapa, ConfiguracaoCategoria> = 
   },
 };
 
+// ---------------------------------------------------------------------------
+// Checklist de Liberação (White → Expedido)
+//
+// Etapas finais entre o tratamento de superfície e a expedição do tramo,
+// adaptadas do protocolo de liberação de seção de torre (estrutura →
+// fechamento → documentação → transporte). Independente da categoria
+// cromática do cilindro (`etapa_categoria`): o avanço aqui é um apontamento
+// à parte, com histórico, que não move o tramo entre categorias.
+// ---------------------------------------------------------------------------
+
+export type EtapaChecklistLiberacao =
+  | 'estrutura_multiviga'
+  | 'tampas_flange'
+  | 'limpeza'
+  | 'liberacao_qualidade'
+  | 'carregamento_veiculo'
+  | 'registro_fotografico'
+  | 'video_gravado'
+  | 'fechamento_final'
+  | 'documentacao_liberada'
+  | 'fatura_liberada'
+  | 'transporte_iniciado';
+
+export interface ConfiguracaoEtapaChecklist {
+  codigo: EtapaChecklistLiberacao;
+  rotulo: string;
+  descricao: string;
+}
+
+/** Ordem fixa do checklist — cada item é um degrau na liberação do tramo. */
+export const ETAPAS_CHECKLIST_LIBERACAO: ConfiguracaoEtapaChecklist[] = [
+  {
+    codigo: 'estrutura_multiviga',
+    rotulo: 'Estrutura multiviga instalada',
+    descricao: 'Estrutura multiviga instalada nos flanges superior e inferior, com parafusos torqueados e marcados.',
+  },
+  {
+    codigo: 'tampas_flange',
+    rotulo: 'Tampas de flange instaladas',
+    descricao: 'Tampas dos flanges superior e inferior instaladas e fixadas (no T1, inclui a tampa especial do vão da porta).',
+  },
+  {
+    codigo: 'limpeza',
+    rotulo: 'Limpeza do tramo concluída',
+    descricao: 'Tramo limpo e pronto para o registro final e fechamento, quando aplicável.',
+  },
+  {
+    codigo: 'liberacao_qualidade',
+    rotulo: 'Liberação de qualidade final',
+    descricao: 'Liberação formal de qualidade e demais atividades de performance concluídas.',
+  },
+  {
+    codigo: 'carregamento_veiculo',
+    rotulo: 'Carregado no veículo de transporte',
+    descricao: 'Tramo totalmente carregado e amarrado no veículo, pronto para a expedição.',
+  },
+  {
+    codigo: 'registro_fotografico',
+    rotulo: 'Registro fotográfico completo',
+    descricao: 'Registro fotográfico completo, disponível e rastreável ao tramo.',
+  },
+  {
+    codigo: 'video_gravado',
+    rotulo: 'Vídeo interno/externo gravado',
+    descricao: 'Vídeo interno e externo do tramo gravado e disponibilizado.',
+  },
+  {
+    codigo: 'fechamento_final',
+    rotulo: 'Fechamento final do tramo',
+    descricao: 'Fechamento final do tramo concluído após inspeções e registros.',
+  },
+  {
+    codigo: 'documentacao_liberada',
+    rotulo: 'Documentação liberada',
+    descricao: 'Pacote completo de documentação e registros de qualidade liberado, sem pendências.',
+  },
+  {
+    codigo: 'fatura_liberada',
+    rotulo: 'Fatura liberada',
+    descricao: 'Documentação de fatura liberada, sem pendências.',
+  },
+  {
+    codigo: 'transporte_iniciado',
+    rotulo: 'Transporte iniciado (Expedido)',
+    descricao: 'Veículo parte no horário combinado com o cliente — marco crítico de expedição.',
+  },
+];
+
+export interface ApontamentoChecklistLiberacao {
+  id: string;
+  tramo_entrega_id: string;
+  etapa_codigo: EtapaChecklistLiberacao;
+  concluida_em: string;
+  concluida_por: string | null;
+  observacao: string | null;
+  excluido_em: string | null;
+  created_at: string;
+}
+
+/** Progresso do checklist a partir dos apontamentos ativos (não desmarcados). */
+export function calcularProgressoChecklist(apontamentos: ApontamentoChecklistLiberacao[]): {
+  concluidas: number;
+  total: number;
+  percentual: number;
+} {
+  const ativos = apontamentos.filter(a => !a.excluido_em);
+  const total = ETAPAS_CHECKLIST_LIBERACAO.length;
+  return {
+    concluidas: ativos.length,
+    total,
+    percentual: total > 0 ? Math.round((ativos.length / total) * 100) : 0,
+  };
+}
+
 export type NivelCriticidadeEspera = 'normal' | 'atencao' | 'critico';
 
 export function avaliarCriticidadeEspera(dias: number): {

@@ -102,6 +102,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
   const [sapResultCode, setSapResultCode] = useState('');
   const [ticketExterno, setTicketExterno] = useState('');
   const [salvandoTicket, setSalvandoTicket] = useState(false);
+  const [salvandoCodigoSap, setSalvandoCodigoSap] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
@@ -187,7 +188,7 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     setSelectedReq(req);
     setQuestion('');
     setResolution('');
-    setSapResultCode('');
+    setSapResultCode(req.codigo_fornecedor_sap || req.codigo_sap_gerado || '');
     setObservacao('');
     setTicketExterno(req.ticket_externo || '');
     setActionSuccess('');
@@ -224,6 +225,33 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       setActionError('Falha ao salvar o nº do ticket externo.');
     } finally {
       setSalvandoTicket(false);
+    }
+  };
+
+  const handleSalvarCodigoSap = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedReq) return;
+    const valor = sapResultCode.trim();
+    if (valor === (selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado || '')) return;
+
+    setSalvandoCodigoSap(true);
+    setActionError('');
+    setActionSuccess('');
+    try {
+      const ok = await localDb.updateCadastroSapCodigo(selectedReq.id, valor || null);
+      if (!ok) {
+        setActionError('Falha ao salvar o código SAP no Supabase. Tente novamente.');
+        return;
+      }
+      setActionSuccess(valor ? 'Código SAP atualizado com sucesso.' : 'Código SAP removido.');
+      const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
+      if (updatedReq) setSelectedReq(updatedReq);
+      loadData();
+      setTimeout(() => setActionSuccess(''), 3000);
+    } catch (err) {
+      setActionError('Falha ao atualizar código SAP.');
+    } finally {
+      setSalvandoCodigoSap(false);
     }
   };
 
@@ -320,8 +348,9 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
     }
 
     try {
-      const labelCod = selectedReq.registration_type === 'Item' ? 'Cód. Material SAP' : 'Cód. Fornecedor SAP';
-      let finalComment = `Cadastro Finalizado: ${resolution}`;
+      const isFornecedor = selectedReq.registration_type === 'Fornecedor';
+      const labelCod = isFornecedor ? 'Cód. Fornecedor SAP' : 'Cód. Material SAP';
+      let finalComment = `Cadastro Finalizado: ${resolution.trim()}`;
       if (sapResultCode.trim()) {
         finalComment += ` | ${labelCod}: ${sapResultCode.trim()}`;
       }
@@ -330,7 +359,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
         selectedReq.id,
         'resolvido',
         finalComment,
-        sapResultCode.trim() || undefined
+        sapResultCode.trim() || undefined,
+        user.id
       );
       if (!ok) {
         setActionError('Falha ao salvar no Supabase. A alteração não foi persistida — tente novamente.');
@@ -342,16 +372,24 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
       
       setActionSuccess('Solicitação marcada como resolvida!');
       setResolution('');
-      setSapResultCode('');
 
       const updatedReq = localDb.getRequests().find(r => r.id === selectedReq.id);
-      if (updatedReq) setSelectedReq(updatedReq);
+      if (updatedReq) {
+        setSelectedReq(updatedReq);
+        setSapResultCode(updatedReq.codigo_fornecedor_sap || updatedReq.codigo_sap_gerado || '');
+      }
       setComments(localDb.getRequestComments(selectedReq.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)));
       loadData();
     } catch (err) {
       setActionError('Falha ao resolver cadastro.');
     }
   };
+
+  const podeAtender = Boolean(selectedReq && (
+    selectedReq.atendente_id === user.id ||
+    user.roles.includes('admin') ||
+    user.roles.includes('coordenador_suprimentos')
+  ));
 
   const podeExcluir = Boolean(selectedReq && (
     user.roles.includes('admin') ||
@@ -658,6 +696,11 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                                 Atualização
                               </span>
                             )}
+                            {(req.codigo_fornecedor_sap || req.codigo_sap_gerado) && (
+                              <span className="font-mono text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 w-fit" title="Código SAP vinculado">
+                                SAP: {req.codigo_fornecedor_sap || req.codigo_sap_gerado}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-3 px-4 max-w-[200px] lg:max-w-[280px]">
@@ -780,20 +823,41 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   <p className="font-bold text-slate-800 text-sm mt-1">{selectedReq.justificativa?.split('|')[0] || selectedReq.justificativa}</p>
                 </div>
 
-                {selectedReq.registration_type === 'Fornecedor' && selectedReq.codigo_fornecedor_sap && (
-                  <div className="rounded border border-amber-200 bg-amber-50/60 p-2.5">
-                    <h4 className="font-bold text-amber-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atual)</h4>
-                    <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.codigo_fornecedor_sap}</p>
-                  </div>
-                )}
-
-                {selectedReq.codigo_sap_gerado && (
-                  <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
-                    <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">
-                      {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
-                    </h4>
-                    <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
-                  </div>
+                {selectedReq.registration_type === 'Fornecedor' ? (
+                  <>
+                    {selectedReq.fornecedor_operacao === 'atualizacao' ? (
+                      <>
+                        {selectedReq.codigo_fornecedor_sap && (
+                          <div className="rounded border border-amber-200 bg-amber-50/60 p-2.5">
+                            <h4 className="font-bold text-amber-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atual)</h4>
+                            <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{selectedReq.codigo_fornecedor_sap}</p>
+                          </div>
+                        )}
+                        {selectedReq.codigo_sap_gerado && selectedReq.codigo_sap_gerado !== selectedReq.codigo_fornecedor_sap && (
+                          <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
+                            <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Código Fornecedor SAP (atualizado)</h4>
+                            <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      (selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado) && (
+                        <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
+                          <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Código SAP do Fornecedor</h4>
+                          <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">
+                            {selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado}
+                          </p>
+                        </div>
+                      )
+                    )}
+                  </>
+                ) : (
+                  selectedReq.codigo_sap_gerado && (
+                    <div className="rounded border border-emerald-200 bg-emerald-50/70 p-2.5">
+                      <h4 className="font-bold text-emerald-800 uppercase text-[9px] tracking-wider">Cód. Material SAP Gerado</h4>
+                      <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">{selectedReq.codigo_sap_gerado}</p>
+                    </div>
+                  )
                 )}
 
                 {selectedReq.ticket_externo && (
@@ -937,8 +1001,8 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                   </button>
                 )}
 
-                {/* 2. Atendente is current user & state is not final */}
-                {selectedReq.atendente_id === user.id && !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(selectedReq.status) && (
+                {/* 2. Atendente can act & state is not final */}
+                {podeAtender && !['cancelada', 'rejeitada', 'resolvido', 'fechado'].includes(selectedReq.status) && (
                   <div className="space-y-5">
 
                     {/* Nº do ticket externo — opcional. O cadastro real costuma
@@ -1029,41 +1093,65 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                       </button>
                     </form>
 
-                    {/* Resolve Cadastro */}
-                    <form onSubmit={handleResolver} className="space-y-3.5 border border-slate-100 p-3 rounded-xl bg-emerald-50/10">
-                      <p className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Resolver Cadastro SAP
-                      </p>
+                    {/* Fechamento da Demanda / Resolver Cadastro */}
+                    <form onSubmit={handleResolver} className="space-y-3.5 border border-emerald-200 p-3.5 rounded-xl bg-emerald-50/20">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                          <CheckCircle className="h-4 w-4 text-emerald-600" /> Fechamento da Demanda — Cadastro SAP
+                        </p>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          {selectedReq.registration_type === 'Fornecedor' ? 'Fornecedor' : 'Item / Material'}
+                        </span>
+                      </div>
+
+                      {selectedReq.registration_type === 'Fornecedor' ? (
+                        <div className="rounded-lg border border-emerald-300 bg-white p-3 space-y-1.5 shadow-2xs">
+                          <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                            <KeyRound className="h-3.5 w-3.5 text-emerald-700" />
+                            Código SAP do Fornecedor
+                          </label>
+                          <p className="text-[10px] text-slate-500 leading-snug">
+                            Digite o código do fornecedor cadastrado no SAP para vinculação aos pedidos e fechamento da demanda.
+                          </p>
+                          <input
+                            type="text"
+                            value={sapResultCode}
+                            onChange={(e) => setSapResultCode(e.target.value)}
+                            placeholder="Ex: 20004567"
+                            className="w-full rounded border border-slate-300 p-2 text-sm font-mono font-bold text-slate-800 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 focus:outline-none bg-emerald-50/20 placeholder:font-normal placeholder:text-slate-400"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">
+                            Cód. Material SAP
+                          </label>
+                          <input
+                            type="text"
+                            value={sapResultCode}
+                            onChange={(e) => setSapResultCode(e.target.value)}
+                            placeholder="Ex: 10000259"
+                            className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none bg-white font-mono"
+                          />
+                        </div>
+                      )}
                       
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500">Nota de Resolução / Homologação</label>
+                        <label className="text-[10px] font-bold text-slate-600">Nota de Resolução / Homologação *</label>
                         <textarea
                           value={resolution}
                           onChange={(e) => setResolution(e.target.value)}
-                          placeholder="Ex: Item homologado no SAP sob o grupo de mercadorias..."
+                          placeholder={selectedReq.registration_type === 'Fornecedor' ? "Ex: Fornecedor homologado e cadastrado no SAP com sucesso." : "Ex: Item homologado no SAP sob o grupo de mercadorias..."}
                           className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none bg-white min-h-[60px]"
                           required
                         />
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-500">
-                          {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP' : 'Cód. Fornecedor SAP'}
-                        </label>
-                        <input
-                          type="text"
-                          value={sapResultCode}
-                          onChange={(e) => setSapResultCode(e.target.value)}
-                          placeholder={selectedReq.registration_type === 'Item' ? 'Ex: 10000259' : 'Ex: 20004567'}
-                          className="w-full rounded border border-slate-200 p-2 text-xs focus:border-emerald-500 focus:outline-none bg-white font-mono"
-                        />
-                      </div>
-
                       <button
                         type="submit"
-                        className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-2 px-3 rounded cursor-pointer transition-colors"
+                        className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs py-2.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
                       >
-                        Marcar como Concluído / Resolvido
+                        <CheckCircle className="h-4 w-4" /> Concluir e Fechar Demanda
                       </button>
                     </form>
 
@@ -1105,12 +1193,14 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                     <p className="text-xs font-bold text-emerald-800">
                       Cadastro {selectedReq.status === 'fechado' ? 'Fechado/Concluído' : 'Resolvido'}
                     </p>
-                    {selectedReq.codigo_sap_gerado && (
+                    {(selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado) && (
                       <div className="inline-block bg-white border border-emerald-200 rounded px-3 py-1.5 text-xs shadow-xs">
                         <span className="text-slate-500 font-medium">
                           {selectedReq.registration_type === 'Item' ? 'Cód. Material SAP: ' : 'Cód. Fornecedor SAP: '}
                         </span>
-                        <span className="font-mono font-bold text-emerald-700">{selectedReq.codigo_sap_gerado}</span>
+                        <span className="font-mono font-bold text-emerald-700">
+                          {selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado}
+                        </span>
                       </div>
                     )}
                     {selectedReq.ticket_externo && (
@@ -1124,6 +1214,34 @@ export default function CadastrosSap({ user }: CadastrosSapProps) {
                         ? 'Solicitação concluída definitivamente no sistema.'
                         : 'Aguardando auto-fechamento do sistema ou confirmação de fechamento pelo solicitante.'}
                     </p>
+
+                    {/* Edicao / atualizacao do codigo SAP se necessario */}
+                    {podeAtender && (
+                      <div className="mt-3 pt-3 border-t border-emerald-200/70 text-left space-y-1.5">
+                        <label className="text-[10px] font-bold text-emerald-950 flex items-center justify-between">
+                          <span>{selectedReq.registration_type === 'Fornecedor' ? 'Código SAP do Fornecedor' : 'Código Material SAP'}</span>
+                          <span className="text-[9px] text-slate-500 font-normal">Atualizar código pós-fechamento</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={sapResultCode}
+                            onChange={(e) => setSapResultCode(e.target.value)}
+                            placeholder={selectedReq.registration_type === 'Item' ? 'Ex: 10000259' : 'Ex: 20004567'}
+                            className="flex-1 rounded border border-slate-200 p-1.5 text-xs focus:border-emerald-500 focus:outline-none bg-white font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSalvarCodigoSap}
+                            disabled={salvandoCodigoSap || sapResultCode.trim() === (selectedReq.codigo_fornecedor_sap || selectedReq.codigo_sap_gerado || '')}
+                            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-[10px] px-3 py-1.5 rounded cursor-pointer transition-colors"
+                          >
+                            {salvandoCodigoSap ? 'Salvando...' : 'Salvar Código'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {podeExcluir && (
                       <div className="pt-2 border-t border-emerald-200/60">
                         <button

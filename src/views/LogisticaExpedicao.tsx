@@ -18,8 +18,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Loader2, Mail, Plus, Save, Trash2, Truck, AlertCircle, Check,
-  HelpCircle, Bug, Lightbulb, Clock, Camera, Search, X,
+  HelpCircle, Bug, Lightbulb, Clock, Camera, Search, X, Timer, BarChart3,
 } from 'lucide-react';
+import ExpedicaoRelatorioLeadTime from './expedicao/ExpedicaoRelatorioLeadTime';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
 import type { TourStep } from '../components/help/types';
@@ -98,24 +99,35 @@ const LOGISTICA_EXPEDICAO_TOUR_STEPS: TourStep[] = [
 
 export default function LogisticaExpedicao({ user, onNavigate }: Props) {
   const [carregamentoId, setCarregamentoId] = useState<string | null>(null);
-  const tour = usePageTour('form-logistica-expedicao', LOGISTICA_EXPEDICAO_TOUR_STEPS.length, !carregamentoId);
+  const [visaoRelatorio, setVisaoRelatorio] = useState(false);
+  const tour = usePageTour('form-logistica-expedicao', LOGISTICA_EXPEDICAO_TOUR_STEPS.length, !carregamentoId && !visaoRelatorio);
 
   useEffect(() => {
     const hash = window.location.hash || '';
+    if (hash.includes('relatorio')) {
+      setVisaoRelatorio(true);
+    }
     if (hash.includes('?')) {
       const params = new URLSearchParams(hash.split('?')[1]);
       const idParam = params.get('id');
       if (idParam) {
         setCarregamentoId(idParam);
       }
+      if (params.get('tab') === 'relatorio' || params.get('view') === 'relatorio') {
+        setVisaoRelatorio(true);
+      }
     }
   }, []);
+
+  if (visaoRelatorio) {
+    return <ExpedicaoRelatorioLeadTime user={user} onVoltar={() => setVisaoRelatorio(false)} />;
+  }
 
   return (
     <>
       {carregamentoId
         ? <Edicao user={user} id={carregamentoId} onVoltar={() => setCarregamentoId(null)} />
-        : <Lista user={user} onAbrir={setCarregamentoId} onNavigate={onNavigate} />}
+        : <Lista user={user} onAbrir={setCarregamentoId} onAbrirRelatorio={() => setVisaoRelatorio(true)} onNavigate={onNavigate} />}
       {tour.isOpen && (
         <TourSpotlight
           steps={LOGISTICA_EXPEDICAO_TOUR_STEPS}
@@ -133,7 +145,17 @@ export default function LogisticaExpedicao({ user, onNavigate }: Props) {
 // Lista
 // =====================================================================
 
-function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: string) => void; onNavigate: (p: string) => void }) {
+function Lista({
+  user,
+  onAbrir,
+  onAbrirRelatorio,
+  onNavigate,
+}: {
+  user: Profile;
+  onAbrir: (id: string) => void;
+  onAbrirRelatorio: () => void;
+  onNavigate: (p: string) => void;
+}) {
   const toast = useToast();
   const isAdmin = Boolean(user.roles?.includes('admin'));
   const [itens, setItens] = useState<ExpedicaoCarregamentoResumo[] | null>(null);
@@ -261,6 +283,14 @@ function Lista({ user, onAbrir, onNavigate }: { user: Profile; onAbrir: (id: str
             checked={mostrarExcluidos}
             onChange={setMostrarExcluidos}
           />
+          <button
+            type="button"
+            onClick={onAbrirRelatorio}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 sm:w-auto dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 cursor-pointer"
+          >
+            <Timer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <span>Relatório de Lead Time</span>
+          </button>
           <button
             type="button"
             onClick={novo}
@@ -1278,6 +1308,7 @@ function Edicao({ user, id, onVoltar }: { user: Profile; id: string; onVoltar: (
             fotos={dados.fotos.filter(f => f.tramo_id === t.id)}
             aberto={Boolean(abertos[t.id])}
             somenteLeitura={bloqueado}
+            user={user}
             onAlternar={() => setAbertos(a => ({ ...a, [t.id]: !a[t.id] }))}
             onChange={patch => alterarTramo(t.id, patch)}
             onExcluir={dados.tramos.length > 1

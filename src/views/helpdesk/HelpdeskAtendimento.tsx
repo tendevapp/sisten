@@ -287,10 +287,14 @@ export default function HelpdeskAtendimento({ user, onNavigate }: HelpdeskAtendi
     }
   };
 
-  const handleTransferSector = (e: React.FormEvent) => {
+  const handleTransferSector = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicket || !transferSectorId) return;
-    localDb.transferTicketSector(selectedTicket.id, transferSectorId, user.id);
+    const ok = await localDb.transferTicketSector(selectedTicket.id, transferSectorId, user.id);
+    if (!ok) {
+      toast.error('Falha ao salvar no Supabase. A transferência não foi persistida — tente novamente.');
+      return;
+    }
     const destSector = sectors.find(s => s.id === transferSectorId)?.name || 'outro setor';
     toast.success(`Chamado #${selectedTicket.number} transferido para ${destSector}.`);
     setTransferSectorId('');

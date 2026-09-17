@@ -421,7 +421,7 @@ export default function Estoque({ user }: EstoqueProps) {
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <Boxes className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
             Estoque
@@ -435,7 +435,7 @@ export default function Estoque({ user }: EstoqueProps) {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => load(true)}
             disabled={loading}

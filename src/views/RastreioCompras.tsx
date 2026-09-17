@@ -522,7 +522,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-extrabold text-slate-800 dark:text-slate-50 flex items-center gap-2.5">
             <Route className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
             Rastreio Compras
@@ -536,7 +536,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
             </p>
           )}
         </div>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => load(true)}
             disabled={loading}

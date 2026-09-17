@@ -217,10 +217,10 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                   value={r.fornecedor_operacao === 'atualizacao' ? 'Atualização de Cadastro' : 'Novo Cadastro'}
                 />
               )}
-              {r.registration_type === 'Fornecedor' && (r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor) && (
+              {r.registration_type === 'Fornecedor' && (r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor || r.codigo_sap_gerado) && (
                 <Field
-                  label="Código Fornecedor SAP (atual)"
-                  value={r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor}
+                  label={r.fornecedor_operacao === 'atualizacao' ? 'Código Fornecedor SAP (atual)' : 'Código SAP do Fornecedor'}
+                  value={r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor || r.codigo_sap_gerado}
                 />
               )}
               <Field
@@ -269,9 +269,15 @@ export default function RequestDetailsModal({ request: r, items, sectors, onClos
                   />
                 </>
               )}
-              {r.codigo_sap_gerado && (
+              {r.registration_type === 'Item' && r.codigo_sap_gerado && (
                 <Field
-                  label={r.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
+                  label="Cód. Material SAP"
+                  value={r.codigo_sap_gerado}
+                />
+              )}
+              {r.registration_type === 'Fornecedor' && r.fornecedor_operacao === 'atualizacao' && r.codigo_sap_gerado && r.codigo_sap_gerado !== (r.codigo_fornecedor_sap || cadastroSap.codigoFornecedor) && (
+                <Field
+                  label="Código Fornecedor SAP (atualizado)"
                   value={r.codigo_sap_gerado}
                 />
               )}

@@ -106,6 +106,40 @@ describe('Cadastros SAP — Atualização de Fornecedor e Código de Resposta', 
     const updated = localDb.getRequests().find(r => r.id === created.id);
     expect(updated?.status).toBe('resolvido');
     expect(updated?.codigo_sap_gerado).toBe('20008888');
+    expect(updated?.codigo_fornecedor_sap).toBe('20008888');
+  });
+
+  it('permite atualizar codigo SAP via updateCadastroSapCodigo para item e fornecedor', async () => {
+    const draftFornec: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Fornecedor',
+      justificativa: 'Nome: FORNECEDOR XYZ. Justificativa: Teste',
+      criticality: 3,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+    const reqFornec = await localDb.submitRequest(draftFornec, false);
+    const okFornec = await localDb.updateCadastroSapCodigo(reqFornec.id, '20009999');
+    expect(okFornec).toBe(true);
+    const atualizadoFornec = localDb.getRequests().find(r => r.id === reqFornec.id);
+    expect(atualizadoFornec?.codigo_sap_gerado).toBe('20009999');
+    expect(atualizadoFornec?.codigo_fornecedor_sap).toBe('20009999');
+
+    const draftItem: Partial<Request> = {
+      type: 'cadastro_sap',
+      registration_type: 'Item',
+      justificativa: 'Nome: ITEM XYZ. Justificativa: Teste',
+      criticality: 3,
+      solicitante_id: 'user-1',
+      solicitante_name: 'Solicitante Teste',
+      solicitante_sector_id: 'sec-1',
+    };
+    const reqItem = await localDb.submitRequest(draftItem, false);
+    const okItem = await localDb.updateCadastroSapCodigo(reqItem.id, '10005555');
+    expect(okItem).toBe(true);
+    const atualizadoItem = localDb.getRequests().find(r => r.id === reqItem.id);
+    expect(atualizadoItem?.codigo_sap_gerado).toBe('10005555');
   });
 
   it('faz parse reverso da justificativa de atualizacao de cadastro', () => {

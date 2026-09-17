@@ -12,12 +12,15 @@
  * de React nem do Supabase. Mesma divisão de `expedicaoEmail.ts`.
  */
 
-import { formatBRL, formatDateBR } from './format';
+import { formatBRL } from './format';
 
 /** Chave do gatilho em `config_envio_emails` (Admin › E-mails). */
 export const CHAVE_CONFIG_COLETA = 'coleta_jacobina';
 export const ASSUNTO_COLETA_PADRAO = 'Coleta Jacobina';
 export const DESTINATARIO_COLETA_PADRAO = 'andre.araujo@ten.ind.br';
+
+const SEPARADOR_CABECALHO = '--------------------------------------------------------------------';
+const SEPARADOR_FORNECEDOR = '--------------------------------------------------';
 
 export interface LinhaColeta {
   /** Data da coleta = previsão de entrega efetiva do item (ISO), quando houver. */
@@ -63,26 +66,28 @@ function textoOuTraco(valor?: string | null): string {
 }
 
 /**
- * Uma linha por item, com os campos na ordem em que a logística lê: quando
- * buscar, de quem, o que é (RM/PO/código/material) e quanto.
+ * Uma linha por item no modelo:
+ * Código: 1437256 | Material: CAMISA TERM UNI 90PES/10EL% PT G | Qtd: 5 UN | Valor: R$ 224,50
  */
 function linhaItem(linha: LinhaColeta): string {
   const campos = [
-    `Data da coleta: ${linha.dataColeta ? formatDateBR(linha.dataColeta) : 'a definir'}`,
-    `RM: ${textoOuTraco(linha.rm)}`,
-    `PO: ${textoOuTraco(linha.po)}`,
     `Código: ${textoOuTraco(linha.codigoItem)}`,
     `Material: ${textoOuTraco(linha.material)}`,
     `Qtd: ${quantidadeTexto(linha.quantidade, linha.unidade)}`,
     `Valor: ${linha.valor === null || linha.valor === undefined ? '—' : formatBRL(linha.valor)}`,
   ];
-  return `- ${campos.join(' | ')}`;
+  return campos.join(' | ');
 }
 
 /**
- * Corpo em texto puro (o `mailto:` não carrega HTML). Blocos por fornecedor,
- * ordenados por nome; dentro do bloco, os itens seguem a data de coleta — o que
- * vence antes aparece antes.
+ * Corpo em texto puro da lista de coleta.
+ * Estrutura:
+ * - Saudação "Bom dia!" e mensagem de introdução
+ * - Totais (Itens e Valor total)
+ * - Separador de cabeçalho
+ * - Blocos por FORNECEDOR (alfabético)
+ * - Sub-blocos por PO com itens listados
+ * - Separador ao fim de cada fornecedor
  */
 export function montarCorpoColeta(params: {
   linhas: LinhaColeta[];
@@ -92,16 +97,17 @@ export function montarCorpoColeta(params: {
   const { linhas } = params;
   const partes: string[] = [];
 
-  partes.push('Segue a lista de coleta para busca do material junto aos fornecedores.');
+  partes.push('Bom dia!');
   partes.push('');
-
-  const transp = (params.transportadora || '').trim();
-  if (transp) partes.push(`Transportadora: ${transp}`);
+  partes.push('Segue a lista de coleta para busca do material junto aos fornecedores.');
   partes.push(`Itens: ${linhas.length}`);
 
   const total = linhas.reduce((acc, l) => acc + (l.valor || 0), 0);
-  if (total > 0) partes.push(`Valor total: ${formatBRL(total)}`);
-  partes.push('');
+  if (total > 0) {
+    partes.push(`Valor total: ${formatBRL(total)}`);
+  }
+
+  partes.push(SEPARADOR_CABECALHO);
 
   const porFornecedor = new Map<string, LinhaColeta[]>();
   for (const linha of linhas) {
@@ -112,20 +118,38 @@ export function montarCorpoColeta(params: {
   }
 
   const fornecedores = Array.from(porFornecedor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  for (const fornecedor of fornecedores) {
+  for (let fIdx = 0; fIdx < fornecedores.length; fIdx++) {
+    const fornecedor = fornecedores[fIdx];
+    partes.push(`FORNECEDOR: ${fornecedor}`);
+    partes.push('');
+
     const itens = [...(porFornecedor.get(fornecedor) || [])].sort((a, b) => {
       if (a.dataColeta && b.dataColeta) return a.dataColeta < b.dataColeta ? -1 : 1;
       if (a.dataColeta) return -1;
       if (b.dataColeta) return 1;
       return a.po.localeCompare(b.po);
     });
-    partes.push(`FORNECEDOR: ${fornecedor}`);
-    for (const item of itens) partes.push(linhaItem(item));
-    partes.push('');
-  }
 
-  const solicitante = (params.solicitante || '').trim();
-  if (solicitante) partes.push(`Solicitado por: ${solicitante}`);
+    const porPo = new Map<string, LinhaColeta[]>();
+    for (const item of itens) {
+      const chavePo = textoOuTraco(item.po);
+      const grupoPo = porPo.get(chavePo);
+      if (grupoPo) grupoPo.push(item);
+      else porPo.set(chavePo, [item]);
+    }
+
+    for (const [po, itensDoPo] of porPo) {
+      partes.push(po);
+      for (const item of itensDoPo) {
+        partes.push(linhaItem(item));
+      }
+    }
+
+    partes.push(SEPARADOR_FORNECEDOR);
+    if (fIdx < fornecedores.length - 1) {
+      partes.push('');
+    }
+  }
 
   return partes.join('\n').trimEnd();
 }

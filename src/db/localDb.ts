@@ -10,7 +10,7 @@ import {
   ActivityLog, EnrichedSAPRecord, ItemStatus, PedidoForn, ContatoFornecedor, CidadeForn, HistoricoPedidoView,
 
   RastreioMensagem, RastreioPrioridade, AlmoxarifadoChegada, EstoqueItem, EstoqueAnalise, GrupoMercadoria, ContratoME3N,
-  ContratoDetalhes, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry,
+  ContratoDetalhes, ContratoTipo, ContratoAnexo, AuditoriaCompra, AuditoriaHistoricoMaterial, FeedbackReport, FeedbackLogEntry,
   MB51MovEstoque, MB51ImportMode, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao,
   BahiaSulEntrega
 } from '../types';
@@ -3342,6 +3342,7 @@ class LocalDatabase {
     const prevFirstResponseAt = request.first_response_at;
     const prevResolvedAt = request.resolved_at;
     const prevCodigoSapGerado = request.codigo_sap_gerado;
+    const prevCodigoFornecedorSap = request.codigo_fornecedor_sap;
     const prevAtendenteId = request.atendente_id;
     const prevAtendenteName = request.atendente_name;
 
@@ -3364,6 +3365,9 @@ class LocalDatabase {
       request.resolved_at = new Date().toISOString();
       if (codigoSapGerado) {
         request.codigo_sap_gerado = codigoSapGerado;
+        if (request.registration_type === 'Fornecedor' || !request.registration_type) {
+          request.codigo_fornecedor_sap = codigoSapGerado;
+        }
       }
     }
 
@@ -3371,8 +3375,8 @@ class LocalDatabase {
 
     const published = await this.publishRequestRow(request);
     if (!published) {
-      // Reverte o cache local: sem isso o autor da ação veria o novo status
-      // enquanto o Supabase (fonte de verdade para os demais usuários) manteve o antigo.
+      // Reverte o cache local: sem isso o autor da acao veria o novo status
+      // enquanto o Supabase (fonte de verdade para os demais usuarios) manteve o antigo.
       const revertRequests = this.getRequests();
       const revertIdx = revertRequests.findIndex(r => r.id === reqId);
       if (revertIdx !== -1) {
@@ -3381,6 +3385,7 @@ class LocalDatabase {
         revertRequests[revertIdx].first_response_at = prevFirstResponseAt;
         revertRequests[revertIdx].resolved_at = prevResolvedAt;
         revertRequests[revertIdx].codigo_sap_gerado = prevCodigoSapGerado;
+        revertRequests[revertIdx].codigo_fornecedor_sap = prevCodigoFornecedorSap;
         revertRequests[revertIdx].atendente_id = prevAtendenteId;
         revertRequests[revertIdx].atendente_name = prevAtendenteName;
         this.setStorageItem(this.requestsKey, revertRequests);
@@ -3415,6 +3420,7 @@ class LocalDatabase {
       ));
     }
 
+    this.notifyListeners();
     return true;
   }
 
@@ -3699,6 +3705,7 @@ class LocalDatabase {
     }
 
     await this.logStatusChange(reqId, prevStatus, 'em_atendimento', atendenteId, name, 'Atendimento assumido pelo profissional.');
+    this.notifyListeners();
     return true;
   }
 
@@ -3739,6 +3746,59 @@ class LocalDatabase {
       valorLimpo
         ? `Registrou o ticket externo "${valorLimpo}" na solicitação #${requests[idx].number}.`
         : `Removeu o ticket externo da solicitação #${requests[idx].number}.`,
+    );
+    this.notifyListeners();
+    return true;
+  }
+
+  /**
+   * Atualiza o codigo SAP gerado / codigo de fornecedor SAP de uma solicitacao de cadastro SAP.
+   * Permite registrar ou retificar o codigo inclusive apos a conclusao/fechamento da demanda.
+   */
+  public async updateCadastroSapCodigo(reqId: string, codigoSap: string | null): Promise<boolean> {
+    const requests = this.getRequests();
+    const idx = requests.findIndex(r => r.id === reqId);
+    if (idx === -1) return false;
+
+    const prevGerado = requests[idx].codigo_sap_gerado;
+    const prevFornecedor = requests[idx].codigo_fornecedor_sap;
+    const prevUpdatedAt = requests[idx].updated_at;
+    const valorLimpo = codigoSap?.trim() || undefined;
+
+    const isFornecedor = requests[idx].registration_type === 'Fornecedor' || !requests[idx].registration_type;
+
+    requests[idx] = {
+      ...requests[idx],
+      codigo_sap_gerado: valorLimpo,
+      codigo_fornecedor_sap: isFornecedor ? valorLimpo : requests[idx].codigo_fornecedor_sap,
+      updated_at: new Date().toISOString(),
+    };
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(requests[idx]);
+    if (!published) {
+      const revert = this.getRequests();
+      const ri = revert.findIndex(r => r.id === reqId);
+      if (ri !== -1) {
+        revert[ri] = {
+          ...revert[ri],
+          codigo_sap_gerado: prevGerado,
+          codigo_fornecedor_sap: prevFornecedor,
+          updated_at: prevUpdatedAt,
+        };
+        this.setStorageItem(this.requestsKey, revert);
+      }
+      return false;
+    }
+
+    const user = this.getCurrentUser();
+    this.logActivity(
+      user?.id || 'admin',
+      'Suprimentos',
+      'Codigo SAP',
+      valorLimpo
+        ? `Atualizou o codigo SAP para "${valorLimpo}" na solicitacao #${requests[idx].number}.`
+        : `Removeu o codigo SAP da solicitacao #${requests[idx].number}.`,
     );
     this.notifyListeners();
     return true;
@@ -4118,6 +4178,17 @@ class LocalDatabase {
     this.setStorageItem(this.contratosDetalhesKey, lista);
     this.logActivity(user?.id || 'sistema', 'Suprimentos', 'Editar Contrato', `Editou os dados complementares do contrato ${row.documento_compras}.`);
     return row;
+  }
+
+  /** Atualiza especificamente o Tipo de um contrato (PJ, Serviço, Material). */
+  public async updateContratoTipo(documentoCompras: string, tipo: ContratoTipo | null): Promise<ContratoDetalhes> {
+    const existentes = this.getContratosDetalhes().find(d => d.documento_compras === documentoCompras);
+    const patch: ContratoDetalhes = {
+      documento_compras: documentoCompras,
+      ...(existentes || {}),
+      tipo,
+    };
+    return this.saveContratoDetalhes(patch);
   }
 
   // Anexos de contrato. Mesmo bucket dos anexos de solicitação
@@ -5265,7 +5336,8 @@ class LocalDatabase {
     { header: 'Valor líquido pedido', field: 'valor_liquido_pedido' },
     { header: 'Requisitante', field: 'requisitante' },
     { header: 'Histórico pedido/docum.SolRem.', field: 'historico_pedido' },
-    { header: 'Criado por', field: 'criado_por' }
+    { header: 'Criado por', field: 'criado_por' },
+    { header: 'Tipo', field: 'tipo' }
   ];
 
   private ME2L_COLUMNS = [
@@ -7660,6 +7732,7 @@ class LocalDatabase {
     const requisitanteColIdx = colIdx('requisitante');
     const historicoPedidoColIdx = colIdx('historico_pedido');
     const criadoPorColIdx = colIdx('criado_por');
+    const tipoColIdx = colIdx('tipo', ['tipo', 'tipo contrato', 'tipo de contrato', 'categoria', 'tipo doc', 'tipo documento']);
 
     const user = this.getCurrentUser();
     const dbRows: any[] = [];
@@ -7747,6 +7820,7 @@ class LocalDatabase {
         requisitante: strAt(row, requisitanteColIdx),
         historico_pedido: strAt(row, historicoPedidoColIdx),
         criado_por: strAt(row, criadoPorColIdx),
+        tipo: strAt(row, tipoColIdx),
         imported_at: new Date().toISOString()
       });
     });
@@ -8930,21 +9004,37 @@ class LocalDatabase {
     this.notifyListeners();
   }
 
-  public transferTicketSector(reqId: string, sectorId: string, userId: string): void {
+  public async transferTicketSector(reqId: string, sectorId: string, userId: string): Promise<boolean> {
     const requests = this.getRequests();
     const idx = requests.findIndex(r => r.id === reqId);
-    if (idx !== -1) {
-      const oldSector = requests[idx].target_sector_id;
-      requests[idx].target_sector_id = sectorId;
-      requests[idx].updated_at = new Date().toISOString();
-      this.setStorageItem(this.requestsKey, requests);
+    if (idx === -1) return false;
 
-      const userProfile = this.getProfiles().find(u => u.id === userId);
-      const sector = this.getSectors().find(s => s.id === sectorId);
-      this.logActivity(userId, 'Helpdesk', 'Transferência de Setor', `Transferiu o chamado #${requests[idx].number} do setor ${oldSector} para o setor ${sector?.name}.`);
-      
-      this.logStatusChange(reqId, requests[idx].status, requests[idx].status, userId, userProfile?.name || 'Técnico', `Chamado transferido para a fila de ${sector?.name}.`);
+    const oldSector = requests[idx].target_sector_id;
+    const prevUpdatedAt = requests[idx].updated_at;
+    requests[idx].target_sector_id = sectorId;
+    requests[idx].updated_at = new Date().toISOString();
+    this.setStorageItem(this.requestsKey, requests);
+
+    const published = await this.publishRequestRow(requests[idx]);
+    if (!published) {
+      const revertRequests = this.getRequests();
+      const revertIdx = revertRequests.findIndex(r => r.id === reqId);
+      if (revertIdx !== -1) {
+        revertRequests[revertIdx].target_sector_id = oldSector;
+        revertRequests[revertIdx].updated_at = prevUpdatedAt;
+        this.setStorageItem(this.requestsKey, revertRequests);
+      }
+      return false;
     }
+
+    const userProfile = this.getProfiles().find(u => u.id === userId);
+    const sector = this.getSectors().find(s => s.id === sectorId);
+    this.logActivity(userId, 'Helpdesk', 'Transferência de Setor', `Transferiu o chamado #${requests[idx].number} do setor ${oldSector} para o setor ${sector?.name}.`);
+
+    await this.logStatusChange(reqId, requests[idx].status, requests[idx].status, userId, userProfile?.name || 'Técnico', `Chamado transferido para a fila de ${sector?.name}.`);
+
+    this.notifyListeners();
+    return true;
   }
 
   public async addComment(reqId: string, userId: string, text: string, type: string): Promise<void> {

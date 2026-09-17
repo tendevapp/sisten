@@ -10,6 +10,7 @@ import {
   Filter,
   Flame,
   LayoutGrid,
+  ListChecks,
   ListOrdered,
   RefreshCw,
   Search,
@@ -28,6 +29,7 @@ import {
   type TramoId,
 } from '../../lib/producaoEntrega';
 import ModalDetalheTramoEntrega from './ModalDetalheTramoEntrega';
+import VisaoExpedicaoChecklist from './VisaoExpedicaoChecklist';
 
 interface TorresEntregaVisualProps {
   tramos: TramoEntrega[];
@@ -43,7 +45,7 @@ export default function TorresEntregaVisual({
   const [subprojetoFiltro, setSubprojetoFiltro] = useState<string>('todos');
   const [somenteGargalos, setSomenteGargalos] = useState(false);
   const [buscaTorre, setBuscaTorre] = useState('');
-  const [modoExibicao, setModoExibicao] = useState<'cilindros' | 'gargalos'>('cilindros');
+  const [modoExibicao, setModoExibicao] = useState<'cilindros' | 'gargalos' | 'expedicao'>('cilindros');
 
   const [tramoSelecionado, setTramoSelecionado] = useState<TramoEntrega | null>(null);
   const [torreSelecionada, setTorreSelecionada] = useState<TorreEntregaAgrupada | null>(null);
@@ -124,6 +126,18 @@ export default function TorresEntregaVisual({
             >
               <ListOrdered className="h-3.5 w-3.5" />
               Tabela de Gargalos ({indicadores.tramosCriticos.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoExibicao('expedicao')}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                modoExibicao === 'expedicao'
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+              }`}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              Visão Expedição
             </button>
             {recarregar && (
               <button
@@ -577,7 +591,10 @@ export default function TorresEntregaVisual({
         </section>
       )}
 
-      {/* 5. Modal de Detalhe e Tomada de Decisão */}
+      {/* 5. Visão Expedição — Checklist de Liberação por Tramo (White → Expedido) */}
+      {modoExibicao === 'expedicao' && <VisaoExpedicaoChecklist torres={torresFiltradas} />}
+
+      {/* 6. Modal de Detalhe e Tomada de Decisão */}
       {tramoSelecionado && (
         <ModalDetalheTramoEntrega
           tramo={tramoSelecionado}

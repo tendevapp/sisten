@@ -202,6 +202,7 @@ export type Database = {
           modalidade: string | null
           po_pedido_compra: string | null
           status: string | null
+          tipo: string | null
           updated_at: string
           updated_by: string | null
           valor_parcela: number | null
@@ -215,6 +216,7 @@ export type Database = {
           modalidade?: string | null
           po_pedido_compra?: string | null
           status?: string | null
+          tipo?: string | null
           updated_at?: string
           updated_by?: string | null
           valor_parcela?: number | null
@@ -228,6 +230,7 @@ export type Database = {
           modalidade?: string | null
           po_pedido_compra?: string | null
           status?: string | null
+          tipo?: string | null
           updated_at?: string
           updated_by?: string | null
           valor_parcela?: number | null
@@ -1052,6 +1055,8 @@ export type Database = {
           obs_chegada_portaria: string | null
           obs_entrada_patio: string | null
           obs_expedicao: string | null
+          observacoes?: string | null
+          historico_observacoes?: Json | null
           ordem: number
           tramo: string
           updated_at: string
@@ -1082,6 +1087,8 @@ export type Database = {
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null
+          observacoes?: string | null
+          historico_observacoes?: Json | null
           ordem?: number
           tramo: string
           updated_at?: string
@@ -1112,6 +1119,8 @@ export type Database = {
           obs_chegada_portaria?: string | null
           obs_entrada_patio?: string | null
           obs_expedicao?: string | null
+          observacoes?: string | null
+          historico_observacoes?: Json | null
           ordem?: number
           tramo?: string
           updated_at?: string
@@ -3270,6 +3279,7 @@ export type Database = {
           qtd_solicit_anterior: number | null
           requisitante: string | null
           texto_breve: string | null
+          tipo: string | null
           um_pedido: string | null
           unidade_preco: string | null
           valor_efetivo: number | null
@@ -3303,6 +3313,7 @@ export type Database = {
           qtd_solicit_anterior?: number | null
           requisitante?: string | null
           texto_breve?: string | null
+          tipo?: string | null
           um_pedido?: string | null
           unidade_preco?: string | null
           valor_efetivo?: number | null
@@ -3336,6 +3347,7 @@ export type Database = {
           qtd_solicit_anterior?: number | null
           requisitante?: string | null
           texto_breve?: string | null
+          tipo?: string | null
           um_pedido?: string | null
           unidade_preco?: string | null
           valor_efetivo?: number | null
@@ -7555,6 +7567,7 @@ export type Database = {
           qtd_solicit_anterior: number | null
           requisitante: string | null
           texto_breve: string | null
+          tipo: string | null
           um_pedido: string | null
           unidade_preco: string | null
           valor_efetivo: number | null

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../../db/localDb';
-import { ContratoDetalhes, ContratoStatus } from '../../types';
+import { ContratoDetalhes, ContratoStatus, ContratoTipo } from '../../types';
 import { agruparContratos, mesclarDetalhes, ContratoComDetalhes, StatusVigencia, DIAS_ALERTA_VENCIMENTO } from '../../lib/contratos';
 import { formatBRL, formatDateBR, formatDateTimeBR, formatInt } from '../../lib/format';
 import { useChartConfig } from '../charts/chartDefaults';
@@ -32,11 +32,13 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, R
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../ui/DataTable';
+import { useToast } from '../ui/Toast';
 
 type SortDir = 'asc' | 'desc';
 
 const VIGENCIA_OPTIONS: StatusVigencia[] = ['Vencido', 'Vencendo em breve', 'Vigente', 'Sem vigência informada'];
 const STATUS_OPTIONS: ContratoStatus[] = ['Ativo', 'Inativo', 'Em Processamento'];
+const TIPO_OPTIONS: ContratoTipo[] = ['PJ', 'Serviço', 'Material'];
 
 const PAGE_SIZE = 50;
 
@@ -48,6 +50,7 @@ interface ColumnDef {
 
 const COLUMNS: ColumnDef[] = [
   { id: 'documento', label: 'N° Contrato' },
+  { id: 'tipo', label: 'Tipo' },
   { id: 'po', label: 'PO - Pedido de Compra' },
   { id: 'cod_forn', label: 'Código do Fornecedor' },
   { id: 'gestor', label: 'Gestor' },
@@ -101,6 +104,7 @@ function Badge({ label, cor }: { label: string; cor: string }) {
 }
 
 export default function TabContratosLista() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contratosBase, setContratosBase] = useState<ReturnType<typeof agruparContratos>>([]);
@@ -120,6 +124,7 @@ export default function TabContratosLista() {
 
   // Filtros
   const [searchQuery, setSearchQuery] = useState('');
+  const [tipoFilter, setTipoFilter] = useState<'Todos' | ContratoTipo | 'Sem tipo'>('Todos');
   const [vigenciaFilter, setVigenciaFilter] = useState<'Todos' | StatusVigencia>('Todos');
   const [statusFilter, setStatusFilter] = useState<'Todos' | ContratoStatus>('Todos');
   const [fornecedorFilter, setFornecedorFilter] = useState('Todos');
@@ -195,6 +200,10 @@ export default function TabContratosLista() {
   const filteredContratos = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return contratos.filter(c => {
+      if (tipoFilter !== 'Todos') {
+        if (tipoFilter === 'Sem tipo' && c.tipo_exibido) return false;
+        if (tipoFilter !== 'Sem tipo' && c.tipo_exibido !== tipoFilter) return false;
+      }
       if (vigenciaFilter !== 'Todos' && c.status_vigencia !== vigenciaFilter) return false;
       if (statusFilter !== 'Todos' && c.status_exibido !== statusFilter) return false;
       if (fornecedorFilter !== 'Todos' && c.fornecedor !== fornecedorFilter) return false;
@@ -202,6 +211,7 @@ export default function TabContratosLista() {
       if (q) {
         const hit =
           c.documento_compras.toLowerCase().includes(q) ||
+          (c.tipo_exibido || '').toLowerCase().includes(q) ||
           c.fornecedor.toLowerCase().includes(q) ||
           c.requisitante.toLowerCase().includes(q) ||
           (c.detalhes?.gestor || '').toLowerCase().includes(q) ||
@@ -212,7 +222,7 @@ export default function TabContratosLista() {
       }
       return true;
     });
-  }, [contratos, searchQuery, vigenciaFilter, statusFilter, fornecedorFilter, centroFilter]);
+  }, [contratos, searchQuery, tipoFilter, vigenciaFilter, statusFilter, fornecedorFilter, centroFilter]);
 
   const sortedContratos = useMemo(() => {
     const arr = [...filteredContratos];
@@ -220,6 +230,7 @@ export default function TabContratosLista() {
       const getVal = (c: ContratoComDetalhes): string | number => {
         switch (sortColumn) {
           case 'documento': return c.documento_compras;
+          case 'tipo': return (c.tipo_exibido || '').toLowerCase();
           case 'po': return c.detalhes?.po_pedido_compra || '';
           case 'cod_forn': return c.detalhes?.codigo_fornecedor || '';
           case 'gestor': return (c.detalhes?.gestor || '').toLowerCase();
@@ -291,6 +302,7 @@ export default function TabContratosLista() {
     if (filteredContratos.length === 0) return;
     const data = filteredContratos.map(c => ({
       'N° Contrato': c.documento_compras,
+      'Tipo': c.tipo_exibido || '—',
       'PO - Pedido de Compra': c.detalhes?.po_pedido_compra || '—',
       'Código do Fornecedor': c.detalhes?.codigo_fornecedor || '—',
       'Gestor': c.detalhes?.gestor || '—',
@@ -321,7 +333,7 @@ export default function TabContratosLista() {
     <div className="space-y-6 select-text">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm text-slate-555 dark:text-slate-400">
             Acompanhamento dos contratos de fornecimento (ME3N) e das respectivas vigências. Clique num contrato para editar Gestor, Escopo, Parcela, Modalidade, Vigência, Status e anexar documentos.
           </p>
@@ -331,7 +343,7 @@ export default function TabContratosLista() {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 lg:overflow-x-auto shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => load(true)}
             disabled={loading}
@@ -416,6 +428,18 @@ export default function TabContratosLista() {
             />
           </div>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 xl:flex-wrap">
+            <div className="relative shrink-0 w-[140px] xl:w-auto xl:min-w-[130px]">
+              <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
+              <select
+                value={tipoFilter}
+                onChange={(e) => setTipoFilter(e.target.value as any)}
+                className="w-full pl-8 pr-8 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
+              >
+                <option value="Todos">Tipo: Todos</option>
+                {TIPO_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="Sem tipo">Sem tipo</option>
+              </select>
+            </div>
             <div className="relative shrink-0 w-[140px] xl:w-auto xl:min-w-[140px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-455 pointer-events-none" />
               <select
@@ -559,6 +583,46 @@ export default function TabContratosLista() {
                     {visibleContratos.map(c => (
                       <Tr key={c.documento_compras} onClick={() => setSelecionado(c)}>
                         {visibleColumns.documento && <Td mono strong>{c.documento_compras}</Td>}
+                        {visibleColumns.tipo && (
+                          <Td onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={c.tipo_exibido || ''}
+                              onChange={async (e) => {
+                                const val = (e.target.value || null) as ContratoTipo | null;
+                                try {
+                                  const updated = await localDb.updateContratoTipo(c.documento_compras, val);
+                                  handleSaved(updated);
+                                  toast.show({
+                                    title: 'Tipo atualizado',
+                                    message: `Contrato ${c.documento_compras} definido como ${val || 'Sem tipo'}.`,
+                                    variant: 'success',
+                                  });
+                                } catch (err: any) {
+                                  toast.show({
+                                    title: 'Erro ao atualizar tipo',
+                                    message: err?.message || 'Falha ao salvar tipo.',
+                                    variant: 'error',
+                                  });
+                                }
+                              }}
+                              aria-label={`Tipo do contrato ${c.documento_compras}`}
+                              className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border cursor-pointer transition-colors focus:outline-none ${
+                                c.tipo_exibido === 'PJ'
+                                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                                  : c.tipo_exibido === 'Serviço'
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                  : c.tipo_exibido === 'Material'
+                                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                  : 'bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                              }`}
+                            >
+                              <option value="" className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">—</option>
+                              {TIPO_OPTIONS.map(t => (
+                                <option key={t} value={t} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">{t}</option>
+                              ))}
+                            </select>
+                          </Td>
+                        )}
                         {visibleColumns.po && <Td mono>{c.detalhes?.po_pedido_compra || '—'}</Td>}
                         {visibleColumns.cod_forn && <Td mono>{c.detalhes?.codigo_fornecedor || '—'}</Td>}
                         {visibleColumns.gestor && <Td truncate title={c.detalhes?.gestor || ''} className="max-w-[140px]">{c.detalhes?.gestor || '—'}</Td>}

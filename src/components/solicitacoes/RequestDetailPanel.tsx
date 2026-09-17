@@ -762,13 +762,24 @@ export default function RequestDetailPanel({
               {request.fornecedor_operacao && (
                 <Campo rotulo="Operação" valor={request.fornecedor_operacao === 'atualizacao' ? 'Atualização de Cadastro' : 'Novo Cadastro'} />
               )}
-              {request.codigo_fornecedor_sap && <Campo rotulo="Cód. Fornecedor SAP (atual)" valor={request.codigo_fornecedor_sap} />}
               {request.brand && <Campo rotulo="Fabricante / CNPJ" valor={request.brand} />}
-              {request.codigo_sap_gerado && (
-                <Campo
-                  rotulo={request.registration_type === 'Item' ? 'Cód. Material SAP Gerado' : 'Cód. Fornecedor SAP Gerado'}
-                  valor={request.codigo_sap_gerado}
-                />
+              {request.registration_type === 'Fornecedor' ? (
+                request.fornecedor_operacao === 'atualizacao' ? (
+                  <>
+                    {request.codigo_fornecedor_sap && <Campo rotulo="Cód. Fornecedor SAP (atual)" valor={request.codigo_fornecedor_sap} />}
+                    {request.codigo_sap_gerado && request.codigo_sap_gerado !== request.codigo_fornecedor_sap && (
+                      <Campo rotulo="Cód. Fornecedor SAP (atualizado)" valor={request.codigo_sap_gerado} />
+                    )}
+                  </>
+                ) : (
+                  (request.codigo_fornecedor_sap || request.codigo_sap_gerado) && (
+                    <Campo rotulo="Cód. Fornecedor SAP" valor={request.codigo_fornecedor_sap || request.codigo_sap_gerado} />
+                  )
+                )
+              ) : (
+                request.codigo_sap_gerado && (
+                  <Campo rotulo="Cód. Material SAP" valor={request.codigo_sap_gerado} />
+                )
               )}
             </dl>
           </section>

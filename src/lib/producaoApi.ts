@@ -24,7 +24,11 @@ import { gerarUUID } from './ids';
 import * as outbox from './outbox';
 import type { StatusLancamento } from './producao';
 import { calcularRelatorioDiario, type RelatorioDiarioLinha } from './producao';
-import type { TramoEntrega } from './producaoEntrega';
+import type {
+  ApontamentoChecklistLiberacao,
+  EtapaChecklistLiberacao,
+  TramoEntrega,
+} from './producaoEntrega';
 
 const db = (tabela: string) => (supabase.from as any)(tabela);
 const rpc = (nome: string, args: Record<string, unknown>) => supabase.rpc(nome as any, args as any);
@@ -281,6 +285,48 @@ export async function atualizarTramoEntrega(
 ): Promise<void> {
   const payload = { ...campos, updated_at: new Date().toISOString() };
   const { error } = await db('prod_tramos_entrega').update(payload).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+// ---------------------------------------------------------------------------
+// Checklist de Liberação do tramo (White → Expedido) — apontamento à parte,
+// com histórico, independente da categoria cromática do cilindro.
+// ---------------------------------------------------------------------------
+
+/** Busca em lote (evita N+1) — usado pela Visão Expedição, que lista vários tramos de uma vez. */
+export async function listarChecklistLiberacaoLote(
+  tramoEntregaIds: string[],
+): Promise<ApontamentoChecklistLiberacao[]> {
+  if (tramoEntregaIds.length === 0) return [];
+  const { data, error } = await db('prod_tramos_entrega_checklist')
+    .select('*')
+    .in('tramo_entrega_id', tramoEntregaIds)
+    .is('excluido_em', null);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ApontamentoChecklistLiberacao[];
+}
+
+export async function marcarEtapaChecklist(
+  tramoEntregaId: string,
+  etapaCodigo: EtapaChecklistLiberacao,
+  concluidaPor: string | null,
+): Promise<ApontamentoChecklistLiberacao> {
+  const { data, error } = await db('prod_tramos_entrega_checklist')
+    .insert({
+      tramo_entrega_id: tramoEntregaId,
+      etapa_codigo: etapaCodigo,
+      concluida_por: concluidaPor?.trim() || null,
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ApontamentoChecklistLiberacao;
+}
+
+export async function desmarcarEtapaChecklist(apontamentoId: string): Promise<void> {
+  const { error } = await db('prod_tramos_entrega_checklist')
+    .update({ excluido_em: new Date().toISOString() })
+    .eq('id', apontamentoId);
   if (error) throw new Error(error.message);
 }
 

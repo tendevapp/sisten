@@ -19,9 +19,11 @@ import { Profile, FinRealizadoRubricaLinha } from '../../types';
 import { formatBRL } from '../../lib/format';
 import KpiCard from '../../components/charts/KpiCard';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableSkeleton, TableEmpty } from '../../components/ui/DataTable';
-import { obterRelatorioRealizadoPorRubrica, RelatorioRealizadoPorRubrica } from '../../lib/rubricasFinanceiroApi';
+import { obterRelatorioRealizadoPorRubrica, RelatorioRealizadoPorRubrica, coletarIdsComDescendentes } from '../../lib/rubricasFinanceiroApi';
 import { exportarRealizadoPorRubricaXlsx } from '../../lib/exportRubricasFinanceiro';
 import { useToast } from '../../components/ui/Toast';
+import RubricaDetalheModal from '../../components/financeiro/RubricaDetalheModal';
+import RubricaSerieTemporalChart from '../../components/financeiro/RubricaSerieTemporalChart';
 
 interface FinRealizadoPorRubricaProps {
   user: Profile;
@@ -34,6 +36,7 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
   const [erro, setErro] = useState<string | null>(null);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [exportando, setExportando] = useState(false);
+  const [detalheAberto, setDetalheAberto] = useState<{ titulo: string; rubricaIds: string[] | null } | null>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -78,6 +81,14 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
       if (novo.has(id)) novo.delete(id); else novo.add(id);
       return novo;
     });
+  };
+
+  const abrirComposicao = (linha: FinRealizadoRubricaLinha) => {
+    if (!linha.rubrica) {
+      setDetalheAberto({ titulo: 'Sem rubrica (sem mapeamento cadastrado)', rubricaIds: null });
+      return;
+    }
+    setDetalheAberto({ titulo: linha.rubrica.nome, rubricaIds: coletarIdsComDescendentes(linha) });
   };
 
   const handleExportar = async () => {
@@ -160,6 +171,8 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
             />
           </div>
 
+          <RubricaSerieTemporalChart />
+
           <TableShell maxHeight="70vh">
             <table className="w-full text-xs">
               <TableHeadRow>
@@ -175,13 +188,13 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
                   const expandido = linha.rubrica ? expandidos.has(linha.rubrica.id) : false;
                   const semRubrica = !linha.rubrica;
                   return (
-                    <Tr key={id}>
+                    <Tr key={id} onClick={() => abrirComposicao(linha)} title="Ver composição do valor para auditoria">
                       <Td strong={linha.nivel === 0}>
                         <span style={{ paddingLeft: linha.nivel * 20 }} className="inline-flex items-center gap-1.5">
                           {temFilhos ? (
                             <button
                               type="button"
-                              onClick={() => linha.rubrica && alternarExpandido(linha.rubrica.id)}
+                              onClick={e => { e.stopPropagation(); linha.rubrica && alternarExpandido(linha.rubrica.id); }}
                               className="shrink-0 cursor-pointer"
                               aria-label={expandido ? 'Recolher' : 'Expandir'}
                             >
@@ -190,7 +203,7 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
                           ) : (
                             <span className="inline-block w-3.5" />
                           )}
-                          <span className={semRubrica ? 'italic' : ''} style={semRubrica ? { color: 'var(--ink-muted)' } : undefined}>
+                          <span className={semRubrica ? 'italic underline decoration-dotted underline-offset-2' : 'underline decoration-dotted underline-offset-2'} style={semRubrica ? { color: 'var(--ink-muted)' } : undefined}>
                             {linha.rubrica?.nome || 'Sem rubrica (sem mapeamento cadastrado)'}
                           </span>
                         </span>
@@ -205,6 +218,14 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
             </table>
           </TableShell>
         </>
+      )}
+
+      {detalheAberto && (
+        <RubricaDetalheModal
+          titulo={detalheAberto.titulo}
+          rubricaIds={detalheAberto.rubricaIds}
+          onFechar={() => setDetalheAberto(null)}
+        />
       )}
     </div>
   );

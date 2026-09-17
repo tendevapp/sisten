@@ -37,6 +37,17 @@ export type DestinoPrevisto = 'projeto' | 'consumo' | 'misto' | 'indefinido';
 export type TipoItemConferencia = 'projeto' | 'consumo' | 'misto';
 export type FontePedido = 'cache_sap' | 'supabase' | 'manual' | 'sem_pedido';
 export type TipoDivergencia = 'falta' | 'excedente' | 'avaria' | 'material_errado' | 'sem_pedido';
+export type TipoNaoConformidade = TipoDivergencia | 'volume' | 'outros';
+
+export const ROTULO_NAO_CONFORMIDADE: Record<TipoNaoConformidade, string> = {
+  falta: 'Falta',
+  excedente: 'Excedente',
+  avaria: 'Avaria',
+  material_errado: 'Material errado',
+  sem_pedido: 'Sem pedido',
+  volume: 'Volume',
+  outros: 'Outros',
+};
 
 export const ROTULO_DIVERGENCIA: Record<TipoDivergencia, string> = {
   falta: 'Faltou',
@@ -47,6 +58,11 @@ export const ROTULO_DIVERGENCIA: Record<TipoDivergencia, string> = {
 };
 
 /** Uma linha da conferência, do jeito que a tela a mantém enquanto confere. */
+/** NCRs em tratativa ou resolvidas preservam o histórico operacional. */
+export function podeExcluirNaoConformidade(status: string): boolean {
+  return status === 'aberta';
+}
+
 export interface LinhaConferencia {
   linhaRef: string | null;
   /** PO a que a linha pertence (uma conferência pode ter vários). */
@@ -290,6 +306,37 @@ export function tipoNcSugerido(tipos: TipoDivergencia[]): TipoDivergencia | 'out
   const ordem: TipoDivergencia[] = ['avaria', 'material_errado', 'falta', 'excedente', 'sem_pedido'];
   for (const t of ordem) if (tipos.includes(t)) return t;
   return 'outros';
+}
+
+/** Busca POs no cache por trecho do número ou do fornecedor, inclusive os já atendidos. */
+export function buscarPedidosParaNc(records: LinhaCacheSAP[], termo: string): { numero: string; fornecedor: string }[] {
+  const alvo = semAcento(termo);
+  if (!alvo) return [];
+
+  const pedidos = new Map<string, { numero: string; fornecedor: string }>();
+  for (const r of records) {
+    const fornecedor = String(r.fornecedor_name ?? '').trim();
+    const numero = String(r.documento_compra ?? '').trim().replace(/^0+/, '');
+    if (!fornecedor || !numero) continue;
+    if (semAcento(fornecedor).includes(alvo) || semAcento(numero).includes(alvo)) {
+      pedidos.set(numero, { numero, fornecedor });
+    }
+  }
+  return [...pedidos.values()].sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
+}
+
+/** Uma NCR avulsa pode existir sem carga, conferência ou pedido de compra. */
+export function validarNovaNcAvulsa(input: {
+  descricao: string;
+  tipo?: TipoNaoConformidade;
+  itens?: { qtd_pedido?: number | null; qtd_verificada?: number | null }[];
+}): string | null {
+  if (!input.descricao.trim()) return 'Informe a descrição da não conformidade.';
+  if (
+    (input.tipo === 'falta' || input.tipo === 'excedente')
+    && input.itens?.some((item) => item.qtd_pedido != null && item.qtd_verificada == null)
+  ) return 'Informe a quantidade verificada para cada item selecionado.';
+  return null;
 }
 
 /** Data de hoje em `YYYY-MM-DD` no fuso local (não UTC, que vira ontem). */

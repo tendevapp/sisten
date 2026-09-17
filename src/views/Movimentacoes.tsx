@@ -17,9 +17,12 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowLeftRight, RefreshCw, AlertCircle, Filter, Warehouse,
   Activity, Gauge, Hourglass, Timer, PackageX, TrendingDown, Scale, ClipboardCheck, ShoppingCart,
+  FolderTree,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao } from '../types';
+import { Profile, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao, FinPep } from '../types';
+import { listarPep } from '../lib/finPepApi';
+import SaidasPepPanel from '../components/almoxarifado/SaidasPepPanel';
 import {
   calcularSugestao, resumirReposicao, SugestaoReposicao, Recomendacao,
   FAIXAS_RECOMENDACAO, ROTULO_PADRAO, ROTULO_CONFIANCA, EXPLICACAO_PADRAO,
@@ -53,7 +56,7 @@ import Pagination from '../components/ui/Pagination';
 import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
 import { canAccessPage } from '../lib/pages';
 
-export type AbaMovimentacoes = 'geral' | 'giro' | 'idade' | 'urgencia' | 'minimo';
+export type AbaMovimentacoes = 'geral' | 'pep' | 'giro' | 'idade' | 'urgencia' | 'minimo';
 
 interface MovimentacoesProps {
   user: Profile;
@@ -63,6 +66,7 @@ interface MovimentacoesProps {
 
 const ABAS: { id: AbaMovimentacoes; rotulo: string; icone: typeof Activity; pergunta: string }[] = [
   { id: 'geral', rotulo: 'Visão Geral', icone: Activity, pergunta: 'O que entrou e saiu do almoxarifado no período?' },
+  { id: 'pep', rotulo: 'Saídas por PEP', icone: FolderTree, pergunta: 'Para quais elementos PEP e projetos o estoque está saindo?' },
   { id: 'giro', rotulo: 'Giro & Cobertura', icone: Gauge, pergunta: 'O que gira, o que sobra e o que está prestes a faltar?' },
   { id: 'idade', rotulo: 'Idade do Estoque', icone: Hourglass, pergunta: 'Há quanto tempo o capital está parado?' },
   { id: 'urgencia', rotulo: 'Urgência de Compra', icone: Timer, pergunta: 'As compras urgentes eram mesmo urgentes?' },
@@ -71,7 +75,7 @@ const ABAS: { id: AbaMovimentacoes; rotulo: string; icone: typeof Activity; perg
 
 const PAGE_SIZE = 50;
 
-type SortColMov = 'data_lancamento' | 'tipo' | 'material' | 'deposito' | 'quantidade' | 'valor';
+type SortColMov = 'data_lancamento' | 'tipo' | 'material' | 'deposito' | 'quantidade' | 'valor' | 'pep';
 type SortColGiro = 'material' | 'valor_estoque' | 'cobertura_dias' | 'giro_anualizado' | 'dias_sem_movimento';
 
 export default function Movimentacoes({ user, abaInicial = 'geral' }: MovimentacoesProps) {
@@ -83,6 +87,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   const [camadas, setCamadas] = useState<EstoqueCamadaFifo[]>([]);
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
   const [reposicao, setReposicao] = useState<EstoqueReposicao[]>([]);
+  const [pepList, setPepList] = useState<FinPep[]>([]);
 
   /* Filtros compartilhados entre as abas -------------------------------- */
   const [centroFiltro, setCentroFiltro] = useState('Todos');
@@ -121,16 +126,18 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     setLoading(true);
     setError(null);
     try {
-      const [m, c, g, rep] = await Promise.all([
+      const [m, c, g, rep, peps] = await Promise.all([
         localDb.fetchMb51(force),
         localDb.fetchCamadasFifo(force).catch(() => [] as EstoqueCamadaFifo[]),
         localDb.fetchGiroEstoque(force).catch(() => [] as EstoqueGiro[]),
         localDb.fetchReposicao(force).catch(() => [] as EstoqueReposicao[]),
+        listarPep().catch(() => [] as FinPep[]),
       ]);
       setMovs(m);
       setCamadas(c);
       setGiro(g);
       setReposicao(rep);
+      setPepList(peps);
     } catch (e: any) {
       console.error('Erro ao carregar as movimentações de estoque:', e);
       setError('Falha ao carregar as movimentações de estoque. Tente atualizar novamente.');
@@ -242,6 +249,16 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     return material === materialSel;
   }, [materialSel]);
 
+  const pepMap = useMemo(() => {
+    const mapa = new Map<string, FinPep>();
+    pepList.forEach(p => {
+      if (p.wbs_element) {
+        mapa.set(p.wbs_element.trim(), p);
+      }
+    });
+    return mapa;
+  }, [pepList]);
+
   const movsFiltrados = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return movs.filter(r => {
@@ -255,13 +272,15 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
       if (!passaGrupo(r.material)) return false;
       if (!passaMaterialSel(r.material)) return false;
       if (!materialSel && q) {
-        const alvo = `${r.material ?? ''} ${r.texto_breve_material ?? ''} ${r.doc_material ?? ''} ${r.razao_social_fornecedor ?? ''}`.toLowerCase();
+        const pepCod = r.elemento_pep?.trim() || '';
+        const pepDesc = r.pep_nome || (pepCod ? pepMap.get(pepCod)?.nome : '') || '';
+        const alvo = `${r.material ?? ''} ${r.texto_breve_material ?? ''} ${r.doc_material ?? ''} ${r.razao_social_fornecedor ?? ''} ${pepCod} ${pepDesc}`.toLowerCase();
         if (!alvo.includes(q)) return false;
       }
       return true;
     });
   }, [movs, centroFiltro, depositoFiltro, tipoFiltro, categoriaFiltro, dataInicio, dataFim,
-      searchQuery, passaTipoItem, passaGrupo, passaMaterialSel, materialSel]);
+      searchQuery, passaTipoItem, passaGrupo, passaMaterialSel, materialSel, pepMap]);
 
   // As abas de análise operam por material, não por linha de movimento: os
   // filtros de centro/depósito/TMV não se aplicam a elas (uma view por
@@ -415,6 +434,11 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
         case 'data_lancamento': return m.data_lancamento || '';
         case 'tipo': return `${m.tipo_movimento || ''} ${m.descricao_tipo_movimento}`;
         case 'material': return m.material || '';
+        case 'pep': {
+          const pepCod = m.elemento_pep?.trim() || '';
+          const pepDesc = m.pep_nome || (pepCod ? pepMap.get(pepCod)?.nome : '') || '';
+          return `${pepCod} ${pepDesc}`;
+        }
         case 'deposito': return m.deposito || '';
         case 'quantidade': return m.qtd_um_registro ?? 0;
         case 'valor': return m.montante_mi ?? 0;
@@ -482,7 +506,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     <div className="space-y-6 select-text max-w-[1600px] mx-auto pb-12">
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5 reveal" style={{ borderColor: 'var(--hairline)' }}>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
             <ArrowLeftRight className="h-7 w-7" style={{ color: 'var(--brand)' }} />
             Movimentações de Estoque
@@ -575,7 +599,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                 <Filter className="h-3 w-3" /> Filtros
               </span>
 
-              {aba === 'geral' && (
+              {(aba === 'geral' || aba === 'pep') && (
                 <>
                   <select value={centroFiltro} onChange={e => setCentroFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[130px] lg:w-auto truncate`}>
                     <option value="Todos">Centro: Todos</option>
@@ -592,16 +616,20 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                     className="shrink-0 w-[140px] lg:w-auto lg:min-w-[140px]"
                     panelClassName="w-80 sm:w-96"
                   />
-                  <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
-                    <option value="Todos">Categoria: Todas</option>
-                    {opcoes.categorias.map(c => (
-                      <option key={c} value={c}>{ROTULO_CATEGORIA[c as keyof typeof ROTULO_CATEGORIA] ?? c}</option>
-                    ))}
-                  </select>
-                  <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
-                    <option value="Todos">TMV: Todos</option>
-                    {opcoes.tipos.map(([tmv, desc]) => <option key={tmv} value={tmv}>{tmv} — {desc}</option>)}
-                  </select>
+                  {aba === 'geral' && (
+                    <>
+                      <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[150px] lg:w-auto truncate`}>
+                        <option value="Todos">Categoria: Todas</option>
+                        {opcoes.categorias.map(c => (
+                          <option key={c} value={c}>{ROTULO_CATEGORIA[c as keyof typeof ROTULO_CATEGORIA] ?? c}</option>
+                        ))}
+                      </select>
+                      <select value={tipoFiltro} onChange={e => setTipoFiltro(e.target.value)} className={`${selectClass} shrink-0 w-[140px] lg:w-auto truncate`}>
+                        <option value="Todos">TMV: Todos</option>
+                        {opcoes.tipos.map(([tmv, desc]) => <option key={tmv} value={tmv}>{tmv} — {desc}</option>)}
+                      </select>
+                    </>
+                  )}
                   <label className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-secondary)' }}>
                     <span className="uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>De</span>
                     <input
@@ -668,14 +696,16 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                 {gruposDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
 
-              <MaterialSearchInput
-                valor={searchQuery}
-                onChange={setSearchQuery}
-                materiais={universoMateriais}
-                materialSelecionado={materialSel}
-                onSelecionarMaterial={setMaterialSel}
-                className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
-              />
+              {aba !== 'pep' && (
+                <MaterialSearchInput
+                  valor={searchQuery}
+                  onChange={setSearchQuery}
+                  materiais={universoMateriais}
+                  materialSelecionado={materialSel}
+                  onSelecionarMaterial={setMaterialSel}
+                  className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
+                />
+              )}
 
               {filtroAtivo && (
                 <button onClick={limparFiltros} className="shrink-0 text-xs font-bold text-rose-500 hover:text-rose-600 dark:text-rose-400 underline lg:ml-auto cursor-pointer whitespace-nowrap">
@@ -697,7 +727,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                 <MovimentacoesSerieChart dados={serie} loading={loading} />
               </div>
 
-              {loading ? <TableSkeleton columns={9} /> : movsOrdenados.length === 0 ? (
+              {loading ? <TableSkeleton columns={10} /> : movsOrdenados.length === 0 ? (
                 <TableEmpty icon={ArrowLeftRight} title="Nenhuma movimentação encontrada" hint="Ajuste os filtros ou a pesquisa." />
               ) : (
                 <div className="space-y-2">
@@ -707,6 +737,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                         <SortableTh col="data_lancamento" label="Data" sortColumn={sortColMov} sortDir={sortDir} onSort={handleSortMov} width="w-24" />
                         <SortableTh col="tipo" label="Tipo de Movimento" sortColumn={sortColMov} sortDir={sortDir} onSort={handleSortMov} />
                         <SortableTh col="material" label="Material" sortColumn={sortColMov} sortDir={sortDir} onSort={handleSortMov} />
+                        <SortableTh col="pep" label="Elemento PEP" sortColumn={sortColMov} sortDir={sortDir} onSort={handleSortMov} />
                         <Th label="Doc. Material" />
                         <SortableTh col="deposito" label="Depósito" sortColumn={sortColMov} sortDir={sortDir} onSort={handleSortMov} width="w-24" />
                         <Th label="Centro" width="w-20" />
@@ -715,49 +746,67 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                         <Th label="Fornecedor" />
                       </TableHeadRow>
                       <TableBody>
-                        {paginar(movsOrdenados).map((m, idx) => (
-                          <Tr key={m.chave_unica || `${m.doc_material}-${m.item}-${idx}`}>
-                            <Td>{formatDateBR(m.data_lancamento)}</Td>
-                            <Td truncate title={`${m.tipo_movimento || ''} — ${m.descricao_tipo_movimento}`}>
-                              <span className="font-mono font-bold mr-1.5" style={{ color: 'var(--ink-primary)' }}>{m.tipo_movimento || '—'}</span>
-                              {m.descricao_tipo_movimento}
-                              {!m.movimenta_estoque && (
-                                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
-                                  interna
-                                </span>
-                              )}
-                            </Td>
-                            <Td truncate title={m.texto_breve_material || ''}>
-                              <span className="font-mono" style={{ color: 'var(--ink-primary)' }}>{m.material || '—'}</span>
-                              {m.texto_breve_material ? ` — ${m.texto_breve_material}` : ''}
-                            </Td>
-                            <Td mono>{m.doc_material}{m.item ? `/${m.item}` : ''}</Td>
-                            <Td title={formatDeposito(m.deposito)}>
-                              {m.deposito ? (
-                                <div className="min-w-0">
-                                  <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{m.deposito}</span>
-                                  {isDepositoInativo(m.deposito) && (
-                                    <span
-                                      className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
-                                      style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
-                                    >
-                                      inativo
-                                    </span>
-                                  )}
-                                  {descricaoDeposito(m.deposito) && (
-                                    <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{descricaoDeposito(m.deposito)}</p>
-                                  )}
-                                </div>
-                              ) : '—'}
-                            </Td>
-                            <Td>{m.centro || '—'}</Td>
-                            <Td align="right" numeric>
-                              {formatQtd(m.qtd_um_registro)} {m.unid_medida_basica || ''}
-                            </Td>
-                            <Td align="right" numeric strong>{formatBRL(m.montante_mi)}</Td>
-                            <Td truncate title={m.razao_social_fornecedor || ''}>{m.razao_social_fornecedor || m.fornecedor || '—'}</Td>
-                          </Tr>
-                        ))}
+                        {paginar(movsOrdenados).map((m, idx) => {
+                          const pepCod = m.elemento_pep?.trim() || '';
+                          const pepDesc = m.pep_nome || (pepCod ? pepMap.get(pepCod)?.nome : null);
+                          return (
+                            <Tr key={m.chave_unica || `${m.doc_material}-${m.item}-${idx}`}>
+                              <Td>{formatDateBR(m.data_lancamento)}</Td>
+                              <Td truncate title={`${m.tipo_movimento || ''} — ${m.descricao_tipo_movimento}`}>
+                                <span className="font-mono font-bold mr-1.5" style={{ color: 'var(--ink-primary)' }}>{m.tipo_movimento || '—'}</span>
+                                {m.descricao_tipo_movimento}
+                                {!m.movimenta_estoque && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase" style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}>
+                                    interna
+                                  </span>
+                                )}
+                              </Td>
+                              <Td truncate title={m.texto_breve_material || ''}>
+                                <span className="font-mono" style={{ color: 'var(--ink-primary)' }}>{m.material || '—'}</span>
+                                {m.texto_breve_material ? ` — ${m.texto_breve_material}` : ''}
+                              </Td>
+                              <Td truncate title={pepDesc ? `${pepCod} — ${pepDesc}` : (pepCod || '')}>
+                                {pepCod ? (
+                                  <div className="min-w-0">
+                                    <span className="font-mono font-bold" style={{ color: 'var(--brand)' }}>{pepCod}</span>
+                                    {pepDesc && (
+                                      <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-secondary)' }}>
+                                        {pepDesc}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--ink-muted)' }}>—</span>
+                                )}
+                              </Td>
+                              <Td mono>{m.doc_material}{m.item ? `/${m.item}` : ''}</Td>
+                              <Td title={formatDeposito(m.deposito)}>
+                                {m.deposito ? (
+                                  <div className="min-w-0">
+                                    <span className="font-mono font-bold whitespace-nowrap" style={{ color: 'var(--ink-primary)' }}>{m.deposito}</span>
+                                    {isDepositoInativo(m.deposito) && (
+                                      <span
+                                        className="ml-1 rounded px-1 py-px text-[9px] font-bold uppercase tracking-wide align-middle"
+                                        style={{ background: 'rgba(100,116,139,0.16)', color: 'var(--ink-muted)' }}
+                                      >
+                                        inativo
+                                      </span>
+                                    )}
+                                    {descricaoDeposito(m.deposito) && (
+                                      <p className="text-[10px] leading-tight truncate" style={{ color: 'var(--ink-muted)' }}>{descricaoDeposito(m.deposito)}</p>
+                                    )}
+                                  </div>
+                                ) : '—'}
+                              </Td>
+                              <Td>{m.centro || '—'}</Td>
+                              <Td align="right" numeric>
+                                {formatQtd(m.qtd_um_registro)} {m.unid_medida_basica || ''}
+                              </Td>
+                              <Td align="right" numeric strong>{formatBRL(m.montante_mi)}</Td>
+                              <Td truncate title={m.razao_social_fornecedor || ''}>{m.razao_social_fornecedor || m.fornecedor || '—'}</Td>
+                            </Tr>
+                          );
+                        })}
                       </TableBody>
                     </table>
                   </TableShell>
@@ -766,6 +815,13 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
                 </div>
               )}
             </>
+          )}
+
+          {/* ---------------------------------------------------------------- */}
+          {/* Aba: Saídas por PEP                                              */}
+          {/* ---------------------------------------------------------------- */}
+          {aba === 'pep' && (
+            <SaidasPepPanel movs={movsFiltrados} pepMap={pepMap} loading={loading} />
           )}
 
           {/* ---------------------------------------------------------------- */}

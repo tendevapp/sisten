@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree,
 } from 'lucide-react';
 import { Profile, Role } from '../types';
 
@@ -134,6 +134,7 @@ export const PAGES: PageDef[] = [
   { id: 'fin_reconciliacao_pedidos', group: 'FINANCEIRO', label: 'Reconciliação PO x Pgto', path: '/financeiro/reconciliacao-pedidos', icon: FileCheck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_realizado_rubricas', group: 'FINANCEIRO', label: 'Realizado por Rubrica', path: '/financeiro/realizado-rubricas', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_faturamento_gwjaco', group: 'FINANCEIRO', label: 'Faturamento GW Jacobina', path: '/financeiro/faturamento-gwjaco', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
+  { id: 'fin_pep', group: 'FINANCEIRO', label: 'Estrutura PEP', path: '/financeiro/pep', icon: FolderTree, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
 
   // O hub não pode usar `/helpdesk` (já é a tela de Atendimento), então navega
   // para `/helpdesk/inicio`.
@@ -332,6 +333,12 @@ export const FEATURE_FLAGS: PageDef[] = [
     defaultRoles: '*',
   },
   {
+    id: 'form_qualidade',
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: 'Formulários: Qualidade (Gestão de RNC)',
+    defaultRoles: '*',
+  },
+  {
     id: 'rh_ase_ver_todas',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
     label: 'ASE: Ver todas as solicitações (se desmarcado, vê apenas as próprias)',
@@ -387,6 +394,13 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     grupoId: 'ssma',
     label: 'SSMA - Saúde, Segurança e Meio Ambiente',
     descricao: 'Registro de Identificação de Desvio (RID) e relatórios preventivos',
+    defaultRoles: '*',
+  },
+  {
+    id: 'form_qualidade',
+    grupoId: 'qualidade',
+    label: 'Qualidade',
+    descricao: 'Gestão de RNC (Relatório de Não Conformidade), planos de ação e relatórios',
     defaultRoles: '*',
   },
 ];

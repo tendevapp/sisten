@@ -42,6 +42,16 @@ function FreteParcela({ parcela }: { parcela: ParcelaCenario }) {
   );
 }
 
+/** Desconto da proposta, já abatido de `parcela.total` — ver `ResumoFornecedor.valorDesconto`. */
+function DescontoParcela({ parcela }: { parcela: ParcelaCenario }) {
+  if (parcela.desconto <= 0) return null;
+  return (
+    <span className="text-emerald-600 dark:text-emerald-400" title="Desconto identificado na cotação — já abatido deste total.">
+      {' '}(-{formatBRL(parcela.desconto)})
+    </span>
+  );
+}
+
 interface MapaCenariosProps {
   cenarios: Cenario[];
   /** Cenário aplicado na matriz com um clique — leva as marcações do cenário para as células. */
@@ -123,6 +133,7 @@ export default function MapaCenarios({ cenarios, onAplicar }: MapaCenariosProps)
                 <p className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={cenario.parcelas[0].nome}>
                   {nomeFornecedorCurto(cenario.parcelas[0].nome)}
                   <FreteParcela parcela={cenario.parcelas[0]} />
+                  <DescontoParcela parcela={cenario.parcelas[0]} />
                 </p>
               )}
 
@@ -134,6 +145,7 @@ export default function MapaCenarios({ cenarios, onAplicar }: MapaCenariosProps)
                       <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
                         {p.itens}× · {formatBRL(p.total)}
                         <FreteParcela parcela={p} />
+                        <DescontoParcela parcela={p} />
                       </span>
                     </li>
                   ))}

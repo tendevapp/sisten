@@ -16,7 +16,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, TrendingUp, Users, Building2, Activity, BarChart3, Clock, Repeat } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { EnrichedSAPRecord } from '../types';
@@ -32,9 +32,10 @@ import TabDemandas from '../components/suprimentos/TabDemandas';
 import TabCarteira from '../components/suprimentos/TabCarteira';
 import TabFornecedores from '../components/suprimentos/TabFornecedores';
 import TabAnaliseCompras from '../components/suprimentos/TabAnaliseCompras';
+import TabRecorrenciaCompras from '../components/suprimentos/TabRecorrenciaCompras';
 import ComposicaoModal, { ComposicaoModalConfig } from '../components/charts/ComposicaoModal';
 
-export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras';
+export type AbaSuprimentos = 'geral' | 'demandas' | 'carteira' | 'fornecedores' | 'compras' | 'recorrencia';
 
 interface SapDashboardsProps {
   onNavigate: (path: string) => void;
@@ -48,13 +49,15 @@ const ABAS: { id: AbaSuprimentos; rotulo: string; icone: typeof Activity; pergun
   { id: 'carteira', rotulo: 'Carteira & Compradores', icone: Users, pergunta: 'Quem está sobrecarregado e quem está entregando?' },
   { id: 'fornecedores', rotulo: 'Fornecedores & Spend', icone: Building2, pergunta: 'Para onde vai o dinheiro e quem cumpre prazo?' },
   { id: 'compras', rotulo: 'Análise de Compras', icone: BarChart3, pergunta: 'No que já foi comprado: onde está concentrado o gasto e de onde ele vem?' },
+  { id: 'recorrencia', rotulo: 'Recorrência de Compras', icone: Repeat, pergunta: 'Estamos comprando o mesmo material demais vezes, ou fracionando por falta de planejamento?' },
 ];
 
 /**
  * Abas que trabalham sobre a carteira em andamento e por isso respondem ao
- * filtro global do shell. "Análise de Compras" lê outra base — o histórico de
- * pedidos — e carrega filtros próprios; aplicar-lhe criticidade de requisição
- * ou comprador atribuído não faria sentido.
+ * filtro global do shell. "Análise de Compras" e "Recorrência de Compras"
+ * leem outra base — o histórico de pedidos — e carregam filtros próprios;
+ * aplicar-lhes criticidade de requisição ou comprador atribuído não faria
+ * sentido.
  */
 const ABAS_COM_FILTRO_GLOBAL = new Set<AbaSuprimentos>(['geral', 'demandas', 'carteira', 'fornecedores']);
 
@@ -349,6 +352,8 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
       )}
 
       {aba === 'compras' && <TabAnaliseCompras onNavigate={onNavigate} />}
+
+      {aba === 'recorrencia' && <TabRecorrenciaCompras onNavigate={onNavigate} />}
 
       <ComposicaoModal config={composicao} onClose={fecharComposicao} />
     </div>

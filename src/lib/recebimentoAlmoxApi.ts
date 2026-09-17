@@ -29,6 +29,7 @@ import {
   type TipoDivergencia,
   type TipoEmbalagem,
   type TipoItemConferencia,
+  type TipoNaoConformidade,
 } from './recebimentoAlmox';
 
 const db = (tabela: string) => (supabase.from as any)(tabela);
@@ -419,6 +420,36 @@ export async function listarNaoConformidades(incluirExcluidas = false): Promise<
   return (data ?? []) as NaoConformidadeRow[];
 }
 
+export interface NovaNcAvulsaInput {
+  nro_pedido?: string | null;
+  fornecedor?: string | null;
+  tipo: TipoNaoConformidade;
+  severidade: 'baixa' | 'media' | 'alta';
+  descricao: string;
+  responsavel?: string | null;
+  itens_resumo?: {
+    material_code: string;
+    descricao: string;
+    unidade: string;
+    qtd_pedido: number | null;
+    qtd_verificada: number | null;
+  }[];
+  evidencias: AnexoRecebimento[];
+}
+
+/** Abre uma NCR sem exigir vínculo com ficha cega ou conferência de recebimento. */
+export async function registrarNcAvulsa(
+  nc: NovaNcAvulsaInput,
+  user: { nome: string },
+): Promise<{ id: string; codigo: string }> {
+  const { data, error } = await supabase.rpc('alm_receb_registrar_nc' as any, {
+    p_nc: nc,
+    p_user: { nome: user.nome },
+  } as any);
+  if (error) throw new Error(error.message);
+  return data as { id: string; codigo: string };
+}
+
 export interface NcPatch {
   status?: 'aberta' | 'em_tratativa' | 'resolvida';
   severidade?: 'baixa' | 'media' | 'alta';
@@ -459,6 +490,15 @@ export async function atualizarNaoConformidade(
   user: { id?: string | null; nome: string },
 ): Promise<void> {
   await editarNc(id, campos, null, user);
+}
+
+/** Exclusão lógica permitida somente para NCR ainda aberta; a RPC grava o log. */
+export async function excluirNcAberta(id: string, user: { nome: string }): Promise<void> {
+  const { error } = await supabase.rpc('alm_receb_excluir_nc_aberta' as any, {
+    p_id: id,
+    p_user: { nome: user.nome },
+  } as any);
+  if (error) throw new Error(error.message);
 }
 
 /** Marca que as linhas de projeto já foram levadas ao módulo Projetos. */

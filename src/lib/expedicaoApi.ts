@@ -21,6 +21,7 @@ import { supabase } from '../db/supabaseClient';
 import type {
   EtapaExpedicao, ExpedicaoCarregamento, ExpedicaoCarregamentoCompleto,
   ExpedicaoCarregamentoResumo, ExpedicaoFoto, ExpedicaoLogEnvio, ExpedicaoTramo, Tramo,
+  ExpedicaoTramoObservacao, ExpedicaoTramoEvidencia, TipoObservacaoTramo,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 import { comprimirImagemUpload } from './imageCompression';
@@ -72,6 +73,37 @@ export async function listarCarregamentos(incluirExcluidos = false): Promise<Exp
     total_fotos: semExcluidos(row.fotos, incluirExcluidos).length,
   })) as ExpedicaoCarregamentoResumo[];
 }
+
+/**
+ * Busca todos os carregamentos com seus tramos completos (sem fotos) para o
+ * relatório e gráficos de Lead Times. Dispensa fotos para garantir que o
+ * carregamento analítico seja ultra-rápido.
+ */
+export async function listarCarregamentosRelatorio(params?: {
+  de?: string | null;
+  ate?: string | null;
+  incluirExcluidos?: boolean;
+}): Promise<ExpedicaoCarregamentoCompleto[]> {
+  let query = supabase
+    .from('expedicao_carregamentos')
+    .select(`
+      *,
+      tramos:expedicao_tramos!expedicao_tramos_carregamento_id_fkey (*)
+    `)
+    .order('created_at', { ascending: false });
+
+  query = apenasVigentes(query, params?.incluirExcluidos ?? false);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((row: any) => ({
+    ...row,
+    tramos: semExcluidos(row.tramos, params?.incluirExcluidos ?? false).sort((a: any, b: any) => a.ordem - b.ordem),
+    fotos: [],
+  })) as ExpedicaoCarregamentoCompleto[];
+}
+
 
 /**
  * Numera cada carregamento dentro da sua sequencia historica de tramo +
@@ -152,7 +184,7 @@ export async function criarCarregamento(params: {
     .single();
 
   if (error) throw new Error(error.message);
-  return data as ExpedicaoCarregamento;
+  return data as unknown as ExpedicaoCarregamento;
 }
 
 /** Salva o cabeçalho. Os tramos têm sua própria chamada — ver `salvarTramo`. */
@@ -162,7 +194,7 @@ export async function salvarCarregamento(
 ): Promise<void> {
   const { error } = await supabase
     .from('expedicao_carregamentos')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...patch, updated_at: new Date().toISOString() } as any)
     .eq('id', id);
   if (error) throw new Error(error.message);
 }
@@ -257,7 +289,7 @@ export async function criarTramo(params: {
     .single();
 
   if (error) throw new Error(error.message);
-  return data as ExpedicaoTramo;
+  return data as unknown as ExpedicaoTramo;
 }
 
 type TramoEditavel = Pick<ExpedicaoTramo,
@@ -265,12 +297,14 @@ type TramoEditavel = Pick<ExpedicaoTramo,
   | 'dolly_placa' | 'dolly_uf' | 'data' | 'ordem'
   | 'data_chegada_portaria' | 'data_entrada_patio' | 'data_expedicao'
   | 'hora_chegada_portaria' | 'hora_entrada_patio' | 'hora_expedicao'
-  | 'obs_chegada_portaria' | 'obs_entrada_patio' | 'obs_expedicao'>;
+  | 'obs_chegada_portaria' | 'obs_entrada_patio' | 'obs_expedicao'
+  | 'observacoes' | 'historico_observacoes'>;
 
 export async function salvarTramo(id: string, patch: Partial<TramoEditavel>): Promise<void> {
+  const payload: Record<string, any> = { ...patch, updated_at: new Date().toISOString() };
   const { error } = await supabase
     .from('expedicao_tramos')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update(payload as any)
     .eq('id', id);
   if (error) throw new Error(error.message);
 }
@@ -289,6 +323,124 @@ export async function restaurarTramo(id: string): Promise<void> {
     .update(marcarRestaurado())
     .eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Adiciona uma observação ou justificativa ao histórico do tramo/carreta com
+ * upload e compressão automática de fotos/documentos de evidência.
+ */
+export async function adicionarObservacaoTramo(params: {
+  carregamentoId: string;
+  tramoId: string;
+  texto: string;
+  tipo?: TipoObservacaoTramo;
+  usuarioId: string;
+  usuarioNome: string;
+  arquivos?: File[];
+  historicoExistente?: ExpedicaoTramoObservacao[] | null;
+}): Promise<ExpedicaoTramoObservacao[]> {
+  const evidenciasSalvas: ExpedicaoTramoEvidencia[] = [];
+
+  // Upload e compressão de cada evidência anexada
+  if (params.arquivos && params.arquivos.length > 0) {
+    for (const arquivo of params.arquivos) {
+      const ehImagem = arquivo.type.startsWith('image/');
+      // Regra 1 AGENTS.md: sempre comprime imagem antes de subir
+      const blob = ehImagem ? await comprimirImagemUpload(arquivo) : arquivo;
+      const ehJpeg = ehImagem && blob !== arquivo;
+      const ext = ehJpeg ? 'jpg' : (arquivo.name.split('.').pop() || 'bin').toLowerCase();
+      const nomeLimpo = arquivo.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${params.carregamentoId}/${params.tramoId}/evidencias/${Date.now()}-${nomeLimpo}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, blob, {
+          contentType: ehJpeg ? 'image/jpeg' : (arquivo.type || 'application/octet-stream'),
+          upsert: false,
+        });
+
+      if (upErr) {
+        console.error('Erro ao enviar evidência da carreta:', upErr);
+        throw new Error(`Falha ao enviar arquivo ${arquivo.name}: ${upErr.message}`);
+      }
+
+      const urlAssinada = await urlFoto(path, TTL_EMAIL_SEGUNDOS);
+
+      evidenciasSalvas.push({
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `evi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        nome_arquivo: arquivo.name,
+        storage_path: path,
+        tipo: arquivo.type,
+        tamanho: blob.size,
+        url: urlAssinada || undefined,
+        criado_em: new Date().toISOString(),
+      });
+    }
+  }
+
+  const novaObservacao: ExpedicaoTramoObservacao = {
+    id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `obs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    texto: params.texto.trim(),
+    tipo: params.tipo || 'observacao',
+    usuario_id: params.usuarioId,
+    usuario_nome: params.usuarioNome,
+    criado_em: new Date().toISOString(),
+    evidencias: evidenciasSalvas,
+  };
+
+  let historicoAtual: ExpedicaoTramoObservacao[] = [];
+  if (Array.isArray(params.historicoExistente)) {
+    historicoAtual = [...params.historicoExistente];
+  } else {
+    const { data: row } = await supabase
+      .from('expedicao_tramos')
+      .select('historico_observacoes')
+      .eq('id', params.tramoId)
+      .single();
+    if (row && Array.isArray((row as any).historico_observacoes)) {
+      historicoAtual = [...(row as any).historico_observacoes];
+    }
+  }
+
+  historicoAtual.push(novaObservacao);
+
+  const payload: Record<string, any> = {
+    historico_observacoes: historicoAtual,
+    observacoes: params.texto.trim(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from('expedicao_tramos')
+    .update(payload as any)
+    .eq('id', params.tramoId);
+
+  if (error) throw new Error(error.message);
+
+  return historicoAtual;
+}
+
+/**
+ * Garante que todas as evidências no histórico tenham URLs assinadas válidas.
+ */
+export async function carregarUrlsEvidencias(
+  observacoes: ExpedicaoTramoObservacao[]
+): Promise<ExpedicaoTramoObservacao[]> {
+  const clonadas: ExpedicaoTramoObservacao[] = JSON.parse(JSON.stringify(observacoes));
+  for (const obs of clonadas) {
+    if (obs.evidencias && obs.evidencias.length > 0) {
+      for (const evi of obs.evidencias) {
+        if (!evi.url && evi.storage_path) {
+          evi.url = (await urlFoto(evi.storage_path, TTL_EMAIL_SEGUNDOS)) || undefined;
+        }
+      }
+    }
+  }
+  return clonadas;
 }
 
 // =====================================================================

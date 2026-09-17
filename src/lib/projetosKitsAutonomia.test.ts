@@ -152,6 +152,46 @@ describe('calcularMatrizAutonomia', () => {
     expect(c4?.status).toBe(0); // Não atende
   });
 
+  it('calcula Plataforma Inferior de T1 exclusivamente pelos saldos dos itens da sua BOM', () => {
+    const arvoreT1 = montarArvore([
+      {
+        id: 10,
+        level: 1,
+        section: 'S1',
+        group: 'PLATAFORMA INFERIOR',
+        part_number: 'BASE-INF-T1',
+        quantity: 2,
+        source: 'Qindao',
+      },
+      {
+        id: 11,
+        level: 1,
+        section: 'S1',
+        group: 'PLATAFORMA SUPERIOR',
+        part_number: 'PISO-SUP-T1',
+        quantity: 1,
+        source: 'Atlanta',
+      },
+    ]);
+    const resultado = calcularMatrizAutonomia({
+      arvore: arvoreT1,
+      saldos: new Map([
+        [normalizarPartNumber('BASE-INF-T1'), 4],
+        [normalizarPartNumber('PISO-SUP-T1'), 1],
+      ]),
+      torresTotais: 3,
+    });
+
+    expect(SUBKITS_POR_TRAMO.T1).toContain('plataforma_inferior');
+    expect(resultado.composicoes.get('T1::plataforma_inferior')?.autonomiaMaxima).toBe(2);
+    expect(resultado.celulas.get('1::T1::plataforma_inferior')?.status).toBe(1);
+    expect(resultado.celulas.get('2::T1::plataforma_inferior')?.status).toBe(1);
+    expect(resultado.celulas.get('3::T1::plataforma_inferior')?.status).toBe(0);
+
+    // A plataforma já existente de T1 passa a usar somente Superior/Média.
+    expect(resultado.celulas.get('2::T1::plataforma')?.status).toBe(0);
+  });
+
   it('suporta status 5 (Saída Portaria) com cor preta e rótulo adequado', () => {
     const saldos = new Map<string, number>();
     const resultado = calcularMatrizAutonomia({

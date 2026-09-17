@@ -27,12 +27,12 @@ interface ChartTooltipProps {
   title?: React.ReactNode;
   /** Linha de contexto sob o título — descrição da categoria, período. */
   subtitle?: React.ReactNode;
-  rows: TooltipRow[];
+  rows?: TooltipRow[];
   /** Nota final: percentual acumulado, dica de clique. */
   footer?: React.ReactNode;
 }
 
-export default function ChartTooltip({ title, subtitle, rows, footer }: ChartTooltipProps) {
+export default function ChartTooltip({ title, subtitle, rows = [], footer }: ChartTooltipProps) {
   return (
     <div
       className="rounded-lg px-3 py-2.5 text-xs min-w-[180px] border"

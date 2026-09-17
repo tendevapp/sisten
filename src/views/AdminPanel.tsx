@@ -12,7 +12,7 @@ import {
   FileX, CheckCircle2, XCircle, TrendingUp, TrendingDown, ChevronDown, ChevronRight, Download, Truck, Sparkles,
   Flag, Bug, Lightbulb, Image as ImageIcon, Copy, Hash, Layers, Info, ArrowRight, Database, BookOpen, Cpu, Users2, Boxes, Receipt,
   Building2, Edit2, Search, UserCheck, UserX, MoreHorizontal, Filter, ShieldCheck, ShoppingBag, Award, Briefcase, KeyRound, Lock,
-  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck, Trash2, Loader2
+  SlidersHorizontal, Eye, Mail, Settings2, UserPlus, FileCheck, Trash2, Loader2, FolderTree,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../db/localDb';
@@ -3777,6 +3777,22 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   />
                   <Upload className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="text-[10px] font-semibold text-slate-600 mt-1">Carregar Excel ou CSV Bahia Sul</p>
+                </div>
+              </div>
+
+              {/* Estrutura PEP Card */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-600" /> Estrutura PEP / WBS Element (SAP)
+                </h4>
+                <p className="text-[10px] text-slate-400">Importa a estrutura analítica do projeto (WBS Element / PEP) para apropriação contábil e faturamento.</p>
+                <div
+                  onClick={() => { window.location.hash = '/financeiro/pep'; }}
+                  className="border border-dashed border-emerald-300 hover:bg-emerald-50/50 rounded-lg p-6 text-center cursor-pointer transition-colors group"
+                >
+                  <FolderTree className="mx-auto h-6 w-6 text-emerald-600 group-hover:scale-110 transition-transform" />
+                  <p className="text-[10px] font-semibold text-slate-700 mt-1">Gerenciar & Importar PEP</p>
+                  <span className="text-[9px] text-slate-400 mt-0.5 block">Acessar tela e importador PEP no Financeiro</span>
                 </div>
               </div>
             </div>

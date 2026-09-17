@@ -546,6 +546,22 @@ describe('valorDesconto — desconto declarado na proposta abate do total', () =
     expect(a.valorDesconto).toBeNull();
     expect(a.totalComFrete).toBe(a.totalLiquido);
   });
+
+  it('o cenário de fornecedor único também abate o desconto do total (não só o resumo)', () => {
+    const propostas = [
+      proposta('A', [item({ descricao_produto: 'CADEADO SEGREDO 25MM', quantidade: 5, preco_unitario: 30 })], {
+        valor_desconto: 20,
+      }),
+    ];
+    const fretePorProposta = { A: 40 };
+    const linhas = agruparLinhasMapa({ escopo: [], propostas, opcoes: OPCOES_CUSTO_PADRAO, fretePorProposta });
+    const resumos = resumirFornecedores({ linhas, propostas, fretePorProposta });
+    const c = cenarioFornecedorUnico(linhas, resumos)!;
+    // 150 (itens) + 40 (frete) - 20 (desconto) — mesma conta do resumo, não só o subtotal + frete.
+    expect(c.parcelas[0].desconto).toBe(20);
+    expect(c.parcelas[0].total).toBe(170);
+    expect(c.total).toBe(170);
+  });
 });
 
 describe('freteEhTeorico — distingue estimativa de frete informado', () => {

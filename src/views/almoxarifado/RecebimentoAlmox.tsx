@@ -35,18 +35,18 @@ import {
 } from '../../lib/imageCompression';
 import { prepararFotoCarimbada } from '../../lib/carimboFoto';
 import {
-  PREFIXO_RECEB, ROTULO_DIVERGENCIA, classificarDivergencia, cargaDivergente,
-  entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, posAbertosDoFornecedor,
-  resumoConferencia, tipoNcSugerido,
+  PREFIXO_RECEB, ROTULO_DIVERGENCIA, ROTULO_NAO_CONFORMIDADE, buscarPedidosParaNc, classificarDivergencia, cargaDivergente,
+  entregaParcialAnterior, listarFornecedoresDoCache, pendentePedido, podeExcluirNaoConformidade, posAbertosDoFornecedor,
+  resumoConferencia, tipoNcSugerido, validarNovaNcAvulsa,
   type AnexoRecebimento, type DestinoPrevisto, type FontePedido, type LinhaConferencia, type PoAberto,
-  type TipoDivergencia, type TipoEmbalagem,
+  type LinhaCacheSAP, type TipoDivergencia, type TipoEmbalagem,
 } from '../../lib/recebimentoAlmox';
 import {
   assinarEvidencias, carregarLinhasPedido, editarCarga, editarConferencia, editarNc,
-  excluirCarga, excluirConferencia, hojeISO, listarAlteracoes, listarCargas, listarConferencias,
+  excluirCarga, excluirConferencia, excluirNcAberta, hojeISO, listarAlteracoes, listarCargas, listarConferencias,
   listarNaoConformidades, listarTransportadorasSugeridas, marcarEncaminhadoProjetos,
-  registrarCarga, registrarConferencia, sincronizarChegadaItensConferidos, subirEvidencia, atualizarNaoConformidade,
-  type AlteracaoRow, type CargaRow, type ConferenciaRow,
+  registrarCarga, registrarConferencia, registrarNcAvulsa, sincronizarChegadaItensConferidos, subirEvidencia, atualizarNaoConformidade,
+  type AlteracaoRow, type CargaRow, type ConferenciaRow, type LinhaPedidoPO,
   type NaoConformidadeRow, type NcAcao,
 } from '../../lib/recebimentoAlmoxApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
@@ -108,6 +108,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
   const [rascunhos, setRascunhos] = useState<RascunhoConferencia[]>(() => listarRascunhosConferencia());
   const sincronizarRascunhos = useCallback(() => setRascunhos(listarRascunhosConferencia()), []);
   const [ncEd, setNcEd] = useState<NaoConformidadeRow | null>(null);
+  const [ncNova, setNcNova] = useState(false);
   const [detalhe, setDetalhe] = useState<
     | { tipo: 'carga'; row: CargaRow }
     | { tipo: 'conferencia'; row: ConferenciaRow }
@@ -166,7 +167,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
     },
   ];
 
-  const voltarAoHub = () => { setVista('hub'); setForm(null); setNcEd(null); setDetalhe(null); };
+  const voltarAoHub = () => { setVista('hub'); setForm(null); setNcEd(null); setNcNova(false); setDetalhe(null); };
 
   const detalheModal = detalhe && (
     <ModalDetalhe
@@ -275,12 +276,18 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           ncs={ncs}
           loading={loading}
           onVoltar={voltarAoHub}
+          onNova={() => setNcNova(true)}
           onRecarregar={recarregar}
           onAbrir={(row) => setDetalhe({ tipo: 'nc', row })}
           onEditar={(row) => setNcEd(row)}
           onStatus={async (id, status) => {
             try { await atualizarNaoConformidade(id, { status }, { id: user.id, nome: user.name }); await recarregar(); }
             catch (err: any) { toast.error(err?.message || 'Falha ao atualizar a NCR.'); }
+          }}
+          onExcluir={async (id, codigo) => {
+            if (!window.confirm(`Excluir a não conformidade ${codigo}? Ela sai da tela, mas permanece no banco.`)) return;
+            try { await excluirNcAberta(id, { nome: user.name }); toast.success(`${codigo} excluída.`); await recarregar(); }
+            catch (err: any) { toast.error(err?.message || 'Falha ao excluir a NCR.'); }
           }}
         />
         {ncEd && (
@@ -289,6 +296,13 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             nc={ncEd}
             onClose={() => setNcEd(null)}
             onSalvo={async () => { setNcEd(null); await recarregar(); }}
+          />
+        )}
+        {ncNova && (
+          <ModalNovaNc
+            user={user}
+            onClose={() => setNcNova(false)}
+            onSalvo={async () => { setNcNova(false); await recarregar(); }}
           />
         )}
         {detalheModal}
@@ -873,15 +887,17 @@ function VistaContagem({
 // ===========================================================================
 
 function VistaNaoConformidades({
-  ncs, loading, onVoltar, onRecarregar, onAbrir, onEditar, onStatus,
+  ncs, loading, onVoltar, onNova, onRecarregar, onAbrir, onEditar, onStatus, onExcluir,
 }: {
   ncs: NaoConformidadeRow[];
   loading: boolean;
   onVoltar: () => void;
+  onNova: () => void;
   onRecarregar: () => void;
   onAbrir: (row: NaoConformidadeRow) => void;
   onEditar: (row: NaoConformidadeRow) => void;
   onStatus: (id: string, status: 'aberta' | 'em_tratativa' | 'resolvida') => void;
+  onExcluir: (id: string, codigo: string) => void;
 }) {
   const [busca, setBusca] = useState('');
   const [de, setDe] = useState('');
@@ -914,7 +930,7 @@ function VistaNaoConformidades({
                   {n.severidade === 'alta' && <StatusChip texto="alta" tom="alerta" />}
                 </p>
                 <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                  {n.fornecedor || '—'}{n.nro_pedido ? ` · PO ${n.nro_pedido}` : ''} · {n.tipo}
+                  {n.fornecedor || '—'}{n.nro_pedido ? ` · PO ${n.nro_pedido}` : ''} · {ROTULO_NAO_CONFORMIDADE[n.tipo as keyof typeof ROTULO_NAO_CONFORMIDADE] ?? n.tipo}
                 </p>
               </div>
               <select
@@ -934,8 +950,10 @@ function VistaNaoConformidades({
               <ul className="mt-1.5 space-y-0.5">
                 {n.itens_resumo.map((it: any, i: number) => (
                   <li key={i} className="text-[11px] tabular-nums" style={{ color: 'var(--ink-muted)' }}>
-                    {it.material_code} {it.descricao} — {it.tipo_divergencia}: recebido {formatQtd(it.qtd_recebida)}
-                    {it.qtd_pedido != null ? ` de ${formatQtd(it.qtd_pedido)}` : ''}
+                    {it.material_code} {it.descricao} — {it.tipo_divergencia
+                      ? ROTULO_DIVERGENCIA[it.tipo_divergencia as TipoDivergencia] ?? it.tipo_divergencia
+                      : ROTULO_NAO_CONFORMIDADE[n.tipo as keyof typeof ROTULO_NAO_CONFORMIDADE] ?? n.tipo}
+                    {(it.qtd_verificada != null || it.qtd_recebida != null) ? `: verificado ${formatQtd(it.qtd_verificada ?? it.qtd_recebida)}${it.qtd_pedido != null ? ` de ${formatQtd(it.qtd_pedido)}` : ''}` : ''}
                   </li>
                 ))}
               </ul>
@@ -946,6 +964,9 @@ function VistaNaoConformidades({
         )}
         <AcaoCard onClick={() => onAbrir(n)} cor="var(--ink-muted)">Detalhes</AcaoCard>
         <AcaoCard onClick={() => onEditar(n)} cor="var(--brand)">Editar</AcaoCard>
+        {podeExcluirNaoConformidade(n.status) && (
+          <AcaoCard onClick={() => onExcluir(n.id, n.codigo)} cor="var(--status-critical)">Excluir</AcaoCard>
+        )}
       </div>
     </CardBase>
   );
@@ -953,13 +974,14 @@ function VistaNaoConformidades({
   return (
     <VistaShell
       titulo="Não conformidades de recebimento"
-      subtitulo="Aberta quando a conferência acusa divergência. Toque para ver a tratativa e o log; Editar registra ação e foto."
+      subtitulo="Abra uma NCR avulsa ou acompanhe as geradas pela conferência. Toque para ver a tratativa e o log; Editar registra ação e foto."
       onVoltar={onVoltar}
       onRecarregar={onRecarregar}
+      acao={<BotaoNovo onClick={onNova}>Nova não conformidade</BotaoNovo>}
     >
       {loading && <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--hairline)' }} />}
       {!loading && !ncs.length && (
-        <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Uma NCR é aberta automaticamente quando a conferência acusa divergência." />
+        <TableEmpty icon={Check} title="Nenhuma não conformidade" hint="Abra uma NCR avulsa ou ela será criada quando a conferência acusar divergência." />
       )}
 
       {!loading && ncs.length > 0 && (
@@ -1310,7 +1332,7 @@ function ModalDetalhe({
               <div>
                 <DetLinha rotulo="Status" valor={<StatusChip texto={n.status.replace('_', ' ')} tom={TOM_STATUS_NC[n.status] ?? 'neutro'} />} />
                 <DetLinha rotulo="Severidade" valor={<StatusChip texto={n.severidade} tom={n.severidade === 'alta' ? 'alerta' : n.severidade === 'media' ? 'atencao' : 'neutro'} />} />
-                <DetLinha rotulo="Tipo" valor={n.tipo} />
+                <DetLinha rotulo="Tipo" valor={ROTULO_NAO_CONFORMIDADE[n.tipo as keyof typeof ROTULO_NAO_CONFORMIDADE] ?? n.tipo} />
                 <DetLinha rotulo="Fornecedor" valor={n.fornecedor} />
                 <DetLinha rotulo="PO" valor={n.nro_pedido} />
                 <DetLinha rotulo="Responsável" valor={n.responsavel} />
@@ -1331,8 +1353,12 @@ function ModalDetalhe({
                       >
                         <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>{it.material_code}</span> {it.descricao}
                         {' — '}
-                        <span className="font-bold" style={{ color: 'var(--status-critical)' }}>{it.tipo_divergencia}</span>
-                        {`: recebido ${formatQtd(it.qtd_recebida)}${it.qtd_pedido != null ? ` de ${formatQtd(it.qtd_pedido)}` : ''}`}
+                        <span className="font-bold" style={{ color: 'var(--status-critical)' }}>
+                          {it.tipo_divergencia
+                            ? ROTULO_DIVERGENCIA[it.tipo_divergencia as TipoDivergencia] ?? it.tipo_divergencia
+                            : ROTULO_NAO_CONFORMIDADE[n.tipo as keyof typeof ROTULO_NAO_CONFORMIDADE] ?? n.tipo}
+                        </span>
+                        {(it.qtd_verificada != null || it.qtd_recebida != null) ? `: verificado ${formatQtd(it.qtd_verificada ?? it.qtd_recebida)}${it.qtd_pedido != null ? ` de ${formatQtd(it.qtd_pedido)}` : ''}` : ''}
                       </li>
                     ))}
                   </ul>
@@ -2578,7 +2604,233 @@ function ModalConferencia({
 // Modal — NCR: tratativa (status, ação com foto, foto geral) + log
 // ===========================================================================
 
-const NC_TIPOS = ['falta', 'excedente', 'avaria', 'material_errado', 'sem_pedido', 'volume', 'outros'];
+const NC_TIPOS = ['falta', 'excedente', 'avaria', 'material_errado', 'sem_pedido', 'volume', 'outros'] as const;
+type ItemNcSelecionado = {
+  material_code: string;
+  descricao: string;
+  unidade: string;
+  qtd_pedido: number | null;
+  qtd_verificada: number | null;
+};
+
+function ModalNovaNc({
+  user, onClose, onSalvo,
+}: {
+  user: Profile;
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const toast = useToast();
+  const [salvando, setSalvando] = useState(false);
+  const [tipo, setTipo] = useState('outros');
+  const [severidade, setSeveridade] = useState<'baixa' | 'media' | 'alta'>('media');
+  const [descricao, setDescricao] = useState('');
+  const [fornecedor, setFornecedor] = useState('');
+  const [pedido, setPedido] = useState('');
+  const [responsavel, setResponsavel] = useState('');
+  const [fotos, setFotos] = useState<PreparedAttachment[]>([]);
+  const [buscaPedido, setBuscaPedido] = useState('');
+  const [cacheSap, setCacheSap] = useState<LinhaCacheSAP[]>([]);
+  const [itensPo, setItensPo] = useState<LinhaPedidoPO[]>([]);
+  const [itensSelecionados, setItensSelecionados] = useState<Record<string, ItemNcSelecionado>>({});
+  const [carregandoItens, setCarregandoItens] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    void (async () => {
+      try {
+        const records = await localDb.getEnrichedSAPRequisicoes();
+        if (ativo) setCacheSap(records as LinhaCacheSAP[]);
+      } catch {
+        // A busca direta pelo PO continua disponível mesmo sem o cache local.
+      }
+    })();
+    return () => { ativo = false; };
+  }, []);
+
+  const sugestoes = useMemo(
+    () => buscaPedido.trim() ? buscarPedidosParaNc(cacheSap, buscaPedido).slice(0, 8) : [],
+    [buscaPedido, cacheSap],
+  );
+  const tipoQuantidade = tipo === 'falta' || tipo === 'excedente';
+
+  const carregarItensDoPedido = async (numero = pedido) => {
+    const po = numero.trim();
+    if (!po) { toast.error('Informe o número do pedido para carregar os itens.'); return; }
+    setCarregandoItens(true);
+    try {
+      const resultado = await carregarLinhasPedido(po, cacheSap as any);
+      setPedido(po);
+      if (resultado.fornecedor) setFornecedor(resultado.fornecedor);
+      setItensPo(resultado.linhas);
+      setItensSelecionados({});
+      if (!resultado.linhas.length) toast.info('Nenhum item foi encontrado para este pedido.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível carregar os itens do pedido.');
+    } finally {
+      setCarregandoItens(false);
+    }
+  };
+
+  const alternarItem = (item: LinhaPedidoPO, indice: number) => {
+    const chave = item.linhaRef || `${item.materialCode}-${indice}`;
+    setItensSelecionados((atuais) => {
+      if (atuais[chave]) {
+        const { [chave]: _, ...restantes } = atuais;
+        return restantes;
+      }
+      return {
+        ...atuais,
+        [chave]: {
+          material_code: item.materialCode,
+          descricao: item.descricao,
+          unidade: item.unidade,
+          qtd_pedido: item.qtdPedido,
+          qtd_verificada: null,
+        },
+      };
+    });
+  };
+
+  const salvar = async () => {
+    const itens = Object.values(itensSelecionados);
+    const erro = validarNovaNcAvulsa({ descricao, tipo: tipo as typeof NC_TIPOS[number], itens });
+    if (erro) { toast.error(erro); return; }
+
+    setSalvando(true);
+    try {
+      const nova = await registrarNcAvulsa({
+        tipo: tipo as typeof NC_TIPOS[number],
+        severidade,
+        descricao: descricao.trim(),
+        fornecedor: fornecedor.trim() || null,
+        nro_pedido: pedido.trim() || null,
+        responsavel: responsavel.trim() || null,
+        itens_resumo: itens,
+        evidencias: [],
+      }, { nome: user.name });
+
+      if (fotos.length) {
+        const evidencias = await subirTodas(fotos, nova.codigo);
+        await editarNc(nova.id, { evidencias }, null, { id: user.id, nome: user.name });
+      }
+      fotos.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+      toast.success(`${nova.codigo}: não conformidade aberta.`);
+      onSalvo();
+    } catch (err: any) {
+      toast.error(err?.message || 'Não foi possível abrir a não conformidade.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal onClose={() => !salvando && onClose()} maxWidth="max-w-2xl" ariaLabel="Nova não conformidade" disableOutsideClose>
+      <ModalHeader onClose={() => !salvando && onClose()}>
+        <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>Nova não conformidade</h3>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+          Registro avulso: não precisa ter sido gerado pelo recebimento. Pedido e fornecedor são opcionais.
+        </p>
+      </ModalHeader>
+      <ModalBody>
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo rotulo="Tipo">
+              <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={inputCls}>
+                {NC_TIPOS.map((t) => <option key={t} value={t}>{ROTULO_NAO_CONFORMIDADE[t]}</option>)}
+              </select>
+            </Campo>
+            <Campo rotulo="Severidade">
+              <select value={severidade} onChange={(e) => setSeveridade(e.target.value as typeof severidade)} className={inputCls}>
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+              </select>
+            </Campo>
+          </div>
+          <Campo rotulo="Descrição" erro={!descricao.trim() ? 'Obrigatória' : undefined}>
+            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className={inputCls} placeholder="Descreva o desvio encontrado e o impacto." />
+          </Campo>
+          <Campo rotulo="Pesquisar pedido ou fornecedor">
+            <div className="flex gap-2">
+              <input value={buscaPedido} onChange={(e) => setBuscaPedido(e.target.value)} className={inputCls} placeholder="Nº do pedido ou fornecedor" />
+              <button type="button" onClick={() => void carregarItensDoPedido(buscaPedido)} className="shrink-0 rounded-lg border px-3 text-xs font-bold" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+            {sugestoes.length > 0 && (
+              <div className="mt-1.5 max-h-36 overflow-y-auto rounded-lg border p-1" style={{ borderColor: 'var(--hairline)' }}>
+                {sugestoes.map((po) => (
+                  <button key={po.numero} type="button" onClick={() => { setBuscaPedido(po.numero); setPedido(po.numero); setFornecedor(po.fornecedor); void carregarItensDoPedido(po.numero); }} className="block w-full rounded px-2 py-1.5 text-left text-[11px] hover:bg-black/5">
+                    <strong>{po.numero}</strong> · {po.fornecedor}
+                  </button>
+                ))}
+              </div>
+            )}
+          </Campo>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Campo rotulo="Fornecedor (opcional)">
+              <input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inputCls} />
+            </Campo>
+            <Campo rotulo="Pedido (opcional)">
+              <div className="flex gap-2">
+                <input value={pedido} onChange={(e) => setPedido(e.target.value)} className={inputCls} />
+                <button type="button" onClick={() => void carregarItensDoPedido()} disabled={carregandoItens} className="shrink-0 rounded-lg border px-3 text-xs font-bold disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>Itens</button>
+              </div>
+            </Campo>
+          </div>
+          {carregandoItens && <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando itens do pedido…</p>}
+          {itensPo.length > 0 && (
+            <div className="rounded-lg border p-3" style={{ borderColor: 'var(--hairline)' }}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-extrabold" style={{ color: 'var(--ink-secondary)' }}>Itens do pedido para incluir na NCR</p>
+                <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{Object.keys(itensSelecionados).length} selecionado(s)</span>
+              </div>
+              <div className="space-y-2">
+                {itensPo.map((item, indice) => {
+                  const chave = item.linhaRef || `${item.materialCode}-${indice}`;
+                  const selecionado = itensSelecionados[chave];
+                  return (
+                    <div key={chave} className="rounded-md border p-2" style={{ borderColor: selecionado ? 'var(--brand)' : 'var(--hairline)' }}>
+                      <label className="flex cursor-pointer items-start gap-2 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                        <input type="checkbox" checked={Boolean(selecionado)} onChange={() => alternarItem(item, indice)} className="mt-0.5" />
+                        <span><strong>{item.materialCode}</strong> · {item.descricao}</span>
+                      </label>
+                      {selecionado && tipoQuantidade && (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <Campo rotulo={`Quantidade no PO${item.unidade ? ` (${item.unidade})` : ''}`}>
+                            <input value={item.qtdPedido ?? '—'} readOnly className={`${inputCls} opacity-70`} />
+                          </Campo>
+                          <Campo rotulo="Quantidade verificada">
+                            <input type="number" min="0" step="any" value={selecionado.qtd_verificada ?? ''} onChange={(e) => setItensSelecionados((atuais) => ({ ...atuais, [chave]: { ...selecionado, qtd_verificada: e.target.value === '' ? null : Number(e.target.value) } }))} className={inputCls} />
+                          </Campo>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <Campo rotulo="Responsável pela tratativa (opcional)">
+            <input value={responsavel} onChange={(e) => setResponsavel(e.target.value)} className={inputCls} />
+          </Campo>
+          <Campo rotulo="Fotos gerais (opcional, carimbadas)">
+            <GaleriaFotos arquivos={fotos} setArquivos={setFotos} max={12} />
+          </Campo>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <button onClick={onClose} disabled={salvando} className="px-4 py-2 rounded-xl text-xs font-bold cursor-pointer border disabled:opacity-50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
+          Cancelar
+        </button>
+        <button onClick={() => void salvar()} disabled={salvando} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Abrir NCR
+        </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
 
 function ModalNc({
   user, nc, onClose, onSalvo,
@@ -2664,7 +2916,7 @@ function ModalNc({
             </Campo>
             <Campo rotulo="Tipo">
               <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={inputCls}>
-                {NC_TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                {NC_TIPOS.map((t) => <option key={t} value={t}>{ROTULO_NAO_CONFORMIDADE[t]}</option>)}
               </select>
             </Campo>
           </div>

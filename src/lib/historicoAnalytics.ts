@@ -695,3 +695,314 @@ export function calcResumo(linhas: HistoricoPedidoView[]): ResumoHistorico {
     periodoAte: ate,
   };
 }
+
+/* Recorrência de compras --------------------------------------------------
+ *
+ * Identifica compras repetidas de um mesmo material (chave 'material') ou de
+ * itens parecidos dentro do mesmo grupo de mercadoria (chave 'similar' —
+ * agrupa por grupo + descrição normalizada, já que não existe hoje um
+ * cadastro de equivalência material-a-material). Serve de base tanto para o
+ * ranking/série temporal quanto para os alertas de auditoria abaixo.
+ */
+
+export type ChaveRecorrencia = 'material' | 'similar';
+
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+function diasEntre(a: string, b: string): number {
+  return Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / DIA_MS);
+}
+
+/**
+ * Descrição normalizada para agrupar itens parecidos — mesma ideia de
+ * `public.f_norm_cotacao` no banco: além do que `normalizarTexto` já resolve
+ * (acento, caixa, espaço duplo), colapsa pontuação e símbolos soltos (ex.:
+ * "Nº42" e "N 42" caem na mesma chave).
+ */
+export function normalizarDescricaoItem(s: string): string {
+  return normalizarTexto(s)
+    .replace(/[^A-Z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export interface RecorrenciaItem {
+  /** material (chave 'material') ou `${grupo}::${descNormalizada}` (chave 'similar'). */
+  chave: string;
+  /** Código de material mais frequente do grupo — o próprio, se chave='material'. */
+  material: string;
+  descricao: string;
+  grupoDesc: string;
+  tipoItem: string;
+  valor: number;
+  qtdTotal: number;
+  /** Pedidos (doc_compra) distintos. */
+  pedidosDistintos: number;
+  areas: string[];
+  fornecedores: string[];
+  /** Datas de pedido distintas, ordenadas cronologicamente. */
+  datasCompra: string[];
+  intervaloMedioDias: number | null;
+  menorIntervaloDias: number | null;
+  /** Linhas originais — base para drill-down (ComposicaoModal) e exportação. */
+  itens: HistoricoPedidoView[];
+}
+
+export function calcRecorrencia(linhas: HistoricoPedidoView[], chaveDe: ChaveRecorrencia): RecorrenciaItem[] {
+  const dimensao = (l: HistoricoPedidoView): string =>
+    chaveDe === 'material' ? txt(l.material) : `${txt(l.grp_mercads)}::${normalizarDescricaoItem(txt(l.txt_breve))}`;
+
+  interface Acc {
+    materiais: Map<string, number>;
+    descricoes: Map<string, number>;
+    grupoDesc: string;
+    tipoItem: string;
+    valor: number;
+    qtdTotal: number;
+    pedidos: Set<string>;
+    areas: Set<string>;
+    fornecedores: Set<string>;
+    datas: Set<string>;
+    itens: HistoricoPedidoView[];
+  }
+
+  const mapa = new Map<string, Acc>();
+
+  for (const l of linhas) {
+    const chave = dimensao(l) || NAO_INFORMADO;
+    let a = mapa.get(chave);
+    if (!a) {
+      a = {
+        materiais: new Map(),
+        descricoes: new Map(),
+        grupoDesc: porGrupo(l),
+        tipoItem: porTipoItem(l),
+        valor: 0,
+        qtdTotal: 0,
+        pedidos: new Set(),
+        areas: new Set(),
+        fornecedores: new Set(),
+        datas: new Set(),
+        itens: [],
+      };
+      mapa.set(chave, a);
+    }
+    const mat = txt(l.material);
+    if (mat) a.materiais.set(mat, (a.materiais.get(mat) || 0) + 1);
+    const desc = txt(l.txt_breve);
+    if (desc) a.descricoes.set(desc, (a.descricoes.get(desc) || 0) + 1);
+    a.valor += num(l.valor_liquido);
+    a.qtdTotal += num(l.qtd_pedido);
+    if (l.doc_compra) a.pedidos.add(l.doc_compra);
+    const area = txt(l.area_solicitante);
+    if (area) a.areas.add(area);
+    const forn = txt(l.fornecedor);
+    if (forn) a.fornecedores.add(forn);
+    const data = txt(l.data_doc);
+    if (data) a.datas.add(data);
+    a.itens.push(l);
+  }
+
+  const maisFrequente = (contagem: Map<string, number>): string => {
+    let melhor = '';
+    let max = -1;
+    for (const [k, v] of contagem) {
+      if (v > max) {
+        max = v;
+        melhor = k;
+      }
+    }
+    return melhor;
+  };
+
+  const resultado: RecorrenciaItem[] = [];
+  for (const [chave, a] of mapa) {
+    const datasOrdenadas = Array.from(a.datas).sort();
+    let intervaloMedioDias: number | null = null;
+    let menorIntervaloDias: number | null = null;
+    if (datasOrdenadas.length >= 2) {
+      const intervalos: number[] = [];
+      for (let i = 1; i < datasOrdenadas.length; i++) {
+        intervalos.push(diasEntre(datasOrdenadas[i - 1], datasOrdenadas[i]));
+      }
+      intervaloMedioDias = intervalos.reduce((s, d) => s + d, 0) / intervalos.length;
+      menorIntervaloDias = Math.min(...intervalos);
+    }
+
+    resultado.push({
+      chave,
+      material: maisFrequente(a.materiais),
+      descricao: maisFrequente(a.descricoes),
+      grupoDesc: a.grupoDesc || NAO_INFORMADO,
+      tipoItem: a.tipoItem,
+      valor: a.valor,
+      qtdTotal: a.qtdTotal,
+      pedidosDistintos: a.pedidos.size,
+      areas: Array.from(a.areas).sort(),
+      fornecedores: Array.from(a.fornecedores).sort(),
+      datasCompra: datasOrdenadas,
+      intervaloMedioDias,
+      menorIntervaloDias,
+      itens: a.itens,
+    });
+  }
+
+  return resultado.sort((x, y) => y.valor - x.valor);
+}
+
+/* Série temporal ----------------------------------------------------------
+ * Bucket semanal (ISO) ou mensal a partir de data_doc — usada no drill-down
+ * de um material/item selecionado no ranking, não como visão geral (o volume
+ * do recorte inteiro é denso demais para uma linha do tempo legível, mas um
+ * material específico tem poucos pontos e a pergunta "quando compramos isso"
+ * é exatamente temporal).
+ */
+
+export interface PontoSerieRecorrencia {
+  periodo: string;
+  valor: number;
+  qtd: number;
+  pedidos: number;
+}
+
+function periodoChave(dataISO: string, granularidade: 'semana' | 'mes'): string {
+  if (granularidade === 'mes') return dataISO.slice(0, 7);
+
+  const d = new Date(`${dataISO}T00:00:00`);
+  const alvo = new Date(d.getTime());
+  const diaSemana = (alvo.getDay() + 6) % 7; // 0 = segunda
+  alvo.setDate(alvo.getDate() - diaSemana + 3); // quinta-feira da semana
+  const anoISO = alvo.getFullYear();
+  const primeiraQuinta = new Date(anoISO, 0, 4);
+  const diaSemanaPrimeira = (primeiraQuinta.getDay() + 6) % 7;
+  primeiraQuinta.setDate(primeiraQuinta.getDate() - diaSemanaPrimeira + 3);
+  const semana = 1 + Math.round((alvo.getTime() - primeiraQuinta.getTime()) / (7 * DIA_MS));
+  return `${anoISO}-W${String(semana).padStart(2, '0')}`;
+}
+
+export function serieTemporalRecorrencia(
+  linhas: HistoricoPedidoView[],
+  granularidade: 'semana' | 'mes'
+): PontoSerieRecorrencia[] {
+  const mapa = new Map<string, { valor: number; qtd: number; pedidos: Set<string> }>();
+
+  for (const l of linhas) {
+    const data = txt(l.data_doc);
+    if (!data) continue;
+    const periodo = periodoChave(data, granularidade);
+    let a = mapa.get(periodo);
+    if (!a) {
+      a = { valor: 0, qtd: 0, pedidos: new Set() };
+      mapa.set(periodo, a);
+    }
+    a.valor += num(l.valor_liquido);
+    a.qtd += num(l.qtd_pedido);
+    if (l.doc_compra) a.pedidos.add(l.doc_compra);
+  }
+
+  return Array.from(mapa.entries())
+    .map(([periodo, a]) => ({ periodo, valor: a.valor, qtd: a.qtd, pedidos: a.pedidos.size }))
+    .sort((x, y) => x.periodo.localeCompare(y.periodo));
+}
+
+/* Alertas de auditoria ------------------------------------------------------
+ *
+ * Heurísticas explícitas (não é ML) — cada uma documentada e auditável, no
+ * mesmo espírito do resto do arquivo. Espera-se receber só recorrências de
+ * itens de Consumo: separar o Projeto é responsabilidade de quem chama, não
+ * desta função — consumo contínuo de projeto nunca deveria virar alerta.
+ */
+
+export type TipoAlerta = 'maior_valor' | 'mais_repetido' | 'intervalo_curto' | 'aumento_anormal' | 'concentracao';
+
+export interface AlertaAuditoria {
+  tipo: TipoAlerta;
+  severidade: 'atencao' | 'critico';
+  item: RecorrenciaItem;
+  justificativa: string;
+}
+
+export function detectarAlertasAuditoria(recorrencias: RecorrenciaItem[]): AlertaAuditoria[] {
+  const alertas: AlertaAuditoria[] = [];
+
+  // 1) Maior valor total comprado — top 5, sempre relevante para priorização.
+  const porValor = [...recorrencias].sort((a, b) => b.valor - a.valor).slice(0, 5);
+  for (const item of porValor) {
+    if (item.valor <= 0) continue;
+    alertas.push({
+      tipo: 'maior_valor',
+      severidade: 'atencao',
+      item,
+      justificativa: `Maior valor total comprado no período (${item.pedidosDistintos} pedido(s)).`,
+    });
+  }
+
+  for (const item of recorrencias) {
+    // 2) Mais repetido: 4+ pedidos distintos no período filtrado.
+    if (item.pedidosDistintos >= 4) {
+      alertas.push({
+        tipo: 'mais_repetido',
+        severidade: item.pedidosDistintos >= 6 ? 'critico' : 'atencao',
+        item,
+        justificativa: `${item.pedidosDistintos} compras distintas no período — recorrência acima do esperado.`,
+      });
+    }
+
+    // 3) Intervalo curto entre compras: menos de 7 dias entre duas compras.
+    if (item.menorIntervaloDias !== null && item.menorIntervaloDias < 7 && item.pedidosDistintos >= 2) {
+      alertas.push({
+        tipo: 'intervalo_curto',
+        severidade: item.menorIntervaloDias <= 2 ? 'critico' : 'atencao',
+        item,
+        justificativa: `Duas compras com apenas ${item.menorIntervaloDias} dia(s) de intervalo — possível fracionamento de demanda.`,
+      });
+    }
+
+    // 4) Aumento anormal: última compra (por data) > 2x a média das anteriores.
+    if (item.itens.length >= 3) {
+      const ordenados = item.itens
+        .filter(l => txt(l.data_doc))
+        .sort((a, b) => txt(a.data_doc).localeCompare(txt(b.data_doc)));
+      if (ordenados.length >= 3) {
+        const ultimo = ordenados[ordenados.length - 1];
+        const anteriores = ordenados.slice(0, -1);
+        const mediaValorAnterior = anteriores.reduce((s, l) => s + num(l.valor_liquido), 0) / anteriores.length;
+        const mediaQtdAnterior = anteriores.reduce((s, l) => s + num(l.qtd_pedido), 0) / anteriores.length;
+        const valorUltimo = num(ultimo.valor_liquido);
+        const qtdUltimo = num(ultimo.qtd_pedido);
+        const estourouValor = mediaValorAnterior > 0 && valorUltimo > mediaValorAnterior * 2;
+        const estourouQtd = mediaQtdAnterior > 0 && qtdUltimo > mediaQtdAnterior * 2;
+        if (estourouValor || estourouQtd) {
+          alertas.push({
+            tipo: 'aumento_anormal',
+            severidade: 'atencao',
+            item,
+            justificativa: estourouValor
+              ? `Última compra custou ${(valorUltimo / mediaValorAnterior).toFixed(1)}x a média das anteriores.`
+              : `Última compra pediu ${(qtdUltimo / mediaQtdAnterior).toFixed(1)}x a quantidade média das anteriores.`,
+          });
+        }
+      }
+    }
+
+    // 5) Concentração: 3+ pedidos, todos da mesma área ou do mesmo fornecedor.
+    if (item.pedidosDistintos >= 3 && (item.areas.length === 1 || item.fornecedores.length === 1)) {
+      const alvo =
+        item.areas.length === 1 && item.areas[0]
+          ? `área "${item.areas[0]}"`
+          : item.fornecedores.length === 1 && item.fornecedores[0]
+          ? `fornecedor "${item.fornecedores[0]}"`
+          : null;
+      if (alvo) {
+        alertas.push({
+          tipo: 'concentracao',
+          severidade: 'atencao',
+          item,
+          justificativa: `${item.pedidosDistintos} compras concentradas na mesma ${alvo}.`,
+        });
+      }
+    }
+  }
+
+  return alertas;
+}
