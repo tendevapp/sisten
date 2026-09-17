@@ -63,7 +63,7 @@ export default function Projetos({ user, onNavigate, abaInicial = 'visao' }: Pro
   const trocarAba = useCallback((nova: AbaProjetos) => {
     setAba(nova);
     const rota = ABAS.find((a) => a.id === nova)?.rota;
-    if (rota && typeof window !== 'undefined') window.history.replaceState(null, '', rota);
+    if (rota && typeof window !== 'undefined') window.history.replaceState(null, '', `#${rota}`);
   }, []);
 
   const permissoes = {

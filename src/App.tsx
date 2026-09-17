@@ -365,6 +365,14 @@ export default function App() {
 
     // Custom Hash Router initialization
     const handleHashChange = () => {
+      // Se a requisição veio direto por pathname (ex: /almoxarifado/projetos) sem hash,
+      // migra suavemente para o hash router correspondente para manter o estado ao dar F5.
+      if (typeof window !== 'undefined' && window.location.pathname && window.location.pathname !== '/' && !window.location.hash) {
+        const pathNormalizado = window.location.pathname;
+        const search = window.location.search || '';
+        window.history.replaceState(null, '', `/#${pathNormalizado}${search}`);
+      }
+
       const hash = window.location.hash || '#/';
       if (hash.includes('type=recovery') || hash.includes('recovery')) {
         setCurrentPath('/reset-password');
