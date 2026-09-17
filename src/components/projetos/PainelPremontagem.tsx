@@ -31,9 +31,9 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { AlertCircle, Check, ClipboardList, FileSpreadsheet, FileText, Loader2, PackageX, PackageCheck, Pencil, Plus, Wrench } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, ClipboardList, FileSpreadsheet, FileText, Loader2, PackageX, PackageCheck, Pencil, Plus, Wrench } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { TableEmpty } from '../ui/DataTable';
+import { TableCards, TableCardRow, TableDesktop, TableEmpty } from '../ui/DataTable';
 import { useToast } from '../ui/Toast';
 import { Campo, inputCls } from './campos';
 import CadastroItensDesconsiderados from './CadastroItensDesconsiderados';
@@ -524,39 +524,10 @@ export default function PainelPremontagem({ dados, user, podeLancar }: Props) {
               )}
 
               {kits > 0 && (
-                <div className="rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-                  <p className="px-3 py-2 text-xs font-extrabold border-b" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
-                    Romaneio de {opcao.rotulo} — {formatInt(romaneio.reduce((s, g) => s + g.itens.length, 0))} itens em {romaneio.length} subconjunto(s)
-                  </p>
-                  <div className="max-h-72 overflow-y-auto">
-                    {romaneio.map((g) => (
-                      <div key={g.nome}>
-                        <p className="px-3 py-1.5 text-[11px] font-bold sticky top-0" style={{ background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}>
-                          {g.nome} · {g.itens.length} itens
-                        </p>
-                        <table className="w-full text-[11px]">
-                          <tbody>
-                            {g.itens.map((i) => (
-                              <tr key={i.partNumberNorm} className="border-t" style={{ borderColor: 'var(--hairline)' }}>
-                                <td className="px-3 py-1" style={{ color: 'var(--ink-primary)' }}>
-                                  <span className="font-bold">{i.partNumber}</span>
-                                  <span className="ml-1.5" style={{ color: 'var(--ink-muted)' }}>{i.descricao}</span>
-                                </td>
-                                <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>{formatarNiveis(i.niveis)}</td>
-                                <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>{i.localizador || '—'}</td>
-                                <td className="px-2 py-1 text-right tabular-nums" style={{ color: 'var(--ink-muted)' }}>{formatQtd(i.qtdPorTorre)}/kit</td>
-                                <td className="px-2 py-1 text-right tabular-nums font-bold" style={{ color: 'var(--ink-primary)' }}>{formatQtd(i.total)}</td>
-                                <td className="px-3 py-1 text-right tabular-nums font-bold whitespace-nowrap" style={{ color: i.falta ? 'var(--abc-c)' : 'var(--abc-a)' }}>
-                                  saldo {formatQtd(i.saldo)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <RomaneioLista
+                  titulo={`Romaneio de ${opcao.rotulo} — ${formatInt(romaneio.reduce((s, g) => s + g.itens.length, 0))} itens em ${romaneio.length} subconjunto(s)`}
+                  grupos={romaneio}
+                />
               )}
 
               {kits > 0 && (
@@ -976,6 +947,10 @@ function ModalApontamento({
  *  - "Por BOM" — níveis pai/filho como a estrutura indenta;
  *  - "Por part number" — duplicatas somadas, uma linha por peça, para separar.
  * Serve tanto uma ordem gravada quanto o rascunho da tela de abertura.
+ *
+ * Recolhido por padrão: é ação secundária, e cada linha de romaneio (que
+ * pode chegar a centenas de itens) compete pelo mesmo espaço de tela no
+ * celular — vale mais deixar a lista de itens visível do que os 4 botões.
  */
 function ExportarRomaneioBotoes({
   fonte, arvore, itemPorId, disabled,
@@ -987,6 +962,7 @@ function ExportarRomaneioBotoes({
 }) {
   const toast = useToast();
   const [ocupado, setOcupado] = useState(false);
+  const [aberto, setAberto] = useState(false);
 
   const baixar = async (visao: RomaneioVisao, formato: RomaneioFormato) => {
     setOcupado(true);
@@ -1009,10 +985,17 @@ function ExportarRomaneioBotoes({
 
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-wide mb-1.5" style={{ color: 'var(--ink-muted)' }}>
+      <button
+        onClick={() => setAberto((a) => !a)}
+        className="flex w-full items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide cursor-pointer"
+        style={{ color: 'var(--ink-muted)' }}
+        aria-expanded={aberto}
+      >
+        {aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         Exportar romaneio
-      </p>
-      <div className="grid gap-2 sm:grid-cols-2">
+      </button>
+      {aberto && (
+      <div className="grid gap-2 sm:grid-cols-2 mt-1.5">
         {grupos.map((g) => (
           <div key={g.visao} className="rounded-lg border p-2" style={{ borderColor: 'var(--hairline)' }}>
             <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--ink-secondary)' }}>{g.rotulo}</p>
@@ -1038,6 +1021,114 @@ function ExportarRomaneioBotoes({
             </div>
           </div>
         ))}
+      </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Lista do romaneio, agrupada por subconjunto, com cada grupo recolhível
+ * (só o primeiro abre por padrão — com centenas de itens em até ~11
+ * subconjuntos, abrir tudo de cara devolveria exatamente o problema que se
+ * quer resolver). Cartões no celular (`TableCards`), tabela densa no
+ * desktop (`TableDesktop`) — a mesma dupla usada no resto do SISTEN para
+ * listas tabulares; a tabela crua sem esse par é o que quebrava no mobile
+ * (colunas espremidas empilhando célula por célula).
+ */
+interface RomaneioItemLinha {
+  partNumberNorm: string;
+  partNumber: string;
+  descricao: string;
+  niveis: number[];
+  localizador: string | null;
+  qtdPorTorre: number;
+  total: number;
+  saldo: number;
+  falta: boolean;
+}
+
+function RomaneioLista({ titulo, grupos }: { titulo: string; grupos: { nome: string; itens: RomaneioItemLinha[] }[] }) {
+  const [colapsados, setColapsados] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(grupos.slice(1).map((g) => [g.nome, true])),
+  );
+  const alternar = (nome: string) => setColapsados((a) => ({ ...a, [nome]: !a[nome] }));
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-extrabold" style={{ color: 'var(--ink-primary)' }}>{titulo}</p>
+      <div className="max-h-[55vh] overflow-y-auto space-y-3 pr-0.5">
+        {grupos.map((g) => {
+          const aberto = !colapsados[g.nome];
+          return (
+            <div key={g.nome}>
+              <button
+                onClick={() => alternar(g.nome)}
+                className="flex w-full items-center gap-1.5 px-0.5 py-1 text-[11px] font-bold cursor-pointer"
+                style={{ color: 'var(--ink-secondary)' }}
+                aria-expanded={aberto}
+              >
+                {aberto ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                {g.nome} · {g.itens.length} itens
+              </button>
+
+              {aberto && (
+                <>
+                  {/* Celular: cartões */}
+                  <TableCards>
+                    {g.itens.map((i) => (
+                      <TableCardRow key={i.partNumberNorm}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{i.partNumber}</p>
+                            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>{i.descricao}</p>
+                          </div>
+                          <span
+                            className="shrink-0 text-[11px] font-extrabold tabular-nums whitespace-nowrap"
+                            style={{ color: i.falta ? 'var(--abc-c)' : 'var(--abc-a)' }}
+                          >
+                            saldo {formatQtd(i.saldo)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                          <span>{formatarNiveis(i.niveis)}</span>
+                          <span>{i.localizador || '—'}</span>
+                          <span>{formatQtd(i.qtdPorTorre)}/kit</span>
+                          <span className="font-bold" style={{ color: 'var(--abc-a)' }}>Total a Separar {formatQtd(i.total)}</span>
+                        </div>
+                      </TableCardRow>
+                    ))}
+                  </TableCards>
+
+                  {/* Desktop: tabela densa */}
+                  <TableDesktop>
+                    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
+                      <table className="w-full text-[11px]">
+                        <tbody>
+                          {g.itens.map((i) => (
+                            <tr key={i.partNumberNorm} className="border-t first:border-t-0" style={{ borderColor: 'var(--hairline)' }}>
+                              <td className="px-3 py-1" style={{ color: 'var(--ink-primary)' }}>
+                                <span className="font-bold">{i.partNumber}</span>
+                                <span className="ml-1.5" style={{ color: 'var(--ink-muted)' }}>{i.descricao}</span>
+                              </td>
+                              <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>{formatarNiveis(i.niveis)}</td>
+                              <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>{i.localizador || '—'}</td>
+                              <td className="px-2 py-1 text-right tabular-nums" style={{ color: 'var(--ink-muted)' }}>{formatQtd(i.qtdPorTorre)}/kit</td>
+                              <td className="px-2 py-1 text-right tabular-nums font-bold whitespace-nowrap" style={{ color: 'var(--abc-a)' }}>Total a Separar {formatQtd(i.total)}</td>
+                              <td className="px-3 py-1 text-right tabular-nums font-bold whitespace-nowrap" style={{ color: i.falta ? 'var(--abc-c)' : 'var(--abc-a)' }}>
+                                saldo {formatQtd(i.saldo)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TableDesktop>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
