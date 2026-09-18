@@ -107,6 +107,13 @@ export const PAGES: PageDef[] = [
   { id: 'prod_painel', group: 'PRODUÇÃO', label: 'Painel de Qualidade', path: '/producao/painel', icon: Activity, defaultRoles: ['admin'] },
   { id: 'prod_cadastros', group: 'PRODUÇÃO', label: 'Cadastros de Qualidade', path: '/producao/cadastros', icon: Settings, defaultRoles: ['admin'] },
 
+  // Módulo Qualidade — gestão de RNC (Relatório de Não Conformidade): abertura,
+  // plano de ação com prazos/anexos e relatórios em PDF (FRM.QUA-0026). Mesmo
+  // desenho de hub único do RH (`apenasHub` no Sidebar): o menu mostra um botão
+  // só, e a própria tela de Gestão de RNC concentra as abas do módulo.
+  { id: 'qualidade_home', group: 'QUALIDADE', label: 'Qualidade', path: '/qualidade', icon: ClipboardCheck, defaultRoles: '*' },
+  { id: 'qualidade_rnc', group: 'QUALIDADE', label: 'Gestão de RNC', path: '/qualidade/rnc', icon: ClipboardCheck, defaultRoles: '*' },
+
   // Módulo Facilities — tela inicial (hub) + páginas de cadastro e relatórios
   // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
   // nome do grupo "FACILITIES" vira o botão para a tela inicial (ver GROUP_HOME
@@ -333,12 +340,6 @@ export const FEATURE_FLAGS: PageDef[] = [
     defaultRoles: '*',
   },
   {
-    id: 'form_qualidade',
-    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: Qualidade (Gestão de RNC)',
-    defaultRoles: '*',
-  },
-  {
     id: 'rh_ase_ver_todas',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
     label: 'ASE: Ver todas as solicitações (se desmarcado, vê apenas as próprias)',
@@ -394,13 +395,6 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     grupoId: 'ssma',
     label: 'SSMA - Saúde, Segurança e Meio Ambiente',
     descricao: 'Registro de Identificação de Desvio (RID) e relatórios preventivos',
-    defaultRoles: '*',
-  },
-  {
-    id: 'form_qualidade',
-    grupoId: 'qualidade',
-    label: 'Qualidade',
-    descricao: 'Gestão de RNC (Relatório de Não Conformidade), planos de ação e relatórios',
     defaultRoles: '*',
   },
 ];
@@ -593,7 +587,7 @@ export function pageIdForPath(path: string): string | undefined {
  * `pages.test.ts` garante que todo grupo de `PAGES` esteja listado.
  */
 export const GROUP_ORDER = [
-  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PRODUÇÃO', 'FACILITIES', 'RH',
+  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PRODUÇÃO', 'QUALIDADE', 'FACILITIES', 'RH',
   'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
 ] as const;
 

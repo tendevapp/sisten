@@ -20,7 +20,7 @@ import {
   DoorOpen, Boxes, PackageCheck, Truck, Clock, ArrowRight,
   Users2, Timer, Wrench, Bus, ClipboardList, ShieldCheck,
   Building2, Sparkles, ChevronRight, FileText, ShieldAlert,
-  HelpCircle, Bug, Lightbulb, Search, ClipboardCheck,
+  HelpCircle, Bug, Lightbulb, Search,
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { canAccessPage, canAccessFormGroup } from '../lib/pages';
@@ -180,23 +180,6 @@ const MODULOS: ModuloFormulario[] = [
       'Ficha Cega de Volumes (RCV)',
       'Recebimento e Contagem (RCM)',
       'Não Conformidade de Recebimento (NCR)',
-    ],
-  },
-  {
-    id: 'qualidade',
-    label: 'Qualidade — Gestão de RNC',
-    codigo: 'MÓDULO DE QUALIDADE',
-    icon: ClipboardCheck,
-    desc: 'Registro de Não Conformidade (RNC): abertura, plano de ação com prazos e anexos, e geração de relatórios individuais ou consolidados em PDF.',
-    path: '/formularios/qualidade',
-    badge: '1 Formulário Ativo',
-    badgeCor: 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300',
-    corIcone: 'bg-gradient-to-br from-rose-500 to-red-700 text-white shadow-rose-500/20 shadow-lg',
-    corBordaHover: 'hover:border-rose-500/50 hover:shadow-rose-500/10',
-    itensResumo: [
-      'RNC - Relatório de Não Conformidade (FRM.QUA-0026)',
-      'Plano de Ação com Prazos e Responsáveis',
-      'Relatório Individual e Consolidado em PDF',
     ],
   },
 ];

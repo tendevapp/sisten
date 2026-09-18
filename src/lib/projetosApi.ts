@@ -723,6 +723,13 @@ export async function listarPlanejamentoTorres(subprojetoId = 'SP01'): Promise<P
   return (data ?? []) as ProjTorrePlanejamentoRow[];
 }
 
+/**
+ * Grava uma célula da matriz — sempre pela RPC `proj_matriz_salvar_celula`,
+ * que registra o diff em `proj_matriz_autonomia_log`. A tabela não aceita
+ * mais insert/update direto do cliente (ver migration
+ * `20260918110000_proj_matriz_manual_log.sql`): assim toda mudança de status
+ * ou série fica no log, já que a matriz agora é só manual.
+ */
 export async function salvarCelulaMatriz(params: {
   subprojeto_id: string;
   torre_numero: number;
@@ -731,23 +738,46 @@ export async function salvarCelulaMatriz(params: {
   status: number;
   serie?: string | null;
   observacao?: string | null;
-  atualizado_por_nome?: string | null;
+  usuario?: { id?: string | null; nome: string } | null;
 }): Promise<void> {
-  const { error } = await db('proj_matriz_autonomia_kits').upsert(
-    {
-      subprojeto_id: params.subprojeto_id,
-      torre_numero: params.torre_numero,
-      tramo: params.tramo,
-      subkit: params.subkit,
-      status: params.status,
-      serie: params.serie ?? null,
-      observacao: params.observacao ?? null,
-      atualizado_por_nome: params.atualizado_por_nome ?? null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'subprojeto_id,torre_numero,tramo,subkit' },
-  );
+  const { error } = await supabase.rpc('proj_matriz_salvar_celula' as any, {
+    p_subprojeto_id: params.subprojeto_id,
+    p_torre_numero: params.torre_numero,
+    p_tramo: params.tramo,
+    p_subkit: params.subkit,
+    p_status: params.status,
+    p_serie: params.serie ?? null,
+    p_observacao: params.observacao ?? null,
+    p_user: { id: params.usuario?.id ?? null, nome: params.usuario?.nome ?? null },
+  } as any);
   if (error) throw new Error(error.message);
+}
+
+export interface ProjMatrizAutonomiaLogRow {
+  id: string;
+  subprojeto_id: string;
+  torre_numero: number;
+  tramo: string;
+  subkit: string;
+  alteracoes: { campo: string; de: string | null; para: string | null }[];
+  resumo: string | null;
+  alterado_por_id: string | null;
+  alterado_por_nome: string | null;
+  created_at: string;
+}
+
+/** Log de alterações manuais da Matriz de Autonomia, mais recente primeiro. */
+export async function listarLogMatrizAutonomia(
+  subprojetoId = 'SP01',
+  limite = 200,
+): Promise<ProjMatrizAutonomiaLogRow[]> {
+  const { data, error } = await db('proj_matriz_autonomia_log')
+    .select('*')
+    .eq('subprojeto_id', subprojetoId)
+    .order('created_at', { ascending: false })
+    .limit(limite);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ProjMatrizAutonomiaLogRow[];
 }
 
 export async function salvarPlanejamentoTorre(params: {
@@ -769,36 +799,5 @@ export async function salvarPlanejamentoTorre(params: {
     { onConflict: 'subprojeto_id,torre_numero' },
   );
   if (error) throw new Error(error.message);
-}
-
-export interface TramoExpedicaoRegistro {
-  numero_tramo: string;
-  tramo: string;
-  data_expedicao?: string | null;
-  hora_expedicao?: string | null;
-  data_chegada_portaria?: string | null;
-  hora_chegada_portaria?: string | null;
-}
-
-/**
- * Consulta os tramos lançados no formulário de Logística e Expedição (portaria/expedição).
- * Usado para sincronizar automaticamente o status 5 (Saída Portaria / Preto) na matriz.
- */
-export async function listarTramosExpedidosPortaria(): Promise<TramoExpedicaoRegistro[]> {
-  const { data, error } = await supabase
-    .from('expedicao_tramos')
-    .select('numero_tramo, tramo, data_expedicao, hora_expedicao, data_chegada_portaria, hora_chegada_portaria')
-    .is('excluido_em', null)
-    .not('numero_tramo', 'is', null)
-    .not('hora_expedicao', 'is', null);
-
-  if (error) {
-    console.warn('Falha ao consultar expedicao_tramos:', error.message);
-    return [];
-  }
-
-  return (data || []).filter(
-    (row: any) => Boolean(row.numero_tramo && String(row.numero_tramo).trim() && row.hora_expedicao),
-  ) as TramoExpedicaoRegistro[];
 }
 

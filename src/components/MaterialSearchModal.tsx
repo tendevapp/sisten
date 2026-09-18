@@ -13,13 +13,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Loader2, X } from 'lucide-react';
+import { Search, Loader2, X, AlertTriangle } from 'lucide-react';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from './ui/Modal';
+import ConfirmDialog from './ui/ConfirmDialog';
 import { SinalChips } from './ui/SinalChips';
 import {
   buscarMateriais,
   normalizarTermo,
   resumoSinais,
+  ehCodigoSapInativo,
   type MaterialResultado,
   type SinalChip,
 } from '../lib/materiais';
@@ -106,9 +108,14 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Filtro "Itens sem ativo": remove os itens de imobilizado (código 4xxxx de 5
-  // dígitos) da lista já carregada.
+  // dígitos) e exclui códigos inativos (começam com 9 ou letras).
   const resultadosVisiveis = useMemo(
-    () => (somenteSemAtivo ? resultados.filter(m => !ehItemImobilizado(m.materialCode)) : resultados),
+    () =>
+      resultados.filter(m => {
+        if (ehCodigoSapInativo(m.materialCode)) return false;
+        if (somenteSemAtivo && ehItemImobilizado(m.materialCode)) return false;
+        return true;
+      }),
     [resultados, somenteSemAtivo],
   );
   const ocultosPorAtivo = resultados.length - resultadosVisiveis.length;
@@ -240,21 +247,32 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
     }
   };
 
+  const [itemObsoletoPendente, setItemObsoletoPendente] = useState<MaterialResultado | null>(null);
+
   const alternarTecnico = (marcado: boolean) => {
     setIncluirTecnico(marcado);
     if (chips.length > 0) void executarBusca(chips, marcado);
   };
 
-  const escolher = (mat: MaterialResultado) => {
+  const confirmarEscolha = (mat: MaterialResultado) => {
     onSelect(mat, resumoSinais(mat));
     onClose();
+  };
+
+  const escolher = (mat: MaterialResultado) => {
+    if (mat.statusGeral === 'Z1' || mat.statusSap === 'Obsoleto') {
+      setItemObsoletoPendente(mat);
+      return;
+    }
+    confirmarEscolha(mat);
   };
 
   const termoTexto = chips.join(' ');
   const curto = chips.length === 0 && (!queryInput.trim() || normalizarTermo(queryInput).tipo === 'curto');
 
   return (
-    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Buscar no catálogo SAP">
+    <>
+    <Modal onClose={onClose} maxWidth="max-w-4xl" ariaLabel="Buscar no catálogo SAP">
       <ModalHeader onClose={onClose}>
         <h2 className="text-base font-bold" style={{ color: 'var(--ink-primary)' }}>Catálogo SAP</h2>
         <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
@@ -405,37 +423,146 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
                   <span className="normal-case font-normal"> · {ocultosPorAtivo} de imobilizado oculto{ocultosPorAtivo === 1 ? '' : 's'}</span>
                 )}
               </div>
-              <div className="divide-y rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
+              {/* Tabela em telas médias/grandes */}
+              <div className="hidden sm:block rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b text-[10px] font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-800/50" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>
+                      <th className="py-2.5 px-3 w-28">Código SAP</th>
+                      <th className="py-2.5 px-3">Descrição & Especificação</th>
+                      <th className="py-2.5 px-2 w-14 text-center">Un.</th>
+                      <th className="py-2.5 px-3 w-28 text-center">Status</th>
+                      <th className="py-2.5 px-3 w-24 text-center">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y" style={{ borderColor: 'var(--hairline)' }}>
+                    {resultadosVisiveis.map(mat => {
+                      const chipsSinais = resumoSinais(mat);
+                      return (
+                        <tr
+                          key={mat.materialCode}
+                          onClick={() => escolher(mat)}
+                          className="hover:bg-[var(--surface-raised)] transition-colors cursor-pointer"
+                        >
+                          <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 dark:text-emerald-400 whitespace-nowrap align-top">
+                            {highlightText(mat.materialCode, chipsBuscados)}
+                          </td>
+                          <td className="py-2.5 px-3 align-top">
+                            <p className="text-sm font-medium leading-snug" style={{ color: 'var(--ink-primary)' }}>
+                              {highlightText(mat.description, chipsBuscados)}
+                            </p>
+                            {mat.technicalText && (
+                              <p className="text-[11px] mt-0.5 leading-relaxed font-mono" style={{ color: 'var(--ink-muted)' }}>
+                                {highlightText(mat.technicalText, chipsBuscados)}
+                              </p>
+                            )}
+                            <SinalChips chips={chipsSinais} className="mt-1.5" />
+                          </td>
+                          <td className="py-2.5 px-2 text-center font-mono font-bold text-[11px] align-top" style={{ color: 'var(--ink-muted)' }}>
+                            {mat.unit}
+                          </td>
+                          <td className="py-2.5 px-3 text-center align-top">
+                            {mat.statusGeral === 'Z1' ? (
+                              <div
+                                className="flex flex-col items-center gap-0.5"
+                                title="Material com status Z1 (Obsoleto no SAP). Solicite a ativação com o setor Fiscal."
+                              >
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                  <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
+                                  Z1 · Obsoleto
+                                </span>
+                                <span className="text-[9px] text-amber-700 leading-tight text-center max-w-[130px]">
+                                  Ativar com setor Fiscal
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Ativo
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center align-top whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                escolher(mat);
+                              }}
+                              className="px-2.5 py-1 rounded text-xs font-bold transition-opacity hover:opacity-90 cursor-pointer"
+                              style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
+                            >
+                              Selecionar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Lista em cards para celular/telas pequenas */}
+              <div className="sm:hidden divide-y rounded-lg border overflow-hidden" style={{ borderColor: 'var(--hairline)' }}>
                 {resultadosVisiveis.map(mat => {
                   const chipsSinais = resumoSinais(mat);
                   return (
-                    <button
+                    <div
                       key={mat.materialCode}
-                      type="button"
                       onClick={() => escolher(mat)}
-                      className="w-full text-left px-3 py-2.5 transition-colors hover:bg-[var(--surface-raised)] cursor-pointer"
+                      className="p-3 transition-colors hover:bg-[var(--surface-raised)] cursor-pointer"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-sm font-medium" style={{ color: 'var(--ink-primary)' }}>
-                          {highlightText(mat.description, chipsBuscados)}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                          {highlightText(mat.materialCode, chipsBuscados)}
                         </span>
-                        <span
-                          className="text-[11px] font-mono px-1 rounded uppercase shrink-0"
-                          style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
+                        <div className="flex items-center gap-1.5">
+                          {mat.statusGeral === 'Z1' ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                              <AlertTriangle className="h-2.5 w-2.5 text-amber-700 shrink-0" />
+                              Z1 · Obsoleto
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Ativo
+                            </span>
+                          )}
+                          <span
+                            className="text-[11px] font-mono px-1 rounded uppercase shrink-0"
+                            style={{ background: 'var(--surface-sunken)', color: 'var(--ink-muted)' }}
+                          >
+                            {mat.unit}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-sm font-medium" style={{ color: 'var(--ink-primary)' }}>
+                        {highlightText(mat.description, chipsBuscados)}
+                      </p>
+                      {mat.technicalText && (
+                        <p className="text-[11px] mt-0.5 leading-relaxed font-mono" style={{ color: 'var(--ink-muted)' }}>
+                          {highlightText(mat.technicalText, chipsBuscados)}
+                        </p>
+                      )}
+                      {mat.statusGeral === 'Z1' && (
+                        <div className="mt-1.5 flex items-center gap-1 p-1 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[10px]">
+                          <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                          <span>Código obsoleto no SAP (Z1). Solicite ativação com o setor Fiscal.</span>
+                        </div>
+                      )}
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <SinalChips chips={chipsSinais} />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            escolher(mat);
+                          }}
+                          className="ml-auto px-2 py-0.5 rounded text-[11px] font-bold"
+                          style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
                         >
-                          {mat.unit}
-                        </span>
+                          Selecionar
+                        </button>
                       </div>
-                      <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'var(--ink-muted)' }}>
-                        {highlightText(mat.materialCode, chipsBuscados)}
-                        {mat.technicalText ? (
-                          <> · {highlightText(mat.technicalText, chipsBuscados)}</>
-                        ) : (
-                          ''
-                        )}
-                      </div>
-                      <SinalChips chips={chipsSinais} className="mt-1.5" />
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -470,6 +597,41 @@ export default function MaterialSearchModal({ termoInicial = '', areaUsuario = n
         </ModalFooter>
       </form>
     </Modal>
+
+    {itemObsoletoPendente && (
+      <ConfirmDialog
+        titulo="Item Obsoleto no SAP"
+        variante="padrao"
+        confirmarLabel="Entendido, selecionar item"
+        cancelarLabel="Voltar e escolher outro"
+        mensagem={
+          <div className="space-y-2 text-xs">
+            <p>
+              O material <strong className="font-mono text-emerald-700 dark:text-emerald-400">{itemObsoletoPendente.materialCode}</strong> — <strong>{itemObsoletoPendente.description}</strong> está com status <strong>obsoleto no SAP{itemObsoletoPendente.statusGeral ? ` (${itemObsoletoPendente.statusGeral})` : ''}</strong>.
+            </p>
+            <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+              <p className="font-bold flex items-center gap-1.5 mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                Atenção: Ativação necessária com o setor Fiscal
+              </p>
+              <p className="leading-relaxed">
+                Para que a compra deste material seja processada, <strong>você precisa solicitar a ativação do código com o setor Fiscal</strong>.
+              </p>
+            </div>
+            <p className="text-slate-500 dark:text-slate-400">
+              Deseja vincular este material à solicitação mesmo assim?
+            </p>
+          </div>
+        }
+        onConfirmar={() => {
+          const m = itemObsoletoPendente;
+          setItemObsoletoPendente(null);
+          confirmarEscolha(m);
+        }}
+        onCancelar={() => setItemObsoletoPendente(null)}
+      />
+    )}
+    </>
   );
 }
 

@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2, Clock, Bug, Lightbulb } from 'lucide-react';
+import { Search, Star, Copy, X, ArrowRight, Download, Check, HelpCircle, Loader2, Clock, Bug, Lightbulb, AlertTriangle } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import { Profile, Material } from '../types';
 import { formatDateTimeBR } from '../lib/format';
-import { sanitizeTechnicalText } from '../lib/materiais';
+import { sanitizeTechnicalText, ehCodigoSapInativo } from '../lib/materiais';
 import { TableShell } from '../components/ui/DataTable';
 import TourSpotlight from '../components/help/TourSpotlight';
 import { usePageTour } from '../components/help/TourRegistryContext';
@@ -260,7 +260,7 @@ export default function Materials({ user }: MaterialsProps) {
         if (error) throw error;
         if (requestIdRef.current !== thisRequestId) return; // resposta obsoleta
 
-        setResults((data || []).map(rowToMaterial));
+        setResults((data || []).map(rowToMaterial).filter(m => !ehCodigoSapInativo(m.material_code)));
         setTotalResults((data && data[0]?.total_count) || 0);
       } catch (err) {
         console.error('Erro ao buscar materiais no Supabase:', err);
@@ -356,17 +356,17 @@ export default function Materials({ user }: MaterialsProps) {
         });
         if (error) throw error;
         if (!data || data.length === 0) break;
-        allRows.push(...(data as any[]).map(rowToMaterial));
+        allRows.push(...(data as any[]).map(rowToMaterial).filter(m => !ehCodigoSapInativo(m.material_code)));
         if (data.length < pageSize) break;
         from += pageSize;
       }
 
-      const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Status SAP', 'Categoria', 'Empresa', 'Unidade', 'TMAT', 'NCM'];
+      const headers = ['Código SAP', 'Descrição', 'Texto Técnico', 'Status', 'Categoria', 'Empresa', 'Unidade', 'TMAT', 'NCM'];
       const rows = allRows.map(m => [
         m.material_code,
         m.description,
         m.technical_text || '',
-        m.status_sap || 'Ativo',
+        m.status_geral === 'Z1' ? 'Z1 (Obsoleto)' : (m.status_sap || 'Ativo'),
         m.category,
         m.company,
         m.unit,
@@ -664,7 +664,15 @@ export default function Materials({ user }: MaterialsProps) {
                             ? <Check className="h-3.5 w-3.5 text-emerald-600" />
                             : <Copy className="h-3.5 w-3.5" />}
                         </button>
-                        {m.status_sap === 'Obsoleto' ? (
+                        {m.status_geral === 'Z1' ? (
+                          <span
+                            title="Código obsoleto no SAP (Status Geral Z1). Solicitar ativação com o setor Fiscal."
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                          >
+                            <AlertTriangle className="h-3 w-3 text-amber-700" />
+                            Z1 · Obsoleto
+                          </span>
+                        ) : m.status_sap === 'Obsoleto' ? (
                           <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                             Obsoleto
                           </span>
@@ -692,6 +700,12 @@ export default function Materials({ user }: MaterialsProps) {
                       {m.technical_text && (
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{highlightText(m.technical_text, chips)}</p>
                       )}
+                      {m.status_geral === 'Z1' && (
+                        <div className="mt-2 flex items-center gap-1.5 p-1.5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-[11px]">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                          <span>Código obsoleto no SAP (Z1). Solicitar ativação com o setor Fiscal.</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -710,7 +724,7 @@ export default function Materials({ user }: MaterialsProps) {
                 <th className="py-3 px-4 w-28">Código SAP</th>
                 <th className="py-3 px-4">Descrição</th>
                 <th className="py-3 px-4">Texto Técnico</th>
-                <th className="py-3 px-3 w-20 text-center">Status</th>
+                <th className="py-3 px-3 w-28 text-center">Status</th>
                 <th className="py-3 px-3 w-20 text-center">TMAT</th>
                 <th className="py-3 px-3 w-28 text-center">NCM</th>
                 <th className="py-3 px-3 w-20 text-center">Empresa</th>
@@ -778,7 +792,20 @@ export default function Materials({ user }: MaterialsProps) {
                           </div>
                         </td>
                         <td className="py-3.5 px-3 text-center">
-                          {m.status_sap === 'Obsoleto' ? (
+                          {m.status_geral === 'Z1' ? (
+                            <div
+                              className="flex flex-col items-center gap-0.5"
+                              title="Material obsoleto no SAP (Status Geral Z1). Solicitar ativação através do setor Fiscal."
+                            >
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 cursor-help">
+                                <AlertTriangle className="h-3 w-3 text-amber-700 shrink-0" />
+                                Z1 · Obsoleto
+                              </span>
+                              <span className="text-[9px] font-medium text-amber-700 text-center leading-tight">
+                                Ativar com setor Fiscal
+                              </span>
+                            </div>
+                          ) : m.status_sap === 'Obsoleto' ? (
                             <span
                               title={`Material obsoleto no SAP${m.status_geral ? ' (Status Geral: ' + m.status_geral + ')' : ''}${m.status_centro ? ' (Status Centro: ' + m.status_centro + ')' : ''}`}
                               className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80"

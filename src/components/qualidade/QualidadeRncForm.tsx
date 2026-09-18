@@ -4,15 +4,19 @@
  *
  * Módulo Qualidade — Formulário de abertura de RNC (Relatório de Não
  * Conformidade), campos no padrão do FRM.QUA-0026 (Qualiex): identificação,
- * origem, descrição e anexos (fotos comprimidas + PDF de boletim/RFI).
+ * origem, descrição e anexos. Anexo aceita qualquer tipo de arquivo (fotos,
+ * PDF de boletim/RFI, planilha de medição, ZIP) — só a imagem é comprimida
+ * (`uploadAnexoRnc`, regra 1 do CLAUDE.md); os demais tipos sobem como estão.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, Loader2, Paperclip, Save, Upload, X } from 'lucide-react';
 import type { Profile, QuaRncOrigem } from '../../types';
 import * as api from '../../lib/qualidadeApi';
-import { ACCEPT_ANEXO, MAX_ANEXOS } from '../../lib/imageCompression';
 import { useToast } from '../ui/Toast';
+
+/** Sem restrição de tipo — o usuário decide o que conta como evidência da NC. */
+const MAX_ANEXOS_RNC = 30;
 
 interface QualidadeRncFormProps {
   user: Profile;
@@ -72,9 +76,9 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
 
   const adicionarArquivos = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const restante = MAX_ANEXOS - anexos.length;
+    const restante = MAX_ANEXOS_RNC - anexos.length;
     if (restante <= 0) {
-      toast.warning(`Limite de ${MAX_ANEXOS} anexos por RNC.`);
+      toast.warning(`Limite de ${MAX_ANEXOS_RNC} anexos por RNC.`);
       return;
     }
     const novos = Array.from(files).slice(0, restante);
@@ -304,7 +308,7 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
       <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Anexos / Evidências Fotográficas ({anexos.length}/{MAX_ANEXOS})
+            Anexos / Evidências ({anexos.length}/{MAX_ANEXOS_RNC})
           </h3>
           <div className="flex gap-2">
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
@@ -323,10 +327,9 @@ export default function QualidadeRncForm({ user, onSuccess }: QualidadeRncFormPr
             </label>
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
               <Upload className="h-3.5 w-3.5 text-rose-600" />
-              Galeria / PDF
+              Arquivo (qualquer tipo)
               <input
                 type="file"
-                accept={ACCEPT_ANEXO}
                 multiple
                 className="hidden"
                 onChange={(e) => {

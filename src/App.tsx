@@ -72,6 +72,7 @@ const PortariaRelatorio = lazy(() => import('./views/portaria/PortariaRelatorio'
 const PortariaBriefing = lazy(() => import('./views/portaria/PortariaBriefing'));
 const PortariaAlcoolemia = lazy(() => import('./views/portaria/PortariaAlcoolemia'));
 const SsmaAlcoolemiaView = lazy(() => import('./views/ssma/SsmaAlcoolemiaView'));
+const QualidadeHub = lazy(() => import('./views/qualidade/QualidadeHub'));
 const QualidadeRncView = lazy(() => import('./views/qualidade/QualidadeRncView'));
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
@@ -132,6 +133,9 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
 const LEGACY_PATH_REDIRECTS: Record<string, string> = {
   '/suprimentos/painel': '/suprimentos/compras',
   '/suprimentos/fornecedores-sem-po': '/suprimentos/compras',
+  '/formularios/qualidade': '/qualidade',
+  '/formularios/qualidade-rnc': '/qualidade/rnc',
+  '/formularios/qualidade/rnc': '/qualidade/rnc',
 };
 
 // Telas com layout mestre-detalhe (lista + painel) que preenchem toda a
@@ -733,15 +737,14 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/formularios/qualidade':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'qualidade')) {
-          return <QualidadeRncView user={user} onNavigate={handleNavigate} />;
+      case '/qualidade':
+        if (canAccessPage(user, 'qualidade_home')) {
+          return <QualidadeHub user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/formularios/qualidade-rnc':
-      case '/formularios/qualidade/rnc':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'qualidade')) {
+      case '/qualidade/rnc':
+        if (canAccessPage(user, 'qualidade_rnc')) {
           return <QualidadeRncView user={user} onNavigate={handleNavigate} abaInicial="historico" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;

@@ -24,15 +24,11 @@ import {
   listarEntregas,
   listarMatrizAutonomia,
   listarPlanejamentoTorres,
-  listarTramosExpedidosPortaria,
   salvarCelulaMatriz as salvarCelulaMatrizApi,
   salvarPlanejamentoTorre as salvarPlanejamentoTorreApi,
   type ProjMatrizAutonomiaKitRow,
   type ProjTorrePlanejamentoRow,
-  type TramoExpedicaoRegistro,
 } from '../../lib/projetosApi';
-import { listarFaturamentoGwjaco } from '../../lib/finFaturamentoGwjacoApi';
-import type { FinFatGwjaco } from '../../types';
 import { montarArvore, consumoPorTramo, auditarBom, type ArvoreBom, type Pendencia } from '../../lib/projetosBom';
 import {
   calcularMatrizAutonomia,
@@ -97,15 +93,18 @@ export interface DadosProjetos {
   /** Tramos do subprojeto ativo, na ordem torre → tramo. */
   tramosDoSubprojeto: ProjTramoUnidade[];
 
-  /** Tramos com saída registrada em Logística e Expedição / Portaria. */
-  tramosExpedicao: TramoExpedicaoRegistro[];
-
-  /** Tramos com faturamento no GW Jacobina (Financeiro). */
-  tramosFaturamento: FinFatGwjaco[];
-
-  /** Matriz de Autonomia de Kits por Tramo (idêntica à planilha de fábrica). */
+  /** Matriz de Autonomia de Kits por Tramo (idêntica à planilha de fábrica) — só manual. */
   matrizAutonomia: MatrizAutonomiaResultado;
-  salvarCelulaMatriz: (params: { torreNumero: number; tramo: Tramo; subkit: string; status: number; serie?: string | null }) => Promise<void>;
+  /** `updated_at` mais recente entre as células gravadas manualmente, para o selo "Atualizado em". */
+  ultimaEdicaoMatriz: string | null;
+  salvarCelulaMatriz: (params: {
+    torreNumero: number;
+    tramo: Tramo;
+    subkit: string;
+    status: number;
+    serie?: string | null;
+    usuario?: { id?: string | null; nome: string } | null;
+  }) => Promise<void>;
   salvarPlanejamentoTorre: (params: { torreNumero: number; semana?: string | null; dataAlvo?: string | null }) => Promise<void>;
 }
 
@@ -127,15 +126,13 @@ export function useDadosProjetos(): DadosProjetos {
   const [sobressalentes, setSobressalentes] = useState<ProjSobressalente[]>([]);
   const [matrizBanco, setMatrizBanco] = useState<ProjMatrizAutonomiaKitRow[]>([]);
   const [planejamentosBanco, setPlanejamentosBanco] = useState<ProjTorrePlanejamentoRow[]>([]);
-  const [tramosExpedicao, setTramosExpedicao] = useState<TramoExpedicaoRegistro[]>([]);
-  const [tramosFaturamento, setTramosFaturamento] = useState<FinFatGwjaco[]>([]);
   const [subprojetoId, setSubprojetoId] = useState<string>('SP01');
 
   const recarregar = useCallback(async (silencioso = false) => {
     if (!silencioso) setLoading(true);
     setErro(null);
     try {
-      const [b, i, s, sp, t, n, o, k, e, so, mb, pb, exp, fat] = await Promise.all([
+      const [b, i, s, sp, t, n, o, k, e, so, mb, pb] = await Promise.all([
         listarBom(),
         listarItens(),
         listarSaldos(),
@@ -148,13 +145,10 @@ export function useDadosProjetos(): DadosProjetos {
         listarSobressalentes(),
         listarMatrizAutonomia(subprojetoId),
         listarPlanejamentoTorres(subprojetoId),
-        listarTramosExpedidosPortaria(),
-        listarFaturamentoGwjaco().catch(() => []),
       ]);
       setBom(b); setItens(i); setSaldos(s); setSubprojetos(sp); setTramos(t);
       setNotas(n); setOrdens(o); setKits(k); setEntregas(e); setSobressalentes(so);
-      setMatrizBanco(mb); setPlanejamentosBanco(pb); setTramosExpedicao(exp);
-      setTramosFaturamento(fat || []);
+      setMatrizBanco(mb); setPlanejamentosBanco(pb);
       if (sp.length && !sp.some((x) => x.id === subprojetoId)) setSubprojetoId(sp[0].id);
     } catch (err: any) {
       console.error('Falha ao carregar o módulo Projetos:', err);
@@ -238,14 +232,27 @@ export function useDadosProjetos(): DadosProjetos {
       torresTotais: subprojetoAtivo?.torres_previstas ?? 23,
       registrosBanco: matrizBanco,
       planejamentosBanco,
-      tramosFisicos: tramos,
-      tramosExpedicao,
-      tramosFaturamento,
     });
-  }, [arvore, saldoPorPn, subprojetoAtivo, matrizBanco, planejamentosBanco, tramos, tramosExpedicao, tramosFaturamento]);
+  }, [arvore, saldoPorPn, subprojetoAtivo, matrizBanco, planejamentosBanco]);
+
+  const ultimaEdicaoMatriz = useMemo(() => {
+    if (!matrizBanco.length) return null;
+    return matrizBanco.reduce<string | null>((maisRecente, r) => {
+      if (!r.updated_at) return maisRecente;
+      if (!maisRecente || r.updated_at > maisRecente) return r.updated_at;
+      return maisRecente;
+    }, null);
+  }, [matrizBanco]);
 
   const salvarCelulaMatriz = useCallback(
-    async (params: { torreNumero: number; tramo: Tramo; subkit: string; status: number; serie?: string | null }) => {
+    async (params: {
+      torreNumero: number;
+      tramo: Tramo;
+      subkit: string;
+      status: number;
+      serie?: string | null;
+      usuario?: { id?: string | null; nome: string } | null;
+    }) => {
       await salvarCelulaMatrizApi({
         subprojeto_id: subprojetoAtivo?.id ?? 'SP01',
         torre_numero: params.torreNumero,
@@ -253,6 +260,7 @@ export function useDadosProjetos(): DadosProjetos {
         subkit: params.subkit,
         status: params.status,
         serie: params.serie,
+        usuario: params.usuario,
       });
       await recarregar(true);
     },
@@ -279,8 +287,7 @@ export function useDadosProjetos(): DadosProjetos {
     notas, ordens, kits, entregas, sobressalentes,
     consumo, autonomia, rateio, projecao,
     kitsProntosPorTramo, tramosDoSubprojeto,
-    tramosExpedicao, tramosFaturamento,
-    matrizAutonomia, salvarCelulaMatriz, salvarPlanejamentoTorre,
+    matrizAutonomia, ultimaEdicaoMatriz, salvarCelulaMatriz, salvarPlanejamentoTorre,
   };
 }
 

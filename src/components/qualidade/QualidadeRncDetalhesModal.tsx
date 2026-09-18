@@ -6,7 +6,7 @@
  * anexos, plano de ação e exportação do relatório individual em PDF.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileDown, Paperclip, Trash2, RotateCcw, Loader2, Info, ListChecks,
 } from 'lucide-react';
@@ -18,6 +18,7 @@ import { useLightbox } from '../ui/Lightbox';
 import { useToast } from '../ui/Toast';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { exportRncPdf } from '../../lib/pdfExport/exportQualidadeRncPdf';
+import { renovarUrlsAnexos } from '../../lib/qualidadeApi';
 import QualidadePlanoAcaoEditor from './QualidadePlanoAcaoEditor';
 
 interface QualidadeRncDetalhesModalProps {
@@ -62,6 +63,31 @@ export default function QualidadeRncDetalhesModal({
   const podeEditar = podeEditarFormulario(user, { criado_por: rncAtual.criado_por });
   const fotos = rncAtual.anexos.filter((a) => a.mime_type.startsWith('image/'));
   const documentos = rncAtual.anexos.filter((a) => !a.mime_type.startsWith('image/'));
+
+  // A URL assinada do Storage expira em 24h; renova ao abrir para não mostrar
+  // miniatura quebrada em RNC antiga (a própria linha do banco guarda a URL
+  // assinada no momento do upload, não uma URL pública permanente).
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      const [anexosRenovados, planoRenovado] = await Promise.all([
+        renovarUrlsAnexos(rnc.anexos),
+        Promise.all(
+          (rnc.plano_acao || []).map(async (a) => ({
+            ...a,
+            anexos: await renovarUrlsAnexos(a.anexos),
+          }))
+        ),
+      ]);
+      if (ativo) {
+        setRncAtual((prev) => ({ ...prev, anexos: anexosRenovados, plano_acao: planoRenovado }));
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rnc.id]);
 
   const handleExportar = async () => {
     setExportando(true);

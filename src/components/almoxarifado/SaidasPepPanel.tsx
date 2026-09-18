@@ -12,7 +12,7 @@ import React, { useState, useMemo } from 'react';
 import {
   FolderTree, Search, FileSpreadsheet, Layers, Building2,
   TrendingDown, CheckCircle2, AlertTriangle, ArrowUpDown, ChevronRight,
-  ChevronDown, ExternalLink, Package, Filter,
+  ChevronDown, ExternalLink, Package, Filter, CalendarRange,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
@@ -21,10 +21,12 @@ import * as XLSX from 'xlsx';
 import type { MB51Classificado, FinPep } from '../../types';
 import { formatBRL, formatBRLCompacto, formatQtd } from '../../lib/almoxarifado';
 import { formatDateBR, formatInt, formatPct } from '../../lib/format';
-import { useChartConfig } from '../charts/chartDefaults';
+import { bucketDate, Granularidade } from '../../lib/demandas';
+import { useChartConfig, estimateCategoryChartWidth } from '../charts/chartDefaults';
 import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 import KpiCard from '../charts/KpiCard';
+import Modal, { ModalHeader, ModalBody } from '../ui/Modal';
 import {
   TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableEmpty,
 } from '../ui/DataTable';
@@ -48,6 +50,78 @@ export interface AgregadoSaidaPep {
   movimentos: MB51Classificado[];
 }
 
+/** Agrupa uma lista de movimentos de saída por Elemento PEP. Reaproveitado
+ * tanto no agregado geral do painel quanto no drill-down por período. */
+function construirAgregadosPep(lista: MB51Classificado[], pepMap: Map<string, FinPep>): AgregadoSaidaPep[] {
+  const mapa = new Map<string, AgregadoSaidaPep>();
+
+  lista.forEach(m => {
+    const rawPep = m.elemento_pep?.trim() || '';
+    const wbsChave = rawPep || 'SEM_PEP';
+
+    const cadastroPep = rawPep ? pepMap.get(rawPep) : undefined;
+    const nomePep = m.pep_nome || cadastroPep?.nome || (wbsChave === 'SEM_PEP' ? 'Saída sem Elemento PEP informado' : 'PEP não cadastrado');
+    const projeto = m.pep_projeto || cadastroPep?.definicao_projeto || (wbsChave === 'SEM_PEP' ? '—' : 'Outros');
+    const nivel = m.pep_nivel != null ? m.pep_nivel : (cadastroPep?.nivel ?? null);
+
+    let item = mapa.get(wbsChave);
+    if (!item) {
+      item = {
+        wbs: wbsChave,
+        nome: nomePep,
+        projeto,
+        nivel,
+        valorTotal: 0,
+        qtdTotal: 0,
+        totalMovimentos: 0,
+        materiaisDistintos: 0,
+        materiaisLista: [],
+        movimentos: [],
+      };
+      mapa.set(wbsChave, item);
+    }
+
+    const valor = Math.abs(m.montante_mi || 0);
+    const qtd = Math.abs(m.qtd_um_registro || 0);
+    item.valorTotal += valor;
+    item.qtdTotal += qtd;
+    item.totalMovimentos += 1;
+    item.movimentos.push(m);
+
+    // Agrupa materiais deste PEP
+    const matCod = m.material || '—';
+    const matExistente = item.materiaisLista.find(mat => mat.material === matCod);
+    if (matExistente) {
+      matExistente.qtd += qtd;
+      matExistente.valor += valor;
+    } else {
+      item.materiaisLista.push({
+        material: matCod,
+        texto: m.texto_breve_material || 'Sem descrição',
+        qtd,
+        valor,
+      });
+    }
+  });
+
+  // Ordena a lista interna de materiais de cada PEP pelo valor decrescente
+  mapa.forEach(item => {
+    item.materiaisDistintos = item.materiaisLista.length;
+    item.materiaisLista.sort((a, b) => b.valor - a.valor);
+  });
+
+  return Array.from(mapa.values());
+}
+
+interface PontoSerieTemporal {
+  key: string;
+  label: string;
+  rangeLabel?: string;
+  valor: number;
+  qtd: number;
+  movimentos: number;
+}
+
 export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanelProps) {
   const c = useChartConfig();
   const [pesquisa, setPesquisa] = useState('');
@@ -55,6 +129,9 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
   const [apenasComPep, setApenasComPep] = useState<'todos' | 'com_pep' | 'sem_pep'>('todos');
   const [pepSelecionado, setPepSelecionado] = useState<string | null>(null);
   const [linhaExpandida, setLinhaExpandida] = useState<string | null>(null);
+  const [granularidadeSerie, setGranularidadeSerie] = useState<Extract<Granularidade, 'semana' | 'mes'>>('semana');
+  const [periodoModal, setPeriodoModal] = useState<PontoSerieTemporal | null>(null);
+  const [linhaExpandidaModal, setLinhaExpandidaModal] = useState<string | null>(null);
 
   // Ordenação
   const [sortCol, setSortCol] = useState<'valor' | 'movimentos' | 'materiais' | 'wbs' | 'nome'>('valor');
@@ -74,66 +151,41 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
   }, [movs]);
 
   // Agrupamento por Elemento PEP
-  const agregadosPorPep = useMemo(() => {
-    const mapa = new Map<string, AgregadoSaidaPep>();
+  const agregadosPorPep = useMemo(
+    () => construirAgregadosPep(saidasBrutas, pepMap),
+    [saidasBrutas, pepMap]
+  );
 
+  // Série temporal (semana ou mês) do valor total de saídas, para o gráfico
+  // de evolução. Usa a mesma `bucketDate` dos painéis de Suprimentos, para as
+  // semanas/meses coincidirem entre telas.
+  const serieTemporal = useMemo<PontoSerieTemporal[]>(() => {
+    const buckets = new Map<string, PontoSerieTemporal>();
     saidasBrutas.forEach(m => {
-      const rawPep = m.elemento_pep?.trim() || '';
-      const wbsChave = rawPep || 'SEM_PEP';
-
-      const cadastroPep = rawPep ? pepMap.get(rawPep) : undefined;
-      const nomePep = m.pep_nome || cadastroPep?.nome || (wbsChave === 'SEM_PEP' ? 'Saída sem Elemento PEP informado' : 'PEP não cadastrado');
-      const projeto = m.pep_projeto || cadastroPep?.definicao_projeto || (wbsChave === 'SEM_PEP' ? '—' : 'Outros');
-      const nivel = m.pep_nivel != null ? m.pep_nivel : (cadastroPep?.nivel ?? null);
-
-      let item = mapa.get(wbsChave);
+      const b = bucketDate(m.data_lancamento, granularidadeSerie);
+      if (!b) return;
+      let item = buckets.get(b.key);
       if (!item) {
-        item = {
-          wbs: wbsChave,
-          nome: nomePep,
-          projeto,
-          nivel,
-          valorTotal: 0,
-          qtdTotal: 0,
-          totalMovimentos: 0,
-          materiaisDistintos: 0,
-          materiaisLista: [],
-          movimentos: [],
-        };
-        mapa.set(wbsChave, item);
+        item = { key: b.key, label: b.label, rangeLabel: b.rangeLabel, valor: 0, qtd: 0, movimentos: 0 };
+        buckets.set(b.key, item);
       }
-
-      const valor = Math.abs(m.montante_mi || 0);
-      const qtd = Math.abs(m.qtd_um_registro || 0);
-      item.valorTotal += valor;
-      item.qtdTotal += qtd;
-      item.totalMovimentos += 1;
-      item.movimentos.push(m);
-
-      // Agrupa materiais deste PEP
-      const matCod = m.material || '—';
-      const matExistente = item.materiaisLista.find(mat => mat.material === matCod);
-      if (matExistente) {
-        matExistente.qtd += qtd;
-        matExistente.valor += valor;
-      } else {
-        item.materiaisLista.push({
-          material: matCod,
-          texto: m.texto_breve_material || 'Sem descrição',
-          qtd,
-          valor,
-        });
-      }
+      item.valor += Math.abs(m.montante_mi || 0);
+      item.qtd += Math.abs(m.qtd_um_registro || 0);
+      item.movimentos += 1;
     });
+    return Array.from(buckets.values()).sort((a, b) => a.key.localeCompare(b.key));
+  }, [saidasBrutas, granularidadeSerie]);
 
-    // Ordena a lista interna de materiais de cada PEP pelo valor decrescente
-    mapa.forEach(item => {
-      item.materiaisDistintos = item.materiaisLista.length;
-      item.materiaisLista.sort((a, b) => b.valor - a.valor);
-    });
-
-    return Array.from(mapa.values());
-  }, [saidasBrutas, pepMap]);
+  // Detalhamento por PEP do período clicado no gráfico de evolução —
+  // classificado por WBS Element, como pedido no drill-down.
+  const agregadosPeriodoModal = useMemo(() => {
+    if (!periodoModal) return [];
+    const movsDoPeriodo = saidasBrutas.filter(
+      m => bucketDate(m.data_lancamento, granularidadeSerie)?.key === periodoModal.key
+    );
+    return construirAgregadosPep(movsDoPeriodo, pepMap)
+      .sort((a, b) => a.wbs.localeCompare(b.wbs, 'pt-BR'));
+  }, [saidasBrutas, periodoModal, granularidadeSerie, pepMap]);
 
   // Lista de Projetos únicos para filtro
   const projetosDisponiveis = useMemo(() => {
@@ -296,6 +348,22 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
     );
   }
 
+  function TooltipSerieTemporal({ active, payload }: any) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0].payload as PontoSerieTemporal;
+    return (
+      <ChartTooltip
+        title={row.label}
+        subtitle={row.rangeLabel}
+        rows={[
+          { label: 'Valor das Saídas', value: formatBRL(row.valor) },
+          { label: 'Movimentações', value: formatInt(row.movimentos) },
+        ]}
+        footer="Clique na barra para ver o detalhamento por PEP"
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 select-text">
       {/* KPIs Superiores */}
@@ -334,6 +402,67 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
           emphasize
         />
       </div>
+
+      {/* Gráfico de Evolução das Saídas (Semana/Mês) */}
+      <ChartCard
+        title={`Evolução das Saídas de Estoque por ${granularidadeSerie === 'semana' ? 'Semana' : 'Mês'}`}
+        icon={CalendarRange}
+        description="Soma do valor de saídas no período. Clique numa barra para abrir o detalhamento por Elemento PEP daquele período."
+        height={280}
+        minPlotWidth={estimateCategoryChartWidth(serieTemporal.length, 56, 480)}
+        empty={serieTemporal.length === 0}
+        emptyMessage="Nenhuma saída no período selecionado."
+        actions={
+          <div
+            className="flex items-center gap-1 rounded-lg border p-0.5"
+            style={{ borderColor: 'var(--hairline)' }}
+            role="group"
+            aria-label="Granularidade da série temporal"
+          >
+            {(['semana', 'mes'] as const).map(g => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGranularidadeSerie(g)}
+                aria-pressed={granularidadeSerie === g}
+                className="px-3 py-1 text-xs font-medium rounded-md transition-colors duration-150 cursor-pointer"
+                style={
+                  granularidadeSerie === g
+                    ? { background: 'var(--brand)', color: '#ffffff' }
+                    : { color: 'var(--ink-muted)' }
+                }
+              >
+                {g === 'semana' ? 'Semana' : 'Mês'}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={serieTemporal} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid {...c.grid} />
+            <XAxis dataKey="label" {...c.xAxis} />
+            <YAxis tickFormatter={formatBRLCompacto} {...c.yAxis} width={56} />
+            <Tooltip content={<TooltipSerieTemporal />} cursor={c.cursor} />
+            <Bar
+              dataKey="valor"
+              name="Valor das Saídas"
+              fill="var(--brand)"
+              radius={c.radius.top}
+              onClick={(data: any) => { setPeriodoModal(data?.payload ?? null); setLinhaExpandidaModal(null); }}
+              className="cursor-pointer hover:opacity-85 transition-opacity"
+              {...c.animation}
+            >
+              <LabelList
+                dataKey="valor"
+                position="top"
+                formatter={(val: any) => formatBRLCompacto(Number(val) || 0)}
+                style={{ ...c.labelOnSurface, fontSize: 10 }}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
 
       {/* Gráfico Top PEPs */}
       {top10ChartData.length > 0 && (
@@ -569,6 +698,102 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
             </table>
           </TableShell>
         </div>
+      )}
+
+      {/* Modal de detalhamento por PEP do período clicado no gráfico de evolução */}
+      {periodoModal && (
+        <Modal onClose={() => setPeriodoModal(null)} maxWidth="max-w-3xl" ariaLabel="Saídas por PEP no período">
+          <ModalHeader onClose={() => setPeriodoModal(null)}>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>
+              Saídas por Elemento PEP — {periodoModal.label}
+              {periodoModal.rangeLabel ? ` (${periodoModal.rangeLabel})` : ''}
+            </h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+              {formatInt(periodoModal.movimentos)} lançamentos · {formatBRL(periodoModal.valor)} no período, classificado por WBS Element — clique numa linha para ver os itens
+            </p>
+          </ModalHeader>
+          <ModalBody>
+            {agregadosPeriodoModal.length === 0 ? (
+              <TableEmpty
+                icon={FolderTree}
+                title="Nenhuma saída com PEP neste período"
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="p-2 w-6"></th>
+                      <th className="p-2 text-left">WBS Element</th>
+                      <th className="p-2 text-left">Descrição do PEP</th>
+                      <th className="p-2 text-left">Projeto</th>
+                      <th className="p-2 text-right">Lançamentos</th>
+                      <th className="p-2 text-right">Valor Total (R$)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {agregadosPeriodoModal.map(p => {
+                      const expandida = linhaExpandidaModal === p.wbs;
+                      return (
+                        <React.Fragment key={p.wbs}>
+                          <tr
+                            onClick={() => setLinhaExpandidaModal(expandida ? null : p.wbs)}
+                            className={`cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-900/40 ${expandida ? 'bg-slate-50/80 dark:bg-slate-800/40' : ''}`}
+                          >
+                            <td className="p-2 text-slate-400">
+                              {expandida ? <ChevronDown className="h-3.5 w-3.5 text-emerald-600" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </td>
+                            <td className="p-2 font-mono font-bold whitespace-nowrap">
+                              {p.wbs === 'SEM_PEP' ? (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px]">SEM PEP</span>
+                              ) : (
+                                <span className="text-emerald-700 dark:text-emerald-400">{p.wbs}</span>
+                              )}
+                            </td>
+                            <td className="p-2 text-slate-700 dark:text-slate-300">{p.nome}</td>
+                            <td className="p-2 font-mono text-slate-600 dark:text-slate-400">{p.projeto}</td>
+                            <td className="p-2 text-right font-mono">{formatInt(p.totalMovimentos)}</td>
+                            <td className="p-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatBRL(p.valorTotal)}</td>
+                          </tr>
+                          {expandida && (
+                            <tr>
+                              <td colSpan={6} className="p-0 border-b" style={{ borderColor: 'var(--hairline)' }}>
+                                <div className="p-3 bg-slate-50/70 dark:bg-slate-900/60 border-l-4 border-emerald-500">
+                                  <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-slate-100 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                                        <tr>
+                                          <th className="p-2 text-left">Código Material</th>
+                                          <th className="p-2 text-left">Descrição do Material</th>
+                                          <th className="p-2 text-right">Qtd Total Saída</th>
+                                          <th className="p-2 text-right">Valor Total (R$)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {p.materiaisLista.map((mat, idx) => (
+                                          <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
+                                            <td className="p-2 font-mono font-bold text-slate-800 dark:text-slate-200">{mat.material}</td>
+                                            <td className="p-2 text-slate-700 dark:text-slate-300">{mat.texto}</td>
+                                            <td className="p-2 text-right font-mono">{formatQtd(mat.qtd)}</td>
+                                            <td className="p-2 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatBRL(mat.valor)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </ModalBody>
+        </Modal>
       )}
     </div>
   );

@@ -31,6 +31,7 @@ const GROUP_HOME: Record<string, { path: string; base: string; apenasHub?: boole
   'SUPRIMENTOS': { path: '/suprimentos', base: '/suprimentos' },
   'ALMOXARIFADO': { path: '/almoxarifado', base: '/almoxarifado' },
   'PRODUÇÃO': { path: '/producao', base: '/producao' },
+  'QUALIDADE': { path: '/qualidade', base: '/qualidade' },
   'FACILITIES': { path: '/facilities', base: '/facilities' },
   'RH': { path: '/rh', base: '/rh', apenasHub: true },
   'FINANCEIRO': { path: '/financeiro', base: '/financeiro' },

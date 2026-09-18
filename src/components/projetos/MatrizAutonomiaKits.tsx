@@ -10,16 +10,20 @@
  *   - Cores de status:
  *       0: Não atende (Vermelho)
  *       1: Estoque (Verde)
- *       3: OK Pátio (Azul) - kits pagos da pré-montagem para a produção
- *       4: Expedido (Laranja) - tramo expedido com série física
+ *       3: Montagem final (Azul) - marcado manualmente
+ *       4: Expedido (Preto) - marcado manualmente
  *   - Rodapé com semanas de planejamento (W36, W37...).
  *   - Vínculo direto com saldo do almoxarifado e explosão da BOM.
+ *
+ * Os status 3 e 4 são só manuais (sem vínculo com Faturamento ou Portaria) —
+ * toda gravação passa pela RPC `proj_matriz_salvar_celula`, que grava o diff
+ * em `proj_matriz_autonomia_log` (botão "Log de alterações" abaixo).
  */
 
 import React, { useMemo, useState } from 'react';
 import {
-  Calendar, Check, ChevronLeft, ChevronRight, Edit2, ExternalLink,
-  Eye, Info, Layers, RefreshCw, X,
+  Calendar, Check, ChevronLeft, ChevronRight, Clock, Edit2, ExternalLink,
+  Eye, History, Layers,
 } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
@@ -34,17 +38,26 @@ import {
   type StatusKitAutonomia,
   type SubkitId,
 } from '../../lib/projetosKitsAutonomia';
+import { listarLogMatrizAutonomia, type ProjMatrizAutonomiaLogRow } from '../../lib/projetosApi';
+import { formatDateTimeBR } from '../../lib/format';
 import { Tramo, TRAMOS } from '../../lib/projetos';
+import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
 interface Props {
   dados: DadosProjetos;
+  user: Profile;
 }
 
-export default function MatrizAutonomiaKits({ dados }: Props) {
+export default function MatrizAutonomiaKits({ dados, user }: Props) {
   const toast = useToast();
-  const { matrizAutonomia, salvarCelulaMatriz, salvarPlanejamentoTorre, loading, recarregar } = dados;
+  const {
+    matrizAutonomia, ultimaEdicaoMatriz, salvarCelulaMatriz, salvarPlanejamentoTorre,
+    loading, recarregar, subprojetoAtivo,
+  } = dados;
   const { celulas, composicoes, semanasPorTorre, torresDisponiveis } = matrizAutonomia;
+
+  const [logAberto, setLogAberto] = useState(false);
 
   // Filtro de janela de torres (padrão 1 a 12 como na imagem do usuário)
   const [paginaTorres, setPaginaTorres] = useState<number>(0);
@@ -81,8 +94,8 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
 
   const confirmarSalvarCelula = async () => {
     if (!celulaSelecionada) return;
-    if (editStatus === 5 && !editSerie.trim()) {
-      toast.error('Para marcar como Saída Portaria (5), informe o número de série do tramo.');
+    if (editStatus === 4 && !editSerie.trim()) {
+      toast.error('Para marcar como Expedido (4), informe o número de série do tramo.');
       return;
     }
     setSalvandoCelula(true);
@@ -93,6 +106,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
         subkit: celulaSelecionada.subkit,
         status: editStatus,
         serie: editSerie.trim() || null,
+        usuario: { id: user.id, nome: user.name },
       });
       toast.success(`Célula T${celulaSelecionada.tramo} Torre ${celulaSelecionada.torreNumero} atualizada.`);
       setCelulaSelecionada(null);
@@ -140,12 +154,28 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
               </h3>
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--ink-muted)' }}>
-              Cruzamento por torre vinculando o estoque físico do almoxarifado à BOM dos kits, destacando pátio, expedição e saída da portaria.
+              Cruzamento por torre vinculando o estoque físico do almoxarifado à BOM dos kits, destacando montagem final e expedido. Os dois são marcados à mão pelo Almoxarifado.
             </p>
+            <div className="flex items-center gap-1.5 mt-1.5 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+              <Clock className="h-3 w-3" />
+              <span>
+                Atualizado em: {ultimaEdicaoMatriz ? formatDateTimeBR(ultimaEdicaoMatriz) : 'sem edições manuais ainda'}
+              </span>
+            </div>
           </div>
 
           {/* Controles de Paginação de Torres no Topo */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setLogAberto(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+              title="Ver histórico de alterações manuais da matriz"
+            >
+              <History className="h-3.5 w-3.5" />
+              Log de alterações
+            </button>
+            <span className="w-px h-5 shrink-0" style={{ background: 'var(--hairline)' }} />
             <span className="text-xs font-bold" style={{ color: 'var(--ink-muted)' }}>Exibir:</span>
             <button
               onClick={() => { setTorresPorPagina(12); setPaginaTorres(0); }}
@@ -303,7 +333,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                                 color: cor.text,
                                 border: `1px solid ${cor.border}`,
                               }}
-                              title={`Torre ${torreNum} · ${tramo} ${SUBKITS[subkitId].rotulo}\nStatus: ${ROTULO_STATUS_AUTONOMIA[celula.status]}${celula.serie ? ` · Série: ${celula.serie}` : ''}${celula.origemExpedicao ? ' · Saída Portaria lançada no formulário de Logística e Expedição' : ''}\nClique para editar ou ver detalhes.`}
+                              title={`Torre ${torreNum} · ${tramo} ${SUBKITS[subkitId].rotulo}\nStatus: ${ROTULO_STATUS_AUTONOMIA[celula.status]}${celula.serie ? ` · Série: ${celula.serie}` : ''}\nClique para editar ou ver detalhes.`}
                             >
                               {temTexto ? (
                                 <span className="tabular-nums tracking-tight">{celula.serie}</span>
@@ -401,7 +431,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
             </span>
           </div>
 
-          {/* Legenda com as 5 cores (incluindo preto para saída da portaria) */}
+          {/* Legenda com as 4 cores */}
           <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[0].bg }}>
               <span className="opacity-90">0</span>
@@ -415,34 +445,24 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
               <span className="opacity-90">3</span>
               <span>{ROTULO_STATUS_AUTONOMIA[3]}</span>
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs" style={{ background: COR_STATUS_AUTONOMIA[4].bg }}>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[4].bg }}>
               <span className="opacity-90">4</span>
               <span>{ROTULO_STATUS_AUTONOMIA[4]}</span>
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-white font-extrabold shadow-xs border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[5].bg }}>
-              <span className="opacity-90">5</span>
-              <span>{ROTULO_STATUS_AUTONOMIA[5]}</span>
-            </div>
           </div>
 
-          {/* Notas explicativas sobre Pátio, Expedido e Portaria */}
-          <div className="mt-2 pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]" style={{ borderColor: 'var(--hairline)' }}>
+          {/* Notas explicativas sobre Montagem final e Expedido — marcados à mão */}
+          <div className="mt-2 pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px]" style={{ borderColor: 'var(--hairline)' }}>
             <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
               <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5" style={{ background: COR_STATUS_AUTONOMIA[3].bg }} />
               <span>
-                <strong>Pátio (3):</strong> kits pagos da pré-montagem para a produção.
+                <strong>Montagem final (3):</strong> marcado manualmente pelo Almoxarifado.
               </span>
             </div>
             <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
-              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5" style={{ background: COR_STATUS_AUTONOMIA[4].bg }} />
+              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5 border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[4].bg }} />
               <span>
-                <strong>Faturado (4):</strong> tramos que foram faturados no gwjaco.
-              </span>
-            </div>
-            <div className="flex items-start gap-1.5" style={{ color: 'var(--ink-secondary)' }}>
-              <span className="inline-block w-2.5 h-2.5 rounded-xs shrink-0 mt-0.5 border border-zinc-700" style={{ background: COR_STATUS_AUTONOMIA[5].bg }} />
-              <span>
-                <strong>Saída Portaria (5):</strong> tramos que já saíram da portaria (sincronizado automaticamente pelo número do tramo lançado no formulário de Logística e Expedição).
+                <strong>Expedido (4):</strong> marcado manualmente pelo Almoxarifado.
               </span>
             </div>
           </div>
@@ -467,21 +487,12 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
 
           <ModalBody>
             <div className="space-y-4">
-              {celulaSelecionada.origemExpedicao && (
-                <div className="p-2.5 rounded-lg bg-zinc-900 text-white text-[11px] flex items-center gap-2 font-medium shadow-xs">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
-                  <span>
-                    Status vinculado automaticamente pelo lançamento do Tramo <strong>Nº {celulaSelecionada.serie}</strong> no formulário de Logística e Expedição.
-                  </span>
-                </div>
-              )}
-
               <div>
                 <label className="block text-xs font-bold mb-1.5" style={{ color: 'var(--ink-muted)' }}>
                   Status Operacional
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {([0, 1, 3, 4, 5] as StatusKitAutonomia[]).map((st) => {
+                  {([0, 1, 3, 4] as StatusKitAutonomia[]).map((st) => {
                     const ativo = editStatus === st;
                     const cor = COR_STATUS_AUTONOMIA[st];
                     return (
@@ -521,7 +532,7 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
                   }}
                 />
                 <p className="text-[11px] mt-1" style={{ color: 'var(--ink-muted)' }}>
-                  Geralmente preenchido quando o status é 4 (Faturado), 5 (Saída Portaria) ou 3 (Pátio).
+                  Geralmente preenchido quando o status é 4 (Expedido) ou 3 (Montagem final).
                 </p>
               </div>
 
@@ -573,6 +584,85 @@ export default function MatrizAutonomiaKits({ dados }: Props) {
           onClose={() => setComposicaoAberta(null)}
         />
       )}
+
+      {/* Modal de Log de Alterações Manuais */}
+      {logAberto && (
+        <Modal onClose={() => setLogAberto(false)} maxWidth="max-w-lg" ariaLabel="Log de alterações da Matriz de Autonomia">
+          <ModalHeader onClose={() => setLogAberto(false)}>
+            <h3 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+              Log de alterações
+            </h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+              Toda mudança manual de status ou série nesta matriz, mais recente primeiro.
+            </p>
+          </ModalHeader>
+          <ModalBody>
+            <LogMatrizAlteracoes subprojetoId={subprojetoAtivo?.id ?? 'SP01'} />
+          </ModalBody>
+        </Modal>
+      )}
     </div>
+  );
+}
+
+const ROTULO_CAMPO_LOG: Record<string, string> = {
+  status: 'Status',
+  serie: 'Série',
+};
+
+function fmtValorLog(campo: string, v: string | null): string {
+  if (!v) return '∅';
+  if (campo === 'status') {
+    const status = Number(v) as StatusKitAutonomia;
+    return ROTULO_STATUS_AUTONOMIA[status] ?? v;
+  }
+  return v;
+}
+
+/** Log de alterações manuais da Matriz de Autonomia — mais recente primeiro. */
+function LogMatrizAlteracoes({ subprojetoId }: { subprojetoId: string }) {
+  const [linhas, setLinhas] = useState<ProjMatrizAutonomiaLogRow[] | null>(null);
+
+  React.useEffect(() => {
+    listarLogMatrizAutonomia(subprojetoId).then(setLinhas).catch(() => setLinhas([]));
+  }, [subprojetoId]);
+
+  if (linhas === null) {
+    return <div className="h-16 animate-pulse rounded-lg" style={{ background: 'var(--surface-sunken)' }} />;
+  }
+
+  if (linhas.length === 0) {
+    return (
+      <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+        Nenhuma alteração manual registrada ainda.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+      {linhas.map((l) => (
+        <li key={l.id} className="rounded-lg border p-2.5" style={{ borderColor: 'var(--hairline)' }}>
+          <div className="flex items-center justify-between text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            <span className="font-bold" style={{ color: 'var(--ink-secondary)' }}>
+              Torre {l.torre_numero} · {l.tramo} · {SUBKITS[l.subkit as SubkitId]?.rotulo ?? l.subkit}
+            </span>
+            <span>{formatDateTimeBR(l.created_at)}</span>
+          </div>
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+            por <span className="font-bold">{l.alterado_por_nome || '—'}</span>
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {l.alteracoes.map((m, i) => (
+              <li key={i} className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                <span className="font-bold">{ROTULO_CAMPO_LOG[m.campo] ?? m.campo}:</span>{' '}
+                <span style={{ color: 'var(--ink-muted)' }}>{fmtValorLog(m.campo, m.de)}</span> →{' '}
+                <span>{fmtValorLog(m.campo, m.para)}</span>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
   );
 }

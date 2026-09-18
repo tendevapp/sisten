@@ -16,7 +16,7 @@ import { supabase } from '../db/supabaseClient';
 import { Profile, RequestItem, RequestType, RequestStatus, RequestAttachment } from '../types';
 import { formatBRL, formatDateBR } from '../lib/format';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, TIPOS_CONTRATO_JURIDICO, CHAMADO_JURIDICO_ASSINATURA_DOCUMENTO, calcularPrazoSlaJuridico, isJuridicoSector } from '../lib/juridico';
-import { buscarMateriais, resumoSinais, type MaterialResultado, type SinalChip } from '../lib/materiais';
+import { buscarMateriais, resumoSinais, ehCodigoSapInativo, type MaterialResultado, type SinalChip } from '../lib/materiais';
 import { AttachmentPicker, AttachmentGallery } from '../components/ui/Attachments';
 import { SinalChips } from '../components/ui/SinalChips';
 import MaterialSearchModal from '../components/MaterialSearchModal';
@@ -153,6 +153,7 @@ interface PurchaseItemState {
   id: string;
   description: string;
   sap_code: string;
+  status_geral?: string;
   /**
    * Texto técnico do catálogo SAP — vem junto quando o item é selecionado no
    * dropdown de busca ou autopreenchido pelo código. Não é enviado no
@@ -202,7 +203,7 @@ const labelStyle: React.CSSProperties = { color: 'var(--ink-secondary)' };
 
 const itemVazio = (): PurchaseItemState => ({
   id: novoItemId(),
-  description: '', sap_code: '', technical_text: '', quantity: '', unit: '', brand: '',
+  description: '', sap_code: '', status_geral: undefined, technical_text: '', quantity: '', unit: '', brand: '',
   is_similar_allowed: true, is_generic: false, observation: '', reference_link: '',
   suggested_supplier: '', estimated_value: 0,
 });
@@ -255,6 +256,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   const [itemParaRemover, setItemParaRemover] = useState<{ index: number; item: PurchaseItemState } | null>(null);
   const [confirmLimparRascunho, setConfirmLimparRascunho] = useState(false);
   const [confirmSolicitarCadastro, setConfirmSolicitarCadastro] = useState(false);
+  const [confirmItensObsoletosEnvio, setConfirmItensObsoletosEnvio] = useState(false);
   // Depois de criar a solicitação de Cadastro SAP, um aviso segura o fluxo até
   // o usuário confirmar — é ele quem precisa abrir e ENVIAR o e-mail no Outlook
   // (o mailto: não manda sozinho, e sem esse e-mail o setor não recebe a demanda).
@@ -707,6 +709,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         ? itemAtual.description.toUpperCase()
         : mat.description.toUpperCase(),
       sap_code: mat.materialCode,
+      status_geral: mat.statusGeral || undefined,
       unit: mat.unit || itemAtual?.unit || '',
       technical_text: mat.technicalText || '',
       sinais: chips,
@@ -718,6 +721,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     const itemAtual = items[index];
     patchItem(index, {
       sap_code: '',
+      status_geral: undefined,
       description: itemAtual?.is_generic ? itemAtual.description : '',
       unit: '',
       technical_text: '',
@@ -774,9 +778,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     setAdicionandoVarios(true);
     try {
       const novos: PurchaseItemState[] = [];
+      const inativos: string[] = [];
       const naoEncontrados: string[] = [];
 
       for (const codigo of codigos) {
+        if (ehCodigoSapInativo(codigo)) {
+          inativos.push(codigo);
+          continue;
+        }
+
         try {
           const achados = await buscarMateriais(codigo, { limite: 5 });
           const mat = achados.find(m => chaveCodigoSap(m.materialCode) === chaveCodigoSap(codigo)) || null;
@@ -788,6 +798,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             ...itemVazio(),
             description: mat.description.toUpperCase(),
             sap_code: mat.materialCode,
+            status_geral: mat.statusGeral || undefined,
             unit: mat.unit || '',
             technical_text: mat.technicalText || '',
             sinais: resumoSinais(mat),
@@ -807,6 +818,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
         });
       }
 
+      if (inativos.length > 0) {
+        toast.warning(`Códigos inativos no SAP ignorados (iniciam com 9 ou letras): ${inativos.join(', ')}.`);
+      }
+
       if (novos.length > 0 && naoEncontrados.length === 0) {
         toast.success(`${novos.length} ${novos.length === 1 ? 'item adicionado' : 'itens adicionados'}.`);
       } else if (novos.length > 0) {
@@ -814,7 +829,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           `${novos.length} ${novos.length === 1 ? 'item adicionado' : 'itens adicionados'}. ` +
           `Sem correspondência no catálogo: ${naoEncontrados.join(', ')}.`,
         );
-      } else {
+      } else if (inativos.length === 0) {
         toast.error(`Nenhum código foi encontrado no catálogo: ${naoEncontrados.join(', ')}.`);
       }
 
@@ -1161,8 +1176,8 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, confirmarObsoletoPassado = false) => {
+    e?.preventDefault();
 
     // Criticidade é obrigatória em todos os canais — não é um <select>
     // nativo, então o `required` do HTML não cobre; valida antes de montar
@@ -1206,6 +1221,15 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           `Item ${imobPendente + 1}: o código SAP tem 5 dígitos, ou seja, é um item de imobilizado. ` +
           'Confirme que é um item de imobilizado e que a contabilidade já foi avisada antes de enviar.',
         );
+        return;
+      }
+
+      // Material com status obsoleto no SAP (Z1): exige confirmação via janela de alerta
+      const itensObsoletos = items.filter(
+        it => !it.is_generic && it.sap_code && it.status_geral === 'Z1',
+      );
+      if (itensObsoletos.length > 0 && !confirmarObsoletoPassado) {
+        setConfirmItensObsoletosEnvio(true);
         return;
       }
     }
@@ -2007,20 +2031,36 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           /* Item genérico: usa o código SAP do item selecionado e descrição em caixa alta */
                           <div className="space-y-2">
                             {it.sap_code ? (
-                              <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60">
-                                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
-                                  Código SAP vinculado:
-                                </span>
-                                <span className="font-mono font-bold text-xs bg-white dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-700">
-                                  {it.sap_code}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setBuscaModalIndex(index)}
-                                  className="text-[11px] font-bold underline cursor-pointer text-rose-700 hover:text-rose-900 dark:text-rose-300 ml-auto"
-                                >
-                                  Trocar código SAP
-                                </button>
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60">
+                                  <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                                    Código SAP vinculado:
+                                  </span>
+                                  <span className="font-mono font-bold text-xs bg-white dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-700">
+                                    {it.sap_code}
+                                  </span>
+                                  {it.status_geral === 'Z1' && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                      <AlertTriangle className="h-3 w-3 text-amber-700" />
+                                      Z1 · Obsoleto
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setBuscaModalIndex(index)}
+                                    className="text-[11px] font-bold underline cursor-pointer text-rose-700 hover:text-rose-900 dark:text-rose-300 ml-auto"
+                                  >
+                                    Trocar código SAP
+                                  </button>
+                                </div>
+                                {it.status_geral === 'Z1' && (
+                                  <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
+                                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <span className="font-bold">Atenção (Status Z1 - Obsoleto no SAP):</span> Solicitar ativação deste código com o setor Fiscal.
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-rose-50/50 dark:bg-rose-950/30 border border-dashed border-rose-300 dark:border-rose-800">
@@ -2054,29 +2094,46 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                           </div>
                         ) : it.sap_code ? (
                           /* Material escolhido: ficha compacta. */
-                          <div
-                            className="rounded-lg border p-2.5"
-                            style={{ borderColor: 'var(--brand)', background: 'var(--brand-wash)' }}
-                          >
-                            <div className="flex items-start gap-2">
-                              <span
-                                className="font-mono px-1.5 py-0.5 rounded font-bold text-[11px] shrink-0"
-                                style={{ background: 'var(--surface-card)', color: 'var(--ink-secondary)' }}
-                              >
-                                {it.sap_code}
-                              </span>
-                              <p className="flex-1 min-w-0 text-sm font-semibold leading-snug" style={{ color: 'var(--ink-primary)' }}>
-                                {it.description || '—'}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => trocarMaterial(index)}
-                                className="shrink-0 text-[11px] font-bold underline cursor-pointer"
-                                style={{ color: 'var(--brand-strong)' }}
-                              >
-                                Trocar
-                              </button>
+                          <div className="space-y-2">
+                            <div
+                              className="rounded-lg border p-2.5"
+                              style={{ borderColor: 'var(--brand)', background: 'var(--brand-wash)' }}
+                            >
+                              <div className="flex items-start gap-2">
+                                <span
+                                  className="font-mono px-1.5 py-0.5 rounded font-bold text-[11px] shrink-0"
+                                  style={{ background: 'var(--surface-card)', color: 'var(--ink-secondary)' }}
+                                >
+                                  {it.sap_code}
+                                </span>
+                                {it.status_geral === 'Z1' && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shrink-0">
+                                    <AlertTriangle className="h-3 w-3 text-amber-700" />
+                                    Z1 · Obsoleto
+                                  </span>
+                                )}
+                                <p className="flex-1 min-w-0 text-sm font-semibold leading-snug" style={{ color: 'var(--ink-primary)' }}>
+                                  {it.description || '—'}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => trocarMaterial(index)}
+                                  className="shrink-0 text-[11px] font-bold underline cursor-pointer"
+                                  style={{ color: 'var(--brand-strong)' }}
+                                >
+                                  Trocar
+                                </button>
+                              </div>
                             </div>
+
+                            {it.status_geral === 'Z1' && (
+                              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-bold">Atenção (Status Z1 - Obsoleto no SAP):</span> É necessário solicitar a ativação deste código com o setor Fiscal.
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div data-tour="novasol-descricao-busca" className="space-y-2">
@@ -3371,6 +3428,47 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
           variante="perigo"
           onConfirmar={confirmarRemoverItem}
           onCancelar={() => setItemParaRemover(null)}
+        />
+      )}
+
+      {confirmItensObsoletosEnvio && (
+        <ConfirmDialog
+          titulo="Item Obsoleto no SAP (Z1)"
+          confirmarLabel="Sim, enviar solicitação"
+          cancelarLabel="Voltar e revisar"
+          mensagem={
+            <div className="space-y-2 text-xs">
+              <p>
+                A solicitação contém material com status <strong>obsoleto no SAP (Z1)</strong>:
+              </p>
+              <ul className="list-disc pl-4 space-y-1 font-mono text-[11px] text-slate-700 dark:text-slate-200">
+                {items
+                  .filter(it => !it.is_generic && it.status_geral === 'Z1')
+                  .map((it, idx) => (
+                    <li key={idx}>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400">{it.sap_code}</span> — {it.description}
+                    </li>
+                  ))}
+              </ul>
+              <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+                <p className="font-bold mb-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  Atenção: Ativação necessária com o setor Fiscal
+                </p>
+                <p className="leading-relaxed">
+                  Para que a compra deste material seja autorizada e processada, é necessário <strong>solicitar a ativação deste código com o setor Fiscal</strong>.
+                </p>
+              </div>
+              <p className="text-slate-500 dark:text-slate-400">
+                Deseja prosseguir com o envio da solicitação mesmo assim?
+              </p>
+            </div>
+          }
+          onConfirmar={() => {
+            setConfirmItensObsoletosEnvio(false);
+            void handleSubmit(undefined, true);
+          }}
+          onCancelar={() => setConfirmItensObsoletosEnvio(false)}
         />
       )}
     </div>

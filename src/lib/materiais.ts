@@ -61,12 +61,22 @@ export function normalizarTermo(bruto: string): TermoNormalizado {
   return { tipo: 'texto', normalizado, tokens: normalizado.split(' ') };
 }
 
+/**
+ * Verifica se um código de material SAP é considerado inativo no sistema.
+ * Códigos inativos começam com o dígito '9' ou com letras.
+ */
+export function ehCodigoSapInativo(codigo?: string | null): boolean {
+  if (!codigo) return false;
+  return /^[9a-zA-Z]/i.test(codigo.trim());
+}
+
 /** Uma linha do retorno de `buscar_materiais`, já em camelCase. */
 export interface MaterialResultado {
   materialCode: string;
   description: string;
   technicalText: string | null;
   unit: string;
+  statusGeral?: string | null;
   qtdEstoque: number | null;
   depositos: string[] | null;
   rms12m: number | null;
@@ -191,23 +201,26 @@ export async function buscarMateriais(
 
   if (error) throw error;
 
-  const linhas: MaterialResultado[] = (data ?? []).map((l: Record<string, unknown>) => ({
-    materialCode: l.material_code as string,
-    description: l.description as string,
-    technicalText: l.technical_text ? sanitizeTechnicalText(l.technical_text as string) : null,
-    unit: (l.unit as string) ?? 'UN',
-    qtdEstoque: (l.qtd_estoque as number) ?? null,
-    depositos: (l.depositos as string[]) ?? null,
-    rms12m: (l.rms_12m as number) ?? null,
-    ultimaRm: (l.ultima_rm as string) ?? null,
-    rmsSemPedido: (l.rms_sem_pedido as number) ?? null,
-    rmAberta: (l.rm_aberta as string) ?? null,
-    qtdRmAberta: (l.qtd_rm_aberta as number) ?? null,
-    pedidoAberto: (l.pedido_aberto as string) ?? null,
-    qtdPedidoAberto: (l.qtd_pedido_aberto as number) ?? null,
-    chegaEm: (l.chega_em as string) ?? null,
-    pedidoPelaArea: Boolean(l.pedido_pela_area),
-  }));
+  const linhas: MaterialResultado[] = (data ?? [])
+    .map((l: Record<string, unknown>) => ({
+      materialCode: l.material_code as string,
+      description: l.description as string,
+      technicalText: l.technical_text ? sanitizeTechnicalText(l.technical_text as string) : null,
+      unit: (l.unit as string) ?? 'UN',
+      statusGeral: (l.status_geral as string) || null,
+      qtdEstoque: (l.qtd_estoque as number) ?? null,
+      depositos: (l.depositos as string[]) ?? null,
+      rms12m: (l.rms_12m as number) ?? null,
+      ultimaRm: (l.ultima_rm as string) ?? null,
+      rmsSemPedido: (l.rms_sem_pedido as number) ?? null,
+      rmAberta: (l.rm_aberta as string) ?? null,
+      qtdRmAberta: (l.qtd_rm_aberta as number) ?? null,
+      pedidoAberto: (l.pedido_aberto as string) ?? null,
+      qtdPedidoAberto: (l.qtd_pedido_aberto as number) ?? null,
+      chegaEm: (l.chega_em as string) ?? null,
+      pedidoPelaArea: Boolean(l.pedido_pela_area),
+    }))
+    .filter(m => !ehCodigoSapInativo(m.materialCode));
 
   if (cache.size >= TETO_CACHE) {
     const maisAntiga = cache.keys().next().value;

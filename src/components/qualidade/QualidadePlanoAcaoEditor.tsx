@@ -252,7 +252,6 @@ export default function QualidadePlanoAcaoEditor({
                   Anexar evidência
                   <input
                     type="file"
-                    accept="image/*,application/pdf"
                     className="hidden"
                     onChange={(e) => {
                       anexarArquivo(a.id, e.target.files?.[0] || null);

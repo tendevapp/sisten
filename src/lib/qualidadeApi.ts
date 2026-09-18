@@ -15,12 +15,21 @@ import type {
   QuaPlanoAcaoAtividade,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado } from './softDelete';
-import { prepareAttachment } from './imageCompression';
+import { comprimirImagemUpload } from './imageCompression';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
 import { buscarHistoricoCampoPortaria } from './portariaApi';
 
 const BUCKET = 'qua-rnc-evidencias';
 const PREFIXO = 'RNC';
+
+/**
+ * Anexo de RNC aceita qualquer tipo de arquivo (foto, PDF de boletim/RFI,
+ * planilha de medição, ZIP de evidências etc.) — diferente do
+ * `prepareAttachment` genérico do app, que só aceita imagem ou PDF. Só a
+ * imagem passa por compressão (regra 1 do CLAUDE.md); os demais tipos sobem
+ * como estão, com um teto de tamanho generoso para não travar o navegador.
+ */
+export const TAMANHO_MAXIMO_ANEXO_RNC = 25 * 1024 * 1024;
 
 // `qua_rnc` ainda não existe em `database.types.ts` (gerado pelo Supabase CLI
 // a partir do schema remoto) até a migration ser aplicada — mesmo cast usado
@@ -213,13 +222,20 @@ export async function restaurarRnc(id: string): Promise<void> {
 // =====================================================================
 
 export async function uploadAnexoRnc(rncId: string, file: File, pasta = 'rnc'): Promise<QuaRncAnexo> {
-  const preparado = await prepareAttachment(file);
+  if (file.size > TAMANHO_MAXIMO_ANEXO_RNC) {
+    throw new Error('Arquivo acima de 25 MB. Reduza o tamanho antes de anexar.');
+  }
+
+  const ehImagem = file.type.startsWith('image/');
+  const blob: Blob = ehImagem ? await comprimirImagemUpload(file) : file;
+  const mimeType = file.type || 'application/octet-stream';
   const fileId = Math.random().toString(36).substring(2, 9);
-  const path = `${rncId}/${pasta}_${fileId}_${preparado.name}`;
+  const nomeSeguro = file.name.replace(/[^\w.\-]+/g, '_');
+  const path = `${rncId}/${pasta}_${fileId}_${nomeSeguro}`;
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
-    .upload(path, preparado.blob, { contentType: preparado.mimeType, upsert: false });
+    .upload(path, blob, { contentType: mimeType, upsert: false });
   if (upErr) throw new Error(`Falha no upload do anexo: ${upErr.message}`);
 
   let previewUrl = '';
@@ -231,9 +247,9 @@ export async function uploadAnexoRnc(rncId: string, file: File, pasta = 'rnc'): 
   return {
     id: fileId,
     path,
-    name: preparado.name,
-    size: preparado.sizeCompressed,
-    mime_type: preparado.mimeType,
+    name: file.name,
+    size: blob.size,
+    mime_type: mimeType,
     preview_url: previewUrl,
     created_at: new Date().toISOString(),
   };

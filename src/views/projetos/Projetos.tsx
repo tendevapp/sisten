@@ -145,7 +145,7 @@ export default function Projetos({ user, onNavigate, abaInicial = 'visao' }: Pro
 
       {aba === 'visao' && <PainelVisaoGeral dados={dados} onIrPara={trocarAba} />}
       {aba === 'bom' && <PainelBom dados={dados} />}
-      {aba === 'posicao' && <PainelPosicao dados={dados} />}
+      {aba === 'posicao' && <PainelPosicao dados={dados} user={user} />}
       {aba === 'recebimento' && <PainelRecebimento dados={dados} user={user} podeLancar={permissoes.lancarEntrada} />}
       {aba === 'premontagem' && <PainelPremontagem dados={dados} user={user} podeLancar={permissoes.lancarPremontagem} />}
       {aba === 'producao' && <PainelProducao dados={dados} user={user} podeLancar={permissoes.lancarProducao} />}

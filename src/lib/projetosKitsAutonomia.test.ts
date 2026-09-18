@@ -192,7 +192,7 @@ describe('calcularMatrizAutonomia', () => {
     expect(resultado.celulas.get('2::T1::plataforma')?.status).toBe(0);
   });
 
-  it('suporta status 5 (Saída Portaria) com cor preta e rótulo adequado', () => {
+  it('suporta status 4 (Expedido) com cor preta e rótulo adequado', () => {
     const saldos = new Map<string, number>();
     const resultado = calcularMatrizAutonomia({
       arvore,
@@ -203,143 +203,53 @@ describe('calcularMatrizAutonomia', () => {
           torre_numero: 1,
           tramo: 'T1',
           subkit: 'escada_acesso',
-          status: 5, // Saída Portaria
+          status: 4, // Expedido
           serie: '3143',
         },
       ],
     });
 
     const c1 = resultado.celulas.get('1::T1::escada_acesso');
-    expect(c1?.status).toBe(5);
+    expect(c1?.status).toBe(4);
     expect(c1?.serie).toBe('3143');
   });
 
-  it('atualiza automaticamente para status 5 (Preto) puxando pelo numero_tramo lançado na expedicao', () => {
+  it('mantém cada célula gravada na sua própria torre, sem reposicionar por fila', () => {
     const saldos = new Map<string, number>();
     const resultado = calcularMatrizAutonomia({
       arvore,
       saldos,
       torresTotais: 3,
       registrosBanco: [
-        {
-          torre_numero: 1,
-          tramo: 'T1',
-          subkit: 'escada_acesso',
-          status: 4, // Estava como 4 (Expedido)
-          serie: '3143',
-        },
-        {
-          torre_numero: 2,
-          tramo: 'T1',
-          subkit: 'plataforma',
-          status: 3, // Estava como 3 (OK Pátio)
-          serie: '3148',
-        },
-        {
-          torre_numero: 3,
-          tramo: 'T1',
-          subkit: 'plataforma',
-          status: 1, // Não expedido ainda
-          serie: '3153',
-        },
-      ],
-      tramosFisicos: [
-        { torre_numero: 1, tramo: 'T1', serie: 3143 },
-        { torre_numero: 2, tramo: 'T1', serie: 3148 },
-        { torre_numero: 3, tramo: 'T1', serie: 3153 },
-      ],
-      // Lançados no formulário de logística e expedição
-      tramosExpedicao: [
-        { numero_tramo: '3143', tramo: 'T1', data_expedicao: '2026-09-08', hora_expedicao: '11:41' },
-        { numero_tramo: '3153', tramo: 'T1', data_expedicao: '2026-09-14', hora_expedicao: '10:00' },
+        { torre_numero: 1, tramo: 'T1', subkit: 'escada_acesso', status: 4, serie: '3143' },
+        { torre_numero: 2, tramo: 'T1', subkit: 'plataforma', status: 3, serie: '3148' },
+        { torre_numero: 3, tramo: 'T1', subkit: 'plataforma', status: 4, serie: '3153' },
       ],
     });
 
-    // Torre 1: tinha status 4, mas foi lançado na expedição com número 3143 -> Vira status 5 (Preto) com origemExpedicao
-    const c1 = resultado.celulas.get('1::T1::plataforma');
-    expect(c1?.status).toBe(5);
-    expect(c1?.serie).toBe('3143');
-    expect(c1?.origemExpedicao).toBe(true);
-
-    // Pretos ocupam as primeiras posições da fila, inclusive 3153.
-    const c2 = resultado.celulas.get('1::T2::plataforma');
-    expect(c2?.status).toBe(5);
-    expect(c2?.serie).toBe('3153');
-    expect(c2?.origemExpedicao).toBe(true);
-
-    // O registro de pátio entra após os pretos.
-    const c3 = resultado.celulas.get('1::T3::plataforma');
-    expect(c3?.status).toBe(3);
-    expect(c3?.serie).toBe('3148');
-    expect(c3?.origemExpedicao).toBeFalsy();
+    // Cada célula fica exatamente na torre gravada — não há fila compacta.
+    expect(resultado.celulas.get('1::T1::escada_acesso')?.status).toBe(4);
+    expect(resultado.celulas.get('1::T1::escada_acesso')?.serie).toBe('3143');
+    expect(resultado.celulas.get('2::T1::plataforma')?.status).toBe(3);
+    expect(resultado.celulas.get('2::T1::plataforma')?.serie).toBe('3148');
+    expect(resultado.celulas.get('3::T1::plataforma')?.status).toBe(4);
+    expect(resultado.celulas.get('3::T1::plataforma')?.serie).toBe('3153');
   });
 
-  it('compacta as séries disponíveis, completando cada torre antes da próxima', () => {
+  it('rebaixa status 4 gravado sem série física para 3 (Montagem final), evitando célula preta vazia', () => {
     const saldos = new Map<string, number>();
     const resultado = calcularMatrizAutonomia({
       arvore,
       saldos,
-      torresTotais: 3,
-      tramosFaturamento: [
-        { torre_numero: 9, tramo: 'T5', serie: 3143, nota_fiscal: 'NF-1' },
-        { torre_numero: 7, tramo: 'T1', serie: 3144, nota_fiscal: 'NF-2' },
-        { torre_numero: 11, tramo: 'T1', serie: 3153, nota_fiscal: 'NF-3' },
-        { torre_numero: 8, tramo: 'T5', serie: 3182, nota_fiscal: 'NF-4' },
-      ],
-      tramosExpedicao: [
-        { numero_tramo: '3153', tramo: 'T1' },
-      ],
-    });
-
-    // Pretos ficam sempre na frente da fila, mesmo que tenham série maior.
-    const primeiro = resultado.celulas.get('1::T1::escada_acesso');
-    expect(primeiro?.serie).toBe('3153');
-    expect(primeiro?.status).toBe(5);
-    expect(primeiro?.origemExpedicao).toBe(true);
-
-    // Os faturados preenchem as posições seguintes sem lacunas.
-    expect(resultado.celulas.get('1::T2::plataforma')?.serie).toBe('3143');
-    expect(resultado.celulas.get('1::T3::plataforma')?.serie).toBe('3144');
-    expect(resultado.celulas.get('1::T4::plataforma')?.serie).toBe('3182');
-    expect(resultado.celulas.get('2::T1::escada_acesso')?.serie).toBeNull();
-  });
-
-  it('não propaga número sintético de tramosFisicos para células sem série gravada (evita colisão Torre 10 vs Torre 3)', () => {
-    const saldos = new Map<string, number>();
-    const resultado = calcularMatrizAutonomia({
-      arvore,
-      saldos,
-      torresTotais: 10,
+      torresTotais: 1,
       registrosBanco: [
-        // Torre 3 T5 gravado com série 3192
-        {
-          torre_numero: 3,
-          tramo: 'T5',
-          subkit: 'plataforma',
-          status: 3,
-          serie: '3192',
-        },
-        // Torre 10 não tem gravação manual
-      ],
-      tramosFisicos: [
-        // No catálogo estático sintético, a Torre 10 T5 tinha 3192 gerado por fórmula
-        { torre_numero: 3, tramo: 'T5', serie: 3155 },
-        { torre_numero: 10, tramo: 'T5', serie: 3192 },
-      ],
-      tramosExpedicao: [
-        // Tramo 3192 foi expedido na portaria
-        { numero_tramo: '3192', tramo: 'T5', data_expedicao: '2026-09-14', hora_expedicao: '14:14' },
+        { torre_numero: 1, tramo: 'T1', subkit: 'escada_acesso', status: 4, serie: null },
       ],
     });
 
-    // O catálogo estático tramosFisicos continua sem preencher células sem
-    // série gravada; a única série da fila ocupa a primeira posição visual.
-    const celulaTorre3 = resultado.celulas.get('3::T5::plataforma');
-    expect(celulaTorre3?.serie).toBeNull();
-
-    const celulaPrimeiraPosicao = resultado.celulas.get('1::T1::plataforma');
-    expect(celulaPrimeiraPosicao?.status).toBe(5);
-    expect(celulaPrimeiraPosicao?.serie).toBe('3192');
+    const c1 = resultado.celulas.get('1::T1::escada_acesso');
+    expect(c1?.status).toBe(3);
+    expect(c1?.serie).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@ import {
   resumoSinais,
   calcularProximoCodigoMaterial,
   sanitizeTechnicalText,
+  ehCodigoSapInativo,
   type MaterialResultado,
 } from './materiais';
 
@@ -168,6 +169,51 @@ describe('buscarMateriais', () => {
     await expect(buscarMateriais('luva npt')).rejects.toThrow();
     await buscarMateriais('luva npt');
     expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('filtra códigos inativos iniciados com 9 ou letras e mapeia statusGeral', async () => {
+    rpc.mockResolvedValueOnce({
+      data: [
+        { material_code: '1031825', description: 'LUVA VÁLIDA', unit: 'UN', status_geral: 'Z1' },
+        { material_code: '9001234', description: 'CÓDIGO INATIVO 9', unit: 'UN', status_geral: null },
+        { material_code: 'A001234', description: 'CÓDIGO INATIVO LETRA', unit: 'UN', status_geral: null },
+      ],
+      error: null,
+    });
+    const resultados = await buscarMateriais('luva');
+    expect(resultados).toHaveLength(1);
+    expect(resultados[0].materialCode).toBe('1031825');
+    expect(resultados[0].statusGeral).toBe('Z1');
+  });
+});
+
+describe('ehCodigoSapInativo', () => {
+  it('retorna true para códigos iniciados com 9', () => {
+    expect(ehCodigoSapInativo('9000123')).toBe(true);
+    expect(ehCodigoSapInativo('912345')).toBe(true);
+    expect(ehCodigoSapInativo('9')).toBe(true);
+  });
+
+  it('retorna true para códigos iniciados com letras (maiúsculas ou minúsculas)', () => {
+    expect(ehCodigoSapInativo('A000123')).toBe(true);
+    expect(ehCodigoSapInativo('SER1234')).toBe(true);
+    expect(ehCodigoSapInativo('z001234')).toBe(true);
+    expect(ehCodigoSapInativo('mat-99')).toBe(true);
+  });
+
+  it('retorna false para códigos válidos iniciados por outros números', () => {
+    expect(ehCodigoSapInativo('1031825')).toBe(false);
+    expect(ehCodigoSapInativo('2000123')).toBe(false);
+    expect(ehCodigoSapInativo('4500123')).toBe(false);
+    expect(ehCodigoSapInativo('7001234')).toBe(false);
+    expect(ehCodigoSapInativo('100000000000000110')).toBe(false);
+  });
+
+  it('retorna false para valores nulos, vazios ou indefinidos', () => {
+    expect(ehCodigoSapInativo(null)).toBe(false);
+    expect(ehCodigoSapInativo(undefined)).toBe(false);
+    expect(ehCodigoSapInativo('')).toBe(false);
+    expect(ehCodigoSapInativo('   ')).toBe(false);
   });
 });
 

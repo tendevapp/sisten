@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, PlusCircle, List, Search, ClipboardCheck, FileDown, CheckSquare,
-  Square, Target, AlertTriangle, Clock, CheckCircle2, ChevronRight,
+  Square, Target, AlertTriangle, Clock, ChevronRight,
 } from 'lucide-react';
 import type { Profile, QuaRnc, QuaRncFiltros, QuaRncMetricas } from '../../types';
 import * as api from '../../lib/qualidadeApi';
@@ -152,11 +152,11 @@ export default function QualidadeRncView({ user, onNavigate, abaInicial = 'novo'
         <div>
           <button
             type="button"
-            onClick={() => onNavigate('/formularios')}
+            onClick={() => onNavigate('/qualidade')}
             className="group mb-2 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-            Voltar para Formulários
+            Voltar para o Módulo de Qualidade
           </button>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-950/60 dark:text-rose-400">

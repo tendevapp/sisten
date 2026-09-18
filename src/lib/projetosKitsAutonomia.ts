@@ -15,9 +15,13 @@
  * Vincula o estoque disponível em almoxarifado com a BOM, diferenciando:
  *   - 0: Não atende (Vermelho - estoque insuficiente para atender a torre)
  *   - 1: Estoque (Verde - estoque em almoxarifado atende a torre)
- *   - 3: OK Pátio (Azul - kits pagos da pré-montagem para a produção)
- *   - 4: Expedido (Laranja - tramo expedido com série física)
- *   - 5: Saída Portaria (Preto - tramos que já saíram da portaria da fábrica)
+ *   - 3: Montagem final (Azul - kit na montagem final / pátio)
+ *   - 4: Expedido (Preto - marcado manualmente pelo Almoxarifado)
+ *
+ * Os status 3 e 4 são só manuais — a matriz não lê mais Faturamento
+ * (fin_fat_gwjaco) nem Portaria/Expedição (expedicao_tramos). Cada torre
+ * mostrada aqui é a torre gravada na célula, não uma reorganização por fila;
+ * quem edita decide onde o número aparece.
  */
 
 import { Tramo, TRAMOS } from './projetos';
@@ -26,22 +30,20 @@ import type { SaldosPorItem } from './projetosAutonomia';
 
 export type SubkitId = 'fixadores' | 'plataforma' | 'plataforma_inferior' | 'escada_avanti' | 'escada_acesso';
 
-export type StatusKitAutonomia = 0 | 1 | 3 | 4 | 5;
+export type StatusKitAutonomia = 0 | 1 | 3 | 4;
 
 export const ROTULO_STATUS_AUTONOMIA: Record<StatusKitAutonomia, string> = {
   0: 'Não atende',
   1: 'Estoque',
-  3: 'OK Pátio',
-  4: 'Faturado',
-  5: 'Saída Portaria',
+  3: 'Montagem final',
+  4: 'Expedido',
 };
 
 export const COR_STATUS_AUTONOMIA: Record<StatusKitAutonomia, { bg: string; text: string; border: string }> = {
   0: { bg: '#DC2626', text: '#FFFFFF', border: '#B91C1C' }, // Vermelho vivo
   1: { bg: '#16A34A', text: '#FFFFFF', border: '#15803D' }, // Verde
-  3: { bg: '#0284C7', text: '#FFFFFF', border: '#0369A1' }, // Azul Pátio
-  4: { bg: '#EA580C', text: '#FFFFFF', border: '#C2410C' }, // Laranja Faturado (GW Jacobina)
-  5: { bg: '#09090B', text: '#FFFFFF', border: '#000000' }, // Preto Saída Portaria
+  3: { bg: '#0284C7', text: '#FFFFFF', border: '#0369A1' }, // Azul Montagem final
+  4: { bg: '#09090B', text: '#FFFFFF', border: '#000000' }, // Preto Expedido
 };
 
 export interface SubkitDef {
@@ -226,7 +228,6 @@ export interface CelulaMatriz {
   isManual: boolean;
   autonomiaEstoque: number;
   gargaloPn: string | null;
-  origemExpedicao?: boolean;
 }
 
 export interface MatrizAutonomiaResultado {
@@ -251,35 +252,15 @@ export interface RegistroPlanejamentoBanco {
   data_alvo?: string | null;
 }
 
-export interface RegistroTramoExpedicao {
-  numero_tramo: string;
-  tramo?: string | null;
-  data_expedicao?: string | null;
-  hora_expedicao?: string | null;
-}
-
-export interface RegistroTramoFisico {
-  torre_numero: number;
-  tramo: string;
-  serie: number | string;
-}
-
-export interface RegistroFaturamentoGwjaco {
-  torre_numero: number;
-  tramo: string;
-  serie?: number | string | null;
-  nota_fiscal?: string | null;
-  data_faturado?: string | null;
-  semana_faturamento?: number | null;
-}
-
 /**
  * Calcula a matriz de autonomia cruzando:
- * 1. Dados gravados no banco (semanas de planejamento e overrides/apontamentos)
+ * 1. Dados gravados no banco (status/série manuais e semanas de planejamento)
  * 2. Composição da BOM por sub-kit
  * 3. Saldo físico em estoque do almoxarifado
- * 4. Faturamento de tramos no GW Jacobina (Laranja - Status 4: Faturado)
- * 5. Tramos lançados no formulário de Logística e Expedição / Portaria (Preto - Status 5: Saída Portaria)
+ *
+ * Célula sem gravação manual é automática (0 ou 1) pela capacidade de
+ * estoque. Com gravação manual, o status e a série exibidos são exatamente
+ * os gravados naquela torre — sem cruzar com Faturamento ou Portaria.
  */
 export function calcularMatrizAutonomia(params: {
   arvore: ArvoreBom;
@@ -287,9 +268,6 @@ export function calcularMatrizAutonomia(params: {
   torresTotais: number;
   registrosBanco?: RegistroMatrizBanco[];
   planejamentosBanco?: RegistroPlanejamentoBanco[];
-  tramosFisicos?: RegistroTramoFisico[];
-  tramosExpedicao?: RegistroTramoExpedicao[];
-  tramosFaturamento?: RegistroFaturamentoGwjaco[];
 }): MatrizAutonomiaResultado {
   const {
     arvore,
@@ -297,94 +275,10 @@ export function calcularMatrizAutonomia(params: {
     torresTotais,
     registrosBanco = [],
     planejamentosBanco = [],
-    tramosFisicos = [],
-    tramosExpedicao = [],
-    tramosFaturamento = [],
   } = params;
 
   const totalTorres = Math.max(12, torresTotais || 12);
   const torresDisponiveis = Array.from({ length: totalTorres }, (_, i) => i + 1);
-
-  const normalizarSerieVisual = (serie?: number | string | null): string | null => {
-    const texto = String(serie ?? '').trim();
-    return /^\d+$/.test(texto) ? texto : null;
-  };
-
-  const seriesPretas = new Set<string>();
-  registrosBanco.forEach((r) => {
-    if (r.status === 5) {
-      const serie = normalizarSerieVisual(r.serie);
-      if (serie) seriesPretas.add(serie);
-    }
-  });
-  tramosExpedicao.forEach((exp) => {
-    const serie = normalizarSerieVisual(exp.numero_tramo);
-    if (serie) seriesPretas.add(serie);
-  });
-
-  /**
-   * A matriz é uma visão de acompanhamento, não a fonte de rastreabilidade.
-   * Os pretos vêm primeiro; dentro de cada status, as séries são ordenadas e
-   * distribuídas sem lacunas: T1 até T5 da Torre 1, depois Torre 2.
-   */
-  const seriesNaFila = new Set<string>();
-  tramosFaturamento.forEach((f) => {
-    if (f.data_faturado || f.nota_fiscal) {
-      const serie = normalizarSerieVisual(f.serie);
-      if (serie) seriesNaFila.add(serie);
-    }
-  });
-  registrosBanco.forEach((r) => {
-    const serie = normalizarSerieVisual(r.serie);
-    if (serie) seriesNaFila.add(serie);
-  });
-  tramosExpedicao.forEach((exp) => {
-    const serie = normalizarSerieVisual(exp.numero_tramo);
-    if (serie) seriesNaFila.add(serie);
-  });
-
-  const chaveVisualPorSerie = new Map<string, string>();
-  Array.from(seriesNaFila)
-    .sort((a, b) => {
-      const prioridadeA = seriesPretas.has(a) ? 0 : 1;
-      const prioridadeB = seriesPretas.has(b) ? 0 : 1;
-      return prioridadeA - prioridadeB || Number(a) - Number(b);
-    })
-    .slice(0, totalTorres * TRAMOS.length)
-    .forEach((serie, indice) => {
-      const torreNumero = Math.floor(indice / TRAMOS.length) + 1;
-      const tramo = TRAMOS[indice % TRAMOS.length];
-      chaveVisualPorSerie.set(serie, `${torreNumero}::${tramo}`);
-    });
-
-  // O formulário de expedição preserva o preto do status 5, sem depender do
-  // tramo de origem que consta no rastreio.
-  const numerosExpedidos = new Set<string>();
-  const serieExpedidaPorChaveVisual = new Map<string, string>();
-  for (const exp of tramosExpedicao) {
-    const serie = normalizarSerieVisual(exp.numero_tramo);
-    const chaveVisual = serie ? chaveVisualPorSerie.get(serie) : null;
-    if (serie && chaveVisual) {
-      numerosExpedidos.add(serie);
-      serieExpedidaPorChaveVisual.set(chaveVisual, serie);
-    }
-  }
-
-  // Mapa de tramos faturados no GW Jacobina, reposicionado apenas nesta visão
-  // pela fila compacta de séries.
-  const faturadosPorTorreTramo = new Map<string, RegistroFaturamentoGwjaco>();
-  const faturadosPorSerie = new Map<string, RegistroFaturamentoGwjaco>();
-  for (const f of tramosFaturamento) {
-    const temFaturamento = Boolean(f.data_faturado || f.nota_fiscal);
-    if (temFaturamento) {
-      const serie = normalizarSerieVisual(f.serie);
-      const chaveVisual = (serie ? chaveVisualPorSerie.get(serie) : null) ?? `${f.torre_numero}::${f.tramo}`;
-      faturadosPorTorreTramo.set(chaveVisual, f);
-      if (serie) {
-        faturadosPorSerie.set(serie, f);
-      }
-    }
-  }
 
   // Mapa de planejamentos por torre (ex: W36, W37)
   const semanasPorTorre = new Map<number, string>();
@@ -392,13 +286,10 @@ export function calcularMatrizAutonomia(params: {
     if (p.semana) semanasPorTorre.set(p.torre_numero, p.semana);
   }
 
-  // Mapa de registros gravados
+  // Mapa de registros gravados manualmente, por torre::tramo::subkit
   const gravados = new Map<string, RegistroMatrizBanco>();
   for (const r of registrosBanco) {
-    const serie = normalizarSerieVisual(r.serie);
-    const chaveBase = (serie ? chaveVisualPorSerie.get(serie) : null) ?? `${r.torre_numero}::${r.tramo}`;
-    const chave = `${chaveBase}::${r.subkit}`;
-    gravados.set(chave, r);
+    gravados.set(`${r.torre_numero}::${r.tramo}::${r.subkit}`, r);
   }
 
   // Calcula a composição e autonomia máxima de cada sub-kit
@@ -426,67 +317,20 @@ export function calcularMatrizAutonomia(params: {
         const chaveCelula = `${torreNumero}::${tramo}::${subkit}`;
         const gravado = gravados.get(chaveCelula);
 
-        // A série física da célula:
-        // Prioriza a série oficial do faturamento gwjaco da torre+tramo (que tem a sequência oficial 3143..3232).
-        // Se não houver no gwjaco, usa a série gravada no banco.
-        const fatInfo = faturadosPorTorreTramo.get(`${torreNumero}::${tramo}`);
-        const serieGravada = fatInfo?.serie != null
-          ? String(fatInfo.serie).trim()
-          : (gravado?.serie ? gravado.serie.trim() : (serieExpedidaPorChaveVisual.get(`${torreNumero}::${tramo}`) ?? null));
-
-        // Se o número deste tramo específico foi lançado no formulário de expedição/portaria com saída confirmada:
-        const foiLancadoExpedicao = Boolean(
-          serieGravada && numerosExpedidos.has(serieGravada),
-        );
-
-        // Se o tramo foi faturado no GW Jacobina (com data_faturado ou nota_fiscal)
-        const foiFaturadoGwjaco = Boolean(
-          fatInfo || (serieGravada && faturadosPorSerie.has(serieGravada)),
-        );
-
-        // Status 5: Saída Portaria (Preto)
-        // Só é aplicado se houver número de série física identificado para a peça e
-        // ele tiver saído pela portaria (foiLancadoExpedicao) ou foi gravado manualmente como 5 COM número de série.
-        // Células sem número de série nunca podem ficar pretas (evita célula preta vazia).
-        const ehStatus5 = Boolean(
-          serieGravada && (gravado?.status === 5 || foiLancadoExpedicao),
-        );
-
-        if (ehStatus5 && serieGravada) {
-          celulas.set(chaveCelula, {
-            torreNumero,
-            tramo,
-            subkit,
-            status: 5,
-            serie: serieGravada,
-            isManual: Boolean(gravado),
-            autonomiaEstoque,
-            gargaloPn: comp.gargalo?.partNumber ?? null,
-            origemExpedicao: foiLancadoExpedicao,
-          });
-        } else if (gravado?.status === 4 || foiFaturadoGwjaco) {
-          // Status 4: Faturado (Laranja) - tramos faturados no GW Jacobina
-          celulas.set(chaveCelula, {
-            torreNumero,
-            tramo,
-            subkit,
-            status: 4,
-            serie: serieGravada,
-            isManual: Boolean(gravado),
-            autonomiaEstoque,
-            gargaloPn: comp.gargalo?.partNumber ?? null,
-          });
-        } else if (gravado) {
-          // Se estava gravado como 5 no banco mas não tem série física ou não saiu, rebaixa para 3 (OK Pátio)
-          const statusAjustado = gravado.status === 5
-            ? (serieGravada ? 5 : 3)
+        if (gravado) {
+          const serie = gravado.serie ? gravado.serie.trim() : null;
+          // Sem número de série física, status 4 (Expedido) não se
+          // sustenta — evita célula preta vazia.
+          const status: StatusKitAutonomia = gravado.status === 4 && !serie
+            ? 3
             : (gravado.status as StatusKitAutonomia);
+
           celulas.set(chaveCelula, {
             torreNumero,
             tramo,
             subkit,
-            status: statusAjustado,
-            serie: serieGravada ?? (gravado.serie ? gravado.serie.trim() : null),
+            status,
+            serie,
             isManual: true,
             autonomiaEstoque,
             gargaloPn: comp.gargalo?.partNumber ?? null,
@@ -507,7 +351,7 @@ export function calcularMatrizAutonomia(params: {
             tramo,
             subkit,
             status,
-            serie: serieGravada,
+            serie: null,
             isManual: false,
             autonomiaEstoque,
             gargaloPn: comp.gargalo?.partNumber ?? null,

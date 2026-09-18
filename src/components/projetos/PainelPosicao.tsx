@@ -18,11 +18,12 @@ import { useToast } from '../ui/Toast';
 import { atualizarItem } from '../../lib/projetosApi';
 import { formatInt, formatQtd } from '../../lib/format';
 import { TRAMOS } from '../../lib/projetos';
+import type { Profile } from '../../types';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 import MatrizAutonomiaKits from './MatrizAutonomiaKits';
 import { SELECT_CLS } from './campos';
 
-interface Props { dados: DadosProjetos }
+interface Props { dados: DadosProjetos; user: Profile }
 
 type Recorte = 'todos' | 'com_saldo' | 'zerados' | 'abaixo_minimo' | 'com_refugo';
 
@@ -34,7 +35,7 @@ const RECORTES: { id: Recorte; rotulo: string }[] = [
   { id: 'com_refugo', rotulo: 'Com refugo' },
 ];
 
-export default function PainelPosicao({ dados }: Props) {
+export default function PainelPosicao({ dados, user }: Props) {
   const { saldos, autonomia, rateio, consumo, subprojetoAtivo, projecao, loading, recarregar } = dados;
   const toast = useToast();
   const [busca, setBusca] = useState('');
@@ -182,7 +183,7 @@ export default function PainelPosicao({ dados }: Props) {
       </div>
 
       {/* Visualização da Matriz Operacional */}
-      {modoAutonomia === 'matriz' && <MatrizAutonomiaKits dados={dados} />}
+      {modoAutonomia === 'matriz' && <MatrizAutonomiaKits dados={dados} user={user} />}
 
       {/* Visualização de Resumo com Cards por Tramo */}
       {modoAutonomia === 'resumo' && (
