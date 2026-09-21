@@ -3813,13 +3813,53 @@ class LocalDatabase {
     const idx = requests.findIndex(r => r.id === reqId);
     if (idx === -1) return false;
 
+    const prevLinked = requests[idx].linked_rm_number;
+    const prevUpdatedAt = requests[idx].updated_at;
     const valorLimpo = rmNumber?.trim() || null;
+
+    if ((valorLimpo || undefined) === prevLinked) return true;
+
+    const now = new Date().toISOString();
     requests[idx] = {
       ...requests[idx],
       linked_rm_number: valorLimpo || undefined,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     };
     this.setStorageItem(this.requestsKey, requests);
+
+    let published = await this.publishRequestRow(requests[idx]);
+    if (!published && supabase) {
+      try {
+        const { error } = await supabase
+          .from('core_solicitacoes')
+          .update({
+            linked_rm_number: valorLimpo,
+            updated_at: now,
+          })
+          .eq('id', reqId);
+        if (!error) {
+          published = true;
+        } else {
+          console.error('Falha ao atualizar linked_rm_number diretamente no Supabase:', error);
+        }
+      } catch (err) {
+        console.error('Exceção ao atualizar linked_rm_number diretamente:', err);
+      }
+    }
+
+    if (!published) {
+      const revert = this.getRequests();
+      const ri = revert.findIndex(r => r.id === reqId);
+      if (ri !== -1) {
+        revert[ri] = {
+          ...revert[ri],
+          linked_rm_number: prevLinked,
+          updated_at: prevUpdatedAt,
+        };
+        this.setStorageItem(this.requestsKey, revert);
+      }
+      return false;
+    }
 
     const user = this.getCurrentUser();
     if (valorLimpo) {
@@ -3828,9 +3868,8 @@ class LocalDatabase {
       this.logActivity(user?.id || 'admin', 'Suprimentos', 'Desvincular RM', `Removeu o vínculo de RM da solicitação #${requests[idx].number}.`);
     }
 
-    const published = await this.publishRequestRow(requests[idx]);
     this.notifyListeners();
-    return published;
+    return true;
   }
 
   // SAP ME5A/ZL0132 Operational methods
