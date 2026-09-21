@@ -28,6 +28,7 @@ import SsmaMetricsBar from '../../components/ssma/SsmaMetricsBar';
 import SsmaRidView from './SsmaRidView';
 import SsmaAlcoolemiaView from './SsmaAlcoolemiaView';
 import { useToast } from '../../components/ui/Toast';
+import { canAccessForm } from '../../lib/pages';
 
 interface SsmaHubProps {
   user: Profile;
@@ -136,8 +137,16 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
     },
   ];
 
+  const formulariosVisiveis = FORMULARIOS_SSMA.filter((form) =>
+    canAccessForm(user, `form_ssma_${form.id}`)
+  );
+
   // Se a aba for RID ou Planos de Ação, exibe a subpágina completa do formulário
   if (activeTab === 'rid' || activeTab === 'rid_planos') {
+    if (!canAccessForm(user, 'form_ssma_rid')) {
+      setActiveTab('visao_geral');
+      return null;
+    }
     return (
       <SsmaRidView
         user={user}
@@ -149,6 +158,10 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
 
   // Se a aba for alcoolemia, exibe o formulário do Termo FRM.SOC-0042
   if (activeTab === 'alcoolemia') {
+    if (!canAccessForm(user, 'form_ssma_alcoolemia')) {
+      setActiveTab('visao_geral');
+      return null;
+    }
     return <SsmaAlcoolemiaView user={user} onNavigate={handleChildNavigate} />;
   }
 
@@ -187,7 +200,18 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
 
       {/* Forms Grid: 3 blocos por linha no mobile e descricao oculta */}
       <div data-tour="ssma-hub-grid" className="grid grid-cols-3 gap-2 sm:gap-4 sm:grid-cols-2">
-        {FORMULARIOS_SSMA.map((form) => {
+        {formulariosVisiveis.length === 0 ? (
+          <div className="col-span-full rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+            <AlertTriangle className="mx-auto h-8 w-8 text-amber-500 mb-2" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Nenhum formulário de SSMA liberado para o seu perfil.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Caso precise de acesso, solicite liberação ao administrador no módulo de Acessos.
+            </p>
+          </div>
+        ) : (
+          formulariosVisiveis.map((form) => {
           const Icon = form.icon;
           return (
             <button
@@ -227,7 +251,8 @@ export default function SsmaHub({ user, onNavigate, initialTab = 'visao_geral' }
               </div>
             </button>
           );
-        })}
+        })
+      )}
       </div>
 
       {tour.isOpen && (

@@ -16,12 +16,15 @@ import { Criticidade, Granularidade, CompradorInfo, TipoItemFilter } from '../..
 import { TipoDemanda } from '../../lib/demandas';
 import { formatInt } from '../../lib/format';
 
+export type ContratoFilter = 'sem_contrato' | 'com_contrato' | 'todos';
+
 export interface EstadoFiltros {
   granularidade: Granularidade;
   dateFrom: string;
   dateTo: string;
   tipo: 'todos' | TipoDemanda;
   tipoItem: TipoItemFilter;
+  contrato: ContratoFilter;
   criticidade: 'todas' | Criticidade;
   area: string;
   comprador: string;
@@ -122,6 +125,17 @@ export default function FiltrosSuprimentos({
         <option value="consumo">Consumo</option>
         <option value="projeto">Projeto</option>
         <option value="todos">Consumo e Projeto</option>
+      </select>
+
+      <select
+        value={filtros.contrato}
+        onChange={e => onChange({ contrato: e.target.value as EstadoFiltros['contrato'] })}
+        className={selectClass}
+        aria-label="Contrato"
+      >
+        <option value="sem_contrato">Sem contratos</option>
+        <option value="com_contrato">Com contratos</option>
+        <option value="todos">Todos (com e sem contrato)</option>
       </select>
 
       <select

@@ -962,7 +962,7 @@ export async function criarSessaoBriefingParaOcorrencia(params: {
         empresa: empFormatada,
         cpf: (p.cpf || p.cnh || '').replace(/\D/g, '') || 'NÃO INFORMADO',
         funcao: (p.funcao || 'VISITANTE / MOTORISTA').trim().toUpperCase(),
-        validade_dias: 30,
+        validade_dias: BRIEFING_VALIDADE_DIAS,
       });
     }
 
@@ -1106,7 +1106,7 @@ export async function adicionarParticipanteBriefing(
     cpf: dados.cpf ? dados.cpf.replace(/\D/g, '') : '',
     funcao: dados.funcao || '',
     assinatura_digital: dados.assinatura_digital || null,
-    validade_dias: dados.validade_dias || 90,
+    validade_dias: dados.validade_dias || BRIEFING_VALIDADE_DIAS,
   };
 
   const { data, error } = await supabase
@@ -1181,6 +1181,9 @@ export async function restaurarParticipanteBriefing(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Validade do briefing de segurança: 6 meses (180 dias). */
+export const BRIEFING_VALIDADE_DIAS = 180;
+
 export interface ResultadoChecagemBriefing {
   status: 'VALIDO' | 'VENCIDO' | 'NUNCA_REALIZADO';
   participante?: PortBriefingParticipante | null;
@@ -1191,11 +1194,11 @@ export interface ResultadoChecagemBriefing {
 }
 
 /**
- * Checa o status de validade do Briefing de Segurança por CPF (validade padrão: 30 dias).
+ * Checa o status de validade do Briefing de Segurança por CPF (validade padrão: 6 meses = 180 dias).
  */
 export async function checarStatusBriefingCpf(
   cpfLimpo: string,
-  validadeDias: number = 30
+  validadeDias: number = BRIEFING_VALIDADE_DIAS
 ): Promise<ResultadoChecagemBriefing> {
   const cpf = cpfLimpo.replace(/\D/g, '');
   if (!cpf || cpf.length < 5) {
@@ -1226,7 +1229,7 @@ export async function checarStatusBriefingCpf(
   const hoje = new Date();
   const diffMs = hoje.getTime() - dataBriefing.getTime();
   const diasDecorridos = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const limite = validadeDias || data.validade_dias || 30;
+  const limite = validadeDias || data.validade_dias || BRIEFING_VALIDADE_DIAS;
   const diasRestantes = limite - diasDecorridos;
 
   if (diasDecorridos > limite) {
@@ -1249,7 +1252,7 @@ export async function checarStatusBriefingCpf(
   };
 }
 
-export async function buscarBriefingValidoPorCpf(cpfLimpo: string, validadeDias: number = 30): Promise<PortBriefingParticipante | null> {
+export async function buscarBriefingValidoPorCpf(cpfLimpo: string, validadeDias: number = BRIEFING_VALIDADE_DIAS): Promise<PortBriefingParticipante | null> {
   const res = await checarStatusBriefingCpf(cpfLimpo, validadeDias);
   if (res.status === 'VALIDO') {
     return res.participante || null;

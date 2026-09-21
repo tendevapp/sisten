@@ -10,6 +10,7 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
 import {
   normalizarCnpj,
   formatarCnpj,
@@ -196,6 +197,16 @@ export async function criarProcessoCotacao(params: {
     const itensPayload = params.itens.map(i => ({ ...i, processo_id: processo.id }));
     const { error: erroItens } = await supabase.from('sup_cotacao_processo_itens').insert(itensPayload);
     if (erroItens) throw new Error(`Processo criado, mas falhou ao gravar os itens do escopo: ${erroItens.message}`);
+
+    // Atualiza automaticamente o status dos itens da Central de Compras para "Análise de Cotações"
+    const ris = Array.from(new Set(params.itens.map(i => i.ri).filter((ri): ri is string => Boolean(ri))));
+    if (ris.length > 0) {
+      try {
+        await localDb.atualizarStatusItensCotacao(ris, params.usuarioNome);
+      } catch (errStatus) {
+        console.warn('Falha ao atualizar status para Análise de Cotações:', errStatus);
+      }
+    }
   }
 
   return processo as CotacaoProcesso;
@@ -690,5 +701,81 @@ export async function listarImpostosSap(): Promise<{ incoterms: string; descrica
 export async function criarDdp(params: { ddp: string; descricao: string }): Promise<void> {
   const { error } = await supabase.from('sup_ddp').insert({ ddp: params.ddp, descricao: params.descricao });
   if (error) throw new Error(`Falha ao cadastrar o DDP: ${error.message}`);
+}
+
+// =====================================================================
+// Vínculos de itens da Central de Compras com Processos de Cotação
+// =====================================================================
+
+export interface CotacaoItemVinculo {
+  processoId: string;
+  numero: string;
+  titulo: string | null;
+  status: string;
+  createdAt: string;
+}
+
+/**
+ * Consulta todos os processos e itens de cotacao ativos para mapear
+ * quais itens de compras possuem cotacao aberta/concluida.
+ * Indexado tanto por `ri` quanto por `rm-item_reqc`.
+ */
+export async function buscarCotacoesItensMap(): Promise<Map<string, CotacaoItemVinculo[]>> {
+  try {
+    const [{ data: processos, error: e1 }, { data: itens, error: e2 }] = await Promise.all([
+      supabase.from('sup_cotacao_processos').select('id, numero, status, titulo, created_at'),
+      supabase.from('sup_cotacao_processo_itens').select('ri, rm, item_reqc, processo_id'),
+    ]);
+
+    if (e1 || e2 || !processos || !itens) {
+      console.warn('Erro ao carregar vínculos de cotação:', e1 || e2);
+      return new Map();
+    }
+
+    const procMap = new Map<string, { id: string; numero: string; status: string; titulo: string | null; created_at: string }>();
+    for (const p of processos) {
+      if (p.id) procMap.set(p.id, p);
+    }
+
+    const map = new Map<string, CotacaoItemVinculo[]>();
+    for (const it of itens) {
+      const p = procMap.get(it.processo_id);
+      if (!p) continue;
+      const vinculo: CotacaoItemVinculo = {
+        processoId: p.id,
+        numero: p.numero,
+        titulo: p.titulo,
+        status: p.status,
+        createdAt: p.created_at,
+      };
+
+      if (it.ri) {
+        const arr = map.get(it.ri) ?? [];
+        if (!arr.some(x => x.processoId === p.id)) {
+          arr.push(vinculo);
+          map.set(it.ri, arr);
+        }
+      }
+
+      if (it.rm && it.item_reqc) {
+        const chaveRm = `${it.rm}-${it.item_reqc}`;
+        const arr = map.get(chaveRm) ?? [];
+        if (!arr.some(x => x.processoId === p.id)) {
+          arr.push(vinculo);
+          map.set(chaveRm, arr);
+        }
+      }
+    }
+
+    // Ordena cada lista da mais recente para a mais antiga
+    for (const [, arr] of map.entries()) {
+      arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    return map;
+  } catch (err) {
+    console.warn('Falha ao carregar mapa de cotações por item:', err);
+    return new Map();
+  }
 }
 

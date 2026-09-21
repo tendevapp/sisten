@@ -17,10 +17,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowLeftRight, RefreshCw, AlertCircle, Filter, Warehouse,
   Activity, Gauge, Hourglass, Timer, PackageX, TrendingDown, Scale, ClipboardCheck, ShoppingCart,
-  FolderTree,
+  FolderTree, Clock,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
-import { Profile, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao, FinPep } from '../types';
+import { Profile, MB51Classificado, EstoqueCamadaFifo, EstoqueGiro, EstoqueReposicao, FinPep, SAPImportLog } from '../types';
 import { listarPep } from '../lib/finPepApi';
 import SaidasPepPanel from '../components/almoxarifado/SaidasPepPanel';
 import {
@@ -38,7 +38,7 @@ import {
   FAIXAS_COBERTURA, FAIXAS_PERMANENCIA, SituacaoCobertura,
 } from '../lib/giroEstoque';
 import { formatBRL, formatQtd, isProjetoItem, descricaoDeposito, formatDeposito, isDepositoInativo, ordenarDepositos } from '../lib/almoxarifado';
-import { formatDateBR, formatInt, formatPct } from '../lib/format';
+import { formatDateBR, formatDateTimeBR, formatInt, formatPct } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
 import MovimentacoesKpis from '../components/almoxarifado/MovimentacoesKpis';
 import MovimentacoesPorTipoChart from '../components/almoxarifado/MovimentacoesPorTipoChart';
@@ -88,6 +88,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   const [giro, setGiro] = useState<EstoqueGiro[]>([]);
   const [reposicao, setReposicao] = useState<EstoqueReposicao[]>([]);
   const [pepList, setPepList] = useState<FinPep[]>([]);
+  const [ultimoLog, setUltimoLog] = useState<SAPImportLog | null>(() => localDb.getLatestImportLog('MB51'));
 
   /* Filtros compartilhados entre as abas -------------------------------- */
   const [centroFiltro, setCentroFiltro] = useState('Todos');
@@ -126,18 +127,20 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
     setLoading(true);
     setError(null);
     try {
-      const [m, c, g, rep, peps] = await Promise.all([
+      const [m, c, g, rep, peps, logMb51] = await Promise.all([
         localDb.fetchMb51(force),
         localDb.fetchCamadasFifo(force).catch(() => [] as EstoqueCamadaFifo[]),
         localDb.fetchGiroEstoque(force).catch(() => [] as EstoqueGiro[]),
         localDb.fetchReposicao(force).catch(() => [] as EstoqueReposicao[]),
         listarPep().catch(() => [] as FinPep[]),
+        localDb.fetchLatestImportLog('MB51').catch(() => localDb.getLatestImportLog('MB51')),
       ]);
       setMovs(m);
       setCamadas(c);
       setGiro(g);
       setReposicao(rep);
       setPepList(peps);
+      setUltimoLog(logMb51 || localDb.getLatestImportLog('MB51'));
     } catch (e: any) {
       console.error('Erro ao carregar as movimentações de estoque:', e);
       setError('Falha ao carregar as movimentações de estoque. Tente atualizar novamente.');
@@ -148,6 +151,19 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   }, []);
 
   useEffect(() => { load(false); }, [load]);
+
+  const dataUltimaImportacao = useMemo(() => {
+    if (ultimoLog?.created_at) return ultimoLog.created_at;
+    return localDb.getDatasetUpdatedAt('mb51') || localDb.getDatasetUpdatedAt('movimentacoes') || null;
+  }, [ultimoLog]);
+
+  const maxDataMov = useMemo(() => {
+    let max = '';
+    movs.forEach(m => {
+      if (m.data_lancamento && m.data_lancamento > max) max = m.data_lancamento;
+    });
+    return max || null;
+  }, [movs]);
 
   /* Aba na URL, para o link ser compartilhável --------------------------- */
 
@@ -507,13 +523,44 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5 reveal" style={{ borderColor: 'var(--hairline)' }}>
         <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
-            <ArrowLeftRight className="h-7 w-7" style={{ color: 'var(--brand)' }} />
-            Movimentações de Estoque
-          </h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--ink-secondary)' }}>
-            {ABAS.find(a => a.id === aba)?.pergunta}
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-extrabold flex items-center gap-2.5" style={{ color: 'var(--ink-primary)' }}>
+              <ArrowLeftRight className="h-7 w-7" style={{ color: 'var(--brand)' }} />
+              Movimentações de Estoque
+            </h2>
+
+            {maxDataMov && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-xs"
+                style={{
+                  borderColor: 'var(--hairline)',
+                  background: 'var(--surface-raised)',
+                  color: 'var(--ink-secondary)',
+                }}
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                Base com dados até <strong className="font-bold ml-0.5" style={{ color: 'var(--ink-primary)' }}>{formatDateBR(maxDataMov)}</strong>
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm mt-1.5" style={{ color: 'var(--ink-secondary)' }}>
+            <span>{ABAS.find(a => a.id === aba)?.pergunta}</span>
+            {dataUltimaImportacao && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] sm:text-xs"
+                style={{ color: 'var(--ink-muted)' }}
+                title={ultimoLog?.user_name ? `Importado por: ${ultimoLog.user_name}` : undefined}
+              >
+                <span className="hidden sm:inline">•</span>
+                <Clock className="h-3 w-3 inline shrink-0 opacity-70" />
+                <span>
+                  Última importação SAP MB51: <strong className="font-semibold" style={{ color: 'var(--ink-secondary)' }}>{formatDateTimeBR(dataUltimaImportacao)}</strong>
+                  {ultimoLog?.filename ? ` (${ultimoLog.filename})` : ''}
+                </span>
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button

@@ -7,7 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { Users, RotateCcw, ShieldCheck, Check, X, Minus, Sparkles, AlertCircle, Layers } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile } from '../../types';
-import { getPageGroups, FORMULARIO_SUBPERMISSOES } from '../../lib/pages';
+import { getPageGroups, FORMULARIO_SUBPERMISSOES, FORMULARIOS_DETALHADOS } from '../../lib/pages';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 
@@ -58,6 +58,9 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
     for (const sub of FORMULARIO_SUBPERMISSOES) {
       next[sub.id] = action;
     }
+    for (const f of FORMULARIOS_DETALHADOS) {
+      next[f.id] = action;
+    }
     setActions(next);
     if (action === 'allow') {
       setAseScopeAction('all');
@@ -79,6 +82,9 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
       const next = { ...prev };
       for (const sub of FORMULARIO_SUBPERMISSOES) {
         next[sub.id] = action;
+      }
+      for (const f of FORMULARIOS_DETALHADOS) {
+        next[f.id] = action;
       }
       return next;
     });
@@ -335,12 +341,13 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                             <div className="space-y-2 pt-0.5">
                               {FORMULARIO_SUBPERMISSOES.map(sub => {
                                 const subAction = actions[sub.id] || 'keep';
+                                const formsDoGrupo = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === sub.grupoId);
 
                                 return (
-                                  <React.Fragment key={sub.id}>
+                                  <div key={sub.id} className="rounded-lg border border-slate-200/80 bg-white/50 p-2 dark:border-slate-800 dark:bg-slate-900/30 space-y-2">
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="min-w-0">
-                                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                        <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
                                           {sub.label}
                                         </p>
                                         <p className="text-[10px] text-slate-400 truncate hidden sm:block">
@@ -350,8 +357,36 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
 
                                       <SegmentedSelector
                                         value={subAction}
-                                        onChange={(val) => setAction(sub.id, val)}
+                                        onChange={(val) => {
+                                          setAction(sub.id, val);
+                                          for (const f of formsDoGrupo) {
+                                            setAction(f.id, val);
+                                          }
+                                        }}
                                       />
+                                    </div>
+
+                                    {/* Formulários específicos do grupo */}
+                                    <div className="space-y-1 pl-2.5 border-l-2 border-slate-200 dark:border-slate-800 ml-1">
+                                      {formsDoGrupo.map(f => {
+                                        const fAction = actions[f.id] || 'keep';
+                                        return (
+                                          <div key={f.id} className="flex items-center justify-between gap-2 py-0.5">
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                                                {f.label}
+                                              </p>
+                                              <span className="text-[9px] text-slate-400">
+                                                {f.codigo ? `${f.codigo} • ` : ''}{f.descricao}
+                                              </span>
+                                            </div>
+                                            <SegmentedSelector
+                                              value={fAction}
+                                              onChange={(val) => setAction(f.id, val)}
+                                            />
+                                          </div>
+                                        );
+                                      })}
                                     </div>
 
                                     {/* Opções de Escopo para ASE - Hora Extra */}
@@ -474,7 +509,7 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
                                         </div>
                                       </div>
                                     )}
-                                  </React.Fragment>
+                                  </div>
                                 );
                               })}
                             </div>

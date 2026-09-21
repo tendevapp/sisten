@@ -4,10 +4,19 @@
  */
 
 import React, { useState } from 'react';
-import { RotateCcw, ShieldCheck } from 'lucide-react';
+import { RotateCcw, ShieldCheck, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile } from '../../types';
-import { canAccessPage, getPageGroups, FORMULARIO_SUBPERMISSOES } from '../../lib/pages';
+import {
+  canAccessPage,
+  canAccessForm,
+  canAccessFormGroup,
+  isUserVisualizador,
+  userBelongsToSector,
+  getPageGroups,
+  FORMULARIO_SUBPERMISSOES,
+  FORMULARIOS_DETALHADOS,
+} from '../../lib/pages';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 
@@ -24,6 +33,18 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
   const isAdmin = user.roles.includes('admin');
   // Filtra o grupo de subpermissões para exibi-lo aninhado diretamente sob o item "Formulários"
   const groups = getPageGroups().filter(g => g.group !== 'SUBPERMISSÕES DE FORMULÁRIOS');
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    ssma: true,
+    almoxarifado: true,
+    portaria: true,
+    logistica: true,
+    rh: true,
+  });
+
+  const toggleGroupExpand = (grupoId: string) => {
+    setExpandedGroups(prev => ({ ...prev, [grupoId]: !prev[grupoId] }));
+  };
 
   const handleToggle = async (pageId: string, next: boolean) => {
     setPageAccess(prev => ({ ...prev, [pageId]: next }));
@@ -55,21 +76,53 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
     const next = { ...pageAccess };
     for (const sub of FORMULARIO_SUBPERMISSOES) {
       if (habilitar) {
-        delete next[sub.id]; // Remove override, voltando ao padrão (todos liberados)
+        next[sub.id] = true;
       } else {
         next[sub.id] = false;
+      }
+    }
+    for (const f of FORMULARIOS_DETALHADOS) {
+      if (habilitar) {
+        next[f.id] = true;
+      } else {
+        next[f.id] = false;
       }
     }
     setPageAccess(next);
     try {
       for (const sub of FORMULARIO_SUBPERMISSOES) {
-        await localDb.updatePageAccess(user.id, sub.id, habilitar ? null : false);
+        await localDb.updatePageAccess(user.id, sub.id, habilitar);
+      }
+      for (const f of FORMULARIOS_DETALHADOS) {
+        await localDb.updatePageAccess(user.id, f.id, habilitar);
       }
       onChanged();
-      toast.success(habilitar ? 'Todos os grupos de formulários liberados.' : 'Todos os grupos de formulários bloqueados.');
+      toast.success(habilitar ? 'Todos os formulários e grupos liberados.' : 'Todos os formulários e grupos bloqueados.');
     } catch (e) {
-      console.error('Falha ao atualizar grupos de formulários:', e);
-      toast.error('Não foi possível atualizar todos os grupos.');
+      console.error('Falha ao atualizar formulários:', e);
+      toast.error('Não foi possível atualizar todos os formulários.');
+    }
+  };
+
+  const handleToggleGroupForms = async (grupoId: string, habilitar: boolean) => {
+    const sub = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === grupoId);
+    const forms = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === grupoId);
+    const next = { ...pageAccess };
+    if (sub) next[sub.id] = habilitar;
+    for (const f of forms) {
+      next[f.id] = habilitar;
+    }
+    setPageAccess(next);
+    try {
+      if (sub) await localDb.updatePageAccess(user.id, sub.id, habilitar);
+      for (const f of forms) {
+        await localDb.updatePageAccess(user.id, f.id, habilitar);
+      }
+      onChanged();
+      toast.success(habilitar ? `Formulários de ${sub?.label || grupoId} liberados.` : `Formulários de ${sub?.label || grupoId} bloqueados.`);
+    } catch (e) {
+      console.error('Falha ao atualizar grupo:', e);
+      toast.error('Não foi possível atualizar os formulários do grupo.');
     }
   };
 
@@ -166,50 +219,166 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                             </div>
 
                             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Selecione os grupos de formulários que este usuário pode visualizar no Hub:
+                              Selecione os grupos e formulários específicos que este usuário pode acessar no Hub:
                             </p>
 
-                            <div className="space-y-1.5 pt-0.5">
+                            <div className="space-y-3 pt-1">
                               {FORMULARIO_SUBPERMISSOES.map(sub => {
                                 const subHasOverride = pageAccess[sub.id] !== undefined;
-                                const isDefaultAllowed =
-                                  sub.defaultRoles === '*'
-                                    ? true
-                                    : sub.defaultRoles.some((r) => user.roles.includes(r as any));
-                                const subChecked = pageAccess[sub.id] !== undefined ? pageAccess[sub.id] : isDefaultAllowed;
+                                const formsDoGrupo = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === sub.grupoId);
+                                const isGroupExpanded = expandedGroups[sub.grupoId] ?? true;
+
+                                // Verifica status do grupo
+                                const isGroupChecked = canAccessFormGroup(
+                                  { ...user, page_access: pageAccess },
+                                  sub.grupoId
+                                );
+
+                                // Conta quantos formulários deste grupo estão ativos para este usuário
+                                const formsAtivos = formsDoGrupo.filter(f =>
+                                  canAccessForm({ ...user, page_access: pageAccess }, f.id)
+                                ).length;
 
                                 return (
-                                  <React.Fragment key={sub.id}>
+                                  <div
+                                    key={sub.id}
+                                    className="rounded-lg border border-slate-200/90 bg-white/60 p-2 dark:border-slate-800 dark:bg-slate-900/40"
+                                  >
+                                    {/* Cabeçalho do Grupo */}
                                     <div className="flex items-center justify-between gap-2 py-0.5">
-                                      <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
-                                        <input
-                                          type="checkbox"
-                                          checked={subChecked}
-                                          onChange={(e) => handleToggle(sub.id, e.target.checked)}
-                                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
-                                        />
-                                        <span className="font-semibold text-slate-800 dark:text-slate-200">{sub.label}</span>
-                                        <span className="text-[10px] text-slate-400 truncate hidden sm:inline">({sub.descricao})</span>
-                                        {!subHasOverride && (
-                                          <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 shrink-0">
-                                            {sub.defaultRoles === '*' ? '(todos)' : '(admin/gestor)'}
-                                          </span>
-                                        )}
-                                      </label>
-                                      {subHasOverride && (
+                                      <div className="flex items-center gap-1.5 min-w-0">
                                         <button
                                           type="button"
-                                          onClick={() => handleReset(sub.id)}
-                                          title="Restaurar padrão"
-                                          className="text-slate-400 hover:text-emerald-700 shrink-0"
+                                          onClick={() => toggleGroupExpand(sub.grupoId)}
+                                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                                          title={isGroupExpanded ? 'Recolher formulários' : 'Expandir formulários'}
                                         >
-                                          <RotateCcw className="h-3 w-3" />
+                                          {isGroupExpanded ? (
+                                            <ChevronDown className="h-3.5 w-3.5" />
+                                          ) : (
+                                            <ChevronRight className="h-3.5 w-3.5" />
+                                          )}
                                         </button>
-                                      )}
+                                        <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
+                                          <input
+                                            type="checkbox"
+                                            checked={isGroupChecked}
+                                            onChange={(e) => handleToggle(sub.id, e.target.checked)}
+                                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
+                                          />
+                                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                                            {sub.label}
+                                          </span>
+                                          <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">
+                                            ({formsAtivos}/{formsDoGrupo.length} liberados)
+                                          </span>
+                                        </label>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleGroupForms(sub.grupoId, true)}
+                                          title="Liberar todos os formulários deste setor"
+                                          className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 px-1 py-0.5 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                        >
+                                          Liberar grupo
+                                        </button>
+                                        <span className="text-slate-300 dark:text-slate-700 text-[10px]">·</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleGroupForms(sub.grupoId, false)}
+                                          title="Bloquear todos os formulários deste setor"
+                                          className="text-[10px] font-semibold text-slate-500 hover:text-rose-600 dark:text-slate-400 px-1 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                        >
+                                          Bloquear
+                                        </button>
+                                        {subHasOverride && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleReset(sub.id)}
+                                            title="Restaurar padrão do grupo"
+                                            className="text-slate-400 hover:text-emerald-700 p-0.5 ml-0.5"
+                                          >
+                                            <RotateCcw className="h-3 w-3" />
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
 
+                                    {/* Formulários individuais do grupo */}
+                                    {isGroupExpanded && formsDoGrupo.length > 0 && (
+                                      <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 pl-4">
+                                        {formsDoGrupo.map(form => {
+                                          const formHasOverride = pageAccess[form.id] !== undefined;
+                                          const isFormChecked = canAccessForm(
+                                            { ...user, page_access: pageAccess },
+                                            form.id
+                                          );
+
+                                          let badgeTexto = '';
+                                          let badgeCor = 'text-slate-400 dark:text-slate-500';
+
+                                          if (formHasOverride) {
+                                            badgeTexto = isFormChecked ? '(liberado manual)' : '(bloqueado manual)';
+                                            badgeCor = isFormChecked
+                                              ? 'text-blue-600 dark:text-blue-400 font-semibold'
+                                              : 'text-rose-600 dark:text-rose-400 font-semibold';
+                                          } else if (form.universalParaVisualizador) {
+                                            badgeTexto = '(universal - RID)';
+                                            badgeCor = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+                                          } else if (userBelongsToSector(user, form.setores)) {
+                                            badgeTexto = '(padrão - seu setor)';
+                                            badgeCor = 'text-emerald-600/90 dark:text-emerald-400/90 font-medium';
+                                          } else if (isUserVisualizador(user)) {
+                                            badgeTexto = '(bloqueado p/ visualizador)';
+                                            badgeCor = 'text-amber-600 dark:text-amber-400';
+                                          } else {
+                                            badgeTexto = isFormChecked ? '(padrão)' : '(bloqueado)';
+                                          }
+
+                                          return (
+                                            <div
+                                              key={form.id}
+                                              className="flex items-center justify-between gap-2 py-0.5 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 px-1 rounded transition-colors"
+                                            >
+                                              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-w-0">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isFormChecked}
+                                                  onChange={(e) => handleToggle(form.id, e.target.checked)}
+                                                  className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 shrink-0"
+                                                />
+                                                <span className="font-medium text-slate-800 dark:text-slate-200">
+                                                  {form.label}
+                                                </span>
+                                                {form.codigo && (
+                                                  <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                                    {form.codigo}
+                                                  </span>
+                                                )}
+                                                <span className={`text-[10px] shrink-0 ${badgeCor}`}>
+                                                  {badgeTexto}
+                                                </span>
+                                              </label>
+                                              {formHasOverride && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleReset(form.id)}
+                                                  title="Restaurar padrão do formulário"
+                                                  className="text-slate-400 hover:text-emerald-700 shrink-0 p-0.5"
+                                                >
+                                                  <RotateCcw className="h-2.5 w-2.5" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+
                                     {/* Opções de visualização para o formulário ASE de Horas Extras */}
-                                    {sub.id === 'form_rh' && subChecked && (
+                                    {sub.id === 'form_rh' && isGroupChecked && (
                                       <div className="ml-6 my-1.5 rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/60 space-y-2">
                                         <div className="flex items-center justify-between">
                                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -264,7 +433,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                     )}
 
                                     {/* Opções de edição para o formulário RID de SSMA */}
-                                    {sub.id === 'form_ssma' && subChecked && (
+                                    {sub.id === 'form_ssma' && isGroupChecked && (
                                       <div className="ml-6 my-1.5 rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-800 dark:bg-slate-900/60 space-y-2">
                                         <div className="flex items-center justify-between">
                                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -317,7 +486,7 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                                         </div>
                                       </div>
                                     )}
-                                  </React.Fragment>
+                                  </div>
                                 );
                               })}
                             </div>

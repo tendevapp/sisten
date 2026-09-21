@@ -77,6 +77,7 @@ interface Filtros {
   qtdMax: string;
   status: string;
   tipoItem: string;
+  apenasRecorrentes: boolean;
 }
 
 const FILTROS_VAZIOS: Filtros = {
@@ -95,6 +96,7 @@ const FILTROS_VAZIOS: Filtros = {
   qtdMax: '',
   status: 'todos',
   tipoItem: 'todos',
+  apenasRecorrentes: true,
 };
 
 type Ordenacao = 'valor' | 'repeticao' | 'intervalo' | 'variacao' | 'concentracao';
@@ -280,12 +282,12 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
   /* Recorrência ----------------------------------------------------------- */
 
   const recorrenciasConsumo = useMemo(
-    () => calcRecorrencia(filtradasConsumo, chaveRecorrencia),
-    [filtradasConsumo, chaveRecorrencia]
+    () => calcRecorrencia(filtradasConsumo, chaveRecorrencia, filtros.apenasRecorrentes),
+    [filtradasConsumo, chaveRecorrencia, filtros.apenasRecorrentes]
   );
   const recorrenciasProjeto = useMemo(
-    () => calcRecorrencia(filtradasProjeto, chaveRecorrencia),
-    [filtradasProjeto, chaveRecorrencia]
+    () => calcRecorrencia(filtradasProjeto, chaveRecorrencia, filtros.apenasRecorrentes),
+    [filtradasProjeto, chaveRecorrencia, filtros.apenasRecorrentes]
   );
 
   const alertas = useMemo(() => detectarAlertasAuditoria(recorrenciasConsumo), [recorrenciasConsumo]);
@@ -461,10 +463,10 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
       {/* KPIs */}
       <div className="grid gap-3.5 grid-cols-2 lg:grid-cols-5 stagger">
         <KpiCard
-          label="Valor Total (Consumo)"
+          label={filtros.apenasRecorrentes ? 'Valor Total Recorrente' : 'Valor Total (Consumo)'}
           value={kpis.valorTotal}
           format={formatBRLCompacto}
-          detail={`${formatInt(kpis.materiaisAnalisados)} itens analisados`}
+          detail={`${formatInt(kpis.materiaisAnalisados)} itens ${filtros.apenasRecorrentes ? 'recorrentes' : 'analisados'}`}
           icon={Wallet}
           accent="var(--series-7)"
           emphasize
@@ -497,7 +499,7 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
           label="Consumo Recorrente de Projeto"
           value={recorrenciasProjeto.length}
           format={formatInt}
-          detail="Itens — visão informativa, sem alerta"
+          detail={filtros.apenasRecorrentes ? 'Itens com 2+ compras — visão informativa' : 'Itens — visão informativa, sem alerta'}
           icon={Layers}
           accent="var(--series-2)"
         />
@@ -590,6 +592,23 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
           ))}
         </div>
 
+        <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--hairline)' }} role="group" aria-label="Filtro de recorrência">
+          {[
+            { v: true, r: 'Recorrentes (2+)' },
+            { v: false, r: 'Todas as compras' },
+          ].map(o => (
+            <button
+              key={String(o.v)}
+              onClick={() => patch({ apenasRecorrentes: o.v })}
+              aria-pressed={filtros.apenasRecorrentes === o.v}
+              className="px-2.5 py-1 text-xs font-medium rounded-md transition-colors duration-150"
+              style={filtros.apenasRecorrentes === o.v ? { background: 'var(--brand)', color: '#ffffff' } : { color: 'var(--ink-muted)' }}
+            >
+              {o.r}
+            </button>
+          ))}
+        </div>
+
         <input
           type="number"
           value={filtros.valorMin}
@@ -676,7 +695,11 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
             title={chaveRecorrencia === 'material' ? 'Ranking de Materiais Recorrentes' : 'Ranking de Itens Similares Recorrentes'}
             icon={Repeat}
             unidade={chaveRecorrencia === 'material' ? 'material' : 'item similar'}
-            description="Clique numa barra para ver a série temporal e o detalhe das compras."
+            description={
+              filtros.apenasRecorrentes
+                ? 'Apenas itens que se repetem (2+ compras distintas no período). Clique numa barra para ver a série temporal e o detalhe.'
+                : 'Todas as compras no período. Clique numa barra para ver a série temporal e o detalhe.'
+            }
             onSelecionar={handleSelecionarRanking}
           />
 
@@ -825,7 +848,9 @@ export default function TabRecorrenciaCompras({ onNavigate }: TabRecorrenciaComp
                   {recorrenciasOrdenadas.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-3 py-8 text-center" style={{ color: 'var(--ink-muted)' }}>
-                        Nenhum item de consumo no filtro selecionado.
+                        {filtros.apenasRecorrentes
+                          ? 'Nenhum item com compras recorrentes (2+ compras) no filtro selecionado.'
+                          : 'Nenhum item de consumo no filtro selecionado.'}
                       </td>
                     </tr>
                   ) : (

@@ -4,7 +4,7 @@ import { Profile, Role } from './types';
 import { supabase } from './db/supabaseClient';
 import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
-import { canAccessPage, canAccessFormGroup, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
+import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
 
 // Components
@@ -133,6 +133,7 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
 const LEGACY_PATH_REDIRECTS: Record<string, string> = {
   '/suprimentos/painel': '/suprimentos/compras',
   '/suprimentos/fornecedores-sem-po': '/suprimentos/compras',
+  '/suprimentos/analise-cotacoes': '/suprimentos/cotacoes',
   '/formularios/qualidade': '/qualidade',
   '/formularios/qualidade-rnc': '/qualidade/rnc',
   '/formularios/qualidade/rnc': '/qualidade/rnc',
@@ -637,7 +638,7 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      // Os formulários vivem sob /formularios/* e respeitam as subpermissões por grupo:
+      // Os formulários vivem sob /formularios/* e respeitam as subpermissões por grupo e formulário:
       case '/formularios/portaria':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
           return <PortariaHub user={user} onNavigate={handleNavigate} />;
@@ -645,56 +646,56 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-passagem-plantao':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_plantao')) {
           return <PortariaPassagemPlantao user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-equipamentos':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_equipamentos')) {
           return <PortariaEquipamentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-transportes':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_transportes')) {
           return <PortariaTransportes user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-carretas':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_carretas')) {
           return <PortariaCarretas user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-relatorio':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_relatorio')) {
           return <PortariaRelatorio user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-briefing':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_briefing')) {
           return <PortariaBriefing user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/portaria-alcoolemia':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'portaria')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_portaria_alcoolemia')) {
           return <PortariaAlcoolemia user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/logistica-expedicao':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_logistica_expedicao')) {
           return <LogisticaExpedicao user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/logistica-expedicao/relatorio':
       case '/formularios/logistica-expedicao-relatorio':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'logistica')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_logistica_relatorio')) {
           return (
             <ExpedicaoRelatorioLeadTime
               user={user}
@@ -706,13 +707,13 @@ export default function App() {
 
       case '/formularios/almoxarifado':
       case '/formularios/almoxarifado-recebimento':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'almoxarifado')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_recebimento')) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/rh-ase-hora-extra':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'rh')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_rh_ase')) {
           return <RhAseHoraExtra user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -725,14 +726,14 @@ export default function App() {
 
       case '/formularios/ssma-rid':
       case '/formularios/ssma/rid':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_ssma_rid')) {
           return <SsmaRidView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/formularios/ssma-alcoolemia':
       case '/formularios/ssma/alcoolemia':
-        if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_ssma_alcoolemia')) {
           return <SsmaAlcoolemiaView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
@@ -806,6 +807,7 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/suprimentos/cotacoes':
+      case '/suprimentos/analise-cotacoes':
         if (canAccessPage(user, 'sup_analise_cotacoes')) {
           return <AnaliseCotacoes user={user} onNavigate={handleNavigate} />;
         }

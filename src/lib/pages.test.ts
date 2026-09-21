@@ -2,10 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   canAccessPage,
   canAccessFormGroup,
+  canAccessForm,
+  isUserVisualizador,
+  userBelongsToSector,
   canViewAllAse,
   canEditDesvioRid,
   canDeleteDesvioRid,
   FORMULARIO_SUBPERMISSOES,
+  FORMULARIOS_DETALHADOS,
   getPageGroups,
   GROUP_ORDER,
   PAGES,
@@ -13,17 +17,19 @@ import {
 import type { Profile } from '../types';
 
 function mockUser(overrides: Partial<Profile> = {}): Profile {
+  const sectorId = overrides.sector_id || (overrides as any).setor_id || 'sec-1';
   return {
     id: 'usr-1',
     name: 'Usuario Teste',
     email: 'teste@sisten.com',
     roles: ['requisitante'],
-    setor_id: 'sec-1',
+    sector_id: sectorId,
+    setor_id: sectorId,
     ativo: true,
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
     ...overrides,
-  };
+  } as Profile;
 }
 
 describe('pages.ts - Controle de Acesso', () => {
@@ -364,6 +370,140 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(rh?.pages.some(p => p.id === 'rh')).toBe(true);
       expect(rh?.pages.some(p => p.id === 'rh_colaboradores')).toBe(true);
       expect(rh?.pages.some(p => p.id === 'rh_ase_hora_extra')).toBe(false);
+
+      // Deve incluir os formulários detalhados no grupo SUBPERMISSÕES DE FORMULÁRIOS
+      const subForm = groups.find(g => g.group === 'SUBPERMISSÕES DE FORMULÁRIOS');
+      expect(subForm).toBeDefined();
+      expect(subForm?.pages.some(p => p.id === 'form_ssma_rid')).toBe(true);
+      expect(subForm?.pages.some(p => p.id === 'form_almoxarifado_recebimento')).toBe(true);
+      expect(subForm?.pages.some(p => p.id === 'form_portaria_plantao')).toBe(true);
+    });
+  });
+
+  describe('canAccessForm & Regras para Visualizadores', () => {
+    it('isUserVisualizador deve identificar corretamente o perfil', () => {
+      expect(isUserVisualizador(mockUser({ roles: ['visualizador'] }))).toBe(true);
+      expect(isUserVisualizador(mockUser({ roles: ['visualizador', 'admin'] }))).toBe(false);
+      expect(isUserVisualizador(mockUser({ roles: ['requisitante'] }))).toBe(false);
+      expect(isUserVisualizador(mockUser({ roles: ['gestor'] }))).toBe(false);
+    });
+
+    it('para visualizador comum sem setor operacional, APENAS o RID deve ser liberado por padrão', () => {
+      const visGeral = mockUser({
+        roles: ['visualizador'],
+        setor_id: '9', // TI (não opera formulários de portaria/almox/etc.)
+      });
+
+      // RID é o único formulário liberado para todos os usuários
+      expect(canAccessForm(visGeral, 'form_ssma_rid')).toBe(true);
+
+      // Outros formulários de SSMA e outros setores permanecem bloqueados
+      expect(canAccessForm(visGeral, 'form_ssma_alcoolemia')).toBe(false);
+      expect(canAccessForm(visGeral, 'form_almoxarifado_recebimento')).toBe(false);
+      expect(canAccessForm(visGeral, 'form_portaria_plantao')).toBe(false);
+      expect(canAccessForm(visGeral, 'form_portaria_carretas')).toBe(false);
+      expect(canAccessForm(visGeral, 'form_logistica_expedicao')).toBe(false);
+      expect(canAccessForm(visGeral, 'form_rh_ase')).toBe(false);
+
+      // No Hub de formulários, o grupo SSMA fica visível (porque contém o RID acessível)
+      expect(canAccessFormGroup(visGeral, 'ssma')).toBe(true);
+      // Os demais grupos não aparecem
+      expect(canAccessFormGroup(visGeral, 'portaria')).toBe(false);
+      expect(canAccessFormGroup(visGeral, 'almoxarifado')).toBe(false);
+      expect(canAccessFormGroup(visGeral, 'logistica')).toBe(false);
+      expect(canAccessFormGroup(visGeral, 'rh')).toBe(false);
+    });
+
+    it('visualizador do Almoxarifado pode ver os formulários do Almoxarifado + RID', () => {
+      const visAlmox = mockUser({
+        roles: ['visualizador'],
+        setor_id: '2', // Setor Almoxarifado
+      });
+
+      // RID liberado universalmente
+      expect(canAccessForm(visAlmox, 'form_ssma_rid')).toBe(true);
+
+      // Formulários do seu próprio setor (Almoxarifado) liberados por padrão
+      expect(canAccessForm(visAlmox, 'form_almoxarifado_recebimento')).toBe(true);
+      expect(canAccessFormGroup(visAlmox, 'almoxarifado')).toBe(true);
+
+      // Formulários de outros setores permanecem bloqueados
+      expect(canAccessForm(visAlmox, 'form_portaria_plantao')).toBe(false);
+      expect(canAccessForm(visAlmox, 'form_portaria_carretas')).toBe(false);
+      expect(canAccessForm(visAlmox, 'form_logistica_expedicao')).toBe(false);
+      expect(canAccessForm(visAlmox, 'form_rh_ase')).toBe(false);
+      expect(canAccessForm(visAlmox, 'form_ssma_alcoolemia')).toBe(false);
+
+      expect(canAccessFormGroup(visAlmox, 'portaria')).toBe(false);
+      expect(canAccessFormGroup(visAlmox, 'logistica')).toBe(false);
+      expect(canAccessFormGroup(visAlmox, 'rh')).toBe(false);
+    });
+
+    it('visualizador da Portaria pode ver os formulários da Portaria + RID', () => {
+      const visPortaria = mockUser({
+        roles: ['visualizador'],
+        setor_id: '19', // Setor Portaria
+      });
+
+      // RID liberado
+      expect(canAccessForm(visPortaria, 'form_ssma_rid')).toBe(true);
+
+      // Formulários de Portaria liberados
+      expect(canAccessForm(visPortaria, 'form_portaria_plantao')).toBe(true);
+      expect(canAccessForm(visPortaria, 'form_portaria_transportes')).toBe(true);
+      expect(canAccessForm(visPortaria, 'form_portaria_carretas')).toBe(true);
+      expect(canAccessFormGroup(visPortaria, 'portaria')).toBe(true);
+
+      // Almoxarifado bloqueado
+      expect(canAccessForm(visPortaria, 'form_almoxarifado_recebimento')).toBe(false);
+      expect(canAccessFormGroup(visPortaria, 'almoxarifado')).toBe(false);
+    });
+
+    it('administrador pode liberar pontualmente qualquer formulário para qualquer visualizador', () => {
+      const visAlmoxComPortaria = mockUser({
+        roles: ['visualizador'],
+        setor_id: '2', // Almoxarifado
+        page_access: {
+          form_portaria_carretas: true, // Liberação manual pontual pelo admin
+        },
+      });
+
+      // Mantém acesso aos do seu setor + RID
+      expect(canAccessForm(visAlmoxComPortaria, 'form_ssma_rid')).toBe(true);
+      expect(canAccessForm(visAlmoxComPortaria, 'form_almoxarifado_recebimento')).toBe(true);
+
+      // Formulário liberado individualmente pelo admin passa a ter acesso!
+      expect(canAccessForm(visAlmoxComPortaria, 'form_portaria_carretas')).toBe(true);
+      // O grupo Portaria agora aparece no hub porque contém um form ativo
+      expect(canAccessFormGroup(visAlmoxComPortaria, 'portaria')).toBe(true);
+
+      // Outros formulários de Portaria continuam bloqueados
+      expect(canAccessForm(visAlmoxComPortaria, 'form_portaria_plantao')).toBe(false);
+    });
+
+    it('administrador pode bloquear pontualmente um formulário do próprio setor do visualizador', () => {
+      const visAlmoxBloqueado = mockUser({
+        roles: ['visualizador'],
+        setor_id: '2',
+        page_access: {
+          form_almoxarifado_recebimento: false, // Bloqueio manual pontual pelo admin
+        },
+      });
+
+      expect(canAccessForm(visAlmoxBloqueado, 'form_almoxarifado_recebimento')).toBe(false);
+      expect(canAccessForm(visAlmoxBloqueado, 'form_ssma_rid')).toBe(true);
+    });
+
+    it('administrador tem acesso irrestrito a todos os formulários', () => {
+      const admin = mockUser({ roles: ['admin'] });
+      for (const form of FORMULARIOS_DETALHADOS) {
+        expect(canAccessForm(admin, form.id)).toBe(true);
+      }
+      expect(canAccessFormGroup(admin, 'portaria')).toBe(true);
+      expect(canAccessFormGroup(admin, 'logistica')).toBe(true);
+      expect(canAccessFormGroup(admin, 'rh')).toBe(true);
+      expect(canAccessFormGroup(admin, 'almoxarifado')).toBe(true);
+      expect(canAccessFormGroup(admin, 'ssma')).toBe(true);
     });
   });
 });

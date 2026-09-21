@@ -693,6 +693,7 @@ class LocalDatabase {
       'mb51_mov_estoque': ['MB51'],
       'mb51': ['MB51'],
       'movimentacoes_estoque': ['MB51'],
+      'movimentacoes': ['MB51'],
     };
 
     const targetTypes = datasetTypeMap[dataset.toLowerCase()] || [];
@@ -747,6 +748,8 @@ class LocalDatabase {
       'cidadeforn': 'ENDEREÇOS',
       'mb51_mov_estoque': 'MB51',
       'mb51': 'MB51',
+      'movimentacoes': 'MB51',
+      'movimentacoes_estoque': 'MB51',
     };
 
     const datasetTypeMap: Record<string, string[]> = {
@@ -768,6 +771,7 @@ class LocalDatabase {
       'mb51_mov_estoque': ['MB51'],
       'mb51': ['MB51'],
       'movimentacoes_estoque': ['MB51'],
+      'movimentacoes': ['MB51'],
     };
 
     const key = dataset.toLowerCase();
@@ -5032,6 +5036,118 @@ class LocalDatabase {
   }
 
   /**
+   * Atualiza o status dos itens da Central de Compras para "Análise de Cotações"
+   * quando um processo de cotação é criado com esses itens.
+   */
+  public async atualizarStatusItensCotacao(ris: string[], autor?: string): Promise<{ ok: number; failed: string[] }> {
+    const risUnicos = Array.from(new Set(ris.filter(Boolean)));
+    if (risUnicos.length === 0) return { ok: 0, failed: [] };
+
+    const author = autor || this.getCurrentUser()?.name || 'Sistema';
+    const now = new Date().toISOString();
+    const reqs = this.getRequisicoes();
+    const idxByRi = new Map(reqs.map((r, i) => [r.ri, i]));
+    const hist = this.getStorageItem<SAPObsHistory[]>(this.obsHistoryKey, []);
+
+    const anteriores = new Map<string, { status?: ItemStatus; statusAt?: string; statusBy?: string }>();
+    const aplicados: { ri: string; histId: string }[] = [];
+
+    risUnicos.forEach(ri => {
+      const idx = idxByRi.get(ri);
+      if (idx !== undefined) {
+        const req = reqs[idx];
+        anteriores.set(ri, {
+          status: req.item_status,
+          statusAt: req.item_status_updated_at,
+          statusBy: req.item_status_updated_by,
+        });
+        req.item_status = 'Análise de Cotações';
+        req.item_status_updated_at = now;
+        req.item_status_updated_by = author;
+      }
+
+      const histId = 'oh_' + Math.random().toString(36).substr(2, 9);
+      hist.push({
+        id: histId,
+        ri,
+        obs_comprador: reqs[idx]?.obs_comprador || '',
+        data_entrega_prevista: reqs[idx]?.data_entrega_prevista || '',
+        item_status: 'Análise de Cotações',
+        user_name: author,
+        created_at: now,
+      });
+      aplicados.push({ ri, histId });
+    });
+
+    this.setStorageItem(this.requisicoesKey, reqs);
+    this.setStorageItem(this.obsHistoryKey, hist);
+
+    // Atualiza no Supabase em lotes de 25
+    const BLOCO = 25;
+    const failed: string[] = [];
+    for (let i = 0; i < aplicados.length; i += BLOCO) {
+      const bloco = aplicados.slice(i, i + BLOCO);
+      const chunkRis = bloco.map(b => b.ri);
+      try {
+        const { error } = await supabase
+          .from('sap_me5a_rc')
+          .update({
+            item_status: 'Análise de Cotações',
+            item_status_updated_at: now,
+            item_status_updated_by: author,
+          })
+          .in('ri', chunkRis);
+        if (error) {
+          console.warn('Erro ao atualizar sap_me5a_rc para Análise de Cotações:', error);
+          failed.push(...chunkRis);
+        }
+      } catch (err) {
+        console.warn('Falha na requisição de atualização para Análise de Cotações:', err);
+        failed.push(...chunkRis);
+      }
+    }
+
+    const gravados = aplicados.filter(a => !failed.includes(a.ri));
+    if (gravados.length > 0) {
+      try {
+        await supabase.from('sap_requisicoes_observacoes').insert(
+          gravados.map(({ ri, histId }) => ({
+            id: histId,
+            ri,
+            campo_alterado: 'item_status',
+            valor_anterior: JSON.stringify({
+              status: anteriores.get(ri)?.status ?? null,
+            }),
+            valor_novo: JSON.stringify({
+              status: 'Análise de Cotações',
+            }),
+            user_name: author,
+            created_at: now,
+          }))
+        );
+      } catch (e) {
+        console.warn('Falha ao registrar histórico de status de cotação:', e);
+      }
+    }
+
+    // Reverte em caso de falha no Supabase
+    if (failed.length > 0) {
+      const latest = this.getRequisicoes();
+      failed.forEach(ri => {
+        const idx = latest.findIndex(r => r.ri === ri);
+        const prev = anteriores.get(ri);
+        if (idx === -1 || !prev) return;
+        latest[idx].item_status = prev.status;
+        latest[idx].item_status_updated_at = prev.statusAt;
+        latest[idx].item_status_updated_by = prev.statusBy;
+      });
+      this.setStorageItem(this.requisicoesKey, latest);
+    }
+
+    return { ok: gravados.length, failed };
+  }
+
+  /**
    * "Confirmar data" da Central de Compras: copia a `data_entrega_prevista`
    * atual (valor de trabalho, possivelmente auto-preenchido pela remessa do PO)
    * para `data_entrega_confirmada` — a única data que o Rastreio Compras exibe.
@@ -8380,6 +8496,42 @@ class LocalDatabase {
 
   public getImportLogs(): SAPImportLog[] {
     return this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+  }
+
+  public getLatestImportLog(type: string): SAPImportLog | null {
+    const logs = this.getImportLogs();
+    const target = type.toUpperCase();
+    return logs.find(l => String(l.type).toUpperCase() === target) || null;
+  }
+
+  public async fetchLatestImportLog(type: string): Promise<SAPImportLog | null> {
+    const local = this.getLatestImportLog(type);
+    if (!supabase) return local;
+    try {
+      const { data, error } = await supabase
+        .from('ops_importacoes')
+        .select('id,type,filename,user_name,created_at,records_read,records_inserted,records_updated,records_unchanged,records_eliminated,columns_new,columns_missing,quantity_changes,ignored_rows_count,missing_ris_count')
+        .eq('type', type.toUpperCase())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) {
+        const logs = this.getImportLogs();
+        const existingIdx = logs.findIndex(l => l.id === data.id);
+        if (existingIdx === -1) {
+          logs.unshift(data as SAPImportLog);
+        } else {
+          logs[existingIdx] = { ...logs[existingIdx], ...(data as SAPImportLog) };
+        }
+        this.setStorageItem(this.importLogsKey, logs);
+        return data as SAPImportLog;
+      }
+      return local;
+    } catch (err) {
+      console.warn(`Falha ao buscar ultimo log de importacao do tipo ${type}`, err);
+      return local;
+    }
   }
 
   // Busca leve dos logs de importação: sem `ignored_rows`/`missing_ris` (jsonb

@@ -141,7 +141,7 @@ describe('resumoFaturamento', () => {
 });
 
 describe('matrizTorreTramo', () => {
-  it('monta cinco linhas de tramo por torre, em ordem', () => {
+  it('monta cinco linhas de tramo por torre, em ordem física (T5 no topo -> T1 na base)', () => {
     const m = matrizTorreTramo([
       linha({ torre_numero: 2, tramo: 'T1', data_faturado: '2026-08-31' }),
       linha({ torre_numero: 1, tramo: 'T1', data_faturado: '2026-08-31', data_expedido: '2026-09-04' }),
@@ -149,15 +149,16 @@ describe('matrizTorreTramo', () => {
     ]);
 
     expect(m.torres).toEqual([1, 2]);
-    expect(m.linhas.map((l) => l.tramo)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
-    expect(m.linhas[0].celulas[0]?.estado).toBe('expedido');
-    expect(m.linhas[0].celulas[1]?.estado).toBe('faturado');
-    expect(m.linhas[4].celulas[0]?.estado).toBe('pendente');
+    expect(m.linhas.map((l) => l.tramo)).toEqual(['T5', 'T4', 'T3', 'T2', 'T1']);
+    expect(m.linhas[4].celulas[0]?.estado).toBe('expedido');
+    expect(m.linhas[4].celulas[1]?.estado).toBe('faturado');
+    expect(m.linhas[0].celulas[0]?.estado).toBe('pendente');
   });
 
   it('deixa null onde a torre não tem o tramo cadastrado', () => {
     const m = matrizTorreTramo([linha({ torre_numero: 1, tramo: 'T1' })]);
-    expect(m.linhas[1].celulas[0]).toBeNull();
+    expect(m.linhas[0].celulas[0]).toBeNull();
+    expect(m.linhas[4].celulas[0]).not.toBeNull();
   });
 
   it('carrega seq e restrição em cada célula', () => {
@@ -165,8 +166,8 @@ describe('matrizTorreTramo', () => {
       linha({ torre_numero: 1, tramo: 'T1', serie: 3143, restricao: true }),
       linha({ torre_numero: 1, tramo: 'T2', serie: 3144 }),
     ]);
-    expect(m.linhas[0].celulas[0]).toMatchObject({ serie: 3143, restricao: true });
-    expect(m.linhas[1].celulas[0]).toMatchObject({ serie: 3144, restricao: false });
+    expect(m.linhas[4].celulas[0]).toMatchObject({ serie: 3143, restricao: true });
+    expect(m.linhas[3].celulas[0]).toMatchObject({ serie: 3144, restricao: false });
   });
 });
 

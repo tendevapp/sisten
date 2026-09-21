@@ -26,6 +26,7 @@ import {
   isProjetoItem,
 } from '../lib/demandas';
 import { janelaPadrao, janelaAnterior } from '../lib/suprimentos';
+import { ehItemDeContrato } from '../lib/contratoPedido';
 import FiltrosSuprimentos, { EstadoFiltros } from '../components/suprimentos/FiltrosSuprimentos';
 import TabVisaoGeral from '../components/suprimentos/TabVisaoGeral';
 import TabDemandas from '../components/suprimentos/TabDemandas';
@@ -73,6 +74,7 @@ function filtrosIniciais(): EstadoFiltros {
     dateTo: j.ate,
     tipo: 'todos',
     tipoItem: 'consumo',
+    contrato: 'sem_contrato',
     criticidade: 'todas',
     area: 'todas',
     comprador: 'todos',
@@ -174,6 +176,8 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
       if (filtros.tipoItem === 'projeto' && !eProjeto) return false;
       if (filtros.tipoItem === 'consumo' && eProjeto) return false;
     }
+    if (filtros.contrato === 'com_contrato' && !ehItemDeContrato(r)) return false;
+    if (filtros.contrato === 'sem_contrato' && ehItemDeContrato(r)) return false;
     if (filtros.criticidade !== 'todas' && classifyCriticidade(r.requisicao_de_compra) !== filtros.criticidade) return false;
     if (filtros.area !== 'todas' && (r.area_solicitante?.trim() || 'Não informada') !== filtros.area) return false;
     // Filtra pelo mesmo comprador "resolvido" usado nos gráficos e tabelas —
@@ -181,7 +185,7 @@ export default function SapDashboards({ onNavigate, abaInicial = 'geral' }: SapD
     // foi colocado por outro (cobertura entre compradores).
     if (filtros.comprador !== 'todos' && resolveComprador(r, compradores) !== compradorFiltroNome) return false;
     return true;
-  }, [filtros.tipo, filtros.tipoItem, filtros.criticidade, filtros.area, filtros.comprador, compradores, compradorFiltroNome]);
+  }, [filtros.tipo, filtros.tipoItem, filtros.contrato, filtros.criticidade, filtros.area, filtros.comprador, compradores, compradorFiltroNome]);
 
   const dentroDoPeriodo = useCallback((r: EnrichedSAPRecord, de: string, ate: string): boolean => {
     if (!de && !ate) return true;

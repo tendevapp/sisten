@@ -20,6 +20,12 @@ export type EstadoTramo = 'expedido' | 'faturado' | 'pendente';
 export const TRAMOS_ORDEM = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
 
 /**
+ * Ordem dos tramos na matriz visual de avanço de torre.
+ * A torre é montada da base para o topo: T5 no topo (em cima) e T1 na base (embaixo).
+ */
+export const TRAMOS_MATRIZ_ORDEM = ['T5', 'T4', 'T3', 'T2', 'T1'] as const;
+
+/**
  * Semana ISO-8601 de uma data `YYYY-MM-DD`.
  *
  * Monta a data em UTC a partir da string fatiada em vez de `new Date(iso)`:
@@ -133,7 +139,7 @@ export interface CelulaMatriz {
 
 export interface MatrizTorreTramo {
   torres: number[];
-  /** Uma linha por tramo (T1 em cima), na ordem de `TRAMOS_ORDEM`. */
+  /** Uma linha por tramo (T5 em cima, T1 embaixo), na ordem de `TRAMOS_MATRIZ_ORDEM`. */
   linhas: { tramo: string; celulas: (CelulaMatriz | null)[] }[];
 }
 
@@ -141,6 +147,8 @@ export interface MatrizTorreTramo {
  * Matriz torre × tramo — a visão que a planilha original não dá: numa olhada
  * se vê que as torres 1 a 4 andaram e as 7 em diante estão intocadas.
  * Célula ausente (torre cadastrada sem aquele tramo) vem como `null`.
+ *
+ * Tramos ordenados do topo para a base (T5 -> T1) para refletir a torre física.
  */
 export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
   const torres = [...new Set(linhas.map((l) => l.torre_numero))].sort((a, b) => a - b);
@@ -149,7 +157,7 @@ export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
 
   return {
     torres,
-    linhas: TRAMOS_ORDEM.map((tramo) => ({
+    linhas: TRAMOS_MATRIZ_ORDEM.map((tramo) => ({
       tramo,
       celulas: torres.map((torre) => {
         const l = indice.get(`${torre}|${tramo}`);

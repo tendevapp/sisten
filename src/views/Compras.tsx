@@ -8,7 +8,7 @@ import {
   PackageSearch, Search, FileSpreadsheet, AlertCircle, ChevronDown, ChevronRight,
   Phone, Mail, Tag, Calendar, AlertTriangle, RefreshCw, Filter, User, FileText,
   LayoutGrid, List, Table, Save, Clock, History, Check, Info, ArrowUpRight, Copy, Users, X, Send,
-  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb
+  MessageCircle, Flag, MapPin, Boxes, Sparkles, PackageCheck, HelpCircle, Bug, Lightbulb, ExternalLink
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -30,6 +30,8 @@ import {
   buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
   type VinculoSistenRm,
 } from '../lib/centralComprasSisten';
+import { buscarCotacoesItensMap, type CotacaoItemVinculo } from '../lib/cotacoesApi';
+import MapaCotacaoModal from '../components/cotacoes/MapaCotacaoModal';
 import type { CotacaoProcessoItemDraft } from '../types';
 import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
@@ -494,13 +496,30 @@ const COMPRAS_TOUR_STEPS: TourStep[] = [
   },
 ];
 
+interface ComprasMemoryCache {
+  rawRmGroups: RMGroup[];
+  techTextByCode: Map<string, string>;
+  cotacaoHistoricoByKey: Map<string, CotacaoHistoricoEntry[]>;
+  cotacoesPorItem: Map<string, CotacaoItemVinculo[]>;
+  fornecedoresPorMaterial: Map<string, FornecedorMaterialRow[]>;
+  prioridadesMap: Map<string, RastreioPrioridade>;
+  lastUpdated: string | null;
+  cachedAt: number;
+}
+
+let comprasMemoryCache: ComprasMemoryCache | null = null;
+
+export function limparComprasMemoryCache(): void {
+  comprasMemoryCache = null;
+}
+
 export default function Compras({ user, onNavigate, poFilterInicial }: ComprasProps) {
   const tour = usePageTour('central-compras', COMPRAS_TOUR_STEPS.length);
-  const [loading, setLoading] = useState(true);
-  const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>([]);
+  const [loading, setLoading] = useState(() => !comprasMemoryCache);
+  const [rawRmGroups, setRawRmGroups] = useState<RMGroup[]>(() => comprasMemoryCache ? comprasMemoryCache.rawRmGroups : []);
   // Texto técnico por código, buscado só para os materiais desta página (Sem PO),
   // não mais do catálogo inteiro em cache local.
-  const [techTextByCode, setTechTextByCode] = useState<Map<string, string>>(new Map());
+  const [techTextByCode, setTechTextByCode] = useState<Map<string, string>>(() => comprasMemoryCache ? comprasMemoryCache.techTextByCode : new Map());
   // Vínculo RM + material → solicitação/item do SISTEN (Abrir RM > Abertas).
   // Local (não a base SAP inteira), então atualiza sozinho a cada mudança no
   // localDb — vincular uma RM lá reflete aqui sem precisar de "Atualizar".
@@ -556,7 +575,21 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   // Histórico de cotações já enviadas, por item+fornecedor (ri|cod_forn),
   // usado para avisar o comprador na tela de texto da cotação.
-  const [cotacaoHistoricoByKey, setCotacaoHistoricoByKey] = useState<Map<string, CotacaoHistoricoEntry[]>>(new Map());
+  const [cotacaoHistoricoByKey, setCotacaoHistoricoByKey] = useState<Map<string, CotacaoHistoricoEntry[]>>(() => comprasMemoryCache ? comprasMemoryCache.cotacaoHistoricoByKey : new Map());
+
+  // Processos de cotação vinculados aos itens (por ri e rm-item_reqc)
+  const [cotacoesPorItem, setCotacoesPorItem] = useState<Map<string, CotacaoItemVinculo[]>>(() => comprasMemoryCache ? comprasMemoryCache.cotacoesPorItem : new Map());
+  // Modal de mapa de cotação em janela suspensa
+  const [mapaCotacaoModal, setMapaCotacaoModal] = useState<{ processoId: string; numero: string } | null>(null);
+
+  const obterCotacoesDoItem = useCallback((r: EnrichedSAPRecord): CotacaoItemVinculo[] => {
+    const porRi = r.ri ? cotacoesPorItem.get(r.ri) : undefined;
+    if (porRi && porRi.length > 0) return porRi;
+    const rmKey = `${r.requisicao_de_compra || ''}-${r.item_reqc || ''}`;
+    const porRm = cotacoesPorItem.get(rmKey);
+    if (porRm && porRm.length > 0) return porRm;
+    return [];
+  }, [cotacoesPorItem]);
 
   // Modos de Visualização: 'cards' | 'table'. Sem preferência salva, o celular
   // abre em Cards: a tabela plana tem ~13 colunas e no celular vira uma faixa
@@ -603,7 +636,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [semMigoCount, setSemMigoCount] = useState<number | null>(null);
 
   // Prioridades solicitadas pelos usuários (Rastreio Compras), nível atual por RI.
-  const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(new Map());
+  const [prioridadesMap, setPrioridadesMap] = useState<Map<string, RastreioPrioridade>>(() => comprasMemoryCache ? comprasMemoryCache.prioridadesMap : new Map());
 
   /**
    * Recorte pedido por deep link — os cliques nos gráficos de Suprimentos
@@ -943,10 +976,60 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   }, [rawRmGroups]);
 
   // Data/hora da última atualização dos dados (última importação/refresh).
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(() => comprasMemoryCache ? comprasMemoryCache.lastUpdated : null);
 
   const buildSuppliersData = useCallback(async (force = false) => {
-    setLoading(true);
+    // Se temos dados em cache recentes (menos de 5 min) e NÃO é refresh forçado,
+    // sincroniza apenas os inputs e registros da memória local de forma instantânea (sem rede)
+    if (!force && comprasMemoryCache && (Date.now() - comprasMemoryCache.cachedAt < 5 * 60 * 1000)) {
+      const allRecords = localDb.getEnrichedSAPRequisicoes();
+      const initialObs: Record<string, string> = {};
+      const initialDates: Record<string, string> = {};
+      const initialStatus: Record<string, ItemStatus> = {};
+      allRecords.forEach(r => {
+        initialObs[r.ri] = r.obs_comprador || '';
+        initialDates[r.ri] = r.data_entrega_prevista || '';
+        initialStatus[r.ri] = r.item_status || 'Aguardando Cotação';
+      });
+      setObsInputState(initialObs);
+      setDateInputState(initialDates);
+      setStatusInputState(initialStatus);
+
+      const contatosMap = new Map<string, ContatoFornecedor>();
+      localDb.getContatosForn().forEach(c => {
+        if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
+      });
+      const rmMap = new Map<string, ItemNode[]>();
+      const rmOrder: string[] = [];
+      allRecords.forEach(record => {
+        const isSemPo = record.status_requisicao === 'Sem PO';
+        const fornecedores = isSemPo
+          ? (comprasMemoryCache!.fornecedoresPorMaterial.get(normalizeCode(record.material_code)) || [])
+          : [];
+        const poFornecedor = !isSemPo && (record.fornecedor_code || record.fornecedor_name)
+          ? buildPoFornecedor(record, contatosMap)
+          : undefined;
+        const node: ItemNode = { record, encontrado: fornecedores.length > 0, fornecedores, poFornecedor };
+        const rm = record.requisicao_de_compra || '—';
+        if (!rmMap.has(rm)) { rmMap.set(rm, []); rmOrder.push(rm); }
+        rmMap.get(rm)!.push(node);
+      });
+
+      const built: RMGroup[] = rmOrder.map(rm => {
+        const items = rmMap.get(rm)!;
+        items.sort((a, b) => (a.record.item_reqc || '').localeCompare(b.record.item_reqc || ''));
+        return { rm, items };
+      });
+
+      comprasMemoryCache.rawRmGroups = built;
+      setRawRmGroups(built);
+      setLoading(false);
+      return;
+    }
+
+    if (!comprasMemoryCache) {
+      setLoading(true);
+    }
     setError(null);
     try {
       // No refresh manual (botão "Atualizar"), rebaixa as bases ignorando o gate
@@ -993,7 +1076,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
       // Prioridades solicitadas pelos usuários no Rastreio Compras — nível
       // atual (mais recente) por item, para o comprador acompanhar aqui.
-      setPrioridadesMap(latestPriorityByRi(localDb.getRastreioPrioridades()));
+      const pMap = latestPriorityByRi(localDb.getRastreioPrioridades());
+      setPrioridadesMap(pMap);
 
       // Inicializa os inputs com os dados atuais salvos
       const initialObs: Record<string, string> = {};
@@ -1007,6 +1091,40 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       setObsInputState(initialObs);
       setDateInputState(initialDates);
       setStatusInputState(initialStatus);
+
+      // Cadastro local de contatos e cidades/endereços
+      const contatosMap = new Map<string, ContatoFornecedor>();
+      localDb.getContatosForn().forEach(c => {
+        if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
+      });
+      const cidadesMap = new Map<string, CidadeForn>();
+      localDb.getCidadeForn().forEach(cf => {
+        if (cf.forn_codigo) cidadesMap.set(String(cf.forn_codigo).trim(), cf);
+      });
+
+      // No primeiro acesso (sem cache), renderiza a estrutura inicial imediatamente
+      // com dados locais enquanto as buscas de rede em paralelo acontecem
+      if (!comprasMemoryCache) {
+        const tempRmMap = new Map<string, ItemNode[]>();
+        const tempRmOrder: string[] = [];
+        semPoRecords.forEach(record => {
+          const isSemPo = record.status_requisicao === 'Sem PO';
+          const poFornecedor = !isSemPo && (record.fornecedor_code || record.fornecedor_name)
+            ? buildPoFornecedor(record, contatosMap)
+            : undefined;
+          const node: ItemNode = { record, encontrado: false, fornecedores: [], poFornecedor };
+          const rm = record.requisicao_de_compra || '—';
+          if (!tempRmMap.has(rm)) { tempRmMap.set(rm, []); tempRmOrder.push(rm); }
+          tempRmMap.get(rm)!.push(node);
+        });
+        const initialBuilt: RMGroup[] = tempRmOrder.map(rm => {
+          const items = tempRmMap.get(rm)!;
+          items.sort((a, b) => (a.record.item_reqc || '').localeCompare(b.record.item_reqc || ''));
+          return { rm, items };
+        });
+        setRawRmGroups(initialBuilt);
+        setLoading(false);
+      }
 
       // Monta conjunto de variantes de codigo para matching tolerante a zeros (apenas para itens Sem PO)
       const codeVariants = new Set<string>();
@@ -1023,95 +1141,113 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         codeVariants.add(raw.padStart(8, '0'));
       });
 
-      if (codeVariants.size > 0 && supabase) {
-        try {
-          const codesArr = Array.from(codeVariants);
-          const techMap = new Map<string, string>();
-          for (let i = 0; i < codesArr.length; i += 500) {
-            const { data, error } = await supabase
+      const risForHistory = Array.from(new Set(semPoRecords.map(r => r.ri).filter(Boolean)));
+      const codesArr = Array.from(codeVariants);
+
+      // 1. Busca texto técnico do catálogo em lotes paralelos
+      const fetchTechText = async (): Promise<Map<string, string>> => {
+        if (codesArr.length === 0 || !supabase) return new Map();
+        const techMap = new Map<string, string>();
+        const chunks: string[][] = [];
+        for (let i = 0; i < codesArr.length; i += 500) {
+          chunks.push(codesArr.slice(i, i + 500));
+        }
+        const results = await Promise.all(
+          chunks.map(chunk =>
+            supabase!
               .from('sap_zl0169_162_catalogo')
               .select('material_code, technical_text')
-              .in('material_code', codesArr.slice(i, i + 500));
-            if (error) throw error;
-            data?.forEach((m: any) => {
-              if (m.technical_text) techMap.set(normalizeCode(m.material_code), sanitizeTechnicalText(m.technical_text));
-            });
-          }
-          setTechTextByCode(techMap);
-        } catch (err) {
-          console.warn('Falha ao buscar texto técnico dos materiais Sem PO:', err);
-        }
-      } else {
-        setTechTextByCode(new Map());
-      }
+              .in('material_code', chunk)
+          )
+        );
+        results.forEach(({ data, error }) => {
+          if (error) throw error;
+          data?.forEach((m: any) => {
+            if (m.technical_text) techMap.set(normalizeCode(m.material_code), sanitizeTechnicalText(m.technical_text));
+          });
+        });
+        return techMap;
+      };
 
-      // Histórico de cotações já enviadas (item+fornecedor), para avisar o
-      // comprador na tela de texto da cotação quando reabrir um envio.
-      const risForHistory = Array.from(new Set(semPoRecords.map(r => r.ri).filter(Boolean)));
-      if (risForHistory.length > 0 && supabase) {
-        try {
-          const historyMap = new Map<string, CotacaoHistoricoEntry[]>();
-          for (let i = 0; i < risForHistory.length; i += 200) {
-            const { data, error } = await supabase
+      // 2. Busca histórico de cotações já enviadas em lotes paralelos
+      const fetchCotacaoHistorico = async (): Promise<Map<string, CotacaoHistoricoEntry[]>> => {
+        if (risForHistory.length === 0 || !supabase) return new Map();
+        const historyMap = new Map<string, CotacaoHistoricoEntry[]>();
+        const chunks: string[][] = [];
+        for (let i = 0; i < risForHistory.length; i += 200) {
+          chunks.push(risForHistory.slice(i, i + 200));
+        }
+        const results = await Promise.all(
+          chunks.map(chunk =>
+            supabase!
               .from('sup_cotacao_historico')
               .select('id, ri, rm, cod_forn, fornecedor_nome, user_name, created_at')
-              .in('ri', risForHistory.slice(i, i + 200));
-            if (error) throw error;
-            (data || []).forEach((row: any) => {
-              const key = historicoKey(row.ri, row.cod_forn);
-              const list = historyMap.get(key) || [];
-              list.push(row as CotacaoHistoricoEntry);
-              historyMap.set(key, list);
-            });
-          }
-          historyMap.forEach(list => list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-          setCotacaoHistoricoByKey(historyMap);
-        } catch (err) {
-          console.warn('Falha ao buscar histórico de cotações enviadas:', err);
-          setCotacaoHistoricoByKey(new Map());
+              .in('ri', chunk)
+          )
+        );
+        results.forEach(({ data, error }) => {
+          if (error) throw error;
+          (data || []).forEach((row: any) => {
+            const key = historicoKey(row.ri, row.cod_forn);
+            const list = historyMap.get(key) || [];
+            list.push(row as CotacaoHistoricoEntry);
+            historyMap.set(key, list);
+          });
+        });
+        historyMap.forEach(list => list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+        return historyMap;
+      };
+
+      // 3. Busca histórico de compras em sap_zl0132_po em lotes paralelos
+      const fetchLinhasHistorico = async (): Promise<HistoricoPedidoView[]> => {
+        if (codesArr.length === 0 || !supabase) return [];
+        const chunks: string[][] = [];
+        for (let i = 0; i < codesArr.length; i += 200) {
+          chunks.push(codesArr.slice(i, i + 200));
         }
-      } else {
-        setCotacaoHistoricoByKey(new Map());
-      }
-
-      const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
-
-      // Cadastro local de contatos e cidades/endereços
-      const contatosMap = new Map<string, ContatoFornecedor>();
-      localDb.getContatosForn().forEach(c => {
-        if (c.cod_vendor) contatosMap.set(String(c.cod_vendor).trim(), c);
-      });
-      const cidadesMap = new Map<string, CidadeForn>();
-      localDb.getCidadeForn().forEach(cf => {
-        if (cf.forn_codigo) cidadesMap.set(String(cf.forn_codigo).trim(), cf);
-      });
-
-
-      if (codeVariants.size > 0 && supabase) {
-        // A view vw_historico_fornecedores_sem_po (fornecedor + pedido + contato +
-        // MIGO, CRF = 'x') não existe no banco — busca-se direto na tabela
-        // pedidosforn (que já traz data_migo) filtrando pelos materiais em
-        // aberto, e o contato (telefone/e-mail/nome fantasia) é resolvido no
-        // cliente via localDb.getContatosForn(), igual ao HistoricoPedidos.tsx.
-        // Sem corte de data: os materiais já vêm restritos ao conjunto pendente,
-        // então convém trazer o histórico completo (inclusive compras antigas).
-        let linhasHistorico: HistoricoPedidoView[] = [];
-        try {
-          const codesArr = Array.from(codeVariants);
-          for (let i = 0; i < codesArr.length; i += 200) {
-            const { data, error } = await supabase
+        const results = await Promise.all(
+          chunks.map(chunk =>
+            supabase!
               .from('sap_zl0132_po')
               .select('material, cod_forn:fornecedor_codigo, cnpj:cnpj_fornecedor, fornecedor:fornecedor_nome, regiao_uf, doc_compra, data_doc, qtd_pedido, valor_liquido, preco_liquido_unit, por, data_migo')
               .ilike('crf', 'x')
-              .in('material', codesArr.slice(i, i + 200));
-            if (error) throw error;
-            if (data) linhasHistorico.push(...(data as HistoricoPedidoView[]));
-          }
-        } catch (netErr) {
-          console.warn('Falha ao buscar histórico de fornecedores (Sem PO).', netErr);
-          linhasHistorico = [];
-        }
+              .in('material', chunk)
+          )
+        );
+        const linhas: HistoricoPedidoView[] = [];
+        results.forEach(({ data, error }) => {
+          if (error) throw error;
+          if (data) linhas.push(...(data as HistoricoPedidoView[]));
+        });
+        return linhas;
+      };
 
+      // Executa as 4 consultas assíncronas em paralelo
+      const [techMap, historyMap, cotacoesMap, linhasHistorico] = await Promise.all([
+        fetchTechText().catch(err => {
+          console.warn('Falha ao buscar texto técnico dos materiais Sem PO:', err);
+          return new Map<string, string>();
+        }),
+        fetchCotacaoHistorico().catch(err => {
+          console.warn('Falha ao buscar histórico de cotações enviadas:', err);
+          return new Map<string, CotacaoHistoricoEntry[]>();
+        }),
+        buscarCotacoesItensMap().catch(err => {
+          console.warn('Falha ao buscar vínculos de processos de cotação:', err);
+          return new Map<string, CotacaoItemVinculo[]>();
+        }),
+        fetchLinhasHistorico().catch(err => {
+          console.warn('Falha ao buscar histórico de fornecedores (Sem PO):', err);
+          return [] as HistoricoPedidoView[];
+        }),
+      ]);
+
+      setTechTextByCode(techMap);
+      setCotacaoHistoricoByKey(historyMap);
+      setCotacoesPorItem(cotacoesMap);
+
+      const fornecedoresPorMaterial = new Map<string, FornecedorMaterialRow[]>();
+      if (linhasHistorico.length > 0) {
         // Filtra linhas do histórico relevantes para os materiais desta pagina
         const linhasPorNorm = new Map<string, HistoricoPedidoView[]>();
         linhasHistorico.forEach(l => {
@@ -1160,7 +1296,6 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             };
           });
 
-
           list.sort((a, b) => {
             const dateA = a.ultima_data !== '—' ? new Date(a.ultima_data).getTime() : 0;
             const dateB = b.ultima_data !== '—' ? new Date(b.ultima_data).getTime() : 0;
@@ -1193,12 +1328,24 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         return { rm, items };
       });
 
+      const updatedTime = localDb.getDatasetUpdatedAt('requisicoes');
+      comprasMemoryCache = {
+        rawRmGroups: built,
+        techTextByCode: techMap,
+        cotacaoHistoricoByKey: historyMap,
+        cotacoesPorItem: cotacoesMap,
+        fornecedoresPorMaterial,
+        prioridadesMap: pMap,
+        lastUpdated: updatedTime,
+        cachedAt: Date.now(),
+      };
+
       setRawRmGroups(built);
-      setLastUpdated(localDb.getDatasetUpdatedAt('requisicoes'));
+      setLastUpdated(updatedTime);
     } catch (e: any) {
       console.error('Erro ao montar fornecedores (Sem PO):', e);
       setError('Falha ao montar dados. Tente atualizar novamente.');
-      setRawRmGroups([]);
+      if (!comprasMemoryCache) setRawRmGroups([]);
     } finally {
       setLoading(false);
     }
@@ -1485,14 +1632,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             f.cnpj.toLowerCase().includes(q) ||
             f.cod_forn.toLowerCase().includes(q)
           );
-          if (!rmMatchesSearch && !inRecord && !inFornecedor) return false;
+          const cotacoesItem = obterCotacoesDoItem(r);
+          const inCotacao = cotacoesItem.some(c => c.numero.toLowerCase().includes(q));
+          if (!rmMatchesSearch && !inRecord && !inFornecedor && !inCotacao) return false;
         }
         return true;
       });
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter]);
+  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1634,9 +1783,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     const dataToExport: any[] = [];
     filteredGroups.forEach(g => {
       g.items.forEach(({ record: r, encontrado, fornecedores }) => {
+        const cotacoesItem = obterCotacoesDoItem(r);
         const base = {
           'RM / Requisição': r.requisicao_de_compra || '—',
           'Item': r.item_reqc || '—',
+          'Cotação': cotacoesItem.length > 0 ? cotacoesItem.map(c => c.numero).join(', ') : '—',
           'Código do Material': r.material_code || '—',
           'Descrição': r.texto_breve || '—',
           'Texto Técnico': materialsByCode.get(normalizeCode(r.material_code)) || '—',
@@ -2055,9 +2206,6 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             <PackageSearch className="h-7 w-7 text-[#0056c6] dark:text-blue-500" />
             Central de Compras
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Gestão operacional avançada de requisições pendentes. Localize fornecedores históricos, registre promessas de entrega e gerencie os status operacionais na mesma tela.
-          </p>
           {lastUpdated && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1 font-medium">
               <Clock className="h-3 w-3" /> {localDb.getDatasetUpdateBadge('requisicoes')}
@@ -2506,6 +2654,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                 const alertStyle = ALERT_STYLE[ilvl];
                 const itemSaveStatus = saveStatus[r.ri] || 'idle';
                 const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
+                const cotacoesVinculadas = obterCotacoesDoItem(r);
                 return (
                   <div key={r.ri_po} className={`border border-slate-200 dark:border-slate-800 rounded-3xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-200 relative ${isModified(r.ri, r) ? 'border-l-4 border-l-amber-500 ring-1 ring-amber-500/10' : encontrado ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-rose-500'}`}>
                     {/* Card Top */}
@@ -2533,6 +2682,27 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               >
                                 SISTEN #{vinculoSisten.requestNumber}
                               </span>
+                            </>
+                          )}
+                          {cotacoesVinculadas.length > 0 && (
+                            <>
+                              <span className="text-[10px] text-slate-350">•</span>
+                              <div className="inline-flex items-center gap-1 flex-wrap">
+                                {cotacoesVinculadas.map(c => (
+                                  <a
+                                    key={c.processoId}
+                                    href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
+                                    title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
+                                  >
+                                    <FileSpreadsheet className="h-3 w-3 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                    <span>{c.numero}</span>
+                                    <ExternalLink className="h-2.5 w-2.5 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                  </a>
+                                ))}
+                              </div>
                             </>
                           )}
                         </div>
@@ -2847,6 +3017,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   </Th>
                   {tableShowSupplierFirst && <Th label="Fornecedor" />}
                   <Th label="RM / Item" />
+                  <Th label="Cotação" />
                   <Th label="PO" />
                   <Th label="Material" />
                   <Th label="Descrição" />
@@ -2867,6 +3038,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                     // estiver vinculada em Abrir RM > Abertas — casada pela RM
                     // e pelo código do material (ver `lib/centralComprasSisten.ts`).
                     const vinculoSisten = buscarVinculoSistenRm(vinculosSistenPorRm, rm, r.material_code);
+                    const cotacoesVinculadas = obterCotacoesDoItem(r);
                     return (
                       // Linha alterada e ainda não salva ganha uma faixa na
                       // borda esquerda além do fundo: o tingimento sozinho era
@@ -2965,6 +3137,30 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             >
                               SISTEN #{vinculoSisten.requestNumber}
                             </span>
+                          )}
+                        </td>
+
+                        {/* Cotação */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {cotacoesVinculadas.length > 0 ? (
+                            <div className="flex flex-col gap-1 items-start">
+                              {cotacoesVinculadas.map(c => (
+                                <a
+                                  key={c.processoId}
+                                  href={`/#/suprimentos/cotacoes?processoId=${encodeURIComponent(c.processoId)}&fase=mapa`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all cursor-pointer shadow-xs active:scale-95 group no-underline"
+                                  title={`Abrir Mapa Comparativo de ${c.numero} em nova janela (${c.status})`}
+                                >
+                                  <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                  <span>{c.numero}</span>
+                                  <ExternalLink className="h-3 w-3 text-indigo-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-350 dark:text-slate-600 font-mono text-xs pl-2" title="Sem processo de cotação vinculado">—</span>
                           )}
                         </td>
 
@@ -3573,6 +3769,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           }
           onClose={() => { setSelectedRecordForModal(null); setSelectedVinculoForModal(null); }}
           onUpdate={buildSuppliersData}
+        />
+      )}
+
+      {/* Modal do Mapa Comparativo de Cotação em Janela Suspensa */}
+      {mapaCotacaoModal && (
+        <MapaCotacaoModal
+          processoId={mapaCotacaoModal.processoId}
+          onClose={() => setMapaCotacaoModal(null)}
+          onNavigate={onNavigate}
         />
       )}
 

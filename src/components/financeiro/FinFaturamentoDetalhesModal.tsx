@@ -46,14 +46,6 @@ function BadgeStatus({ estado, restricao }: { estado: EstadoTramo; restricao?: b
     );
   }
   if (estado === 'faturado') {
-    if (restricao) {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-          <AlertTriangle className="h-3 w-3" />
-          Faturado (com restrição)
-        </span>
-      );
-    }
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
         <FileText className="h-3 w-3" />

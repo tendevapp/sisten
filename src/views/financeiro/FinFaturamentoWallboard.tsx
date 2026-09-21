@@ -58,19 +58,10 @@ interface Props {
 const u = (n: number) => `calc(var(--wb) * ${n})`;
 
 /**
- * Amarelo do "faturado, ainda não expedido". É o `--series-4` do projeto, que
- * já vem com passo por tema (`#eda100` claro, `#c98500` escuro) e já está no
- * conjunto validado — em vez de `--status-warning`, que é amarelo mais puro mas
- * dá 1,83:1 sobre branco e reprovaria o contraste no tema claro.
- *
- * Amarelo contra o verde do expedido é um par fraco em protanopia (ΔE 3,0 no
- * validador). Por isso todo estado aqui carrega glifo e rótulo: a cor é reforço,
- * nunca a única codificação.
+ * Azul de "faturado". É o `--series-1` do projeto.
  */
-const FATURADO_CSS = 'var(--series-4)';
+const FATURADO_CSS = 'var(--series-1)';
 
-/** Tinta sobre qualquer preenchimento amarelo: branco não teria contraste. */
-const TINTA_SOBRE_AMARELO = '#0f172a';
 
 const ESTADO_ROTULO: Record<EstadoTramo, string> = {
   expedido: 'Expedido',
@@ -176,20 +167,6 @@ function Kpi({
 }
 
 /**
- * Amarelo do "faturado, com restrição" — pedido explícito por esse tom em vez
- * do laranja original. É o mesmo `--series-4` de `FATURADO_CSS` (link, não
- * cópia): declarar antes deste ponto no arquivo.
- *
- * ATENÇÃO ao trocar: verde (expedido) × amarelo (restrição) reprova o
- * `validate_palette.js` no tema escuro — ΔE 3,0 em protanopia, abaixo até do
- * piso de 6-8 que a skill de dataviz exige reforço secundário. Por isso
- * "expedido" carrega o selo `✓` além da cor: sem ele, quem não distingue
- * verde de amarelo não teria como separar as duas células.
- */
-const RESTRICAO_CSS = FATURADO_CSS;
-const SEM_RESTRICAO_CSS = 'var(--series-1)'; // azul: segue o fluxo normal, sem restrição
-
-/**
  * Verde do "expedido" — passo próprio, um tom mais escuro que
  * `--status-good` (pedido explícito). Só aqui: `--status-good` é token de
  * status compartilhado com o resto do app e continua servindo o sinal de
@@ -202,9 +179,8 @@ const EXPEDIDO_CSS = '#0a8b0a';
  * mostrar: pendente fica vazia de propósito, porque o pedido era "saber qual
  * número já foi faturado e expedido", não listar os 90 tramos.
  *
- * Preenchimento, nunca borda: verde para expedido (venceu o funil, restrição
- * deixa de ser a pergunta ali); azul/laranja por restrição para "faturado,
- * ainda não expedido".
+ * Preenchimento, nunca borda: verde para expedido (venceu o funil); azul
+ * para faturado.
  *
  * O número fica em pé (`vertical-rl` + `text-orientation: upright`): cada
  * dígito continua legível sem virar a cabeça, grande o bastante para ler a
@@ -230,28 +206,21 @@ function CelulaTramo({ celula, largura, onClick }: { celula: CelulaMatriz | null
     );
   }
 
-  // Expedido é sempre verde — já venceu o funil, a restrição deixa de ser a
-  // pergunta relevante nesse ponto (ela continua visível para "faturado" e na
-  // coluna Restrição da tabela). Só "faturado" (ainda não expedido) usa
-  // azul/amarelo.
   const expedido = celula.estado === 'expedido';
-  const fundo = expedido ? EXPEDIDO_CSS : celula.restricao ? RESTRICAO_CSS : SEM_RESTRICAO_CSS;
-  // Amarelo é claro; texto branco nele reprova contraste (2,17:1 no
-  // validador). Verde e azul são escuros o bastante para texto branco.
-  const tinta = fundo === RESTRICAO_CSS ? TINTA_SOBRE_AMARELO : '#ffffff';
+  const fundo = expedido ? EXPEDIDO_CSS : FATURADO_CSS;
 
   return (
     <div
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       className={`relative flex items-center justify-center overflow-hidden ${onClick ? 'cursor-pointer transition-transform hover:scale-110 hover:z-10 shadow-sm' : ''}`}
-      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'} · ${ESTADO_ROTULO[celula.estado]}${celula.restricao ? ' · com restrição' : ''}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''} (clique para ver detalhes)`}
+      title={`Torre ${celula.torre} ${celula.tramo} · Seq ${celula.serie ?? '-'} · ${ESTADO_ROTULO[celula.estado]}${celula.notaFiscal ? ` · NF ${celula.notaFiscal}` : ''} (clique para ver detalhes)`}
       style={{ width: largura, height: '100%', borderRadius: u(0.4), background: fundo }}
     >
       <span
         className="tabular font-bold"
         style={{
-          color: tinta,
+          color: '#ffffff',
           // Só o seq (4 dígitos) — o "T1-" era redundante com o rótulo da
           // própria linha (T1..T5), então cabe uma fonte maior que a do
           // rótulo "T1-3143" que veio antes.
@@ -722,8 +691,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
             style={{ gap: u(1.8), paddingTop: u(1.2), borderTop: '1px solid var(--hairline)' }}
           >
             <ItemLegendaCor cor={EXPEDIDO_CSS} texto="Expedido" />
-            <ItemLegendaCor cor={SEM_RESTRICAO_CSS} texto="Faturado, sem restrição" />
-            <ItemLegendaCor cor={RESTRICAO_CSS} texto="Faturado, com restrição" />
+            <ItemLegendaCor cor={FATURADO_CSS} texto="Faturado" />
             <span className="shrink-0" style={{ width: u(1.4), height: u(1.4), borderRadius: u(0.3), background: 'var(--surface-sunken)', border: '1px solid var(--hairline)' }} />
             <span style={{ fontSize: u(1.35), color: 'var(--ink-secondary)' }}>Pendente</span>
             <span style={{ fontSize: u(1.3), color: 'var(--ink-muted)', marginLeft: 'auto' }}>
@@ -787,7 +755,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                       height: `${(p.faturados / maxRitmo) * 100}%`,
                       minHeight: u(0.4),
                       borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
-                      background: SEM_RESTRICAO_CSS,
+                      background: FATURADO_CSS,
                       border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
                       borderBottom: 'none',
                     }}
@@ -836,7 +804,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                         width: `${(t.faturados / maxTramo) * 100}%`,
                         height: '100%',
                         borderRadius: u(0.4),
-                        background: SEM_RESTRICAO_CSS,
+                        background: FATURADO_CSS,
                         transition: 'width var(--dur-slow) var(--ease-out)',
                       }}
                     />
@@ -883,7 +851,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                     {n.nota_fiscal}
                   </span>
                   <span className="truncate" style={{ fontSize: u(1.5), color: 'var(--ink-muted)' }}>
-                    T{n.torre_numero} · {n.tramo}
+                    Torre {n.torre_numero} - {n.tramo}{n.serie ? ` - ${n.serie}` : ''}
                   </span>
                   <span className="tabular shrink-0" style={{ fontSize: u(1.5), color: 'var(--ink-secondary)' }}>
                     {fmtDataBR(n.data_faturado)}

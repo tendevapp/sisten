@@ -84,6 +84,22 @@ describe('historicoAnalytics — calcRecorrencia', () => {
     const resultado = calcRecorrencia(linhas, 'similar');
     expect(resultado).toHaveLength(2);
   });
+
+  it('filtra itens com apenas 1 compra quando apenasRecorrentes é true', () => {
+    const linhas: HistoricoPedidoView[] = [
+      criarLinha({ material: 'M1', doc_compra: 'PO1', data_doc: '2026-01-01' }),
+      criarLinha({ material: 'M1', doc_compra: 'PO2', data_doc: '2026-01-10' }),
+      criarLinha({ material: 'M2', doc_compra: 'PO3', data_doc: '2026-01-15' }),
+    ];
+
+    const todos = calcRecorrencia(linhas, 'material', false);
+    expect(todos).toHaveLength(2);
+
+    const apenasRecorrentes = calcRecorrencia(linhas, 'material', true);
+    expect(apenasRecorrentes).toHaveLength(1);
+    expect(apenasRecorrentes[0].material).toBe('M1');
+    expect(apenasRecorrentes[0].pedidosDistintos).toBe(2);
+  });
 });
 
 describe('historicoAnalytics — serieTemporalRecorrencia', () => {
@@ -185,5 +201,15 @@ describe('historicoAnalytics — detectarAlertasAuditoria', () => {
       item({ pedidosDistintos: 3, areas: ['A', 'B', 'C'], fornecedores: ['X', 'Y', 'Z'] }),
     ]);
     expect(alertas.some(a => a.tipo === 'concentracao')).toBe(false);
+  });
+
+  it('alerta "maior_valor" apenas para itens com 2 ou mais pedidos distintos', () => {
+    const alertas = detectarAlertasAuditoria([
+      item({ chave: 'M1', pedidosDistintos: 1, valor: 50000 }),
+      item({ chave: 'M2', pedidosDistintos: 2, valor: 10000 }),
+    ]);
+    const maiorValor = alertas.filter(a => a.tipo === 'maior_valor');
+    expect(maiorValor).toHaveLength(1);
+    expect(maiorValor[0].item.chave).toBe('M2');
   });
 });

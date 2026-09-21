@@ -25,6 +25,7 @@ import PortariaRelatorio from './PortariaRelatorio';
 import PortariaBriefing from './PortariaBriefing';
 import PortariaPassagemPlantao from './PortariaPassagemPlantao';
 import PortariaAlcoolemia from './PortariaAlcoolemia';
+import { canAccessForm } from '../../lib/pages';
 
 interface Props {
   user: Profile;
@@ -162,6 +163,21 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
     },
   ];
 
+  const PORTARIA_FORM_PAGE_MAP: Record<string, string> = {
+    passagem: 'form_portaria_plantao',
+    relatorio: 'form_portaria_relatorio',
+    transportes: 'form_portaria_transportes',
+    equipamentos: 'form_portaria_equipamentos',
+    carretas: 'form_portaria_carretas',
+    briefing: 'form_portaria_briefing',
+    alcoolemia: 'form_portaria_alcoolemia',
+  };
+
+  const formulariosVisiveis = FORMULARIOS_PORTARIA.filter((form) => {
+    const pageId = PORTARIA_FORM_PAGE_MAP[form.id];
+    return pageId ? canAccessForm(user, pageId) : false;
+  });
+
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
@@ -174,6 +190,14 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
     setActiveTab('visao_geral');
     onNavigate(path);
   };
+
+  if (activeTab !== 'visao_geral') {
+    const pageId = PORTARIA_FORM_PAGE_MAP[activeTab];
+    if (pageId && !canAccessForm(user, pageId)) {
+      setActiveTab('visao_geral');
+      return null;
+    }
+  }
 
   if (activeTab === 'passagem') {
     return <PortariaPassagemPlantao user={user} onNavigate={handleChildNavigate} />;
@@ -231,7 +255,18 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
 
       {/* Forms Grid: 3 blocos por linha no mobile e descricao oculta */}
       <div data-tour="portaria-hub-grid" className="grid grid-cols-3 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {FORMULARIOS_PORTARIA.map((form) => {
+        {formulariosVisiveis.length === 0 ? (
+          <div className="col-span-full rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+            <DoorOpen className="mx-auto h-8 w-8 text-blue-500 mb-2" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Nenhum formulário da Portaria liberado para o seu perfil.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Caso precise de acesso aos registros do pátio, solicite liberação ao administrador no módulo de Acessos.
+            </p>
+          </div>
+        ) : (
+          formulariosVisiveis.map((form) => {
           const Icon = form.icon;
           return (
             <button
@@ -268,7 +303,8 @@ export default function PortariaHub({ user, onNavigate, initialTab = 'visao_gera
               </div>
             </button>
           );
-        })}
+        })
+      )}
       </div>
 
       {tour.isOpen && (

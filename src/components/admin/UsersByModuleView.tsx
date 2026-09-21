@@ -11,8 +11,16 @@ import {
 } from 'lucide-react';
 import { Profile, Sector } from '../../types';
 import {
-  canAccessPage, canAccessFormGroup, getPageGroups, PageDef, isUserAdriano, isUserSetorRh,
+  canAccessPage,
+  canAccessForm,
+  canAccessFormGroup,
+  userBelongsToSector,
+  getPageGroups,
+  PageDef,
+  isUserAdriano,
+  isUserSetorRh,
   FORMULARIO_SUBPERMISSOES,
+  FORMULARIOS_DETALHADOS,
 } from '../../lib/pages';
 import { localDb } from '../../db/localDb';
 import { useToast } from '../ui/Toast';
@@ -76,13 +84,15 @@ export default function UsersByModuleView({
   /**
    * Acesso efetivo do usuário ao item selecionado.
    *
-   * Para grupo de formulário a regra não é `canAccessPage`: além do override,
-   * ela depende do acesso à página "Formulários" e do fallback do sinalizador
-   * legado — tudo isso mora em `canAccessFormGroup`.
+   * Para formulários individuais: avalia canAccessForm.
+   * Para grupos de formulários: avalia canAccessFormGroup.
+   * Para páginas gerais: avalia canAccessPage.
    */
   const temAcesso = (p: Profile, pageId: string): boolean => {
+    const formDef = FORMULARIOS_DETALHADOS.find(f => f.id === pageId);
+    if (formDef) return canAccessForm(p, formDef.id, sectors);
     const sub = FORMULARIO_SUBPERMISSOES.find(f => f.id === pageId);
-    return sub ? canAccessFormGroup(p, sub.grupoId) : canAccessPage(p, pageId);
+    return sub ? canAccessFormGroup(p, sub.grupoId, sectors) : canAccessPage(p, pageId);
   };
 
   // Lista linear de todas as páginas
@@ -154,6 +164,8 @@ export default function UsersByModuleView({
   const userModuleStatuses = useMemo<UserModuleStatus[]>(() => {
     if (!selectedPage) return [];
 
+    const formDef = FORMULARIOS_DETALHADOS.find(f => f.id === selectedPage.id);
+
     return activeProfiles.map(p => {
       const hasAccess = temAcesso(p, selectedPage.id);
       const isAdmin = p.roles.includes('admin');
@@ -173,6 +185,13 @@ export default function UsersByModuleView({
       } else if (overrideVal === false) {
         accessType = 'override_blocked';
         accessLabel = 'Bloqueio Manual (Override)';
+      } else if (formDef && formDef.universalParaVisualizador) {
+        accessType = 'role';
+        accessLabel = 'Acesso Universal (RID)';
+      } else if (formDef && userBelongsToSector(p, formDef.setores, sectors)) {
+        const secNome = sectorMap.get(p.sector_id) || 'Setor';
+        accessType = 'role';
+        accessLabel = `Setor (${secNome})`;
       } else if (selectedPage.group === 'FACILITIES' && isAdriano) {
         accessType = 'role';
         accessLabel = 'Responsável Facilities';
@@ -192,7 +211,7 @@ export default function UsersByModuleView({
         isOverride: overrideVal !== undefined,
       };
     });
-  }, [selectedPage, activeProfiles]);
+  }, [selectedPage, activeProfiles, sectors, sectorMap]);
 
   // Filtro de usuários do módulo selecionado
   const filteredUserStatuses = useMemo(() => {
@@ -476,12 +495,32 @@ export default function UsersByModuleView({
                         ? `🔒 Regra padrão: Liberado para papéis: ${selectedPage.defaultRoles.join(', ')}.`
                         : '🔒 Regra personalizada ou exclusiva.'}
                     </p>
-                    {FORMULARIO_SUBPERMISSOES.some(f => f.id === selectedPage.id) && (
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Subpermissão de formulário: além desta regra, o colaborador precisa ter
-                        acesso à página "Formulários".
-                      </p>
-                    )}
+                    {(() => {
+                      const formDef = FORMULARIOS_DETALHADOS.find(f => f.id === selectedPage.id);
+                      if (formDef) {
+                        return (
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-[11px] text-emerald-700 font-medium">
+                              Formulário operacional específico{formDef.codigo ? ` (${formDef.codigo})` : ''}: {formDef.descricao}
+                            </p>
+                            <p className="text-[11px] text-slate-500">
+                              {formDef.universalParaVisualizador
+                                ? '• Liberado para todos os colaboradores por padrão (inclusive perfis visualizadores).'
+                                : '• Para perfis visualizadores: liberado somente se o colaborador pertencer ao setor correspondente ou se você liberar manualmente abaixo.'}
+                            </p>
+                          </div>
+                        );
+                      }
+                      if (FORMULARIO_SUBPERMISSOES.some(f => f.id === selectedPage.id)) {
+                        return (
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Grupo de formulários: além desta regra, o colaborador precisa ter
+                            acesso à página "Formulários".
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
 

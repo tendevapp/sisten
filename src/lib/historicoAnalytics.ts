@@ -748,7 +748,11 @@ export interface RecorrenciaItem {
   itens: HistoricoPedidoView[];
 }
 
-export function calcRecorrencia(linhas: HistoricoPedidoView[], chaveDe: ChaveRecorrencia): RecorrenciaItem[] {
+export function calcRecorrencia(
+  linhas: HistoricoPedidoView[],
+  chaveDe: ChaveRecorrencia,
+  apenasRecorrentes = false
+): RecorrenciaItem[] {
   const dimensao = (l: HistoricoPedidoView): string =>
     chaveDe === 'material' ? txt(l.material) : `${txt(l.grp_mercads)}::${normalizarDescricaoItem(txt(l.txt_breve))}`;
 
@@ -817,6 +821,9 @@ export function calcRecorrencia(linhas: HistoricoPedidoView[], chaveDe: ChaveRec
 
   const resultado: RecorrenciaItem[] = [];
   for (const [chave, a] of mapa) {
+    const numCompras = a.pedidos.size > 0 ? a.pedidos.size : a.itens.length;
+    if (apenasRecorrentes && numCompras < 2) continue;
+
     const datasOrdenadas = Array.from(a.datas).sort();
     let intervaloMedioDias: number | null = null;
     let menorIntervaloDias: number | null = null;
@@ -925,15 +932,18 @@ export interface AlertaAuditoria {
 export function detectarAlertasAuditoria(recorrencias: RecorrenciaItem[]): AlertaAuditoria[] {
   const alertas: AlertaAuditoria[] = [];
 
-  // 1) Maior valor total comprado — top 5, sempre relevante para priorização.
-  const porValor = [...recorrencias].sort((a, b) => b.valor - a.valor).slice(0, 5);
+  // 1) Maior valor total comprado — top 5 itens recorrentes (2+ pedidos), sempre relevante para priorização.
+  const porValor = [...recorrencias]
+    .filter(item => item.pedidosDistintos >= 2)
+    .sort((a, b) => b.valor - a.valor)
+    .slice(0, 5);
   for (const item of porValor) {
     if (item.valor <= 0) continue;
     alertas.push({
       tipo: 'maior_valor',
       severidade: 'atencao',
       item,
-      justificativa: `Maior valor total comprado no período (${item.pedidosDistintos} pedido(s)).`,
+      justificativa: `Maior valor total comprado no período (${item.pedidosDistintos} pedidos).`,
     });
   }
 

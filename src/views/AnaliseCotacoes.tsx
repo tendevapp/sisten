@@ -20,7 +20,8 @@ import ImportarPropostasPanel from '../components/cotacoes/ImportarPropostasPane
 import PropostaCard from '../components/cotacoes/PropostaCard';
 import MapaComparativo from '../components/cotacoes/MapaComparativo';
 import RevisaoPedidoCompra from '../components/cotacoes/RevisaoPedidoCompra';
-import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao } from '../lib/cotacoes';
+import { limparComprasMemoryCache } from './Compras';
+import { RASCUNHO_COTACAO_KEY, chaveRascunhoPropostas, normalizarProposta, aplicarSugestoes, normalizarDescricao, propostaSalvaParaDraft } from '../lib/cotacoes';
 import { aplicarVinculosIa, revisarDivergencias } from '../lib/vinculoCotacao';
 import { simularFreteCotacao, aplicarFreteTeorico, alinharPesoComVinculo } from '../lib/freteCotacao';
 import {
@@ -40,54 +41,6 @@ interface AnaliseCotacoesProps {
 
 type Fase = 'lista' | 'escopo' | 'processo' | 'mapa' | 'pedidos';
 
-/** Converte uma proposta já salva (vinda do Supabase) no mesmo formato de rascunho usado pela grade, marcada como salva. */
-function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft {
-  return {
-    _key: p.id,
-    _salvo: true,
-    _extraido_em: p.created_at,
-    arquivo_origem: p.arquivo_origem, numero_proposta: p.numero_proposta, data_emissao: p.data_emissao,
-    validade_data: p.validade_data, validade_texto: p.validade_texto,
-    fornecedor_razao_social: p.fornecedor_razao_social, fornecedor_cnpj: p.fornecedor_cnpj,
-    fornecedor_inscricao_estadual: p.fornecedor_inscricao_estadual, fornecedor_cidade: p.fornecedor_cidade,
-    fornecedor_uf: p.fornecedor_uf, fornecedor_telefone: p.fornecedor_telefone,
-    cod_vendor: p.cod_vendor, contato_id: p.contato_id, fornecedor_match: p.fornecedor_match,
-    vendedor_nome: p.vendedor_nome, vendedor_email: p.vendedor_email, vendedor_telefone: p.vendedor_telefone,
-    cliente_razao_social: p.cliente_razao_social, cliente_cnpj: p.cliente_cnpj,
-    cliente_inscricao_estadual: p.cliente_inscricao_estadual, cliente_cidade: p.cliente_cidade, cliente_uf: p.cliente_uf,
-    condicao_pagamento: p.condicao_pagamento, forma_pagamento: p.forma_pagamento,
-    prazo_entrega_texto: p.prazo_entrega_texto, prazo_entrega_dias: p.prazo_entrega_dias,
-    frete_modalidade: p.frete_modalidade, transportadora_indicada: p.transportadora_indicada,
-    faturamento_minimo: p.faturamento_minimo, dados_bancarios_pix: p.dados_bancarios_pix,
-    valor_frete: p.valor_frete, valor_desconto: p.valor_desconto,
-    valor_total_orcamento: p.valor_total_orcamento, observacoes_gerais: p.observacoes_gerais,
-    campos_faltantes: p.campos_faltantes, revisado: p.revisado, extracao_id: p.extracao_id,
-    extraido_raw: p.extraido_raw as any,
-    arquivo_storage_path: p.arquivo_storage_path, arquivo_mime_type: p.arquivo_mime_type,
-    arquivo_tamanho_bytes: p.arquivo_tamanho_bytes, arquivo_markdown: p.arquivo_markdown,
-    arquivo_markdown_editado_em: p.arquivo_markdown_editado_em, arquivo_markdown_editado_por: p.arquivo_markdown_editado_por,
-    itens: (p.itens ?? []).map(it => ({
-      _key: it.id, processo_item_id: it.processo_item_id, fora_escopo: it.fora_escopo,
-      vinculo_origem: it.vinculo_origem, vinculo_score: it.vinculo_score, ri: it.ri, material_code: it.material_code,
-      item_numero: it.item_numero, codigo_produto: it.codigo_produto, descricao_produto: it.descricao_produto,
-      marca_fabricante: it.marca_fabricante, unidade_medida: it.unidade_medida, ncm: it.ncm, cst: it.cst, cfop: it.cfop,
-      quantidade: it.quantidade, preco_unitario: it.preco_unitario, preco_total_item: it.preco_total_item,
-      aliquota_icms_pct: it.aliquota_icms_pct, aliquota_pis_pct: it.aliquota_pis_pct,
-      aliquota_cofins_pct: it.aliquota_cofins_pct, aliquota_ipi_pct: it.aliquota_ipi_pct,
-      mapa_selecionado: it.mapa_selecionado ?? false,
-      desconsiderado: it.desconsiderado ?? false,
-      vinculo_divergencias: it.vinculo_divergencias ?? [],
-      peso_unitario_kg: it.peso_unitario_kg ?? null,
-      peso_origem: it.peso_origem ?? null,
-      frete_teorico: it.frete_teorico ?? null,
-      codigo_fiscal: it.codigo_fiscal ?? null,
-      preco_liquido_unitario: it.preco_liquido_unitario ?? null,
-      preco_liquido_total: it.preco_liquido_total ?? null,
-      custo_total_item: it.custo_total_item ?? null,
-      extraido_raw: it.extraido_raw as any,
-    })),
-  };
-}
 
 /** Lê as propostas ainda não salvas de um processo, gravadas pelo efeito de rascunho abaixo. Nunca derruba a tela — corrompido ou ausente vira lista vazia. */
 function lerRascunhoPropostas(processoId: string): CotacaoPropostaDraft[] {
@@ -253,11 +206,19 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     } catch (err) {
       console.error('Falha ao ler rascunho de processo de cotação:', err);
     }
+    const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+    const params = new URLSearchParams(hashQuery || window.location.search);
+    const pid = params.get('processoId') || params.get('id') || params.get('cotacao');
+    const faseParam = params.get('fase') as Fase | null;
+    if (pid) {
+      void abrirProcesso(pid, faseParam === 'mapa' ? 'mapa' : 'processo');
+      return;
+    }
     carregarLista();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const abrirProcesso = async (id: string) => {
+  const abrirProcesso = async (id: string, faseAlvo: Fase = 'processo') => {
     setCarregandoProcesso(true);
     try {
       const { processo: p, itens, propostas: props } = await buscarProcessoCotacao(id);
@@ -270,7 +231,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       if (rascunho.length > 0) {
         toast.info(`${rascunho.length} proposta(s) extraída(s) por IA recuperada(s) do rascunho local — ainda não salvas.`);
       }
-      setFase('processo');
+      setFase(faseAlvo);
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -284,6 +245,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       const novo = await criarProcessoCotacao({
         titulo, observacoes, itens: escopoRascunho, usuarioId: user.id, usuarioNome: user.name,
       });
+      limparComprasMemoryCache();
       toast.success(`Processo ${novo.numero} criado.`);
       setEscopoRascunho([]);
       await abrirProcesso(novo.id);

@@ -150,10 +150,29 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
     });
   }, [movs]);
 
-  // Agrupamento por Elemento PEP
-  const agregadosPorPep = useMemo(
+  // Universo completo, sem o filtro de alocação — alimenta os KPIs, que devem
+  // sempre mostrar o retrato geral (inclusive o % com PEP), mesmo quando o
+  // usuário restringe gráficos e tabela a "só com PEP" ou "só sem PEP".
+  const agregadosPorPepTotal = useMemo(
     () => construirAgregadosPep(saidasBrutas, pepMap),
     [saidasBrutas, pepMap]
+  );
+
+  // Saídas após o filtro de alocação (com PEP / sem PEP / todas) — é a base
+  // única dos dois gráficos e da tabela, para os três lerem sempre o mesmo
+  // recorte.
+  const saidasComFiltroPep = useMemo(() => {
+    if (apenasComPep === 'todos') return saidasBrutas;
+    return saidasBrutas.filter(m => {
+      const temPep = !!m.elemento_pep?.trim();
+      return apenasComPep === 'com_pep' ? temPep : !temPep;
+    });
+  }, [saidasBrutas, apenasComPep]);
+
+  // Agrupamento por Elemento PEP, já sob o filtro de alocação.
+  const agregadosPorPep = useMemo(
+    () => construirAgregadosPep(saidasComFiltroPep, pepMap),
+    [saidasComFiltroPep, pepMap]
   );
 
   // Série temporal (semana ou mês) do valor total de saídas, para o gráfico
@@ -161,7 +180,7 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
   // semanas/meses coincidirem entre telas.
   const serieTemporal = useMemo<PontoSerieTemporal[]>(() => {
     const buckets = new Map<string, PontoSerieTemporal>();
-    saidasBrutas.forEach(m => {
+    saidasComFiltroPep.forEach(m => {
       const b = bucketDate(m.data_lancamento, granularidadeSerie);
       if (!b) return;
       let item = buckets.get(b.key);
@@ -174,35 +193,35 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
       item.movimentos += 1;
     });
     return Array.from(buckets.values()).sort((a, b) => a.key.localeCompare(b.key));
-  }, [saidasBrutas, granularidadeSerie]);
+  }, [saidasComFiltroPep, granularidadeSerie]);
 
   // Detalhamento por PEP do período clicado no gráfico de evolução —
   // classificado por WBS Element, como pedido no drill-down.
   const agregadosPeriodoModal = useMemo(() => {
     if (!periodoModal) return [];
-    const movsDoPeriodo = saidasBrutas.filter(
+    const movsDoPeriodo = saidasComFiltroPep.filter(
       m => bucketDate(m.data_lancamento, granularidadeSerie)?.key === periodoModal.key
     );
     return construirAgregadosPep(movsDoPeriodo, pepMap)
       .sort((a, b) => a.wbs.localeCompare(b.wbs, 'pt-BR'));
-  }, [saidasBrutas, periodoModal, granularidadeSerie, pepMap]);
+  }, [saidasComFiltroPep, periodoModal, granularidadeSerie, pepMap]);
 
-  // Lista de Projetos únicos para filtro
+  // Lista de Projetos únicos para filtro — sempre a partir do universo total,
+  // para o combo não perder opções ao alternar "Com PEP" / "Sem PEP".
   const projetosDisponiveis = useMemo(() => {
     const setProj = new Set<string>();
-    agregadosPorPep.forEach(p => {
+    agregadosPorPepTotal.forEach(p => {
       if (p.projeto && p.projeto !== '—') setProj.add(p.projeto);
     });
     return Array.from(setProj).sort();
-  }, [agregadosPorPep]);
+  }, [agregadosPorPepTotal]);
 
-  // Filtragem dos agregados
+  // Filtragem dos agregados (busca, projeto e PEP isolado pelo Top 10) — o
+  // filtro de alocação já foi aplicado a montante em `agregadosPorPep`.
   const agregadosFiltrados = useMemo(() => {
     const q = pesquisa.trim().toLowerCase();
     return agregadosPorPep.filter(p => {
       if (projetoFiltro !== 'Todos' && p.projeto !== projetoFiltro) return false;
-      if (apenasComPep === 'com_pep' && p.wbs === 'SEM_PEP') return false;
-      if (apenasComPep === 'sem_pep' && p.wbs !== 'SEM_PEP') return false;
       if (pepSelecionado && p.wbs !== pepSelecionado) return false;
 
       if (q) {
@@ -215,7 +234,7 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
       }
       return true;
     });
-  }, [agregadosPorPep, pesquisa, projetoFiltro, apenasComPep, pepSelecionado]);
+  }, [agregadosPorPep, pesquisa, projetoFiltro, pepSelecionado]);
 
   // Ordenação dos agregados
   const agregadosOrdenados = useMemo(() => {
@@ -234,12 +253,13 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
     return arr;
   }, [agregadosFiltrados, sortCol, sortDir]);
 
-  // Totais e KPIs
+  // Totais e KPIs — sempre sobre o universo total, independente do filtro de
+  // alocação (com PEP / sem PEP) aplicado aos gráficos e à tabela.
   const kpis = useMemo(() => {
     const valorTotalSaidas = saidasBrutas.reduce((acc, m) => acc + Math.abs(m.montante_mi || 0), 0);
     const saídasComPep = saidasBrutas.filter(m => !!m.elemento_pep?.trim());
     const valorComPep = saídasComPep.reduce((acc, m) => acc + Math.abs(m.montante_mi || 0), 0);
-    const pepsValidos = agregadosPorPep.filter(p => p.wbs !== 'SEM_PEP');
+    const pepsValidos = agregadosPorPepTotal.filter(p => p.wbs !== 'SEM_PEP');
 
     const topPep = [...pepsValidos].sort((a, b) => b.valorTotal - a.valorTotal)[0];
 
@@ -252,9 +272,9 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
       topPepWbs: topPep?.wbs || '—',
       topPepValor: topPep?.valorTotal || 0,
     };
-  }, [saidasBrutas, agregadosPorPep]);
+  }, [saidasBrutas, agregadosPorPepTotal]);
 
-  // Dados para o Gráfico de Top 10 PEPs
+  // Dados para o Gráfico de Top 10 PEPs — já sob o filtro de alocação.
   const top10ChartData = useMemo(() => {
     return [...agregadosPorPep]
       .filter(p => p.wbs !== 'SEM_PEP')
@@ -403,6 +423,35 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
         />
       </div>
 
+      {/* Filtro de Alocação de PEP — recorte único que alimenta os dois
+          gráficos e a tabela abaixo. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-bold" style={{ color: 'var(--ink-muted)' }}>Alocação de PEP:</span>
+        <div
+          className="flex items-center gap-1 rounded-lg border p-0.5"
+          style={{ borderColor: 'var(--hairline)' }}
+          role="group"
+          aria-label="Filtro de alocação de PEP"
+        >
+          {(['todos', 'com_pep', 'sem_pep'] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setApenasComPep(v)}
+              aria-pressed={apenasComPep === v}
+              className="px-3 py-1 text-xs font-medium rounded-md transition-colors duration-150 cursor-pointer"
+              style={
+                apenasComPep === v
+                  ? { background: 'var(--brand)', color: '#ffffff' }
+                  : { color: 'var(--ink-muted)' }
+              }
+            >
+              {v === 'todos' ? 'Todas as saídas' : v === 'com_pep' ? 'Com Elemento PEP' : 'Sem Elemento PEP'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Gráfico de Evolução das Saídas (Semana/Mês) */}
       <ChartCard
         title={`Evolução das Saídas de Estoque por ${granularidadeSerie === 'semana' ? 'Semana' : 'Mês'}`}
@@ -536,17 +585,6 @@ export default function SaidasPepPanel({ movs, pepMap, loading }: SaidasPepPanel
                 {projetosDisponiveis.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             )}
-
-            <select
-              value={apenasComPep}
-              onChange={e => setApenasComPep(e.target.value as any)}
-              className="px-3 py-2 rounded-lg border text-xs font-bold cursor-pointer"
-              style={{ borderColor: 'var(--hairline)', background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
-            >
-              <option value="todos">Alocação: Todas as saídas</option>
-              <option value="com_pep">Apenas com Elemento PEP</option>
-              <option value="sem_pep">Sem Elemento PEP alocado</option>
-            </select>
 
             {pepSelecionado && (
               <button

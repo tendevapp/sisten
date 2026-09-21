@@ -30,6 +30,7 @@ import type {
 } from '../types';
 import * as api from '../lib/expedicaoApi';
 import { podeEditarFormulario } from '../lib/permissoesFormularios';
+import { canAccessForm } from '../lib/pages';
 import {
   ASSUNTO_CHEGADA_PADRAO, ASSUNTO_PADRAO, cabeNoMailto,
   montarAssuntoExpedicao, montarCorpoEmail, montarCorpoEmailChegada, montarMailto,
@@ -98,36 +99,59 @@ const LOGISTICA_EXPEDICAO_TOUR_STEPS: TourStep[] = [
 ];
 
 export default function LogisticaExpedicao({ user, onNavigate }: Props) {
+  const podeVerRelatorio = canAccessForm(user, 'form_logistica_expedicao_relatorio');
+  const podeVerExpedicao = canAccessForm(user, 'form_logistica_expedicao');
+
   const [carregamentoId, setCarregamentoId] = useState<string | null>(null);
-  const [visaoRelatorio, setVisaoRelatorio] = useState(false);
+  const [visaoRelatorio, setVisaoRelatorio] = useState(!podeVerExpedicao && podeVerRelatorio);
   const tour = usePageTour('form-logistica-expedicao', LOGISTICA_EXPEDICAO_TOUR_STEPS.length, !carregamentoId && !visaoRelatorio);
 
   useEffect(() => {
     const hash = window.location.hash || '';
     if (hash.includes('relatorio')) {
-      setVisaoRelatorio(true);
+      if (podeVerRelatorio) setVisaoRelatorio(true);
     }
     if (hash.includes('?')) {
       const params = new URLSearchParams(hash.split('?')[1]);
       const idParam = params.get('id');
-      if (idParam) {
+      if (idParam && podeVerExpedicao) {
         setCarregamentoId(idParam);
       }
       if (params.get('tab') === 'relatorio' || params.get('view') === 'relatorio') {
-        setVisaoRelatorio(true);
+        if (podeVerRelatorio) setVisaoRelatorio(true);
       }
     }
-  }, []);
+  }, [podeVerRelatorio, podeVerExpedicao]);
 
-  if (visaoRelatorio) {
-    return <ExpedicaoRelatorioLeadTime user={user} onVoltar={() => setVisaoRelatorio(false)} />;
+  if (visaoRelatorio && podeVerRelatorio) {
+    return (
+      <ExpedicaoRelatorioLeadTime
+        user={user}
+        onVoltar={() => {
+          if (!podeVerExpedicao) {
+            onNavigate('/formularios');
+          } else {
+            setVisaoRelatorio(false);
+          }
+        }}
+      />
+    );
   }
 
   return (
     <>
       {carregamentoId
         ? <Edicao user={user} id={carregamentoId} onVoltar={() => setCarregamentoId(null)} />
-        : <Lista user={user} onAbrir={setCarregamentoId} onAbrirRelatorio={() => setVisaoRelatorio(true)} onNavigate={onNavigate} />}
+        : (
+          <Lista
+            user={user}
+            podeVerExpedicao={podeVerExpedicao}
+            podeVerRelatorio={podeVerRelatorio}
+            onAbrir={setCarregamentoId}
+            onAbrirRelatorio={() => setVisaoRelatorio(true)}
+            onNavigate={onNavigate}
+          />
+        )}
       {tour.isOpen && (
         <TourSpotlight
           steps={LOGISTICA_EXPEDICAO_TOUR_STEPS}
@@ -147,11 +171,15 @@ export default function LogisticaExpedicao({ user, onNavigate }: Props) {
 
 function Lista({
   user,
+  podeVerExpedicao = true,
+  podeVerRelatorio = true,
   onAbrir,
   onAbrirRelatorio,
   onNavigate,
 }: {
   user: Profile;
+  podeVerExpedicao?: boolean;
+  podeVerRelatorio?: boolean;
   onAbrir: (id: string) => void;
   onAbrirRelatorio: () => void;
   onNavigate: (p: string) => void;
@@ -283,23 +311,27 @@ function Lista({
             checked={mostrarExcluidos}
             onChange={setMostrarExcluidos}
           />
-          <button
-            type="button"
-            onClick={onAbrirRelatorio}
-            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 sm:w-auto dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 cursor-pointer"
-          >
-            <Timer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <span>Relatório de Lead Time</span>
-          </button>
-          <button
-            type="button"
-            onClick={novo}
-            disabled={criando}
-            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto cursor-pointer"
-          >
-            {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Novo carregamento
-          </button>
+          {podeVerRelatorio && (
+            <button
+              type="button"
+              onClick={onAbrirRelatorio}
+              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-xs transition-colors hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 sm:w-auto dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 cursor-pointer"
+            >
+              <Timer className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span>Relatório de Lead Time</span>
+            </button>
+          )}
+          {podeVerExpedicao && (
+            <button
+              type="button"
+              onClick={novo}
+              disabled={criando}
+              className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-60 sm:w-auto cursor-pointer"
+            >
+              {criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Novo carregamento
+            </button>
+          )}
         </div>
       </div>
 

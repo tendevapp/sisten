@@ -520,11 +520,13 @@ interface MapaComparativoProps {
   onEditarMarkdown?: (propostaId: string, novoMarkdown: string) => Promise<void>;
   /** Número do grupo de compras SAP do usuário logado (`Profile.grupo_compras`) — só pré-preenche o campo "Comprador" no export SAP; o comprador confere no modal. */
   compradorPadrao?: string | null;
+  /** Rótulo personalizado do botão de voltar (padrão: "Propostas"). */
+  rotuloVoltar?: string;
 }
 
 export default function MapaComparativo({
   processo, escopo, propostas, usuarioNome, onVoltar, onAtualizarProposta, onDecisaoSalva, onRecarregarPropostas,
-  arquivosOriginais, onEditarMarkdown, compradorPadrao,
+  arquivosOriginais, onEditarMarkdown, compradorPadrao, rotuloVoltar = 'Propostas',
 }: MapaComparativoProps) {
   const toast = useToast();
 
@@ -1018,7 +1020,7 @@ export default function MapaComparativo({
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Propostas
+            {rotuloVoltar}
           </button>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-bold text-slate-900 dark:text-slate-50">Mapa comparativo</h2>

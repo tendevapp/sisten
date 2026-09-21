@@ -17,7 +17,8 @@ import {
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
   ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree,
 } from 'lucide-react';
-import { Profile, Role } from '../types';
+import { Profile, Role, Sector } from '../types';
+import { INITIAL_SECTORS } from '../data/sectors';
 
 export interface PageDef {
   /** Chave estável, usada como chave no JSON `profiles.page_access`. Nunca renomear. */
@@ -169,6 +170,201 @@ export const PAGES: PageDef[] = [
   { id: 'admin_diretrizes', group: 'ADMINISTRAÇÃO', label: 'Diretrizes', path: '/admin/diretrizes', icon: BookOpen, defaultRoles: ['admin'], alwaysAdmin: true },
 ];
 
+export interface FormularioDef {
+  /** Chave estável usada como chave no JSON `profiles.page_access` (ex: 'form_ssma_rid') */
+  id: string;
+  grupoId: string;
+  label: string;
+  codigo?: string;
+  descricao: string;
+  path: string;
+  defaultRoles: Role[] | '*';
+  setores?: {
+    ids?: string[];
+    keywords?: string[];
+  };
+  /** Se true, liberado universalmente para todos os usuários (inclusive qualquer visualizador) */
+  universalParaVisualizador?: boolean;
+}
+
+export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
+  // SSMA
+  {
+    id: 'form_ssma_rid',
+    grupoId: 'ssma',
+    label: 'RID - Identificação de Desvio',
+    codigo: 'FRM.SSMA-0001',
+    descricao: 'Registro e identificação de desvios comportamentais e condições inseguras',
+    path: '/formularios/ssma-rid',
+    defaultRoles: '*',
+    universalParaVisualizador: true, // Liberado para todos os usuários e visualizadores
+  },
+  {
+    id: 'form_ssma_alcoolemia',
+    grupoId: 'ssma',
+    label: 'Alcoolemia & Termo Psicoativo',
+    codigo: 'FRM.SOC-0042',
+    descricao: 'Teste de alcoolemia por etilômetro e emissão de termo',
+    path: '/formularios/ssma-alcoolemia',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['12', '13'],
+      keywords: ['ssma', 'saúde', 'saude', 'segurança', 'seguranca', 'meio ambiente'],
+    },
+  },
+
+  // ALMOXARIFADO
+  {
+    id: 'form_almoxarifado_recebimento',
+    grupoId: 'almoxarifado',
+    label: 'Recebimento Físico, Ficha Cega e NCR',
+    codigo: 'FRM.ALM-0001',
+    descricao: 'Ficha cega de volumes, recebimento de materiais e não conformidades',
+    path: '/formularios/almoxarifado',
+    defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
+
+  // PORTARIA & SEGURANÇA
+  {
+    id: 'form_portaria_plantao',
+    grupoId: 'portaria',
+    label: 'Passagem de Plantão & Custódia',
+    codigo: 'FRM.SGP-0010',
+    descricao: 'Recebimento de posto da vigilância e custódia de materiais',
+    path: '/formularios/portaria-passagem-plantao',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_relatorio',
+    grupoId: 'portaria',
+    label: 'Relatório de Ocorrências',
+    codigo: 'FRM.SGP-0010',
+    descricao: 'Livro digital de ocorrências de segurança da portaria',
+    path: '/formularios/portaria-relatorio',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_transportes',
+    grupoId: 'portaria',
+    label: 'Chegada de Transportes',
+    codigo: 'FRM.SGP-0009',
+    descricao: 'Registro de transportes coletivos, vans, carros e ônibus',
+    path: '/formularios/portaria-transportes',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_equipamentos',
+    grupoId: 'portaria',
+    label: 'Equipamentos de Terceiros',
+    codigo: 'FRM.SGP-0011',
+    descricao: 'Controle de entrada e saída de equipamentos e ferramentas',
+    path: '/formularios/portaria-equipamentos',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_carretas',
+    grupoId: 'portaria',
+    label: 'Carretas de Chapas',
+    codigo: 'FRM.SGP-0020',
+    descricao: 'Controle de entrada e saída de carretas de aço para a produção',
+    path: '/formularios/portaria-carretas',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_briefing',
+    grupoId: 'portaria',
+    label: 'Briefing de Segurança',
+    codigo: 'FRM.SGP-0013',
+    descricao: 'Lista de presença do briefing de integração com assinatura digital',
+    path: '/formularios/portaria-briefing',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+  {
+    id: 'form_portaria_alcoolemia',
+    grupoId: 'portaria',
+    label: 'Teste de Alcoolemia (Portaria)',
+    codigo: 'FRM.SGP-0015',
+    descricao: 'Livro diário de sorteados e testes de etilômetro na portaria',
+    path: '/formularios/portaria-alcoolemia',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['19', '13'],
+      keywords: ['portaria', 'vigilância', 'vigilancia', 'segurança', 'seguranca'],
+    },
+  },
+
+  // LOGÍSTICA & EXPEDIÇÃO
+  {
+    id: 'form_logistica_expedicao',
+    grupoId: 'logistica',
+    label: 'Registro de Expedição de Tramos',
+    codigo: 'FRM.LOG-0001',
+    descricao: 'Controle de carregamento de tramos e horários',
+    path: '/formularios/logistica-expedicao',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: [],
+      keywords: ['logística', 'logistica', 'expedição', 'expedicao'],
+    },
+  },
+  {
+    id: 'form_logistica_relatorio',
+    grupoId: 'logistica',
+    label: 'Relatório Lead Time de Expedição',
+    codigo: 'FRM.LOG-0002',
+    descricao: 'Relatório e gráficos de lead time de carregamento (SLA 24h)',
+    path: '/formularios/logistica-expedicao/relatorio',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: [],
+      keywords: ['logística', 'logistica', 'expedição', 'expedicao'],
+    },
+  },
+
+  // RH & DEPARTAMENTO PESSOAL
+  {
+    id: 'form_rh_ase',
+    grupoId: 'rh',
+    label: 'ASE - Horas Extras',
+    codigo: 'FRM.RHU-0007',
+    descricao: 'Autorização de Serviços Extraordinários por setor e turno',
+    path: '/formularios/rh-ase-hora-extra',
+    defaultRoles: ['admin', 'gestor'],
+    setores: {
+      ids: ['1'],
+      keywords: ['rh', 'recursos humanos', 'departamento pessoal'],
+    },
+  },
+];
+
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),
 // controladas pelo mesmo mecanismo de override em profiles.page_access.
 export const FEATURE_FLAGS: PageDef[] = [
@@ -312,33 +508,40 @@ export const FEATURE_FLAGS: PageDef[] = [
   {
     id: 'form_portaria',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: Portaria & Segurança',
+    label: 'Grupo: Portaria & Segurança',
     defaultRoles: '*',
   },
   {
     id: 'form_logistica',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: Logística & Expedição',
+    label: 'Grupo: Logística & Expedição',
     defaultRoles: '*',
   },
   {
     id: 'form_rh',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: RH & Dep. Pessoal (ASE)',
+    label: 'Grupo: RH & Dep. Pessoal (ASE)',
     defaultRoles: ['admin', 'gestor'],
   },
   {
     id: 'form_almoxarifado',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: Almoxarifado',
+    label: 'Grupo: Almoxarifado',
     defaultRoles: '*',
   },
   {
     id: 'form_ssma',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
-    label: 'Formulários: SSMA (Saúde, Segurança e Meio Ambiente)',
+    label: 'Grupo: SSMA (Saúde, Segurança e Meio Ambiente)',
     defaultRoles: '*',
   },
+  // Formulários individuais (selecionáveis e auditáveis pelo admin)
+  ...FORMULARIOS_DETALHADOS.map(f => ({
+    id: f.id,
+    group: 'SUBPERMISSÕES DE FORMULÁRIOS',
+    label: `Formulário: ${f.codigo ? f.codigo + ' - ' : ''}${f.label}`,
+    defaultRoles: f.defaultRoles,
+  })),
   {
     id: 'rh_ase_ver_todas',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
@@ -481,27 +684,151 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
 }
 
 /**
- * Avalia se o usuário pode ver/acessar um grupo específico de formulários.
- * Regra: se o módulo "Formulários" está selecionado/habilitado, todos os grupos
- * são exibidos por padrão, a menos que uma subpermissão tenha sido desmarcada
- * individualmente pelo administrador em Módulos de Acesso.
+ * Determina se o usuário possui o perfil visualizador (e não é admin).
  */
-export function canAccessFormGroup(user: Profile, grupoId: string): boolean {
+export function isUserVisualizador(user: Profile): boolean {
+  return user.roles.includes('visualizador') && !user.roles.includes('admin');
+}
+
+/**
+ * Verifica se o colaborador pertence aos setores mapeados para um determinado formulário.
+ */
+export function userBelongsToSector(
+  user: Profile,
+  setoresConfig?: { ids?: string[]; keywords?: string[] },
+  customSectors?: Sector[]
+): boolean {
+  const secId = user.sector_id || (user as any).setor_id;
+  if (!setoresConfig || !secId) return false;
+  if (setoresConfig.ids && setoresConfig.ids.includes(secId)) {
+    return true;
+  }
+  if (setoresConfig.keywords && setoresConfig.keywords.length > 0) {
+    const list = customSectors || INITIAL_SECTORS;
+    const s = list.find(sec => sec.id === secId);
+    if (s && s.name) {
+      const lower = s.name.toLowerCase();
+      if (setoresConfig.keywords.some(k => lower.includes(k.toLowerCase()))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Avalia se o usuário tem permissão para acessar um formulário específico.
+ *
+ * Regras:
+ * 1. Administrador sempre tem acesso total.
+ * 2. O usuário precisa ter acesso à página geral "Formulários".
+ * 3. Override individual do admin em `user.page_access[formId]` tem a maior prioridade.
+ * 4. Override no grupo pai (`user.page_access['form_' + grupoId]`): se for false, bloqueia o form (a menos que haja override positivo específico).
+ * 5. Se o usuário for VISUALIZADOR:
+ *    - O RID (`form_ssma_rid`) é o único formulário liberado para todos por padrão.
+ *    - Formulários do seu próprio setor (ex: almoxarifado -> formulários do almoxarifado) são liberados.
+ *    - Formulários de outros setores permanecem bloqueados (exceto se houver override do admin).
+ * 6. Para os demais perfis (solicitante, requisitante, gestor, comprador, etc.):
+ *    - RID é liberado para todos.
+ *    - Formulários do seu setor são liberados.
+ *    - Se o grupo macro estiver liberado e a role estiver permitida, tem acesso.
+ */
+export function canAccessForm(user: Profile, formId: string, customSectors?: Sector[]): boolean {
+  if (user.roles.includes('admin')) return true;
+  if (!canAccessPage(user, 'formularios')) return false;
+
+  const formDef = FORMULARIOS_DETALHADOS.find(f => f.id === formId);
+  if (!formDef) {
+    return canAccessPage(user, formId);
+  }
+
+  // 1. Override explícito no próprio formulário
+  const overrideForm = user.page_access?.[formDef.id];
+  if (overrideForm !== undefined) return overrideForm;
+
+  // 2. Override explícito no grupo macro correspondente (ex: form_ssma, form_portaria, etc.)
+  const macroSubId = `form_${formDef.grupoId}`;
+  const overrideGrupo = user.page_access?.[macroSubId];
+  if (overrideGrupo === false) return false;
+
+  // 3. Regra para perfil VISUALIZADOR:
+  if (isUserVisualizador(user)) {
+    // RID é liberado universalmente para qualquer usuário
+    if (formDef.universalParaVisualizador) return true;
+
+    // Se pertencer ao setor do formulário (ex: visualizador do almoxarifado acessa forms do almoxarifado)
+    if (userBelongsToSector(user, formDef.setores, customSectors)) return true;
+
+    // Se o grupo foi expressamente liberado pelo admin por override
+    if (overrideGrupo === true) return true;
+
+    // Formulários de outros setores são bloqueados por padrão para visualizadores
+    return false;
+  }
+
+  // 4. Se o grupo foi liberado expressamente pelo admin
+  if (overrideGrupo === true) return true;
+
+  // 5. Demais perfis (não-visualizadores):
+  if (formDef.universalParaVisualizador) return true;
+  if (userBelongsToSector(user, formDef.setores, customSectors)) return true;
+  if (formDef.defaultRoles === '*') return true;
+  if (formDef.defaultRoles.some(r => user.roles.includes(r))) return true;
+
+  // Fallback padrão do grupo
+  const subGrupo = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === formDef.grupoId);
+  if (subGrupo) {
+    if (subGrupo.defaultRoles === '*') return true;
+    if (Array.isArray(subGrupo.defaultRoles) && subGrupo.defaultRoles.some(r => user.roles.includes(r))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Avalia se o usuário pode ver/acessar um grupo específico de formulários no Hub.
+ *
+ * Regras:
+ * - Admin sempre tem acesso.
+ * - Deve ter acesso ao módulo geral de Formulários.
+ * - Se houver qualquer formulário individual deste grupo liberado para o colaborador, o grupo é visível.
+ * - Se o grupo foi bloqueado explicitamente por override em `user.page_access`, só exibe se houver form individual liberado.
+ * - Para visualizadores: só vê o grupo se tiver acesso a pelo menos um formulário daquele grupo
+ *   (ex: SSMA sempre visível por conta do RID; Almoxarifado visível se for do setor Almoxarifado).
+ * - Para outros perfis: respeita as permissões padrão do grupo.
+ */
+export function canAccessFormGroup(user: Profile, grupoId: string, customSectors?: Sector[]): boolean {
   if (user.roles.includes('admin')) return true;
   if (!canAccessPage(user, 'formularios')) return false;
 
   const sub = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === grupoId);
-  if (!sub) return true;
+  const macroId = sub ? sub.id : `form_${grupoId}`;
+  const formsDoGrupo = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === grupoId);
 
-  const override = user.page_access?.[sub.id];
-  if (override !== undefined) return override;
+  // Se houver algum formulário individual deste grupo com liberação explícita
+  const temFormComOverrideAtivo = formsDoGrupo.some(f => user.page_access?.[f.id] === true);
+  if (temFormComOverrideAtivo) return true;
+
+  const override = user.page_access?.[macroId];
+  if (override !== undefined) {
+    if (!override) return false;
+    return true;
+  }
 
   // Compatibilidade com flag legada rh_ase_hora_extra se existir
   if (grupoId === 'rh' && user.page_access?.['rh_ase_hora_extra'] !== undefined) {
     return user.page_access['rh_ase_hora_extra'];
   }
 
-  // Se nao houver override explicito, respeita as roles padrao da subpermissao
+  // Regra especial para visualizadores: exibe o grupo se pelo menos um formulário do grupo estiver acessível
+  if (isUserVisualizador(user)) {
+    return formsDoGrupo.some(f => canAccessForm(user, f.id, customSectors));
+  }
+
+  // Se não houver override explícito, respeita as roles padrão da subpermissão
+  if (!sub) return true;
   if (sub.defaultRoles === '*') return true;
   return sub.defaultRoles.some(r => user.roles.includes(r));
 }

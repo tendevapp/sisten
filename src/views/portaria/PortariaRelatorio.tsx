@@ -228,7 +228,7 @@ const PORTARIA_OCORRENCIA_NOVO_TOUR_STEPS: TourStep[] = [
     icon: Users,
     title: 'Pessoas e Validade de Briefing',
     description:
-      'Adicione condutor e múltiplos acompanhantes com CPF. O sistema consulta automaticamente a validade do briefing de segurança de cada pessoa nos últimos 30 dias.',
+      'Adicione condutor e múltiplos acompanhantes com CPF. O sistema consulta automaticamente a validade do briefing de segurança de cada pessoa nos últimos 6 meses.',
   },
   {
     target: 'relatorio-form-previa',
@@ -459,7 +459,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
     toast.success(`Colaborador ${p.nome} (Matrícula: ${p.registro}) preenchido com sucesso!`);
   };
 
-  // Checagem de Validade de Briefing (Validade estrita: 30 dias)
+  // Checagem de Validade de Briefing (Validade estrita: 6 meses)
   const [statusBriefingPorPessoa, setStatusBriefingPorPessoa] = useState<Record<number, api.ResultadoChecagemBriefing>>({});
   const [checandoBriefing, setChecandoBriefing] = useState(false);
 
@@ -474,7 +474,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           return;
         }
 
-        const res = await api.checarStatusBriefingCpf(doc, 30);
+        const res = await api.checarStatusBriefingCpf(doc);
         setStatusBriefingPorPessoa((prev) => ({ ...prev, [index]: res }));
 
         if (res.status === 'NUNCA_REALIZADO' || res.status === 'VENCIDO') {
@@ -491,7 +491,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
           const doc = (p.cpf || p.cnh || '').replace(/\D/g, '');
           if (doc) {
             checouAlgum = true;
-            const res = await api.checarStatusBriefingCpf(doc, 30);
+            const res = await api.checarStatusBriefingCpf(doc);
             novosStatus[i] = res;
             if (res.status === 'NUNCA_REALIZADO' || res.status === 'VENCIDO') {
               temInvalido = true;
@@ -2133,7 +2133,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                       </datalist>
                     </div>
 
-                    {/* Checkbox Fará Briefing de Segurança & Botão Checar Validade (30 dias) */}
+                    {/* Checkbox Fará Briefing de Segurança & Botão Checar Validade (6 meses) */}
                     {(formOcorrencia.tipo_registro === 'ENTRADA_VEICULO' || formOcorrencia.tipo_registro === 'ENTRADA_VISITANTE') && (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/20 space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -2146,11 +2146,11 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                               className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                             />
                             <label htmlFor="checkFaraBriefing" className="cursor-pointer text-xs font-medium text-emerald-900 dark:text-emerald-200">
-                              <span className="font-bold">Fará Briefing de Segurança? (Validade: 30 dias)</span>
+                              <span className="font-bold">Fará Briefing de Segurança? (Validade: 6 meses)</span>
                               <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-0.5">
                                 {formOcorrencia.fara_briefing
                                   ? 'Marcado: Uma sessão de briefing (FRM.SGP-0013) será aberta para colher assinaturas.'
-                                  : 'Desmarcado: Visitantes com briefing válido nos últimos 30 dias não precisam refazer.'}
+                                  : 'Desmarcado: Visitantes com briefing válido nos últimos 6 meses não precisam refazer.'}
                               </p>
                             </label>
                           </div>
@@ -2176,7 +2176,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                             <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
                               <span className="flex items-center gap-1.5">
                                 <Shield className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                                Relatório de Validade do Briefing (30 dias)
+                                Relatório de Validade do Briefing (6 meses)
                               </span>
                               <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                                 {Object.values(statusBriefingPorPessoa).some((s) => s.status !== 'VALIDO') ? (
@@ -2302,7 +2302,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                   onClick={() => handleChecarBriefing(idx)}
                                   disabled={checandoBriefing || !pessoa.cpf.trim()}
                                   className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center gap-1 disabled:opacity-40"
-                                  title="Checar se o briefing deste CPF está dentro da validade de 30 dias"
+                                  title="Checar se o briefing deste CPF está dentro da validade de 6 meses"
                                 >
                                   <ShieldCheck className="h-3 w-3" />
                                   Checar
@@ -2338,7 +2338,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                         </span>
                                       </div>
                                       <p className="mt-1 text-emerald-700 dark:text-emerald-400 text-[10px]">
-                                        Realizado em: <strong>{statusBriefingPorPessoa[idx].dataRealizacao?.split('-').reverse().join('/')}</strong> (Validade: 30 dias)
+                                        Realizado em: <strong>{statusBriefingPorPessoa[idx].dataRealizacao?.split('-').reverse().join('/')}</strong> (Validade: 6 meses)
                                       </p>
                                     </div>
                                   ) : statusBriefingPorPessoa[idx].status === 'VENCIDO' ? (
@@ -2353,7 +2353,7 @@ export default function PortariaRelatorio({ user, onNavigate }: Props) {
                                         </span>
                                       </div>
                                       <p className="mt-1 text-amber-700 dark:text-amber-400 text-[10px]">
-                                        Realizado em: <strong>{statusBriefingPorPessoa[idx].dataRealizacao?.split('-').reverse().join('/')}</strong> — Limite de 30 dias ultrapassado.
+                                        Realizado em: <strong>{statusBriefingPorPessoa[idx].dataRealizacao?.split('-').reverse().join('/')}</strong> — Limite de 6 meses ultrapassado.
                                       </p>
                                       <p className="mt-0.5 font-bold text-[10px] text-amber-800 dark:text-amber-200">
                                         Obrigatório realizar novo treinamento.
