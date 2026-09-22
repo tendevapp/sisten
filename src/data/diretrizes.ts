@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-22',
+    resumo: 'RH > Cadastros — Liberação de Permissão RLS para Gravação de Colaboradores, Setores, Turnos e %HE (`rh_cadastros_rls_write.sql`, `rhApi.ts`, `rhCadastrosAcesso.test.ts`, `diretrizes.ts`): 1. Correção do bloqueio de salvamento no Supabase (erro "new row violates row-level security policy for table rh_pessoas"): colaboradores pertencentes ao setor de RH (sector_id = "1") ou com permissão de acesso ao módulo agora possuem autorização de escrita direta para cadastrar, editar e inativar colaboradores, setores, turnos e percentual de hora extra; 2. Criada função de segurança SECURITY DEFINER `pode_gerir_rh(p_page_id text)` e atualizadas as políticas RLS de escrita de `rh_pessoas`, `rh_setores`, `rh_turnos` e `rh_hora_extra` no PostgreSQL; 3. Mapeamento defensivo de violação de RLS (código 42501) em `rhApi.ts` para mensagens amigáveis em português na interface; 4. Suíte de testes unitários criada em `rhCadastrosAcesso.test.ts` e aprovada com 100% de sucesso.',
+  },
+  {
     data: '2026-09-21',
     resumo: 'SSMA > EPI por Função — Exportação em PDF Paisagem da Matriz Oficial TEN (`exportMatrizEpiFuncaoPdf.ts`, `exportMatrizEpiFuncaoPdf.test.ts`, `SsmaEpiPorFuncaoView.tsx`, `diretrizes.ts`): 1. Implementação da exportação em PDF em formato Paisagem (A4) reproduzindo com fidelidade absoluta a matriz de especificações de EPIs da fábrica TEN (54 funções, 31 EPIs, cabeçalho corporativo com logo TEN e título, célula com divisão diagonal, coluna C.A DO EPI e colunas de funções com texto rotacionado a 90°); 2. Mapeamento dinâmico e vetorial das cores de preenchimento oficiais (Amarelo #FFC000 para EPI básico obrigatório, Laranja/Ferrugem #E14D1F para específico obrigatório e tarja condicional em vermelho para o abafador concha); 3. Legenda oficial no rodapé da tabela com setas vetoriais e linha inferior de N° DE FUNCIONÁRIOS com headcounts rotacionados; 4. Botão "Exportar PDF" integrado com feedback de loading no cabeçalho de ações da tela; 5. Testes unitários com 100% de aprovação e build de produção validado.',
   },

@@ -105,6 +105,10 @@ export function normalizarItem(raw: any, rotasMap?: Map<string, RhRota>): AseHor
 // Cadastros: setores, turnos, pessoas, calendário de %HE
 // =====================================================================
 
+function isErroRls(error: any): boolean {
+  return error?.code === '42501' || Boolean(error?.message && /row-level security/i.test(error.message));
+}
+
 export async function listarRhSetores(): Promise<RhSetor[]> {
   const { data, error } = await supabase.from('rh_setores').select('*').order('nome');
   if (error) throw new Error(error.message);
@@ -124,6 +128,9 @@ export async function criarRhSetor(nome: string): Promise<RhSetor> {
   if (error) {
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error(`Já existe um setor cadastrado com o nome "${nomeLimpo}".`);
+    }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar setores no RH.');
     }
     throw new Error(error.message);
   }
@@ -155,6 +162,9 @@ export async function atualizarRhSetor(
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error('Já existe outro setor com este nome.');
     }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para atualizar setores no RH.');
+    }
     throw new Error(error.message);
   }
   return data as RhSetor;
@@ -166,7 +176,12 @@ export async function alternarStatusRhSetor(id: string, ativo: boolean): Promise
     .update({ ativo })
     .eq('id', id);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para alterar status de setores no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function excluirRhSetor(id: string): Promise<void> {
@@ -189,7 +204,12 @@ export async function excluirRhSetor(id: string): Promise<void> {
     .delete()
     .eq('id', id);
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para excluir setores no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function listarRhTurnos(): Promise<RhTurno[]> {
@@ -247,6 +267,9 @@ export async function criarRhTurno(nome: string): Promise<RhTurno> {
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error(`Já existe um turno chamado "${nomeLimpo}".`);
     }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar turnos no RH.');
+    }
     throw new Error(error.message);
   }
   return data as RhTurno;
@@ -266,6 +289,9 @@ export async function atualizarRhTurno(id: string, nome: string): Promise<RhTurn
   if (error) {
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error('Já existe outro turno com este nome.');
+    }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para atualizar turnos no RH.');
     }
     throw new Error(error.message);
   }
@@ -290,7 +316,12 @@ export async function excluirRhTurno(id: string): Promise<void> {
   }
 
   const { error } = await supabase.from('rh_turnos').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para excluir turnos no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 /** Cadastra o percentual de hora extra de uma data (`YYYY-MM-DD`). */
@@ -308,6 +339,9 @@ export async function criarRhHoraExtra(dia: string, percentual: number): Promise
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error('Já existe percentual cadastrado para esta data.');
     }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar percentual de hora extra no RH.');
+    }
     throw new Error(error.message);
   }
   return { ...(data as any), percentual_he: Number((data as any).percentual_he) } as RhHoraExtra;
@@ -319,12 +353,22 @@ export async function atualizarRhHoraExtra(id: string, percentual: number): Prom
     .from('rh_hora_extra')
     .update({ percentual_he: percentual })
     .eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para atualizar percentual de hora extra no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function excluirRhHoraExtra(id: string): Promise<void> {
   const { error } = await supabase.from('rh_hora_extra').delete().eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para excluir percentual de hora extra no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 /**
@@ -362,6 +406,9 @@ export async function criarRhPessoa(dados: {
   if (error) {
     if (error.code === '23505' || error.message.includes('unique')) {
       throw new Error(`Já existe um colaborador com a matrícula ${registro}.`);
+    }
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar colaboradores no RH.');
     }
     throw new Error(error.message);
   }
@@ -531,7 +578,12 @@ export async function atualizarRhPessoa(
     .from('rh_pessoas')
     .update({ ...campos, atualizado_por: atualizadoPor || null })
     .eq('id', id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isErroRls(error)) {
+      throw new Error('Permissão negada: seu usuário não possui autorização para atualizar colaboradores no RH.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 export async function importarRhHoraExtra(
