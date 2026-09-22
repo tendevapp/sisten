@@ -97,7 +97,20 @@ export function escoposDisponiveis(user: Profile): EscopoDef[] {
   return lista;
 }
 
-export const escopoPadrao = (user: Profile): Escopo => escoposDisponiveis(user)[0].id;
+/**
+ * Aba com que a Central abre.
+ *
+ * Para a maioria, é "Precisa de mim" — a pergunta que todo mundo faz primeiro.
+ * O admin não tem uma fila pessoal de pendências; ele abre a tela para
+ * enxergar o sistema inteiro, então a aba inicial é "Todas" em vez da
+ * "Precisa de mim" quase sempre vazia (ver #2001007: solicitação saudável,
+ * só não pendente de ninguém no momento — o admin não devia precisar trocar
+ * de aba pra achá-la).
+ */
+export const escopoPadrao = (user: Profile): Escopo => {
+  if (user.roles.includes('admin') && canAccessPage(user, 'sol_todas')) return 'todas';
+  return escoposDisponiveis(user)[0].id;
+};
 
 /* Visibilidade ------------------------------------------------------------ */
 

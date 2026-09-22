@@ -28,6 +28,7 @@ import {
   criarProcessoCotacao, listarProcessosCotacao, buscarProcessoCotacao,
   extrairCotacao, sugerirVinculos, salvarProcessoCotacao, excluirPropostaCotacao,
   excluirProcessoCotacao, atualizarItensCotacao, uploadArquivoCotacao, atualizarMarkdownProposta,
+  buscarArquivoOriginalPorNome,
 } from '../lib/cotacoesApi';
 import type {
   Profile, CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft,
@@ -375,6 +376,19 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       // diferente na memória (cotacao_descricao_map é por CNPJ).
       const processadas: CotacaoPropostaDraft[] = [];
       for (const draft of novasDrafts) {
+        if (draft.arquivo_origem && !draft.arquivo_storage_path) {
+          const file = arquivosOriginais.get(draft.arquivo_origem);
+          if (file) {
+            try {
+              const enviado = await uploadArquivoCotacao(processo.id, file);
+              draft.arquivo_storage_path = enviado.path;
+              draft.arquivo_mime_type = enviado.mimeType;
+              draft.arquivo_tamanho_bytes = enviado.tamanhoBytes;
+            } catch (err) {
+              console.warn('Falha no upload antecipado do arquivo da proposta:', err);
+            }
+          }
+        }
         processadas.push(comFreteTeorico(alinharPeso(await resolverVinculos(draft))));
       }
 
@@ -543,6 +557,22 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
             };
           } catch (err) {
             console.error('Falha ao enviar o arquivo original da proposta para o Storage:', err);
+          }
+        } else {
+          // Fallback: se o arquivo nao esta mais na memoria (ex: F5 ou sessao compartilhada),
+          // tenta localizar pelo nome se ja tiver sido enviado ao Storage
+          try {
+            const achado = await buscarArquivoOriginalPorNome(payload.arquivo_origem);
+            if (achado) {
+              payload = {
+                ...payload,
+                arquivo_storage_path: achado.storagePath,
+                arquivo_mime_type: achado.mimeType,
+                arquivo_tamanho_bytes: achado.tamanhoBytes,
+              };
+            }
+          } catch (err) {
+            console.error('Falha ao buscar arquivo original existente por nome:', err);
           }
         }
       }

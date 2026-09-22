@@ -37,6 +37,7 @@ import SapDetailModal from '../components/SapDetailModal';
 import NovidadesModal from '../components/NovidadesModal';
 import DiligenciamentoSemMigoTable from '../components/suprimentos/DiligenciamentoSemMigoTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import Modal, { ModalHeader, ModalBody } from '../components/ui/Modal';
 import DateRangeFilter, { DateRangeValue } from '../components/ui/DateRangeFilter';
 import { TableShell, TableHeadRow, Th } from '../components/ui/DataTable';
 import { useToast } from '../components/ui/Toast';
@@ -289,6 +290,123 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
   );
 };
 
+// Badge compacto de MIGO por fornecedor histórico — mesmo texto/cor usado no
+// resto da tela, extraído para módulo porque o card de fornecedor abaixo
+// também é usado fora do componente `Compras` (dentro do modal de histórico).
+const MigoBadge = ({ dataMigo }: { dataMigo?: string }) => (
+  <span className={`flex items-center gap-0.5 ${dataMigo ? 'text-emerald-600 dark:text-emerald-450' : 'text-amber-600 dark:text-amber-450'}`}>
+    {dataMigo ? `MIGO: ${formatDateBR(dataMigo)}` : 'Sem MIGO'}
+  </span>
+);
+
+/**
+ * Card de um fornecedor do histórico (vw_historico_fornecedores_sem_po) —
+ * mesmo conteúdo mostrado na visão de cartões, reaproveitado pelo modal de
+ * "Histórico de fornecedores" da tabela (ver `HistoricoFornecedoresModal`).
+ */
+const FornecedorHistoricoCard = ({ f }: { f: FornecedorMaterialRow }) => (
+  <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-955/20 hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-3 text-left">
+    <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="font-extrabold text-slate-850 dark:text-slate-200 break-words" title={f.fornecedor}>
+          {f.fornecedor}
+        </span>
+        {f.regiao_uf && f.regiao_uf !== '—' && (
+          <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-800 text-[9px] font-black rounded text-slate-500 dark:text-slate-400">
+            {f.regiao_uf}
+          </span>
+        )}
+      </div>
+      {f.nome_fantasia && f.nome_fantasia !== '—' && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+          Fantasia: {f.nome_fantasia}
+        </p>
+      )}
+      {(f.cidade || f.pais) && (f.cidade !== '—' || f.pais !== '—') && (
+        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+          <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+          {[f.rua, f.cidade, f.pais].filter(x => x && x !== '—').join(', ')}
+        </p>
+      )}
+      <p className="text-[10px] text-slate-450 dark:text-slate-500 font-bold">
+        Cód: {f.cod_forn} | CNPJ: {f.cnpj || '—'}
+      </p>
+      <div className="flex items-center gap-2 text-[10px] text-slate-600 dark:text-slate-400 font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 w-fit shadow-3xs">
+        <span>Preço: <span className="text-emerald-600 dark:text-emerald-450">{formatPreco(f.preco_liquido)}</span></span>
+        <span className="text-slate-200 dark:text-slate-800">|</span>
+        <span className="flex items-center gap-0.5 text-slate-500 dark:text-slate-455">
+          <Calendar className="h-3 w-3" />
+          Compra: {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
+        </span>
+        <span className="text-slate-200 dark:text-slate-800">|</span>
+        <MigoBadge dataMigo={f.data_migo} />
+      </div>
+    </div>
+    <div className="flex flex-col gap-1.5 shrink-0 text-[11px] items-start sm:items-end">
+      {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
+        <div key={telIdx} className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs shrink-0">
+          <Phone className="h-3 w-3 text-slate-450 shrink-0" />
+          <a
+            href={`tel:${singleTel}`}
+            className="font-mono text-slate-705 dark:text-slate-355 hover:underline hover:text-[#0056c6] cursor-pointer font-bold"
+            title={`Ligar: ${singleTel}`}
+          >
+            {singleTel}
+          </a>
+          <ClipboardCopyButton text={singleTel} label="telefone" />
+        </div>
+      ))}
+      {f.email !== '—' && (
+        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-3xs max-w-full">
+          <Mail className="h-3 w-3 text-slate-455 shrink-0" />
+          <a
+            href={`mailto:${f.email}`}
+            className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[150px] sm:max-w-[200px]"
+            title={f.email}
+          >
+            {f.email}
+          </a>
+          <ClipboardCopyButton text={f.email} label="e-mail" />
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+/**
+ * Histórico de fornecedores em janela suspensa — a coluna da tabela mostra só
+ * o fornecedor de destaque (ver `flatTableItems` no componente `Compras`),
+ * este modal traz a lista inteira sem disputar espaço com as outras colunas.
+ */
+const HistoricoFornecedoresModal = ({
+  record, fornecedores, onClose,
+}: {
+  record: EnrichedSAPRecord;
+  fornecedores: FornecedorMaterialRow[];
+  onClose: () => void;
+}) => (
+  <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel="Histórico de fornecedores">
+    <ModalHeader onClose={onClose}>
+      <h3 className="text-sm font-bold flex items-center gap-2 text-slate-850 dark:text-slate-100">
+        <Users className="h-4 w-4 text-slate-450" />
+        Histórico de fornecedores
+      </h3>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        <span className="font-mono font-bold">{record.material_code || '—'}</span> — {record.texto_breve || 'Sem descrição'}
+        {' · '}
+        <span className="font-mono">RM {record.requisicao_de_compra} / Item {record.item_reqc}</span>
+      </p>
+    </ModalHeader>
+    <ModalBody className="space-y-2">
+      {fornecedores.length === 0 ? (
+        <p className="text-xs text-slate-400">Sem histórico de compras anteriores para este material.</p>
+      ) : (
+        fornecedores.map((f, idx) => <FornecedorHistoricoCard key={idx} f={f} />)
+      )}
+    </ModalBody>
+  </Modal>
+);
+
 interface SearchInputProps {
   onSearch: (value: string) => void;
   initialValue: string;
@@ -539,6 +657,14 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     setSelectedVinculoForModal(vinculo);
   }, []);
   const [showNovidades, setShowNovidades] = useState(false);
+
+  // Modal "Histórico de fornecedores" em janela suspensa — a coluna da tabela
+  // (visão Sem PO) mostra só o destaque, para não competir por espaço com as
+  // demais colunas numa lista de centenas de itens.
+  const [historicoFornecedoresModal, setHistoricoFornecedoresModal] = useState<{
+    record: EnrichedSAPRecord;
+    fornecedores: FornecedorMaterialRow[];
+  } | null>(null);
 
   // Exportação: escolha se a planilha sai com o histórico de fornecedores
   const [exportChoiceOpen, setExportChoiceOpen] = useState(false);
@@ -2013,7 +2139,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   // Bloco com os dados do Pedido de Compra (PO) já emitido para o item — usado no lugar do
   // histórico de fornecedores quando o item já possui PO (ex.: itens "Sem MIGO").
-  const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow) => (
+  // `compact`: esconde telefone/e-mail do fornecedor do PO — usado nas colunas
+  // da tabela (linha densa, dezenas de itens na tela); o card da visão em
+  // grade continua com o contato completo, onde a informação cabe sem apertar
+  // as outras colunas.
+  const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow, compact = false) => (
     <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="font-extrabold text-slate-850 dark:text-slate-200">
@@ -2037,7 +2167,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         )}
       </p>
       {/* Contato do fornecedor do PO: é com ele que o comprador cobra a entrega/MIGO. */}
-      {poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
+      {!compact && poForn && (poForn.telefone !== '—' || poForn.email !== '—') && (
         <div className="flex flex-wrap items-center gap-1.5">
           {poForn.telefone !== '—' && poForn.telefone.split(';').map(t => t.trim()).filter(Boolean).map((tel, telIdx) => (
             <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
@@ -3017,9 +3147,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   </Th>
                   {tableShowSupplierFirst && <Th label="Fornecedor" />}
                   <Th label="RM / Item" />
-                  <Th label="Cotação" />
-                  <Th label="PO" />
-                  <Th label="Material" />
+                  {/* Cotação/PO/Material são código curto — largura reduzida
+                      de propósito pra sobrar espaço pra Descrição, que é o
+                      campo que a pessoa realmente lê pra identificar o item. */}
+                  <Th label="Cotação" width="w-[130px]" />
+                  <Th label="PO" width="w-[90px]" />
+                  <Th label="Material" width="w-[100px]" />
                   <Th label="Descrição" />
                   <Th label="Qtd / Un" />
                   <Th label="Qtd Fornecida" />
@@ -3070,7 +3203,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           <td className="py-3 px-3 min-w-[280px] lg:min-w-[320px] max-w-[320px]">
                             {/* Item já comprado: mostra o fornecedor do PO, não o histórico. */}
                             {!selectedSupplier && r.status_requisicao === 'Processado' ? (
-                              renderPOInfoBlock(r, poFornecedor)
+                              renderPOInfoBlock(r, poFornecedor, true)
                             ) : !selectedSupplier ? (
                               <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                 Sem fornecedor
@@ -3141,7 +3274,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         </td>
 
                         {/* Cotação */}
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-3 px-3 w-[130px] whitespace-nowrap">
                           {cotacoesVinculadas.length > 0 ? (
                             <div className="flex flex-col gap-1 items-start">
                               {cotacoesVinculadas.map(c => (
@@ -3165,12 +3298,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         </td>
 
                         {/* PO Status */}
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-3 px-3 w-[90px] whitespace-nowrap">
                           {renderPOBadge(r)}
                         </td>
 
                         {/* Material Code (Clickable) */}
-                        <td className="py-3 px-3 font-mono font-semibold whitespace-nowrap">
+                        <td className="py-3 px-3 w-[100px] font-mono font-semibold whitespace-nowrap">
                           <button
                             onClick={() => abrirDetalheSap(r, vinculoSisten)}
                             className="hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 cursor-pointer flex items-center gap-1 focus:outline-none"
@@ -3180,8 +3313,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           </button>
                         </td>
 
-                        {/* Description (Clickable) */}
-                        <td className="py-3 px-3 min-w-[280px] max-w-[480px] break-words font-medium text-slate-800 dark:text-slate-200">
+                        {/* Description (Clickable) — ganha o espaço tirado de
+                            Cotação/PO/Material, que são código curto. */}
+                        <td className="py-3 px-3 min-w-[340px] max-w-[640px] break-words font-medium text-slate-800 dark:text-slate-200">
                           <button
                             onClick={() => abrirDetalheSap(r, vinculoSisten)}
                             className="text-left font-bold hover:underline hover:text-[#0056c6] dark:hover:text-emerald-455 focus:outline-none"
@@ -3252,69 +3386,38 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           )}
                         </td>
 
-                        {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) */}
+                        {/* Column 6: Informações do PO (itens já comprados) ou Histórico Fornecedores (Sem PO) —
+                            recolhido: só o destaque aparece na linha, o resto abre em janela suspensa
+                            (ver `HistoricoFornecedoresModal`) — a lista de até N cards empilhados
+                            inflava a altura da linha numa tabela com centenas de itens. */}
                         {!tableShowSupplierFirst && (
-                          <td className="py-3 px-3 min-w-[240px] lg:min-w-[280px] max-w-[280px]">
+                          <td className="py-3 px-3 min-w-[180px] max-w-[200px]">
                             {r.status_requisicao === 'Processado' ? (
-                              renderPOInfoBlock(r, poFornecedor)
+                              renderPOInfoBlock(r, poFornecedor, true)
                             ) : !encontrado ? (
                               <span className="text-rose-500 font-bold uppercase tracking-wider text-[9px] bg-rose-50 dark:bg-rose-955/20 px-1.5 py-0.5 rounded">
                                 Sem fornecedor
                               </span>
                             ) : (
-                              <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
-                                {fornecedores.slice(0, 3).map((f, idx) => (
-                                  <div key={idx} className="p-2 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px] space-y-1 text-left">
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="font-bold text-slate-800 dark:text-slate-200 break-words" title={f.fornecedor}>
-                                        {f.fornecedor}
-                                        {f.nome_fantasia && f.nome_fantasia !== '—' && (
-                                          <span className="text-[9px] text-slate-500 dark:text-slate-400 block font-medium">
-                                            Fantasia: {f.nome_fantasia}
-                                          </span>
-                                        )}
-                                      </span>
-                                      <span className="px-1 py-0.2 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-semibold text-slate-500">
-                                        {f.regiao_uf}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold">
-                                      <span>Preço: <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(f.preco_liquido)}</span></span>
-                                      <span className="flex items-center gap-0.5">
-                                        <Calendar className="h-2.5 w-2.5 text-slate-400" />
-                                        {f.ultima_data !== '—' ? (isNaN(Date.parse(f.ultima_data)) ? f.ultima_data : new Date(f.ultima_data).toLocaleDateString('pt-BR')) : '—'}
-                                      </span>
-                                    </div>
-                                    <div className="text-right">
-                                      {renderMigoInfo(f.data_migo)}
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-150/50 dark:border-slate-750">
-                                      {f.telefone !== '—' && f.telefone.split(';').map(t => t.trim()).filter(Boolean).map((singleTel, telIdx) => (
-                                        <div key={telIdx} className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] shrink-0">
-                                          <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                          <a href={`tel:${singleTel}`} className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold font-mono" title={`Ligar: ${singleTel}`}>
-                                            {singleTel}
-                                          </a>
-                                          <ClipboardCopyButton text={singleTel} label="telefone" />
-                                        </div>
-                                      ))}
-                                      {f.email !== '—' && (
-                                        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-150 dark:border-slate-750 text-[9px] min-w-0 max-w-full">
-                                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                                          <a href={`mailto:${f.email}`} className="text-[#0056c6] dark:text-blue-400 hover:underline font-bold truncate max-w-[155px]" title={f.email}>
-                                            {f.email}
-                                          </a>
-                                          <ClipboardCopyButton text={f.email} label="e-mail" />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                                {fornecedores.length > 3 && (
-                                  <span className="text-[10px] text-slate-400 block text-right font-bold italic">
-                                    + {fornecedores.length - 3} outros
+                              <div className="space-y-1">
+                                <div className="p-1.5 rounded bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-[10px]">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate block" title={fornecedores[0].fornecedor}>
+                                    {fornecedores[0].fornecedor}
                                   </span>
-                                )}
+                                  <div className="flex items-center justify-between text-[9px] text-slate-500 font-bold mt-0.5">
+                                    <span className="text-emerald-600 dark:text-emerald-455">{formatPreco(fornecedores[0].preco_liquido)}</span>
+                                    <MigoBadge dataMigo={fornecedores[0].data_migo} />
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoricoFornecedoresModal({ record: r, fornecedores })}
+                                  className="w-full flex items-center justify-center gap-1 text-[10px] font-bold text-[#0056c6] dark:text-emerald-450 hover:underline py-0.5 cursor-pointer"
+                                  title="Ver histórico completo de fornecedores em janela suspensa"
+                                >
+                                  <History className="h-3 w-3" />
+                                  {fornecedores.length > 1 ? `Ver ${fornecedores.length} fornecedores` : 'Ver histórico'}
+                                </button>
                               </div>
                             )}
                           </td>
@@ -3769,6 +3872,16 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           }
           onClose={() => { setSelectedRecordForModal(null); setSelectedVinculoForModal(null); }}
           onUpdate={buildSuppliersData}
+        />
+      )}
+
+      {/* Histórico de fornecedores em janela suspensa — acionado pelo botão
+          "Ver histórico" da coluna recolhida na tabela (visão Sem PO). */}
+      {historicoFornecedoresModal && (
+        <HistoricoFornecedoresModal
+          record={historicoFornecedoresModal.record}
+          fornecedores={historicoFornecedoresModal.fornecedores}
+          onClose={() => setHistoricoFornecedoresModal(null)}
         />
       )}
 

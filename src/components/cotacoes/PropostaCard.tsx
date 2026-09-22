@@ -432,6 +432,13 @@ export default function PropostaCard({
           markdownEditadoPor={proposta.arquivo_markdown_editado_por}
           propostaId={proposta._salvo ? proposta._key : null}
           onEditarMarkdown={onEditarMarkdown}
+          onArquivoVinculado={(path, mimeType, tamanhoBytes) => {
+            onChange({
+              arquivo_storage_path: path,
+              arquivo_mime_type: mimeType,
+              arquivo_tamanho_bytes: tamanhoBytes,
+            });
+          }}
           onClose={() => setPreviewArquivoAberto(false)}
         />
       )}

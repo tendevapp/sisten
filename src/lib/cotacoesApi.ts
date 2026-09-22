@@ -18,6 +18,7 @@ import {
   gerarCodigoCotacao,
   proximoIndiceCotacao,
 } from './cotacoes';
+import { comprimirImagemUpload } from './imageCompression';
 import type {
   CotacaoProcesso, CotacaoProcessoItem, CotacaoProcessoItemDraft, CotacaoProcessoStatus,
   CotacaoProposta, CotacaoPropostaDraft, ExtracaoResposta, SugestaoVinculo,
@@ -605,26 +606,35 @@ export async function atualizarItensCotacao(patches: PatchItemCotacao[]): Promis
 const BUCKET_COTACOES_ARQUIVOS = 'cotacoes-arquivos';
 
 /**
- * Sobe o PDF/imagem original de uma proposta para o Storage — chamado só ao
- * salvar a proposta (não a cada extração), para um rascunho descartado
- * nunca deixar arquivo órfão no bucket. Caminho por processo + nome
- * aleatório: dois fornecedores podem mandar arquivos com o mesmo nome
- * ("proposta.pdf") no mesmo processo.
+ * Sobe o PDF/imagem original de uma proposta para o Storage.
+ * Comprime imagens antes do upload seguindo a regra global do SISTEN.
+ * Preserva o nome original sanitizado no caminho.
  */
 export async function uploadArquivoCotacao(
   processoId: string,
   file: File,
 ): Promise<{ path: string; mimeType: string; tamanhoBytes: number }> {
-  const extensao = (file.name.split('.').pop() || 'pdf').toLowerCase();
-  const path = `${processoId}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${extensao}`;
-  const mimeType = file.type || 'application/pdf';
+  const nomeLimpo = file.name.replace(/[^\w.-]/g, '_').slice(0, 80);
+  const path = `${processoId}/${Date.now()}-${nomeLimpo}`;
+
+  let corpoUpload: Blob = file;
+  let mimeType = file.type || 'application/pdf';
+
+  if (file.type.startsWith('image/')) {
+    try {
+      corpoUpload = await comprimirImagemUpload(file);
+      mimeType = 'image/jpeg';
+    } catch {
+      corpoUpload = file;
+    }
+  }
 
   const { error } = await supabase.storage
     .from(BUCKET_COTACOES_ARQUIVOS)
-    .upload(path, file, { contentType: mimeType, upsert: false });
+    .upload(path, corpoUpload, { contentType: mimeType, upsert: false });
   if (error) throw new Error(`Falha ao enviar o arquivo original para o Storage: ${error.message}`);
 
-  return { path, mimeType, tamanhoBytes: file.size };
+  return { path, mimeType, tamanhoBytes: corpoUpload.size };
 }
 
 /** URL assinada de 24h para pré-visualizar o arquivo original — o bucket é privado. */
@@ -637,6 +647,71 @@ export async function assinarArquivoCotacao(path: string): Promise<string | null
     return null;
   }
   return data?.signedUrl ?? null;
+}
+
+/**
+ * Busca o arquivo original no Storage por nome de arquivo de origem.
+ * Primeiro consulta se alguma proposta já gravada no Supabase aponta para esse arquivo.
+ * Se encontrar, devolve o caminho do Storage e metadados para visualização imediata.
+ */
+export async function buscarArquivoOriginalPorNome(nomeArquivo: string): Promise<{
+  storagePath: string;
+  mimeType: string;
+  tamanhoBytes: number | null;
+} | null> {
+  const nome = nomeArquivo.trim();
+  if (!nome) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('sup_cotacao_propostas')
+      .select('arquivo_storage_path, arquivo_mime_type, arquivo_tamanho_bytes')
+      .ilike('arquivo_origem', nome)
+      .not('arquivo_storage_path', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.arquivo_storage_path) {
+      return {
+        storagePath: data.arquivo_storage_path,
+        mimeType: data.arquivo_mime_type || 'application/pdf',
+        tamanhoBytes: data.arquivo_tamanho_bytes ?? null,
+      };
+    }
+  } catch (err) {
+    console.warn('buscarArquivoOriginalPorNome: falha na consulta:', err);
+  }
+  return null;
+}
+
+/**
+ * Vincula (ou corrige) o arquivo original em uma proposta salva.
+ */
+export async function vincularArquivoOriginalProposta(
+  propostaId: string,
+  storagePath: string,
+  mimeType = 'application/pdf',
+  tamanhoBytes: number | null = null,
+): Promise<void> {
+  if (!UUID_REGEX_ITEM.test(propostaId)) return;
+  try {
+    const { error } = await supabase
+      .from('sup_cotacao_propostas')
+      .update({
+        arquivo_storage_path: storagePath,
+        arquivo_mime_type: mimeType,
+        arquivo_tamanho_bytes: tamanhoBytes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', propostaId);
+
+    if (error) {
+      console.warn('Falha ao vincular arquivo original à proposta:', error.message);
+    }
+  } catch (err) {
+    console.warn('vincularArquivoOriginalProposta: falha:', err);
+  }
 }
 
 /**

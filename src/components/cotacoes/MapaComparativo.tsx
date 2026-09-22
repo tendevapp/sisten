@@ -246,6 +246,13 @@ function CabecalhoFornecedor({
           markdownEditadoPor={proposta.arquivo_markdown_editado_por}
           propostaId={proposta._salvo ? proposta._key : null}
           onEditarMarkdown={onEditarMarkdown}
+          onArquivoVinculado={(path, mimeType, tamanhoBytes) => {
+            onAtualizarProposta(proposta._key, {
+              arquivo_storage_path: path,
+              arquivo_mime_type: mimeType,
+              arquivo_tamanho_bytes: tamanhoBytes,
+            });
+          }}
           onClose={() => setPreviewAberto(false)}
         />
       )}

@@ -21,15 +21,20 @@
  * pelo chamador.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ExternalLink, FileText, FileWarning, Columns2, Code2, Loader2,
-  Image as ImageIcon, Pencil, Save, X as XIcon, CheckCircle2,
+  Image as ImageIcon, Pencil, Save, X as XIcon, CheckCircle2, UploadCloud,
 } from 'lucide-react';
 import Modal, { ModalHeader, ModalBody } from '../ui/Modal';
 import MarkdownPreview from '../markdown/MarkdownPreview';
 import { buscarUltimaConversaoPorArquivo } from '../../lib/converterMarkdownApi';
-import { assinarArquivoCotacao } from '../../lib/cotacoesApi';
+import {
+  assinarArquivoCotacao,
+  buscarArquivoOriginalPorNome,
+  uploadArquivoCotacao,
+  vincularArquivoOriginalProposta,
+} from '../../lib/cotacoesApi';
 import { formatDateTimeBR } from '../../lib/format';
 import { useToast } from '../ui/Toast';
 import type { ConversaoMarkdownLog } from '../../types';
@@ -52,6 +57,8 @@ interface VerCotacaoOriginalModalProps {
   onClose: () => void;
   /** Persiste a correção do Markdown. Ausente ou sem `propostaId` desativa a edição. */
   onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
+  /** Notifica o chamador quando o arquivo for vinculado ou anexado com sucesso. */
+  onArquivoVinculado?: (path: string, mimeType: string, tamanhoBytes: number) => void;
 }
 
 function BotaoModo({ ativo, onClick, icone: Icone, children }: { ativo: boolean; onClick: () => void; icone: React.ElementType; children: React.ReactNode }) {
@@ -72,22 +79,61 @@ function BotaoModo({ ativo, onClick, icone: Icone, children }: { ativo: boolean;
 }
 
 export default function VerCotacaoOriginalModal({
-  nome, file, storagePath, markdown, markdownEditadoEm, markdownEditadoPor, propostaId, onClose, onEditarMarkdown,
+  nome, file, storagePath, markdown, markdownEditadoEm, markdownEditadoPor, propostaId, onClose, onEditarMarkdown, onArquivoVinculado,
 }: VerCotacaoOriginalModalProps) {
   const toast = useToast();
 
-  // Documento: file em memória > URL assinada do Storage.
+  // Documento: file em memória > caminho salvo > busca automatica no Storage por nome
+  const [caminhoStorage, setCaminhoStorage] = useState<string | null>(storagePath ?? null);
+  const [buscandoFallback, setBuscandoFallback] = useState(false);
   const [urlAssinada, setUrlAssinada] = useState<string | null>(null);
-  const [carregandoDocumento, setCarregandoDocumento] = useState(!!storagePath && !file);
+  const [carregandoDocumento, setCarregandoDocumento] = useState(false);
+  const [anexando, setAnexando] = useState(false);
+  const inputAnexoRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    if (file || !storagePath) { setCarregandoDocumento(false); return; }
+    if (storagePath) {
+      setCaminhoStorage(storagePath);
+    }
+  }, [storagePath]);
+
+  // Se nao temos file em memoria nem storagePath gravado, tenta auto-recuperar no Storage pelo nome
+  useEffect(() => {
+    if (file || caminhoStorage || !nome) return;
+    let cancelado = false;
+    setBuscandoFallback(true);
+    buscarArquivoOriginalPorNome(nome)
+      .then(achado => {
+        if (cancelado || !achado) return;
+        setCaminhoStorage(achado.storagePath);
+        if (propostaId) {
+          void vincularArquivoOriginalProposta(propostaId, achado.storagePath, achado.mimeType, achado.tamanhoBytes);
+        }
+        onArquivoVinculado?.(achado.storagePath, achado.mimeType, achado.tamanhoBytes);
+      })
+      .catch(err => {
+        console.warn('Falha na busca automatica do arquivo original por nome:', err);
+      })
+      .finally(() => {
+        if (!cancelado) setBuscandoFallback(false);
+      });
+    return () => { cancelado = true; };
+  }, [file, caminhoStorage, nome, propostaId, onArquivoVinculado]);
+
+  // Assina URL no Storage quando o caminho estiver disponivel
+  useEffect(() => {
+    if (file || !caminhoStorage) {
+      setUrlAssinada(null);
+      setCarregandoDocumento(false);
+      return;
+    }
     let cancelado = false;
     setCarregandoDocumento(true);
-    assinarArquivoCotacao(storagePath)
+    assinarArquivoCotacao(caminhoStorage)
       .then(url => { if (!cancelado) setUrlAssinada(url); })
       .finally(() => { if (!cancelado) setCarregandoDocumento(false); });
     return () => { cancelado = true; };
-  }, [file, storagePath]);
+  }, [file, caminhoStorage]);
 
   const fileUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => { if (fileUrl) URL.revokeObjectURL(fileUrl); }, [fileUrl]);
@@ -106,22 +152,63 @@ export default function VerCotacaoOriginalModal({
     return () => { cancelado = true; };
   }, [markdown, nome]);
 
-  const carregando = carregandoDocumento || carregandoHistorico;
+  const carregandoDoc = carregandoDocumento || buscandoFallback;
+  const carregando = carregandoDoc || carregandoHistorico;
   const markdownAtual = markdown ?? historico?.markdown ?? null;
   const temMarkdown = !!markdownAtual;
   const podeEditar = !!propostaId && !!onEditarMarkdown;
 
-  const ehPdf = file ? file.type === 'application/pdf' : nome.toLowerCase().endsWith('.pdf');
-  const ehImagem = file ? file.type.startsWith('image/') : /\.(jpe?g|png|webp|gif|bmp)$/i.test(nome);
+  const caminhoEfetivo = caminhoStorage ?? storagePath;
+  const ehPdf = file
+    ? file.type === 'application/pdf'
+    : (nome.toLowerCase().endsWith('.pdf') || (caminhoEfetivo?.toLowerCase().endsWith('.pdf') ?? false));
+  const ehImagem = file
+    ? file.type.startsWith('image/')
+    : (/\.(jpe?g|png|webp|gif|bmp)$/i.test(nome) || (/\.(jpe?g|png|webp|gif|bmp)$/i.test(caminhoEfetivo ?? '')));
 
-  const [modo, setModo] = useState<Modo>('documento');
+  const [modo, setModo] = useState<Modo>('dividido');
   const [modoEscolhidoManual, setModoEscolhidoManual] = useState(false);
   useEffect(() => {
-    if (carregando || modoEscolhidoManual) return;
-    setModo(docUrl && temMarkdown ? 'dividido' : temMarkdown ? 'markdown' : 'documento');
-  }, [carregando, docUrl, temMarkdown, modoEscolhidoManual]);
+    if (modoEscolhidoManual) return;
+    if ((docUrl || carregandoDoc) && temMarkdown) {
+      setModo('dividido');
+    } else if (docUrl && !temMarkdown) {
+      setModo('documento');
+    } else if (!docUrl && !carregandoDoc && temMarkdown) {
+      setModo('dividido');
+    } else {
+      setModo('documento');
+    }
+  }, [carregandoDoc, docUrl, temMarkdown, modoEscolhidoManual]);
 
   const mudarModo = (m: Modo) => { setModoEscolhidoManual(true); setModo(m); };
+
+  // Anexar arquivo original manualmente (se ainda nao constar no Storage)
+  const handleAnexarArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const novoFile = e.target.files?.[0];
+    e.target.value = '';
+    if (!novoFile) return;
+
+    setAnexando(true);
+    try {
+      const processoIdParaUpload = propostaId ?? 'avulso';
+      const enviado = await uploadArquivoCotacao(processoIdParaUpload, novoFile);
+      setCaminhoStorage(enviado.path);
+
+      if (propostaId) {
+        await vincularArquivoOriginalProposta(propostaId, enviado.path, enviado.mimeType, enviado.tamanhoBytes);
+      }
+      onArquivoVinculado?.(enviado.path, enviado.mimeType, enviado.tamanhoBytes);
+
+      const url = await assinarArquivoCotacao(enviado.path);
+      setUrlAssinada(url);
+      toast.success('Arquivo original anexado e vinculado com sucesso!');
+    } catch (err) {
+      toast.error(`Falha ao anexar arquivo original: ${(err as Error).message}`);
+    } finally {
+      setAnexando(false);
+    }
+  };
 
   // Edição do Markdown
   const [editando, setEditando] = useState(false);
@@ -167,7 +254,7 @@ export default function VerCotacaoOriginalModal({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {docUrl && temMarkdown && !editando && (
+            {temMarkdown && !editando && (
               <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
                 <BotaoModo ativo={modo === 'dividido'} onClick={() => mudarModo('dividido')} icone={Columns2}>Lado a lado</BotaoModo>
                 <BotaoModo ativo={modo === 'documento'} onClick={() => mudarModo('documento')} icone={ehImagem ? ImageIcon : FileText}>Original</BotaoModo>
@@ -192,9 +279,16 @@ export default function VerCotacaoOriginalModal({
         <div className={`grid gap-3 ${modo === 'dividido' ? 'h-[70vh] grid-cols-1 lg:grid-cols-2' : 'h-[70vh] grid-cols-1'}`}>
           {mostraDocumento && (
             <div className="min-h-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
-              {carregandoDocumento ? (
-                <div className="flex h-full items-center justify-center text-slate-400">
-                  <Loader2 className="h-5 w-5 animate-spin" />
+              {carregandoDoc || anexando ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                  <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+                  <p className="text-xs text-slate-500">
+                    {anexando
+                      ? 'Enviando arquivo original...'
+                      : buscandoFallback
+                      ? 'Localizando arquivo original no Storage...'
+                      : 'Carregando documento...'}
+                  </p>
                 </div>
               ) : docUrl ? (
                 ehPdf ? (
@@ -210,14 +304,34 @@ export default function VerCotacaoOriginalModal({
                   </div>
                 )
               ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center">
+                <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
                   <FileWarning className="h-8 w-8 text-slate-300 dark:text-slate-700" />
                   <p className="max-w-xs text-xs font-medium text-slate-500 dark:text-slate-400">
-                    {storagePath
-                      ? 'Não foi possível abrir o arquivo original.'
-                      : 'Arquivo original não disponível — a proposta foi salva antes desta funcionalidade, ou o texto foi colado à mão.'}
-                    {temMarkdown ? ' O conteúdo extraído continua disponível ao lado.' : ''}
+                    {caminhoStorage
+                      ? 'Não foi possível carregar o arquivo original do Storage.'
+                      : 'Arquivo original (PDF/imagem) não localizado automaticamente para esta proposta.'}
                   </p>
+                  <input
+                    ref={inputAnexoRef}
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    onChange={handleAnexarArquivo}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => inputAnexoRef.current?.click()}
+                    disabled={anexando}
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <UploadCloud className="h-3.5 w-3.5" />
+                    Anexar PDF / Imagem
+                  </button>
+                  {temMarkdown && (
+                    <p className="text-[11px] text-slate-400">
+                      O conteúdo extraído continua disponível ao lado.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

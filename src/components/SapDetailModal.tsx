@@ -57,6 +57,12 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
     ? desformatarObservacaoItemGenerico(vinculoSisten?.item?.observation)
     : '';
 
+  // Item comum (não genérico) vinculado a uma solicitação do SISTEN: se o
+  // solicitante escreveu uma observação no item, ela é instrução de compra
+  // (medida, cor, local de entrega...) que o catálogo SAP não carrega — vale
+  // mostrar ao lado do texto técnico, não no lugar dele.
+  const obsSolicitante = !ehGenerico ? (vinculoSisten?.item?.observation || '').trim() : '';
+
   // Foto anexada ao item genérico — buscada pelo código do material no banco de
   // imagens (mesma fonte da Nova Solicitação). URL assinada resolvida à parte.
   const [imagensItem, setImagensItem] = useState<Array<{ anexo: RequestAttachment; url: string }>>([]);
@@ -378,26 +384,50 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
           {/* Item genérico: o catálogo SAP não descreve a compra. No lugar do
               texto técnico vale a observação que o solicitante escreveu no
               SISTEN, mais a foto que ele anexou ao item. */}
-          {ehGenerico ? (
-            <div className="space-y-4">
-              <div className="bg-rose-50/60 dark:bg-rose-950/15 p-4.5 rounded-xl border border-rose-150 dark:border-rose-900/40 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                    Observação do Solicitante
-                    {vinculoSisten?.requestNumber && (
-                      <span className="ml-1.5 font-bold text-rose-500/70 dark:text-rose-400/60">
-                        · SISTEN #{vinculoSisten.requestNumber}
-                      </span>
-                    )}
-                  </span>
-                  {obsGenerica && <CopyButton text={obsGenerica} label="observação do solicitante" />}
-                </div>
-                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-rose-100 dark:border-rose-900/30">
-                  {obsGenerica || 'Sem observação registrada na solicitação.'}
-                </p>
+          {ehGenerico && (
+            <div className="bg-rose-50/60 dark:bg-rose-950/15 p-4.5 rounded-xl border border-rose-150 dark:border-rose-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                  Observação do Solicitante
+                  {vinculoSisten?.requestNumber && (
+                    <span className="ml-1.5 font-bold text-rose-500/70 dark:text-rose-400/60">
+                      · SISTEN #{vinculoSisten.requestNumber}
+                    </span>
+                  )}
+                </span>
+                {obsGenerica && <CopyButton text={obsGenerica} label="observação do solicitante" />}
               </div>
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-rose-100 dark:border-rose-900/30">
+                {obsGenerica || 'Sem observação registrada na solicitação.'}
+              </p>
             </div>
-          ) : (techText || isLoadingTechText) ? (
+          )}
+
+          {/* Item comum de uma RM vinculada ao SISTEN, com observação escrita
+              pelo solicitante — aparece ao lado do texto técnico (não no lugar
+              dele, diferente do item genérico acima): o catálogo descreve o
+              material, a observação diz o detalhe da compra (medida, cor,
+              local de entrega...). */}
+          {obsSolicitante && (
+            <div className="bg-amber-50/60 dark:bg-amber-950/15 p-4.5 rounded-xl border border-amber-150 dark:border-amber-900/40 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  Observação do Solicitante
+                  {vinculoSisten?.requestNumber && (
+                    <span className="ml-1.5 font-bold text-amber-600/70 dark:text-amber-400/60">
+                      · SISTEN #{vinculoSisten.requestNumber}
+                    </span>
+                  )}
+                </span>
+                <CopyButton text={obsSolicitante} label="observação do solicitante" />
+              </div>
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-1 bg-white dark:bg-slate-900/40 p-3 rounded-lg border border-amber-100 dark:border-amber-900/30">
+                {obsSolicitante}
+              </p>
+            </div>
+          )}
+
+          {!ehGenerico && (techText || isLoadingTechText) && (
             <div className="bg-slate-50/60 dark:bg-slate-950 p-4.5 rounded-xl border border-slate-150 dark:border-slate-850 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -413,7 +443,7 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                 </p>
               )}
             </div>
-          ) : null}
+          )}
 
           {/* Imagem do item — qualquer foto já cadastrada para este código de
               material (banco de imagens). Some quando não há nenhuma. */}
