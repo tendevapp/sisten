@@ -2847,6 +2847,7 @@ export type Database = {
           registro: string
           situacao: string | null
           subsetor: string | null
+          tipo_vinculo: string
           turno: string | null
           updated_at: string
         }
@@ -2864,6 +2865,7 @@ export type Database = {
           registro: string
           situacao?: string | null
           subsetor?: string | null
+          tipo_vinculo?: string
           turno?: string | null
           updated_at?: string
         }
@@ -2881,6 +2883,7 @@ export type Database = {
           registro?: string
           situacao?: string | null
           subsetor?: string | null
+          tipo_vinculo?: string
           turno?: string | null
           updated_at?: string
         }

@@ -3,5 +3,9 @@
 ## Projeto
 
 - [project] Sempre crie uma nova branch dedicada para alterações de código importantes → project-conventions.md
-- Sempre que tiver novas funções importantes ou alterações de regras, consolide e atualize o histórico de versões nas diretrizes.ts do app, mas não sobrecarregue. 
-Para os prompts, verifique a necessidade de usar habilidades e skills para melhorar o resultado.
+- [project] Adotar Karpathy Guidelines: pensar antes, simplicidade, edições cirúrgicas e foco em metas → karpathy-guidelines.md
+- [project] Comunicação direta, sem floreios e economia de tokens seguindo padrão Caveman → caveman.md
+- [project] Ingestão de páginas web e documentação externa via Defuddle para Markdown limpo → defuddle.md
+- [project] Atualizar histórico nas diretrizes.ts sem sobrecarregar e verificar uso de skills nos prompts → project-conventions.md
+
+

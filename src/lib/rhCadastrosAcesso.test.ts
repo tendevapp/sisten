@@ -104,6 +104,49 @@ describe('Módulo RH — Permissões de Acesso e Cadastros', () => {
       expect(res.nome).toBe('JOANDERSON LEITE DOS SANTOS');
     });
 
+    it('cadastra colaborador PJ e valida mensagem de duplicidade de CPF', async () => {
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        insert: () => ({
+          select: () => ({
+            single: () =>
+              Promise.resolve({
+                data: null,
+                error: {
+                  code: '23505',
+                  message: 'duplicate key value violates unique constraint "rh_pessoas_registro_key"',
+                },
+              }),
+          }),
+        }),
+      } as any);
+
+      await expect(
+        criarRhPessoa({
+          tipo_vinculo: 'PJ',
+          registro: '123.456.789-00',
+          nome: 'CONSULTORIA PRESTADORA LTDA',
+        })
+      ).rejects.toThrow(/Já existe um colaborador com o CPF 123.456.789-00/);
+    });
+
+    it('rejeita cadastro com identificador vazio dependendo do tipo_vinculo', async () => {
+      await expect(
+        criarRhPessoa({
+          tipo_vinculo: 'PJ',
+          registro: '',
+          nome: 'EMPRESA PRESTADORA',
+        })
+      ).rejects.toThrow(/O campo CPF é obrigatório/);
+
+      await expect(
+        criarRhPessoa({
+          tipo_vinculo: 'CLT',
+          registro: '',
+          nome: 'FUNCIONARIO CLT',
+        })
+      ).rejects.toThrow(/O campo matrícula é obrigatório/);
+    });
+
     it('emite mensagem amigável quando o banco retorna violação de RLS (42501) ao criar colaborador', async () => {
       vi.spyOn(supabase, 'from').mockReturnValue({
         insert: () => ({

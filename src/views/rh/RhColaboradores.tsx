@@ -41,6 +41,7 @@ const ROTULO: Record<CampoFiltro, string> = {
 const CAMPOS: CampoFiltro[] = ['macroarea', 'area', 'subsetor', 'cargo', 'turno'];
 
 const FORM_VAZIO = {
+  tipo_vinculo: 'CLT' as 'CLT' | 'PJ',
   registro: '', nome: '', chave_nome: '', macroarea: '', area: '',
   subsetor: '', cargo: '', lideranca: '', turno: '', situacao: '',
 };
@@ -57,6 +58,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
     macroarea: '', area: '', subsetor: '', cargo: '', turno: '',
   });
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'ATIVOS' | 'INATIVOS'>('ATIVOS');
+  const [filtroVinculo, setFiltroVinculo] = useState<'TODOS' | 'CLT' | 'PJ'>('TODOS');
 
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<RhPessoa | null>(null);
@@ -99,20 +101,23 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
 
   const filtradas = useMemo(() => {
     const q = semAcento(busca.trim());
+    const qNum = busca.replace(/\D/g, '');
     return filtrarAte(pessoas, CAMPOS.length)
       .filter(p => {
         if (filtroStatus === 'ATIVOS' && !p.ativo) return false;
         if (filtroStatus === 'INATIVOS' && p.ativo) return false;
+        if (filtroVinculo !== 'TODOS' && (p.tipo_vinculo || 'CLT') !== filtroVinculo) return false;
         if (!q) return true;
         return semAcento(p.nome).includes(q)
           || p.registro.toLowerCase().includes(q)
+          || (qNum.length >= 3 && p.registro.replace(/\D/g, '').includes(qNum))
           || semAcento(p.chave_nome || '').includes(q);
       })
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  }, [pessoas, filtros, busca, filtroStatus]);
+  }, [pessoas, filtros, busca, filtroStatus, filtroVinculo]);
 
   const totalAtivos = useMemo(() => pessoas.filter(p => p.ativo).length, [pessoas]);
-  const filtrosAtivos = CAMPOS.filter(c => filtros[c]).length + (busca.trim() ? 1 : 0);
+  const filtrosAtivos = CAMPOS.filter(c => filtros[c]).length + (busca.trim() ? 1 : 0) + (filtroVinculo !== 'TODOS' ? 1 : 0);
 
   const abrirNovo = () => {
     setEditando(null);
@@ -123,6 +128,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
   const abrirEdicao = (p: RhPessoa) => {
     setEditando(p);
     setForm({
+      tipo_vinculo: (p.tipo_vinculo as 'CLT' | 'PJ') || 'CLT',
       registro: p.registro, nome: p.nome, chave_nome: p.chave_nome || '',
       macroarea: p.macroarea || '', area: p.area || '', subsetor: p.subsetor || '',
       cargo: p.cargo || '', lideranca: p.lideranca || '', turno: p.turno || '',
@@ -133,8 +139,9 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
 
   const salvar = async (e: React.FormEvent) => {
     e.preventDefault();
+    const rotuloDoc = form.tipo_vinculo === 'PJ' ? 'CPF' : 'Matrícula';
     if (!form.registro.trim() || !form.nome.trim()) {
-      toast.warning('Matrícula e nome são obrigatórios.');
+      toast.warning(`${rotuloDoc} e nome são obrigatórios.`);
       return;
     }
     setSalvando(true);
@@ -143,6 +150,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
       // com uma opção sem rótulo.
       const ou = (v: string) => v.trim() || null;
       const dados = {
+        tipo_vinculo: form.tipo_vinculo,
         registro: form.registro.trim(),
         nome: form.nome.trim(),
         chave_nome: ou(form.chave_nome),
@@ -252,12 +260,21 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por nome, matrícula ou chave do nome..."
+              placeholder="Buscar por nome, matrícula, CPF ou chave do nome..."
               value={busca}
               onChange={e => setBusca(e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-base text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
             />
           </div>
+          <select
+            value={filtroVinculo}
+            onChange={e => setFiltroVinculo(e.target.value as any)}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-base font-semibold text-slate-700 sm:text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 cursor-pointer"
+          >
+            <option value="TODOS">Todos os regimes (CLT/PJ)</option>
+            <option value="CLT">Somente CLT</option>
+            <option value="PJ">Somente PJ</option>
+          </select>
           <select
             value={filtroStatus}
             onChange={e => setFiltroStatus(e.target.value as any)}
@@ -277,7 +294,7 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
             {filtrosAtivos > 0 && (
               <button
                 type="button"
-                onClick={() => { setFiltros({ macroarea: '', area: '', subsetor: '', cargo: '', turno: '' }); setBusca(''); }}
+                onClick={() => { setFiltros({ macroarea: '', area: '', subsetor: '', cargo: '', turno: '' }); setBusca(''); setFiltroVinculo('TODOS'); }}
                 className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 cursor-pointer"
               >
                 Limpar filtros ({filtrosAtivos})
@@ -330,12 +347,27 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {filtradas.map(p => {
               const local = [p.macroarea, p.area, p.subsetor].filter(Boolean).join(' › ');
+              const vinculo = p.tipo_vinculo || 'CLT';
               return (
                 <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-slate-900 dark:text-slate-50">{p.nome}</span>
-                      <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                          vinculo === 'PJ'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                        title={vinculo === 'PJ' ? `CPF: ${p.registro}` : `Matrícula: ${p.registro}`}
+                      >
+                        <span className={`text-[9px] font-extrabold px-1 rounded ${
+                          vinculo === 'PJ'
+                            ? 'bg-amber-200/80 text-amber-900 dark:bg-amber-800 dark:text-amber-100'
+                            : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                        }`}>
+                          {vinculo}
+                        </span>
                         {p.registro}
                       </span>
                       {!p.ativo && (
@@ -392,22 +424,59 @@ export default function RhColaboradores({ user, onNavigate }: Props) {
               {editando ? `Editar ${editando.nome}` : 'Novo colaborador'}
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Os mesmos campos da planilha do RH.
+              {editando ? 'Atualize as informações do cadastro.' : 'Informe os dados do colaborador CLT ou prestador PJ.'}
             </p>
           </ModalHeader>
           <form onSubmit={salvar}>
             <ModalBody className="space-y-3">
+              {/* Seleção do Vínculo: CLT ou PJ */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-900/60">
+                <div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Tipo de Contratação</span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Selecione se o colaborador é funcionário CLT ou prestador PJ
+                  </p>
+                </div>
+                <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-950">
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, tipo_vinculo: 'CLT' }))}
+                    className={`rounded-md px-3.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                      form.tipo_vinculo === 'CLT'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    CLT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, tipo_vinculo: 'PJ' }))}
+                    className={`rounded-md px-3.5 py-1 text-xs font-bold transition-all cursor-pointer ${
+                      form.tipo_vinculo === 'PJ'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    PJ
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="f-registro" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Matrícula *</label>
+                  <label htmlFor="f-registro" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    {form.tipo_vinculo === 'PJ' ? 'CPF *' : 'Matrícula *'}
+                  </label>
                   <input
                     id="f-registro"
                     value={form.registro}
                     onChange={e => setForm(f => ({ ...f, registro: e.target.value }))}
-                    // A matrícula é a chave natural do cadastro: trocá-la criaria
+                    placeholder={form.tipo_vinculo === 'PJ' ? '000.000.000-00' : 'Número da matrícula'}
+                    // A matrícula/CPF é a chave natural do cadastro: trocá-la criaria
                     // outro colaborador em vez de corrigir este.
                     disabled={Boolean(editando)}
-                    className={`${campo} disabled:cursor-not-allowed disabled:opacity-60`}
+                    className={`${campo} disabled:cursor-not-allowed disabled:opacity-60 font-mono`}
                   />
                 </div>
                 <div className="sm:col-span-2">

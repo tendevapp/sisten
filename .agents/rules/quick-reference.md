@@ -10,7 +10,8 @@ description: Aplique quando precisar de uma consulta rápida sobre quais agentes
 ## Agentes & Habilidades
 
 - **Principais**: `orchestrator`, `project-planner`, `security-auditor` (Cyber/Audit), `backend-specialist` (API/DB), `frontend-specialist` (UI/UX), `mobile-developer`, `debugger`, `game-developer`
-- **Habilidades Chave**: `clean-code`, `brainstorming`, `app-builder`, `frontend-design`, `mobile-design`, `plan-writing`, `behavioral-modes`
+- **Habilidades Chave**: `clean-code`, `karpathy-guidelines`, `caveman`, `defuddle`, `brainstorming`, `app-builder`, `frontend-design`, `mobile-design`, `plan-writing`, `behavioral-modes`
+
 
 ## Scripts Principais
 

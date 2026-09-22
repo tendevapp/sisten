@@ -378,6 +378,7 @@ export async function excluirRhHoraExtra(id: string): Promise<void> {
 export async function criarRhPessoa(dados: {
   registro: string;
   nome: string;
+  tipo_vinculo?: 'CLT' | 'PJ' | null;
   chave_nome?: string | null;
   macroarea?: string | null;
   area?: string | null;
@@ -389,13 +390,17 @@ export async function criarRhPessoa(dados: {
 }): Promise<RhPessoa> {
   const registro = dados.registro.trim();
   const nome = dados.nome.trim();
-  if (!registro) throw new Error('A matrícula é obrigatória.');
+  const vinculo = dados.tipo_vinculo || 'CLT';
+  const termoId = vinculo === 'PJ' ? 'CPF' : 'matrícula';
+
+  if (!registro) throw new Error(`O campo ${termoId} é obrigatório.`);
   if (!nome) throw new Error('O nome do colaborador é obrigatório.');
 
   const { data, error } = await (supabase as any)
     .from('rh_pessoas')
     .insert({
       ...dados,
+      tipo_vinculo: vinculo,
       registro,
       nome,
       ativo: situacaoParaAtivo(dados.situacao),
@@ -405,7 +410,7 @@ export async function criarRhPessoa(dados: {
 
   if (error) {
     if (error.code === '23505' || error.message.includes('unique')) {
-      throw new Error(`Já existe um colaborador com a matrícula ${registro}.`);
+      throw new Error(`Já existe um colaborador com ${termoId === 'CPF' ? 'o CPF' : 'a matrícula'} ${registro}.`);
     }
     if (isErroRls(error)) {
       throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar colaboradores no RH.');

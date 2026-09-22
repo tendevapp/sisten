@@ -1880,6 +1880,8 @@ export interface RhPessoa {
   ativo: boolean;
   created_at: string;
   updated_at: string;
+  /** TIPO DE VÍNCULO — regime contratual: 'CLT' ou 'PJ'. */
+  tipo_vinculo?: 'CLT' | 'PJ';
   /** Quem fez a última edição na tela de cadastro; nulo quando veio da carga. */
   atualizado_por: string | null;
 }
