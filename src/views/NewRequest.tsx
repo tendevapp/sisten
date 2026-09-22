@@ -9,7 +9,7 @@ import {
   AlertTriangle, Save, Loader2, Search, Circle, CheckCircle2,
   AlertCircle, Siren, Laptop2, Building2, Wrench, X, Scale, Clock,
   ListChecks, Gauge, Send, Link as LinkIcon, ExternalLink, FileText, HelpCircle, Bug, Lightbulb, RotateCcw,
-  ReceiptText, Info, Layers,
+  ReceiptText, Info, Layers, HardHat, ShieldCheck,
 } from 'lucide-react';
 import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
@@ -58,6 +58,15 @@ import {
 import { proximoIndiceProtocoloDia, criarPendencias, criarAjustePedido, salvarImagensAjuste } from '../lib/supPendenciasApi';
 import { listarNomesServicosFacilities, SERVICOS_FACILITIES_PADRAO } from '../lib/facilitiesApi';
 import ImagesPasteInput from '../components/ui/ImagesPasteInput';
+import {
+  aplicarCaNaObservacao,
+  buscarStatusEpiMateriais,
+  chaveCodigoSap as chaveCodigoSapEpi,
+  formatarCas,
+  removerCaDaObservacao,
+  situacaoEpi,
+  type StatusEpiMaterial,
+} from '../lib/epiCompras';
 
 const NOVA_SOLICITACAO_TOUR_STEPS: TourStep[] = [
   {
@@ -208,6 +217,45 @@ const itemVazio = (): PurchaseItemState => ({
   suggested_supplier: '', estimated_value: 0,
 });
 
+/**
+ * Aviso do Book de EPIs no card do item: verde quando o EPI está no Book (o CA
+ * já foi para a observação), âmbar quando é EPI fora do Book ou inativo.
+ */
+function AvisoBookEpi({ status }: { status?: StatusEpiMaterial }) {
+  const situacao = situacaoEpi(status);
+  if (!status || situacao === 'nao_epi') return null;
+  if (situacao === 'no_book') {
+    const cas = formatarCas(status.cas);
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+        <div className="text-[12px] text-emerald-900 dark:text-emerald-200">
+          <p className="font-bold">EPI cadastrado no Book de EPIs</p>
+          <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
+            {status.descricao_book ? `${status.descricao_book}. ` : ''}
+            {cas
+              ? <>CA <span className="font-bold">{cas}</span> incluído na observação do item.</>
+              : 'O Book não informa número de CA para este EPI.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+      <HardHat className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+      <div className="text-[12px] text-amber-900 dark:text-amber-200">
+        <p className="font-bold">
+          {situacao === 'book_inativo' ? 'EPI inativo no Book de EPIs' : 'EPI não cadastrado no Book de EPIs'}
+        </p>
+        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+          Entre em contato com a equipe de Segurança do Trabalho (SSMA) para validar o EPI e o CA antes da compra.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** UN até PAC, em ordem alfabética visual — "M²"/"M³" lidos como "M2"/"M3". */
 const UNIDADES = ['GAL', 'KG', 'L', 'M', 'M²', 'M³', 'PAC', 'UN'] as const;
 
@@ -312,6 +360,65 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
 
   // Repeated items for Purchase
   const [items, setItems] = useState<PurchaseItemState[]>([itemVazio()]);
+
+  // Book de EPIs: situação de cada código SAP da solicitação. Item de EPI no
+  // Book leva o CA para a observação; fora do Book, avisa para procurar a
+  // Segurança do Trabalho. Nada bloqueia o envio.
+  const [epiPorCodigo, setEpiPorCodigo] = useState<Map<string, StatusEpiMaterial>>(new Map());
+  const epiConsultadosRef = useRef<Set<string>>(new Set());
+  /** item.id → código cujo CA já foi para a observação (não reescreve se o usuário apagar). */
+  const epiCaAplicadoRef = useRef<Map<string, string>>(new Map());
+  /** Itens escolhidos agora (catálogo/vários itens) — só eles disparam toast. */
+  const epiAvisarRef = useRef<Set<string>>(new Set());
+  const chaveCodigosSap = [...new Set(items.map(it => chaveCodigoSapEpi(it.sap_code)).filter(Boolean))].sort().join(',');
+
+  useEffect(() => {
+    const novos = chaveCodigosSap.split(',').filter(c => c && !epiConsultadosRef.current.has(c));
+    if (!novos.length) return;
+    novos.forEach(c => epiConsultadosRef.current.add(c));
+    buscarStatusEpiMateriais(novos)
+      .then(resultado => {
+        if (!resultado.size) return;
+        setEpiPorCodigo(prev => new Map([...prev, ...resultado]));
+      })
+      .catch(erro => {
+        // Consulta de apoio: se falhar, a compra segue sem o aviso.
+        console.error('Falha ao consultar o Book de EPIs:', erro);
+        novos.forEach(c => epiConsultadosRef.current.delete(c));
+      });
+  }, [chaveCodigosSap]);
+
+  useEffect(() => {
+    const patches = new Map<string, string>();
+    for (const it of items) {
+      const codigo = chaveCodigoSapEpi(it.sap_code);
+      const status = codigo ? epiPorCodigo.get(codigo) : undefined;
+      if (!codigo || !status) continue;
+      const situacao = situacaoEpi(status);
+
+      if (epiAvisarRef.current.has(it.id)) {
+        epiAvisarRef.current.delete(it.id);
+        const nome = it.description || codigo;
+        if (situacao === 'fora_do_book') {
+          toast.warning(`${nome}: EPI não cadastrado no Book de EPIs. Entre em contato com a equipe de Segurança do Trabalho.`);
+        } else if (situacao === 'book_inativo') {
+          toast.warning(`${nome}: EPI inativo no Book de EPIs. Confirme com a equipe de Segurança do Trabalho.`);
+        } else if (situacao === 'no_book') {
+          const cas = formatarCas(status.cas);
+          toast.success(`${nome}: cadastrado no Book de EPIs${cas ? ` — CA ${cas} incluído na observação` : ''}.`);
+        }
+      }
+
+      if (situacao === 'no_book' && epiCaAplicadoRef.current.get(it.id) !== codigo) {
+        epiCaAplicadoRef.current.set(it.id, codigo);
+        const observacao = aplicarCaNaObservacao(it.observation, status.cas);
+        if (observacao !== (it.observation || '')) patches.set(it.id, observacao);
+      }
+    }
+    if (patches.size) {
+      setItems(prev => prev.map(it => (patches.has(it.id) ? { ...it, observation: patches.get(it.id)! } : it)));
+    }
+  }, [items, epiPorCodigo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Item cujo modal de busca no catálogo está aberto, ou null. */
   const [buscaModalIndex, setBuscaModalIndex] = useState<number | null>(null);
@@ -703,6 +810,7 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
     // Unidade vem do cadastro do material no catálogo SAP e fica travada: quem
     // abre a compra não escolhe unidade, herda a que o item já tem no SAP.
     const itemAtual = items[index];
+    if (itemAtual) epiAvisarRef.current.add(itemAtual.id);
     const ehGen = Boolean(itemAtual?.is_generic);
     patchItem(index, {
       description: ehGen && itemAtual?.description?.trim()
@@ -719,7 +827,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
   /** Descarta o material escolhido e volta o item ao estado de busca. */
   const trocarMaterial = (index: number) => {
     const itemAtual = items[index];
+    if (itemAtual) epiCaAplicadoRef.current.delete(itemAtual.id);
     patchItem(index, {
+      observation: removerCaDaObservacao(itemAtual?.observation),
       sap_code: '',
       status_geral: undefined,
       description: itemAtual?.is_generic ? itemAtual.description : '',
@@ -794,8 +904,10 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
             naoEncontrados.push(codigo);
             continue;
           }
+          const novo = itemVazio();
+          epiAvisarRef.current.add(novo.id);
           novos.push({
-            ...itemVazio(),
+            ...novo,
             description: mat.description.toUpperCase(),
             sap_code: mat.materialCode,
             status_geral: mat.statusGeral || undefined,
@@ -2235,6 +2347,9 @@ export default function NewRequest({ user, onNavigate }: NewRequestProps) {
                         )}
                       </div>
                     )}
+
+                    {/* Book de EPIs — só para EPI (grupo SAP de EPI ou item do Book). */}
+                    <AvisoBookEpi status={epiPorCodigo.get(chaveCodigoSapEpi(it.sap_code))} />
 
                     {/* Item de imobilizado — código SAP de 5 dígitos. Precisa de
                         número de imobilizado e de aviso prévio à contabilidade. */}
