@@ -218,6 +218,28 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sincroniza navegacao por hash quando a tela ja esta montada
+  useEffect(() => {
+    const handleHashSync = () => {
+      const hash = window.location.hash || '';
+      if (!hash.includes('/suprimentos/cotacoes') && !hash.includes('/suprimentos/analise-cotacoes')) return;
+      const hashQuery = hash.includes('?') ? hash.split('?')[1] : '';
+      const params = new URLSearchParams(hashQuery);
+      const pid = params.get('processoId') || params.get('cotacao');
+      const faseParam = params.get('fase') as Fase | null;
+
+      if (pid && pid !== processoIdAtualRef.current) {
+        void abrirProcesso(pid, faseParam === 'mapa' ? 'mapa' : 'processo');
+      } else if (!pid && processoIdAtualRef.current && fase !== 'escopo') {
+        voltarParaLista();
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashSync);
+    return () => window.removeEventListener('hashchange', handleHashSync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fase]);
+
   const abrirProcesso = async (id: string, faseAlvo: Fase = 'processo') => {
     setCarregandoProcesso(true);
     try {
@@ -232,8 +254,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
         toast.info(`${rascunho.length} proposta(s) extraída(s) por IA recuperada(s) do rascunho local — ainda não salvas.`);
       }
       setFase(faseAlvo);
+      // Sincroniza a URL no navegador sem recarregar a pagina
+      const novoHash = `#/suprimentos/cotacoes?processoId=${encodeURIComponent(id)}${faseAlvo === 'mapa' ? '&fase=mapa' : ''}`;
+      if (window.location.hash !== novoHash) {
+        window.history.replaceState(null, '', novoHash);
+      }
     } catch (err) {
       toast.error((err as Error).message);
+      // Se o processo nao foi encontrado ou foi excluido, volta para a lista e limpa a URL
+      window.history.replaceState(null, '', '#/suprimentos/cotacoes');
+      setFase('lista');
+      carregarLista();
     } finally {
       setCarregandoProcesso(false);
     }
@@ -544,7 +575,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       toast.success('Proposta salva.');
       avancarStatusCobertos(draft).catch(() => { /* melhor esforço, não bloqueia o salvamento */ });
     } catch (err) {
-      toast.error((err as Error).message);
+      const msg = (err as Error).message;
+      toast.error(msg);
+      if (
+        msg.toLowerCase().includes('não existe mais') ||
+        msg.toLowerCase().includes('não foi encontrado') ||
+        msg.includes('cotacao_propostas_processo_id_fkey')
+      ) {
+        window.setTimeout(() => {
+          voltarParaLista();
+        }, 1500);
+      }
     } finally {
       setSalvandoKey(null);
     }
@@ -578,14 +619,13 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
       'Desfazer',
       () => {
         const pendente = pendentesExclusaoRef.current.get(key);
-        if (!pendente) return; // janela já expirou, a exclusão já foi commitada no banco
+        if (!pendente) return;
         window.clearTimeout(pendente.timeoutId);
         pendentesExclusaoRef.current.delete(key);
         if (processoIdAtualRef.current === pendente.processoId) {
           setPropostas(prev => (prev.some(p => p._key === key) ? prev : [...prev, pendente.draft]));
         }
-      },
-      6000,
+      }
     );
   };
 
@@ -627,6 +667,7 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   );
 
   const voltarParaLista = () => {
+    window.history.replaceState(null, '', '#/suprimentos/cotacoes');
     setProcesso(null);
     setEscopo([]);
     setPropostas([]);
@@ -674,6 +715,10 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
           onExcluir={async (id) => {
             try {
               await excluirProcessoCotacao(id);
+              try {
+                localStorage.removeItem(chaveRascunhoPropostas(id));
+                localStorage.removeItem(`sisten:cotacoes:${id}:conversor:v1`);
+              } catch { /* ignora erro de storage */ }
               setProcessos(prev => prev.filter(p => p.id !== id));
               toast.success('Processo de cotação excluído.');
             } catch (err) {

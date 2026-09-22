@@ -343,6 +343,13 @@ describe('pages.ts - Controle de Acesso', () => {
       const sobrando = GROUP_ORDER.filter(g => !gruposDasPaginas.has(g));
       expect(sobrando).toEqual([]);
     });
+
+    it('inclui o hub SSMA como módulo lateral', () => {
+      const ssma = PAGES.find(page => page.id === 'ssma');
+
+      expect(ssma).toMatchObject({ group: 'SSMA', path: '/ssma' });
+      expect(GROUP_ORDER).toContain('SSMA');
+    });
   });
 
   describe('FORMULARIO_SUBPERMISSOES & getPageGroups', () => {

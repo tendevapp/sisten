@@ -106,6 +106,7 @@ export const PAGES: PageDef[] = [
   { id: 'prod_consulta', group: 'PRODUÇÃO', label: 'Consulta', path: '/producao/consulta', icon: Search, defaultRoles: ['admin'] },
   { id: 'prod_entrega', group: 'PRODUÇÃO', label: 'Controle de Entrega', path: '/producao/entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
   { id: 'prod_painel', group: 'PRODUÇÃO', label: 'Painel de Qualidade', path: '/producao/painel', icon: Activity, defaultRoles: ['admin'] },
+  { id: 'prod_dashboards', group: 'PRODUÇÃO', label: 'Dashboards', path: '/producao/dashboards', icon: LayoutDashboard, defaultRoles: ['admin'] },
   { id: 'prod_cadastros', group: 'PRODUÇÃO', label: 'Cadastros de Qualidade', path: '/producao/cadastros', icon: Settings, defaultRoles: ['admin'] },
 
   // Módulo Qualidade — gestão de RNC (Relatório de Não Conformidade): abertura,
@@ -135,6 +136,10 @@ export const PAGES: PageDef[] = [
   { id: 'rh_turnos_cad', group: 'RH', label: 'Turnos', path: '/rh/turnos', icon: Clock, defaultRoles: ['admin'] },
   { id: 'rh_rotas_cad', group: 'RH', label: 'Rotas de Transporte', path: '/rh/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'rh_percentual_he', group: 'RH', label: 'Percentual de Hora Extra', path: '/rh/percentual-he', icon: Percent, defaultRoles: ['admin'] },
+
+  // Hub SSMA dentro de Formulários. O acesso acompanha a subpermissão SSMA,
+  // inclusive quando ela foi bloqueada individualmente pelo administrador.
+  { id: 'ssma', group: 'SSMA', label: 'SSMA', path: '/ssma', icon: Shield, defaultRoles: '*' },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
@@ -206,6 +211,19 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     codigo: 'FRM.SOC-0042',
     descricao: 'Teste de alcoolemia por etilômetro e emissão de termo',
     path: '/formularios/ssma-alcoolemia',
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['12', '13'],
+      keywords: ['ssma', 'saúde', 'saude', 'segurança', 'seguranca', 'meio ambiente'],
+    },
+  },
+  {
+    id: 'form_ssma_ficha_epi',
+    grupoId: 'ssma',
+    label: 'Ficha de EPI',
+    codigo: 'FRM.SEG-0008',
+    descricao: 'Termo de responsabilidade de EPI com assinatura do colaborador e análise de consumo',
+    path: '/formularios/ssma-ficha-epi',
     defaultRoles: ['admin'],
     setores: {
       ids: ['12', '13'],
@@ -641,6 +659,8 @@ export function isUserSetorFinanceiro(user: Profile): boolean {
 export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
 
+  if (pageId === 'ssma') return canAccessFormGroup(user, 'ssma');
+
   const def = BY_ID[pageId];
   if (!def) return false;
 
@@ -915,7 +935,7 @@ export function pageIdForPath(path: string): string | undefined {
  */
 export const GROUP_ORDER = [
   'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PRODUÇÃO', 'QUALIDADE', 'FACILITIES', 'RH',
-  'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
+  'SSMA', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
 ] as const;
 
 export function getPageGroups(): { group: string; pages: PageDef[] }[] {

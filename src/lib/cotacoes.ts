@@ -364,6 +364,7 @@ export function propostaParaDraft(
       ...i,
       id: mesmoProcesso ? i.id : undefined,
       proposta_id: mesmoProcesso ? i.proposta_id : undefined,
+      processo_item_id: mesmoProcesso ? i.processo_item_id : undefined,
       _key: mesmoProcesso ? i.id : `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       valor_unitario: i.valor_unitario ?? null,
       quantidade: i.quantidade ?? null,

@@ -34,6 +34,7 @@ const GROUP_HOME: Record<string, { path: string; base: string; apenasHub?: boole
   'QUALIDADE': { path: '/qualidade', base: '/qualidade' },
   'FACILITIES': { path: '/facilities', base: '/facilities' },
   'RH': { path: '/rh', base: '/rh', apenasHub: true },
+  'SSMA': { path: '/ssma', base: '/ssma', apenasHub: true },
   'FINANCEIRO': { path: '/financeiro', base: '/financeiro' },
   'HELPDESK': { path: '/helpdesk/inicio', base: '/helpdesk' },
   'ADMINISTRAÇÃO': { path: '/admin', base: '/admin' },
@@ -170,7 +171,7 @@ export default function Sidebar({ user, currentPath, onNavigate, theme, toggleTh
 
           // Só mostra o cabeçalho do módulo quando há alguma subpágina real
           // liberada para o usuário — o hub sozinho não abre um módulo vazio.
-          if (home && visibleItems.every(i => i.path === homePath)) return null;
+          if (home && !apenasHub && visibleItems.every(i => i.path === homePath)) return null;
 
           const homeActive = !!home && (
             currentPath === home.path

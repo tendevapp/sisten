@@ -111,6 +111,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
       prod_consulta: 'Consulta de lançamentos e ficha completa de cada virola.',
       prod_entrega: 'Matriz de prontidão por torre e tramo para a Expedição.',
       prod_painel: 'FPY, retrabalho, WIP e Pareto de qualidade.',
+      prod_dashboards: 'Relatório diário de produção: atividades por setor e resumo do dia.',
       prod_cadastros: 'Etapas, defeitos, tolerâncias e recursos da fábrica.',
     },
   },

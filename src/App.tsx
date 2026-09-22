@@ -94,6 +94,7 @@ const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
 const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
 const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
 const ProducaoOperacao = lazy(() => import('./views/producao/ProducaoOperacao'));
+const ProducaoDashboards = lazy(() => import('./views/producao/ProducaoDashboards'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
 // estado local dela: formulário preenchido, filtros, busca, seleção, edição
@@ -153,6 +154,10 @@ const LEGACY_PATH_REDIRECTS: Record<string, string> = {
 const FULL_BLEED_PATHS = new Set<string>([
   '/helpdesk',
   '/helpdesk/relatorios',
+  // Relatório Diário de Produção: painel de TV que se escala para caber na
+  // altura disponível — com o padding e a rolagem do <main> ele nunca fecharia
+  // numa tela só.
+  '/producao/dashboards',
 ]);
 
 function ViewLoadingFallback() {
@@ -718,9 +723,15 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/ssma':
+        if (canAccessPage(user, 'ssma')) {
+          return <SsmaHub user={user} onNavigate={handleNavigate} modo="modulo" />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/formularios/ssma':
         if (canAccessPage(user, 'formularios') && canAccessFormGroup(user, 'ssma')) {
-          return <SsmaHub user={user} onNavigate={handleNavigate} />;
+          return <SsmaHub user={user} onNavigate={handleNavigate} modo="formularios" />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -1101,6 +1112,10 @@ export default function App() {
 
       case '/producao/painel':
         if (canAccessPage(user, 'prod_painel')) return <ProducaoOperacao modo="painel" user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/dashboards':
+        if (canAccessPage(user, 'prod_dashboards')) return <ProducaoDashboards user={user} onNavigate={handleNavigate} />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/producao/cadastros':

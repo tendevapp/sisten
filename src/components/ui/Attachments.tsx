@@ -33,6 +33,7 @@ import { useLightbox } from './Lightbox';
 import { useToast } from './Toast';
 import { localDb } from '../../db/localDb';
 import { RequestAttachment } from '../../types';
+import { listarImagensEpiPorCodigoSap, urlFotoBookEpi } from '../../lib/ssmaBookEpisApi';
 
 const ehPdf = (mime?: string) => mime === 'application/pdf';
 const ehImagem = (mime?: string) => !!mime && mime.startsWith('image/');
@@ -72,7 +73,7 @@ interface ImageBankModalProps {
 }
 
 function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: ImageBankModalProps) {
-  const [candidatos] = useState<RequestAttachment[]>(() =>
+  const [candidatos, setCandidatos] = useState<RequestAttachment[]>(() =>
     deduplicarPorArquivo(
       localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type) || ehPdf(a.mime_type))
     )
@@ -80,13 +81,30 @@ function ImageBankModal({ materialCode, jaAdicionados, onSelect, onClose }: Imag
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [carregando, setCarregando] = useState(true);
 
+  // O Book de EPIs mantém fotos próprias, sem precisar criar uma solicitação
+  // fictícia apenas para entrar no banco de imagens de Compras.
+  useEffect(() => {
+    let cancelado = false;
+    const locais = localDb.getAttachmentsByMaterialCode(materialCode).filter(a => ehImagem(a.mime_type) || ehPdf(a.mime_type));
+    listarImagensEpiPorCodigoSap(materialCode)
+      .then(epis => { if (!cancelado) setCandidatos(deduplicarPorArquivo([...epis, ...locais])); })
+      .catch(error => {
+        console.warn('Falha ao buscar imagens do Book de EPIs.', error);
+        if (!cancelado) setCandidatos(deduplicarPorArquivo(locais));
+      });
+    return () => { cancelado = true; };
+  }, [materialCode]);
+
   useEffect(() => {
     let cancelado = false;
     (async () => {
       const resolvidas: Record<string, string> = {};
       for (const a of candidatos) {
         if (ehImagem(a.mime_type)) {
-          const url = await localDb.getAttachmentUrl(a.storage_path || a.url);
+          const path = a.storage_path || a.url;
+          const url = a.request_id.startsWith('ssma-book-epis-')
+            ? await urlFotoBookEpi(path)
+            : await localDb.getAttachmentUrl(path);
           if (url) resolvidas[a.id] = url;
         }
       }

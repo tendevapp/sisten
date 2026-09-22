@@ -496,6 +496,24 @@ export async function salvarProcessoCotacao(params: {
   usuarioId: string;
   usuarioNome: string;
 }): Promise<ResultadoSalvamento> {
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!params.processoId || !UUID_REGEX.test(params.processoId)) {
+    throw new Error('Identificador do processo de cotação inválido.');
+  }
+
+  // Verifica se o processo ainda existe no banco antes de tentar gravar as propostas
+  const { data: processoExiste, error: errProcesso } = await supabase
+    .from('sup_cotacao_processos')
+    .select('id, numero')
+    .eq('id', params.processoId)
+    .maybeSingle();
+
+  if (errProcesso || !processoExiste) {
+    throw new Error(
+      'O processo de cotação não existe mais no banco de dados (pode ter sido excluído ou recriado). Atualize a página ou retorne à lista de processos.'
+    );
+  }
+
   const payload = {
     usuario_id: params.usuarioId,
     usuario_nome: params.usuarioNome,
@@ -503,7 +521,14 @@ export async function salvarProcessoCotacao(params: {
   };
 
   const { data, error } = await supabase.rpc('salvar_processo_cotacao', { p_payload: payload });
-  if (error) throw new Error(`Falha ao salvar a proposta: ${error.message}`);
+  if (error) {
+    if (error.message?.includes('cotacao_propostas_processo_id_fkey') || error.code === '23503') {
+      throw new Error(
+        'O processo de cotação não existe mais no banco de dados. Atualize a página para recarregar a lista.'
+      );
+    }
+    throw new Error(`Falha ao salvar a proposta: ${error.message}`);
+  }
   return data as ResultadoSalvamento;
 }
 
