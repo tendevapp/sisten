@@ -100,9 +100,11 @@ describe('soma de dias corridos', () => {
 });
 
 describe('montarItens', () => {
-  it('exclui item sem PO, item já com MIGO e RM de serviço', () => {
+  it('exclui item sem PO, item com PO cancelado/eliminado, item já com MIGO e RM de serviço', () => {
     const registros = [
       registro({ ri: 'sem-po', documento_compra: undefined }),
+      registro({ ri: 'sem-po-status', documento_compra: '4500001', status_requisicao: 'Sem PO' }),
+      registro({ ri: 'eliminado-eflag', documento_compra: '4500002', eflag_po: 'L' }),
       registro({ ri: 'com-migo', data_migo: '2026-08-15' }),
       registro({ ri: 'servico', requisicao_de_compra: '1700045' }),
       registro({ ri: 'ok' }),

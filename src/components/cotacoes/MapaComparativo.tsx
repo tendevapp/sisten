@@ -35,6 +35,7 @@ import MapaTabelaFornecedor from './MapaTabelaFornecedor';
 import MapaVisaoItem from './MapaVisaoItem';
 import ExportarSapModal from './ExportarSapModal';
 import VerCotacaoOriginalModal from './VerCotacaoOriginalModal';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { construirLinhasSap } from '../../lib/exportSapCotacao';
 import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
@@ -151,27 +152,131 @@ function Chip({ tom, children, title }: { tom: 'neutro' | 'ok' | 'aviso' | 'ruim
   );
 }
 
-/** Alíquotas do item, na ordem em que pesam no bolso. Só mostra o que o fornecedor destacou. */
+/**
+ * Alíquota e valor de cada imposto destacado, na ordem em que pesam no bolso.
+ * O valor é por unidade (mesma régua do preço grande da célula); o total do
+ * item fica no title.
+ */
 function ChipsImpostos({ celula }: { celula: CelulaMapa }) {
   const { item, custo } = celula;
-  const partes: string[] = [];
-  if (item.aliquota_ipi_pct != null) partes.push(`IPI ${item.aliquota_ipi_pct}%`);
-  if (item.aliquota_icms_pct != null) partes.push(`ICMS ${item.aliquota_icms_pct}%`);
+  const qtd = custo.quantidade != null && custo.quantidade > 0 ? custo.quantidade : null;
+  const porUn = (total: number) => (qtd ? total / qtd : total);
+  const partes: { rotulo: string; total: number }[] = [];
+  if (item.aliquota_ipi_pct != null) partes.push({ rotulo: `IPI ${item.aliquota_ipi_pct}%`, total: custo.impostos.ipi });
+  if (item.aliquota_icms_pct != null) partes.push({ rotulo: `ICMS ${item.aliquota_icms_pct}%`, total: custo.impostos.icms });
   if (item.aliquota_pis_pct != null || item.aliquota_cofins_pct != null) {
     const soma = (item.aliquota_pis_pct ?? 0) + (item.aliquota_cofins_pct ?? 0);
-    partes.push(`PIS/COF ${Number(soma.toFixed(2))}%`);
+    partes.push({ rotulo: `PIS/COF ${Number(soma.toFixed(2))}%`, total: custo.impostos.pisCofins });
   }
   if (partes.length === 0) {
     return <span className="text-[10px] text-slate-400">sem impostos destacados</span>;
   }
   const detalhe = [
-    custo.ipi > 0 ? `IPI somado: ${formatBRL(custo.ipi)}` : null,
+    ...partes.map(p => `${p.rotulo}: ${formatBRL(p.total)} no item`),
+    custo.ipi > 0 ? `IPI somado à comparação: ${formatBRL(custo.ipi)}` : null,
     custo.creditos > 0 ? `Créditos abatidos: ${formatBRL(custo.creditos)}` : null,
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean).join('\n');
   return (
-    <span className="text-[10px] text-slate-500 dark:text-slate-400" title={detalhe || undefined}>
-      {partes.join(' · ')}
-    </span>
+    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-slate-500 dark:text-slate-400" title={detalhe}>
+      {partes.map(p => (
+        <span key={p.rotulo} className="tabular-nums">
+          {p.rotulo} <span className="font-semibold text-slate-600 dark:text-slate-300">{formatBRL(porUn(p.total))}</span>
+          {qtd ? <span className="text-slate-400">/{item.unidade_medida || 'un'}</span> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// =====================================================================
+// Confirmação de item fora da melhor oferta
+// =====================================================================
+
+interface ItemForaDoMelhor {
+  itemKey: string;
+  titulo: string;
+  fornecedor: string;
+  unitario: number | null;
+  melhorUnitario: number | null;
+  deltaPct: number | null;
+  unidade: string;
+}
+
+/**
+ * Aparece ao salvar a decisão quando algum item marcado não é a melhor oferta
+ * da linha. A observação é opcional e vai para `mapa_observacao` de cada item
+ * listado — fica registrado por que o mais barato não foi o escolhido.
+ */
+function ConfirmarForaDoMelhorModal({
+  itens, salvando, onCancelar, onConfirmar,
+}: {
+  itens: ItemForaDoMelhor[];
+  salvando: boolean;
+  onCancelar: () => void;
+  onConfirmar: (observacao: string) => void;
+}) {
+  const [observacao, setObservacao] = useState('');
+  const plural = itens.length > 1;
+
+  return (
+    <Modal onClose={onCancelar} maxWidth="max-w-lg" zIndexClassName="z-[110]" ariaLabel="Confirmar item fora da melhor oferta">
+      <ModalHeader onClose={onCancelar}>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">
+            {plural ? `${itens.length} itens não são a melhor oferta` : 'Item não é a melhor oferta'}
+          </h3>
+        </div>
+      </ModalHeader>
+      <ModalBody className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {plural ? 'Estes itens foram marcados' : 'Este item foi marcado'} em um fornecedor que não tem o menor preço da linha. Confirme a escolha.
+        </p>
+        <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-700">
+          {itens.map(i => (
+            <li key={i.itemKey} className="px-3 py-2">
+              <div className="line-clamp-2 text-xs font-semibold text-slate-800 dark:text-slate-100" title={i.titulo}>{i.titulo}</div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+                <span className="font-medium text-slate-700 dark:text-slate-200">{i.fornecedor}</span>
+                <span>{formatBRL(i.unitario)}/{i.unidade}</span>
+                {i.melhorUnitario != null && <span>melhor: {formatBRL(i.melhorUnitario)}/{i.unidade}</span>}
+                {i.deltaPct != null && <span className="font-semibold text-rose-500">+{i.deltaPct.toFixed(1)}%</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <label className="block">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Observação <span className="font-normal text-slate-400">(opcional)</span></span>
+          <textarea
+            value={observacao}
+            onChange={e => setObservacao(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Ex.: prazo de entrega menor, marca homologada, fornecedor já tem o restante do pedido…"
+            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+        </label>
+      </ModalBody>
+      <ModalFooter>
+        <button
+          type="button"
+          onClick={onCancelar}
+          disabled={salvando}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Voltar ao mapa
+        </button>
+        <button
+          type="button"
+          onClick={() => onConfirmar(observacao)}
+          disabled={salvando}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+        >
+          <Check className="h-3.5 w-3.5" />
+          {salvando ? 'Salvando…' : 'Confirmar e salvar'}
+        </button>
+      </ModalFooter>
+    </Modal>
   );
 }
 
@@ -309,6 +414,13 @@ function CabecalhoFornecedor({
           {resumo.melhorEm > 0 && <span className="font-semibold text-emerald-600 dark:text-emerald-400">melhor em {resumo.melhorEm}</span>}
           {delta != null && delta > 0.01 && <span className="text-rose-500">+{delta.toFixed(1)}%</span>}
         </div>
+        {(resumo.totalImpostos.ipi > 0 || resumo.totalImpostos.icms > 0 || resumo.totalImpostos.pisCofins > 0) && (
+          <div className="flex flex-wrap gap-x-2 text-[10px] tabular-nums text-slate-400" title="Soma dos impostos destacados nos itens cotados. Só entram no total acima nas bases desembolso/custo líquido.">
+            {resumo.totalImpostos.ipi > 0 && <span>IPI {formatBRL(resumo.totalImpostos.ipi)}</span>}
+            {resumo.totalImpostos.icms > 0 && <span>ICMS {formatBRL(resumo.totalImpostos.icms)}</span>}
+            {resumo.totalImpostos.pisCofins > 0 && <span>PIS/COF {formatBRL(resumo.totalImpostos.pisCofins)}</span>}
+          </div>
+        )}
         {/* Régua visual da distância até o melhor total — só quando há uma
             referência confiável (algum fornecedor cobre o processo inteiro). */}
         {proporcaoAcimaDoMelhor != null && (
@@ -518,7 +630,7 @@ interface MapaComparativoProps {
   /** Reflete no estado do processo a mudança feita aqui (hoje, só o frete). */
   onAtualizarProposta: (key: string, patch: Partial<CotacaoPropostaDraft>) => void;
   /** Chamado depois que "Salvar decisão" grava com sucesso — leva o comprador à revisão do pedido, por fornecedor. */
-  onDecisaoSalva: (itensSelecionados: Set<string>) => void;
+  onDecisaoSalva: (itensSelecionados: Set<string>, observacoes?: Map<string, string>) => void;
   /** Permite sincronizar do Supabase caso haja propostas com chaves temporárias ainda não persistidas. */
   onRecarregarPropostas?: () => Promise<void>;
   /** Arquivo original (PDF/imagem) de cada proposta, por nome — só existe enquanto durar a sessão em que foi enviado. Ver VerCotacaoOriginalModal. */
@@ -537,7 +649,10 @@ export default function MapaComparativo({
 }: MapaComparativoProps) {
   const toast = useToast();
 
-  const [base, setBase] = useState<BaseComparacao>('desembolso');
+  // Preço unitário como está na cotação — é o que o comprador confere contra o
+  // PDF. Impostos aparecem em valor na célula; a base 'desembolso'/'liquido'
+  // continua a um clique para quem quiser somá-los.
+  const [base, setBase] = useState<BaseComparacao>('cotado');
   const [creditos, setCreditos] = useState<CreditosHabilitados>(CREDITOS_PADRAO);
   const [limiar, setLimiar] = useState(LIMIAR_SIMILARIDADE_PADRAO);
   const [ordenacao, setOrdenacao] = useState<OrdenacaoMapa>('alfabetica');
@@ -857,7 +972,45 @@ export default function MapaComparativo({
     }
   };
 
+  // Itens recém-marcados que não são a melhor oferta da linha — o comprador
+  // confirma e, se quiser, explica antes de gravar. Os já gravados antes não
+  // perguntam de novo: a confirmação deles já aconteceu.
+  const [confirmacaoForaDoMelhor, setConfirmacaoForaDoMelhor] = useState<ItemForaDoMelhor[] | null>(null);
+
+  const itensForaDoMelhor = (marcar: string[]): ItemForaDoMelhor[] => {
+    const lista: ItemForaDoMelhor[] = [];
+    for (const key of marcar) {
+      for (const l of linhas) {
+        const c = l.celulas.find(x => x.item._key === key);
+        if (!c) continue;
+        if (!c.melhor && l.celulas.length > 1) {
+          lista.push({
+            itemKey: key,
+            titulo: l.titulo,
+            fornecedor: nomeFornecedorCurto(propostasPorKey.get(c.propostaKey)?.fornecedor_razao_social) || 'Fornecedor',
+            unitario: c.custo.unitarioComparavel,
+            melhorUnitario: l.melhorCusto ?? null,
+            deltaPct: c.deltaPct,
+            unidade: c.item.unidade_medida || 'un',
+          });
+        }
+        break;
+      }
+    }
+    return lista;
+  };
+
   const handleSalvar = async () => {
+    const marcar = [...selecionados].filter(k => !selecaoPersistida.has(k));
+    const foraDoMelhor = itensForaDoMelhor(marcar);
+    if (foraDoMelhor.length > 0) {
+      setConfirmacaoForaDoMelhor(foraDoMelhor);
+      return;
+    }
+    await gravarDecisao();
+  };
+
+  const gravarDecisao = async (observacoes?: Map<string, string>) => {
     setSalvando(true);
     try {
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -873,10 +1026,11 @@ export default function MapaComparativo({
         }
       }
 
-      await salvarSelecaoMapa({ itensSelecionados: marcar, itensDesmarcados: desmarcar, usuarioNome });
+      await salvarSelecaoMapa({ itensSelecionados: marcar, itensDesmarcados: desmarcar, usuarioNome, observacoes });
       setSelecaoPersistida(new Set(selecionados));
+      setConfirmacaoForaDoMelhor(null);
       if (selecionados.size > 0) {
-        onDecisaoSalva(selecionados);
+        onDecisaoSalva(selecionados, observacoes);
       } else {
         toast.success('Decisão do mapa salva — nenhum item marcado para compra.');
       }
@@ -1322,6 +1476,18 @@ export default function MapaComparativo({
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      )}
+
+      {confirmacaoForaDoMelhor && (
+        <ConfirmarForaDoMelhorModal
+          itens={confirmacaoForaDoMelhor}
+          salvando={salvando}
+          onCancelar={() => setConfirmacaoForaDoMelhor(null)}
+          onConfirmar={texto => {
+            const obs = texto.trim();
+            gravarDecisao(obs ? new Map(confirmacaoForaDoMelhor.map(i => [i.itemKey, obs])) : undefined);
+          }}
+        />
       )}
 
       {sapModalLinhas && (

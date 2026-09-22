@@ -182,6 +182,11 @@ function CardPedido({
                   {it.foraDoEscopo && (
                     <span className="mt-0.5 inline-block text-[10px] text-amber-600 dark:text-amber-400">fora do escopo da RM</span>
                   )}
+                  {it.observacaoMapa && (
+                    <p className="mt-0.5 whitespace-pre-line text-[10px] text-slate-500 dark:text-slate-400" title="Observação registrada no mapa comparativo — item escolhido fora da melhor oferta">
+                      <span className="font-semibold">Obs.:</span> {it.observacaoMapa}
+                    </p>
+                  )}
                 </td>
                 <td className="px-2 py-2 text-slate-500 dark:text-slate-400">{it.ri || '—'}</td>
                 <td className="px-2 py-2 text-slate-500 dark:text-slate-400">{it.marcaFabricante || '—'}</td>

@@ -33,6 +33,8 @@ import { emailDeLogin, ehEmailInterno, usuarioLoginValido } from '../lib/loginSe
 import { FBL1N_COLUMNS, mapFbl1nRow } from '../lib/fbl1n';
 import { MB51_COLUMNS, mapMb51Row, parseMb51Number } from '../lib/mb51';
 import { ZL0170_COLUMNS, mapZl0170Row } from '../lib/zl0170Miro';
+import { ZF0076_COLUMNS, mapZf0076Row } from '../lib/zf0076NfPo';
+import { ZL0136_COLUMNS, mapZl0136Row } from '../lib/zl0136Nf';
 import { parseBahiaSulRows, resumirBahiaSulPorPo, normalizePoNumber } from '../lib/bahiasul';
 import { PreparedAttachment } from '../lib/imageCompression';
 import { gerarUUID, novoItemId } from '../lib/ids';
@@ -4538,17 +4540,11 @@ class LocalDatabase {
       // por último, para RM de serviço, o número de pedido informado no próprio ME5A.
       const docCompra = rawDocCompra || localDocCompra || pedidoME5A;
 
-      // Verificação de eliminação: eflag_e = 'L' na pedidosForn (por RI+doc —
-      // eflag_e é por linha do pedido, não pelo PO inteiro, e um mesmo número
-      // de PO pode ter itens ativos e itens cancelados).
-      //
-      // Só vale para o PO vindo do fallback local: o servidor já descarta as
-      // linhas eliminadas no JOIN da view. Reaplicar o teste sobre o PO que ele
-      // mandou transformava a linha num item fantasma "Sem PO" ao lado do
-      // pedido verdadeiro, em vez de simplesmente não existir.
-      const isDocEliminated = docCompra && !rawDocCompra
-        ? !!(r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra))
-        : false;
+      // Verificacao de eliminacao: eflag_e = 'L' na pedidosForn (por RI+doc —
+      // eflag_e e por linha do pedido, nao pelo PO inteiro, e um mesmo numero
+      // de PO pode ter itens ativos e itens cancelados) ou informado na view (eflag_po).
+      const isDocEliminated = (raw.eflag_po && String(raw.eflag_po).trim().toUpperCase() === 'L')
+        || !!(docCompra && r.ri && eliminatedCompositeKeys.has(String(r.ri).trim() + '_' + docCompra));
 
       // is_contrato: identificacao via categoria_do_item='D' foi removida.
       // A origem contrato agora e determinada exclusivamente pelo contrato_po preenchido
@@ -7295,6 +7291,211 @@ class LocalDatabase {
       return logObj as any;
     } catch (e) {
       console.error('Erro ao salvar importação de contas a pagar (FBL1N) no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // ZF0076 (Notas fiscais x Pedidos de Compra): relatório SAP de fotografia
+  // da relação entre documentos fiscais, pedidos e itens. A carga inteira
+  // substitui a anterior porque o export não fornece uma chave histórica
+  // confiável para sincronização incremental.
+  public async importZF0076Raw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(row => row.some(cell => cell !== ''));
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, ZF0076_COLUMNS);
+
+    if (!mappedFields.includes('documento_compra') || !mappedFields.includes('item_pedido')) {
+      throw new Error('Formato rejeitado: Colunas obrigatórias do SAP ("Doc.compra" e "Itm") não encontradas.');
+    }
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const { record, camposExtras } = mapZf0076Row(headers, mappedFields, row);
+
+      if (!record.documento_compra || !record.item_pedido) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: record.documento_compra || 'N/A',
+          reason: 'Doc.compra ou Itm vazio; linha de totalização/rodapé ignorada.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        ...record,
+        campos_extras: Object.keys(camposExtras).length ? camposExtras : null,
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const targetTable = 'sap_zf0076_nf_po' as const;
+      const { count: previousCount } = await supabase
+        .from(targetTable)
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from(targetTable).delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from(targetTable).insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logObj = {
+        id: 'il_' + Math.random().toString(36).substr(2, 9),
+        type: 'ZF0076',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('ops_importacoes').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('zf0076_nf_po', dbRows.length);
+      this.logActivity(
+        user?.id || 'sistema',
+        'Financeiro',
+        'Importar Notas Fiscais ZF0076',
+        `Importou ZF0076 (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`,
+      );
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação ZF0076 no Supabase:', e);
+      throw e;
+    }
+  }
+
+  // ZL0136 (Notas fiscais): relatório SAP de fotografia dos documentos fiscais
+  // e seus valores tributários. Cada arquivo substitui integralmente o snapshot
+  // anterior; a linha final de totalização, sem número de documento, é ignorada.
+  public async importZL0136Raw(rawRows: any[][], filename: string, onProgress?: (percent: number) => void): Promise<SAPImportLog> {
+    if (rawRows.length < 2) {
+      throw new Error('Formato rejeitado: Linhas insuficientes no arquivo.');
+    }
+    onProgress?.(0);
+
+    const headers = rawRows[0].map(h => String(h || '').trim());
+    const dataRows = rawRows.slice(1).filter(row => row.some(cell => cell !== ''));
+    const { mappedFields, missingColumns, newColumns } = this.reconcileSchema(headers, ZL0136_COLUMNS);
+
+    if (!mappedFields.includes('numero_documento_nove_posicoes')) {
+      throw new Error('Formato rejeitado: Coluna obrigatória do SAP ("Número de documento de nove posições") não encontrada.');
+    }
+
+    const user = this.getCurrentUser();
+    const dbRows: any[] = [];
+    const ignoredRows: any[] = [];
+
+    dataRows.forEach((row, index) => {
+      const fileRowIndex = index + 2;
+      const { record, camposExtras } = mapZl0136Row(headers, mappedFields, row);
+
+      if (!record.numero_documento_nove_posicoes) {
+        ignoredRows.push({
+          row: fileRowIndex,
+          identifier: 'N/A',
+          reason: 'Número de documento vazio; linha de totalização/rodapé ignorada.'
+        });
+        return;
+      }
+
+      dbRows.push({
+        ...record,
+        campos_extras: Object.keys(camposExtras).length ? camposExtras : null,
+        imported_at: new Date().toISOString()
+      });
+    });
+
+    onProgress?.(10);
+
+    try {
+      const targetTable = 'sap_zl0136_nf' as const;
+      const { count: previousCount } = await supabase
+        .from(targetTable)
+        .select('id', { count: 'exact', head: true });
+
+      const { error: deleteError } = await supabase.from(targetTable).delete().gte('id', 0);
+      if (deleteError) throw deleteError;
+      onProgress?.(20);
+
+      const totalBatches = Math.ceil(dbRows.length / 500) || 1;
+      for (let i = 0; i < dbRows.length; i += 500) {
+        const { error } = await supabase.from(targetTable).insert(dbRows.slice(i, i + 500));
+        if (error) throw error;
+        const batchIndex = Math.floor(i / 500) + 1;
+        onProgress?.(20 + Math.round((batchIndex / totalBatches) * 70));
+      }
+
+      const logObj = {
+        id: 'il_' + Math.random().toString(36).substr(2, 9),
+        type: 'ZL0136',
+        user_name: user?.name || 'Sistema',
+        filename,
+        records_read: dataRows.length,
+        records_inserted: dbRows.length,
+        records_updated: 0,
+        records_unchanged: 0,
+        records_eliminated: previousCount || 0,
+        columns_missing: missingColumns,
+        columns_new: newColumns,
+        quantity_changes: [],
+        missing_ris: [],
+        ignored_rows: ignoredRows,
+        created_at: new Date().toISOString()
+      };
+
+      await supabase.from('ops_importacoes').insert(logObj);
+      onProgress?.(95);
+
+      const logs = this.getStorageItem<SAPImportLog[]>(this.importLogsKey, []);
+      logs.unshift(logObj as any);
+      this.setStorageItem(this.importLogsKey, logs);
+
+      await this.bumpDatasetVersion('zl0136_nf', dbRows.length);
+      this.logActivity(
+        user?.id || 'sistema',
+        'Financeiro',
+        'Importar Notas Fiscais ZL0136',
+        `Importou ZL0136 (${filename}). Lidos: ${dataRows.length}, substituídos: ${previousCount || 0}, novos: ${dbRows.length}.`,
+      );
+
+      onProgress?.(100);
+      return logObj as any;
+    } catch (e) {
+      console.error('Erro ao salvar importação ZL0136 no Supabase:', e);
       throw e;
     }
   }

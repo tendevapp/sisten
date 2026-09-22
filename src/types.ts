@@ -532,7 +532,7 @@ export interface CotacaoHistoricoEntry {
 
 export interface SAPImportLog {
   id: string;
-  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'ME2L' | 'FBL1N' | 'MB51' | 'FRETE' | 'CADMATERIAIS' | 'ZL0170' | 'BAHIASUL';
+  type: 'ME5A' | 'ZL0132' | 'PEDIDOSFORN' | 'CONTATOS' | 'ZL0024' | 'ME3N' | 'ME3M' | 'ME2L' | 'FBL1N' | 'ZF0076' | 'ZL0136' | 'MB51' | 'FRETE' | 'CADMATERIAIS' | 'ZL0170' | 'BAHIASUL';
   user_name: string;
   filename: string;
   records_read: number;
@@ -1564,6 +1564,8 @@ export interface CotacaoPropostaItem {
   mapa_selecionado: boolean;
   mapa_selecionado_em: string | null;
   mapa_selecionado_por: string | null;
+  /** Justificativa do comprador ao escolher um item que não era a melhor oferta da linha. */
+  mapa_observacao: string | null;
   extraido_raw: ItemPropostaExtraido | null;
   created_at: string;
 }
@@ -1605,6 +1607,8 @@ export interface CotacaoPropostaItemDraft {
   custo_total_item: number | null;
   /** Só existe em item já salvo — o mapa comparativo carrega a decisão anterior do comprador. */
   mapa_selecionado?: boolean;
+  /** Ver `CotacaoPropostaItem.mapa_observacao`. */
+  mapa_observacao?: string | null;
   extraido_raw: ItemPropostaExtraido;
 }
 

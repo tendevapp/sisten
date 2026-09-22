@@ -750,6 +750,8 @@ export async function salvarSelecaoMapa(params: {
   itensSelecionados: string[];
   itensDesmarcados: string[];
   usuarioNome: string;
+  /** Justificativa por item marcado que não era a melhor oferta da linha (vai para `mapa_observacao`). Item ausente grava `null`. */
+  observacoes?: Map<string, string>;
 }): Promise<void> {
   const agora = new Date().toISOString();
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -762,18 +764,25 @@ export async function salvarSelecaoMapa(params: {
     console.warn('salvarSelecaoMapa: ignorando IDs não-UUID recebidos:', invalidos);
   }
 
-  if (marcar.length > 0) {
+  // Um update por texto de observação (em geral um só, compartilhado pela
+  // decisão) em vez de um por item.
+  const porObservacao = new Map<string | null, string[]>();
+  for (const id of marcar) {
+    const obs = params.observacoes?.get(id)?.trim() || null;
+    porObservacao.set(obs, [...(porObservacao.get(obs) ?? []), id]);
+  }
+  for (const [obs, ids] of porObservacao) {
     const { error } = await supabase
       .from('sup_cotacao_proposta_itens')
-      .update({ mapa_selecionado: true, mapa_selecionado_em: agora, mapa_selecionado_por: params.usuarioNome })
-      .in('id', marcar);
+      .update({ mapa_selecionado: true, mapa_selecionado_em: agora, mapa_selecionado_por: params.usuarioNome, mapa_observacao: obs })
+      .in('id', ids);
     if (error) throw new Error(`Falha ao salvar a seleção do mapa: ${error.message}`);
   }
 
   if (desmarcar.length > 0) {
     const { error } = await supabase
       .from('sup_cotacao_proposta_itens')
-      .update({ mapa_selecionado: false, mapa_selecionado_em: null, mapa_selecionado_por: null })
+      .update({ mapa_selecionado: false, mapa_selecionado_em: null, mapa_selecionado_por: null, mapa_observacao: null })
       .in('id', desmarcar);
     if (error) throw new Error(`Falha ao limpar a seleção do mapa: ${error.message}`);
   }

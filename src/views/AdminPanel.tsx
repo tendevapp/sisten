@@ -31,6 +31,7 @@ import AdminResetPasswordModal from '../components/admin/AdminResetPasswordModal
 import UserEditGovernanceModal from '../components/admin/UserEditGovernanceModal';
 import AprovadorSetoresSelect from '../components/admin/AprovadorSetoresSelect';
 import AdminChatbot from '../components/admin/AdminChatbot';
+import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
 import {
   importarRhPessoas, importarRhSetores, importarRhHoraExtra,
   listarRhSetores, criarRhSetor, atualizarRhSetor, alternarStatusRhSetor, excluirRhSetor,
@@ -3935,6 +3936,38 @@ export default function AdminPanel({ user }: AdminPanelProps) {
           <h2 className="text-lg font-bold text-slate-900">Financeiro</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* ZF0076 Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-violet-500" /> Transação ZF0076 (Notas Fiscais x PO)
+            </h4>
+            <p className="text-[10px] text-slate-400">
+              Substitui integralmente a fotografia anterior de notas fiscais de compras relacionadas aos pedidos SAP.
+            </p>
+            <PlanilhaSapUploadButton
+              sigla="ZF0076"
+              descricao="Notas fiscais de compras x pedidos — substituição total da carga atual"
+              importar={(rawRows, filename, onProgress) => localDb.importZF0076Raw(rawRows, filename, onProgress)}
+              onImportado={loadData}
+              className="inline-flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer bg-violet-600 hover:bg-violet-700 text-white active:scale-95 disabled:opacity-50"
+            />
+          </div>
+          {/* ZL0136 Upload Card */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-rose-500" /> Transação ZL0136 (Notas Fiscais)
+            </h4>
+            <p className="text-[10px] text-slate-400">
+              Substitui integralmente a fotografia anterior de notas fiscais e seus valores tributários no SAP.
+            </p>
+            <PlanilhaSapUploadButton
+              sigla="ZL0136"
+              descricao="Notas fiscais SAP — substituição total da carga atual"
+              importar={(rawRows, filename, onProgress) => localDb.importZL0136Raw(rawRows, filename, onProgress)}
+              onImportado={loadData}
+              className="inline-flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-lg text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer bg-rose-600 hover:bg-rose-700 text-white active:scale-95 disabled:opacity-50"
+            />
+          </div>
           {/* FBL1N Upload Card */}
           <div className="border border-slate-200 rounded-xl p-4 space-y-3">
             <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
@@ -4307,6 +4340,10 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                                   ? 'bg-fuchsia-100 text-fuchsia-800'
                                   : log.type === 'FBL1N'
                                   ? 'bg-cyan-100 text-cyan-800'
+                                  : log.type === 'ZF0076'
+                                  ? 'bg-violet-100 text-violet-800'
+                                  : log.type === 'ZL0136'
+                                  ? 'bg-rose-100 text-rose-800'
                                   : log.type === 'MB51'
                                   ? 'bg-orange-100 text-orange-800'
                                   : log.type === 'ZL0170'

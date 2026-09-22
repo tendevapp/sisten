@@ -179,6 +179,14 @@ describe('calcularCustoItem', () => {
     expect(c.liquido).toBe(1000);
   });
 
+  it('na base cotado compara o preço cru e ainda informa o valor de cada imposto', () => {
+    const c = calcularCustoItem(base, opcoesDaBase('cotado', { icms: false, pisCofins: false, ipi: false }));
+    expect(c.unitarioComparavel).toBe(100);
+    expect(c.impostos.ipi).toBe(50);
+    expect(c.impostos.icms).toBe(180);
+    expect(c.impostos.pisCofins).toBeCloseTo(92.5, 6);
+  });
+
   it('só soma o frete rateado quando a opção está ligada', () => {
     const ligado = calcularCustoItem(base, OPCOES_CUSTO_PADRAO, 40);
     expect(ligado.comparavel).toBe(1090);

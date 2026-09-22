@@ -227,7 +227,7 @@ export function montarItens(
   bahiaSulPorPo?: Map<string, ResumoBahiaSulPorPo>,
 ): ItemDiligenciamento[] {
   return registros
-    .filter(r => !!r.documento_compra && !dataValida(r.data_migo))
+    .filter(r => !!r.documento_compra && r.status_requisicao === 'Processado' && r.eflag_po !== 'L' && !dataValida(r.data_migo))
     .filter(r => !isServicoItem(r.requisicao_de_compra || r.ri))
     .map(r => {
       const dilig = diligenciamentoPorRi.get(r.ri_po);

@@ -3000,6 +3000,18 @@ export type Database = {
         }
         Relationships: []
       }
+      sap_zf0076_nf_po: {
+        Row: Record<string, any>
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      sap_zl0136_nf: {
+        Row: Record<string, any>
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
       sap_fbl1n_pagar: {
         Row: {
           ano_mes: string | null
@@ -5039,6 +5051,7 @@ export type Database = {
           mapa_selecionado: boolean
           mapa_selecionado_em: string | null
           mapa_selecionado_por: string | null
+          mapa_observacao: string | null
           desconsiderado: boolean
           vinculo_divergencias: string[]
           peso_unitario_kg: number | null
@@ -5080,6 +5093,7 @@ export type Database = {
           mapa_selecionado?: boolean
           mapa_selecionado_em?: string | null
           mapa_selecionado_por?: string | null
+          mapa_observacao?: string | null
           desconsiderado?: boolean
           vinculo_divergencias?: string[]
           peso_unitario_kg?: number | null
@@ -5121,6 +5135,7 @@ export type Database = {
           mapa_selecionado?: boolean
           mapa_selecionado_em?: string | null
           mapa_selecionado_por?: string | null
+          mapa_observacao?: string | null
           desconsiderado?: boolean
           vinculo_divergencias?: string[]
           peso_unitario_kg?: number | null

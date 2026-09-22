@@ -34,6 +34,8 @@ export interface ItemPedido {
   aliquotaIpiPct: number | null;
   /** Item cotado sem vínculo com a RM do processo (cotação avulsa ou excedente de escopo). */
   foraDoEscopo: boolean;
+  /** Justificativa registrada no mapa quando este item não era a melhor oferta da linha. */
+  observacaoMapa: string | null;
   /** Peso estimado por unidade (kg) — base do frete teórico. */
   pesoUnitarioKg: number | null;
   /** Parcela do frete simulado pela tabela Bahia Sul atribuída a este item (só em proposta FOB). */
@@ -105,6 +107,7 @@ function itemParaPedido(item: CotacaoPropostaItemDraft, custo: CustoCompraItem |
     aliquotaIcmsPct: item.aliquota_icms_pct,
     aliquotaIpiPct: item.aliquota_ipi_pct,
     foraDoEscopo: !item.processo_item_id,
+    observacaoMapa: item.mapa_observacao ?? null,
     pesoUnitarioKg: item.peso_unitario_kg,
     freteTeorico: item.frete_teorico,
     custo,

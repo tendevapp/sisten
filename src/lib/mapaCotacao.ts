@@ -183,8 +183,9 @@ export const OPCOES_CUSTO_PADRAO: OpcoesCusto = {
  *
  * - `cotado`     — "quem cotou mais barato?" O número da proposta, cru, sem
  *                  nada somado: é o que o comprador confere contra o PDF.
+ *                  É o padrão — a célula mostra o valor de cada imposto ao
+ *                  lado, sem misturá-lo no preço comparado.
  * - `desembolso` — "quanto sai do caixa?" Soma o IPI destacado e o frete.
- *                  É o padrão, porque é a pergunta que decide a compra.
  * - `liquido`    — "quanto custa de verdade?" Desconta os tributos que a
  *                  empresa recupera como crédito. Muda o vencedor quando os
  *                  fornecedores estão em regimes ou UFs diferentes.
@@ -220,6 +221,12 @@ export interface CustoItem {
   creditoPisCofins: number;
   creditoIpi: number;
   creditos: number;
+  /**
+   * Valor de cada imposto destacado sobre o bruto do item, calculado sempre —
+   * independe da base escolhida. É o que a célula mostra ao lado da alíquota
+   * para o comprador ver quanto cada tributo pesa sem trocar a comparação.
+   */
+  impostos: { ipi: number; icms: number; pisCofins: number };
   /** Desembolso do item, sem frete: bruto + IPI − créditos. É o número que compara duas propostas. */
   liquido: number | null;
   /** Parcela do frete da proposta atribuída a este item (proporcional ao valor). */
@@ -270,6 +277,11 @@ export function calcularCustoItem(
     creditoPisCofins,
     creditoIpi,
     creditos,
+    impostos: {
+      ipi: base * fracao(item.aliquota_ipi_pct),
+      icms: base * fracao(item.aliquota_icms_pct),
+      pisCofins: base * (fracao(item.aliquota_pis_pct) + fracao(item.aliquota_cofins_pct)),
+    },
     liquido,
     freteRateado,
     comparavel,
@@ -564,6 +576,8 @@ export interface ResumoFornecedor {
   totalBruto: number;
   totalIpi: number;
   totalCreditos: number;
+  /** Soma de cada imposto destacado nos itens cotados, independente da base (ver `CustoItem.impostos`). */
+  totalImpostos: { ipi: number; icms: number; pisCofins: number };
   /** Soma dos itens sem frete (bruto + IPI − créditos). */
   totalLiquido: number;
   frete: number | null;
@@ -609,6 +623,10 @@ export function resumirFornecedores(params: {
     const totalIpi = celulas.reduce((s, c) => s + c.custo.ipi, 0);
     const totalCreditos = celulas.reduce((s, c) => s + c.custo.creditos, 0);
     const totalLiquido = celulas.reduce((s, c) => s + (c.custo.liquido ?? 0), 0);
+    const totalImpostos = celulas.reduce(
+      (s, c) => ({ ipi: s.ipi + c.custo.impostos.ipi, icms: s.icms + c.custo.impostos.icms, pisCofins: s.pisCofins + c.custo.impostos.pisCofins }),
+      { ipi: 0, icms: 0, pisCofins: 0 },
+    );
     // Sem frete cotado, o resumo mostra a soma do frete teórico das células —
     // é o mesmo número que entrou em cada custo comparável da coluna.
     const freteTeorico = celulas.reduce((s, c) => s + c.custo.freteRateado, 0);
@@ -629,6 +647,7 @@ export function resumirFornecedores(params: {
       totalBruto,
       totalIpi,
       totalCreditos,
+      totalImpostos,
       totalLiquido,
       frete,
       freteEhTeorico,

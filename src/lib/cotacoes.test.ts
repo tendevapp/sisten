@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  temValor, normalizarCnpj, formatarCnpj, parseMoeda, parsePercentual,
+  temValor, normalizarCnpj, formatarCnpj, parseMoeda, parseQuantidade, parsePercentual,
   parseDataBR, parseValidade, parsePrazoDias, parseCidadeUF, parseFreteModalidade,
   normalizarDescricao, normalizarProposta, validarProposta, conferirTotais,
   podeSalvar, deveAutoSelecionar, aplicarSugestoes, coberturaEscopo,
@@ -83,6 +83,27 @@ describe('formatarCnpj', () => {
   it('devolve vazio para entrada inválida', () => {
     expect(formatarCnpj(null)).toBe('');
     expect(formatarCnpj('123')).toBe('123');
+  });
+});
+
+describe('parseQuantidade', () => {
+  it('"4.000" com três casas vira 4 quando preço × qtd bate com o total (PDF "4,000")', () => {
+    expect(parseQuantidade('4.000', { precoUnitario: 139.68, precoTotal: 558.72 })).toBe(4);
+  });
+
+  it('"4.000" vira 4000 quando é o milhar que fecha a conta', () => {
+    expect(parseQuantidade('4.000', { precoUnitario: 0.5, precoTotal: 2000 })).toBe(4000);
+  });
+
+  it('sem preço para conferir, vale o ponto decimal do prompt', () => {
+    expect(parseQuantidade('1.000')).toBe(1);
+  });
+
+  it('formatos sem ambiguidade passam direto', () => {
+    expect(parseQuantidade('4,000')).toBe(4);
+    expect(parseQuantidade('12.5')).toBe(12.5);
+    expect(parseQuantidade('1.234,5')).toBeCloseTo(1234.5);
+    expect(parseQuantidade('N/A')).toBeNull();
   });
 });
 

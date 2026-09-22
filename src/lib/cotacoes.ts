@@ -98,8 +98,30 @@ export function parseMoeda(bruto: string | null | undefined): number | null {
   return negativo ? -n : n;
 }
 
-export function parseQuantidade(bruto: string | null | undefined): number | null {
-  return parseMoeda(bruto);
+/**
+ * Quantidade de item cotado. O prompt pede ponto decimal, e o PDF costuma
+ * trazer três casas ("4,000" = 4) — a IA devolve "4.000", que `parseMoeda`
+ * leria como milhar (4000). Nesse formato ambíguo, decide pela conta do
+ * próprio item: fica a leitura em que preço × quantidade bate com o total.
+ * Sem preço e total para conferir, vale o contrato do prompt (ponto decimal).
+ */
+export function parseQuantidade(
+  bruto: string | null | undefined,
+  conferencia?: { precoUnitario: number | null; precoTotal: number | null },
+): number | null {
+  if (!temValor(bruto)) return null;
+  const s = String(bruto).trim();
+  if (!THOUSANDS_ONLY_RE.test(s)) return parseMoeda(s);
+
+  const comoMilhar = Number(s.replace(/\./g, ''));
+  const comoDecimal = Number(s);
+  const pu = conferencia?.precoUnitario;
+  const total = conferencia?.precoTotal;
+  if (pu != null && pu > 0 && total != null && total > 0) {
+    const erro = (q: number) => Math.abs(pu * q - total) / total;
+    return erro(comoMilhar) < erro(comoDecimal) ? comoMilhar : comoDecimal;
+  }
+  return comoDecimal;
 }
 
 /** Percentual em pontos percentuais (ex.: `"18"` ou `"18%"` -> 18). `"0,18"` vira 0.18 — ambíguo, ver validação. */
@@ -223,6 +245,8 @@ function proximaChave(prefixo: string): string {
 }
 
 function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
+  const precoUnitario = parseMoeda(item.Preco_Unitario);
+  const precoTotal = parseMoeda(item.Preco_Total_Item);
   return {
     _key: proximaChave('item'),
     processo_item_id: null,
@@ -240,9 +264,9 @@ function itemParaDraft(item: ItemPropostaExtraido): CotacaoPropostaItemDraft {
     ncm: item.NCM ?? null,
     cst: item.CST ?? null,
     cfop: item.CFOP ?? null,
-    quantidade: parseQuantidade(item.Quantidade),
-    preco_unitario: parseMoeda(item.Preco_Unitario),
-    preco_total_item: parseMoeda(item.Preco_Total_Item),
+    quantidade: parseQuantidade(item.Quantidade, { precoUnitario, precoTotal }),
+    preco_unitario: precoUnitario,
+    preco_total_item: precoTotal,
     aliquota_icms_pct: parsePercentual(item.Aliquota_ICMS_Pct),
     aliquota_pis_pct: parsePercentual(item.Aliquota_PIS_Pct),
     aliquota_cofins_pct: parsePercentual(item.Aliquota_COFINS_Pct),
@@ -666,6 +690,7 @@ export function propostaSalvaParaDraft(p: CotacaoProposta): CotacaoPropostaDraft
       aliquota_cofins_pct: it.aliquota_cofins_pct, aliquota_ipi_pct: it.aliquota_ipi_pct,
       valor_ipi: it.valor_ipi, valor_icms_st: it.valor_icms_st,
       mapa_selecionado: it.mapa_selecionado ?? false,
+      mapa_observacao: it.mapa_observacao ?? null,
       desconsiderado: it.desconsiderado ?? false,
       divergencias: it.divergencias,
       vinculo_divergencias: it.vinculo_divergencias ?? [],

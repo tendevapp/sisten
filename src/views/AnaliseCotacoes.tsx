@@ -679,10 +679,17 @@ export default function AnaliseCotacoes({ user, onNavigate }: AnaliseCotacoesPro
   );
 
   /** A decisão do mapa já foi gravada no banco quando isto é chamado — só reflete no estado local para a revisão do pedido não depender de recarregar o processo. */
-  const handleDecisaoMapaSalva = (itensSelecionados: Set<string>) => {
+  const handleDecisaoMapaSalva = (itensSelecionados: Set<string>, observacoes?: Map<string, string>) => {
     setPropostas(prev => prev.map(p => ({
       ...p,
-      itens: p.itens.map(it => ({ ...it, mapa_selecionado: itensSelecionados.has(it._key) })),
+      itens: p.itens.map(it => {
+        const selecionado = itensSelecionados.has(it._key);
+        return {
+          ...it,
+          mapa_selecionado: selecionado,
+          mapa_observacao: !selecionado ? null : observacoes?.has(it._key) ? observacoes.get(it._key)! : it.mapa_observacao ?? null,
+        };
+      }),
     })));
     setFase('pedidos');
   };
