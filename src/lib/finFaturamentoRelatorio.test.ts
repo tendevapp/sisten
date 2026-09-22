@@ -133,6 +133,47 @@ describe('resumoFaturamento', () => {
     expect(resumoFaturamento(comNota, null).ultimaNota?.nota_fiscal).toBe('21050-1');
   });
 
+  it('conta torres completas exigindo os 5 tramos preenchidos (expedidos + faturados)', () => {
+    // 3 torres, 5 tramos cada
+    const base: FinFatGwjaco[] = [];
+    const tramos = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
+
+    for (let t = 1; t <= 3; t++) {
+      for (const tramo of tramos) {
+        base.push(linha({ torre_numero: t, tramo }));
+      }
+    }
+
+    // Torre 1: todos expedidos
+    for (const tramo of tramos) {
+      const item = base.find((l) => l.torre_numero === 1 && l.tramo === tramo)!;
+      item.data_faturado = '2026-08-31';
+      item.data_expedido = '2026-09-04';
+    }
+
+    // Torre 2: 3 expedidos e 2 faturados (5 preenchidos)
+    const t2Exp = ['T1', 'T2', 'T3'] as const;
+    const t2Fat = ['T4', 'T5'] as const;
+    for (const tramo of t2Exp) {
+      const item = base.find((l) => l.torre_numero === 2 && l.tramo === tramo)!;
+      item.data_faturado = '2026-08-31';
+      item.data_expedido = '2026-09-04';
+    }
+    for (const tramo of t2Fat) {
+      const item = base.find((l) => l.torre_numero === 2 && l.tramo === tramo)!;
+      item.data_faturado = '2026-09-01';
+    }
+
+    // Torre 3: apenas T1 e T2 faturados (incompleta)
+    base.find((l) => l.torre_numero === 3 && l.tramo === 'T1')!.data_faturado = '2026-09-02';
+    base.find((l) => l.torre_numero === 3 && l.tramo === 'T2')!.data_faturado = '2026-09-02';
+
+    const r = resumoFaturamento(base);
+    expect(r.totalTorres).toBe(3);
+    expect(r.torresConcluidas).toBe(2); // Torre 1 e 2 tem os 5 tramos
+    expect(r.torresIniciadas).toBe(3); // Todas tem ao menos 1 tramo
+  });
+
   it('não divide por zero na base vazia', () => {
     const r = resumoFaturamento([], 36);
     expect(r.percentual).toBe(0);
@@ -153,6 +194,32 @@ describe('matrizTorreTramo', () => {
     expect(m.linhas[4].celulas[0]?.estado).toBe('expedido');
     expect(m.linhas[4].celulas[1]?.estado).toBe('faturado');
     expect(m.linhas[0].celulas[0]?.estado).toBe('pendente');
+  });
+
+  it('prioriza tramos expedidos e depois faturados sequencialmente completando as torres', () => {
+    // Mesmo que o tramo T5 tenha sido lançado na torre 8, ele deve preencher a Torre 1 se for o único expedido
+    const linhas = [
+      linha({ torre_numero: 1, tramo: 'T5', serie: 3101 }), // pendente
+      linha({ torre_numero: 8, tramo: 'T5', serie: 3182, data_faturado: '2026-08-31', data_expedido: '2026-09-04' }), // expedido
+      linha({ torre_numero: 2, tramo: 'T5', serie: 3102, data_faturado: '2026-09-01' }), // faturado
+    ];
+
+    const m = matrizTorreTramo(linhas);
+    expect(m.torres).toEqual([1, 2, 8]);
+
+    const linhaT5 = m.linhas.find((l) => l.tramo === 'T5')!;
+    // Torre 1 recebe o expedido (serie 3182)
+    expect(linhaT5.celulas[0]?.estado).toBe('expedido');
+    expect(linhaT5.celulas[0]?.serie).toBe(3182);
+    expect(linhaT5.celulas[0]?.linha?.id).toBe(linhas[1].id);
+
+    // Torre 2 recebe o faturado (serie 3102)
+    expect(linhaT5.celulas[1]?.estado).toBe('faturado');
+    expect(linhaT5.celulas[1]?.serie).toBe(3102);
+
+    // Torre 8 recebe o pendente (serie 3101)
+    expect(linhaT5.celulas[2]?.estado).toBe('pendente');
+    expect(linhaT5.celulas[2]?.serie).toBe(3101);
   });
 
   it('deixa null onde a torre não tem o tramo cadastrado', () => {

@@ -592,23 +592,21 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
         <Kpi
           valor={`${resumo.torresConcluidas}/${resumo.totalTorres}`}
           rotulo="Torres completas"
-          apoio={`${resumo.torresIniciadas} em andamento`}
+          apoio={`${resumo.torresIniciadas - resumo.torresConcluidas} em andamento`}
           onClick={() => {
-            const porTorre = new Map<number, FinFatGwjaco[]>();
-            for (const l of linhas) {
-              const arr = porTorre.get(l.torre_numero) ?? [];
-              arr.push(l);
-              porTorre.set(l.torre_numero, arr);
-            }
             const concluidas: FinFatGwjaco[] = [];
-            for (const [, arr] of porTorre) {
-              if (arr.length === 5 && arr.every((l) => Boolean(l.data_faturado))) {
-                concluidas.push(...arr);
+            for (let colIdx = 0; colIdx < matriz.torres.length; colIdx++) {
+              const celulasDaTorre = matriz.linhas
+                .map((l) => l.celulas[colIdx])
+                .filter((c): c is CelulaMatriz => Boolean(c && (c.estado === 'expedido' || c.estado === 'faturado') && c.linha));
+              // Torre completa = 5 tramos preenchidos (faturados ou expedidos)
+              if (celulasDaTorre.length === 5) {
+                concluidas.push(...celulasDaTorre.map((c) => c.linha!));
               }
             }
             setDetalheAberto({
               tipo: 'kpi_filtro',
-              titulo: 'Torres Completas (5 Tramos Faturados)',
+              titulo: 'Torres Completas (5 Tramos Preenchidos)',
               subtitulo: `${resumo.torresConcluidas} de ${resumo.totalTorres} torres concluídas (${concluidas.length} tramos)`,
               linhas: concluidas,
             });
@@ -637,11 +635,21 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
             <ReguaTorres
               torres={matriz.torres}
               largura={larguraCelula}
-              onCliqueTorre={(torre) => setDetalheAberto({
-                tipo: 'torre_completa',
-                torre,
-                linhasDaTorre: linhas.filter((l) => l.torre_numero === torre),
-              })}
+              onCliqueTorre={(torre) => {
+                const colIdx = matriz.torres.indexOf(torre);
+                const celulasDaTorre = colIdx >= 0
+                  ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
+                  : [];
+                const linhasDaTorre = celulasDaTorre
+                  .map((c) => c.linha)
+                  .filter((l): l is FinFatGwjaco => Boolean(l));
+
+                setDetalheAberto({
+                  tipo: 'torre_completa',
+                  torre,
+                  linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
+                });
+              }}
             />
 
             {matriz.linhas.map((linhaTramo) => (
@@ -664,7 +672,7 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                         largura={larguraCelula}
                         onClick={() => setDetalheAberto({
                           tipo: 'tramo_individual',
-                          linha: linhaExistente,
+                          linha: celula?.linha ?? linhaExistente,
                           torre: torreNumero,
                           tramo: linhaTramo.tramo,
                         })}
@@ -678,11 +686,21 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
             <ReguaTorres
               torres={matriz.torres}
               largura={larguraCelula}
-              onCliqueTorre={(torre) => setDetalheAberto({
-                tipo: 'torre_completa',
-                torre,
-                linhasDaTorre: linhas.filter((l) => l.torre_numero === torre),
-              })}
+              onCliqueTorre={(torre) => {
+                const colIdx = matriz.torres.indexOf(torre);
+                const celulasDaTorre = colIdx >= 0
+                  ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
+                  : [];
+                const linhasDaTorre = celulasDaTorre
+                  .map((c) => c.linha)
+                  .filter((l): l is FinFatGwjaco => Boolean(l));
+
+                setDetalheAberto({
+                  tipo: 'torre_completa',
+                  torre,
+                  linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
+                });
+              }}
             />
           </div>
 
@@ -740,29 +758,48 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                   role="button"
                   tabIndex={0}
                   title={`Clique para ver os tramos faturados em ${p.rotulo}`}
-                  className="group flex h-full min-w-0 flex-1 flex-col items-center justify-end cursor-pointer transition-transform hover:scale-[1.03]"
-                  style={{ gap: u(0.5) }}
+                  className="group flex h-full min-w-0 flex-1 flex-col items-center cursor-pointer transition-transform hover:scale-[1.03]"
                 >
-                  <span
-                    className="tabular shrink-0 font-bold group-hover:text-emerald-500 transition-colors"
-                    style={{ fontSize: u(1.6), color: 'var(--ink-primary)' }}
-                  >
-                    {p.faturados}
-                  </span>
                   <div
-                    className="w-full group-hover:brightness-125 transition-all"
-                    style={{
-                      height: `${(p.faturados / maxRitmo) * 100}%`,
-                      minHeight: u(0.4),
-                      borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
-                      background: FATURADO_CSS,
-                      border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
-                      borderBottom: 'none',
-                    }}
-                  />
+                    className="relative flex min-h-0 w-full flex-1 items-end justify-center"
+                    style={{ paddingTop: u(2.6) }}
+                  >
+                    <div
+                      className="relative flex w-full flex-col items-center justify-end"
+                      style={{
+                        height: `${Math.max(4, Math.round((p.faturados / maxRitmo) * 100))}%`,
+                      }}
+                    >
+                      <span
+                        className="tabular absolute font-bold group-hover:text-emerald-500 transition-colors"
+                        style={{
+                          bottom: '100%',
+                          marginBottom: u(0.4),
+                          fontSize: u(1.6),
+                          color: 'var(--ink-primary)',
+                        }}
+                      >
+                        {p.faturados}
+                      </span>
+                      <div
+                        className="w-full h-full group-hover:brightness-125 transition-all"
+                        style={{
+                          borderRadius: `${u(0.4)} ${u(0.4)} 0 0`,
+                          background: FATURADO_CSS,
+                          border: p.ehAtual ? `${u(0.25)} solid var(--ink-primary)` : 'none',
+                          borderBottom: 'none',
+                          minHeight: u(0.5),
+                        }}
+                      />
+                    </div>
+                  </div>
                   <span
                     className="shrink-0 text-center font-bold group-hover:text-emerald-500 transition-colors"
-                    style={{ fontSize: u(1.4), color: p.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+                    style={{
+                      fontSize: u(1.4),
+                      color: p.ehAtual ? 'var(--ink-primary)' : 'var(--ink-muted)',
+                      marginTop: u(0.6),
+                    }}
                   >
                     {p.rotulo}
                   </span>

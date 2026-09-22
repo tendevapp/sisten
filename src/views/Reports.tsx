@@ -1,388 +1,335 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * Módulo Geral > Relatórios do Sistema.
+ *
+ * Exibe o painel consolidado de Faturamento GW Jacobina (Wallboard de parede/TV),
+ * com acesso liberado universalmente para visualização de faturamento e avanço de torres.
  */
 
-import React, { useState, useEffect } from 'react';
-import { 
-  BarChart3, FileText, Download, Filter, Calendar, RefreshCw, Layers, Key, Headphones, CheckSquare, Star
-} from 'lucide-react';
-import { localDb } from '../db/localDb';
-import { supabase } from '../db/supabaseClient';
-import { Request } from '../types';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BarChart3, Loader2 } from 'lucide-react';
+import type { FinFatGwjaco } from '../types';
+import * as api from '../lib/finFaturamentoGwjacoApi';
+import FinFaturamentoWallboard from './financeiro/FinFaturamentoWallboard';
+import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
+import { useToast } from '../components/ui/Toast';
 
 interface ReportsProps {
   user: any;
 }
 
+const TRAMOS = ['T1', 'T2', 'T3', 'T4', 'T5'] as const;
+
 export default function Reports({ user }: ReportsProps) {
-  // Agregados de materiais vêm da view vw_materials_stats (poucas linhas, uma por
-  // combinação empresa/categoria) em vez do catálogo inteiro (~172k linhas).
-  const [materialsByCompany, setMaterialsByCompany] = useState<Record<string, number>>({});
-  const [materialsByCategory, setMaterialsByCategory] = useState<Record<string, number>>({});
-  const [activeMaterialsCount, setActiveMaterialsCount] = useState(0);
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('todos');
-  const [dateRange, setDateRange] = useState<'all' | '30' | '90'>('all');
+  const toast = useToast();
+  const [linhas, setLinhas] = useState<FinFatGwjaco[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [dateRange]);
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState<FinFatGwjaco | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
-  const loadData = () => {
+  const [form, setForm] = useState({
+    torre_numero: '',
+    tramo: 'T1',
+    codigo_cliente: '',
+    part_number: '',
+    projeto_codigo: '',
+    nota_fiscal: '',
+    data_faturado: '',
+    semana_faturamento: '',
+    data_expedido: '',
+    data_tramos_previstos: '',
+    restricao: false,
+    observacao: '',
+  });
+
+  const carregar = useCallback(async () => {
     setLoading(true);
-    setRequests(localDb.getRequests());
-
-    supabase
-      ?.from('vw_sap_materiais_estatisticas')
-      .select('company, category, total')
-      .then(({ data, error }) => {
-        if (error || !data) {
-          console.warn('Falha ao carregar vw_materials_stats:', error);
-          setLoading(false);
-          return;
-        }
-        const byCompany: Record<string, number> = {};
-        const byCategory: Record<string, number> = {};
-        let total = 0;
-        data.forEach((row: any) => {
-          byCompany[row.company] = (byCompany[row.company] || 0) + row.total;
-          byCategory[row.category] = (byCategory[row.category] || 0) + row.total;
-          total += row.total;
-        });
-        setMaterialsByCompany(byCompany);
-        setMaterialsByCategory(byCategory);
-        setActiveMaterialsCount(total);
-        setLoading(false);
-      });
-  };
-
-  // 2. Request stats
-  const totalRequests = requests.length;
-  const requestsByType = requests.reduce((acc, r) => {
-    acc[r.type] = (acc[r.type] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const requestsByStatus = requests.reduce((acc, r) => {
-    acc[r.status] = (acc[r.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Helpdesk Rating Stats
-  const helpdeskTickets = requests.filter(r => r.type === 'chamado');
-  const ratedTickets = helpdeskTickets.filter(r => r.rating && r.rating > 0);
-  const avgRating = ratedTickets.length > 0 
-    ? (ratedTickets.reduce((sum, r) => sum + (r.rating || 0), 0) / ratedTickets.length).toFixed(1)
-    : 'N/A';
-
-  const slaMetCount = helpdeskTickets.filter(r => {
-    if (r.status !== 'resolvido' && r.status !== 'fechado') return false;
-    const limitMap: Record<number, number> = { 1: 120, 2: 72, 3: 24, 4: 8, 5: 2 };
-    const allowedHours = limitMap[r.criticality] || 24;
-    const start = new Date(r.created_at).getTime();
-    const resolved = r.resolved_at ? new Date(r.resolved_at).getTime() : Date.now();
-    const elapsedHours = (resolved - start) / (3600 * 1000);
-    return elapsedHours <= allowedHours;
-  }).length;
-
-  const slaComplianceRate = helpdeskTickets.length > 0
-    ? ((slaMetCount / helpdeskTickets.length) * 10000 / 100).toFixed(1)
-    : '100';
-
-  const downloadCsv = (headers: string[], rows: string[][], filename: string) => {
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF"
-      + [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // O cat\u00E1logo completo s\u00F3 \u00E9 buscado no Supabase no momento do export (a\u00E7\u00E3o
-  // pontual do usuário), não a cada carregamento da tela.
-  const exportMaterialsCSV = async () => {
-    if (!supabase) return;
-    setLoading(true);
-    // Materiais tem 172k+ linhas. PostgREST limita a 1000 linhas por request sem
-    // paginação — buscar sem limit causa erro 500. Paginar em lotes de 1000.
-    const PAGE = 1000;
-    const allRows: any[] = [];
-    let from = 0;
-    let hasMore = true;
-    let fetchError: any = null;
-
-    while (hasMore) {
-      const { data, error } = await supabase
-        .from('sap_zl0169_162_catalogo')
-        .select('material_code, description, category, company, unit')
-        .eq('is_active', true)
-        .order('material_code')
-        .range(from, from + PAGE - 1);
-
-      if (error) { fetchError = error; break; }
-      if (!data || data.length === 0) { hasMore = false; break; }
-      allRows.push(...data);
-      if (data.length < PAGE) { hasMore = false; } else { from += PAGE; }
+    try {
+      setLinhas(await api.listarFaturamentoGwjaco());
+    } catch (err: any) {
+      toast.error('Erro ao carregar o faturamento: ' + (err.message || ''));
+    } finally {
+      setLoading(false);
     }
+  }, [toast]);
 
-    setLoading(false);
-    if (fetchError || allRows.length === 0) {
-      console.warn('Falha ao exportar catálogo de materiais:', fetchError);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const abrirEdicao = (row: FinFatGwjaco) => {
+    setEditando(row);
+    setForm({
+      torre_numero: String(row.torre_numero),
+      tramo: row.tramo,
+      codigo_cliente: row.codigo_cliente ?? '',
+      part_number: row.part_number ?? '',
+      projeto_codigo: row.projeto_codigo ?? '',
+      nota_fiscal: row.nota_fiscal ?? '',
+      data_faturado: row.data_faturado ?? '',
+      semana_faturamento: row.semana_faturamento != null ? String(row.semana_faturamento) : '',
+      data_expedido: row.data_expedido ?? '',
+      data_tramos_previstos: row.data_tramos_previstos ?? '',
+      restricao: Boolean(row.restricao),
+      observacao: row.observacao ?? '',
+    });
+    setModalAberto(true);
+  };
+
+  const salvar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editando) return;
+    const torreNum = Number(form.torre_numero);
+    if (!torreNum || torreNum < 1) {
+      toast.warning('Informe o número da torre.');
       return;
     }
-    const headers = ['Codigo_SAP', 'Descricao', 'Categoria', 'Empresa', 'Unidade', 'Ativo'];
-    const rows = allRows.map((m: any) => [
-      m.material_code,
-      `"${String(m.description).replace(/"/g, '""')}"`,
-      m.category,
-      m.company,
-      m.unit,
-      'Sim'
-    ]);
-    downloadCsv(headers, rows, 'SISTEN_Relatorio_Catalogo_Materiais.csv');
-  };
 
+    const base = {
+      codigo_cliente: form.codigo_cliente.trim() || null,
+      part_number: form.part_number.trim() || null,
+      projeto_codigo: form.projeto_codigo.trim() || null,
+      nota_fiscal: form.nota_fiscal.trim() || null,
+      data_faturado: form.data_faturado || null,
+      semana_faturamento: form.semana_faturamento ? Number(form.semana_faturamento) : null,
+      data_expedido: form.data_expedido || null,
+      data_tramos_previstos: form.data_tramos_previstos || null,
+      restricao: form.restricao,
+      observacao: form.observacao.trim() || null,
+    };
 
-  const exportRequestsCSV = () => {
-    const headers = ['Numero', 'Tipo_Solicitacao', 'Solicitante', 'Setor_ID', 'Criticidade', 'Status', 'Data_Criacao'];
-    const rows = requests.map(r => [
-      r.number,
-      r.type,
-      `"${r.solicitante_name.replace(/"/g, '""')}"`,
-      r.solicitante_sector_id,
-      String(r.criticality),
-      r.status,
-      r.created_at
-    ]);
-    downloadCsv(headers, rows, 'SISTEN_Relatorio_Solicitacoes.csv');
+    setSalvando(true);
+    try {
+      const patch: api.FinFatPatch = { torre_numero: torreNum, tramo: form.tramo, ...base };
+      const res = await api.editarLancamentoFaturamento(editando.id, patch, {
+        id: user?.id,
+        nome: user?.name || user?.email || 'Usuário',
+      });
+      toast.success(res.alteracoes > 0 ? `Lançamento atualizado (${res.alteracoes} campo(s)).` : 'Nada mudou.');
+      setModalAberto(false);
+      await carregar();
+    } catch (err: any) {
+      toast.error('Erro ao salvar: ' + (err.message || ''));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
-    <div className="space-y-6 text-left py-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-emerald-700" /> Relatórios do Sistema
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Acompanhe consolidados de materiais do SAP, fluxos de solicitações internas e desempenho operacional do helpdesk.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <select
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value as any)}
-            className="rounded-lg border border-slate-200 text-xs px-3 py-2 bg-white focus:outline-none focus:border-emerald-500 font-medium"
-          >
-            <option value="all">Todo o histórico</option>
-            <option value="30">Últimos 30 dias</option>
-            <option value="90">Últimos 90 dias</option>
-          </select>
-
-          <button 
-            onClick={loadData}
-            className="p-2 border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
-            title="Atualizar dados"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+    <div className="mx-auto max-w-7xl space-y-4 pb-12 text-left py-4">
+      {/* Cabeçalho */}
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl flex items-center gap-2 dark:text-slate-50">
+          <BarChart3 className="h-6 w-6 text-emerald-600" /> Relatórios do Sistema
+        </h1>
+        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+          Acompanhamento consolidado de faturamento e avanço de torres e tramos (GW Jacobina).
+        </p>
       </div>
 
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="text-center space-y-2">
-            <div className="h-8 w-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-slate-400 font-semibold tracking-wider">PROCESSANDO RELATÓRIOS...</p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          
-          {/* Section 1: SAP Catalogue Summary */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-emerald-600" /> Catálogo SAP
-              </h3>
-              <button
-                onClick={exportMaterialsCSV}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
-              >
-                <Download className="h-3 w-3" /> Exportar CSV
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase">Itens Ativos</span>
-                <p className="text-xl font-black text-slate-800 mt-1">{activeMaterialsCount}</p>
-              </div>
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase">Categorias</span>
-                <p className="text-xl font-black text-slate-800 mt-1">{Object.keys(materialsByCategory).length}</p>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Distribuição por Empresa:</p>
-              <div className="space-y-1.5 text-xs font-semibold">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Torres Eólicas (TEN2)</span>
-                  <span className="text-slate-800 font-bold">{materialsByCompany['TEN2'] || 0} itens</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5">
-                  <div
-                    className="bg-emerald-600 h-1.5 rounded-full"
-                    style={{ width: `${activeMaterialsCount ? ((materialsByCompany['TEN2'] || 0) / activeMaterialsCount * 100) : 0}%` }}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-slate-600">Alstom Grid (AG)</span>
-                  <span className="text-slate-800 font-bold">{materialsByCompany['AG'] || 0} itens</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5">
-                  <div
-                    className="bg-blue-600 h-1.5 rounded-full"
-                    style={{ width: `${activeMaterialsCount ? ((materialsByCompany['AG'] || 0) / activeMaterialsCount * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Principais Categorias:</p>
-              <div className="divide-y divide-slate-100 max-h-36 overflow-y-auto pr-1">
-                {(Object.entries(materialsByCategory) as [string, number][])
-                  .sort((a, b) => b[1] - a[1])
-                  .slice(0, 5)
-                  .map(([cat, count]) => (
-                    <div key={cat} className="flex justify-between py-1.5 font-semibold text-slate-700">
-                      <span>{cat}</span>
-                      <span>{count}</span>
-                    </div>
-                  ))}
-              </div>
+      {/* Relatório Faturamento GW Jacobina (Wallboard) */}
+      <div className="space-y-3">
+        {loading && linhas.length === 0 ? (
+          <div className="flex h-96 items-center justify-center rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Carregando relatório de faturamento...
+              </p>
             </div>
           </div>
+        ) : (
+          <FinFaturamentoWallboard
+            linhas={linhas}
+            onAtualizar={carregar}
+            carregando={loading}
+            onEditarLinha={abrirEdicao}
+          />
+        )}
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Painel desenhado para TV: use o botão de tela cheia no canto do painel. Ele se atualiza
+          sozinho a cada 2 minutos e segue o tema do app (para a TV, deixe no tema escuro).
+        </p>
+      </div>
 
-          {/* Section 2: Request Flow Stats */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <CheckSquare className="h-4 w-4 text-emerald-600" /> Fluxo de Solicitações
-              </h3>
-              <button 
-                onClick={exportRequestsCSV}
-                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
-              >
-                <Download className="h-3 w-3" /> Exportar CSV
-              </button>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-50 p-2 text-center rounded-lg border border-slate-100">
-                <span className="text-[9px] font-semibold text-slate-400 uppercase block">Total</span>
-                <span className="text-lg font-black text-slate-800">{totalRequests}</span>
-              </div>
-              <div className="bg-slate-50 p-2 text-center rounded-lg border border-slate-100">
-                <span className="text-[9px] font-semibold text-slate-400 uppercase block">Compras</span>
-                <span className="text-lg font-black text-slate-800">{requestsByType['compra'] || 0}</span>
-              </div>
-              <div className="bg-slate-50 p-2 text-center rounded-lg border border-slate-100">
-                <span className="text-[9px] font-semibold text-slate-400 uppercase block">Cadastro SAP</span>
-                <span className="text-lg font-black text-slate-800">{requestsByType['cadastro_sap'] || 0}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2.5 pt-1 text-xs font-semibold">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Solicitações por Status:</p>
-              
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" /> Aberto / Pendente
-                </span>
-                <span className="font-bold text-slate-800">
-                  {(requestsByStatus['aberto'] || 0) + (requestsByStatus['pendente'] || 0)}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Em Atendimento
-                </span>
-                <span className="font-bold text-slate-800">{requestsByStatus['em_atendimento'] || 0}</span>
-              </div>
-
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Resolvido / Fechado
-                </span>
-                <span className="font-bold text-slate-800">
-                  {(requestsByStatus['resolvido'] || 0) + (requestsByStatus['fechado'] || 0)}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-red-500" /> Devolvido / Rejeitado
-                </span>
-                <span className="font-bold text-slate-800">
-                  {(requestsByStatus['em_revisao'] || 0) + (requestsByStatus['rejeitada'] || 0)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Support Helpdesk Desempenho */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <Headphones className="h-4 w-4 text-emerald-600" /> Desempenho do Helpdesk
+      {/* Modal de Edição de Tramo */}
+      {modalAberto && editando && (
+        <Modal
+          onClose={() => setModalAberto(false)}
+          maxWidth="max-w-2xl"
+          ariaLabel="Editar Lançamento de Faturamento"
+        >
+          <ModalHeader onClose={() => setModalAberto(false)}>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+              Editar Torre {editando.torre_numero} / {editando.tramo}
             </h3>
-
-            <div className="grid grid-cols-2 gap-3 text-center">
-              <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-100">
-                <span className="text-[9px] font-bold text-emerald-700 uppercase block">Atendimento SLA</span>
-                <span className="text-2xl font-black text-emerald-800 mt-1 block">{slaComplianceRate}%</span>
+          </ModalHeader>
+          <form onSubmit={salvar} className="flex min-h-0 flex-1 flex-col">
+            <ModalBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Torre *</label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    disabled
+                    value={form.torre_numero}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none disabled:opacity-60 sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramo *</label>
+                  <select
+                    required
+                    disabled
+                    value={form.tramo}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 disabled:opacity-60 sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  >
+                    {TRAMOS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
               </div>
 
-              <div className="bg-indigo-50 p-3.5 rounded-xl border border-indigo-100">
-                <span className="text-[9px] font-bold text-indigo-700 uppercase block">Avaliação Média</span>
-                <span className="text-2xl font-black text-indigo-800 mt-1 block flex items-center justify-center gap-1">
-                  {avgRating} <Star className="h-4.5 w-4.5 text-amber-500 fill-amber-500 shrink-0" />
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Código de Cliente</label>
+                <input
+                  type="text"
+                  placeholder="Ex: S1 SEC GW5S120M"
+                  value={form.codigo_cliente}
+                  onChange={(e) => setForm((f) => ({ ...f, codigo_cliente: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Part Number</label>
+                <input
+                  type="text"
+                  value={form.part_number}
+                  onChange={(e) => setForm((f) => ({ ...f, part_number: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Nº Nota Fiscal</label>
+                <input
+                  type="text"
+                  value={form.nota_fiscal}
+                  onChange={(e) => setForm((f) => ({ ...f, nota_fiscal: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Faturado (data)</label>
+                  <input
+                    type="date"
+                    value={form.data_faturado}
+                    onChange={(e) => setForm((f) => ({ ...f, data_faturado: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Semana (faturamento)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={53}
+                    value={form.semana_faturamento}
+                    onChange={(e) => setForm((f) => ({ ...f, semana_faturamento: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Expedido (data)</label>
+                  <input
+                    type="date"
+                    value={form.data_expedido}
+                    onChange={(e) => setForm((f) => ({ ...f, data_expedido: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Tramos Previstos (data)</label>
+                  <input
+                    type="date"
+                    value={form.data_tramos_previstos}
+                    onChange={(e) => setForm((f) => ({ ...f, data_tramos_previstos: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <label
+                htmlFor="reportsFatRestricao"
+                className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 p-3 dark:border-slate-700"
+              >
+                <input
+                  type="checkbox"
+                  id="reportsFatRestricao"
+                  checked={form.restricao}
+                  onChange={(e) => setForm((f) => ({ ...f, restricao: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                />
+                <span>
+                  <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Tramo com restrição
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
+                    Marca o tramo travado. No relatório ele aparece em laranja em vez de azul.
+                  </span>
                 </span>
-              </div>
-            </div>
+              </label>
 
-            <div className="space-y-2 text-xs pt-1">
-              <p className="text-[10px] font-bold text-slate-400 uppercase">Resumo de Chamados:</p>
-              
-              <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600 font-semibold">
-                <span>Total de Chamados Abertos</span>
-                <span className="text-slate-800 font-bold">{helpdeskTickets.length}</span>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Projeto</label>
+                <input
+                  type="text"
+                  placeholder="Ex: GW5S120M-001"
+                  value={form.projeto_codigo}
+                  onChange={(e) => setForm((f) => ({ ...f, projeto_codigo: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600 font-semibold">
-                <span>Chamados Resolvidos</span>
-                <span className="text-slate-800 font-bold">
-                  {helpdeskTickets.filter(r => r.status === 'resolvido' || r.status === 'fechado').length}
-                </span>
-              </div>
-              <div className="flex justify-between py-1 text-slate-600 font-semibold">
-                <span>Avaliações Recebidas</span>
-                <span className="text-slate-800 font-bold">{ratedTickets.length}</span>
-              </div>
-            </div>
-          </div>
 
-        </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Observação</label>
+                <textarea
+                  rows={2}
+                  value={form.observacao}
+                  onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:border-emerald-500 focus:bg-white focus:outline-none sm:py-2 sm:text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+            </ModalBody>
+            <ModalFooter>
+              <button
+                type="button"
+                onClick={() => setModalAberto(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={salvando}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {salvando ? 'Salvando...' : 'Salvar Alterações'}
+              </button>
+            </ModalFooter>
+          </form>
+        </Modal>
       )}
     </div>
   );

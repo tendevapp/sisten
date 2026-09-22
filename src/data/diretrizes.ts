@@ -39,6 +39,14 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-22',
+    resumo: 'Geral > Relatórios — Substituição dos Relatórios pelo Painel de Faturamento GW Jacobina com Acesso Liberado (`Reports.tsx`, `App.tsx`, `diretrizes.ts`): 1. Substituição dos relatórios antigos (Catálogo SAP, Fluxo de Solicitações e Desempenho do Helpdesk) pelo relatório consolidado de Faturamento GW Jacobina (Wallboard), exibindo a matriz sequencial de avanço por torre e tramo, KPIs em tempo real e gráfico de ritmo mensal/semanal; 2. Acesso liberado universalmente na rota `/relatorios` para todos os perfis autenticados, permitindo visualização direta a partir do menu Geral e suporte à edição de tramos.',
+  },
+  {
+    data: '2026-09-22',
+    resumo: 'Financeiro > Faturamento GW Jacobina — Correção da Escala do Gráfico Mensal e Preenchimento Sequencial de Torres (`FinFaturamentoWallboard.tsx`, `finFaturamentoRelatorio.ts`, `finFaturamentoRelatorio.test.ts`, `diretrizes.ts`): 1. Correção de escala visual no gráfico de ritmo de tramos faturados por mês e semana: eliminação de conflito de flexbox (`justify-end` somado a `height: %` e textos `shrink-0`) que causava achatamento idêntico nas barras de valores diferentes (14 e 12 com a mesma altura em pixels); agora o track isolado com altura percentual matemática posiciona o 12 a 85,7% da altura do 14 e o rótulo numérico logo acima do topo da barra; 2. Preenchimento sequencial de torres: os tramos não ficam mais atrelados à chave estática torre-tramo do cadastro inicial, sendo agrupados por tipo (T1 a T5), ordenados priorizando expedidos primeiro, faturados em seguida e pendentes por último, completando as torres da esquerda para a direita; 3. Atualização da contagem de torres completas em `resumoFaturamento`: cada torre necessita dos 5 tramos preenchidos (expedidos ou faturados), elevando o indicador de 1/23 para 4/23 torres completas (com 4 em andamento e 15 não iniciadas); 4. Interatividade aprimorada no Wallboard: cliques nas células, na régua e no KPI de torres completas refletem exatamente os tramos atribuídos à coluna visual; 5. Testes unitários atualizados e 100% aprovados.',
+  },
+  {
+    data: '2026-09-22',
     resumo: 'RH > Colaboradores — Vínculo CLT/PJ, Rótulo Dinâmico CPF/Matrícula e Padronização de Turnos (`RhColaboradores.tsx`, `rhApi.ts`, `rhCadastrosAcesso.test.ts`, `types.ts`, `database.types.ts`, migration `20260922110000_rh_pessoas_tipo_vinculo.sql`, `diretrizes.ts`): 1. Adicionado campo de regime de contratação (CLT ou PJ) no cadastro e edição de colaboradores (`rh_pessoas`), com todos os registros pré-existentes definidos como "CLT"; 2. Alternância dinâmica de rótulo e placeholder: colaboradores CLT exibem "Matrícula *" e prestadores PJ exibem "CPF *", com validação e mensagens de duplicidade contextualizadas; 3. Exibição de badges com o vínculo (CLT em cinza neutro e PJ em âmbar) ao lado do identificador na listagem, e novo filtro rápido por regime (Todos/CLT/PJ); 4. Padronização completa de turnos para MAIÚSCULO ("1º TURNO", "2º TURNO", etc.) tanto na tabela `rh_pessoas` quanto em `rh_turnos`, eliminando duplicidades ("1º Turno" vs "1º TURNO") nas opções de filtro; 5. Testes unitários atualizados e aprovados com 100% de sucesso.',
   },
   {
@@ -1692,19 +1700,19 @@ export const DIRETRIZES: DiretrizesDominio[] = [
         secoes: [
           {
             titulo: 'Visão geral',
-            itens: ['Dashboard agregado de 3 domínios: catálogo de materiais, fluxo de solicitações, desempenho do helpdesk.']
+            itens: ['Exibição consolidada do relatório de Faturamento GW Jacobina (Wallboard), com avanço sequencial de torres, faturamento e expedição de tramos, e gráfico de ritmo temporal.']
           },
           {
             titulo: 'Regras de negócio',
             itens: [
-              'Agregados do catálogo vêm de uma view leve (`vw_materials_stats`), não da tabela `materials` inteira; exportação do catálogo completo pagina em lotes de 1000.',
-              'SLA do helpdesk por criticidade 1-5: {120h, 72h, 24h, 8h, 2h} (default 24h). Taxa de conformidade = resolvidos dentro do prazo / total (exibe 100% se não há chamados).',
-              '⚠️ O filtro de período (30/90 dias/tudo) existe na tela mas NÃO é de fato aplicado aos números exibidos — é uma limitação conhecida, não uma regra de negócio.'
+              'Acesso liberado universalmente para visualização de faturamento na rota `/relatorios` (módulo Geral).',
+              'Consome o componente Wallboard com matriz de avanço das torres (preenchimento sequencial priorizando expedidos, depois faturados), KPIs em tempo real e atualização automática a cada 2 minutos.',
+              'Permite abrir e editar o lançamento de qualquer tramo diretamente a partir dos cliques interativos nos gráficos e régua.'
             ]
           },
           {
             titulo: 'Tabelas do banco (Supabase)',
-            itens: ['`vw_materials_stats`, `materials`; `requests` (via `getRequests()`).']
+            itens: ['`fin_fat_gwjaco`; RPC `fin_fat_editar`; log em `fin_fat_alteracoes`.']
           }
         ]
       },

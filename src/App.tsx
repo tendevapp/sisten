@@ -949,10 +949,8 @@ export default function App() {
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/relatorios':
-        if (canAccessPage(user, 'relatorios')) {
-          return <Reports user={user} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
+        // Acesso liberado universalmente para o relatório de Faturamento GW
+        return <Reports user={user} />;
 
       case '/almoxarifado/abrir-rm':
         if (canAccessPage(user, 'almox_abrir_rm')) {

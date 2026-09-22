@@ -93,19 +93,26 @@ export function resumoFaturamento(
   const faturados = linhas.filter((l) => l.data_faturado);
   const expedidos = linhas.filter((l) => l.data_expedido);
 
-  const porTorre = new Map<number, FinFatGwjaco[]>();
-  for (const l of linhas) {
-    const atual = porTorre.get(l.torre_numero);
-    if (atual) atual.push(l);
-    else porTorre.set(l.torre_numero, [l]);
-  }
+  const torres = [...new Set(linhas.map((l) => l.torre_numero))].sort((a, b) => a - b);
+  const totalTorres = torres.length;
+
+  // Tramos presentes na base
+  const tramosUnicos = [...new Set(linhas.map((l) => l.tramo))];
+  const tramosAlvo = tramosUnicos.length > 0 && tramosUnicos.length < 5
+    ? tramosUnicos
+    : (TRAMOS_ORDEM as readonly string[]);
+
+  // Para cada tipo de tramo, contagem de expedidos + faturados
+  const contagemPorTramo = tramosAlvo.map((t) =>
+    linhas.filter((l) => l.tramo === t && (l.data_expedido || l.data_faturado)).length,
+  );
 
   let torresIniciadas = 0;
   let torresConcluidas = 0;
-  for (const tramos of porTorre.values()) {
-    const comNf = tramos.filter((t) => t.data_faturado).length;
-    if (comNf > 0) torresIniciadas += 1;
-    if (comNf === tramos.length) torresConcluidas += 1;
+  for (let i = 0; i < totalTorres; i++) {
+    const tramosDaTorre = contagemPorTramo.filter((cnt) => cnt > i).length;
+    if (tramosDaTorre > 0) torresIniciadas += 1;
+    if (tramosDaTorre === tramosAlvo.length && tramosAlvo.length > 0) torresConcluidas += 1;
   }
 
   const ordenadasPorData = faturados
@@ -120,7 +127,7 @@ export function resumoFaturamento(
     percentual: linhas.length ? Math.round((faturados.length / linhas.length) * 100) : 0,
     torresIniciadas,
     torresConcluidas,
-    totalTorres: porTorre.size,
+    totalTorres,
     naSemana: semanaAtual == null ? 0 : faturados.filter((l) => semanaDaLinha(l) === semanaAtual).length,
     noMes: mesAtual == null ? 0 : faturados.filter((l) => l.data_faturado?.slice(0, 7) === mesAtual).length,
     ultimaNota: ordenadasPorData[0] ?? null,
@@ -135,6 +142,7 @@ export interface CelulaMatriz {
   restricao: boolean;
   notaFiscal: string | null;
   dataFaturado: string | null;
+  linha?: FinFatGwjaco | null;
 }
 
 export interface MatrizTorreTramo {
@@ -144,35 +152,58 @@ export interface MatrizTorreTramo {
 }
 
 /**
- * Matriz torre × tramo — a visão que a planilha original não dá: numa olhada
- * se vê que as torres 1 a 4 andaram e as 7 em diante estão intocadas.
- * Célula ausente (torre cadastrada sem aquele tramo) vem como `null`.
+ * Matriz torre × tramo — visão de avanço sequencial das torres do subprojeto.
+ *
+ * Agrupa os registros por tramo, priorizando expedidos primeiro, faturados em
+ * seguida e pendentes por último. Cada torre física é completada com seus 5
+ * tramos da esquerda para a direita (Torre 1, Torre 2, etc.).
  *
  * Tramos ordenados do topo para a base (T5 -> T1) para refletir a torre física.
  */
 export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
   const torres = [...new Set(linhas.map((l) => l.torre_numero))].sort((a, b) => a - b);
-  const indice = new Map<string, FinFatGwjaco>();
-  for (const l of linhas) indice.set(`${l.torre_numero}|${l.tramo}`, l);
 
   return {
     torres,
-    linhas: TRAMOS_MATRIZ_ORDEM.map((tramo) => ({
-      tramo,
-      celulas: torres.map((torre) => {
-        const l = indice.get(`${torre}|${tramo}`);
-        if (!l) return null;
-        return {
-          torre,
-          tramo,
-          serie: l.serie,
-          estado: estadoTramo(l),
-          restricao: Boolean(l.restricao),
-          notaFiscal: l.nota_fiscal,
-          dataFaturado: l.data_faturado,
+    linhas: TRAMOS_MATRIZ_ORDEM.map((tramo) => {
+      const doTramo = linhas.filter((l) => l.tramo === tramo);
+
+      // Prioriza expedidos primeiro, depois faturados, e por fim pendentes.
+      // Dentro de cada grupo, ordena por serie crescente (ou torre_numero).
+      const ordenados = doTramo.slice().sort((a, b) => {
+        const pesoEstado = (l: FinFatGwjaco) => {
+          if (l.data_expedido) return 0;
+          if (l.data_faturado) return 1;
+          return 2;
         };
-      }),
-    })),
+        const pA = pesoEstado(a);
+        const pB = pesoEstado(b);
+        if (pA !== pB) return pA - pB;
+
+        if (a.serie != null && b.serie != null && a.serie !== b.serie) {
+          return a.serie - b.serie;
+        }
+        return a.torre_numero - b.torre_numero;
+      });
+
+      return {
+        tramo,
+        celulas: torres.map((torre, colIdx) => {
+          const l = ordenados[colIdx];
+          if (!l) return null;
+          return {
+            torre,
+            tramo,
+            serie: l.serie,
+            estado: estadoTramo(l),
+            restricao: Boolean(l.restricao),
+            notaFiscal: l.nota_fiscal,
+            dataFaturado: l.data_faturado,
+            linha: l,
+          };
+        }),
+      };
+    }),
   };
 }
 
