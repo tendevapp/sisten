@@ -312,6 +312,7 @@ export default function FinFaturamentoGwjaco({ user, onNavigate }: Props) {
             linhas={linhas}
             onAtualizar={carregar}
             carregando={loading}
+            modoInicial="cadastro"
             onEditarLinha={(row) => {
               setAba('dados');
               abrirEdicao(row);

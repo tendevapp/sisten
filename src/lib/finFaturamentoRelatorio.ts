@@ -85,10 +85,13 @@ export interface ResumoFaturamento {
   ultimaNota: FinFatGwjaco | null;
 }
 
+export type ModoMatrizFaturamento = 'cadastro' | 'sequencial';
+
 export function resumoFaturamento(
   linhas: FinFatGwjaco[],
   semanaAtual?: number | null,
   mesAtual?: string | null,
+  modo: ModoMatrizFaturamento = 'cadastro',
 ): ResumoFaturamento {
   const faturados = linhas.filter((l) => l.data_faturado);
   const expedidos = linhas.filter((l) => l.data_expedido);
@@ -96,23 +99,39 @@ export function resumoFaturamento(
   const torres = [...new Set(linhas.map((l) => l.torre_numero))].sort((a, b) => a - b);
   const totalTorres = torres.length;
 
-  // Tramos presentes na base
-  const tramosUnicos = [...new Set(linhas.map((l) => l.tramo))];
-  const tramosAlvo = tramosUnicos.length > 0 && tramosUnicos.length < 5
-    ? tramosUnicos
-    : (TRAMOS_ORDEM as readonly string[]);
-
-  // Para cada tipo de tramo, contagem de expedidos + faturados
-  const contagemPorTramo = tramosAlvo.map((t) =>
-    linhas.filter((l) => l.tramo === t && (l.data_expedido || l.data_faturado)).length,
-  );
-
   let torresIniciadas = 0;
   let torresConcluidas = 0;
-  for (let i = 0; i < totalTorres; i++) {
-    const tramosDaTorre = contagemPorTramo.filter((cnt) => cnt > i).length;
-    if (tramosDaTorre > 0) torresIniciadas += 1;
-    if (tramosDaTorre === tramosAlvo.length && tramosAlvo.length > 0) torresConcluidas += 1;
+
+  if (modo === 'cadastro') {
+    const porTorre = new Map<number, FinFatGwjaco[]>();
+    for (const l of linhas) {
+      const atual = porTorre.get(l.torre_numero);
+      if (atual) atual.push(l);
+      else porTorre.set(l.torre_numero, [l]);
+    }
+
+    for (const tramos of porTorre.values()) {
+      const comNfOuExp = tramos.filter((t) => t.data_faturado || t.data_expedido).length;
+      if (comNfOuExp > 0) torresIniciadas += 1;
+      if (comNfOuExp === tramos.length && tramos.length > 0) torresConcluidas += 1;
+    }
+  } else {
+    // Tramos presentes na base
+    const tramosUnicos = [...new Set(linhas.map((l) => l.tramo))];
+    const tramosAlvo = tramosUnicos.length > 0 && tramosUnicos.length < 5
+      ? tramosUnicos
+      : (TRAMOS_ORDEM as readonly string[]);
+
+    // Para cada tipo de tramo, contagem de expedidos + faturados
+    const contagemPorTramo = tramosAlvo.map((t) =>
+      linhas.filter((l) => l.tramo === t && (l.data_expedido || l.data_faturado)).length,
+    );
+
+    for (let i = 0; i < totalTorres; i++) {
+      const tramosDaTorre = contagemPorTramo.filter((cnt) => cnt > i).length;
+      if (tramosDaTorre > 0) torresIniciadas += 1;
+      if (tramosDaTorre === tramosAlvo.length && tramosAlvo.length > 0) torresConcluidas += 1;
+    }
   }
 
   const ordenadasPorData = faturados
@@ -152,16 +171,46 @@ export interface MatrizTorreTramo {
 }
 
 /**
- * Matriz torre × tramo — visão de avanço sequencial das torres do subprojeto.
- *
- * Agrupa os registros por tramo, priorizando expedidos primeiro, faturados em
- * seguida e pendentes por último. Cada torre física é completada com seus 5
- * tramos da esquerda para a direita (Torre 1, Torre 2, etc.).
+ * Matriz torre × tramo.
+ * - Modo 'cadastro' (padrão no módulo Financeiro): cada coluna corresponde estritamente
+ *   à torre física cadastrada (torre_numero) e ao seu respectivo tramo cadastrado.
+ * - Modo 'sequencial' (padrão na visão Geral/Relatórios): visão de avanço sequencial,
+ *   agrupando os tramos preenchidos (expedidos e faturados) para preencher as torres
+ *   da esquerda para a direita.
  *
  * Tramos ordenados do topo para a base (T5 -> T1) para refletir a torre física.
  */
-export function matrizTorreTramo(linhas: FinFatGwjaco[]): MatrizTorreTramo {
+export function matrizTorreTramo(
+  linhas: FinFatGwjaco[],
+  modo: ModoMatrizFaturamento = 'cadastro',
+): MatrizTorreTramo {
   const torres = [...new Set(linhas.map((l) => l.torre_numero))].sort((a, b) => a - b);
+
+  if (modo === 'cadastro') {
+    const indice = new Map<string, FinFatGwjaco>();
+    for (const l of linhas) indice.set(`${l.torre_numero}|${l.tramo}`, l);
+
+    return {
+      torres,
+      linhas: TRAMOS_MATRIZ_ORDEM.map((tramo) => ({
+        tramo,
+        celulas: torres.map((torre) => {
+          const l = indice.get(`${torre}|${tramo}`);
+          if (!l) return null;
+          return {
+            torre,
+            tramo,
+            serie: l.serie,
+            estado: estadoTramo(l),
+            restricao: Boolean(l.restricao),
+            notaFiscal: l.nota_fiscal,
+            dataFaturado: l.data_faturado,
+            linha: l,
+          };
+        }),
+      })),
+    };
+  }
 
   return {
     torres,

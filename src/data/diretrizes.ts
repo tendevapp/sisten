@@ -38,6 +38,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-23',
+    resumo: 'Financeiro > Faturamento GW Jacobina — Exibição por Cadastro de Torres no Financeiro e Avanço Sequencial no Geral (`FinFaturamentoGwjaco.tsx`, `Reports.tsx`, `FinFaturamentoWallboard.tsx`, `finFaturamentoRelatorio.ts`, `finFaturamentoRelatorio.test.ts`, `diretrizes.ts`): 1. Implementado ModoMatrizFaturamento ("cadastro" vs "sequencial") no Wallboard de Faturamento GW Jacobina; 2. No módulo Financeiro (`FinFaturamentoGwjaco.tsx`), a matriz exibe as colunas estritamente baseadas no cadastro das torres físicas (`torre_numero`), mapeando 1-a-1 cada tramo registrado; 3. Na visão Geral (`Reports.tsx`), mantém-se o avanço sequencial por torres completas (expedidos e faturados da esquerda para a direita); 4. Adicionado seletor visual no cabeçalho da matriz permitindo alternar sob demanda entre "Por Torres (Cadastro)" e "Torres Completas"; 5. Testes unitários atualizados com 100% de aprovação.',
+  },
+  {
     data: '2026-09-22',
     resumo: 'Geral > Relatórios — Substituição dos Relatórios pelo Painel de Faturamento GW Jacobina com Acesso Liberado (`Reports.tsx`, `App.tsx`, `diretrizes.ts`): 1. Substituição dos relatórios antigos (Catálogo SAP, Fluxo de Solicitações e Desempenho do Helpdesk) pelo relatório consolidado de Faturamento GW Jacobina (Wallboard), exibindo a matriz sequencial de avanço por torre e tramo, KPIs em tempo real e gráfico de ritmo mensal/semanal; 2. Acesso liberado universalmente na rota `/relatorios` para todos os perfis autenticados, permitindo visualização direta a partir do menu Geral e suporte à edição de tramos.',
   },

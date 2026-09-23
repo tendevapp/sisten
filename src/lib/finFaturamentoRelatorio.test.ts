@@ -174,6 +174,32 @@ describe('resumoFaturamento', () => {
     expect(r.torresIniciadas).toBe(3); // Todas tem ao menos 1 tramo
   });
 
+  it('diferencia contagem de torres concluidas entre modo cadastro e modo sequencial', () => {
+    // Torre 1 tem T1 e T2 faturados; Torre 2 tem T3, T4 e T5 faturados
+    const base: FinFatGwjaco[] = [
+      linha({ torre_numero: 1, tramo: 'T1', data_faturado: '2026-08-31' }),
+      linha({ torre_numero: 1, tramo: 'T2', data_faturado: '2026-08-31' }),
+      linha({ torre_numero: 1, tramo: 'T3' }),
+      linha({ torre_numero: 1, tramo: 'T4' }),
+      linha({ torre_numero: 1, tramo: 'T5' }),
+      linha({ torre_numero: 2, tramo: 'T1' }),
+      linha({ torre_numero: 2, tramo: 'T2' }),
+      linha({ torre_numero: 2, tramo: 'T3', data_faturado: '2026-08-31' }),
+      linha({ torre_numero: 2, tramo: 'T4', data_faturado: '2026-08-31' }),
+      linha({ torre_numero: 2, tramo: 'T5', data_faturado: '2026-08-31' }),
+    ];
+
+    // No modo cadastro: nenhuma das duas torres físicas tem os 5 tramos faturados
+    const rCad = resumoFaturamento(base, null, null, 'cadastro');
+    expect(rCad.torresConcluidas).toBe(0);
+    expect(rCad.torresIniciadas).toBe(2);
+
+    // No modo sequencial: os 5 tramos preenchem coletivamente 1 torre completa
+    const rSeq = resumoFaturamento(base, null, null, 'sequencial');
+    expect(rSeq.torresConcluidas).toBe(1);
+    expect(rSeq.torresIniciadas).toBe(1);
+  });
+
   it('não divide por zero na base vazia', () => {
     const r = resumoFaturamento([], 36);
     expect(r.percentual).toBe(0);
@@ -196,6 +222,30 @@ describe('matrizTorreTramo', () => {
     expect(m.linhas[0].celulas[0]?.estado).toBe('pendente');
   });
 
+  it('no modo cadastro, mantém cada tramo estritamente na sua torre cadastrada', () => {
+    const linhas = [
+      linha({ torre_numero: 1, tramo: 'T5', serie: 3101 }), // pendente na torre 1
+      linha({ torre_numero: 8, tramo: 'T5', serie: 3182, data_faturado: '2026-08-31', data_expedido: '2026-09-04' }), // expedido na torre 8
+      linha({ torre_numero: 2, tramo: 'T5', serie: 3102, data_faturado: '2026-09-01' }), // faturado na torre 2
+    ];
+
+    const m = matrizTorreTramo(linhas, 'cadastro');
+    expect(m.torres).toEqual([1, 2, 8]);
+
+    const linhaT5 = m.linhas.find((l) => l.tramo === 'T5')!;
+    // Coluna 0 (Torre 1): pendente (serie 3101)
+    expect(linhaT5.celulas[0]?.estado).toBe('pendente');
+    expect(linhaT5.celulas[0]?.serie).toBe(3101);
+
+    // Coluna 1 (Torre 2): faturado (serie 3102)
+    expect(linhaT5.celulas[1]?.estado).toBe('faturado');
+    expect(linhaT5.celulas[1]?.serie).toBe(3102);
+
+    // Coluna 2 (Torre 8): expedido (serie 3182)
+    expect(linhaT5.celulas[2]?.estado).toBe('expedido');
+    expect(linhaT5.celulas[2]?.serie).toBe(3182);
+  });
+
   it('prioriza tramos expedidos e depois faturados sequencialmente completando as torres', () => {
     // Mesmo que o tramo T5 tenha sido lançado na torre 8, ele deve preencher a Torre 1 se for o único expedido
     const linhas = [
@@ -204,7 +254,7 @@ describe('matrizTorreTramo', () => {
       linha({ torre_numero: 2, tramo: 'T5', serie: 3102, data_faturado: '2026-09-01' }), // faturado
     ];
 
-    const m = matrizTorreTramo(linhas);
+    const m = matrizTorreTramo(linhas, 'sequencial');
     expect(m.torres).toEqual([1, 2, 8]);
 
     const linhaT5 = m.linhas.find((l) => l.tramo === 'T5')!;

@@ -147,6 +147,7 @@ export default function Reports({ user }: ReportsProps) {
             linhas={linhas}
             onAtualizar={carregar}
             carregando={loading}
+            modoInicial="sequencial"
             onEditarLinha={abrirEdicao}
           />
         )}

@@ -43,7 +43,7 @@ import type { FinFatGwjaco } from '../../types';
 import {
   resumoFaturamento, matrizTorreTramo, faturadosPorSemana, faturadosPorMes, faturadosPorTramo,
   ultimasNotas, semanaISO, rotuloMes, semanaDaLinha, type EstadoTramo, type CelulaMatriz,
-  type PontoMes, type PontoSemana,
+  type PontoMes, type PontoSemana, type ModoMatrizFaturamento,
 } from '../../lib/finFaturamentoRelatorio';
 import FinFaturamentoDetalhesModal, { type DetalheModalTipo } from '../../components/financeiro/FinFaturamentoDetalhesModal';
 
@@ -52,6 +52,7 @@ interface Props {
   onAtualizar: () => void | Promise<void>;
   carregando?: boolean;
   onEditarLinha?: (linha: FinFatGwjaco) => void;
+  modoInicial?: ModoMatrizFaturamento;
 }
 
 /** N unidades de escala do painel. 1 unidade = 1% da altura do container. */
@@ -336,7 +337,13 @@ function ItemLegendaCor({ cor, texto }: { cor: string; texto: string }) {
 /* Painel                                                              */
 /* ------------------------------------------------------------------ */
 
-export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregando, onEditarLinha }: Props) {
+export default function FinFaturamentoWallboard({
+  linhas,
+  onAtualizar,
+  carregando,
+  onEditarLinha,
+  modoInicial = 'sequencial',
+}: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const matrizRef = useRef<HTMLDivElement>(null);
   const [telaCheia, setTelaCheia] = useState(false);
@@ -344,6 +351,15 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
   // Mês é o padrão: é o recorte que a diretoria acompanha. Semana fica a um clique.
   const [visaoTemporal, setVisaoTemporal] = useState<VisaoTemporal>('mes');
   const [detalheAberto, setDetalheAberto] = useState<DetalheModalTipo | null>(null);
+  // 'cadastro' = exibição por torres cadastradas (padrão módulo financeiro)
+  // 'sequencial' = avanço sequencial em torres completas (padrão visão geral)
+  const [modoMatriz, setModoMatriz] = useState<ModoMatrizFaturamento>(modoInicial);
+
+  useEffect(() => {
+    if (modoInicial) {
+      setModoMatriz(modoInicial);
+    }
+  }, [modoInicial]);
 
   // Mapa rápido por chave "torre|tramo"
   const indiceLinhas = useMemo(() => {
@@ -367,8 +383,14 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
 
   const semanaAtual = useMemo(() => semanaISO(new Date().toISOString().slice(0, 10)), []);
   const mesAtual = useMemo(() => new Date().toISOString().slice(0, 7), []);
-  const resumo = useMemo(() => resumoFaturamento(linhas, semanaAtual, mesAtual), [linhas, semanaAtual, mesAtual]);
-  const matriz = useMemo(() => matrizTorreTramo(linhas), [linhas]);
+  const resumo = useMemo(
+    () => resumoFaturamento(linhas, semanaAtual, mesAtual, modoMatriz),
+    [linhas, semanaAtual, mesAtual, modoMatriz],
+  );
+  const matriz = useMemo(
+    () => matrizTorreTramo(linhas, modoMatriz),
+    [linhas, modoMatriz],
+  );
   const semanas = useMemo(() => faturadosPorSemana(linhas, semanaAtual), [linhas, semanaAtual]);
   const meses = useMemo(() => faturadosPorMes(linhas, mesAtual), [linhas, mesAtual]);
   // Um único formato para o gráfico de ritmo, mês ou semana: os dois pontos
@@ -595,18 +617,32 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
           apoio={`${resumo.torresIniciadas - resumo.torresConcluidas} em andamento`}
           onClick={() => {
             const concluidas: FinFatGwjaco[] = [];
-            for (let colIdx = 0; colIdx < matriz.torres.length; colIdx++) {
-              const celulasDaTorre = matriz.linhas
-                .map((l) => l.celulas[colIdx])
-                .filter((c): c is CelulaMatriz => Boolean(c && (c.estado === 'expedido' || c.estado === 'faturado') && c.linha));
-              // Torre completa = 5 tramos preenchidos (faturados ou expedidos)
-              if (celulasDaTorre.length === 5) {
-                concluidas.push(...celulasDaTorre.map((c) => c.linha!));
+            if (modoMatriz === 'cadastro') {
+              const porTorre = new Map<number, FinFatGwjaco[]>();
+              for (const l of linhas) {
+                const arr = porTorre.get(l.torre_numero) ?? [];
+                arr.push(l);
+                porTorre.set(l.torre_numero, arr);
+              }
+              for (const [, arr] of porTorre) {
+                if (arr.length > 0 && arr.every((l) => Boolean(l.data_faturado || l.data_expedido))) {
+                  concluidas.push(...arr);
+                }
+              }
+            } else {
+              for (let colIdx = 0; colIdx < matriz.torres.length; colIdx++) {
+                const celulasDaTorre = matriz.linhas
+                  .map((l) => l.celulas[colIdx])
+                  .filter((c): c is CelulaMatriz => Boolean(c && (c.estado === 'expedido' || c.estado === 'faturado') && c.linha));
+                // Torre completa = 5 tramos preenchidos (faturados ou expedidos)
+                if (celulasDaTorre.length === 5) {
+                  concluidas.push(...celulasDaTorre.map((c) => c.linha!));
+                }
               }
             }
             setDetalheAberto({
               tipo: 'kpi_filtro',
-              titulo: 'Torres Completas (5 Tramos Preenchidos)',
+              titulo: modoMatriz === 'cadastro' ? 'Torres Completas (Cadastro 100% Concluído)' : 'Torres Completas (5 Tramos Preenchidos)',
               subtitulo: `${resumo.torresConcluidas} de ${resumo.totalTorres} torres concluídas (${concluidas.length} tramos)`,
               linhas: concluidas,
             });
@@ -628,7 +664,46 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
       {/* Corpo */}
       <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: '1.9fr 1fr', gap: u(1.6) }}>
         {/* Matriz torre x tramo */}
-        <Painel titulo={`Avanço por torre e tramo · ${matriz.torres.length} torres`}>
+        <Painel
+          titulo={
+            modoMatriz === 'cadastro'
+              ? `Avanço por cadastro de torres · ${matriz.torres.length} torres`
+              : `Avanço por torres completas · ${matriz.torres.length} torres`
+          }
+          acao={
+            <div
+              className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900/60"
+              style={{ gap: u(0.4) }}
+            >
+              <button
+                type="button"
+                onClick={() => setModoMatriz('cadastro')}
+                className={`rounded-md px-2 py-0.5 font-bold uppercase transition-all ${
+                  modoMatriz === 'cadastro'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+                style={{ fontSize: u(1.15), letterSpacing: '0.04em' }}
+                title="Exibe cada tramo na respectiva torre em que foi cadastrado no sistema"
+              >
+                Por Torres (Cadastro)
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoMatriz('sequencial')}
+                className={`rounded-md px-2 py-0.5 font-bold uppercase transition-all ${
+                  modoMatriz === 'sequencial'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+                style={{ fontSize: u(1.15), letterSpacing: '0.04em' }}
+                title="Agrupa tramos expedidos e faturados completando as torres da esquerda para a direita"
+              >
+                Torres Completas
+              </button>
+            </div>
+          }
+        >
           <div ref={matrizRef} className="flex min-h-0 flex-1 flex-col" style={{ gap: u(0.5) }}>
             {/* Régua em cima e embaixo: matriz tem 5 linhas, não dá para
                 descer o olho até o rodapé toda vez que se quer saber a torre. */}
@@ -636,19 +711,28 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
               torres={matriz.torres}
               largura={larguraCelula}
               onCliqueTorre={(torre) => {
-                const colIdx = matriz.torres.indexOf(torre);
-                const celulasDaTorre = colIdx >= 0
-                  ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
-                  : [];
-                const linhasDaTorre = celulasDaTorre
-                  .map((c) => c.linha)
-                  .filter((l): l is FinFatGwjaco => Boolean(l));
+                if (modoMatriz === 'cadastro') {
+                  const linhasDaTorre = linhas.filter((l) => l.torre_numero === torre);
+                  setDetalheAberto({
+                    tipo: 'torre_completa',
+                    torre,
+                    linhasDaTorre,
+                  });
+                } else {
+                  const colIdx = matriz.torres.indexOf(torre);
+                  const celulasDaTorre = colIdx >= 0
+                    ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
+                    : [];
+                  const linhasDaTorre = celulasDaTorre
+                    .map((c) => c.linha)
+                    .filter((l): l is FinFatGwjaco => Boolean(l));
 
-                setDetalheAberto({
-                  tipo: 'torre_completa',
-                  torre,
-                  linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
-                });
+                  setDetalheAberto({
+                    tipo: 'torre_completa',
+                    torre,
+                    linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
+                  });
+                }
               }}
             />
 
@@ -673,8 +757,8 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
                         onClick={() => setDetalheAberto({
                           tipo: 'tramo_individual',
                           linha: celula?.linha ?? linhaExistente,
-                          torre: torreNumero,
-                          tramo: linhaTramo.tramo,
+                          torre: celula?.torre ?? torreNumero,
+                          tramo: celula?.tramo ?? linhaTramo.tramo,
                         })}
                       />
                     );
@@ -687,19 +771,28 @@ export default function FinFaturamentoWallboard({ linhas, onAtualizar, carregand
               torres={matriz.torres}
               largura={larguraCelula}
               onCliqueTorre={(torre) => {
-                const colIdx = matriz.torres.indexOf(torre);
-                const celulasDaTorre = colIdx >= 0
-                  ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
-                  : [];
-                const linhasDaTorre = celulasDaTorre
-                  .map((c) => c.linha)
-                  .filter((l): l is FinFatGwjaco => Boolean(l));
+                if (modoMatriz === 'cadastro') {
+                  const linhasDaTorre = linhas.filter((l) => l.torre_numero === torre);
+                  setDetalheAberto({
+                    tipo: 'torre_completa',
+                    torre,
+                    linhasDaTorre,
+                  });
+                } else {
+                  const colIdx = matriz.torres.indexOf(torre);
+                  const celulasDaTorre = colIdx >= 0
+                    ? matriz.linhas.map((l) => l.celulas[colIdx]).filter((c): c is CelulaMatriz => Boolean(c))
+                    : [];
+                  const linhasDaTorre = celulasDaTorre
+                    .map((c) => c.linha)
+                    .filter((l): l is FinFatGwjaco => Boolean(l));
 
-                setDetalheAberto({
-                  tipo: 'torre_completa',
-                  torre,
-                  linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
-                });
+                  setDetalheAberto({
+                    tipo: 'torre_completa',
+                    torre,
+                    linhasDaTorre: linhasDaTorre.length > 0 ? linhasDaTorre : linhas.filter((l) => l.torre_numero === torre),
+                  });
+                }
               }}
             />
           </div>
