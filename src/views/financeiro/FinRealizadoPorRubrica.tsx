@@ -2,24 +2,34 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Relatório de Realizado por Rubrica (Financeiro) — 1ª etapa.
+ * Relatório de Realizado por Rubrica (Financeiro), medido pela NOTA FISCAL.
  *
- * Mostra, por rubrica orçamentária, o total de pedidos colocados (SAP
- * ZL0132) e pagamentos realizados (SAP FBL1N), resolvidos via
- * `fin_rubrica_mapeamentos`. Sem orçado e sem separação DIRETO/INDIRETO —
- * isso fica para quando o orçamento planejado sair da planilha e entrar no
- * banco. A linha "Sem rubrica" mostra o que ainda não tem mapeamento
- * cadastrado, para orientar os ajustes na tela de manutenção
- * (`/admin/rubricas-financeiro`).
+ * Pedido colocado é compromisso; o realizado é a NF de entrada (ZL0136). Cada
+ * item vem de `vw_fin_nf_realizado_rubrica` com duas classificações:
+ * - natureza fiscal pelo CFOP — separa custo (material de produção, uso e
+ *   consumo, serviço, frete, energia, devolução) do que é só movimentação
+ *   (remessa/retorno, outras entradas, imobilizado);
+ * - rubrica pelo de-para CFOP → fornecedor → código de serviço → grupo de
+ *   mercadoria (manutenção em `/admin/rubricas-financeiro`).
+ *
+ * A "ponte" mostra como o total de NFs de fornecedor chega ao realizado, e o
+ * pago rastreado (FBL1N por fornecedor + NF) serve de prova: o que não é
+ * custo praticamente não tem pagamento.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronRight, Download, HelpCircle, Loader2, ShoppingCart, Wallet } from 'lucide-react';
-import { Profile, FinRealizadoRubricaLinha } from '../../types';
-import { formatBRL } from '../../lib/format';
+import {
+  BarChart3, CheckCircle2, ChevronDown, ChevronRight, CircleSlash, Download, Factory, HelpCircle, Receipt, Tags,
+} from 'lucide-react';
+import { Profile, FinRubrica } from '../../types';
+import { formatBRL, formatPct } from '../../lib/format';
 import KpiCard from '../../components/charts/KpiCard';
 import { TableShell, TableHeadRow, Th, TableBody, Tr, Td, TableSkeleton, TableEmpty } from '../../components/ui/DataTable';
-import { obterRelatorioRealizadoPorRubrica, RelatorioRealizadoPorRubrica, coletarIdsComDescendentes } from '../../lib/rubricasFinanceiroApi';
+import { listarRubricas, carregarLinhasRealizadoNf } from '../../lib/rubricasFinanceiroApi';
+import {
+  baldeDaLinha, coletarIdsComDescendentes, filtrarPorPeriodo, LinhaArvoreRubrica, LinhaNfRealizado,
+  montarRelatorio, NaturezaFiscal, resumirPorNatureza,
+} from '../../lib/realizadoRubricaNf';
 import { exportarRealizadoPorRubricaXlsx } from '../../lib/exportRubricasFinanceiro';
 import { useToast } from '../../components/ui/Toast';
 import RubricaDetalheModal from '../../components/financeiro/RubricaDetalheModal';
@@ -29,49 +39,57 @@ interface FinRealizadoPorRubricaProps {
   user: Profile;
 }
 
+interface Detalhe {
+  titulo: string;
+  subtitulo?: string;
+  linhas: LinhaNfRealizado[];
+}
+
+const pct = (parte: number, todo: number) => (todo ? (parte / todo) * 100 : 0);
+
 export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorRubricaProps) {
   const toast = useToast();
-  const [relatorio, setRelatorio] = useState<RelatorioRealizadoPorRubrica | null>(null);
+  const [rubricas, setRubricas] = useState<FinRubrica[]>([]);
+  const [linhas, setLinhas] = useState<LinhaNfRealizado[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
-  const [exportando, setExportando] = useState(false);
-  const [detalheAberto, setDetalheAberto] = useState<{ titulo: string; rubricaIds: string[] | null } | null>(null);
+  const [mesDe, setMesDe] = useState('');
+  const [mesAte, setMesAte] = useState('');
+  const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
 
   useEffect(() => {
     let ativo = true;
     setCarregando(true);
-    obterRelatorioRealizadoPorRubrica()
-      .then(res => {
+    Promise.all([listarRubricas(), carregarLinhasRealizadoNf()])
+      .then(([r, l]) => {
         if (!ativo) return;
-        setRelatorio(res);
-        // Abre por padrão as rubricas-pai que têm filhos, para o usuário já
-        // ver a composição sem precisar clicar uma a uma.
-        const paisComFilhos = res.linhas.filter(l => l.filhos.length > 0).map(l => l.rubrica?.id || '');
-        setExpandidos(new Set(paisComFilhos));
+        setRubricas(r);
+        setLinhas(l);
+        // Abre por padrão as rubricas-pai com filhos, para já mostrar a composição.
+        setExpandidos(new Set(r.filter(x => r.some(f => f.rubrica_pai_id === x.id)).map(x => x.id)));
       })
       .catch(err => {
         if (!ativo) return;
         console.error('[FinRealizadoPorRubrica] Erro ao carregar relatório:', err);
         setErro(err?.message || 'Erro ao carregar o relatório.');
       })
-      .finally(() => {
-        if (ativo) setCarregando(false);
-      });
+      .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, []);
 
-  const linhasAchatadas = useMemo(() => {
-    if (!relatorio) return [];
-    const resultado: FinRealizadoRubricaLinha[] = [];
-    const visitar = (linha: FinRealizadoRubricaLinha) => {
-      resultado.push(linha);
-      const id = linha.rubrica?.id;
-      if (id && expandidos.has(id)) {
-        linha.filhos.forEach(visitar);
-      }
+  const linhasPeriodo = useMemo(() => filtrarPorPeriodo(linhas, mesDe, mesAte), [linhas, mesDe, mesAte]);
+  const relatorio = useMemo(() => montarRelatorio(rubricas, linhasPeriodo), [rubricas, linhasPeriodo]);
+  const ponte = useMemo(() => resumirPorNatureza(linhasPeriodo), [linhasPeriodo]);
+  const totalNf = useMemo(() => ponte.reduce((s, n) => s + n.valor, 0), [ponte]);
+
+  const linhasArvore = useMemo(() => {
+    const resultado: LinhaArvoreRubrica[] = [];
+    const visitar = (l: LinhaArvoreRubrica) => {
+      resultado.push(l);
+      if (expandidos.has(l.rubrica.id)) l.filhos.forEach(visitar);
     };
-    relatorio.linhas.forEach(visitar);
+    relatorio.arvore.forEach(visitar);
     return resultado;
   }, [relatorio, expandidos]);
 
@@ -83,22 +101,38 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
     });
   };
 
-  const abrirComposicao = (linha: FinRealizadoRubricaLinha) => {
-    if (!linha.rubrica) {
-      setDetalheAberto({ titulo: 'Sem rubrica (sem mapeamento cadastrado)', rubricaIds: null });
-      return;
-    }
-    setDetalheAberto({ titulo: linha.rubrica.nome, rubricaIds: coletarIdsComDescendentes(linha) });
+  const abrirRubrica = (linha: LinhaArvoreRubrica) => {
+    const ids = new Set(coletarIdsComDescendentes(linha));
+    setDetalhe({
+      titulo: linha.rubrica.nome,
+      linhas: linhasPeriodo.filter(l => baldeDaLinha(l) === 'rubrica' && ids.has(l.rubrica_id!)),
+    });
   };
 
-  const handleExportar = async () => {
-    setExportando(true);
+  const abrirBalde = (balde: 'material_producao' | 'sem_rubrica') => {
+    setDetalhe(balde === 'material_producao'
+      ? {
+        titulo: 'Material de produção (fora das rubricas)',
+        subtitulo: 'Compra para industrialização sem rubrica — custo direto das torres',
+        linhas: linhasPeriodo.filter(l => baldeDaLinha(l) === 'material_producao'),
+      }
+      : {
+        titulo: 'Sem rubrica (a classificar)',
+        subtitulo: 'Custo sem de-para por fornecedor, código de serviço ou grupo de mercadoria',
+        linhas: linhasPeriodo.filter(l => baldeDaLinha(l) === 'sem_rubrica'),
+      });
+  };
+
+  const abrirNatureza = (natureza: NaturezaFiscal, rotulo: string, descricao: string) => {
+    setDetalhe({ titulo: rotulo, subtitulo: descricao, linhas: linhasPeriodo.filter(l => l.natureza === natureza) });
+  };
+
+  const handleExportar = () => {
     try {
-      await exportarRealizadoPorRubricaXlsx();
+      const sufixo = mesDe || mesAte ? `-${mesDe || 'inicio'}_${mesAte || 'fim'}` : '';
+      exportarRealizadoPorRubricaXlsx(relatorio, linhasPeriodo, sufixo);
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao gerar a exportação.');
-    } finally {
-      setExportando(false);
     }
   };
 
@@ -110,91 +144,185 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
     );
   }
 
+  const { realizado, emRubricas, materialProducao, semRubrica } = relatorio;
+  const inputMes = 'px-2.5 h-9 border rounded-lg text-xs';
+  const estiloInput = { borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' };
+
   return (
     <div className="space-y-6 select-text max-w-[1200px] mx-auto pb-12">
       <div className="border-b border-slate-100 dark:border-slate-800 pb-5 flex items-start justify-between flex-wrap gap-3">
-        <div>
+        <div className="max-w-[720px]">
           <h2 className="text-2xl font-extrabold text-slate-850 dark:text-slate-50 flex items-center gap-2.5">
             <BarChart3 className="h-7 w-7 text-emerald-600 dark:text-emerald-500" />
             Realizado por Rubrica
           </h2>
           <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-            Pedidos colocados e pagamentos realizados agrupados por rubrica de custo. Ainda sem orçado (o orçamento
-            planejado está em planilha) e sem separação Direto/Indireto — 1ª etapa para validar a classificação com os
-            números reais antes de modelar o orçamento.
+            Medido pelas notas fiscais de entrada (ZL0136), não pelos pedidos. O CFOP separa o que é custo do que é só
+            movimentação fiscal; a rubrica vem do de-para por fornecedor, código de serviço e grupo de mercadoria. O pago
+            rastreado (FBL1N) confirma a leitura.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExportar}
-          disabled={exportando || carregando}
-          className="px-4 h-9 rounded-lg text-xs font-bold flex items-center gap-1.5 border disabled:opacity-60 shrink-0"
-          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
-          title="Exportar detalhe de pedidos e pagamentos para auditoria"
-        >
-          {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          Exportar para auditoria
-        </button>
+        <div className="flex items-end gap-2 flex-wrap">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Lançamento de</span>
+            <input type="month" value={mesDe} onChange={e => setMesDe(e.target.value)} className={inputMes} style={estiloInput} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>até</span>
+            <input type="month" value={mesAte} onChange={e => setMesAte(e.target.value)} className={inputMes} style={estiloInput} />
+          </label>
+          <button
+            type="button"
+            onClick={handleExportar}
+            disabled={carregando}
+            className="px-4 h-9 rounded-lg text-xs font-bold flex items-center gap-1.5 border disabled:opacity-60 shrink-0"
+            style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
+            title="Exportar resumo, ponte por natureza, fornecedores e itens de NF para auditoria"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Exportar para auditoria
+          </button>
+        </div>
       </div>
 
-      {carregando || !relatorio ? (
+      {carregando ? (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[0, 1, 2].map(i => <div key={i} className="skeleton h-24 rounded-xl" />)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map(i => <div key={i} className="skeleton h-24 rounded-xl" />)}
           </div>
-          <TableSkeleton columns={4} />
+          <TableSkeleton columns={6} />
         </>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <KpiCard
-              label="Total Pedidos Colocados"
-              value={relatorio.totalGeralPedidos}
+              label="Realizado (NF)"
+              value={realizado.valor}
               format={formatBRL}
-              icon={ShoppingCart}
+              detail={`${realizado.qtdNfs.toLocaleString('pt-BR')} NFs · pago rastreado ${formatBRL(realizado.valorPago)}`}
+              icon={Receipt}
+              emphasize
             />
             <KpiCard
-              label="Total Pagamentos Realizados"
-              value={relatorio.totalGeralPagamentos}
+              label="Classificado em rubricas"
+              value={emRubricas.valor}
               format={formatBRL}
-              icon={Wallet}
+              share={realizado.valor ? emRubricas.valor / realizado.valor : 0}
+              detail={`${formatPct(pct(emRubricas.valor, realizado.valor))} do realizado`}
+              icon={Tags}
             />
             <KpiCard
-              label="Sem Rubrica (Pedidos)"
-              value={relatorio.semRubrica.valorPedidos}
+              label="Material de produção"
+              value={materialProducao.valor}
               format={formatBRL}
-              detail={relatorio.totalGeralPedidos
-                ? `${((relatorio.semRubrica.valorPedidos / relatorio.totalGeralPedidos) * 100).toFixed(0)}% do total de pedidos ainda sem mapeamento`
-                : undefined}
+              share={realizado.valor ? materialProducao.valor / realizado.valor : 0}
+              detail="Fora das rubricas — custo direto"
+              icon={Factory}
+              accent="var(--series-3)"
+              onClick={() => abrirBalde('material_producao')}
+            />
+            <KpiCard
+              label="Sem rubrica (a classificar)"
+              value={semRubrica.valor}
+              format={formatBRL}
+              share={realizado.valor ? semRubrica.valor / realizado.valor : 0}
+              detail={`${formatPct(pct(semRubrica.valor, realizado.valor))} do realizado · clique para ver`}
               icon={HelpCircle}
-              accent="var(--warning, #f59e0b)"
+              accent="var(--status-warning)"
+              onClick={() => abrirBalde('sem_rubrica')}
             />
           </div>
 
-          <RubricaSerieTemporalChart />
+          <section className="space-y-2">
+            <div>
+              <h3 className="text-sm font-bold" style={{ color: 'var(--ink-primary)' }}>Ponte de validação — NF de fornecedor até o realizado</h3>
+              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                Natureza de cada item pelo CFOP. O que não entra no realizado quase não tem pagamento — é remessa, retorno,
+                comodato ou ativo. Clique numa linha para ver as notas.
+              </p>
+            </div>
+            <TableShell>
+              <table className="w-full text-xs">
+                <TableHeadRow>
+                  <Th label="Natureza fiscal" />
+                  <Th label="Regra" />
+                  <Th label="No realizado" />
+                  <Th label="Valor NF" align="right" />
+                  <Th label="Pago rastreado" align="right" />
+                  <Th label="% pago" align="right" />
+                </TableHeadRow>
+                <TableBody>
+                  {ponte.map(n => (
+                    <Tr
+                      key={n.natureza}
+                      onClick={() => abrirNatureza(n.natureza, n.rotulo, n.descricao)}
+                      title="Ver as notas desta natureza"
+                      className={n.entraRealizado ? '' : 'opacity-70'}
+                    >
+                      <Td strong>{n.rotulo}</Td>
+                      <Td truncate title={n.descricao}>{n.descricao}</Td>
+                      <Td>
+                        <span className="inline-flex items-center gap-1" style={{ color: n.entraRealizado ? 'var(--status-good)' : 'var(--ink-muted)' }}>
+                          {n.entraRealizado ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleSlash className="h-3.5 w-3.5" />}
+                          {n.entraRealizado ? 'Sim' : 'Não'}
+                        </span>
+                      </Td>
+                      <Td align="right" numeric strong>{formatBRL(n.valor)}</Td>
+                      <Td align="right" numeric>{formatBRL(n.valorPago)}</Td>
+                      <Td align="right" numeric>{n.valor > 0 ? formatPct(pct(n.valorPago, n.valor)) : '—'}</Td>
+                    </Tr>
+                  ))}
+                  <Tr>
+                    <Td strong colSpan={3}>Total de NFs de fornecedor</Td>
+                    <Td align="right" numeric strong>{formatBRL(totalNf)}</Td>
+                    <Td align="right" numeric>{formatBRL(ponte.reduce((s, n) => s + n.valorPago, 0))}</Td>
+                    <Td align="right" numeric>—</Td>
+                  </Tr>
+                  <Tr accent="var(--brand)">
+                    <Td strong colSpan={3}>Realizado (entra no relatório)</Td>
+                    <Td align="right" numeric strong>{formatBRL(realizado.valor)}</Td>
+                    <Td align="right" numeric>{formatBRL(realizado.valorPago)}</Td>
+                    <Td align="right" numeric>{formatPct(pct(realizado.valorPago, realizado.valor))}</Td>
+                  </Tr>
+                </TableBody>
+              </table>
+            </TableShell>
+          </section>
+
+          <RubricaSerieTemporalChart
+            linhas={linhasPeriodo}
+            carregando={carregando}
+            onAbrirDetalhe={(titulo, l) => setDetalhe({ titulo, linhas: l })}
+          />
 
           <TableShell maxHeight="70vh">
             <table className="w-full text-xs">
               <TableHeadRow>
                 <Th label="Rubrica" />
-                <Th label="Pedidos Colocados" align="right" />
-                <Th label="Qtd. Pedidos" align="right" />
-                <Th label="Pagamentos Realizados" align="right" />
+                <Th label="Realizado NF" align="right" />
+                <Th label="Pago rastreado" align="right" />
+                <Th label="NFs" align="right" />
+                <Th label="Fornecedores" align="right" />
+                <Th label="% do realizado" align="right" />
               </TableHeadRow>
               <TableBody>
-                {linhasAchatadas.map((linha, idx) => {
-                  const id = linha.rubrica?.id || `sem-rubrica-${idx}`;
+                {linhasArvore.map(linha => {
                   const temFilhos = linha.filhos.length > 0;
-                  const expandido = linha.rubrica ? expandidos.has(linha.rubrica.id) : false;
-                  const semRubrica = !linha.rubrica;
+                  const expandido = expandidos.has(linha.rubrica.id);
+                  const vazia = linha.valor === 0 && linha.qtdItens === 0;
                   return (
-                    <Tr key={id} onClick={() => abrirComposicao(linha)} title="Ver composição do valor para auditoria">
+                    <Tr
+                      key={linha.rubrica.id}
+                      onClick={() => abrirRubrica(linha)}
+                      title="Ver composição por fornecedor, item e nota"
+                      className={vazia ? 'opacity-50' : ''}
+                    >
                       <Td strong={linha.nivel === 0}>
                         <span style={{ paddingLeft: linha.nivel * 20 }} className="inline-flex items-center gap-1.5">
                           {temFilhos ? (
                             <button
                               type="button"
-                              onClick={e => { e.stopPropagation(); linha.rubrica && alternarExpandido(linha.rubrica.id); }}
+                              onClick={e => { e.stopPropagation(); alternarExpandido(linha.rubrica.id); }}
                               className="shrink-0 cursor-pointer"
                               aria-label={expandido ? 'Recolher' : 'Expandir'}
                             >
@@ -203,28 +331,55 @@ export default function FinRealizadoPorRubrica({ user: _user }: FinRealizadoPorR
                           ) : (
                             <span className="inline-block w-3.5" />
                           )}
-                          <span className={semRubrica ? 'italic underline decoration-dotted underline-offset-2' : 'underline decoration-dotted underline-offset-2'} style={semRubrica ? { color: 'var(--ink-muted)' } : undefined}>
-                            {linha.rubrica?.nome || 'Sem rubrica (sem mapeamento cadastrado)'}
-                          </span>
+                          <span className="underline decoration-dotted underline-offset-2">{linha.rubrica.nome}</span>
                         </span>
                       </Td>
-                      <Td align="right" numeric strong={linha.nivel === 0}>{formatBRL(linha.valorPedidos)}</Td>
-                      <Td align="right" numeric>{linha.qtdPedidos.toLocaleString('pt-BR')}</Td>
-                      <Td align="right" numeric strong={linha.nivel === 0}>{formatBRL(linha.valorPagamentos)}</Td>
+                      <Td align="right" numeric strong={linha.nivel === 0}>{formatBRL(linha.valor)}</Td>
+                      <Td align="right" numeric>{formatBRL(linha.valorPago)}</Td>
+                      <Td align="right" numeric>{linha.qtdNfs.toLocaleString('pt-BR')}</Td>
+                      <Td align="right" numeric>{linha.qtdFornecedores.toLocaleString('pt-BR')}</Td>
+                      <Td align="right" numeric>{formatPct(pct(linha.valor, realizado.valor))}</Td>
                     </Tr>
                   );
                 })}
+                {[
+                  { chave: 'material_producao' as const, rotulo: 'Material de produção (fora das rubricas)', ag: materialProducao },
+                  { chave: 'sem_rubrica' as const, rotulo: 'Sem rubrica (a classificar)', ag: semRubrica },
+                ].map(b => (
+                  <Tr key={b.chave} onClick={() => abrirBalde(b.chave)} title="Ver composição por fornecedor, item e nota">
+                    <Td strong>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-block w-3.5" />
+                        <span className="italic underline decoration-dotted underline-offset-2" style={{ color: 'var(--ink-muted)' }}>{b.rotulo}</span>
+                      </span>
+                    </Td>
+                    <Td align="right" numeric strong>{formatBRL(b.ag.valor)}</Td>
+                    <Td align="right" numeric>{formatBRL(b.ag.valorPago)}</Td>
+                    <Td align="right" numeric>{b.ag.qtdNfs.toLocaleString('pt-BR')}</Td>
+                    <Td align="right" numeric>{b.ag.qtdFornecedores.toLocaleString('pt-BR')}</Td>
+                    <Td align="right" numeric>{formatPct(pct(b.ag.valor, realizado.valor))}</Td>
+                  </Tr>
+                ))}
+                <Tr accent="var(--brand)">
+                  <Td strong><span className="pl-5">Total realizado</span></Td>
+                  <Td align="right" numeric strong>{formatBRL(realizado.valor)}</Td>
+                  <Td align="right" numeric>{formatBRL(realizado.valorPago)}</Td>
+                  <Td align="right" numeric>{realizado.qtdNfs.toLocaleString('pt-BR')}</Td>
+                  <Td align="right" numeric>{realizado.qtdFornecedores.toLocaleString('pt-BR')}</Td>
+                  <Td align="right" numeric>{formatPct(100)}</Td>
+                </Tr>
               </TableBody>
             </table>
           </TableShell>
         </>
       )}
 
-      {detalheAberto && (
+      {detalhe && (
         <RubricaDetalheModal
-          titulo={detalheAberto.titulo}
-          rubricaIds={detalheAberto.rubricaIds}
-          onFechar={() => setDetalheAberto(null)}
+          titulo={detalhe.titulo}
+          subtitulo={detalhe.subtitulo}
+          linhas={detalhe.linhas}
+          onFechar={() => setDetalhe(null)}
         />
       )}
     </div>

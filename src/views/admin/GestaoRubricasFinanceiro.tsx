@@ -2,15 +2,15 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Manutenção do de-para Rubrica x Fornecedor/Grupo de Mercadoria.
- * Tabela `fin_rubrica_mapeamentos`. Usada para ajustar a classificação que
- * alimenta a tela `/financeiro/realizado-rubricas` — cada pedido/pagamento
- * sem mapeamento cai no balde "Sem rubrica" daquela tela.
+ * Manutenção do de-para Rubrica x Fornecedor / Código de serviço / Grupo de
+ * Mercadoria. Tabela `fin_rubrica_mapeamentos`. Alimenta a tela
+ * `/financeiro/realizado-rubricas`, medida pelas notas fiscais — cada item de
+ * NF sem mapeamento cai no balde "Sem rubrica" daquela tela.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Landmark, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react';
-import type { Profile, FinRubrica, FinRubricaMapeamento } from '../../types';
+import type { Profile, FinRubrica, FinRubricaMapeamento, FinRubricaTipoChave } from '../../types';
 import {
   listarRubricas, listarMapeamentos, salvarMapeamento, removerMapeamento,
 } from '../../lib/rubricasFinanceiroApi';
@@ -22,6 +22,12 @@ interface Props {
   user: Profile;
 }
 
+const ROTULO_TIPO: Record<FinRubricaTipoChave, string> = {
+  fornecedor: 'Fornecedor',
+  servico: 'Código de serviço',
+  grupo_mercadoria: 'Grupo de Mercadoria',
+};
+
 export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
   const toast = useToast();
   const [rubricas, setRubricas] = useState<FinRubrica[]>([]);
@@ -32,7 +38,7 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
   const [excluindo, setExcluindo] = useState(false);
 
   const [formRubricaId, setFormRubricaId] = useState('');
-  const [formTipo, setFormTipo] = useState<'fornecedor' | 'grupo_mercadoria'>('fornecedor');
+  const [formTipo, setFormTipo] = useState<FinRubricaTipoChave>('fornecedor');
   const [formChave, setFormChave] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
 
@@ -75,7 +81,7 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formRubricaId || !formChave.trim()) {
-      toast.warning('Selecione a rubrica e informe a chave (fornecedor ou grupo de mercadoria).');
+      toast.warning('Selecione a rubrica e informe a chave (fornecedor, código de serviço ou grupo de mercadoria).');
       return;
     }
     setSalvando(true);
@@ -120,9 +126,11 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
           Rubricas Financeiro — De-para
         </h2>
         <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-          Liga um fornecedor ou grupo de mercadoria SAP a uma rubrica. Alimenta o relatório de{' '}
-          <span className="font-semibold">Realizado por Rubrica</span> (Financeiro). Quando um fornecedor e um grupo
-          de mercadoria apontam rubricas diferentes para o mesmo pedido, o fornecedor tem prioridade.
+          Liga um fornecedor, código de serviço ou grupo de mercadoria SAP a uma rubrica. Alimenta o relatório de{' '}
+          <span className="font-semibold">Realizado por Rubrica</span> (Financeiro), medido pelas notas fiscais. Ordem de
+          prioridade: CFOP de frete, energia e comunicação (automático) → fornecedor → código de serviço → grupo de
+          mercadoria. Para serviços, prefira o código de serviço: o grupo de mercadoria dos pedidos de serviço costuma
+          ser genérico.
         </p>
       </div>
 
@@ -144,11 +152,12 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
           <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Tipo</label>
           <select
             value={formTipo}
-            onChange={e => setFormTipo(e.target.value as 'fornecedor' | 'grupo_mercadoria')}
+            onChange={e => setFormTipo(e.target.value as FinRubricaTipoChave)}
             className="px-3 py-2 border rounded-lg text-xs h-9"
             style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)', color: 'var(--ink-primary)' }}
           >
             <option value="fornecedor">Fornecedor (código SAP)</option>
+            <option value="servico">Código de serviço (NFS-e)</option>
             <option value="grupo_mercadoria">Grupo de Mercadoria (código SAP)</option>
           </select>
         </div>
@@ -202,9 +211,9 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
             </TableHeadRow>
             <TableBody>
               {mapeamentos.map(m => (
-                <Tr key={m.id}>
+                <Tr key={m.id} className={m.ativo ? '' : 'opacity-50'} title={m.ativo ? undefined : 'Inativo — não entra na classificação'}>
                   <Td strong>{nomeRubrica(m.rubrica_id)}</Td>
-                  <Td>{m.tipo_chave === 'fornecedor' ? 'Fornecedor' : 'Grupo de Mercadoria'}</Td>
+                  <Td>{ROTULO_TIPO[m.tipo_chave]}{m.ativo ? '' : ' · inativo'}</Td>
                   <Td mono>{m.chave_valor}</Td>
                   <Td truncate title={m.chave_descricao || ''}>{m.chave_descricao || '—'}</Td>
                   <Td align="right">
@@ -227,7 +236,7 @@ export default function GestaoRubricasFinanceiro({ user: _user }: Props) {
       {paraExcluir && (
         <ConfirmDialog
           titulo="Remover mapeamento"
-          mensagem={<>Remover o vínculo de <strong>{paraExcluir.chave_valor}</strong> com a rubrica <strong>{nomeRubrica(paraExcluir.rubrica_id)}</strong>? Os pedidos/pagamentos correspondentes voltam a aparecer como "Sem rubrica".</>}
+          mensagem={<>Remover o vínculo de <strong>{paraExcluir.chave_valor}</strong> com a rubrica <strong>{nomeRubrica(paraExcluir.rubrica_id)}</strong>? Os itens de NF correspondentes voltam a aparecer como "Sem rubrica".</>}
           variante="perigo"
           confirmarLabel="Remover"
           confirmando={excluindo}

@@ -1033,32 +1033,22 @@ export interface FinRubrica {
   updated_at?: string;
 }
 
+/** Chave do de-para: fornecedor SAP, código de serviço SAP (NFS-e) ou grupo de mercadoria. */
+export type FinRubricaTipoChave = 'fornecedor' | 'servico' | 'grupo_mercadoria';
+
 /**
- * De-para pedido/pagamento -> rubrica. Tabela `fin_rubrica_mapeamentos`.
+ * De-para item de NF -> rubrica. Tabela `fin_rubrica_mapeamentos`.
  */
 export interface FinRubricaMapeamento {
   id: string;
   rubrica_id: string;
-  tipo_chave: 'fornecedor' | 'grupo_mercadoria';
+  tipo_chave: FinRubricaTipoChave;
   chave_valor: string;
   chave_descricao?: string | null;
   ativo: boolean;
   created_at?: string;
   updated_at?: string;
 }
-
-/** Linha do relatório de realizado por rubrica, já com rollup dos filhos. */
-export interface FinRealizadoRubricaLinha {
-  rubrica: FinRubrica | null;
-  nivel: number;
-  valorPedidos: number;
-  qtdPedidos: number;
-  valorPagamentos: number;
-  qtdPagamentos: number;
-  filhos: FinRealizadoRubricaLinha[];
-}
-
-
 
 export interface CidadeForn {
   id?: string;

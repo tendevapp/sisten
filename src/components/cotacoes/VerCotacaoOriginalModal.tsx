@@ -166,20 +166,15 @@ export default function VerCotacaoOriginalModal({
     ? file.type.startsWith('image/')
     : (/\.(jpe?g|png|webp|gif|bmp)$/i.test(nome) || (/\.(jpe?g|png|webp|gif|bmp)$/i.test(caminhoEfetivo ?? '')));
 
-  const [modo, setModo] = useState<Modo>('dividido');
+  // Abre sempre no documento original — é o que o comprador quer conferir.
+  // Só cai no Markdown quando não há documento nenhum para mostrar.
+  const [modo, setModo] = useState<Modo>('documento');
   const [modoEscolhidoManual, setModoEscolhidoManual] = useState(false);
   useEffect(() => {
     if (modoEscolhidoManual) return;
-    if ((docUrl || carregandoDoc) && temMarkdown) {
-      setModo('dividido');
-    } else if (docUrl && !temMarkdown) {
-      setModo('documento');
-    } else if (!docUrl && !carregandoDoc && temMarkdown) {
-      setModo('dividido');
-    } else {
-      setModo('documento');
-    }
-  }, [carregandoDoc, docUrl, temMarkdown, modoEscolhidoManual]);
+    const semDocumento = !docUrl && !carregandoDoc && !buscandoFallback;
+    setModo(semDocumento && temMarkdown ? 'markdown' : 'documento');
+  }, [carregandoDoc, docUrl, temMarkdown, modoEscolhidoManual, buscandoFallback]);
 
   const mudarModo = (m: Modo) => { setModoEscolhidoManual(true); setModo(m); };
 
@@ -256,8 +251,8 @@ export default function VerCotacaoOriginalModal({
           <div className="flex shrink-0 items-center gap-2">
             {temMarkdown && !editando && (
               <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800">
-                <BotaoModo ativo={modo === 'dividido'} onClick={() => mudarModo('dividido')} icone={Columns2}>Lado a lado</BotaoModo>
                 <BotaoModo ativo={modo === 'documento'} onClick={() => mudarModo('documento')} icone={ehImagem ? ImageIcon : FileText}>Original</BotaoModo>
+                <BotaoModo ativo={modo === 'dividido'} onClick={() => mudarModo('dividido')} icone={Columns2}>Lado a lado</BotaoModo>
                 <BotaoModo ativo={modo === 'markdown'} onClick={() => mudarModo('markdown')} icone={Code2}>Markdown</BotaoModo>
               </div>
             )}

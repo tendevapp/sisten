@@ -37,6 +37,7 @@ import ExportarSapModal from './ExportarSapModal';
 import VerCotacaoOriginalModal from './VerCotacaoOriginalModal';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { construirLinhasSap } from '../../lib/exportSapCotacao';
+import { montarPlanilhaMapa } from '../../lib/exportMapaCotacao';
 import type { LinhaSapExport } from '../../lib/exportSapCotacao';
 import { useToast } from '../ui/Toast';
 import { formatBRL, formatQtd } from '../../lib/format';
@@ -285,7 +286,7 @@ function ConfirmarForaDoMelhorModal({
 // =====================================================================
 
 function CabecalhoFornecedor({
-  resumo, proposta, posicao, melhorTotal, onFrete, arquivoOriginal, onEditarMarkdown,
+  resumo, proposta, posicao, melhorTotal, onFrete, arquivoOriginal, onEditarMarkdown, onAtualizarProposta,
 }: {
   resumo: ResumoFornecedor;
   proposta: CotacaoPropostaDraft;
@@ -295,8 +296,10 @@ function CabecalhoFornecedor({
   /** Arquivo original (PDF/imagem) desta proposta, se ainda estiver na memória da sessão. */
   arquivoOriginal?: File;
   onEditarMarkdown?: (novoMarkdown: string) => Promise<void>;
+  /** Reflete no estado do processo o arquivo original vinculado pelo modal de visualização. */
+  onAtualizarProposta: (key: string, patch: Partial<CotacaoPropostaDraft>) => void;
 }) {
-  const delta = melhorTotal != null && melhorTotal > 0 ? ((resumo.totalComFrete - melhorTotal) / melhorTotal) * 100 : null;
+  const delta = melhorTotal != null && melhorTotal > 0 ? ((resumo.totalCotacao - melhorTotal) / melhorTotal) * 100 : null;
   const vencedor = posicao === 0 && resumo.itensCotados > 0;
   const [previewAberto, setPreviewAberto] = useState(false);
 
@@ -404,10 +407,9 @@ function CabecalhoFornecedor({
       <div className="border-t border-slate-100 pt-1.5 dark:border-slate-800">
         <div
           className="text-base font-bold tabular-nums text-slate-900 dark:text-slate-50"
-          title={resumo.freteEhTeorico ? 'Inclui frete estimado (peso), ainda não o frete cotado pelo fornecedor.' : undefined}
+          title="Valor total da cotação, sem frete — o frete fica no campo acima e entra só nos cenários de compra."
         >
-          {formatBRL(resumo.totalComFrete)}
-          {resumo.freteEhTeorico && <span className="text-indigo-400">*</span>}
+          {formatBRL(resumo.totalCotacao)}
         </div>
         <div className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-slate-500 dark:text-slate-400">
           <span>{resumo.itensCotados}/{resumo.totalLinhas} itens</span>
@@ -822,7 +824,7 @@ export default function MapaComparativo({
     () => resumirFornecedores({ linhas, propostas: propostasMapa, fretePorProposta })
       .sort((a, b) => {
         if (b.itensCotados !== a.itensCotados) return b.itensCotados - a.itensCotados;
-        return a.totalComFrete - b.totalComFrete;
+        return a.totalCotacao - b.totalCotacao;
       }),
     [linhas, propostasMapa, fretePorProposta],
   );
@@ -871,8 +873,8 @@ export default function MapaComparativo({
   }, [linhas, resumos, selecionados]);
 
   const melhorTotalFornecedor = useMemo(() => {
-    const completos = resumos.filter(r => r.itensCotados === linhas.length && r.totalComFrete > 0);
-    return completos.length > 0 ? Math.min(...completos.map(r => r.totalComFrete)) : null;
+    const completos = resumos.filter(r => r.itensCotados === linhas.length && r.totalCotacao > 0);
+    return completos.length > 0 ? Math.min(...completos.map(r => r.totalCotacao)) : null;
   }, [resumos, linhas.length]);
 
   const alteracoesPendentes = useMemo(() => {
@@ -1042,98 +1044,10 @@ export default function MapaComparativo({
   };
 
   const handleExportar = () => {
-    const FIXAS = ['Item', 'RI', 'Qtd', 'Un'];
-    const cabecalho = [...FIXAS];
-    for (const r of resumos) cabecalho.push(`${nomeFornecedorCurto(r.nome)} — unitário`, `${nomeFornecedorCurto(r.nome)} — total`, `${nomeFornecedorCurto(r.nome)} — Δ%`);
-    cabecalho.push('Melhor preço', 'Fornecedor vencedor', 'Vlr. total');
-
-    const linTitulo = [`Mapa comparativo — ${processo.numero}`];
-    const linBase = [`Base: ${base === 'cotado' ? 'preço cotado' : base === 'desembolso' ? 'desembolso (IPI + frete)' : 'custo líquido de créditos'}`];
-
-    const corpo = linhasVisiveis.map(l => {
-      const vencedora = l.celulas.find(c => c.melhor);
-      const linha: (string | number | null)[] = [l.titulo, l.ri, l.qtdSolicitada, l.unidade];
-      for (const r of resumos) {
-        const c = l.celulas.find(x => x.propostaKey === r.propostaKey);
-        linha.push(
-          c?.custo.unitarioComparavel ?? null,
-          c?.custo.comparavel ?? null,
-          c?.deltaPct != null ? Number((c.deltaPct / 100).toFixed(4)) : null,
-        );
-      }
-      linha.push(
-        l.melhorCusto ?? null,
-        vencedora ? nomeFornecedorCurto(resumos.find(r => r.propostaKey === vencedora.propostaKey)?.nome ?? '') : null,
-        vencedora?.custo.comparavel ?? null,
-      );
-      return linha;
+    const baseRotulo = base === 'cotado' ? 'preço cotado' : base === 'desembolso' ? 'desembolso (IPI + frete)' : 'custo líquido de créditos';
+    const wb = montarPlanilhaMapa({
+      processo, baseRotulo, linhas: linhasVisiveis, resumos, propostasPorKey, selecionados, cenarios,
     });
-
-    const rodape: (string | number | null)[] = ['TOTAL (com frete)', null, null, null];
-    for (const r of resumos) rodape.push(null, r.totalComFrete, null);
-    rodape.push(null, null, null);
-
-    const linhaCabecalho = 3;
-    const primeiraLinhaDados = linhaCabecalho + 1;
-    const ws = XLSX.utils.aoa_to_sheet([linTitulo, linBase, [], cabecalho, ...corpo, [], rodape]);
-
-    const numCols = cabecalho.length;
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: numCols - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } },
-    ];
-
-    const estiloTitulo = { font: { bold: true, sz: 13, color: { rgb: '0F2952' } } };
-    const estiloBase = { font: { italic: true, sz: 9, color: { rgb: '64748B' } } };
-    const estiloCabecalho = {
-      fill: { fgColor: { rgb: '0F2952' } },
-      font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 9 },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    };
-    const estiloVencedor = { fill: { fgColor: { rgb: 'D1FAE5' } }, font: { bold: true, color: { rgb: '065F46' } } };
-    const estiloPadrao = { font: { sz: 9 } };
-    const estiloRodape = { font: { bold: true, sz: 9 }, fill: { fgColor: { rgb: 'F1F5F9' } } };
-
-    const setStyle = (r: number, c: number, style: object) => {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (ws[ref]) ws[ref].s = style;
-    };
-    const setFormat = (r: number, c: number, z: string) => {
-      const ref = XLSX.utils.encode_cell({ r, c });
-      if (ws[ref] && typeof ws[ref].v === 'number') ws[ref].z = z;
-    };
-
-    setStyle(0, 0, estiloTitulo);
-    setStyle(1, 0, estiloBase);
-    for (let c = 0; c < numCols; c++) setStyle(linhaCabecalho, c, estiloCabecalho);
-
-    corpo.forEach((_, i) => {
-      const r = primeiraLinhaDados + i;
-      const linhaMapa = linhasVisiveis[i];
-      for (let c = 0; c < numCols; c++) setStyle(r, c, estiloPadrao);
-      // Colunas de valor unitário/total por fornecedor: 4 fixas + 3 por fornecedor.
-      resumos.forEach((res, idx) => {
-        const celula = linhaMapa.celulas.find(x => x.propostaKey === res.propostaKey);
-        const colUnit = FIXAS.length + idx * 3;
-        const colTotal = colUnit + 1;
-        const colDelta = colUnit + 2;
-        if (celula?.melhor) { setStyle(r, colUnit, estiloVencedor); setStyle(r, colTotal, estiloVencedor); }
-        setFormat(r, colUnit, '#,##0.00'); setFormat(r, colTotal, '#,##0.00'); setFormat(r, colDelta, '0.00%');
-      });
-      const colMelhor = FIXAS.length + resumos.length * 3;
-      setStyle(r, colMelhor, estiloVencedor); setStyle(r, colMelhor + 1, estiloVencedor); setStyle(r, colMelhor + 2, estiloVencedor);
-      setFormat(r, colMelhor, '#,##0.00'); setFormat(r, colMelhor + 2, '#,##0.00');
-    });
-
-    const linhaRodape = primeiraLinhaDados + corpo.length + 1;
-    for (let c = 0; c < numCols; c++) { setStyle(linhaRodape, c, estiloRodape); setFormat(linhaRodape, c, '#,##0.00'); }
-
-    ws['!cols'] = cabecalho.map((h, i) => ({ wch: i === 0 ? 34 : Math.max(10, Math.min(22, h.length + 2)) }));
-    ws['!freeze'] = { xSplit: 0, ySplit: primeiraLinhaDados };
-    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: linhaCabecalho, c: 0 }, e: { r: primeiraLinhaDados + corpo.length - 1, c: numCols - 1 } }) };
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Mapa');
     XLSX.writeFile(wb, `mapa_${processo.numero}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -1371,6 +1285,7 @@ export default function MapaComparativo({
                             : undefined
                         }
                         onEditarMarkdown={onEditarMarkdown ? (md => onEditarMarkdown(r.propostaKey, md)) : undefined}
+                        onAtualizarProposta={onAtualizarProposta}
                       />
                       <AlcaColuna
                         largura={larguraDe(r.propostaKey)}

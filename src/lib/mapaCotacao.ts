@@ -592,6 +592,12 @@ export interface ResumoFornecedor {
   valorDesconto: number | null;
   /** `totalLiquido` + frete − desconto — o desembolso se comprar tudo deste fornecedor. */
   totalComFrete: number;
+  /**
+   * `totalLiquido` − desconto, sem frete — o valor da cotação que o mapa exibe
+   * e usa para classificar os fornecedores. O frete fica no campo próprio do
+   * cabeçalho e continua entrando nos cenários de compra.
+   */
+  totalCotacao: number;
   prazoEntregaDias: number | null;
   condicaoPagamento: string | null;
   /** Dias até a proposta vencer; negativo = vencida; `null` = sem data de validade. */
@@ -653,6 +659,7 @@ export function resumirFornecedores(params: {
       freteEhTeorico,
       valorDesconto,
       totalComFrete: totalLiquido + (frete ?? 0) - (valorDesconto ?? 0),
+      totalCotacao: totalLiquido - (valorDesconto ?? 0),
       prazoEntregaDias: proposta.prazo_entrega_dias,
       condicaoPagamento: proposta.condicao_pagamento,
       validadeDias: diasAteValidade(proposta.validade_data, params.hojeISO),
@@ -785,7 +792,7 @@ export function cenarioMenorPreco(linhas: LinhaMapa[], resumos: ResumoFornecedor
 export function cenarioFornecedorUnico(linhas: LinhaMapa[], resumos: ResumoFornecedor[]): Cenario | null {
   const candidatos = [...resumos].sort((a, b) => {
     if (b.itensCotados !== a.itensCotados) return b.itensCotados - a.itensCotados;
-    return a.totalComFrete - b.totalComFrete;
+    return a.totalCotacao - b.totalCotacao;
   });
   const vencedor = candidatos[0];
   if (!vencedor || vencedor.itensCotados === 0) return null;
