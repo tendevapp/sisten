@@ -19,6 +19,7 @@ import { supabase } from '../db/supabaseClient';
 import { localDb } from '../db/localDb';
 import { Profile } from '../types';
 import { formatBRL, formatDateBR, formatPct } from '../lib/format';
+import { classificarConciliacaoFiscal, SituacaoFiscalPedido } from '../lib/finReconciliacaoFiscal';
 import KpiCard from '../components/charts/KpiCard';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import {
@@ -49,6 +50,17 @@ export interface PedidoConciliacao {
   qtd_nfs_pagas: number;
   qtd_nfs_abertas: number;
   status_pagamento: 'TOTALMENTE PAGO' | 'PARCIALMENTE PAGO' | 'EM ABERTO' | 'PENDENTE FATURAMENTO';
+  qtd_nfs_fiscais: number;
+  qtd_itens_fiscais: number;
+  valor_faturado_fiscal: number;
+  valor_pago_rastreado: number;
+  valor_a_conciliar: number;
+  qtd_nfs_pagas_total: number;
+  qtd_nfs_pagas_parcial: number;
+  qtd_nfs_sem_vinculo_fbl1n: number;
+  qtd_nfs_com_evidencia_zf0076: number;
+  fornecedores_fiscais: string | null;
+  origem_conciliacao: 'MIRO_E_FISCAL' | 'SOMENTE_MIRO' | 'SOMENTE_FISCAL';
 }
 
 export interface PedidoConciliacaoItem {
@@ -85,6 +97,37 @@ export interface PedidoConciliacaoItem {
   status_nf: 'PAGO' | 'EM ABERTO' | 'VENCIDO' | 'PENDENTE FATURAMENTO';
 }
 
+interface PedidoFiscalConciliacao {
+  numero_pedido: string;
+  qtd_nfs_fiscais: number;
+  qtd_itens_fiscais: number;
+  valor_faturado_fiscal: number;
+  valor_pago_rastreado: number;
+  valor_a_conciliar: number;
+  qtd_nfs_pagas_total: number;
+  qtd_nfs_pagas_parcial: number;
+  qtd_nfs_sem_vinculo_fbl1n: number;
+  qtd_nfs_com_evidencia_zf0076: number;
+}
+
+interface PedidoFiscalItem {
+  id: number;
+  fornecedor_nome: string | null;
+  numero_nf_normalizado: string | null;
+  item_pedido: string | null;
+  material: string | null;
+  numero_servico: string | null;
+  descricao_item: string | null;
+  data_documento: string | null;
+  quantidade: number | null;
+  unidade_medida: string | null;
+  valor_item_nf: number | null;
+  valor_pago_rateado: number | null;
+  data_ultimo_pagamento: string | null;
+  status_pagamento: string | null;
+  qtd_linhas_zf0076: number | null;
+}
+
 type StatusFilter = 'Todos' | 'TOTALMENTE PAGO' | 'PARCIALMENTE PAGO' | 'EM ABERTO' | 'PENDENTE FATURAMENTO' | 'PENDENCIAS';
 type SortDir = 'asc' | 'desc';
 
@@ -94,7 +137,9 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pedidos, setPedidos] = useState<PedidoConciliacao[]>([]);
+  const [fiscalPorPedido, setFiscalPorPedido] = useState<Record<string, PedidoFiscalConciliacao>>({});
   const [detalhesPorPedido, setDetalhesPorPedido] = useState<Record<string, PedidoConciliacaoItem[]>>({});
+  const [detalhesFiscaisPorPedido, setDetalhesFiscaisPorPedido] = useState<Record<string, PedidoFiscalItem[]>>({});
   const [loadingDetalhes, setLoadingDetalhes] = useState<Record<string, boolean>>({});
 
   // Filtros
@@ -120,7 +165,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
       while (true) {
         const { data, error: fetchError } = await (supabase as any)
-          .from('vw_pedidos_conciliacao_pagamentos')
+          .from('vw_fin_reconciliacao_pedidos_enriquecida')
           .select('*')
           .order('numero_pedido', { ascending: false })
           .range(from, from + pageSize - 1);
@@ -133,10 +178,14 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
       }
 
       setPedidos(allRows);
+      setFiscalPorPedido(Object.fromEntries(allRows
+        .filter(pedido => Number(pedido.qtd_nfs_fiscais) > 0)
+        .map(pedido => [pedido.numero_pedido, pedido as PedidoFiscalConciliacao])));
     } catch (e) {
       console.error('Erro ao carregar reconciliação de pedidos:', e);
       setError('Falha ao carregar a conciliação de pedidos. Tente atualizar novamente.');
       setPedidos([]);
+      setFiscalPorPedido({});
     } finally {
       setLoading(false);
     }
@@ -148,27 +197,40 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
   // Carrega os detalhes de um pedido sob demanda ao expandir
   const fetchDetalhesPedido = useCallback(async (numPedido: string) => {
-    if (detalhesPorPedido[numPedido] || loadingDetalhes[numPedido]) return;
+    if ((detalhesPorPedido[numPedido] && detalhesFiscaisPorPedido[numPedido]) || loadingDetalhes[numPedido]) return;
 
     setLoadingDetalhes(prev => ({ ...prev, [numPedido]: true }));
     try {
-      const { data, error: fetchError } = await (supabase as any)
-        .from('vw_pedidos_conciliacao_detalhes')
-        .select('*')
-        .eq('numero_pedido', numPedido)
-        .order('id', { ascending: true });
+      const [miroResult, fiscalResult] = await Promise.all([
+        (supabase as any)
+          .from('vw_pedidos_conciliacao_detalhes')
+          .select('*')
+          .eq('numero_pedido', numPedido)
+          .order('id', { ascending: true }),
+        (supabase as any)
+          .from('vw_fin_faturas_fornecedor_item')
+          .select('id, fornecedor_nome, numero_nf_normalizado, item_pedido, material, numero_servico, descricao_item, data_documento, quantidade, unidade_medida, valor_item_nf, valor_pago_rateado, data_ultimo_pagamento, status_pagamento, qtd_linhas_zf0076')
+          .eq('numero_pedido', numPedido)
+          .order('data_documento', { ascending: false })
+          .order('numero_nf_normalizado', { ascending: false }),
+      ]);
 
-      if (fetchError) throw fetchError;
+      if (miroResult.error) throw miroResult.error;
+      if (fiscalResult.error) throw fiscalResult.error;
       setDetalhesPorPedido(prev => ({
         ...prev,
-        [numPedido]: ((data as unknown) as PedidoConciliacaoItem[]) || [],
+        [numPedido]: ((miroResult.data as unknown) as PedidoConciliacaoItem[]) || [],
+      }));
+      setDetalhesFiscaisPorPedido(prev => ({
+        ...prev,
+        [numPedido]: ((fiscalResult.data as unknown) as PedidoFiscalItem[]) || [],
       }));
     } catch (err) {
       console.error(`Erro ao carregar detalhes do pedido ${numPedido}:`, err);
     } finally {
       setLoadingDetalhes(prev => ({ ...prev, [numPedido]: false }));
     }
-  }, [detalhesPorPedido, loadingDetalhes]);
+  }, [detalhesPorPedido, detalhesFiscaisPorPedido, loadingDetalhes]);
 
   const togglePedido = (numPedido: string) => {
     const isExpanding = !expandedPedidos[numPedido];
@@ -234,7 +296,16 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
       // Filtro de Status
       if (statusFilter === 'PENDENCIAS') {
-        if (p.status_pagamento === 'TOTALMENTE PAGO') return false;
+        const fiscal = fiscalPorPedido[p.numero_pedido];
+        const situacaoFiscal = classificarConciliacaoFiscal({
+          temMiro: p.origem_conciliacao !== 'SOMENTE_FISCAL',
+          valorPagoMiro: p.total_pago,
+          valorPagoFiscal: fiscal?.valor_pago_rastreado,
+          qtdNfsFiscais: fiscal?.qtd_nfs_fiscais,
+          statusMiro: p.status_pagamento,
+        });
+        const fiscalComPendencia = ['FISCAL_SEM_MIRO', 'PENDENTE_FBL1N', 'PAGO_FISCAL_SEM_PAGAMENTO_MIRO', 'DIVERGENCIA_MIRO_X_FISCAL'].includes(situacaoFiscal);
+        if (p.status_pagamento === 'TOTALMENTE PAGO' && !fiscalComPendencia) return false;
       } else if (statusFilter !== 'Todos') {
         if (p.status_pagamento !== statusFilter) return false;
       }
@@ -306,6 +377,16 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
     };
   }, [filtered]);
 
+  const kpisFiscais = useMemo(() => {
+    const fiscais = filtered.map(pedido => fiscalPorPedido[pedido.numero_pedido]).filter(Boolean) as PedidoFiscalConciliacao[];
+    const faturado = fiscais.reduce((sum, fiscal) => sum + (Number(fiscal.valor_faturado_fiscal) || 0), 0);
+    const pago = fiscais.reduce((sum, fiscal) => sum + (Number(fiscal.valor_pago_rastreado) || 0), 0);
+    const aConciliar = fiscais.reduce((sum, fiscal) => sum + (Number(fiscal.valor_a_conciliar) || 0), 0);
+    const nfs = fiscais.reduce((sum, fiscal) => sum + (Number(fiscal.qtd_nfs_fiscais) || 0), 0);
+    const nfsComZf = fiscais.reduce((sum, fiscal) => sum + (Number(fiscal.qtd_nfs_com_evidencia_zf0076) || 0), 0);
+    return { faturado, pago, aConciliar, nfs, nfsComZf };
+  }, [filtered, fiscalPorPedido]);
+
   // Exportação Excel
   const handleExportExcel = async () => {
     if (filtered.length === 0) return;
@@ -325,6 +406,11 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
       'NFs Pagas': p.qtd_nfs_pagas,
       'NFs em Aberto': p.qtd_nfs_abertas,
       'Status do Pedido': p.status_pagamento,
+      'Origem da Conciliação': p.origem_conciliacao,
+      'Faturado Fiscal ZL0136 (R$)': Number(fiscalPorPedido[p.numero_pedido]?.valor_faturado_fiscal) || 0,
+      'Pago Rastreado FBL1N (R$)': Number(fiscalPorPedido[p.numero_pedido]?.valor_pago_rastreado) || 0,
+      'A Conciliar Fiscal (R$)': Number(fiscalPorPedido[p.numero_pedido]?.valor_a_conciliar) || 0,
+      'NFs com Evidência ZF0076': Number(fiscalPorPedido[p.numero_pedido]?.qtd_nfs_com_evidencia_zf0076) || 0,
     }));
 
     const wb = XLSX.utils.book_new();
@@ -365,6 +451,36 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
           </span>
         );
     }
+  };
+
+  const getOrigemConciliacaoBadge = (origem: PedidoConciliacao['origem_conciliacao']) => {
+    if (origem === 'SOMENTE_FISCAL') {
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">Fiscal sem MIRO</span>;
+    }
+    if (origem === 'SOMENTE_MIRO') {
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Somente MIRO</span>;
+    }
+    return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">MIRO + fiscal</span>;
+  };
+
+  const getSituacaoFiscalBadge = (situacao: SituacaoFiscalPedido) => {
+    const estilos: Record<SituacaoFiscalPedido, string> = {
+      SEM_DADO_FISCAL: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+      FISCAL_SEM_MIRO: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800',
+      PENDENTE_FBL1N: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border-amber-300 dark:border-amber-800',
+      PAGO_FISCAL_SEM_PAGAMENTO_MIRO: 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-300 border-violet-300 dark:border-violet-800',
+      DIVERGENCIA_MIRO_X_FISCAL: 'bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 border-rose-300 dark:border-rose-800',
+      ALINHADO_COM_MIRO: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800',
+    };
+    const rotulos: Record<SituacaoFiscalPedido, string> = {
+      SEM_DADO_FISCAL: 'Sem dado fiscal',
+      FISCAL_SEM_MIRO: 'Fiscal sem MIRO',
+      PENDENTE_FBL1N: 'Pendente no FBL1N',
+      PAGO_FISCAL_SEM_PAGAMENTO_MIRO: 'Pago fiscal sem baixa MIRO',
+      DIVERGENCIA_MIRO_X_FISCAL: 'Divergência MIRO × fiscal',
+      ALINHADO_COM_MIRO: 'MIRO e fiscal alinhados',
+    };
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${estilos[situacao]}`}>{rotulos[situacao]}</span>;
   };
 
   const getNfStatusBadge = (status: PedidoConciliacaoItem['status_nf']) => {
@@ -415,7 +531,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
             Reconciliação de Pedidos (PO x MIRO x Pgto)
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">
-            Rastreamento de liquidação financeira de pedidos: acompanhe se todas as notas fiscais faturadas (MIRO) já foram pagas/compensadas (FBL1N) com detalhamento dos materiais.
+            Compare a liquidação MIRO com o rastreio fiscal ZL0136 + FBL1N; pedidos com NF fiscal sem MIRO também entram na conferência, sem alterar os valores contábeis.
           </p>
         </div>
         {lastUpdated && (
@@ -463,6 +579,22 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
           icon={Percent}
           accent="#8b5cf6"
         />
+      </div>
+
+      <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/45 dark:bg-indigo-950/20 p-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <p className="text-xs font-extrabold text-indigo-900 dark:text-indigo-200">Conferência fiscal ZL0136 × FBL1N</p>
+            <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">Camada paralela à MIRO: rastreia pagamento por fornecedor + referência da NF e confirma a evidência disponível na ZF0076.</p>
+          </div>
+          <a href="#/financeiro/contas-pagar/analise/fornecedores-itens" className="text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:underline">Abrir análise por fornecedor e item</a>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div><p className="text-[10px] uppercase font-bold text-indigo-500">Faturado fiscal</p><p className="font-mono font-extrabold text-sm text-slate-900 dark:text-slate-100">{formatBRL(kpisFiscais.faturado)}</p></div>
+          <div><p className="text-[10px] uppercase font-bold text-indigo-500">Pago rastreado</p><p className="font-mono font-extrabold text-sm text-emerald-600 dark:text-emerald-400">{formatBRL(kpisFiscais.pago)}</p></div>
+          <div><p className="text-[10px] uppercase font-bold text-indigo-500">A conciliar</p><p className="font-mono font-extrabold text-sm text-amber-600 dark:text-amber-400">{formatBRL(kpisFiscais.aConciliar)}</p></div>
+          <div><p className="text-[10px] uppercase font-bold text-indigo-500">Evidência ZF0076</p><p className="font-extrabold text-sm text-slate-900 dark:text-slate-100">{kpisFiscais.nfsComZf} de {kpisFiscais.nfs} NF(s)</p></div>
+        </div>
       </div>
 
       {/* Barra de Filtros e Ações */}
@@ -567,8 +699,8 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
             <SortableTh col="numero_pedido" label="Nº Pedido (PO)" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} width="w-44 min-w-[170px]" />
             <SortableTh col="razao_social_fornecedor" label="Fornecedor / Material" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} width="min-w-[320px]" />
             <Th label="Qtd. NFs" align="center" width="w-28" />
-            <SortableTh col="total_faturado_miro" label="Total Faturado" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} align="right" width="w-36 min-w-[130px]" />
-            <SortableTh col="total_pago" label="Total Já Pago" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} align="right" width="w-36 min-w-[130px]" />
+            <SortableTh col="total_faturado_miro" label="Faturado MIRO" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} align="right" width="w-36 min-w-[130px]" />
+            <SortableTh col="total_pago" label="Pago MIRO" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} align="right" width="w-36 min-w-[130px]" />
             <SortableTh col="total_em_aberto" label="Em Aberto" sortColumn={sortColumn} sortDir={sortDir} onSort={handleSort} align="right" width="w-36 min-w-[130px]" />
             <Th label="Status de Liquidação" align="center" width="w-48 min-w-[180px]" />
           </TableHeadRow>
@@ -590,7 +722,19 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                 const isExpanded = !!expandedPedidos[p.numero_pedido];
                 const detalhes = detalhesPorPedido[p.numero_pedido];
                 const isLoadingDet = loadingDetalhes[p.numero_pedido];
+                const fiscal = fiscalPorPedido[p.numero_pedido];
+                const detalhesFiscais = detalhesFiscaisPorPedido[p.numero_pedido];
                 const pctPago = p.total_faturado_miro > 0 ? (p.total_pago / p.total_faturado_miro) * 100 : 0;
+                const pctPagoFiscal = fiscal && fiscal.qtd_nfs_fiscais > 0
+                  ? ((fiscal.qtd_nfs_pagas_total + fiscal.qtd_nfs_pagas_parcial) / fiscal.qtd_nfs_fiscais) * 100
+                  : 0;
+                const situacaoFiscal = classificarConciliacaoFiscal({
+                  temMiro: p.origem_conciliacao !== 'SOMENTE_FISCAL',
+                  valorPagoMiro: p.total_pago,
+                  valorPagoFiscal: fiscal?.valor_pago_rastreado,
+                  qtdNfsFiscais: fiscal?.qtd_nfs_fiscais,
+                  statusMiro: p.status_pagamento,
+                });
 
                 return (
                   <React.Fragment key={p.numero_pedido}>
@@ -618,6 +762,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                           <span className="text-emerald-700 dark:text-emerald-400 font-extrabold text-sm tracking-tight">
                             {p.numero_pedido}
                           </span>
+                          {getOrigemConciliacaoBadge(p.origem_conciliacao)}
                         </div>
                       </td>
 
@@ -647,7 +792,7 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                       {/* Coluna 3: Qtd. NFs */}
                       <td className="px-3 py-3 text-center">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                          {p.qtd_nfs} NF(s)
+                          {p.qtd_nfs_fiscais > 0 ? `${p.qtd_nfs_fiscais} fiscal(is)` : `${p.qtd_nfs} MIRO`}
                         </span>
                       </td>
 
@@ -676,7 +821,10 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
                       {/* Coluna 7: Status de Liquidação */}
                       <td className="px-3 py-3 text-center">
-                        {getStatusBadge(p.status_pagamento, p)}
+                        <div className="flex flex-col items-center gap-1.5">
+                          {p.origem_conciliacao !== 'SOMENTE_FISCAL' && getStatusBadge(p.status_pagamento, p)}
+                          {getSituacaoFiscalBadge(situacaoFiscal)}
+                        </div>
                       </td>
                     </tr>
 
@@ -706,16 +854,28 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
 
                               <div className="flex items-center gap-3">
                                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                                  {p.qtd_nfs_pagas} de {p.qtd_nfs} NFs pagas ({pctPago.toFixed(0)}%)
+                                  {p.origem_conciliacao === 'SOMENTE_FISCAL'
+                                    ? `${fiscal?.qtd_nfs_pagas_total || 0} de ${fiscal?.qtd_nfs_fiscais || 0} NFs fiscais pagas (${pctPagoFiscal.toFixed(0)}%)`
+                                    : `${p.qtd_nfs_pagas} de ${p.qtd_nfs} NFs MIRO pagas (${pctPago.toFixed(0)}%)`}
                                 </span>
                                 <div className="w-28 bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden shrink-0">
                                   <div
                                     className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                                    style={{ width: `${Math.min(100, Math.max(0, pctPago))}%` }}
+                                    style={{ width: `${Math.min(100, Math.max(0, p.origem_conciliacao === 'SOMENTE_FISCAL' ? pctPagoFiscal : pctPago))}%` }}
                                   />
                                 </div>
                               </div>
                             </div>
+
+                            {fiscal && (
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 bg-indigo-50/60 dark:bg-indigo-950/25 px-4 py-3 rounded-lg border border-indigo-100 dark:border-indigo-900/60 text-xs">
+                                <div><span className="text-[10px] uppercase font-bold text-indigo-500">Situação fiscal</span><p className="mt-1">{getSituacaoFiscalBadge(situacaoFiscal)}</p></div>
+                                <div><span className="text-[10px] uppercase font-bold text-indigo-500">NF fiscal</span><p className="font-bold mt-0.5">{fiscal.qtd_nfs_fiscais} NF(s) / {fiscal.qtd_itens_fiscais} item(ns)</p></div>
+                                <div><span className="text-[10px] uppercase font-bold text-indigo-500">Faturado ZL0136</span><p className="font-mono font-bold mt-0.5">{formatBRL(fiscal.valor_faturado_fiscal)}</p></div>
+                                <div><span className="text-[10px] uppercase font-bold text-indigo-500">Pago rastreado</span><p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{formatBRL(fiscal.valor_pago_rastreado)}</p></div>
+                                <div><span className="text-[10px] uppercase font-bold text-indigo-500">Rastreio</span><p className="font-bold mt-0.5">{fiscal.qtd_nfs_pagas_total} total / {fiscal.qtd_nfs_pagas_parcial} parcial / {fiscal.qtd_nfs_sem_vinculo_fbl1n} sem vínculo</p></div>
+                              </div>
+                            )}
 
                             {/* Subtabela de NFs e Materiais */}
                             {isLoadingDet ? (
@@ -820,6 +980,57 @@ export default function ReconciliacaoPedidos({ user: _user }: ReconciliacaoPedid
                                   </tbody>
                                 </table>
                               </div>
+                            )}
+
+                            {!isLoadingDet && fiscal && (
+                              <section className="space-y-2">
+                                <div className="flex items-center justify-between gap-3 px-1">
+                                  <div>
+                                    <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100">Rastreio fiscal por NF e item</p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">ZL0136 vinculada ao pedido; pagamento rateado do FBL1N respeita cada item do PO.</p>
+                                  </div>
+                                  {getSituacaoFiscalBadge(situacaoFiscal)}
+                                </div>
+                                {!detalhesFiscais || detalhesFiscais.length === 0 ? (
+                                  <div className="py-5 text-center text-xs text-slate-400 font-medium bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                                    Nenhuma NF fiscal vinculada a este pedido.
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto rounded-lg border border-indigo-200/80 dark:border-indigo-900/70 bg-white dark:bg-slate-900 shadow-sm">
+                                    <table className="w-full text-xs border-collapse">
+                                      <thead>
+                                        <tr className="bg-indigo-50/80 dark:bg-indigo-950/35 text-slate-600 dark:text-slate-300 text-[11px] border-b border-indigo-100 dark:border-indigo-900/60">
+                                          <th className="px-3.5 py-2.5 text-left font-bold">NF fiscal</th>
+                                          <th className="px-3.5 py-2.5 text-left font-bold min-w-[220px]">Item / material</th>
+                                          <th className="px-3.5 py-2.5 text-right font-bold">Quantidade</th>
+                                          <th className="px-3.5 py-2.5 text-right font-bold">Faturado ZL0136</th>
+                                          <th className="px-3.5 py-2.5 text-right font-bold">Pago FBL1N</th>
+                                          <th className="px-3.5 py-2.5 text-left font-bold">Últ. pagamento</th>
+                                          <th className="px-3.5 py-2.5 text-center font-bold">Evidência</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {detalhesFiscais.map(item => (
+                                          <tr key={item.id} className="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors">
+                                            <td className="px-3.5 py-2.5 font-mono font-bold text-slate-900 dark:text-slate-100">{item.numero_nf_normalizado || '—'}</td>
+                                            <td className="px-3.5 py-2.5">
+                                              <div className="font-semibold text-slate-800 dark:text-slate-200">{item.descricao_item || item.material || item.numero_servico || 'Item sem descrição'}</div>
+                                              <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">{[item.material, item.numero_servico, item.item_pedido && `Item ${item.item_pedido}`].filter(Boolean).join(' · ') || '—'}</div>
+                                            </td>
+                                            <td className="px-3.5 py-2.5 text-right font-mono text-slate-700 dark:text-slate-300">{Number(item.quantidade || 0).toLocaleString('pt-BR')} {item.unidade_medida || ''}</td>
+                                            <td className="px-3.5 py-2.5 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{formatBRL(item.valor_item_nf)}</td>
+                                            <td className="px-3.5 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(item.valor_pago_rateado)}</td>
+                                            <td className="px-3.5 py-2.5 text-slate-700 dark:text-slate-300">{formatDateBR(item.data_ultimo_pagamento)}</td>
+                                            <td className="px-3.5 py-2.5 text-center">
+                                              {Number(item.qtd_linhas_zf0076 || 0) > 0 ? <span className="text-emerald-700 dark:text-emerald-300 font-bold">ZF0076</span> : <span className="text-slate-400">—</span>}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </section>
                             )}
                           </div>
                         </td>

@@ -144,6 +144,7 @@ export const PAGES: PageDef[] = [
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
   { id: 'fin_contas_pagar_analise', group: 'FINANCEIRO', label: 'Análise', path: '/financeiro/contas-pagar/analise', icon: BarChart3, defaultRoles: ['admin'] },
+  { id: 'fin_analise_fornecedor_item', group: 'FINANCEIRO', label: 'Fornecedor × Item', path: '/financeiro/contas-pagar/analise/fornecedores-itens', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_reconciliacao_pedidos', group: 'FINANCEIRO', label: 'Reconciliação PO x Pgto', path: '/financeiro/reconciliacao-pedidos', icon: FileCheck, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_realizado_rubricas', group: 'FINANCEIRO', label: 'Realizado por Rubrica', path: '/financeiro/realizado-rubricas', icon: BarChart3, defaultRoles: ['admin'] },
   { id: 'fin_faturamento_gwjaco', group: 'FINANCEIRO', label: 'Faturamento GW Jacobina', path: '/financeiro/faturamento-gwjaco', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },

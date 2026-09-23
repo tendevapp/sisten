@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  BarChart3, Wallet, CalendarClock, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown, Clock, CheckCircle2, Building2,
+  BarChart3, Wallet, CalendarClock, ListChecks, X, ChevronRight, ChevronDown, ChevronsUpDown, Layers, Receipt, Search, ArrowUp, ArrowDown, Clock, CheckCircle2, Building2, TrendingUp,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, Legend, ResponsiveContainer,
@@ -181,8 +181,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       const allRows: Fbl1nAnaliseLinha[] = [];
       let from = 0;
       while (true) {
-        const { data, error: fetchError } = await supabase
-          .from('vw_fbl1n_c_pagar_analise')
+        const { data, error: fetchError } = await (supabase.from as any)('vw_fin_fbl1n_analise_deduplicada')
           .select('id, numero_documento, fornecedor, empresa, razao_social_fornecedor, montante_moeda_doc, doc_compensacao, data_compensacao, data_pagamento, vencimento_liquido, data_lancamento, tipo_documento_categoria_modulo, tipo_documento_descricao, tipo_documento')
           .order('id', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
@@ -766,7 +765,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             Análise de Contas a Pagar
           </h2>
           <p className="text-sm text-slate-555 dark:text-slate-400 mt-1">
-            Visão consolidada das partidas em aberto por categoria de documento, fornecedor, evolução temporal e vencimento.
+            Visão consolidada das partidas FBL1N deduplicadas por categoria de documento, fornecedor, evolução temporal e vencimento.
           </p>
         </div>
         {lastUpdated && (
@@ -775,6 +774,13 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
             <span>{localDb.getDatasetUpdateBadge('contas_pagar')}</span>
           </div>
         )}
+        <a
+          href="#/financeiro/contas-pagar/analise/fornecedores-itens"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+        >
+          <TrendingUp className="h-3.5 w-3.5" />
+          Fornecedor × Item
+        </a>
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:flex-wrap lg:overflow-visible">
@@ -891,7 +897,7 @@ export default function ContasPagarAnalise({ user: _user }: ContasPagarAnalisePr
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <KpiCard label="Total em Aberto" value={kpis.totalAberto} format={formatBRL} icon={Wallet} accent="var(--brand)" />
         <KpiCard label="Total Vencido" value={kpis.totalVencido} format={formatBRL} icon={CalendarClock} accent="#dc2626" />
-        <KpiCard label="Total Pago" value={kpis.totalPago} format={formatBRL} detail={kpis.qtdPagas > 0 ? `${kpis.qtdPagas} lançamento(s)` : undefined} icon={CheckCircle2} accent="#10b981" />
+        <KpiCard label="Total Compensado" value={kpis.totalPago} format={formatBRL} detail={kpis.qtdPagas > 0 ? `${kpis.qtdPagas} lançamento(s)` : undefined} icon={CheckCircle2} accent="#10b981" />
         <KpiCard label="Lançamentos em Aberto" value={kpis.qtdAbertas} format={(v) => String(Math.round(v))} icon={ListChecks} accent="#7c3aed" />
       </div>
 

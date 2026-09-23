@@ -39,6 +39,7 @@ const HistoricoPedidos = lazy(() => import('./views/HistoricoPedidos'));
 const Contratos = lazy(() => import('./views/Contratos'));
 const ContasPagar = lazy(() => import('./views/ContasPagar'));
 const ContasPagarAnalise = lazy(() => import('./views/ContasPagarAnalise'));
+const FinFornecedorItemAnalise = lazy(() => import('./views/financeiro/FinFornecedorItemAnalise'));
 const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturamentoGwjaco'));
 const FinRealizadoPorRubrica = lazy(() => import('./views/financeiro/FinRealizadoPorRubrica'));
 const FinPepView = lazy(() => import('./views/financeiro/FinPepView'));
@@ -894,6 +895,12 @@ export default function App() {
       case '/financeiro/contas-pagar/analise':
         if (canAccessPage(user, 'fin_contas_pagar_analise')) {
           return <ContasPagarAnalise user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/financeiro/contas-pagar/analise/fornecedores-itens':
+        if (canAccessPage(user, 'fin_analise_fornecedor_item')) {
+          return <FinFornecedorItemAnalise user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
