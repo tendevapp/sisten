@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-23',
+    resumo: 'Almoxarifado > Projetos — Correção de Salvamento de Status na Matriz de Autonomia (`PainelVisaoGeral.tsx`, `Projetos.tsx`, `MatrizAutonomiaKits.tsx`, `diretrizes.ts`): 1. Corrigida falha em tempo de execução ("Cannot read properties of undefined (reading \'id\')") ao salvar status ou número de série de células na Matriz de Autonomia de Kits pela aba Visão Geral; 2. O componente `PainelVisaoGeral.tsx` passou a receber e repassar a prop `user: Profile` para `<MatrizAutonomiaKits />`, garantindo que o usuário logado seja identificado no log de auditoria operacional; 3. Adicionada tratativa defensiva em `MatrizAutonomiaKits.tsx` para garantir fallback gracioso caso a propriedade `user` esteja ausente.',
+  },
+  {
+    data: '2026-09-23',
     resumo: 'Financeiro > Faturamento GW Jacobina — Exibição por Cadastro de Torres no Financeiro e Avanço Sequencial no Geral (`FinFaturamentoGwjaco.tsx`, `Reports.tsx`, `FinFaturamentoWallboard.tsx`, `finFaturamentoRelatorio.ts`, `finFaturamentoRelatorio.test.ts`, `diretrizes.ts`): 1. Implementado ModoMatrizFaturamento ("cadastro" vs "sequencial") no Wallboard de Faturamento GW Jacobina; 2. No módulo Financeiro (`FinFaturamentoGwjaco.tsx`), a matriz exibe as colunas estritamente baseadas no cadastro das torres físicas (`torre_numero`), mapeando 1-a-1 cada tramo registrado; 3. Na visão Geral (`Reports.tsx`), mantém-se o avanço sequencial por torres completas (expedidos e faturados da esquerda para a direita); 4. Adicionado seletor visual no cabeçalho da matriz permitindo alternar sob demanda entre "Por Torres (Cadastro)" e "Torres Completas"; 5. Testes unitários atualizados com 100% de aprovação.',
   },
   {

@@ -46,7 +46,7 @@ import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 
 interface Props {
   dados: DadosProjetos;
-  user: Profile;
+  user?: Profile;
 }
 
 export default function MatrizAutonomiaKits({ dados, user }: Props) {
@@ -106,7 +106,7 @@ export default function MatrizAutonomiaKits({ dados, user }: Props) {
         subkit: celulaSelecionada.subkit,
         status: editStatus,
         serie: editSerie.trim() || null,
-        usuario: { id: user.id, nome: user.name },
+        usuario: user?.name ? { id: user.id, nome: user.name } : { id: null, nome: 'Almoxarifado' },
       });
       toast.success(`Célula T${celulaSelecionada.tramo} Torre ${celulaSelecionada.torreNumero} atualizada.`);
       setCelulaSelecionada(null);

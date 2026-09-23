@@ -16,14 +16,16 @@ import { formatInt, formatQtd } from '../../lib/format';
 import { TRAMOS, type EstadoCelula, type Tramo } from '../../lib/projetos';
 import type { DadosProjetos } from '../../views/projetos/useDadosProjetos';
 import type { AbaProjetos } from '../../views/projetos/Projetos';
+import type { Profile } from '../../types';
 import MatrizAutonomiaKits from './MatrizAutonomiaKits';
 
 interface Props {
   dados: DadosProjetos;
+  user: Profile;
   onIrPara: (aba: AbaProjetos) => void;
 }
 
-export default function PainelVisaoGeral({ dados, onIrPara }: Props) {
+export default function PainelVisaoGeral({ dados, user, onIrPara }: Props) {
   const { tramosDoSubprojeto, autonomia, rateio, projecao, kits, subprojetoAtivo } = dados;
 
   /**
@@ -126,7 +128,7 @@ export default function PainelVisaoGeral({ dados, onIrPara }: Props) {
       )}
 
       {/* Matriz de Autonomia de Kits por Tramo — substitui a antiga matriz de progresso */}
-      <MatrizAutonomiaKits dados={dados} />
+      <MatrizAutonomiaKits dados={dados} user={user} />
 
       {/* Top gargalos: o que impede o próximo kit de cada tramo */}
       <div className="rounded-xl border p-4 sm:p-5" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>

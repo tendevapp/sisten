@@ -143,7 +143,7 @@ export default function Projetos({ user, onNavigate, abaInicial = 'visao' }: Pro
         </div>
       )}
 
-      {aba === 'visao' && <PainelVisaoGeral dados={dados} onIrPara={trocarAba} />}
+      {aba === 'visao' && <PainelVisaoGeral dados={dados} user={user} onIrPara={trocarAba} />}
       {aba === 'bom' && <PainelBom dados={dados} />}
       {aba === 'posicao' && <PainelPosicao dados={dados} user={user} />}
       {aba === 'recebimento' && <PainelRecebimento dados={dados} user={user} podeLancar={permissoes.lancarEntrada} />}
