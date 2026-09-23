@@ -11,7 +11,7 @@ import { supabase } from '../../db/supabaseClient';
 import { Profile } from '../../types';
 import { formatBRL, formatBRLCompacto, formatDateBR, formatMesAno, formatPct, formatQtd } from '../../lib/format';
 import {
-  acumularValoresPorPeriodo, agruparHistoricoPreco, AgrupamentoPreco, chaveFornecedorItem, LinhaFornecedorItem, periodoDoAgrupamento, ResumoFornecedorItem, rotuloSemanaISO, StatusPagamentoRastreado, resumirFornecedorItem,
+  acumularValoresPorPeriodoComDestaque, agruparHistoricoPreco, AgrupamentoPreco, chaveFornecedorItem, LinhaFornecedorItem, periodoDoAgrupamento, ResumoFornecedorItem, rotuloSemanaISO, StatusPagamentoRastreado, resumirFornecedorItem,
 } from '../../lib/finFornecedorItem';
 import ChartCard from '../../components/charts/ChartCard';
 import ChartTooltip from '../../components/charts/ChartTooltip';
@@ -99,6 +99,7 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
   const [periodoDe, setPeriodoDe] = useState('');
   const [periodoAte, setPeriodoAte] = useState('');
   const [serieSelecionada, setSerieSelecionada] = useState('');
+  const [modoVisaoValor, setModoVisaoValor] = useState<'destaque' | 'somente_item'>('destaque');
   const [agrupamentoPreco, setAgrupamentoPreco] = useState<AgrupamentoPreco>('mes');
   const [resumosExpandidos, setResumosExpandidos] = useState<Record<string, boolean>>({});
   const [periodoAcumuladoSelecionado, setPeriodoAcumuladoSelecionado] = useState<string | null>(null);
@@ -206,7 +207,8 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
   const todosExpandidos = resumo.length > 0 && resumo.every(item => resumosExpandidos[chaveFornecedorItem(item.fornecedorCodigo, item.itemChave)]);
 
   const selecionarResumo = (item: ResumoFornecedorItem) => {
-    setSerieSelecionada(chaveFornecedorItem(item.fornecedorCodigo, item.itemChave));
+    const chave = chaveFornecedorItem(item.fornecedorCodigo, item.itemChave);
+    setSerieSelecionada(anterior => (anterior === chave ? '' : chave));
     setPeriodoAcumuladoSelecionado(null);
   };
 
@@ -245,28 +247,36 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
     }));
   }, [filtradas, serieSelecionada, agrupamentoPreco]);
 
-  const linhasDoAcumulado = useMemo(() => {
-    if (!serieSelecionada) return filtradas;
-    const [fornecedorCodigoSelecionado, itemChaveSelecionado] = serieSelecionada.split('::');
-    return filtradas.filter(linha => linha.fornecedor_codigo === fornecedorCodigoSelecionado && linha.item_chave === itemChaveSelecionado);
-  }, [filtradas, serieSelecionada]);
+  const acumuladoPorPeriodo = useMemo(() => {
+    const [fornecedorCodigoSelecionado, itemChaveSelecionado] = serieSelecionada ? serieSelecionada.split('::') : ['', ''];
+    const dados = acumularValoresPorPeriodoComDestaque(
+      filtradas.map(linha => ({
+        dataDocumento: linha.data_documento,
+        valorFaturado: linha.valor_item_nf,
+        valorPagoRastreado: linha.valor_pago_rateado,
+        pertenceAoItem: Boolean(
+          serieSelecionada &&
+          linha.fornecedor_codigo === fornecedorCodigoSelecionado &&
+          linha.item_chave === itemChaveSelecionado,
+        ),
+      })),
+      agrupamentoPreco,
+    );
 
-  const acumuladoPorPeriodo = useMemo(() => acumularValoresPorPeriodo(
-    linhasDoAcumulado.map(linha => ({ dataDocumento: linha.data_documento, valorFaturado: linha.valor_item_nf, valorPagoRastreado: linha.valor_pago_rateado })),
-    agrupamentoPreco,
-  ).map(ponto => ({
-    ...ponto,
-    rotulo: agrupamentoPreco === 'dia'
-      ? formatDateBR(ponto.periodo)
-      : agrupamentoPreco === 'semana'
-        ? rotuloSemanaISO(ponto.periodo)
-        : formatMesAno(`${ponto.periodo}-01`),
-    tituloTooltip: agrupamentoPreco === 'semana'
-      ? `${rotuloSemanaISO(ponto.periodo)} · semana de ${formatDateBR(ponto.periodo)}`
-      : agrupamentoPreco === 'mes'
-        ? formatMesAno(`${ponto.periodo}-01`)
-        : formatDateBR(ponto.periodo),
-  })), [linhasDoAcumulado, agrupamentoPreco]);
+    return dados.map(ponto => ({
+      ...ponto,
+      rotulo: agrupamentoPreco === 'dia'
+        ? formatDateBR(ponto.periodo)
+        : agrupamentoPreco === 'semana'
+          ? rotuloSemanaISO(ponto.periodo)
+          : formatMesAno(`${ponto.periodo}-01`),
+      tituloTooltip: agrupamentoPreco === 'semana'
+        ? `${rotuloSemanaISO(ponto.periodo)} · semana de ${formatDateBR(ponto.periodo)}`
+        : agrupamentoPreco === 'mes'
+          ? formatMesAno(`${ponto.periodo}-01`)
+          : formatDateBR(ponto.periodo),
+    }));
+  }, [filtradas, serieSelecionada, agrupamentoPreco]);
 
   const pontoAcumuladoSelecionado = useMemo(
     () => acumuladoPorPeriodo.find(ponto => ponto.periodo === periodoAcumuladoSelecionado) || null,
@@ -275,10 +285,18 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
 
   const linhasComposicaoAcumulada = useMemo(() => {
     if (!pontoAcumuladoSelecionado) return [];
-    return linhasDoAcumulado
+    return filtradas
       .filter(linha => linha.data_documento && periodoDoAgrupamento(linha.data_documento, agrupamentoPreco) === pontoAcumuladoSelecionado.periodo)
-      .sort((a, b) => (b.data_documento || '').localeCompare(a.data_documento || '') || b.id - a.id);
-  }, [linhasDoAcumulado, agrupamentoPreco, pontoAcumuladoSelecionado]);
+      .sort((a, b) => {
+        if (resumoSelecionado) {
+          const aPertence = a.fornecedor_codigo === resumoSelecionado.fornecedorCodigo && a.item_chave === resumoSelecionado.itemChave;
+          const bPertence = b.fornecedor_codigo === resumoSelecionado.fornecedorCodigo && b.item_chave === resumoSelecionado.itemChave;
+          if (aPertence && !bPertence) return -1;
+          if (!aPertence && bPertence) return 1;
+        }
+        return (b.data_documento || '').localeCompare(a.data_documento || '') || b.id - a.id;
+      });
+  }, [filtradas, agrupamentoPreco, pontoAcumuladoSelecionado, resumoSelecionado]);
 
   const abrirComposicaoAcumulada = (dado: any) => {
     const periodo = dado?.periodo || dado?.payload?.periodo;
@@ -358,12 +376,14 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
 
       <ChartCard
         title="Evolução do preço unitário"
-        description={resumoSelecionado ? `${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}. Preço ponderado pela quantidade no período.` : 'Selecione uma linha no resumo para analisar seu histórico de preço.'}
+        description={resumoSelecionado ? `${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}. Preço ponderado pela quantidade no período.` : 'Selecione uma linha no resumo abaixo para analisar seu histórico de preço.'}
         icon={TrendingUp}
         height={440}
         loading={loading}
         empty={!historicoPreco.length}
         emptyMessage="Selecione um fornecedor e item no resumo abaixo para exibir a evolução."
+        collapsible
+        defaultCollapsed
         actions={<div className="flex items-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5" role="group" aria-label="Agrupamento da evolução de preço">{(['dia', 'semana', 'mes'] as AgrupamentoPreco[]).map(opcao => <button key={opcao} onClick={() => setAgrupamentoPreco(opcao)} className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${agrupamentoPreco === opcao ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{opcao === 'dia' ? 'Dia' : opcao === 'semana' ? 'Semana' : 'Mês'}</button>)}</div>}
       >
         <div className="h-[440px] min-w-0">
@@ -384,27 +404,169 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
       <ChartCard
         title="Valor por período"
         description={resumoSelecionado
-          ? `${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}. Clique em uma barra para abrir as notas que compõem o período.`
+          ? `Faturado fiscal e pago rastreado no período (todo o filtro ativo), com destaque para ${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}. Clique em uma barra para abrir a composição.`
           : 'Faturado fiscal e pago rastreado em cada período conforme os filtros ativos. Clique em uma barra para abrir as notas que a compõem.'}
         icon={Wallet}
         height={380}
         loading={loading}
         empty={!acumuladoPorPeriodo.length}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {resumoSelecionado && (
+              <div className="flex items-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5" role="group" aria-label="Modo de visualização no gráfico">
+                <button
+                  type="button"
+                  onClick={() => setModoVisaoValor('destaque')}
+                  className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    modoVisaoValor === 'destaque'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  title="Exibir todo o valor do filtro com destaque para o item clicado"
+                >
+                  Total c/ destaque
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoVisaoValor('somente_item')}
+                  className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    modoVisaoValor === 'somente_item'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  title="Exibir apenas o item selecionado"
+                >
+                  Apenas item
+                </button>
+              </div>
+            )}
+            <div className="flex items-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5" role="group" aria-label="Agrupamento do valor por período">
+              {(['dia', 'semana', 'mes'] as AgrupamentoPreco[]).map(opcao => (
+                <button
+                  key={opcao}
+                  onClick={() => setAgrupamentoPreco(opcao)}
+                  className={`px-2.5 py-1.5 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    agrupamentoPreco === opcao
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {opcao === 'dia' ? 'Dia' : opcao === 'semana' ? 'Semana' : 'Mês'}
+                </button>
+              ))}
+            </div>
+          </div>
+        }
       >
+        {resumoSelecionado && (
+          <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/60 dark:bg-indigo-950/25 text-xs mb-3">
+            <div className="min-w-0 flex items-center gap-2 text-indigo-950 dark:text-indigo-200">
+              <MousePointerClick className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <span className="truncate">
+                <strong>Representando no gráfico:</strong> {resumoSelecionado.fornecedorNome} · {resumoSelecionado.descricaoItem}
+              </span>
+              <span className="hidden sm:inline-flex text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
+                ({formatPct((resumoSelecionado.valorFaturado / (kpis.valorFaturado || 1)) * 100)} do faturado total do filtro)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setSerieSelecionada(''); setPeriodoAcumuladoSelecionado(null); }}
+              className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 cursor-pointer"
+              title="Limpar seleção do item"
+            >
+              <X className="h-3 w-3" />
+              Remover destaque
+            </button>
+          </div>
+        )}
         <div className="h-[380px] min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={acumuladoPorPeriodo} margin={{ top: 30, right: 32, bottom: 38, left: 18 }} barGap={8}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={28} />
               <YAxis tickFormatter={formatBRLCompacto} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={76} />
-              <Tooltip content={({ active, payload }) => active && payload?.[0] ? <ChartTooltip title={String(payload[0].payload.tituloTooltip)} rows={[{ color: '#0284c7', label: 'Faturado no período', value: formatBRL(payload[0].payload.valorFaturado) }, { color: '#10b981', label: 'Pago no período', value: formatBRL(payload[0].payload.valorPagoRastreado) }]} /> : null} />
-              <Legend verticalAlign="bottom" height={28} iconType="circle" formatter={(valor) => <span className="text-xs text-slate-600 dark:text-slate-300">{valor}</span>} />
-              <Bar name="Faturado no período" dataKey="valorFaturado" fill="#0284c7" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
-                {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorFaturado" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#0284c7' }} />}
-              </Bar>
-              <Bar name="Pago no período" dataKey="valorPagoRastreado" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
-                {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorPagoRastreado" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} />}
-              </Bar>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.[0]) return null;
+                  const ponto = payload[0].payload;
+                  if (resumoSelecionado && modoVisaoValor === 'destaque') {
+                    const pctFat = ponto.valorFaturadoTotal > 0 ? (ponto.valorFaturadoItem / ponto.valorFaturadoTotal) * 100 : 0;
+                    const pctPago = ponto.valorPagoTotal > 0 ? (ponto.valorPagoItem / ponto.valorPagoTotal) * 100 : 0;
+                    return (
+                      <ChartTooltip
+                        title={String(ponto.tituloTooltip)}
+                        subtitle={`${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}`}
+                        rows={[
+                          { color: '#0284c7', label: 'Faturado total do filtro', value: formatBRL(ponto.valorFaturadoTotal) },
+                          { color: '#2563eb', label: `Item: ${resumoSelecionado.descricaoItem}`, value: `${formatBRL(ponto.valorFaturadoItem)} (${formatPct(pctFat)})`, indent: true },
+                          { color: '#93c5fd', label: 'Demais itens do filtro', value: formatBRL(ponto.valorFaturadoOutros), indent: true },
+                          { color: '#10b981', label: 'Pago total do filtro', value: formatBRL(ponto.valorPagoTotal) },
+                          { color: '#059669', label: `Item: ${resumoSelecionado.descricaoItem}`, value: `${formatBRL(ponto.valorPagoItem)} (${formatPct(pctPago)})`, indent: true },
+                          { color: '#86efac', label: 'Demais itens do filtro', value: formatBRL(ponto.valorPagoOutros), indent: true },
+                        ]}
+                      />
+                    );
+                  }
+                  if (resumoSelecionado && modoVisaoValor === 'somente_item') {
+                    return (
+                      <ChartTooltip
+                        title={String(ponto.tituloTooltip)}
+                        subtitle={`${resumoSelecionado.fornecedorNome} · ${resumoSelecionado.descricaoItem}`}
+                        rows={[
+                          { color: '#2563eb', label: 'Faturado (Item)', value: formatBRL(ponto.valorFaturadoItem) },
+                          { color: '#059669', label: 'Pago (Item)', value: formatBRL(ponto.valorPagoItem) },
+                        ]}
+                      />
+                    );
+                  }
+                  return (
+                    <ChartTooltip
+                      title={String(ponto.tituloTooltip)}
+                      rows={[
+                        { color: '#0284c7', label: 'Faturado no período', value: formatBRL(ponto.valorFaturadoTotal) },
+                        { color: '#10b981', label: 'Pago no período', value: formatBRL(ponto.valorPagoTotal) },
+                      ]}
+                    />
+                  );
+                }}
+              />
+              <Legend verticalAlign="bottom" height={28} iconType="circle" formatter={(valor) => <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{valor}</span>} />
+
+              {resumoSelecionado && modoVisaoValor === 'destaque' ? (
+                <>
+                  <Bar name={`Faturado: ${resumoSelecionado.descricaoItem}`} dataKey="valorFaturadoItem" stackId="faturado" fill="#2563eb" maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada} />
+                  <Bar name="Faturado: Demais itens" dataKey="valorFaturadoOutros" stackId="faturado" fill="#93c5fd" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && (
+                      <LabelList dataKey="valorFaturadoTotal" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#0284c7' }} />
+                    )}
+                  </Bar>
+                  <Bar name={`Pago: ${resumoSelecionado.descricaoItem}`} dataKey="valorPagoItem" stackId="pago" fill="#059669" maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada} />
+                  <Bar name="Pago: Demais itens" dataKey="valorPagoOutros" stackId="pago" fill="#86efac" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && (
+                      <LabelList dataKey="valorPagoTotal" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} />
+                    )}
+                  </Bar>
+                </>
+              ) : resumoSelecionado && modoVisaoValor === 'somente_item' ? (
+                <>
+                  <Bar name={`Faturado (${resumoSelecionado.descricaoItem})`} dataKey="valorFaturadoItem" fill="#2563eb" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorFaturadoItem" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }} />}
+                  </Bar>
+                  <Bar name={`Pago (${resumoSelecionado.descricaoItem})`} dataKey="valorPagoItem" fill="#059669" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorPagoItem" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} />}
+                  </Bar>
+                </>
+              ) : (
+                <>
+                  <Bar name="Faturado no período" dataKey="valorFaturadoTotal" fill="#0284c7" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorFaturadoTotal" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#0284c7' }} />}
+                  </Bar>
+                  <Bar name="Pago no período" dataKey="valorPagoTotal" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={52} cursor="pointer" onClick={abrirComposicaoAcumulada}>
+                    {agrupamentoPreco !== 'dia' && <LabelList dataKey="valorPagoTotal" position="top" formatter={(valor: number) => formatBRLCompacto(valor)} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} />}
+                  </Bar>
+                </>
+              )}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -524,7 +686,43 @@ export default function FinFornecedorItemAnalise({ user: _user }: FinFornecedorI
               <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                 <table className="w-full min-w-[980px] border-collapse text-xs">
                   <thead><tr className="sticky top-0 bg-slate-100/95 text-left text-[10px] uppercase tracking-wide text-slate-600 backdrop-blur dark:bg-slate-800/95 dark:text-slate-300"><th className="px-3 py-2">Data</th><th className="px-3 py-2">Fornecedor</th><th className="px-3 py-2">Item</th><th className="px-3 py-2">NF</th><th className="px-3 py-2 text-right">Quantidade</th><th className="px-3 py-2 text-right">Faturado</th><th className="px-3 py-2 text-right">Pago rastreado</th><th className="px-3 py-2 text-center">Pagamento</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{linhasComposicaoAcumulada.map(linha => <tr key={linha.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50"><td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDateBR(linha.data_documento)}</td><td className="px-3 py-2 font-semibold">{linha.fornecedor_nome || linha.fornecedor_codigo}</td><td className="max-w-[260px] truncate px-3 py-2" title={linha.descricao_item || linha.item_chave}>{linha.descricao_item || linha.item_chave}</td><td className="px-3 py-2 font-mono font-bold">{linha.numero_nf_normalizado}</td><td className="px-3 py-2 text-right font-mono">{formatQtd(linha.quantidade)}</td><td className="px-3 py-2 text-right font-mono font-bold">{formatBRL(linha.valor_item_nf)}</td><td className="px-3 py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(linha.valor_pago_rateado)}</td><td className="px-3 py-2 text-center"><div>{badgeStatus(linha.status_pagamento, () => abrirLancamentosFbl1n(linha))}</div>{detalheExcedenteFbl1n(linha)}</td></tr>)}</tbody>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {linhasComposicaoAcumulada.map(linha => {
+                      const ehItem = Boolean(
+                        resumoSelecionado &&
+                        linha.fornecedor_codigo === resumoSelecionado.fornecedorCodigo &&
+                        linha.item_chave === resumoSelecionado.itemChave,
+                      );
+                      return (
+                        <tr
+                          key={linha.id}
+                          className={
+                            ehItem
+                              ? 'bg-indigo-50/70 dark:bg-indigo-950/40 hover:bg-indigo-100/70 dark:hover:bg-indigo-900/50'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }
+                        >
+                          <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDateBR(linha.data_documento)}</td>
+                          <td className="px-3 py-2 font-semibold">
+                            <div className="flex items-center gap-1.5">
+                              <span>{linha.fornecedor_nome || linha.fornecedor_codigo}</span>
+                              {ehItem && (
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                                  Item selecionado
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="max-w-[260px] truncate px-3 py-2" title={linha.descricao_item || linha.item_chave}>{linha.descricao_item || linha.item_chave}</td>
+                          <td className="px-3 py-2 font-mono font-bold">{linha.numero_nf_normalizado}</td>
+                          <td className="px-3 py-2 text-right font-mono">{formatQtd(linha.quantidade)}</td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">{formatBRL(linha.valor_item_nf)}</td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatBRL(linha.valor_pago_rateado)}</td>
+                          <td className="px-3 py-2 text-center"><div>{badgeStatus(linha.status_pagamento, () => abrirLancamentosFbl1n(linha))}</div>{detalheExcedenteFbl1n(linha)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
               </div>
             </div>

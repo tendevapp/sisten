@@ -22,3 +22,7 @@ scratch/
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Pastas de saida / exports locais temporarios
+outputs/
+

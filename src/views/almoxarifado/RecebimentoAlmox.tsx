@@ -20,7 +20,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, Loader2,
-  PackageCheck, Plus, RefreshCw, Search, Truck, X,
+  PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -50,6 +50,7 @@ import {
   type NaoConformidadeRow, type NcAcao,
 } from '../../lib/recebimentoAlmoxApi';
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
+import { canAccessForm } from '../../lib/pages';
 import type { Profile } from '../../types';
 
 interface Props {
@@ -137,7 +138,10 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
 
   const ncAbertas = ncs.filter((n) => n.status !== 'resolvida').length;
 
-  const cards = [
+  const podeRecebimento = canAccessForm(user, 'form_almoxarifado_recebimento');
+  const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
+
+  const cardsRecebimento = [
     {
       id: 'ficha' as Vista,
       codigo: PREFIXO_RECEB.carga,
@@ -165,6 +169,26 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
       badge: `${ncAbertas} aberta(s)`,
     },
+  ];
+
+  // A requisição no balcão é outro formulário (FRM.ALM-0014), com rota e
+  // permissão próprias; o card só leva até ela.
+  type CardHub = {
+    id: Vista; rota?: string; codigo: string; titulo: string; desc: string;
+    icon: typeof Truck; cor: string; badge: string;
+  };
+  const cards: CardHub[] = [
+    ...(podeRecebimento ? cardsRecebimento : []),
+    ...(podeBalcao ? [{
+      id: 'hub' as Vista,
+      rota: '/formularios/almoxarifado-requisicao-balcao',
+      codigo: 'RQB',
+      titulo: 'Requisição no balcão',
+      desc: 'Retirada de material do estoque por colaborador e aplicação — saída ou transferência, com o doc. SAP da baixa.',
+      icon: PackageMinus,
+      cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
+      badge: 'FRM.ALM-0014',
+    }] : []),
   ];
 
   const voltarAoHub = () => { setVista('hub'); setForm(null); setNcEd(null); setNcNova(false); setDetalhe(null); };
@@ -328,9 +352,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
             <PackageCheck className="h-6 w-6" />
           </span>
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--ink-primary)' }}>Recebimento de material</h1>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--ink-primary)' }}>Almoxarifado</h1>
             <p className="text-xs font-medium" style={{ color: 'var(--ink-muted)' }}>
-              Ficha cega na doca · conferência contra o pedido na bancada · divergência vira NCR.
+              Ficha cega na doca · conferência contra o pedido na bancada · divergência vira NCR · retirada no balcão.
             </p>
           </div>
         </div>
@@ -341,9 +365,9 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
           const Icon = card.icon;
           return (
             <button
-              key={card.id}
+              key={card.rota ?? card.id}
               type="button"
-              onClick={() => setVista(card.id)}
+              onClick={() => (card.rota ? onNavigate(card.rota) : setVista(card.id))}
               className="group flex flex-col items-start justify-between rounded-2xl border p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none"
               style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
             >

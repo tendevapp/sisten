@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   agruparHistoricoPreco,
   acumularValoresPorPeriodo,
+  acumularValoresPorPeriodoComDestaque,
   calcularPrecoUnitarioFiscal,
   chaveFornecedorItem,
   periodoDoAgrupamento,
@@ -71,6 +72,55 @@ describe('acumularValoresPorPeriodo', () => {
       { periodo: '2026-03-02', valorFaturado: 150, valorPagoRastreado: 30, faturadoAcumulado: 150, pagoAcumulado: 30 },
       { periodo: '2026-03-09', valorFaturado: 200, valorPagoRastreado: 100, faturadoAcumulado: 350, pagoAcumulado: 130 },
     ]);
+  });
+});
+
+describe('acumularValoresPorPeriodoComDestaque', () => {
+  it('isola os valores do item clicado mantendo o total do filtro e o residual dos demais itens', () => {
+    const linhas = [
+      { dataDocumento: '2026-03-02', valorFaturado: 100, valorPagoRastreado: 80, pertenceAoItem: true },
+      { dataDocumento: '2026-03-02', valorFaturado: 50, valorPagoRastreado: 20, pertenceAoItem: false },
+      { dataDocumento: '2026-03-09', valorFaturado: 200, valorPagoRastreado: 100, pertenceAoItem: false },
+    ];
+
+    expect(acumularValoresPorPeriodoComDestaque(linhas, 'semana')).toEqual([
+      {
+        periodo: '2026-03-02',
+        valorFaturadoTotal: 150,
+        valorPagoTotal: 100,
+        valorFaturadoItem: 100,
+        valorPagoItem: 80,
+        valorFaturadoOutros: 50,
+        valorPagoOutros: 20,
+        faturadoAcumulado: 150,
+        pagoAcumulado: 100,
+        valorFaturado: 150,
+        valorPagoRastreado: 100,
+      },
+      {
+        periodo: '2026-03-09',
+        valorFaturadoTotal: 200,
+        valorPagoTotal: 100,
+        valorFaturadoItem: 0,
+        valorPagoItem: 0,
+        valorFaturadoOutros: 200,
+        valorPagoOutros: 100,
+        faturadoAcumulado: 350,
+        pagoAcumulado: 200,
+        valorFaturado: 200,
+        valorPagoRastreado: 100,
+      },
+    ]);
+  });
+
+  it('quando nenhum item está selecionado, atribui zero ao item e todo o valor aos outros e totais', () => {
+    const linhas = [
+      { dataDocumento: '2026-03-02', valorFaturado: 100, valorPagoRastreado: 50 },
+    ];
+    const resultado = acumularValoresPorPeriodoComDestaque(linhas, 'mes');
+    expect(resultado[0].valorFaturadoItem).toBe(0);
+    expect(resultado[0].valorFaturadoOutros).toBe(100);
+    expect(resultado[0].valorFaturadoTotal).toBe(100);
   });
 });
 

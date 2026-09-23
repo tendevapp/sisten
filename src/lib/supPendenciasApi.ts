@@ -16,6 +16,7 @@ import type { SupPendenciaAcaoLog, SupPendenciaProcessamentoNF } from '../types'
 import {
   formatarDataDDMMAA,
   rotuloNumero,
+  derivarStatusChamadoPendencias,
   type LinhaPendencia,
   type DadosAjustePedido,
   type MetaPendencia,
@@ -239,7 +240,19 @@ export async function listarPendenciasAgrupadas(apenasComPendencia = true): Prom
     const r = requests.find(x => x.id === reqId);
     const ordenadas = [...ls].sort((a, b) => a.ordem - b.ordem);
     const concluidas = ordenadas.filter(l => l.status === 'concluido').length;
+
+    // Sincronizacao retroativa automatica: se o status do chamado em memoria
+    // divergiu do status calculado a partir das notas fiscais
+    if (r) {
+      const esperado = derivarStatusChamadoPendencias(ordenadas);
+      if (r.status !== esperado) {
+        sincronizarStatusChamado(reqId, ordenadas[0]?.protocolo, ordenadas[0]?.resolvido_por || undefined).catch(console.error);
+      }
+    }
+
     if (apenasComPendencia && concluidas === ordenadas.length) return;
+    const statusCalculado = r ? (r.status !== derivarStatusChamadoPendencias(ordenadas) ? derivarStatusChamadoPendencias(ordenadas) : r.status) : 'aberto';
+
     grupos.push({
       request_id: reqId,
       protocolo: ordenadas[0].protocolo,
@@ -249,7 +262,7 @@ export async function listarPendenciasAgrupadas(apenasComPendencia = true): Prom
       solicitante_name: r?.solicitante_name || '—',
       solicitante_sector_id: r?.solicitante_sector_id,
       criticality: r?.criticality || 1,
-      status: r?.status || 'aberto',
+      status: statusCalculado,
       created_at: ordenadas[0].created_at,
       linhas: ordenadas,
       total: ordenadas.length,
@@ -289,8 +302,73 @@ function extrairHistoricoExistente(
 }
 
 /**
- * Dá baixa numa nota e notifica quem abriu o chamado. O chamado em si não muda
- * de status — o atendente o resolve manualmente quando julgar concluído.
+ * Mantem o status do chamado-pai (core_solicitacoes) em sincronia com o
+ * andamento das notas fiscais na tabela sup_pend_processamento_nf:
+ * - Todas concluidas (total > 0): transiciona o chamado para 'resolvido'.
+ * - Ao menos 1 concluida (mas com pendentes): transiciona para 'em_atendimento'.
+ * - Nenhuma concluida: se estava 'resolvido', reverte para 'em_atendimento'.
+ */
+export async function sincronizarStatusChamado(
+  requestId: string,
+  protocolo?: string,
+  actorId?: string,
+): Promise<void> {
+  if (!supabase || !requestId) return;
+
+  const { data: linhas, error } = await (supabase as any)
+    .from(TABELA)
+    .select('id, status, protocolo')
+    .eq('request_id', requestId);
+
+  if (error || !linhas || linhas.length === 0) return;
+
+  const statusEsperado = derivarStatusChamadoPendencias(linhas);
+  const total = linhas.length;
+  const concluidas = linhas.filter((l: any) => l.status === 'concluido').length;
+  const prot = protocolo || linhas[0]?.protocolo || 'SUP';
+
+  const req = localDb.getRequests().find(r => r.id === requestId);
+  const statusAtual = req?.status;
+
+  if (statusAtual === statusEsperado) return;
+
+  const agoraISO = new Date().toISOString();
+
+  let comentario = '';
+  if (statusEsperado === 'resolvido') {
+    comentario = `Todas as notas fiscais (${total}/${total}) do chamado ${prot} foram baixadas e concluídas pelo Suprimentos.`;
+  } else if (statusEsperado === 'em_atendimento') {
+    if (statusAtual === 'resolvido') {
+      comentario = `Nota fiscal do chamado ${prot} reaberta pelo Suprimentos (${concluidas}/${total} concluídas).`;
+    } else {
+      comentario = `Atendimento iniciado: ${concluidas} de ${total} nota(s) baixada(s) pelo Suprimentos (${prot}).`;
+    }
+  } else {
+    comentario = `Nota fiscal do chamado ${prot} reaberta pelo Suprimentos.`;
+  }
+
+  if (req) {
+    if (statusEsperado !== 'resolvido' && req.resolved_at) {
+      req.resolved_at = undefined;
+    }
+    await localDb.updateRequestStatus(requestId, statusEsperado, actorId, comentario);
+  } else {
+    await (supabase as any)
+      .from('core_solicitacoes')
+      .update({
+        status: statusEsperado,
+        resolved_at: statusEsperado === 'resolvido' ? agoraISO : null,
+        first_response_at: statusEsperado === 'em_atendimento' ? agoraISO : undefined,
+        updated_at: agoraISO,
+        atendente_id: actorId || null,
+      })
+      .eq('id', requestId);
+  }
+}
+
+/**
+ * Da baixa numa nota, notifica quem abriu o chamado e sincroniza o status do
+ * chamado-pai com o andamento das pendencias.
  */
 export async function concluirPendencia(
   id: string,
@@ -354,6 +432,10 @@ export async function concluirPendencia(
       req.number,
     );
   }
+
+  // Sincroniza o chamado-pai (marca como resolvido se 100% das notas estiverem baixadas)
+  await sincronizarStatusChamado(linha.request_id, linha.protocolo, user?.id);
+
   return true;
 }
 
@@ -368,15 +450,22 @@ export async function reabrirPendencia(
   const agoraISO = new Date().toISOString();
 
   let hist: SupPendenciaAcaoLog[] = [];
+  let reqId = linhaAtual?.request_id;
+  let prot = linhaAtual?.protocolo;
+
   if (linhaAtual) {
     hist = extrairHistoricoExistente(linhaAtual);
   } else {
     const { data: row } = await (supabase as any)
       .from(TABELA)
-      .select('historico_acoes, resolvido_por, resolvido_em, resolucao')
+      .select('request_id, protocolo, historico_acoes, resolvido_por, resolvido_em, resolucao')
       .eq('id', id)
       .maybeSingle();
     hist = extrairHistoricoExistente(row);
+    if (row) {
+      reqId = row.request_id;
+      prot = row.protocolo;
+    }
   }
 
   const novaAcao: SupPendenciaAcaoLog = {
@@ -403,6 +492,11 @@ export async function reabrirPendencia(
     console.error('Falha ao reabrir pendência:', error);
     return false;
   }
+
+  if (reqId) {
+    await sincronizarStatusChamado(reqId, prot, user?.id);
+  }
+
   return true;
 }
 
@@ -453,11 +547,13 @@ export async function concluirPendenciasEmLote(
 
   const results = await Promise.all(promises);
   let sucessoCount = 0;
+  const reqsAfetados = new Map<string, string>();
 
   results.forEach(res => {
     if (!res.error && res.data) {
       sucessoCount++;
       const linha = res.data as SupPendenciaProcessamentoNF;
+      reqsAfetados.set(linha.request_id, linha.protocolo);
       const req = localDb.getRequests().find(r => r.id === linha.request_id);
       if (req) {
         const rotulo = rotuloNumero(linha.modelo);
@@ -473,6 +569,10 @@ export async function concluirPendenciasEmLote(
       }
     }
   });
+
+  for (const [reqId, prot] of reqsAfetados.entries()) {
+    await sincronizarStatusChamado(reqId, prot, user?.id);
+  }
 
   return sucessoCount > 0;
 }

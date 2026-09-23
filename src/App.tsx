@@ -44,6 +44,7 @@ const FinFaturamentoGwjaco = lazy(() => import('./views/financeiro/FinFaturament
 const FinRealizadoPorRubrica = lazy(() => import('./views/financeiro/FinRealizadoPorRubrica'));
 const FinPepView = lazy(() => import('./views/financeiro/FinPepView'));
 const GestaoRubricasFinanceiro = lazy(() => import('./views/admin/GestaoRubricasFinanceiro'));
+const ExportarAdmin = lazy(() => import('./views/admin/ExportarAdmin'));
 const ReconciliacaoPedidos = lazy(() => import('./views/ReconciliacaoPedidos'));
 const Fornecedores = lazy(() => import('./views/Fornecedores'));
 const RastreioCompras = lazy(() => import('./views/RastreioCompras'));
@@ -59,6 +60,7 @@ const LogisticaExpedicao = lazy(() => import('./views/LogisticaExpedicao'));
 const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/ExpedicaoRelatorioLeadTime'));
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
+const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -713,8 +715,17 @@ export default function App() {
 
       case '/formularios/almoxarifado':
       case '/formularios/almoxarifado-recebimento':
-        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_recebimento')) {
+        if (
+          canAccessPage(user, 'formularios') &&
+          (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao'))
+        ) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado-requisicao-balcao':
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_requisicao_balcao')) {
+          return <RequisicaoBalcao user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
@@ -919,6 +930,12 @@ export default function App() {
       case '/financeiro/rubricas':
         if (canAccessPage(user, 'admin_rubricas_financeiro')) {
           return <GestaoRubricasFinanceiro user={user} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/admin/exportar':
+        if (canAccessPage(user, 'admin_exportar')) {
+          return <ExportarAdmin user={user} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

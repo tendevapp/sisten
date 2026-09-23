@@ -11,7 +11,7 @@
  */
 
 import React from 'react';
-import { LucideIcon } from 'lucide-react';
+import { ChevronDown, LucideIcon } from 'lucide-react';
 
 interface ChartCardProps {
   title: string;
@@ -42,6 +42,14 @@ interface ChartCardProps {
   footer?: React.ReactNode;
   className?: string;
   children?: React.ReactNode;
+  /** Permite recolher/expandir o card. */
+  collapsible?: boolean;
+  /** Inicia recolhido se collapsible for true (padrão: false). */
+  defaultCollapsed?: boolean;
+  /** Estado de recolhimento controlado externamente. */
+  collapsed?: boolean;
+  /** Callback disparado ao alternar recolhimento. */
+  onToggleCollapse?: (recolhido: boolean) => void;
 }
 
 export default function ChartCard({
@@ -58,10 +66,27 @@ export default function ChartCard({
   footer,
   className = '',
   children,
+  collapsible = false,
+  defaultCollapsed = false,
+  collapsed: controlledCollapsed,
+  onToggleCollapse,
 }: ChartCardProps) {
+  const [internalCollapsed, setInternalCollapsed] = React.useState(defaultCollapsed);
+  const isControlled = controlledCollapsed !== undefined;
+  const isCollapsed = collapsible ? (isControlled ? controlledCollapsed : internalCollapsed) : false;
+
+  const handleToggle = () => {
+    if (!collapsible) return;
+    const next = !isCollapsed;
+    if (!isControlled) {
+      setInternalCollapsed(next);
+    }
+    onToggleCollapse?.(next);
+  };
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    if (!scrollToEnd || !minPlotWidth || loading || empty) return;
+    if (!scrollToEnd || !minPlotWidth || loading || empty || isCollapsed) return;
     const el = scrollRef.current;
     if (!el) return;
 
@@ -81,53 +106,87 @@ export default function ChartCard({
       clearTimeout(t2);
       clearTimeout(t3);
     };
-  }, [scrollToEnd, minPlotWidth, loading, empty, children]);
+  }, [scrollToEnd, minPlotWidth, loading, empty, children, isCollapsed]);
 
   return (
     <section
-      className={`rounded-xl border p-5 sm:p-6 space-y-4 transition-shadow duration-200 ${className}`}
+      className={`rounded-xl border p-5 sm:p-6 transition-shadow duration-200 ${isCollapsed ? 'space-y-0' : 'space-y-4'} ${className}`}
       style={{
         background: 'var(--surface-card)',
         borderColor: 'var(--hairline)',
         boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.04)',
       }}
     >
-      <header className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3
-            className="text-sm font-bold uppercase tracking-wider flex items-center gap-2"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {Icon && <Icon className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />}
-            {title}
-          </h3>
-          {description && (
-            <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-              {description}
-            </p>
+      <header
+        className={`flex items-start justify-between gap-4 ${collapsible ? 'cursor-pointer select-none group' : ''}`}
+        onClick={collapsible ? handleToggle : undefined}
+      >
+        <div className="min-w-0 flex items-start gap-2.5">
+          {collapsible && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggle();
+              }}
+              className="mt-0.5 p-1 rounded-md text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              aria-label={isCollapsed ? `Expandir ${title}` : `Recolher ${title}`}
+              aria-expanded={!isCollapsed}
+            >
+              <ChevronDown
+                className={`h-4 w-4 transition-transform duration-200 ${isCollapsed ? '-rotate-90 text-slate-400' : 'rotate-0 text-indigo-600 dark:text-indigo-400'}`}
+              />
+            </button>
           )}
+          <div className="min-w-0">
+            <h3
+              className="text-sm font-bold uppercase tracking-wider flex items-center gap-2 flex-wrap"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {Icon && <Icon className="h-4 w-4 shrink-0" style={{ color: 'var(--ink-muted)' }} aria-hidden="true" />}
+              <span>{title}</span>
+              {collapsible && (
+                <span className="text-[10px] font-normal normal-case tracking-normal text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                  {isCollapsed ? 'recolhido · clique para expandir' : 'clique para recolher'}
+                </span>
+              )}
+            </h3>
+            {description && (
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                {description}
+              </p>
+            )}
+          </div>
         </div>
-        {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
+        {actions && !isCollapsed && (
+          <div className="shrink-0 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {actions}
+          </div>
+        )}
       </header>
 
-      {loading ? (
-        <ChartSkeleton height={height} />
-      ) : empty ? (
-        <div
-          className="flex items-center justify-center text-sm text-center px-6"
-          style={{ height, color: 'var(--ink-muted)' }}
-        >
-          {emptyMessage}
-        </div>
-      ) : minPlotWidth ? (
-        <div ref={scrollRef} className="overflow-x-auto custom-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6 pb-2.5 pt-1">
-          <div style={{ minWidth: minPlotWidth, width: '100%' }}>{children}</div>
-        </div>
-      ) : (
-        children
-      )}
+      {!isCollapsed && (
+        <>
+          {loading ? (
+            <ChartSkeleton height={height} />
+          ) : empty ? (
+            <div
+              className="flex items-center justify-center text-sm text-center px-6"
+              style={{ height, color: 'var(--ink-muted)' }}
+            >
+              {emptyMessage}
+            </div>
+          ) : minPlotWidth ? (
+            <div ref={scrollRef} className="overflow-x-auto custom-scrollbar -mx-5 sm:-mx-6 px-5 sm:px-6 pb-2.5 pt-1">
+              <div style={{ minWidth: minPlotWidth, width: '100%' }}>{children}</div>
+            </div>
+          ) : (
+            children
+          )}
 
-      {footer && !loading && !empty && footer}
+          {footer && !loading && !empty && footer}
+        </>
+      )}
     </section>
   );
 }

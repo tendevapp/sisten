@@ -687,3 +687,22 @@ export function montarCorpoEmailConclusao(params: {
   return [...cabecalho, blocosItens.join('\n\n'), ...rodape].join('\n');
 }
 
+export type StatusChamadoDerivado = 'aberto' | 'em_atendimento' | 'resolvido';
+
+/**
+ * Determina o status esperado para o chamado-pai com base no estado das notas fiscais:
+ * - Se todas as notas estiverem concluídas (e houver ao menos 1): 'resolvido'.
+ * - Se ao menos 1 nota estiver concluída (mas ainda restarem pendentes): 'em_atendimento'.
+ * - Se nenhuma nota estiver concluída: 'aberto'.
+ */
+export function derivarStatusChamadoPendencias(
+  linhas: { status?: string | null }[]
+): StatusChamadoDerivado {
+  if (!linhas || linhas.length === 0) return 'aberto';
+  const concluidas = linhas.filter(l => l.status === 'concluido').length;
+  if (concluidas === linhas.length) return 'resolvido';
+  if (concluidas > 0) return 'em_atendimento';
+  return 'aberto';
+}
+
+

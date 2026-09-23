@@ -39,6 +39,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-09-23',
+    resumo: 'Suprimentos > Pendências de Processamento — Sincronização Automática de Status com Minhas Solicitações (`supPendenciasApi.ts`, `supPendenciasProcessamento.ts`, `supPendenciasProcessamento.test.ts`, `diretrizes.ts`): 1. Identificada causa raiz em que chamados com 100% das notas concluídas em Pendências de Processamento permaneciam como "Aberta" em Minhas Solicitações (a baixa gravava apenas em `sup_pend_processamento_nf`, sem transicionar `core_solicitacoes`); 2. Implementada função pura `derivarStatusChamadoPendencias` e sincronização bidirecional em `sincronizarStatusChamado`: se todas as notas do chamado estiverem baixadas, o chamado transiciona automaticamente para "resolvido"; havendo baixa parcial, transiciona para "em_atendimento"; ao reabrir nota, reverte conforme o estado; 3. Integrada sincronização automática em `concluirPendencia`, `concluirPendenciasEmLote`, `reabrirPendencia` e conferência retroativa em `listarPendenciasAgrupadas`; 4. Sincronizados no Supabase os chamados legados com notas concluídas (#3001033 e outros), alinhando o status em Minhas Solicitações; 5. Testes unitários atualizados e aprovados.',
+  },
+  {
+    data: '2026-09-23',
     resumo: 'Almoxarifado > Projetos — Correção de Salvamento de Status na Matriz de Autonomia (`PainelVisaoGeral.tsx`, `Projetos.tsx`, `MatrizAutonomiaKits.tsx`, `diretrizes.ts`): 1. Corrigida falha em tempo de execução ("Cannot read properties of undefined (reading \'id\')") ao salvar status ou número de série de células na Matriz de Autonomia de Kits pela aba Visão Geral; 2. O componente `PainelVisaoGeral.tsx` passou a receber e repassar a prop `user: Profile` para `<MatrizAutonomiaKits />`, garantindo que o usuário logado seja identificado no log de auditoria operacional; 3. Adicionada tratativa defensiva em `MatrizAutonomiaKits.tsx` para garantir fallback gracioso caso a propriedade `user` esteja ausente.',
   },
   {

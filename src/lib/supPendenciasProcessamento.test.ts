@@ -23,6 +23,7 @@ import {
   rotuloModelo,
   CATEGORIA_PENDENCIA_PROCESSAMENTO,
   CATEGORIA_AJUSTE_PEDIDO,
+  derivarStatusChamadoPendencias,
 } from './supPendenciasProcessamento';
 
 /* Modelo `nfse` — bloco do enunciado: uma célula por linha, com linha em branco
@@ -535,5 +536,35 @@ describe('categoria Ajuste de Pedido', () => {
     });
     expect(corpo).toContain('Sem imagem anexada.');
   });
+
+  describe('derivarStatusChamadoPendencias', () => {
+    it('retorna "aberto" para lista vazia ou todas pendentes', () => {
+      expect(derivarStatusChamadoPendencias([])).toBe('aberto');
+      expect(derivarStatusChamadoPendencias([{ status: 'pendente' }])).toBe('aberto');
+      expect(derivarStatusChamadoPendencias([{ status: 'pendente' }, { status: 'pendente' }])).toBe('aberto');
+    });
+
+    it('retorna "em_atendimento" quando parte das notas foram concluidas', () => {
+      expect(derivarStatusChamadoPendencias([
+        { status: 'concluido' },
+        { status: 'pendente' },
+      ])).toBe('em_atendimento');
+
+      expect(derivarStatusChamadoPendencias([
+        { status: 'concluido' },
+        { status: 'concluido' },
+        { status: 'pendente' },
+      ])).toBe('em_atendimento');
+    });
+
+    it('retorna "resolvido" quando 100% das notas foram concluidas', () => {
+      expect(derivarStatusChamadoPendencias([{ status: 'concluido' }])).toBe('resolvido');
+      expect(derivarStatusChamadoPendencias([
+        { status: 'concluido' },
+        { status: 'concluido' },
+      ])).toBe('resolvido');
+    });
+  });
 });
+
 

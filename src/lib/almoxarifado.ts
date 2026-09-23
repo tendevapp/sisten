@@ -42,7 +42,7 @@ export const DEPOSITO_DESCRICAO: Record<string, string> = {
   '0006': 'Inventário (Ajuste Sistêmico do estoque)',
   '0050': 'Recebimento Compra direta',
   '0090': 'CAPS - Depósito Virtual de faturamento dos Tramo (Contabilidade)',
-  '0105': 'Transferência Produção (Material consumo)',
+  '0105': 'Transferência Produção',
   '0200': 'Químicos',
   '0300': 'Segregados (materiais com validade vencidas ou materiais segregados)',
   '1000': 'Recebimento Materiais Estoque',

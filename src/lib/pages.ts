@@ -170,6 +170,7 @@ export const PAGES: PageDef[] = [
   { id: 'admin_importar_sap_log', group: 'ADMINISTRAÇÃO', label: 'Log Importação SAP', path: '/suprimentos/importar/log', icon: List, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_grupos_comprador', group: 'ADMINISTRAÇÃO', label: 'Grupos Comprador', path: '/suprimentos/grupos-comprador', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_rubricas_financeiro', group: 'ADMINISTRAÇÃO', label: 'Rubricas Financeiro', path: '/financeiro/rubricas', icon: Settings, defaultRoles: ['admin'], alwaysAdmin: true },
+  { id: 'admin_exportar', group: 'ADMINISTRAÇÃO', label: 'Exportar', path: '/admin/exportar', icon: FileSpreadsheet, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_helpdesk_config', group: 'ADMINISTRAÇÃO', label: 'Config. Helpdesk', path: '/admin/helpdesk', icon: Settings, defaultRoles: ['admin', 'coordenador_suprimentos'], alwaysAdmin: true },
   { id: 'admin_feedback', group: 'ADMINISTRAÇÃO', label: 'Reportes', path: '/admin/feedback', icon: Flag, defaultRoles: ['admin'], alwaysAdmin: true },
   { id: 'admin_apis', group: 'ADMINISTRAÇÃO', label: 'Gestão de APIs & IA', path: '/admin/apis', icon: Cpu, defaultRoles: ['admin'], alwaysAdmin: true },
@@ -240,6 +241,19 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     codigo: 'FRM.ALM-0001',
     descricao: 'Ficha cega de volumes, recebimento de materiais e não conformidades',
     path: '/formularios/almoxarifado',
+    defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
+  {
+    id: 'form_almoxarifado_requisicao_balcao',
+    grupoId: 'almoxarifado',
+    label: 'Requisição no Balcão',
+    codigo: 'FRM.ALM-0014',
+    descricao: 'Retirada de material do estoque (ZL0024) por colaborador e aplicação — saída ou transferência',
+    path: '/formularios/almoxarifado-requisicao-balcao',
     defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'],
     setores: {
       ids: ['2'],
@@ -609,7 +623,7 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     id: 'form_almoxarifado',
     grupoId: 'almoxarifado',
     label: 'Almoxarifado',
-    descricao: 'Formulários operacionais do almoxarifado (em breve)',
+    descricao: 'Recebimento físico, ficha cega, NCR e requisição no balcão',
     defaultRoles: '*',
   },
   {

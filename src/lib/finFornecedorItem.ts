@@ -34,6 +34,27 @@ export interface PontoValorAcumulado {
   pagoAcumulado: number;
 }
 
+export interface LinhaValorComDestaqueInput {
+  dataDocumento: string | null;
+  valorFaturado: number | null;
+  valorPagoRastreado: number | null;
+  pertenceAoItem?: boolean;
+}
+
+export interface PontoValorAcumuladoComDestaque {
+  periodo: string;
+  valorFaturadoTotal: number;
+  valorPagoTotal: number;
+  valorFaturadoItem: number;
+  valorPagoItem: number;
+  valorFaturadoOutros: number;
+  valorPagoOutros: number;
+  faturadoAcumulado: number;
+  pagoAcumulado: number;
+  valorFaturado: number;
+  valorPagoRastreado: number;
+}
+
 export interface PrecoUnitarioFiscalInput {
   precoLiquido: number | null | undefined;
   total: number | null | undefined;
@@ -155,6 +176,60 @@ export function acumularValoresPorPeriodo(linhas: LinhaValorPorPeriodo[], agrupa
       faturadoAcumulado += grupo.valorFaturado;
       pagoAcumulado += grupo.valorPagoRastreado;
       return { periodo, ...grupo, faturadoAcumulado, pagoAcumulado };
+    });
+}
+
+export function acumularValoresPorPeriodoComDestaque(
+  linhas: LinhaValorComDestaqueInput[],
+  agrupamento: AgrupamentoPreco,
+): PontoValorAcumuladoComDestaque[] {
+  const grupos = new Map<string, {
+    valorFaturadoTotal: number;
+    valorPagoTotal: number;
+    valorFaturadoItem: number;
+    valorPagoItem: number;
+  }>();
+
+  linhas.forEach(linha => {
+    if (!linha.dataDocumento) return;
+    const periodo = periodoDoAgrupamento(linha.dataDocumento, agrupamento);
+    const atual = grupos.get(periodo) || {
+      valorFaturadoTotal: 0,
+      valorPagoTotal: 0,
+      valorFaturadoItem: 0,
+      valorPagoItem: 0,
+    };
+    const faturado = numberOrZero(linha.valorFaturado);
+    const pago = numberOrZero(linha.valorPagoRastreado);
+
+    atual.valorFaturadoTotal += faturado;
+    atual.valorPagoTotal += pago;
+    if (linha.pertenceAoItem) {
+      atual.valorFaturadoItem += faturado;
+      atual.valorPagoItem += pago;
+    }
+    grupos.set(periodo, atual);
+  });
+
+  let faturadoAcumulado = 0;
+  let pagoAcumulado = 0;
+  return Array.from(grupos.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([periodo, grupo]) => {
+      faturadoAcumulado += grupo.valorFaturadoTotal;
+      pagoAcumulado += grupo.valorPagoTotal;
+      const valorFaturadoOutros = Math.max(0, grupo.valorFaturadoTotal - grupo.valorFaturadoItem);
+      const valorPagoOutros = Math.max(0, grupo.valorPagoTotal - grupo.valorPagoItem);
+      return {
+        periodo,
+        ...grupo,
+        valorFaturadoOutros,
+        valorPagoOutros,
+        faturadoAcumulado,
+        pagoAcumulado,
+        valorFaturado: grupo.valorFaturadoTotal,
+        valorPagoRastreado: grupo.valorPagoTotal,
+      };
     });
 }
 

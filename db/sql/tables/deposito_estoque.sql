@@ -42,7 +42,7 @@ VALUES
     ('0006', 'Inventário (Ajuste Sistêmico do estoque)', TRUE),
     ('0050', 'Recebimento Compra direta', TRUE),
     ('0090', 'CAPS - Depósito Virtual de faturamento dos Tramo (Contabilidade)', TRUE),
-    ('0105', 'Transferência Produção (Material consumo)', TRUE),
+    ('0105', 'Transferência Produção', TRUE),
     ('0200', 'Químicos', TRUE),
     ('0300', 'Segregados (materiais com validade vencidas ou materiais segregados)', TRUE),
     ('1000', 'Recebimento Materiais Estoque', TRUE),
