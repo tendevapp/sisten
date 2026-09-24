@@ -583,7 +583,12 @@ export class PdfTextWriter {
   }
 
   /** Desenha Tabela de Dados Formatada com Cabeçalho e Linhas Alternadas */
-  drawTable(headers: { label: string; width: number; align?: 'left' | 'center' | 'right' }[], rows: string[][]) {
+  drawTable(
+    headers: { label: string; width: number; align?: 'left' | 'center' | 'right' }[],
+    rows: string[][],
+    /** Cor de uma célula específica (ex.: divergência em vermelho); `undefined` = cor padrão. */
+    cellColor?: (rowIndex: number, colIndex: number) => RGB | undefined,
+  ) {
     if (rows.length === 0) return;
 
     const rowHeight = 16;
@@ -674,12 +679,13 @@ export class PdfTextWriter {
           textPosX = cellX + h.width - textWidth - 6;
         }
 
+        const corCelula = cellColor?.(rowIndex, colIndex);
         this.page.drawText(cellText, {
           x: textPosX,
           y: rowY + 4.5,
           size: 8,
-          font: this.font,
-          color: PDF_COLORS.darkText,
+          font: corCelula ? this.fontBold : this.font,
+          color: corCelula ?? PDF_COLORS.darkText,
         });
 
         cellX += h.width;

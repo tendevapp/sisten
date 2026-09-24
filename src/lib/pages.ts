@@ -261,6 +261,19 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
       keywords: ['almoxarifado', 'almox'],
     },
   },
+  {
+    id: 'form_almoxarifado_inventario',
+    grupoId: 'almoxarifado',
+    label: 'Inventário Cíclico',
+    codigo: 'FRM.ALM-0015',
+    descricao: 'Contagem cega dos itens 80/20 comparada com o saldo da ZL0024, com recontagem e alerta de divergência',
+    path: '/formularios/almoxarifado-inventario',
+    defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'],
+    setores: {
+      ids: ['2'],
+      keywords: ['almoxarifado', 'almox'],
+    },
+  },
 
   // PORTARIA & SEGURANÇA
   {

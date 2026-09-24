@@ -20,7 +20,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Building2, Camera, Check, ChevronDown, ClipboardCheck, Loader2,
-  PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
+  ClipboardList, PackageCheck, PackageMinus, Plus, RefreshCw, Search, Truck, X,
 } from 'lucide-react';
 import { endOfISOWeek, format, getISOWeek, isValid, parseISO, startOfISOWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -140,6 +140,7 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
 
   const podeRecebimento = canAccessForm(user, 'form_almoxarifado_recebimento');
   const podeBalcao = canAccessForm(user, 'form_almoxarifado_requisicao_balcao');
+  const podeInventario = canAccessForm(user, 'form_almoxarifado_inventario');
 
   const cardsRecebimento = [
     {
@@ -171,8 +172,8 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
     },
   ];
 
-  // A requisição no balcão é outro formulário (FRM.ALM-0014), com rota e
-  // permissão próprias; o card só leva até ela.
+  // A requisição no balcão (FRM.ALM-0014) e o inventário cíclico (FRM.ALM-0015)
+  // são outros formulários, com rota e permissão próprias; o card só leva até eles.
   type CardHub = {
     id: Vista; rota?: string; codigo: string; titulo: string; desc: string;
     icon: typeof Truck; cor: string; badge: string;
@@ -188,6 +189,16 @@ export default function RecebimentoAlmox({ user, onNavigate }: Props) {
       icon: PackageMinus,
       cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
       badge: 'FRM.ALM-0014',
+    }] : []),
+    ...(podeInventario ? [{
+      id: 'hub' as Vista,
+      rota: '/formularios/almoxarifado-inventario',
+      codigo: 'INV',
+      titulo: 'Inventário cíclico',
+      desc: 'Contagem cega dos itens 80/20 comparada com o saldo da ZL0024 — divergência pede recontagem e grava o alerta.',
+      icon: ClipboardList,
+      cor: 'bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-400',
+      badge: 'FRM.ALM-0015',
     }] : []),
   ];
 

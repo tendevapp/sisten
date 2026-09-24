@@ -173,8 +173,10 @@ export function buscarMateriaisEmDepositos(
  * Adiciona um material à lista. Se já estiver lá, soma a quantidade na linha
  * existente em vez de duplicar.
  */
-export function adicionarLinha(linhas: LinhaBalcao[], item: MaterialDisponivel, quantidade: number): LinhaBalcao[] {
-  const i = linhas.findIndex((l) => l.material === item.material);
+export function adicionarLinha(linhas: LinhaBalcao[], item: MaterialDisponivel & { deposito?: string | null }, quantidade: number): LinhaBalcao[] {
+  // Mesmo material de outro depósito é outra linha: o saldo é por depósito.
+  const mesmoDeposito = (l: LinhaBalcao) => chaveDeposito(l.deposito) === chaveDeposito(item.deposito);
+  const i = linhas.findIndex((l) => l.material === item.material && mesmoDeposito(l));
   if (i >= 0) {
     return linhas.map((l, j) => (j === i ? { ...l, quantidade: l.quantidade + quantidade } : l));
   }

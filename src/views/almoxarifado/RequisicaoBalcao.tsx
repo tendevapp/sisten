@@ -89,6 +89,8 @@ function gravarPreferencias(p: Preferencias): void {
   try { localStorage.setItem(CHAVE_PREFERENCIAS, JSON.stringify(p)); } catch { /* sem storage: só não lembra */ }
 }
 
+const DESTINO_PADRAO_TRANSFERENCIA = '0105';
+
 type FiltroExportacao = 'nao_exportadas' | 'exportadas' | 'todas';
 const ROTULO_FILTRO_EXPORTACAO: Record<FiltroExportacao, string> = {
   nao_exportadas: 'Não exportadas',
@@ -647,7 +649,7 @@ function CartaoRequisicao({
   const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
   const isTransferencia = r.tipo_movimento === 'transferencia';
   const pepsDistintos = isTransferencia ? [] : Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
-  const depositosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean))) : [];
+  const depositosDistintos = Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean)));
   const destinosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito_destino || r.deposito_destino).filter(Boolean))) : [];
 
   return (
@@ -726,7 +728,7 @@ function CartaoRequisicao({
               {destinosDistintos.length > 1 ? destinosDistintos.map((d) => formatDeposito(d)).join(', ') : (r.deposito_destino ? formatDeposito(r.deposito_destino) : 'Definir no SAP')}
             </>
           ) : (
-            <>Dep. {formatDeposito(r.deposito_origem)}</>
+            <>{depositosDistintos.length > 1 ? depositosDistintos.map((d) => formatDeposito(d)).join(', ') : `Dep. ${formatDeposito(r.deposito_origem)}`}</>
           )}
           {' · '}{r.itens.length} item(ns)
           {r.turno && <> · {r.turno}</>}
@@ -820,10 +822,10 @@ function ModalRequisicao({
           descricao: i.descricao ?? '',
           unidade: i.unidade ?? '',
           quantidade: Number(i.quantidade),
-          saldo: estoquePorDeposito.get(chaveDeposito(registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
+          saldo: estoquePorDeposito.get(chaveDeposito(i.deposito || registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
           aplicacao_pep: i.aplicacao_pep || registro.aplicacao_pep,
           aplicacao: i.aplicacao || registro.aplicacao,
-          deposito: registro.deposito_origem,
+          deposito: i.deposito || registro.deposito_origem,
           deposito_destino: null,
         })),
         peps,
@@ -850,7 +852,8 @@ function ModalRequisicao({
         registro.deposito_destino,
       );
     }
-    const destInicial = pref.destino || depositosAtivos[0] || '0005';
+    // Destino padrão da transferência: 0105 (Transferência Produção), o mais usado no balcão.
+    const destInicial = DESTINO_PADRAO_TRANSFERENCIA;
     return [criarGrupoPep('grupo-1', null, destInicial)];
   });
 
@@ -873,6 +876,10 @@ function ModalRequisicao({
     [grupos, tipo, depositoSaida],
   );
   const ultimaAplicacao = useMemo(() => ultimaAplicacaoPorColaborador(historico), [historico]);
+  const depositosSaida = useMemo(
+    () => Array.from(new Set(todasLinhas.map((l) => chaveDeposito(l.deposito)).filter(Boolean))),
+    [todasLinhas],
+  );
 
   const trocarTipo = (novoTipo: TipoMovimentoBalcao) => {
     if (novoTipo === tipo) return;
@@ -886,7 +893,7 @@ function ModalRequisicao({
         ...g,
         itens: g.itens.map((it) => ({
           ...it,
-          saldo: estoquePorDepositoModal.get(chaveDeposito(depositoSaida))?.get(it.material)?.saldo ?? it.saldo ?? 0,
+          saldo: estoquePorDepositoModal.get(chaveDeposito(it.deposito || depositoSaida))?.get(it.material)?.saldo ?? it.saldo ?? 0,
         })),
       })),
     );
@@ -949,7 +956,8 @@ function ModalRequisicao({
     if (tipo === 'transferencia') {
       setGruposTransferencia((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd, 'transferencia'));
     } else {
-      if (item.deposito !== depositoSaida) setDepositoSaida(item.deposito);
+      // O cabeçalho leva o depósito do 1º item; os demais itens guardam o próprio.
+      if (!depositoSaida) setDepositoSaida(item.deposito);
       setGruposSaida((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd, 'saida'));
     }
   };
@@ -968,7 +976,7 @@ function ModalRequisicao({
   const primeiroDestino = tipo === 'transferencia' ? (gruposTransferencia.find((g) => g.deposito_destino)?.deposito_destino || gruposTransferencia[0]?.deposito_destino || '') : '';
   const depOrigemCabecalho = tipo === 'transferencia'
     ? (todasLinhas.find((l) => l.deposito)?.deposito || '0004')
-    : depositoSaida;
+    : (todasLinhas.find((l) => l.deposito)?.deposito || depositoSaida);
 
   const erros = [
     ...validarRequisicao(
@@ -1005,7 +1013,7 @@ function ModalRequisicao({
             data,
             turno: turno || null,
             tipo_movimento: 'saida',
-            deposito_origem: depositoSaida,
+            deposito_origem: depOrigemCabecalho,
             deposito_destino: null,
             colaborador_id: colaborador.id,
             colaborador_nome: colaborador.nome,
@@ -1022,7 +1030,7 @@ function ModalRequisicao({
             aplicacao: l.aplicacao || pepPrincipal.nome,
             descricao: l.descricao,
             unidade: l.unidade,
-            deposito: depositoSaida,
+            deposito: l.deposito || depOrigemCabecalho,
           })),
         );
         gravarPreferencias({ tipo, turno, destino: '' });
@@ -1032,7 +1040,7 @@ function ModalRequisicao({
         if (registro) {
           // Edição de um registro existente
           const depOrigemEfetivo = todasLinhas.find((l) => l.deposito)?.deposito || registro.deposito_origem || '0004';
-          const depDestinoEfetivo = gruposTransferencia.find((g) => g.deposito_destino)?.deposito_destino || registro.deposito_destino || '0005';
+          const depDestinoEfetivo = gruposTransferencia.find((g) => g.deposito_destino)?.deposito_destino || registro.deposito_destino || DESTINO_PADRAO_TRANSFERENCIA;
           const codigo = await salvarRequisicaoBalcao(
             registro.id,
             {
@@ -1068,7 +1076,7 @@ function ModalRequisicao({
 
           for (const grupo of gruposTransferencia) {
             if (grupo.itens.length === 0) continue;
-            const destGrupo = grupo.deposito_destino || '0005';
+            const destGrupo = grupo.deposito_destino || DESTINO_PADRAO_TRANSFERENCIA;
 
             // Agrupa itens do grupo por origem
             const porOrigem = new Map<string, typeof grupo.itens>();
@@ -1124,7 +1132,7 @@ function ModalRequisicao({
       if (continuar) {
         setColaborador({ id: null, nome: '', registro: null });
         if (tipo === 'transferencia') {
-          setGruposTransferencia([criarGrupoPep('grupo-1', null, depositosAtivos[0] || '0005')]);
+          setGruposTransferencia([criarGrupoPep('grupo-1', null, DESTINO_PADRAO_TRANSFERENCIA)]);
         } else {
           setGruposSaida([criarGrupoPep('grupo-1', null, null)]);
           setDepositoSaida('');
@@ -1217,7 +1225,9 @@ function ModalRequisicao({
               </div>
               {todasLinhas.length > 0 && (
                 <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
-                  {todasLinhas.length} item(ns){tipo === 'saida' && deposito ? ` · saída do depósito ${formatDeposito(deposito)}` : ''}
+                  {todasLinhas.length} item(ns)
+                  {tipo === 'saida' && depositosSaida.length === 1 && ` · saída do depósito ${formatDeposito(depositosSaida[0])}`}
+                  {tipo === 'saida' && depositosSaida.length > 1 && ` · saída de ${depositosSaida.length} depósitos`}
                 </span>
               )}
             </div>
@@ -1302,8 +1312,11 @@ function ModalRequisicao({
                   {/* Input de Adicionar Item ao Grupo */}
                   <AdicionarItem
                     estoquePorDeposito={estoquePorDepositoModal}
-                    depositoFixo={tipo === 'transferencia' ? null : (todasLinhas.length > 0 ? deposito : null)}
-                    jaLancado={(m) => todasLinhas.filter((l) => (tipo === 'transferencia' ? l.deposito_destino === grupo.deposito_destino : true) && l.material === m).reduce((acc, cur) => acc + cur.quantidade, 0)}
+                    depositoFixo={null}
+                    depositoPadrao={tipo === 'saida' ? depOrigemCabecalho || null : null}
+                    jaLancado={(m, dep) => todasLinhas
+                      .filter((l) => l.material === m && chaveDeposito(l.deposito) === chaveDeposito(dep))
+                      .reduce((acc, cur) => acc + cur.quantidade, 0)}
                     onAdicionar={(item, qtd) => adicionarItemNoGrupo(grupo.id, item, qtd)}
                   />
 
@@ -1321,7 +1334,7 @@ function ModalRequisicao({
                               <div className="truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{l.descricao || l.material}</div>
                               <div className="text-[11px]" style={{ color: erro || conflitoDestino ? 'var(--status-critical)' : alerta ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
                                 <span className="font-mono">{l.material}</span>
-                                {tipo === 'transferencia' && l.deposito && (
+                                {l.deposito && (tipo === 'transferencia' || depositosSaida.length > 1) && (
                                   <span className="font-semibold text-emerald-700 dark:text-emerald-400">
                                     {' '}· saída de {formatDeposito(l.deposito)}
                                   </span>
@@ -1542,12 +1555,15 @@ function SeletorColaborador({
  * Permite adicionar itens com ou sem saldo na ZL0024 (sinalizados como alerta).
  */
 function AdicionarItem({
-  refBusca, estoquePorDeposito, depositoFixo, jaLancado, onAdicionar,
+  refBusca, estoquePorDeposito, depositoFixo, depositoPadrao, jaLancado, onAdicionar,
 }: {
   refBusca?: React.RefObject<HTMLInputElement | null>;
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>;
   depositoFixo: string | null;
-  jaLancado: (material: string) => number;
+  /** Depósito do item digitado sem saldo na ZL0024 (o do 1º item da requisição). */
+  depositoPadrao?: string | null;
+  /** Quantidade já lançada deste material saindo deste depósito. */
+  jaLancado: (material: string, deposito: string) => number;
   onAdicionar: (item: MaterialNoDeposito, quantidade: number) => void;
 }) {
   const [texto, setTexto] = useState('');
@@ -1577,7 +1593,7 @@ function AdicionarItem({
   };
 
   const quantidade = parseFloat(qtd.replace(',', '.'));
-  const restante = escolhido ? escolhido.saldo - jaLancado(escolhido.material) : 0;
+  const restante = escolhido ? escolhido.saldo - jaLancado(escolhido.material, escolhido.deposito) : 0;
   const semSaldo = restante <= 0;
   const qtdAcimaSaldo = quantidade > restante && restante > 0;
   const qtdInvalida = !(quantidade > 0);
@@ -1675,7 +1691,7 @@ function AdicionarItem({
                 descricao: `Material ${texto.trim().toUpperCase()}`,
                 unidade: 'UN',
                 saldo: 0,
-                deposito: depositoFixo || '0002',
+                deposito: depositoFixo || depositoPadrao || '0002',
               });
             }
           }
@@ -1719,7 +1735,7 @@ function AdicionarItem({
                     descricao: `Material ${texto.trim().toUpperCase()}`,
                     unidade: 'UN',
                     saldo: 0,
-                    deposito: depositoFixo || '0002',
+                    deposito: depositoFixo || depositoPadrao || '0002',
                   });
                 }}
                 className="block w-full px-3 py-2 text-left text-xs italic"
@@ -1821,7 +1837,7 @@ function ModalDetalhe({
   const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
   const isTransferencia = r.tipo_movimento === 'transferencia';
   const pepsDistintos = isTransferencia ? [] : Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
-  const depositosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean))) : [];
+  const depositosDistintos = Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean)));
   const destinosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito_destino || r.deposito_destino).filter(Boolean))) : [];
 
   return (
@@ -1898,7 +1914,7 @@ function ModalDetalhe({
             )}
             <Linha
               rotulo="Depósito de saída"
-              valor={isTransferencia && depositosDistintos.length > 1 ? depositosDistintos.map((d) => formatDeposito(d)).join(', ') : formatDeposito(r.deposito_origem)}
+              valor={depositosDistintos.length > 1 ? depositosDistintos.map((d) => formatDeposito(d)).join(', ') : formatDeposito(r.deposito_origem)}
             />
             {r.tipo_movimento === 'transferencia' && (
               <Linha

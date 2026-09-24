@@ -61,6 +61,7 @@ const ExpedicaoRelatorioLeadTime = lazy(() => import('./views/expedicao/Expedica
 const RhAseHoraExtra = lazy(() => import('./views/RhAseHoraExtra'));
 const RecebimentoAlmox = lazy(() => import('./views/almoxarifado/RecebimentoAlmox'));
 const RequisicaoBalcao = lazy(() => import('./views/almoxarifado/RequisicaoBalcao'));
+const InventarioCiclico = lazy(() => import('./views/almoxarifado/InventarioCiclico'));
 const SsmaHub = lazy(() => import('./views/ssma/SsmaHub'));
 const SsmaRidView = lazy(() => import('./views/ssma/SsmaRidView'));
 const FreteEstimator = lazy(() => import('./views/FreteEstimator'));
@@ -718,9 +719,16 @@ export default function App() {
       case '/formularios/almoxarifado-recebimento':
         if (
           canAccessPage(user, 'formularios') &&
-          (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao'))
+          (canAccessForm(user, 'form_almoxarifado_recebimento') || canAccessForm(user, 'form_almoxarifado_requisicao_balcao') ||
+            canAccessForm(user, 'form_almoxarifado_inventario'))
         ) {
           return <RecebimentoAlmox user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/formularios/almoxarifado-inventario':
+        if (canAccessPage(user, 'formularios') && canAccessForm(user, 'form_almoxarifado_inventario')) {
+          return <InventarioCiclico user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

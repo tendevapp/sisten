@@ -75,6 +75,14 @@ describe('linhas', () => {
     expect(l[0].quantidade).toBe(5);
   });
 
+  it('mesmo material de outro depósito vira outra linha, com o próprio saldo', () => {
+    const d2 = { ...item, deposito: '0002', saldo: 17 };
+    const d4 = { ...item, deposito: '4', saldo: 86 };
+    const l = adicionarLinha(adicionarLinha(adicionarLinha([], d2, 2), d4, 3), { ...d2, deposito: '2' }, 1);
+    expect(l).toHaveLength(2);
+    expect(l.map((x) => [x.deposito, x.quantidade, x.saldo])).toEqual([['0002', 3, 17], ['4', 3, 86]]);
+  });
+
   it('erroDaLinha só bloqueia quantidade zero ou negativa, não bloqueia saldo insuficiente', () => {
     expect(erroDaLinha({ quantidade: 0 })).not.toBeNull();
     expect(erroDaLinha({ quantidade: -1 })).not.toBeNull();
