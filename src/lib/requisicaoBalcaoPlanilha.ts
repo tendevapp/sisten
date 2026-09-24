@@ -22,13 +22,16 @@ export const BALCAO_COLUNAS = [
   'Material',
   'Texto breve',
   'Quantidade',
-  'Deposito',
-  'Descricao_Deposito',
+  'Deposito_Origem',
+  'Descricao_Origem',
+  'Deposito_Destino',
+  'Descricao_Destino',
   'Elemento_PEP',
   'Descricao_PEP',
   'Receptor_Centro',
   'Status_Processamento',
   'Observacao',
+  'SAP',
 ] as const;
 
 export type ColunaBalcao = (typeof BALCAO_COLUNAS)[number];
@@ -39,6 +42,7 @@ export interface RequisicaoParaPlanilha {
   codigo: string;
   tipo_movimento: TipoMovimentoBalcao;
   deposito_origem: string;
+  deposito_destino?: string | null;
   aplicacao_pep: string | null;
   aplicacao: string;
   observacao: string | null;
@@ -48,6 +52,8 @@ export interface RequisicaoParaPlanilha {
     quantidade: number;
     aplicacao_pep?: string | null;
     aplicacao?: string | null;
+    deposito?: string | null;
+    deposito_destino?: string | null;
     saldo_zl0024?: number | null;
     sem_saldo?: boolean | null;
   }[];
@@ -57,25 +63,31 @@ export interface RequisicaoParaPlanilha {
  * Converte requisições em linhas. A observação leva o código RQB na frente:
  * é o que liga a linha processada no SAP de volta à requisição.
  * `Status_Processamento` sai vazio — é preenchido por quem processa.
- * Cada item leva o seu Elemento_PEP respectivo (se houver grupos de PEP múltiplos).
+ * Cada item leva o seu Elemento_PEP e Depósito respectivo.
  */
 export function montarLinhasBalcao(requisicoes: RequisicaoParaPlanilha[]): LinhaPlanilhaBalcao[] {
   return requisicoes.flatMap((r) =>
     r.itens.map((i) => {
-      const pep = i.aplicacao_pep || r.aplicacao_pep || '';
-      const descPep = i.aplicacao || (i.aplicacao_pep ? i.aplicacao_pep : r.aplicacao);
+      const ehTransferencia = r.tipo_movimento === 'transferencia';
+      const pep = ehTransferencia ? '' : i.aplicacao_pep || r.aplicacao_pep || '';
+      const descPep = ehTransferencia ? '' : i.aplicacao || (i.aplicacao_pep ? i.aplicacao_pep : r.aplicacao);
+      const depositoOrigem = i.deposito || r.deposito_origem;
+      const depositoDestino = ehTransferencia ? (i.deposito_destino || r.deposito_destino)?.trim() || '' : '';
       return {
         Tipo: ROTULO_TIPO_MOVIMENTO[r.tipo_movimento],
         Material: i.material,
         'Texto breve': i.descricao ?? '',
         Quantidade: Number(i.quantidade),
-        Deposito: r.deposito_origem,
-        Descricao_Deposito: descricaoDeposito(r.deposito_origem),
+        Deposito_Origem: depositoOrigem,
+        Descricao_Origem: descricaoDeposito(depositoOrigem),
+        Deposito_Destino: depositoDestino,
+        Descricao_Destino: depositoDestino ? descricaoDeposito(depositoDestino) : '',
         Elemento_PEP: pep,
         Descricao_PEP: pep ? descPep : '',
         Receptor_Centro: BALCAO_CENTRO,
-        Status_Processamento: '',
+        Status_Processamento: 'Pendente',
         Observacao: r.observacao ? `${r.codigo} - ${r.observacao}` : r.codigo,
+        SAP: '',
       };
     }),
   );
@@ -195,8 +207,15 @@ export function exportarPlanilhaBalcao(requisicoes: RequisicaoParaPlanilha[]): {
   const linhas = montarLinhasBalcao(requisicoes);
   // `header` explícito: garante a ordem das colunas mesmo com célula vazia.
   const ws = XLSX.utils.json_to_sheet(linhas, { header: [...BALCAO_COLUNAS] });
+  ws['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(BALCAO_COLUNAS.length - 1)}${Math.max(linhas.length + 1, 1)}` };
+  ws['!cols'] = [
+    { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 13 },
+    { wch: 16 }, { wch: 25 }, { wch: 16 }, { wch: 25 },
+    { wch: 20 }, { wch: 26 }, { wch: 16 }, { wch: 22 },
+    { wch: 26 }, { wch: 18 },
+  ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Baixas');
+  XLSX.utils.book_append_sheet(wb, ws, 'Movimentacoes_SAP');
   const arquivo = nomeArquivoBalcao();
   XLSX.writeFile(wb, arquivo);
   return { arquivo, linhas: linhas.length };

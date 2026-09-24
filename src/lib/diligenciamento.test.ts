@@ -117,6 +117,7 @@ describe('montarItens', () => {
     const prazos: PrazoTransporte[] = [{ id: '1', uf: 'SP', transportadora: '', dias_corridos: 8 }];
     const cidades = indexarCidadesPorCodigo([{ forn_codigo: 'F1', estado_uf: 'SP' } as CidadeForn]);
     const [item] = montarItens([registro()], semDiligenciamento, semChegadas, cidades, semRegiao, prazos);
+    expect(item.grupoComprador).toBe('314');
     expect(item.previsaoCalculada).toBe('2026-08-18');
     expect(item.previsaoEfetiva).toBe('2026-08-18');
     expect(item.motivoSemPrevisao).toBeUndefined();

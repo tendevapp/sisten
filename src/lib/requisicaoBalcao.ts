@@ -43,12 +43,16 @@ export interface LinhaBalcao {
   quantidade: number;
   aplicacao_pep?: string | null;
   aplicacao?: string | null;
+  deposito?: string | null;
+  deposito_destino?: string | null;
 }
 
-/** Grupo de itens associados a um mesmo PEP no formulário. */
+/** Grupo de itens associados a um mesmo PEP (saída) ou Destino (transferência). */
 export interface GrupoPepBalcao {
   id: string;
-  pep: PepAplicacao | null;
+  pep?: PepAplicacao | null;
+  deposito_destino?: string | null;
+  deposito?: string | null;
   itens: LinhaBalcao[];
 }
 
@@ -220,13 +224,25 @@ export interface CabecalhoBalcao {
 /** Lista de pendências para salvar; vazia = pode gravar. */
 export function validarRequisicao(cab: CabecalhoBalcao, linhas: LinhaBalcao[]): string[] {
   const erros: string[] = [];
-  if (!cab.depositoOrigem && linhas.length > 0) erros.push('Depósito de saída não identificado.');
-  if (cab.tipoMovimento === 'transferencia' && cab.depositoDestino
-      && chaveDeposito(cab.depositoDestino) === chaveDeposito(cab.depositoOrigem)) {
-    erros.push('O depósito de destino precisa ser diferente do de saída.');
+  if (cab.tipoMovimento === 'saida') {
+    if (!cab.depositoOrigem && linhas.length > 0) erros.push('Depósito de saída não identificado.');
+    if (!cab.aplicacao.trim()) erros.push('Informe a aplicação (centro de custo / PEP).');
+  } else if (cab.tipoMovimento === 'transferencia') {
+    const semDepOrigem = linhas.some((l) => !l.deposito && !cab.depositoOrigem);
+    if (semDepOrigem) erros.push('Depósito de saída não informado em um ou mais itens.');
+    const semDepDestino = linhas.some((l) => !l.deposito_destino && !cab.depositoDestino);
+    if (semDepDestino) erros.push('Informe o depósito de destino.');
+
+    for (const l of linhas) {
+      const dest = chaveDeposito(l.deposito_destino || cab.depositoDestino);
+      const orig = chaveDeposito(l.deposito || cab.depositoOrigem);
+      if (dest && orig && dest === orig) {
+        erros.push('O depósito de destino precisa ser diferente do de saída.');
+        break;
+      }
+    }
   }
   if (!cab.colaboradorNome.trim()) erros.push('Informe o colaborador que está retirando.');
-  if (!cab.aplicacao.trim()) erros.push('Informe a aplicação (centro de custo / PEP).');
   if (linhas.length === 0) erros.push('Adicione ao menos um item.');
   const comErro = linhas.filter((l) => erroDaLinha(l));
   if (comErro.length > 0) {
@@ -268,22 +284,27 @@ export function ultimaAplicacaoPorColaborador(
 }
 
 // ===========================================================================
-// Gerenciamento de Grupos de PEP
+// Gerenciamento de Grupos (PEP em Saída / Destino em Transferência)
 // ===========================================================================
 
 export function criarGrupoPep(
   pepOuId?: PepAplicacao | string | null,
   pepSeId?: PepAplicacao | null,
+  depositoDestino?: string | null,
 ): GrupoPepBalcao {
   if (typeof pepOuId === 'string') {
-    return { id: pepOuId, pep: pepSeId ?? null, itens: [] };
+    return { id: pepOuId, pep: pepSeId ?? null, deposito_destino: depositoDestino ?? null, itens: [] };
   }
-  const id = `pep-grupo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  return { id, pep: pepOuId ?? null, itens: [] };
+  const id = `grupo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return { id, pep: pepOuId ?? pepSeId ?? null, deposito_destino: depositoDestino ?? null, itens: [] };
 }
 
-export function adicionarGrupoPep(grupos: GrupoPepBalcao[], pep: PepAplicacao | null = null): GrupoPepBalcao[] {
-  return [...grupos, criarGrupoPep(pep)];
+export function adicionarGrupoPep(
+  grupos: GrupoPepBalcao[],
+  pep: PepAplicacao | null = null,
+  depositoDestino: string | null = null,
+): GrupoPepBalcao[] {
+  return [...grupos, criarGrupoPep(pep, null, depositoDestino)];
 }
 
 export function removerGrupoPep(grupos: GrupoPepBalcao[], grupoId: string): GrupoPepBalcao[] {
@@ -310,21 +331,68 @@ export function definirPepDoGrupo(
   });
 }
 
-export function adicionarItemAoGrupo(
+export function definirDestinoDoGrupo(
   grupos: GrupoPepBalcao[],
   grupoId: string,
-  item: MaterialDisponivel,
-  quantidade: number,
+  depositoDestino: string | null,
 ): GrupoPepBalcao[] {
   return grupos.map((g) => {
     if (g.id !== grupoId) return g;
-    const linhaComPep: MaterialDisponivel = { ...item };
-    const novasLinhas = adicionarLinha(g.itens, linhaComPep, quantidade).map((l) => ({
+    return {
+      ...g,
+      deposito_destino: depositoDestino,
+      itens: g.itens.map((i) => ({
+        ...i,
+        deposito_destino: depositoDestino,
+      })),
+    };
+  });
+}
+
+/** Alias de definirDestinoDoGrupo / definirDepositoDoGrupo */
+export function definirDepositoDoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  deposito: string | null,
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    return {
+      ...g,
+      deposito,
+      deposito_destino: g.deposito_destino || deposito,
+      itens: g.itens.map((i) => ({
+        ...i,
+        deposito: i.deposito || deposito,
+        deposito_destino: i.deposito_destino || deposito,
+      })),
+    };
+  });
+}
+
+export function adicionarItemAoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  item: MaterialDisponivel & { deposito?: string },
+  quantidade: number,
+  tipoMovimento: TipoMovimentoBalcao = 'saida',
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    const depSaida = item.deposito || g.deposito || null;
+    const depDestino = tipoMovimento === 'transferencia' ? (g.deposito_destino || null) : null;
+    const linhaComDados: MaterialDisponivel = { ...item };
+    const novasLinhas = adicionarLinha(g.itens, linhaComDados, quantidade).map((l) => ({
       ...l,
-      aplicacao_pep: g.pep?.wbs ?? null,
-      aplicacao: g.pep?.nome ?? null,
+      aplicacao_pep: tipoMovimento === 'transferencia' ? null : (g.pep?.wbs ?? null),
+      aplicacao: tipoMovimento === 'transferencia' ? 'Transferência' : (g.pep?.nome ?? null),
+      deposito: l.deposito || depSaida,
+      deposito_destino: l.deposito_destino || depDestino,
     }));
-    return { ...g, itens: novasLinhas };
+    return {
+      ...g,
+      itens: novasLinhas,
+    };
   });
 }
 
@@ -354,12 +422,18 @@ export function atualizarQtdItemDoGrupo(
   });
 }
 
-export function achatarGruposPep(grupos: GrupoPepBalcao[]): LinhaBalcao[] {
+export function achatarGruposPep(
+  grupos: GrupoPepBalcao[],
+  tipoMovimento: TipoMovimentoBalcao = 'saida',
+  depositoGeral?: string,
+): LinhaBalcao[] {
   return grupos.flatMap((g) =>
     g.itens.map((i) => ({
       ...i,
-      aplicacao_pep: g.pep?.wbs ?? i.aplicacao_pep ?? null,
-      aplicacao: g.pep?.nome ?? i.aplicacao ?? null,
+      aplicacao_pep: tipoMovimento === 'transferencia' ? null : (g.pep?.wbs ?? i.aplicacao_pep ?? null),
+      aplicacao: tipoMovimento === 'transferencia' ? 'Transferência' : (g.pep?.nome ?? i.aplicacao ?? null),
+      deposito: i.deposito ?? g.deposito ?? depositoGeral ?? null,
+      deposito_destino: tipoMovimento === 'transferencia' ? (g.deposito_destino ?? i.deposito_destino ?? null) : null,
     })),
   );
 }
@@ -402,4 +476,61 @@ export function agruparLinhasPorPep(
       itens: mapa.get(chave) ?? [],
     };
   });
+}
+
+export function agruparLinhasPorDestino(
+  linhas: LinhaBalcao[],
+  destinoPadrao?: string | null,
+): GrupoPepBalcao[] {
+  if (linhas.length === 0) {
+    return [criarGrupoPep('grupo-1', null, destinoPadrao ?? null)];
+  }
+
+  const mapa = new Map<string, LinhaBalcao[]>();
+  const ordemChaves: string[] = [];
+
+  for (const linha of linhas) {
+    const chave = linha.deposito_destino || destinoPadrao || '__sem_destino__';
+    if (!mapa.has(chave)) {
+      mapa.set(chave, []);
+      ordemChaves.push(chave);
+    }
+    mapa.get(chave)!.push(linha);
+  }
+
+  return ordemChaves.map((chave, idx) => ({
+    id: `grupo-dest-${idx + 1}-${chave}`,
+    deposito_destino: chave === '__sem_destino__' ? (destinoPadrao ?? null) : chave,
+    pep: null,
+    itens: mapa.get(chave) ?? [],
+  }));
+}
+
+export function agruparLinhasPorDeposito(
+  linhas: LinhaBalcao[],
+  depositoPadrao?: string | null,
+): GrupoPepBalcao[] {
+  if (linhas.length === 0) {
+    return [criarGrupoPep('grupo-1', null, null)];
+  }
+
+  const mapa = new Map<string, LinhaBalcao[]>();
+  const ordemChaves: string[] = [];
+
+  for (const linha of linhas) {
+    const chave = linha.deposito || depositoPadrao || '__sem_deposito__';
+    if (!mapa.has(chave)) {
+      mapa.set(chave, []);
+      ordemChaves.push(chave);
+    }
+    mapa.get(chave)!.push(linha);
+  }
+
+  return ordemChaves.map((chave, idx) => ({
+    id: `grupo-dep-${idx + 1}-${chave}`,
+    deposito: chave === '__sem_deposito__' ? (depositoPadrao ?? null) : chave,
+    deposito_destino: null,
+    pep: null,
+    itens: mapa.get(chave) ?? [],
+  }));
 }

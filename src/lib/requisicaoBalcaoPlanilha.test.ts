@@ -5,9 +5,9 @@ import {
 
 describe('lerPlanilhaBalcaoConcluida', () => {
   // Formato real devolvido: as colunas exportadas + "SAP" no fim.
-  const cab = [...BALCAO_COLUNAS, 'SAP'];
+  const cab = [...BALCAO_COLUNAS];
   const linha = (obs: string, mat: number | string, sap: unknown, status = '') =>
-    ['Saída', mat, 'CAMISA', 1, '0002', 'EPIs', 'TEN001201016503', 'SUPRIMENTOS', 'TEN2', status, obs, sap];
+    ['Saída', mat, 'CAMISA', 1, '0002', 'EPIs', '', '', 'TEN001201016503', 'SUPRIMENTOS', 'TEN2', status, obs, sap];
 
   it('lê o doc. SAP da coluna SAP, código da Observacao e material numérico', () => {
     const r = lerPlanilhaBalcaoConcluida([cab, linha('RQB-230926-01 - Teste', 1404580, 4904066308)]);
@@ -16,7 +16,9 @@ describe('lerPlanilhaBalcaoConcluida', () => {
   });
 
   it('sem coluna chamada SAP, usa a última coluna com cabeçalho', () => {
-    const r = lerPlanilhaBalcaoConcluida([[...BALCAO_COLUNAS, 'Documento'], linha('RQB-230926-02', '1', '123')]);
+    const cabecalhoDocumento: string[] = [...BALCAO_COLUNAS];
+    cabecalhoDocumento[cabecalhoDocumento.indexOf('SAP')] = 'Documento';
+    const r = lerPlanilhaBalcaoConcluida([cabecalhoDocumento, linha('RQB-230926-02', '1', '123')]);
     expect(r.linhas[0].docSap).toBe('123');
     expect(r.colunaSap).toBe('Documento');
   });
@@ -48,6 +50,7 @@ describe('montarLinhasBalcao', () => {
       codigo: 'RQB-230926-01',
       tipo_movimento: 'transferencia',
       deposito_origem: '0105',
+      deposito_destino: '0002',
       aplicacao_pep: 'TEN001101127004',
       aplicacao: 'CUSTO LAVAGEM DE TRAMO',
       observacao: 'urgente',
@@ -67,6 +70,14 @@ describe('montarLinhasBalcao', () => {
     },
   ]);
 
+  it('mantém a ordem de colunas do modelo Movimentacoes_SAP', () => {
+    expect(BALCAO_COLUNAS).toEqual([
+      'Tipo', 'Material', 'Texto breve', 'Quantidade',
+      'Deposito_Origem', 'Descricao_Origem', 'Deposito_Destino', 'Descricao_Destino',
+      'Elemento_PEP', 'Descricao_PEP', 'Receptor_Centro', 'Status_Processamento', 'Observacao', 'SAP',
+    ]);
+  });
+
   it('uma linha por item, colunas na ordem pedida', () => {
     expect(linhas).toHaveLength(3);
     expect(Object.keys(linhas[0])).toEqual([...BALCAO_COLUNAS]);
@@ -78,13 +89,16 @@ describe('montarLinhasBalcao', () => {
       Material: '1291134',
       'Texto breve': 'DISCO FLAP',
       Quantidade: 10,
-      Deposito: '0105',
-      Descricao_Deposito: 'Transferência Produção',
-      Elemento_PEP: 'TEN001101127004',
-      Descricao_PEP: 'CUSTO LAVAGEM DE TRAMO',
+      Deposito_Origem: '0105',
+      Descricao_Origem: 'Transferência Produção',
+      Elemento_PEP: '',
+      Descricao_PEP: '',
       Receptor_Centro: 'TEN2',
-      Status_Processamento: '',
+      Status_Processamento: 'Pendente',
       Observacao: 'RQB-230926-01 - urgente',
+      Deposito_Destino: '0002',
+      Descricao_Destino: 'EPIs + Consumíveis',
+      SAP: '',
     });
     expect(linhas[2].Tipo).toBe('Saída');
     expect(linhas[2].Observacao).toBe('RQB-230926-02');
@@ -110,6 +124,25 @@ describe('montarLinhasBalcao', () => {
     expect(multiPepLinhas[0].Descricao_PEP).toBe('SUPRIMENTOS');
     expect(multiPepLinhas[1].Elemento_PEP).toBe('TEN001101127004');
     expect(multiPepLinhas[1].Descricao_PEP).toBe('LAVAGEM');
+  });
+
+  it('uses the unified SAP movement columns', () => {
+    expect(linhas[0]).toMatchObject({
+      Deposito_Origem: '0105',
+      Deposito_Destino: '0002',
+      Descricao_Destino: 'EPIs + Consumíveis',
+      Elemento_PEP: '',
+      Descricao_PEP: '',
+      Status_Processamento: 'Pendente',
+      SAP: '',
+    });
+    expect(linhas[2]).toMatchObject({
+      Deposito_Origem: '0002',
+      Deposito_Destino: '',
+      Elemento_PEP: 'TEN001114016001',
+      Status_Processamento: 'Pendente',
+      SAP: '',
+    });
   });
 
   it('nome do arquivo leva data e hora', () => {

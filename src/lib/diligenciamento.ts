@@ -158,6 +158,8 @@ export interface ItemDiligenciamento {
   unidade: string;
   valor?: number;
   transportadora: string;
+  /** Código do grupo do comprador responsável (ex: 314, 358, 447). */
+  grupoComprador?: string;
   faturamentoTransportadora?: string;
   previsaoManual?: string;
   /** `data de remessa + prazo`; null quando falta remessa ou prazo cadastrado. */
@@ -274,6 +276,7 @@ export function montarItens(
         unidade: r.unidade_medida,
         valor: r.valor_total,
         transportadora,
+        grupoComprador: r.grupo_comprador || undefined,
         faturamentoTransportadora: dataValida(dilig?.data_faturamento_transportadora)
           ? (dilig!.data_faturamento_transportadora as string)
           : undefined,

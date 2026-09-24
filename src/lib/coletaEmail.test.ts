@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarAssuntoColeta, montarCorpoColeta, LinhaColeta } from './coletaEmail';
+import { montarAssuntoColeta, montarCorpoColeta, resolverDadosFornecedor, LinhaColeta } from './coletaEmail';
 
 const linha = (over: Partial<LinhaColeta> = {}): LinhaColeta => ({
   dataColeta: '2026-09-10',
@@ -167,4 +167,126 @@ describe('montarCorpoColeta', () => {
     expect(linhasTexto[18]).toMatch(/Código: 1487880 \| Material: FITA ACR DUPLA FACE 19MM 33M \| Qtd: 1 UN \| Valor: R\$\s?147,08/);
     expect(linhasTexto[19]).toBe('--------------------------------------------------');
   });
+
+  it('adiciona Nome Fantasia, Razão Social, Endereço e Telefone quando disponíveis', () => {
+    const linhas: LinhaColeta[] = [
+      linha({
+        fornecedor: '67.086.759 CLAUDIA MARGEANE FREITAS',
+        nomeFantasia: 'FORTEC EPI',
+        razaoSocial: '67.086.759 CLAUDIA MARGEANE FREITAS',
+        endereco: 'Rua Margarida, 120, Centro - Jacobina - BA - CEP 44700-000',
+        telefone: '(74) 3621-1234 / (74) 99999-5678',
+        po: '4100468780',
+        codigoItem: '1437256',
+        material: 'CAMISA TERMICA',
+        quantidade: 5,
+        valor: 224.5,
+      }),
+    ];
+
+    const corpo = montarCorpoColeta({ linhas });
+    expect(corpo).toContain('FORNECEDOR: FORTEC EPI');
+    expect(corpo).toContain('Razão Social: 67.086.759 CLAUDIA MARGEANE FREITAS');
+    expect(corpo).toContain('Endereço: Rua Margarida, 120, Centro - Jacobina - BA - CEP 44700-000');
+    expect(corpo).toContain('Telefone: (74) 3621-1234 / (74) 99999-5678');
+  });
+
+  it('quando não tiver Nome Fantasia, usa a Razão Social do cadastro no título do fornecedor', () => {
+    const linhas: LinhaColeta[] = [
+      linha({
+        fornecedor: 'PARAFUSOS JACOBINA LTDA',
+        nomeFantasia: null,
+        razaoSocial: 'PARAFUSOS JACOBINA LTDA',
+        endereco: 'Av. Orlando Oliveira Pires, 500 - Jacobina - BA',
+        telefone: '(74) 3621-0000',
+        po: '4100123456',
+      }),
+    ];
+
+    const corpo = montarCorpoColeta({ linhas });
+    expect(corpo).toContain('FORNECEDOR: PARAFUSOS JACOBINA LTDA');
+    expect(corpo).not.toContain('Razão Social:');
+    expect(corpo).toContain('Endereço: Av. Orlando Oliveira Pires, 500 - Jacobina - BA');
+    expect(corpo).toContain('Telefone: (74) 3621-0000');
+  });
 });
+
+describe('resolverDadosFornecedor', () => {
+  const contatos = [
+    {
+      id: '1',
+      cod_vendor: '1000000084',
+      fornecedor: 'Agcomex Comercial Exportadora Ltda',
+      nome_fantasia: 'AGCOMEX',
+      telefone: '(11) 5555-1234',
+      representante_telefone: '(11) 98888-5678',
+      cidade: 'SAO PAULO',
+      estado_uf: 'SP',
+      created_at: '2026-01-01',
+    },
+    {
+      id: '2',
+      cod_vendor: '200',
+      fornecedor: 'Parafusos Silva Eireli',
+      nome_fantasia: '',
+      telefone: '(74) 3621-9999',
+      created_at: '2026-01-01',
+    },
+  ];
+
+  const cidadesPorCodigo = new Map([
+    [
+      '1000000084',
+      {
+        forn_codigo: '1000000084',
+        forn_nome: 'Agcomex Comercial Exportadora Ltda',
+        rua: 'R. Dr. Geraldo Campos Moreira, 375',
+        localidade: 'SAO PAULO',
+        estado_uf: 'SP',
+        codigo_postal: '04571-020',
+      },
+    ],
+  ]);
+
+  it('resolve por código SAP com nome fantasia, razão social, endereço e telefones', () => {
+    const res = resolverDadosFornecedor({
+      fornecedorCodigo: '1000000084',
+      fornecedorNome: 'Agcomex',
+      contatos,
+      cidadesPorCodigo,
+    });
+
+    expect(res.nomeFantasia).toBe('AGCOMEX');
+    expect(res.razaoSocial).toBe('Agcomex Comercial Exportadora Ltda');
+    expect(res.endereco).toBe('R. Dr. Geraldo Campos Moreira, 375, SAO PAULO - SP - CEP 04571-020');
+    expect(res.telefone).toBe('(11) 5555-1234 / (11) 98888-5678');
+  });
+
+  it('quando não houver nome fantasia, deixa null para usar razão social', () => {
+    const res = resolverDadosFornecedor({
+      fornecedorCodigo: '0000000200',
+      fornecedorNome: 'Parafusos Silva',
+      contatos,
+      cidadesPorCodigo,
+    });
+
+    expect(res.nomeFantasia).toBeNull();
+    expect(res.razaoSocial).toBe('Parafusos Silva Eireli');
+    expect(res.telefone).toBe('(74) 3621-9999');
+  });
+
+  it('tolera fornecedor não encontrado no cadastro sem quebrar', () => {
+    const res = resolverDadosFornecedor({
+      fornecedorCodigo: '999999',
+      fornecedorNome: 'Fornecedor Desconhecido',
+      contatos,
+      cidadesPorCodigo,
+    });
+
+    expect(res.nomeFantasia).toBeNull();
+    expect(res.razaoSocial).toBe('Fornecedor Desconhecido');
+    expect(res.endereco).toBeNull();
+    expect(res.telefone).toBeNull();
+  });
+});
+

@@ -38,6 +38,8 @@ export interface ReqBalcaoItemRow {
   saldo_zl0024: number | null;
   aplicacao_pep?: string | null;
   aplicacao?: string | null;
+  deposito?: string | null;
+  deposito_destino?: string | null;
   sem_saldo?: boolean | null;
   /** Documento SAP da baixa deste item — vem da importação da planilha concluída. */
   doc_sap: string | null;
@@ -139,6 +141,7 @@ export interface ReqBalcaoInput {
   colaborador_registro: string | null;
   /** A RPC grava a descrição a partir de `fin_pep`. */
   aplicacao_pep: string;
+  aplicacao?: string | null;
   observacao: string | null;
   criado_por_nome: string;
 }
@@ -163,6 +166,8 @@ export interface ReqBalcaoItemInput {
   quantidade: number;
   aplicacao_pep?: string | null;
   aplicacao?: string | null;
+  deposito?: string | null;
+  deposito_destino?: string | null;
   descricao?: string | null;
   unidade?: string | null;
 }

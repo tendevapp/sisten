@@ -35,8 +35,8 @@ import {
 } from '../../lib/almoxarifado';
 import {
   PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
-  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito,
-  criarGrupoPep, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
+  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito,
+  criarGrupoPep, definirDepositoDoGrupo, definirDestinoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
   type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
 } from '../../lib/requisicaoBalcao';
@@ -439,7 +439,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
               style={{ background: 'var(--brand)' }}
             >
               {exportando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              Exportar planilha
+              Exportar planilha SAP
             </button>
           </div>
         </div>
@@ -645,7 +645,10 @@ function CartaoRequisicao({
 }) {
   const acao = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
   const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
-  const pepsDistintos = Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+  const isTransferencia = r.tipo_movimento === 'transferencia';
+  const pepsDistintos = isTransferencia ? [] : Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+  const depositosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean))) : [];
+  const destinosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito_destino || r.deposito_destino).filter(Boolean))) : [];
 
   return (
     <div
@@ -685,16 +688,46 @@ function CartaoRequisicao({
               <Layers className="h-3 w-3" /> {pepsDistintos.length} PEPs
             </span>
           )}
+          {depositosDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+              title={`Itens saindo de ${depositosDistintos.length} depósitos distintos`}
+            >
+              <Layers className="h-3 w-3" /> {depositosDistintos.length} dep. de saída
+            </span>
+          )}
+          {destinosDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+              title={`Itens destinados a ${destinosDistintos.length} depósitos distintos`}
+            >
+              <Layers className="h-3 w-3" /> {destinosDistintos.length} destinos
+            </span>
+          )}
         </div>
         <div className="text-sm font-bold truncate" style={{ color: 'var(--ink-primary)' }}>
           {r.colaborador_nome}
           <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
-            {' · '}{pepsDistintos.length > 1 ? `${r.aplicacao} (+${pepsDistintos.length - 1} PEPs)` : r.aplicacao}
+            {' · '}
+            {isTransferencia
+              ? 'Transferência entre depósitos'
+              : pepsDistintos.length > 1
+                ? `${r.aplicacao} (+${pepsDistintos.length - 1} PEPs)`
+                : r.aplicacao}
           </span>
         </div>
         <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Dep. {formatDeposito(r.deposito_origem)}
-          {r.deposito_destino && <> → {formatDeposito(r.deposito_destino)}</>}
+          {isTransferencia ? (
+            <>
+              {depositosDistintos.length > 1 ? depositosDistintos.map((d) => formatDeposito(d)).join(', ') : `Dep. ${formatDeposito(r.deposito_origem)}`}
+              {' → '}
+              {destinosDistintos.length > 1 ? destinosDistintos.map((d) => formatDeposito(d)).join(', ') : (r.deposito_destino ? formatDeposito(r.deposito_destino) : 'Definir no SAP')}
+            </>
+          ) : (
+            <>Dep. {formatDeposito(r.deposito_origem)}</>
+          )}
           {' · '}{r.itens.length} item(ns)
           {r.turno && <> · {r.turno}</>}
         </div>
@@ -764,8 +797,7 @@ function ModalRequisicao({
   const [data, setData] = useState(registro?.data ?? hojeISO());
   const [turno, setTurno] = useState(registro?.turno ?? pref.turno ?? '');
   const [tipo, setTipo] = useState<TipoMovimentoBalcao>(registro?.tipo_movimento ?? pref.tipo ?? 'saida');
-  const [deposito, setDeposito] = useState(() => (registro ? chaveDeposito(registro.deposito_origem) : ''));
-  const [destino, setDestino] = useState(registro?.deposito_destino ?? pref.destino ?? '');
+  const [depositoSaida, setDepositoSaida] = useState(() => (registro && registro.tipo_movimento === 'saida' ? chaveDeposito(registro.deposito_origem) : ''));
   const [colaborador, setColaborador] = useState<{ id: string | null; nome: string; registro: string | null }>(
     registro
       ? { id: registro.colaborador_id, nome: registro.colaborador_nome, registro: registro.colaborador_registro }
@@ -773,12 +805,15 @@ function ModalRequisicao({
   );
   const [observacao, setObservacao] = useState(registro?.observacao ?? '');
 
-  // Grupos de PEP
-  const [grupos, setGrupos] = useState<GrupoPepBalcao[]>(() => {
-    if (registro?.itens && registro.itens.length > 0) {
-      const pepPadrao = registro.aplicacao_pep
-        ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao }
-        : null;
+  const depositosAtivos = useMemo(
+    () => ordenarDepositos(Object.keys(DEPOSITO_DESCRICAO).filter((d) => !isDepositoInativo(d))),
+    [],
+  );
+
+  // Estados completamente separados para Saída e Transferência (evita contaminação e campos travados)
+  const [gruposSaida, setGruposSaida] = useState<GrupoPepBalcao[]>(() => {
+    if (registro && registro.tipo_movimento === 'saida' && registro.itens && registro.itens.length > 0) {
+      const pepPadrao = registro.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao } : null;
       return agruparLinhasPorPep(
         registro.itens.map((i) => ({
           material: i.material,
@@ -788,52 +823,114 @@ function ModalRequisicao({
           saldo: estoquePorDeposito.get(chaveDeposito(registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
           aplicacao_pep: i.aplicacao_pep || registro.aplicacao_pep,
           aplicacao: i.aplicacao || registro.aplicacao,
+          deposito: registro.deposito_origem,
+          deposito_destino: null,
         })),
         peps,
         pepPadrao,
       );
     }
-    return [criarGrupoPep('grupo-1', null)];
+    return [criarGrupoPep('grupo-1', null, null)];
   });
+
+  const [gruposTransferencia, setGruposTransferencia] = useState<GrupoPepBalcao[]>(() => {
+    if (registro && registro.tipo_movimento === 'transferencia' && registro.itens && registro.itens.length > 0) {
+      return agruparLinhasPorDestino(
+        registro.itens.map((i) => ({
+          material: i.material,
+          descricao: i.descricao ?? '',
+          unidade: i.unidade ?? '',
+          quantidade: Number(i.quantidade),
+          saldo: estoquePorDeposito.get(chaveDeposito(i.deposito || registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
+          aplicacao_pep: null,
+          aplicacao: null,
+          deposito: i.deposito || registro.deposito_origem,
+          deposito_destino: i.deposito_destino || registro.deposito_destino,
+        })),
+        registro.deposito_destino,
+      );
+    }
+    const destInicial = pref.destino || depositosAtivos[0] || '0005';
+    return [criarGrupoPep('grupo-1', null, destInicial)];
+  });
+
+  const grupos = tipo === 'saida' ? gruposSaida : gruposTransferencia;
+  const setGrupos = (updater: GrupoPepBalcao[] | ((gs: GrupoPepBalcao[]) => GrupoPepBalcao[])) => {
+    if (tipo === 'saida') {
+      setGruposSaida(updater);
+    } else {
+      setGruposTransferencia(updater);
+    }
+  };
+  const deposito = depositoSaida;
+  const setDeposito = setDepositoSaida;
 
   const [salvando, setSalvando] = useState(false);
   const [tentouSalvar, setTentouSalvar] = useState(false);
 
-  const todasLinhas = useMemo(() => achatarGruposPep(grupos), [grupos]);
-  const disponiveis = estoquePorDepositoModal.get(deposito);
+  const todasLinhas = useMemo(
+    () => achatarGruposPep(grupos, tipo, tipo === 'saida' ? depositoSaida : undefined),
+    [grupos, tipo, depositoSaida],
+  );
   const ultimaAplicacao = useMemo(() => ultimaAplicacaoPorColaborador(historico), [historico]);
 
+  const trocarTipo = (novoTipo: TipoMovimentoBalcao) => {
+    if (novoTipo === tipo) return;
+    setTipo(novoTipo);
+    setTentouSalvar(false);
+  };
+
   useEffect(() => {
-    setGrupos((gs) =>
+    setGruposSaida((gs) =>
       gs.map((g) => ({
         ...g,
-        itens: reaplicarSaldos(g.itens, disponiveis),
+        itens: g.itens.map((it) => ({
+          ...it,
+          saldo: estoquePorDepositoModal.get(chaveDeposito(depositoSaida))?.get(it.material)?.saldo ?? it.saldo ?? 0,
+        })),
       })),
     );
-  }, [disponiveis]);
+  }, [estoquePorDepositoModal, depositoSaida]);
 
-  // Removeu todos os itens: libera o depósito para o próximo item escolher.
   useEffect(() => {
-    if (todasLinhas.length === 0 && !registro) setDeposito('');
-  }, [todasLinhas.length, registro]);
+    setGruposTransferencia((gs) =>
+      gs.map((g) => ({
+        ...g,
+        itens: g.itens.map((it) => {
+          const depDoItem = it.deposito || '0004';
+          const disp = estoquePorDepositoModal.get(chaveDeposito(depDoItem));
+          return {
+            ...it,
+            saldo: disp?.get(it.material)?.saldo ?? it.saldo ?? 0,
+          };
+        }),
+      })),
+    );
+  }, [estoquePorDepositoModal]);
 
-  const destinosPossiveis = useMemo(
-    () => ordenarDepositos(Object.keys(DEPOSITO_DESCRICAO).filter((d) => !isDepositoInativo(d) && d !== deposito)),
-    [deposito],
-  );
+  // Removeu todos os itens na saida: libera o deposito para o proximo item escolher.
+  useEffect(() => {
+    if (tipo === 'saida' && todasLinhas.length === 0 && !registro) setDepositoSaida('');
+  }, [todasLinhas.length, registro, tipo]);
 
   const escolherColaborador = (p: { id: string | null; nome: string; registro: string | null }) => {
     setColaborador(p);
-    if (p.id) {
+    if (p.id && tipo === 'saida') {
       const ult = ultimaAplicacao.get(p.id);
-      if (ult && grupos.length === 1 && !grupos[0].pep) {
-        setGrupos((gs) => definirPepDoGrupo(gs, gs[0].id, ult));
+      if (ult && gruposSaida.length === 1 && !gruposSaida[0].pep) {
+        setGruposSaida((gs) => definirPepDoGrupo(gs, gs[0].id, ult));
       }
     }
   };
 
   const adicionarNovoGrupo = () => {
-    setGrupos((gs) => adicionarGrupoPep(gs, null));
+    if (tipo === 'transferencia') {
+      const destsUsados = new Set(gruposTransferencia.map((g) => g.deposito_destino).filter(Boolean));
+      const proximoDest = depositosAtivos.find((d) => !destsUsados.has(d)) || depositosAtivos[0] || '0005';
+      setGruposTransferencia((gs) => adicionarGrupoPep(gs, null, proximoDest));
+    } else {
+      setGruposSaida((gs) => adicionarGrupoPep(gs, null));
+    }
   };
 
   const removerGrupo = (grupoId: string) => {
@@ -841,12 +938,20 @@ function ModalRequisicao({
   };
 
   const alterarPepDoGrupo = (grupoId: string, pep: PepAplicacao | null) => {
-    setGrupos((gs) => definirPepDoGrupo(gs, grupoId, pep));
+    setGruposSaida((gs) => definirPepDoGrupo(gs, grupoId, pep));
+  };
+
+  const alterarDestinoDoGrupo = (grupoId: string, novoDest: string) => {
+    setGruposTransferencia((gs) => definirDestinoDoGrupo(gs, grupoId, novoDest));
   };
 
   const adicionarItemNoGrupo = (grupoId: string, item: MaterialNoDeposito, qtd: number) => {
-    if (item.deposito !== deposito) setDeposito(item.deposito);
-    setGrupos((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd));
+    if (tipo === 'transferencia') {
+      setGruposTransferencia((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd, 'transferencia'));
+    } else {
+      if (item.deposito !== depositoSaida) setDepositoSaida(item.deposito);
+      setGruposSaida((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd, 'saida'));
+    }
   };
 
   const removerItemDoGrupoIdx = (grupoId: string, itemIdx: number) => {
@@ -857,21 +962,27 @@ function ModalRequisicao({
     setGrupos((gs) => atualizarQtdItemDoGrupo(gs, grupoId, itemIdx, qtd));
   };
 
-  const primeiroPep = grupos.find((g) => g.pep)?.pep ?? null;
-  const gruposSemPep = grupos.filter((g) => g.itens.length > 0 && !g.pep);
+  const primeiroPep = tipo === 'saida' ? (gruposSaida.find((g) => g.pep)?.pep ?? null) : null;
+  const gruposSemPep = tipo === 'saida' ? gruposSaida.filter((g) => g.itens.length > 0 && !g.pep) : [];
+  const gruposSemDestino = tipo === 'transferencia' ? gruposTransferencia.filter((g) => !g.deposito_destino) : [];
+  const primeiroDestino = tipo === 'transferencia' ? (gruposTransferencia.find((g) => g.deposito_destino)?.deposito_destino || gruposTransferencia[0]?.deposito_destino || '') : '';
+  const depOrigemCabecalho = tipo === 'transferencia'
+    ? (todasLinhas.find((l) => l.deposito)?.deposito || '0004')
+    : depositoSaida;
 
   const erros = [
     ...validarRequisicao(
       {
         tipoMovimento: tipo,
-        depositoOrigem: deposito,
-        depositoDestino: destino,
+        depositoOrigem: depOrigemCabecalho,
+        depositoDestino: primeiroDestino,
         colaboradorNome: colaborador.nome,
-        aplicacao: primeiroPep?.wbs ?? '',
+        aplicacao: tipo === 'transferencia' ? 'TRANSFERENCIA' : (primeiroPep?.wbs ?? ''),
       },
       todasLinhas,
     ),
     ...(gruposSemPep.length > 0 ? [`${gruposSemPep.length} grupo(s) com itens sem PEP selecionado.`] : []),
+    ...(gruposSemDestino.length > 0 ? [`${gruposSemDestino.length} grupo(s) sem depósito de destino definido.`] : []),
   ];
 
   const alertas = alertasRequisicao(todasLinhas);
@@ -884,37 +995,140 @@ function ModalRequisicao({
     }
     setSalvando(true);
     try {
-      const pepPrincipal = primeiroPep ?? peps[0];
-      const codigo = await salvarRequisicaoBalcao(
-        registro?.id ?? null,
-        {
-          data,
-          turno: turno || null,
-          tipo_movimento: tipo,
-          deposito_origem: deposito,
-          deposito_destino: tipo === 'transferencia' ? destino || null : null,
-          colaborador_id: colaborador.id,
-          colaborador_nome: colaborador.nome,
-          colaborador_registro: colaborador.registro,
-          aplicacao_pep: pepPrincipal.wbs,
-          observacao: observacao || null,
-          criado_por_nome: user.name,
-        },
-        todasLinhas.map((l) => ({
-          material: l.material,
-          quantidade: l.quantidade,
-          aplicacao_pep: l.aplicacao_pep || pepPrincipal.wbs,
-          aplicacao: l.aplicacao || pepPrincipal.nome,
-          descricao: l.descricao,
-          unidade: l.unidade,
-        })),
-      );
-      gravarPreferencias({ tipo, turno, destino });
-      toast.success(registro ? `${codigo} atualizada.` : `${codigo} registrada.`);
+      const pepCompatibilidade = peps.find((p) => p.nome.toUpperCase().includes('ALMOXARIFADO'))?.wbs ?? peps[0]?.wbs ?? 'TEN001201016505';
+
+      if (tipo === 'saida') {
+        const pepPrincipal = primeiroPep ?? peps[0];
+        const codigo = await salvarRequisicaoBalcao(
+          registro?.id ?? null,
+          {
+            data,
+            turno: turno || null,
+            tipo_movimento: 'saida',
+            deposito_origem: depositoSaida,
+            deposito_destino: null,
+            colaborador_id: colaborador.id,
+            colaborador_nome: colaborador.nome,
+            colaborador_registro: colaborador.registro,
+            aplicacao_pep: pepPrincipal.wbs,
+            aplicacao: pepPrincipal.nome,
+            observacao: observacao || null,
+            criado_por_nome: user.name,
+          },
+          todasLinhas.map((l) => ({
+            material: l.material,
+            quantidade: l.quantidade,
+            aplicacao_pep: l.aplicacao_pep || pepPrincipal.wbs,
+            aplicacao: l.aplicacao || pepPrincipal.nome,
+            descricao: l.descricao,
+            unidade: l.unidade,
+            deposito: depositoSaida,
+          })),
+        );
+        gravarPreferencias({ tipo, turno, destino: '' });
+        toast.success(registro ? `${codigo} atualizada.` : `${codigo} registrada.`);
+      } else {
+        // Transferência: envios individuais
+        if (registro) {
+          // Edição de um registro existente
+          const depOrigemEfetivo = todasLinhas.find((l) => l.deposito)?.deposito || registro.deposito_origem || '0004';
+          const depDestinoEfetivo = gruposTransferencia.find((g) => g.deposito_destino)?.deposito_destino || registro.deposito_destino || '0005';
+          const codigo = await salvarRequisicaoBalcao(
+            registro.id,
+            {
+              data,
+              turno: turno || null,
+              tipo_movimento: 'transferencia',
+              deposito_origem: depOrigemEfetivo,
+              deposito_destino: depDestinoEfetivo,
+              colaborador_id: colaborador.id,
+              colaborador_nome: colaborador.nome,
+              colaborador_registro: colaborador.registro,
+              aplicacao_pep: pepCompatibilidade,
+              aplicacao: 'Transferência entre depósitos',
+              observacao: observacao || null,
+              criado_por_nome: user.name,
+            },
+            todasLinhas.map((l) => ({
+              material: l.material,
+              quantidade: l.quantidade,
+              aplicacao_pep: pepCompatibilidade,
+              aplicacao: 'Transferência entre depósitos',
+              descricao: l.descricao,
+              unidade: l.unidade,
+              deposito: l.deposito || depOrigemEfetivo,
+              deposito_destino: l.deposito_destino || depDestinoEfetivo,
+            })),
+          );
+          gravarPreferencias({ tipo, turno, destino: depDestinoEfetivo });
+          toast.success(`${codigo} atualizada.`);
+        } else {
+          // Criação: envios individuais por grupo de destino e por depósito de origem
+          const codigosCriados: string[] = [];
+
+          for (const grupo of gruposTransferencia) {
+            if (grupo.itens.length === 0) continue;
+            const destGrupo = grupo.deposito_destino || '0005';
+
+            // Agrupa itens do grupo por origem
+            const porOrigem = new Map<string, typeof grupo.itens>();
+            for (const item of grupo.itens) {
+              const orig = item.deposito || '0004';
+              if (!porOrigem.has(orig)) porOrigem.set(orig, []);
+              porOrigem.get(orig)!.push(item);
+            }
+
+            for (const [depOrig, itensOrig] of porOrigem) {
+              const codigo = await salvarRequisicaoBalcao(
+                null,
+                {
+                  data,
+                  turno: turno || null,
+                  tipo_movimento: 'transferencia',
+                  deposito_origem: depOrig,
+                  deposito_destino: destGrupo,
+                  colaborador_id: colaborador.id,
+                  colaborador_nome: colaborador.nome,
+                  colaborador_registro: colaborador.registro,
+                  aplicacao_pep: pepCompatibilidade,
+                  aplicacao: 'Transferência entre depósitos',
+                  observacao: observacao || null,
+                  criado_por_nome: user.name,
+                },
+                itensOrig.map((l) => ({
+                  material: l.material,
+                  quantidade: l.quantidade,
+                  aplicacao_pep: pepCompatibilidade,
+                  aplicacao: 'Transferência entre depósitos',
+                  descricao: l.descricao,
+                  unidade: l.unidade,
+                  deposito: depOrig,
+                  deposito_destino: destGrupo,
+                })),
+              );
+              codigosCriados.push(codigo);
+            }
+          }
+
+          const ultimoDestino = gruposTransferencia[0]?.deposito_destino || '';
+          gravarPreferencias({ tipo, turno, destino: ultimoDestino });
+          if (codigosCriados.length === 1) {
+            toast.success(`${codigosCriados[0]} registrada.`);
+          } else if (codigosCriados.length > 1) {
+            toast.success(`${codigosCriados.length} transferências registradas: ${codigosCriados.join(', ')}.`);
+          }
+        }
+      }
+
       await onSalvo(continuar);
       if (continuar) {
         setColaborador({ id: null, nome: '', registro: null });
-        setGrupos([criarGrupoPep('grupo-1', null)]);
+        if (tipo === 'transferencia') {
+          setGruposTransferencia([criarGrupoPep('grupo-1', null, depositosAtivos[0] || '0005')]);
+        } else {
+          setGruposSaida([criarGrupoPep('grupo-1', null, null)]);
+          setDepositoSaida('');
+        }
         setObservacao('');
         setTentouSalvar(false);
       }
@@ -960,7 +1174,7 @@ function ModalRequisicao({
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setTipo(t)}
+                    onClick={() => trocarTipo(t)}
                     className="rounded-md py-1.5 text-xs font-bold transition-colors"
                     style={tipo === t
                       ? { background: 'var(--brand)', color: 'white' }
@@ -982,46 +1196,41 @@ function ModalRequisicao({
             </Campo>
           </div>
 
-          {tipo === 'transferencia' && (
-            <Campo rotulo="Depósito de destino">
-              <select value={destino} onChange={(e) => setDestino(e.target.value)} className={inputCls}>
-                <option value="">Definir no SAP</option>
-                {destinosPossiveis.map((d) => <option key={d} value={d}>{formatDeposito(d)}</option>)}
-              </select>
-            </Campo>
-          )}
-
           {/* Colaborador que retira */}
           <Campo rotulo="Colaborador que retira" obrigatorio>
             <SeletorColaborador pessoas={pessoas} valor={colaborador} onChange={escolherColaborador} />
           </Campo>
 
-          {/* Grupos de PEP e Itens */}
+          {/* Grupos e Itens */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
-                  Grupos de PEP e Itens <span className="text-rose-500">*</span>
+                  {tipo === 'transferencia' ? 'Grupos por Depósito de Destino e Itens' : 'Grupos de PEP e Itens'}{' '}
+                  <span className="text-rose-500">*</span>
                 </span>
                 <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Lance os materiais dentro de cada PEP. Você pode adicionar múltiplos PEPs no mesmo formulário.
+                  {tipo === 'transferencia'
+                    ? 'Cada grupo define o depósito de destino dos materiais. O depósito de saída vem de cada item selecionado.'
+                    : 'Lance os materiais dentro de cada PEP. Você pode adicionar múltiplos PEPs no mesmo formulário.'}
                 </p>
               </div>
               {todasLinhas.length > 0 && (
                 <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
-                  {todasLinhas.length} item(ns) · saída do depósito {formatDeposito(deposito)}
+                  {todasLinhas.length} item(ns){tipo === 'saida' && deposito ? ` · saída do depósito ${formatDeposito(deposito)}` : ''}
                 </span>
               )}
             </div>
 
             {grupos.map((grupo, gIdx) => {
-              const semPepErro = tentouSalvar && grupo.itens.length > 0 && !grupo.pep;
+              const semPepErro = tipo === 'saida' && tentouSalvar && grupo.itens.length > 0 && !grupo.pep;
+              const semDestErro = tipo === 'transferencia' && tentouSalvar && !grupo.deposito_destino;
               return (
                 <div
                   key={grupo.id}
                   className="rounded-xl border p-3.5 space-y-3 transition-colors"
                   style={{
-                    borderColor: semPepErro ? 'var(--status-critical)' : 'var(--hairline)',
+                    borderColor: semPepErro || semDestErro ? 'var(--status-critical)' : 'var(--hairline)',
                     background: 'var(--surface-raised)',
                   }}
                 >
@@ -1033,23 +1242,44 @@ function ModalRequisicao({
                       >
                         {gIdx + 1}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <label className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
-                          Aplicação / PEP {gIdx + 1} <span className="text-rose-500">*</span>
-                        </label>
-                        <select
-                          value={grupo.pep?.wbs ?? ''}
-                          onChange={(e) => alterarPepDoGrupo(grupo.id, peps.find((p) => p.wbs === e.target.value) ?? null)}
-                          className={inputCls}
-                          style={semPepErro ? { borderColor: 'var(--status-critical)' } : undefined}
-                        >
-                          <option value="">Selecione o PEP…</option>
-                          {grupo.pep && !peps.some((p) => p.wbs === grupo.pep!.wbs) && (
-                            <option value={grupo.pep.wbs}>{grupo.pep.nome} — {grupo.pep.wbs}</option>
-                          )}
-                          {peps.map((p) => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
-                        </select>
-                      </div>
+                      {tipo === 'transferencia' ? (
+                        <div className="min-w-0 flex-1">
+                          <label className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+                            Depósito de Destino {gIdx + 1} <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            value={grupo.deposito_destino ?? ''}
+                            onChange={(e) => alterarDestinoDoGrupo(grupo.id, e.target.value)}
+                            className={inputCls}
+                            style={semDestErro ? { borderColor: 'var(--status-critical)' } : undefined}
+                          >
+                            <option value="">Selecione o depósito de destino…</option>
+                            {depositosAtivos.map((d) => (
+                              <option key={d} value={d}>
+                                {formatDeposito(d)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="min-w-0 flex-1">
+                          <label className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+                            Aplicação / PEP {gIdx + 1} <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            value={grupo.pep?.wbs ?? ''}
+                            onChange={(e) => alterarPepDoGrupo(grupo.id, peps.find((p) => p.wbs === e.target.value) ?? null)}
+                            className={inputCls}
+                            style={semPepErro ? { borderColor: 'var(--status-critical)' } : undefined}
+                          >
+                            <option value="">Selecione o PEP…</option>
+                            {grupo.pep && !peps.some((p) => p.wbs === grupo.pep!.wbs) && (
+                              <option value={grupo.pep.wbs}>{grupo.pep.nome} — {grupo.pep.wbs}</option>
+                            )}
+                            {peps.map((p) => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
@@ -1061,9 +1291,9 @@ function ModalRequisicao({
                           onClick={() => removerGrupo(grupo.id)}
                           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold hover:bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]"
                           style={{ color: 'var(--status-critical)' }}
-                          title="Remover este grupo de PEP"
+                          title={tipo === 'transferencia' ? 'Remover este destino' : 'Remover este grupo de PEP'}
                         >
-                          <Trash2 className="h-3.5 w-3.5" /> Remover PEP
+                          <Trash2 className="h-3.5 w-3.5" /> {tipo === 'transferencia' ? 'Remover destino' : 'Remover PEP'}
                         </button>
                       )}
                     </div>
@@ -1072,8 +1302,8 @@ function ModalRequisicao({
                   {/* Input de Adicionar Item ao Grupo */}
                   <AdicionarItem
                     estoquePorDeposito={estoquePorDepositoModal}
-                    depositoFixo={todasLinhas.length > 0 ? deposito : null}
-                    jaLancado={(m) => todasLinhas.find((l) => l.material === m)?.quantidade ?? 0}
+                    depositoFixo={tipo === 'transferencia' ? null : (todasLinhas.length > 0 ? deposito : null)}
+                    jaLancado={(m) => todasLinhas.filter((l) => (tipo === 'transferencia' ? l.deposito_destino === grupo.deposito_destino : true) && l.material === m).reduce((acc, cur) => acc + cur.quantidade, 0)}
                     onAdicionar={(item, qtd) => adicionarItemNoGrupo(grupo.id, item, qtd)}
                   />
 
@@ -1083,16 +1313,28 @@ function ModalRequisicao({
                       {grupo.itens.map((l, i) => {
                         const erro = erroDaLinha(l);
                         const alerta = alertaDaLinha(l);
+                        const conflitoDestino = tipo === 'transferencia' && l.deposito && grupo.deposito_destino && chaveDeposito(l.deposito) === chaveDeposito(grupo.deposito_destino);
                         return (
                           <div key={`${l.material}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
                             <span className="w-5 text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>{i + 1}</span>
                             <div className="min-w-0 flex-1 basis-48">
                               <div className="truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{l.descricao || l.material}</div>
-                              <div className="text-[11px]" style={{ color: erro ? 'var(--status-critical)' : alerta ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
-                                <span className="font-mono">{l.material}</span> · saldo {formatQtd(l.saldo)} {l.unidade}
+                              <div className="text-[11px]" style={{ color: erro || conflitoDestino ? 'var(--status-critical)' : alerta ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
+                                <span className="font-mono">{l.material}</span>
+                                {tipo === 'transferencia' && l.deposito && (
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                                    {' '}· saída de {formatDeposito(l.deposito)}
+                                  </span>
+                                )}
+                                {' '}· saldo {formatQtd(l.saldo)} {l.unidade}
                                 {alerta && (
                                   <span className="inline-flex items-center gap-0.5 ml-1 font-bold text-amber-700 dark:text-amber-300">
                                     · ⚠️ {alerta}
+                                  </span>
+                                )}
+                                {conflitoDestino && (
+                                  <span className="inline-flex items-center gap-0.5 ml-1 font-bold text-rose-600 dark:text-rose-400">
+                                    · ⚠️ saída igual ao destino ({l.deposito})
                                   </span>
                                 )}
                                 {erro && <> · {erro}</>}
@@ -1108,7 +1350,7 @@ function ModalRequisicao({
                                 onChange={(e) => alterarQtdItemNoGrupo(grupo.id, i, parseFloat(e.target.value) || 0)}
                                 aria-label={`Quantidade de ${l.material}`}
                                 className={`${inputCls} w-24 text-right tabular-nums`}
-                                style={erro ? { borderColor: 'var(--status-critical)' } : alerta ? { borderColor: 'var(--status-serious)' } : undefined}
+                                style={erro || conflitoDestino ? { borderColor: 'var(--status-critical)' } : alerta ? { borderColor: 'var(--status-serious)' } : undefined}
                               />
                               <span className="w-8 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{l.unidade}</span>
                               <button
@@ -1130,14 +1372,14 @@ function ModalRequisicao({
               );
             })}
 
-            {/* Botão para adicionar outro grupo de PEP */}
+            {/* Botão para adicionar outro grupo */}
             <button
               type="button"
               onClick={adicionarNovoGrupo}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-xs font-bold transition-colors hover:border-[var(--brand)] hover:text-[var(--brand)]"
               style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'transparent' }}
             >
-              <FolderPlus className="h-4 w-4" /> Adicionar outro PEP
+              <FolderPlus className="h-4 w-4" /> {tipo === 'transferencia' ? 'Adicionar outro destino' : 'Adicionar outro PEP'}
             </button>
           </div>
 
@@ -1577,7 +1819,10 @@ function ModalDetalhe({
   onDocSap: () => void;
 }) {
   const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
-  const pepsDistintos = Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+  const isTransferencia = r.tipo_movimento === 'transferencia';
+  const pepsDistintos = isTransferencia ? [] : Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+  const depositosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito || r.deposito_origem).filter(Boolean))) : [];
+  const destinosDistintos = isTransferencia ? Array.from(new Set(r.itens.map((i) => i.deposito_destino || r.deposito_destino).filter(Boolean))) : [];
 
   return (
     <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel={`Detalhes de ${r.codigo}`}>
@@ -1603,6 +1848,22 @@ function ModalDetalhe({
               <Layers className="h-3 w-3" /> {pepsDistintos.length} grupos de PEP
             </span>
           )}
+          {depositosDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+            >
+              <Layers className="h-3 w-3" /> {depositosDistintos.length} depósitos de saída
+            </span>
+          )}
+          {destinosDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+            >
+              <Layers className="h-3 w-3" /> {destinosDistintos.length} depósitos de destino
+            </span>
+          )}
         </div>
       </ModalHeader>
       <ModalBody>
@@ -1617,23 +1878,33 @@ function ModalDetalhe({
           <div>
             <Linha rotulo="Data / turno" valor={`${formatDateBR(r.data)}${r.turno ? ` · ${r.turno}` : ''}`} />
             <Linha rotulo="Colaborador" valor={`${r.colaborador_nome}${r.colaborador_registro ? ` · ${r.colaborador_registro}` : ''}`} />
+            {isTransferencia ? (
+              <Linha rotulo="Finalidade" valor="Transferência entre depósitos (sem PEP)" />
+            ) : (
+              <Linha
+                rotulo="Aplicação (PEP)"
+                valor={
+                  pepsDistintos.length > 1 ? (
+                    <span>
+                      {pepsDistintos.length} grupos de PEP distintos (detalhes na tabela abaixo)
+                    </span>
+                  ) : r.aplicacao_pep ? (
+                    <>{r.aplicacao} · <span className="font-mono">{r.aplicacao_pep}</span></>
+                  ) : (
+                    r.aplicacao
+                  )
+                }
+              />
+            )}
             <Linha
-              rotulo="Aplicação (PEP)"
-              valor={
-                pepsDistintos.length > 1 ? (
-                  <span>
-                    {pepsDistintos.length} grupos de PEP distintos (detalhes na tabela abaixo)
-                  </span>
-                ) : r.aplicacao_pep ? (
-                  <>{r.aplicacao} · <span className="font-mono">{r.aplicacao_pep}</span></>
-                ) : (
-                  r.aplicacao
-                )
-              }
+              rotulo="Depósito de saída"
+              valor={isTransferencia && depositosDistintos.length > 1 ? depositosDistintos.map((d) => formatDeposito(d)).join(', ') : formatDeposito(r.deposito_origem)}
             />
-            <Linha rotulo="Depósito de saída" valor={formatDeposito(r.deposito_origem)} />
             {r.tipo_movimento === 'transferencia' && (
-              <Linha rotulo="Depósito de destino" valor={r.deposito_destino ? formatDeposito(r.deposito_destino) : 'Definir no SAP'} />
+              <Linha
+                rotulo="Depósito de destino"
+                valor={destinosDistintos.length > 1 ? destinosDistintos.map((d) => formatDeposito(d)).join(', ') : (r.deposito_destino ? formatDeposito(r.deposito_destino) : 'Definir no SAP')}
+              />
             )}
             <Linha rotulo="Observação" valor={r.observacao} />
             <Linha rotulo="Doc. SAP" valor={r.doc_sap ? `${r.doc_sap} · ${r.doc_sap_por ?? ''} em ${formatDateTimeBR(r.doc_sap_em)}` : null} />
@@ -1651,7 +1922,8 @@ function ModalDetalhe({
                   <th className="px-3 py-2 text-left font-bold">#</th>
                   <th className="px-3 py-2 text-left font-bold">Código</th>
                   <th className="px-3 py-2 text-left font-bold">Descrição</th>
-                  <th className="px-3 py-2 text-left font-bold">PEP / Aplicação</th>
+                  <th className="px-3 py-2 text-left font-bold">{isTransferencia ? 'Dep. Saída' : 'PEP / Aplicação'}</th>
+                  {isTransferencia && <th className="px-3 py-2 text-left font-bold">Dep. Destino</th>}
                   <th className="px-3 py-2 text-right font-bold">Qtd</th>
                   <th className="px-3 py-2 text-left font-bold">Un</th>
                   <th className="px-3 py-2 text-left font-bold">Doc. SAP</th>
@@ -1675,7 +1947,9 @@ function ModalDetalhe({
                       </td>
                       <td className="px-3 py-2">{i.descricao}</td>
                       <td className="px-3 py-2">
-                        {pepItem ? (
+                        {isTransferencia ? (
+                          <span className="font-mono font-semibold">{formatDeposito(i.deposito || r.deposito_origem)}</span>
+                        ) : pepItem ? (
                           <div>
                             <span className="font-medium">{descPep || '—'}</span>
                             <span className="block font-mono text-[10px]" style={{ color: 'var(--ink-muted)' }}>{pepItem}</span>
@@ -1684,6 +1958,11 @@ function ModalDetalhe({
                           '—'
                         )}
                       </td>
+                      {isTransferencia && (
+                        <td className="px-3 py-2">
+                          <span className="font-mono font-semibold">{formatDeposito(i.deposito_destino || r.deposito_destino || '') || '—'}</span>
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-right tabular-nums font-bold">{formatQtd(i.quantidade)}</td>
                       <td className="px-3 py-2">{i.unidade}</td>
                       <td className="px-3 py-2 font-mono">

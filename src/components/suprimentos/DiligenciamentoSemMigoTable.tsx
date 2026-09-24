@@ -34,7 +34,7 @@
  */
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Check, ChevronDown, ChevronRight, Copy, ExternalLink, Layers, Mail, PackageCheck, Settings2, Truck, X } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { AlmoxarifadoChegada, BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord, PrazoTransporte, Profile, Transportadora } from '../../types';
 import { resumirBahiaSulPorPo } from '../../lib/bahiasul';
@@ -55,7 +55,7 @@ import { montarMailtoComConfig, obterConfigEmail } from '../../lib/emailConfigAp
 import { cabeNoMailto } from '../../lib/expedicaoEmail';
 import {
   ASSUNTO_COLETA_PADRAO, CHAVE_CONFIG_COLETA, DESTINATARIO_COLETA_PADRAO, LinhaColeta,
-  montarAssuntoColeta, montarCorpoColeta,
+  montarAssuntoColeta, montarCorpoColeta, resolverDadosFornecedor,
 } from '../../lib/coletaEmail';
 import {
   PatchDiligenciamentoItem,
@@ -100,6 +100,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const [lotePrev, setLotePrev] = useState('');
   const [aplicandoLote, setAplicandoLote] = useState(false);
   const [enviandoColeta, setEnviandoColeta] = useState(false);
+  const [modalColeta, setModalColeta] = useState<{ corpo: string; mailtoEmBranco: string } | null>(null);
 
   /**
    * Filtro por transportadora com seleção múltipla — o comprador pode marcar
@@ -259,6 +260,23 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     return { pendentes, vencidos, semPrevisao, valorTransito };
   }, [itensVisiveis, hojeISO]);
 
+  /* Agrupamento por PO ---------------------------------------------------- */
+
+  const [agruparPorPo, setAgruparPorPo] = useState<boolean>(() => {
+    return localStorage.getItem('sisten_sem_migo_agrupar_po') === 'true';
+  });
+
+  const handleAgruparPorPoChange = (val: boolean) => {
+    setAgruparPorPo(val);
+    localStorage.setItem('sisten_sem_migo_agrupar_po', String(val));
+  };
+
+  const [poColapsados, setPoColapsados] = useState<Record<string, boolean>>({});
+
+  const alternarColapsoPo = (docCompra: string) => {
+    setPoColapsados(prev => ({ ...prev, [docCompra]: !prev[docCompra] }));
+  };
+
   /* Seleção --------------------------------------------------------------- */
 
   const alternarSel = (ri: string) => setSelecionados(prev => {
@@ -271,10 +289,96 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     todosSelecionados ? new Set() : new Set(selecionaveis.map(i => i.riPo)),
   );
 
+  const alternarSelPo = (itensPo: ItemDiligenciamento[]) => {
+    const selecionaveisPo = itensPo.filter(i => !i.chegou);
+    if (selecionaveisPo.length === 0) return;
+    const todosMarcados = selecionaveisPo.every(i => selecionados.has(i.riPo));
+    setSelecionados(prev => {
+      const proximo = new Set(prev);
+      if (todosMarcados) {
+        selecionaveisPo.forEach(i => proximo.delete(i.riPo));
+      } else {
+        selecionaveisPo.forEach(i => proximo.add(i.riPo));
+      }
+      return proximo;
+    });
+  };
+
   const limparSelecao = () => {
     setSelecionados(new Set());
     setLoteTransp(''); setLoteFat(''); setLotePrev('');
   };
+
+  /**
+   * Consolidação dos itens por Pedido de Compra (PO).
+   * Todos os itens do mesmo pedido pertencem ao mesmo fornecedor.
+   */
+  const pedidosAgrupados = useMemo(() => {
+    if (!agruparPorPo) return [];
+    const mapa = new Map<string, {
+      docCompra: string;
+      reg?: EnrichedSAPRecord;
+      fornecedorNome: string;
+      fornecedorCode: string;
+      dataPedido: string;
+      contrato?: string;
+      grupoComprador?: string;
+      itens: ItemDiligenciamento[];
+      valorTotal: number;
+      rms: string[];
+      temVencido: boolean;
+      todosChegaram: boolean;
+      selecionaveisCount: number;
+      marcadosCount: number;
+    }>();
+
+    for (const item of itensVisiveis) {
+      let grupo = mapa.get(item.docCompra);
+      const reg = regPorRi.get(item.riPo);
+      const contrato = reg ? numeroContratoPO(reg) : undefined;
+      const rm = reg?.requisicao_de_compra;
+
+      if (!grupo) {
+        grupo = {
+          docCompra: item.docCompra,
+          reg,
+          fornecedorNome: reg?.fornecedor_name || '—',
+          fornecedorCode: reg?.fornecedor_code || '',
+          dataPedido: reg?.data_pedido || '',
+          contrato,
+          grupoComprador: item.grupoComprador,
+          itens: [],
+          valorTotal: 0,
+          rms: [],
+          temVencido: false,
+          todosChegaram: true,
+          selecionaveisCount: 0,
+          marcadosCount: 0,
+        };
+        mapa.set(item.docCompra, grupo);
+      }
+
+      grupo.itens.push(item);
+      grupo.valorTotal += (item.valor || 0);
+
+      if (rm && !grupo.rms.includes(rm)) {
+        grupo.rms.push(rm);
+      }
+
+      if (!item.chegou) {
+        grupo.todosChegaram = false;
+        grupo.selecionaveisCount += 1;
+        if (selecionados.has(item.riPo)) {
+          grupo.marcadosCount += 1;
+        }
+        if (item.previsaoEfetiva && item.previsaoEfetiva < hojeISO) {
+          grupo.temVencido = true;
+        }
+      }
+    }
+
+    return Array.from(mapa.values());
+  }, [agruparPorPo, itensVisiveis, regPorRi, selecionados, hojeISO]);
 
   /* Ações ------------------------------------------------------------------- */
 
@@ -354,9 +458,22 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         const rm = reg?.requisicao_de_compra
           ? `${reg.requisicao_de_compra}${reg.item_reqc ? ` / ${reg.item_reqc}` : ''}`
           : '';
+        const dadosForn = resolverDadosFornecedor({
+          fornecedorNome: reg?.fornecedor_name || '',
+          fornecedorCodigo: reg?.fornecedor_code || '',
+          contatos,
+          cidadesPorCodigo,
+          cidadesLista: cidades,
+        });
+
         return {
           dataColeta: item.previsaoEfetiva,
           fornecedor: reg?.fornecedor_name || '',
+          fornecedorCodigo: reg?.fornecedor_code || '',
+          nomeFantasia: dadosForn.nomeFantasia,
+          razaoSocial: dadosForn.razaoSocial,
+          endereco: dadosForn.endereco,
+          telefone: dadosForn.telefone,
           rm,
           po: item.docCompra,
           codigoItem: item.material,
@@ -388,10 +505,12 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
       if (cabeNoMailto(mailto)) {
         window.location.href = mailto;
       } else {
-        await navigator.clipboard.writeText(corpo).catch(() => null);
-        window.location.href = montarMailtoComConfig({
+        const mailtoEmBranco = montarMailtoComConfig({
           destinatarios, copia: config?.copia, copiaOculta: config?.copia_oculta, assunto, corpo: '',
         });
+        await navigator.clipboard.writeText(corpo).catch(() => null);
+        window.location.href = mailtoEmBranco;
+        setModalColeta({ corpo, mailtoEmBranco });
         toast.warning('Lista longa demais para o preenchimento automático: o conteúdo foi copiado — cole no Outlook com Ctrl+V.');
       }
     } catch (e) {
@@ -460,6 +579,20 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           Previsão = remessa do pedido + prazo de trânsito por UF/transportadora. Editar aqui atualiza o Rastreio Compras.
         </p>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => handleAgruparPorPoChange(!agruparPorPo)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-bold transition-all h-9 cursor-pointer active:scale-95 ${
+              agruparPorPo
+                ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0056c6] dark:text-blue-400 border-blue-200 dark:border-blue-900/60 shadow-xs'
+                : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
+            }`}
+            style={!agruparPorPo ? { borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'var(--surface-card)' } : undefined}
+            title={agruparPorPo ? 'Voltar para a visualização por item' : 'Agrupar itens por Pedido de Compra (PO)'}
+          >
+            <Boxes className="h-4 w-4" />
+            <span>{agruparPorPo ? 'Ver por Item' : 'Agrupar por PO'}</span>
+          </button>
           <MultiSelectFilter
             label="Transportadora"
             icon={Truck}
@@ -519,117 +652,130 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
         <TableEmpty icon={Truck} title="Nenhum item sem MIGO neste recorte" hint="Ajuste a busca ou os filtros acima." />
       ) : (
         <>
-          {/* Desktop: tabela densa ------------------------------------------ */}
+          {/* Desktop: tabela densa ou agrupada por PO ----------------------- */}
           <div className="hidden md:block">
-            <TableShell maxHeight="72vh">
-              <table className="w-full text-left text-xs border-collapse">
-                <TableHeadRow>
-                  <Th stickyLeft>
-                    <input
-                      type="checkbox"
-                      aria-label="Selecionar todos os itens pendentes"
-                      checked={todosSelecionados}
-                      ref={el => { if (el) el.indeterminate = !todosSelecionados && selecionados.size > 0; }}
-                      onChange={alternarSelTodos}
-                      className="h-3.5 w-3.5 cursor-pointer align-middle"
-                      style={{ accentColor: 'var(--brand)' }}
-                    />
-                  </Th>
-                  <Th label="PO" />
-                  <Th label="Código" />
-                  <Th label="Material" />
-                  <Th label="Fornecedor" />
-                  <Th label="Pedido / Valor" />
-                  <Th label="Remessa & Previsão" />
-                  <Th label="Fat. Transportadora" />
-                  <Th label="Transportadora" />
-                  <Th label="Chegada (Rastreio)" />
-                  <Th label="Cobrar" />
-                </TableHeadRow>
-                <TableBody>
-                  {itensVisiveis.map(item => {
-                    const vencido = !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO;
-                    const reg = regPorRi.get(item.riPo);
-                    const marcado = selecionados.has(item.riPo);
+            {agruparPorPo ? (
+              <div className="space-y-3">
+                {pedidosAgrupados.map(po => {
+                  const colapsado = !!poColapsados[po.docCompra];
+                  const todosMarcados = po.selecionaveisCount > 0 && po.marcadosCount === po.selecionaveisCount;
+                  const algumMarcado = po.marcadosCount > 0 && !todosMarcados;
 
-                    return (
-                      <Tr key={item.riPo} accent={vencido ? 'var(--status-critical)' : (marcado ? 'var(--brand)' : undefined)}>
-                        <Td stickyLeft>
+                  return (
+                    <div
+                      key={po.docCompra}
+                      className="rounded-xl border transition-all overflow-hidden"
+                      style={{
+                        borderColor: po.temVencido
+                          ? 'var(--status-critical)'
+                          : todosMarcados
+                          ? 'var(--brand)'
+                          : 'var(--hairline)',
+                        background: 'var(--surface-card)',
+                      }}
+                    >
+                      {/* Cabecalho consolidado do PO */}
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 select-none"
+                        style={{
+                          background: 'var(--surface-raised)',
+                          borderBottom: colapsado ? 'none' : '1px solid var(--hairline)',
+                        }}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <input
                             type="checkbox"
-                            aria-label={`Selecionar PO ${item.docCompra}`}
-                            checked={marcado}
-                            disabled={item.chegou}
-                            onChange={() => alternarSel(item.riPo)}
-                            className="h-3.5 w-3.5 cursor-pointer align-middle disabled:opacity-40"
+                            aria-label={`Selecionar todos os itens do PO ${po.docCompra}`}
+                            checked={todosMarcados}
+                            ref={el => { if (el) el.indeterminate = algumMarcado; }}
+                            disabled={po.selecionaveisCount === 0}
+                            onChange={() => alternarSelPo(po.itens)}
+                            className="h-4 w-4 cursor-pointer align-middle disabled:opacity-40"
                             style={{ accentColor: 'var(--brand)' }}
                           />
-                        </Td>
-                        <Td strong mono className="text-sm">
-                          {item.docCompra}
-                          <span className="mt-0.5 block text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
-                            RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
-                          </span>
-                          {/* PO nascido de contrato guarda-chuva: a cobrança
-                              muda de interlocutor (gestor do contrato, não
-                              cotação), então o número aparece junto do PO. */}
-                          {reg && numeroContratoPO(reg) && (
+                          <button
+                            type="button"
+                            onClick={() => alternarColapsoPo(po.docCompra)}
+                            className="inline-flex items-center gap-1.5 cursor-pointer font-bold text-xs hover:opacity-80 transition-opacity"
+                            style={{ color: 'var(--ink-primary)' }}
+                          >
+                            {colapsado ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            <span className="font-mono text-sm font-bold tracking-tight">PO {po.docCompra}</span>
+                          </button>
+
+                          {po.contrato && (
                             <span
-                              className="mt-0.5 block text-[11px] font-semibold"
-                              style={{ color: 'var(--series-5)' }}
-                              title={`Pedido colocado por referência ao contrato ${numeroContratoPO(reg)}`}
+                              className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                              style={{
+                                color: 'var(--series-5)',
+                                background: 'color-mix(in srgb, var(--series-5) 12%, var(--surface-card))',
+                                border: '1px solid color-mix(in srgb, var(--series-5) 25%, transparent)',
+                              }}
+                              title={`Pedido vinculado ao Contrato ${po.contrato}`}
                             >
-                              Contrato {numeroContratoPO(reg)}
+                              Contrato {po.contrato}
                             </span>
                           )}
-                        </Td>
-                        <Td mono>{item.material}</Td>
-                        <Td truncate title={item.descricao}>{item.descricao}</Td>
-                        <Td truncate title={reg?.fornecedor_name}>
-                          {reg?.fornecedor_name || '—'}
-                          {reg?.fornecedor_code && (
-                            <span className="ml-1 text-[10px]" style={{ color: 'var(--ink-muted)' }}>({reg.fornecedor_code})</span>
+
+                          {po.grupoComprador && (
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[11px] font-mono font-bold"
+                              style={{
+                                background: 'color-mix(in srgb, var(--brand) 10%, var(--surface-card))',
+                                color: 'var(--ink-primary)',
+                                border: '1px solid var(--hairline)',
+                              }}
+                              title={`Comprador: ${po.grupoComprador}`}
+                            >
+                              Comp. {po.grupoComprador}
+                            </span>
                           )}
-                        </Td>
-                        <Td numeric>
-                          {reg?.data_pedido ? formatDateBR(reg.data_pedido) : '—'}
-                          <span className="mt-0.5 block font-bold" style={{ color: 'var(--ink-primary)' }}>{formatBRL(item.valor)}</span>
-                        </Td>
-                        <Td>
-                          <PrevisaoCelula item={item} vencido={vencido} onAbrirPrazos={() => setPrazosAberto(true)} onSalvar={salvarPrevisaoManual} />
-                        </Td>
-                        <Td>
-                          <input
-                            type="date"
-                            aria-label={`Faturamento da transportadora — PO ${item.docCompra}`}
-                            defaultValue={item.faturamentoTransportadora || ''}
-                            disabled={item.chegou}
-                            onBlur={e => salvarFaturamento(item, e.target.value)}
-                            className="w-full rounded border px-1.5 py-1 text-[11px]"
-                            style={campo}
-                          />
-                        </Td>
-                        <Td>
-                          <CampoTransportadora
-                            valor={item.transportadora}
-                            opcoes={opcoesTransportadora}
-                            desabilitado={item.chegou}
-                            onSalvar={nome => salvarTransportadora(item, nome)}
-                          />
-                        </Td>
-                        <Td>
-                          <EstadoChegada item={item} />
-                        </Td>
-                        <Td>
+
+                          {po.rms.length > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                              RM {po.rms.join(', ')}
+                            </span>
+                          )}
+
+                          {po.dataPedido && (
+                            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                              · Pedido: {formatDateBR(po.dataPedido)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Fornecedor consolidado */}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold truncate max-w-xs" style={{ color: 'var(--ink-primary)' }} title={po.fornecedorNome}>
+                            {po.fornecedorNome}
+                            {po.fornecedorCode && (
+                              <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                                ({po.fornecedorCode})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Valor, itens e botao de cobranca */}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right text-xs">
+                            <span style={{ color: 'var(--ink-muted)' }}>
+                              {po.itens.length} {po.itens.length === 1 ? 'item' : 'itens'} ·{' '}
+                            </span>
+                            <span className="font-bold" style={{ color: 'var(--ink-primary)' }}>
+                              {formatBRL(po.valorTotal)}
+                            </span>
+                          </div>
+
                           <button
                             type="button"
                             onClick={() => setCobrancaPo({
-                              docCompra: item.docCompra,
-                              fornecedorNome: reg?.fornecedor_name || '',
-                              fornecedorCode: reg?.fornecedor_code || '',
+                              docCompra: po.docCompra,
+                              fornecedorNome: po.fornecedorNome,
+                              fornecedorCode: po.fornecedorCode,
                             })}
-                            title={`Cobrar fornecedor sobre o PO ${item.docCompra}`}
-                            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-bold cursor-pointer transition-all hover:opacity-90 active:scale-95"
+                            title={`Cobrar fornecedor sobre o PO ${po.docCompra}`}
+                            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-bold cursor-pointer transition-all hover:opacity-90 active:scale-95"
                             style={{
                               borderColor: 'var(--brand)',
                               color: 'var(--brand)',
@@ -637,15 +783,264 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                             }}
                           >
                             <Mail className="h-3 w-3" />
-                            Cobrar
+                            Cobrar PO
                           </button>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </TableBody>
-              </table>
-            </TableShell>
+                        </div>
+                      </div>
+
+                      {/* Tabela dos itens do PO (clean, sem redundancia de fornecedor/comprador/PO) */}
+                      {!colapsado && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr style={{ background: 'var(--surface-card)', borderBottom: '1px solid var(--hairline)' }}>
+                                <Th style={{ width: 40 }}>
+                                  <span className="sr-only">Seleção</span>
+                                </Th>
+                                <Th label="Item / RM" />
+                                <Th label="Código" />
+                                <Th label="Descrição do Material" />
+                                <Th label="Comprador" align="center" />
+                                <Th label="Qtd / Un." align="center" />
+                                <Th label="Valor" align="right" />
+                                <Th label="Remessa & Previsão" />
+                                <Th label="Fat. Transportadora" />
+                                <Th label="Transportadora" />
+                                <Th label="Chegada (Rastreio)" />
+                              </tr>
+                            </thead>
+                            <TableBody>
+                              {po.itens.map(item => {
+                                const vencido = !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO;
+                                const reg = regPorRi.get(item.riPo);
+                                const marcado = selecionados.has(item.riPo);
+
+                                return (
+                                  <Tr key={item.riPo} accent={vencido ? 'var(--status-critical)' : (marcado ? 'var(--brand)' : undefined)}>
+                                    <Td style={{ width: 40 }}>
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`Selecionar item ${item.material} do PO ${item.docCompra}`}
+                                        checked={marcado}
+                                        disabled={item.chegou}
+                                        onChange={() => alternarSel(item.riPo)}
+                                        className="h-3.5 w-3.5 cursor-pointer align-middle disabled:opacity-40"
+                                        style={{ accentColor: 'var(--brand)' }}
+                                      />
+                                    </Td>
+                                    <Td mono className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                                      {reg?.requisicao_de_compra ? `RM ${reg.requisicao_de_compra}` : '—'}
+                                      {reg?.item_reqc && ` / it. ${reg.item_reqc}`}
+                                    </Td>
+                                    <Td mono className="font-semibold">{item.material}</Td>
+                                    <Td className="max-w-md" truncate title={item.descricao}>
+                                      {item.descricao}
+                                    </Td>
+                                    <Td align="center">
+                                      {item.grupoComprador ? (
+                                        <span
+                                          className="inline-block rounded px-1.5 py-0.5 text-[11px] font-mono font-bold"
+                                          style={{
+                                            background: 'color-mix(in srgb, var(--brand) 10%, var(--surface-raised))',
+                                            color: 'var(--ink-primary)',
+                                            border: '1px solid var(--hairline)',
+                                          }}
+                                          title={`Grupo Comprador: ${item.grupoComprador}`}
+                                        >
+                                          {item.grupoComprador}
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: 'var(--ink-muted)' }}>—</span>
+                                      )}
+                                    </Td>
+                                    <Td align="center" mono>
+                                      {item.quantidade != null ? item.quantidade : '—'}{' '}
+                                      <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>{item.unidade}</span>
+                                    </Td>
+                                    <Td numeric className="font-semibold">
+                                      {formatBRL(item.valor)}
+                                    </Td>
+                                    <Td>
+                                      <PrevisaoCelula item={item} vencido={vencido} onAbrirPrazos={() => setPrazosAberto(true)} onSalvar={salvarPrevisaoManual} />
+                                    </Td>
+                                    <Td>
+                                      <input
+                                        type="date"
+                                        aria-label={`Faturamento da transportadora — PO ${item.docCompra} item ${item.material}`}
+                                        defaultValue={item.faturamentoTransportadora || ''}
+                                        disabled={item.chegou}
+                                        onBlur={e => salvarFaturamento(item, e.target.value)}
+                                        className="w-full rounded border px-1.5 py-1 text-[11px]"
+                                        style={campo}
+                                      />
+                                    </Td>
+                                    <Td>
+                                      <CampoTransportadora
+                                        valor={item.transportadora}
+                                        opcoes={opcoesTransportadora}
+                                        desabilitado={item.chegou}
+                                        onSalvar={nome => salvarTransportadora(item, nome)}
+                                      />
+                                    </Td>
+                                    <Td>
+                                      <EstadoChegada item={item} />
+                                    </Td>
+                                  </Tr>
+                                );
+                              })}
+                            </TableBody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <TableShell maxHeight="72vh">
+                <table className="w-full text-left text-xs border-collapse">
+                  <TableHeadRow>
+                    <Th stickyLeft>
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todos os itens pendentes"
+                        checked={todosSelecionados}
+                        ref={el => { if (el) el.indeterminate = !todosSelecionados && selecionados.size > 0; }}
+                        onChange={alternarSelTodos}
+                        className="h-3.5 w-3.5 cursor-pointer align-middle"
+                        style={{ accentColor: 'var(--brand)' }}
+                      />
+                    </Th>
+                    <Th label="PO" />
+                    <Th label="Código" />
+                    <Th label="Material" />
+                    <Th label="Fornecedor" />
+                    <Th label="Comprador" align="center" />
+                    <Th label="Pedido / Valor" />
+                    <Th label="Remessa & Previsão" />
+                    <Th label="Fat. Transportadora" />
+                    <Th label="Transportadora" />
+                    <Th label="Chegada (Rastreio)" />
+                    <Th label="Cobrar" />
+                  </TableHeadRow>
+                  <TableBody>
+                    {itensVisiveis.map(item => {
+                      const vencido = !item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO;
+                      const reg = regPorRi.get(item.riPo);
+                      const marcado = selecionados.has(item.riPo);
+
+                      return (
+                        <Tr key={item.riPo} accent={vencido ? 'var(--status-critical)' : (marcado ? 'var(--brand)' : undefined)}>
+                          <Td stickyLeft>
+                            <input
+                              type="checkbox"
+                              aria-label={`Selecionar PO ${item.docCompra}`}
+                              checked={marcado}
+                              disabled={item.chegou}
+                              onChange={() => alternarSel(item.riPo)}
+                              className="h-3.5 w-3.5 cursor-pointer align-middle disabled:opacity-40"
+                              style={{ accentColor: 'var(--brand)' }}
+                            />
+                          </Td>
+                          <Td strong mono className="text-sm">
+                            {item.docCompra}
+                            <span className="mt-0.5 block text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                              RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
+                            </span>
+                            {/* PO nascido de contrato guarda-chuva: a cobrança
+                                muda de interlocutor (gestor do contrato, não
+                                cotação), então o número aparece junto do PO. */}
+                            {reg && numeroContratoPO(reg) && (
+                              <span
+                                className="mt-0.5 block text-[11px] font-semibold"
+                                style={{ color: 'var(--series-5)' }}
+                                title={`Pedido colocado por referência ao contrato ${numeroContratoPO(reg)}`}
+                              >
+                                Contrato {numeroContratoPO(reg)}
+                              </span>
+                            )}
+                          </Td>
+                          <Td mono>{item.material}</Td>
+                          <Td truncate title={item.descricao}>{item.descricao}</Td>
+                          <Td truncate title={reg?.fornecedor_name}>
+                            {reg?.fornecedor_name || '—'}
+                            {reg?.fornecedor_code && (
+                              <span className="ml-1 text-[10px]" style={{ color: 'var(--ink-muted)' }}>({reg.fornecedor_code})</span>
+                            )}
+                          </Td>
+                          <Td align="center">
+                            {item.grupoComprador ? (
+                              <span
+                                className="inline-block rounded px-1.5 py-0.5 text-[11px] font-mono font-bold"
+                                style={{
+                                  background: 'color-mix(in srgb, var(--brand) 10%, var(--surface-raised))',
+                                  color: 'var(--ink-primary)',
+                                  border: '1px solid var(--hairline)',
+                                }}
+                                title={`Grupo Comprador: ${item.grupoComprador}`}
+                              >
+                                {item.grupoComprador}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--ink-muted)' }}>—</span>
+                            )}
+                          </Td>
+                          <Td numeric>
+                            {reg?.data_pedido ? formatDateBR(reg.data_pedido) : '—'}
+                            <span className="mt-0.5 block font-bold" style={{ color: 'var(--ink-primary)' }}>{formatBRL(item.valor)}</span>
+                          </Td>
+                          <Td>
+                            <PrevisaoCelula item={item} vencido={vencido} onAbrirPrazos={() => setPrazosAberto(true)} onSalvar={salvarPrevisaoManual} />
+                          </Td>
+                          <Td>
+                            <input
+                              type="date"
+                              aria-label={`Faturamento da transportadora — PO ${item.docCompra}`}
+                              defaultValue={item.faturamentoTransportadora || ''}
+                              disabled={item.chegou}
+                              onBlur={e => salvarFaturamento(item, e.target.value)}
+                              className="w-full rounded border px-1.5 py-1 text-[11px]"
+                              style={campo}
+                            />
+                          </Td>
+                          <Td>
+                            <CampoTransportadora
+                              valor={item.transportadora}
+                              opcoes={opcoesTransportadora}
+                              desabilitado={item.chegou}
+                              onSalvar={nome => salvarTransportadora(item, nome)}
+                            />
+                          </Td>
+                          <Td>
+                            <EstadoChegada item={item} />
+                          </Td>
+                          <Td>
+                            <button
+                              type="button"
+                              onClick={() => setCobrancaPo({
+                                docCompra: item.docCompra,
+                                fornecedorNome: reg?.fornecedor_name || '',
+                                fornecedorCode: reg?.fornecedor_code || '',
+                              })}
+                              title={`Cobrar fornecedor sobre o PO ${item.docCompra}`}
+                              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-bold cursor-pointer transition-all hover:opacity-90 active:scale-95"
+                              style={{
+                                borderColor: 'var(--brand)',
+                                color: 'var(--brand)',
+                                background: 'color-mix(in srgb, var(--brand) 8%, var(--surface-card))',
+                              }}
+                            >
+                              <Mail className="h-3 w-3" />
+                              Cobrar
+                            </button>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </TableBody>
+                </table>
+              </TableShell>
+            )}
           </div>
 
           {/* Mobile: cartões --------------------------------------------------- */}
@@ -664,22 +1059,157 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                 {todosSelecionados ? 'Desmarcar todos' : `Selecionar todos (${selecionaveis.length})`}
               </button>
             )}
-            {itensVisiveis.map(item => (
-              <ItemCard
-                key={item.riPo}
-                item={item}
-                reg={regPorRi.get(item.riPo)}
-                marcado={selecionados.has(item.riPo)}
-                onAlternarSel={() => alternarSel(item.riPo)}
-                vencido={!item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO}
-                opcoesTransportadora={opcoesTransportadora}
-                onAbrirPrazos={() => setPrazosAberto(true)}
-                onSalvarPrevisao={salvarPrevisaoManual}
-                onSalvarFaturamento={salvarFaturamento}
-                onSalvarTransportadora={salvarTransportadora}
-                onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
-              />
-            ))}
+            {agruparPorPo ? (
+              <div className="space-y-3">
+                {pedidosAgrupados.map(po => {
+                  const colapsado = !!poColapsados[po.docCompra];
+                  const todosMarcados = po.selecionaveisCount > 0 && po.marcadosCount === po.selecionaveisCount;
+                  const algumMarcado = po.marcadosCount > 0 && !todosMarcados;
+
+                  return (
+                    <div
+                      key={po.docCompra}
+                      className="rounded-xl border overflow-hidden"
+                      style={{
+                        borderColor: po.temVencido
+                          ? 'var(--status-critical)'
+                          : todosMarcados
+                          ? 'var(--brand)'
+                          : 'var(--hairline)',
+                        background: 'var(--surface-card)',
+                      }}
+                    >
+                      {/* Cabecalho mobile do PO */}
+                      <div className="p-3" style={{ background: 'var(--surface-raised)' }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Selecionar itens do PO ${po.docCompra}`}
+                              checked={todosMarcados}
+                              ref={el => { if (el) el.indeterminate = algumMarcado; }}
+                              disabled={po.selecionaveisCount === 0}
+                              onChange={() => alternarSelPo(po.itens)}
+                              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer disabled:opacity-40"
+                              style={{ accentColor: 'var(--brand)' }}
+                            />
+                            <div>
+                              <div className="flex items-baseline gap-1.5 flex-wrap">
+                                <span className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>
+                                  PO {po.docCompra}
+                                </span>
+                                {po.grupoComprador && (
+                                  <span
+                                    className="rounded px-1 text-[10px] font-mono font-bold"
+                                    style={{
+                                      background: 'color-mix(in srgb, var(--brand) 10%, var(--surface-card))',
+                                      color: 'var(--ink-primary)',
+                                      border: '1px solid var(--hairline)',
+                                    }}
+                                  >
+                                    Comp. {po.grupoComprador}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs font-semibold mt-0.5" style={{ color: 'var(--ink-secondary)' }}>
+                                {po.fornecedorNome}
+                              </div>
+                              {po.rms.length > 0 && (
+                                <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                                  RM {po.rms.join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setCobrancaPo({
+                                docCompra: po.docCompra,
+                                fornecedorNome: po.fornecedorNome,
+                                fornecedorCode: po.fornecedorCode,
+                              })}
+                              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-bold cursor-pointer"
+                              style={{
+                                borderColor: 'var(--brand)',
+                                color: 'var(--brand)',
+                                background: 'color-mix(in srgb, var(--brand) 8%, var(--surface-card))',
+                              }}
+                            >
+                              <Mail className="h-3 w-3" /> Cobrar
+                            </button>
+                            <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                              {formatBRL(po.valorTotal)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => alternarColapsoPo(po.docCompra)}
+                          className="mt-2.5 w-full flex items-center justify-center gap-1 rounded-lg border py-1 text-xs font-semibold cursor-pointer"
+                          style={{
+                            borderColor: 'var(--hairline)',
+                            background: 'var(--surface-card)',
+                            color: 'var(--ink-secondary)',
+                          }}
+                        >
+                          {colapsado ? (
+                            <>
+                              <ChevronRight className="h-3.5 w-3.5" /> Ver {po.itens.length} item(ns)
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-3.5 w-3.5" /> Ocultar itens
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Itens do PO mobile */}
+                      {!colapsado && (
+                        <div className="divide-y p-2 space-y-2" style={{ borderColor: 'var(--hairline)' }}>
+                          {po.itens.map(item => (
+                            <ItemCard
+                              key={item.riPo}
+                              item={item}
+                              reg={regPorRi.get(item.riPo)}
+                              marcado={selecionados.has(item.riPo)}
+                              onAlternarSel={() => alternarSel(item.riPo)}
+                              vencido={!item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO}
+                              opcoesTransportadora={opcoesTransportadora}
+                              onAbrirPrazos={() => setPrazosAberto(true)}
+                              onSalvarPrevisao={salvarPrevisaoManual}
+                              onSalvarFaturamento={salvarFaturamento}
+                              onSalvarTransportadora={salvarTransportadora}
+                              onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              itensVisiveis.map(item => (
+                <ItemCard
+                  key={item.riPo}
+                  item={item}
+                  reg={regPorRi.get(item.riPo)}
+                  marcado={selecionados.has(item.riPo)}
+                  onAlternarSel={() => alternarSel(item.riPo)}
+                  vencido={!item.chegou && !!item.previsaoEfetiva && item.previsaoEfetiva < hojeISO}
+                  opcoesTransportadora={opcoesTransportadora}
+                  onAbrirPrazos={() => setPrazosAberto(true)}
+                  onSalvarPrevisao={salvarPrevisaoManual}
+                  onSalvarFaturamento={salvarFaturamento}
+                  onSalvarTransportadora={salvarTransportadora}
+                  onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
+                />
+              ))
+            )}
           </div>
         </>
       )}
@@ -703,6 +1233,14 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           contatos={contatos}
           user={user}
           onClose={() => setCobrancaPo(null)}
+        />
+      )}
+
+      {modalColeta && (
+        <ModalColetaTexto
+          corpo={modalColeta.corpo}
+          mailtoEmBranco={modalColeta.mailtoEmBranco}
+          onClose={() => setModalColeta(null)}
         />
       )}
     </div>
@@ -949,6 +1487,7 @@ function ItemCard({
           </div>
           <span className="block text-xs" style={{ color: 'var(--ink-muted)' }}>
             RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
+            {item.grupoComprador && ` · Comp. ${item.grupoComprador}`}
           </span>
         </div>
       </div>
@@ -960,7 +1499,21 @@ function ItemCard({
         </div>
         <div>
           <span className="block text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Fornecedor</span>
-          <span style={{ color: 'var(--ink-secondary)' }}>{reg?.fornecedor_name || '—'}</span>
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            {reg?.fornecedor_name || '—'}
+            {item.grupoComprador && (
+              <span
+                className="ml-1.5 inline-block rounded px-1 text-[10px] font-mono font-bold"
+                style={{
+                  background: 'color-mix(in srgb, var(--brand) 10%, var(--surface-raised))',
+                  color: 'var(--ink-primary)',
+                  border: '1px solid var(--hairline)',
+                }}
+              >
+                Comp. {item.grupoComprador}
+              </span>
+            )}
+          </span>
         </div>
         <div>
           <span className="block text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Pedido / Valor</span>
@@ -1156,6 +1709,121 @@ function PrazosModal({
         >
           Fechar
         </button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+
+/**
+ * Janela suspensa para exibir e copiar o texto da lista de coleta quando o
+ * conteúdo é longo demais para caber na URL do mailto:.
+ */
+function ModalColetaTexto({
+  corpo, mailtoEmBranco, onClose,
+}: {
+  corpo: string;
+  mailtoEmBranco: string;
+  onClose: () => void;
+}) {
+  const [copiado, setCopiado] = useState(false);
+  const toast = useToast();
+
+  const handleCopiar = async () => {
+    try {
+      await navigator.clipboard.writeText(corpo);
+      setCopiado(true);
+      toast.success('Texto da lista de coleta copiado para a área de transferência!');
+      setTimeout(() => setCopiado(false), 3000);
+    } catch {
+      toast.error('Não foi possível copiar automaticamente. Selecione o texto e use Ctrl+C.');
+    }
+  };
+
+  return (
+    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Lista de Coleta para E-mail">
+      <ModalHeader onClose={onClose}>
+        <div className="flex items-center gap-2">
+          <Mail className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          <span className="font-bold text-slate-800 dark:text-slate-100">
+            Lista de Coleta — Texto do E-mail
+          </span>
+        </div>
+      </ModalHeader>
+      <ModalBody>
+        <div className="space-y-3.5">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">
+                  Lista longa demais para o preenchimento automático pelo navegador
+                </p>
+                <p className="text-[11px] leading-relaxed opacity-95">
+                  O Outlook foi aberto com o assunto e os destinatários. O conteúdo completo abaixo foi copiado para a sua área de transferência — basta clicar no corpo da mensagem no Outlook e colar com <kbd className="rounded border border-amber-300 bg-amber-100 px-1 py-0.5 font-mono text-[10px] font-bold text-amber-900 dark:border-amber-800 dark:bg-amber-900/60 dark:text-amber-100">Ctrl+V</kbd>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                Texto formatado para envio:
+              </span>
+              <button
+                type="button"
+                onClick={handleCopiar}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer"
+                style={{ background: copiado ? 'var(--status-good)' : 'var(--brand)' }}
+              >
+                {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiado ? 'Copiado!' : 'Copiar texto'}
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={14}
+              value={corpo}
+              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+              className="w-full rounded-lg border p-3 font-mono text-xs leading-relaxed focus:outline-none"
+              style={{
+                borderColor: 'var(--hairline)',
+                background: 'var(--surface-raised)',
+                color: 'var(--ink-primary)',
+              }}
+            />
+          </div>
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2">
+          <a
+            href={mailtoEmBranco}
+            className="inline-flex items-center gap-1.5 text-xs font-bold hover:underline"
+            style={{ color: 'var(--brand)' }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Abrir janela do Outlook novamente
+          </a>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopiar}
+              className="rounded-lg border px-3.5 py-1.5 text-xs font-bold cursor-pointer"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}
+            >
+              Copiar texto
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-1.5 text-xs font-bold text-white cursor-pointer"
+              style={{ background: 'var(--brand)' }}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
       </ModalFooter>
     </Modal>
   );

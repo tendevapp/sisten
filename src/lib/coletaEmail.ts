@@ -13,6 +13,7 @@
  */
 
 import { formatBRL } from './format';
+import type { CidadeForn, ContatoFornecedor } from '../types';
 
 /** Chave do gatilho em `config_envio_emails` (Admin › E-mails). */
 export const CHAVE_CONFIG_COLETA = 'coleta_jacobina';
@@ -26,6 +27,11 @@ export interface LinhaColeta {
   /** Data da coleta = previsão de entrega efetiva do item (ISO), quando houver. */
   dataColeta: string | null;
   fornecedor: string;
+  fornecedorCodigo?: string | null;
+  nomeFantasia?: string | null;
+  razaoSocial?: string | null;
+  endereco?: string | null;
+  telefone?: string | null;
   rm: string;
   po: string;
   codigoItem: string;
@@ -33,6 +39,110 @@ export interface LinhaColeta {
   quantidade?: number | null;
   unidade?: string | null;
   valor?: number | null;
+}
+
+export interface DadosFornecedorColeta {
+  nomeFantasia: string | null;
+  razaoSocial: string | null;
+  endereco: string | null;
+  telefone: string | null;
+}
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+
+/**
+ * Resolve nome fantasia, razão social, endereço e telefone a partir do
+ * cadastro de contatos de fornecedores e da tabela de cidades/endereços (cidadeforn).
+ */
+export function resolverDadosFornecedor(params: {
+  fornecedorNome?: string | null;
+  fornecedorCodigo?: string | null;
+  contatos?: ContatoFornecedor[];
+  cidadesPorCodigo?: Map<string, CidadeForn>;
+  cidadesLista?: CidadeForn[];
+}): DadosFornecedorColeta {
+  const cod = String(params.fornecedorCodigo || '').trim();
+  const codSemZeros = cod.replace(/^0+/, '');
+  const codComPad = codSemZeros ? codSemZeros.padStart(10, '0') : '';
+  const nome = (params.fornecedorNome || '').trim();
+  const nomeNorm = semAcento(nome);
+
+  const contatos = params.contatos || [];
+  let contato: ContatoFornecedor | undefined;
+
+  // 1. Busca contato por código SAP do fornecedor
+  if (cod) {
+    contato = contatos.find(c => {
+      const cCod = String(c.cod_vendor || '').trim();
+      const cSemZeros = cCod.replace(/^0+/, '');
+      return cCod === cod || (codSemZeros && cSemZeros === codSemZeros);
+    });
+  }
+
+  // 2. Busca contato por nome ou nome fantasia se não achou por código
+  if (!contato && nomeNorm) {
+    contato = contatos.find(c => {
+      const cForn = semAcento(c.fornecedor || '');
+      const cFant = semAcento(c.nome_fantasia || '');
+      return (cForn && (cForn === nomeNorm || cForn.includes(nomeNorm) || nomeNorm.includes(cForn))) ||
+             (cFant && (cFant === nomeNorm || cFant.includes(nomeNorm) || nomeNorm.includes(cFant)));
+    });
+  }
+
+  // 3. Busca endereço em cidadeforn
+  let cidForn: CidadeForn | undefined;
+  if (params.cidadesPorCodigo && cod) {
+    cidForn = params.cidadesPorCodigo.get(cod) ||
+              params.cidadesPorCodigo.get(codSemZeros) ||
+              (codComPad ? params.cidadesPorCodigo.get(codComPad) : undefined);
+  }
+  if (!cidForn && params.cidadesLista && nomeNorm) {
+    cidForn = params.cidadesLista.find(cf => {
+      const cfNome = semAcento(cf.forn_nome || '');
+      return cfNome && (cfNome === nomeNorm || cfNome.includes(nomeNorm) || nomeNorm.includes(cfNome));
+    });
+  }
+
+  // Nome Fantasia e Razão Social
+  const nomeFantasia = contato?.nome_fantasia?.trim() || null;
+  const razaoSocial = contato?.fornecedor?.trim() || cidForn?.forn_nome?.trim() || (nome || null);
+
+  // Telefone: junta telefone geral e representante (sem duplicar)
+  const telsDisponiveis = [contato?.telefone?.trim(), contato?.representante_telefone?.trim()]
+    .filter((t): t is string => Boolean(t && t !== '—'));
+  const telsUnicos = Array.from(new Set(telsDisponiveis));
+  const telefone = telsUnicos.length > 0 ? telsUnicos.join(' / ') : null;
+
+  // Endereço
+  let endereco: string | null = null;
+  const rua = cidForn?.rua?.trim();
+  const localidade = cidForn?.localidade?.trim() || contato?.cidade?.trim();
+  const uf = cidForn?.estado_uf?.trim() || contato?.estado_uf?.trim();
+  const cep = cidForn?.codigo_postal?.trim();
+
+  if (rua) {
+    const partesEnd: string[] = [rua];
+    if (localidade && !rua.toLowerCase().includes(localidade.toLowerCase())) {
+      partesEnd.push(localidade);
+    }
+    let endStr = partesEnd.join(', ');
+    if (uf) endStr += ` - ${uf}`;
+    if (cep) endStr += ` - CEP ${cep}`;
+    endereco = endStr;
+  } else if (localidade || uf) {
+    let cidUf = localidade || '';
+    if (localidade && uf) cidUf += ` - ${uf}`;
+    else if (uf) cidUf += uf;
+    if (cep) cidUf += ` - CEP ${cep}`;
+    endereco = cidUf;
+  }
+
+  return {
+    nomeFantasia,
+    razaoSocial,
+    endereco,
+    telefone,
+  };
 }
 
 /**
@@ -85,7 +195,7 @@ function linhaItem(linha: LinhaColeta): string {
  * - Saudação "Bom dia!" e mensagem de introdução
  * - Totais (Itens e Valor total)
  * - Separador de cabeçalho
- * - Blocos por FORNECEDOR (alfabético)
+ * - Blocos por FORNECEDOR (alfabético) com Nome Fantasia, Razão Social, Endereço e Telefone (quando houver)
  * - Sub-blocos por PO com itens listados
  * - Separador ao fim de cada fornecedor
  */
@@ -120,10 +230,35 @@ export function montarCorpoColeta(params: {
   const fornecedores = Array.from(porFornecedor.keys()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   for (let fIdx = 0; fIdx < fornecedores.length; fIdx++) {
     const fornecedor = fornecedores[fIdx];
-    partes.push(`FORNECEDOR: ${fornecedor}`);
+    const itens = porFornecedor.get(fornecedor) || [];
+
+    // Localiza dados enriquecidos do cadastro caso existam em algum item do grupo
+    const itemComDados = itens.find(i => i.nomeFantasia || i.endereco || i.telefone || i.razaoSocial);
+    const nomeFantasia = itemComDados?.nomeFantasia?.trim();
+    const razaoSocial = itemComDados?.razaoSocial?.trim() || fornecedor;
+    const endereco = itemComDados?.endereco?.trim();
+    const telefone = itemComDados?.telefone?.trim();
+
+    // Se tiver Nome Fantasia, exibe como título principal; senão, o do cadastro / fornecedor
+    const titulo = nomeFantasia || razaoSocial || fornecedor;
+    partes.push(`FORNECEDOR: ${titulo}`);
+
+    // Se usou Nome Fantasia e há Razão Social diferente, adiciona a Razão Social
+    if (nomeFantasia && razaoSocial && razaoSocial.toLowerCase() !== nomeFantasia.toLowerCase()) {
+      partes.push(`Razão Social: ${razaoSocial}`);
+    }
+
+    if (endereco) {
+      partes.push(`Endereço: ${endereco}`);
+    }
+
+    if (telefone) {
+      partes.push(`Telefone: ${telefone}`);
+    }
+
     partes.push('');
 
-    const itens = [...(porFornecedor.get(fornecedor) || [])].sort((a, b) => {
+    const itensOrdenados = [...itens].sort((a, b) => {
       if (a.dataColeta && b.dataColeta) return a.dataColeta < b.dataColeta ? -1 : 1;
       if (a.dataColeta) return -1;
       if (b.dataColeta) return 1;
@@ -131,7 +266,7 @@ export function montarCorpoColeta(params: {
     });
 
     const porPo = new Map<string, LinhaColeta[]>();
-    for (const item of itens) {
+    for (const item of itensOrdenados) {
       const chavePo = textoOuTraco(item.po);
       const grupoPo = porPo.get(chavePo);
       if (grupoPo) grupoPo.push(item);

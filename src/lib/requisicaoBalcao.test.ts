@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  achatarGruposPep, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha, agruparLinhasPorPep,
+  achatarGruposPep, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha, agruparLinhasPorDeposito, agruparLinhasPorDestino, agruparLinhasPorPep,
   alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
-  definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
+  definirDepositoDoGrupo, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
   removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
@@ -174,6 +174,44 @@ describe('grupos de PEP', () => {
     expect(grupos[0].pep).toEqual(pepB);
     expect(grupos[0].itens[0].aplicacao_pep).toBe(pepB.wbs);
   });
+
+  it('definirDepositoDoGrupo altera o deposito e reflete nos itens', () => {
+    let grupos = [criarGrupoPep('g1', null, '0002')];
+    grupos = adicionarItemAoGrupo(grupos, grupos[0].id, mat1, 1, 'transferencia');
+    grupos = definirDepositoDoGrupo(grupos, grupos[0].id, '0004');
+    expect(grupos[0].deposito).toBe('0004');
+    expect(grupos[0].itens[0].deposito).toBe('0004');
+  });
+
+  it('agruparLinhasPorDeposito agrupa por deposito de saida para transferencias', () => {
+    const linhas: LinhaBalcao[] = [
+      { material: '1001', descricao: 'ITEM 1', unidade: 'UN', saldo: 10, quantidade: 2, deposito: '0002' },
+      { material: '1002', descricao: 'ITEM 2', unidade: 'UN', saldo: 5, quantidade: 4, deposito: '0004' },
+      { material: '1003', descricao: 'ITEM 3', unidade: 'UN', saldo: 2, quantidade: 1, deposito: '0002' },
+    ];
+    const grupos = agruparLinhasPorDeposito(linhas, '0002');
+    expect(grupos).toHaveLength(2);
+    expect(grupos[0].deposito).toBe('0002');
+    expect(grupos[0].itens).toHaveLength(2);
+    expect(grupos[1].deposito).toBe('0004');
+    expect(grupos[1].itens).toHaveLength(1);
+    expect(grupos[0].pep).toBeNull();
+  });
+
+  it('agruparLinhasPorDestino agrupa por deposito de destino para transferencias', () => {
+    const linhas: LinhaBalcao[] = [
+      { material: '1001', descricao: 'ITEM 1', unidade: 'UN', saldo: 10, quantidade: 2, deposito: '0002', deposito_destino: '0005' },
+      { material: '1002', descricao: 'ITEM 2', unidade: 'UN', saldo: 5, quantidade: 4, deposito: '0002', deposito_destino: '0006' },
+      { material: '1003', descricao: 'ITEM 3', unidade: 'UN', saldo: 2, quantidade: 1, deposito: '0004', deposito_destino: '0005' },
+    ];
+    const grupos = agruparLinhasPorDestino(linhas, '0005');
+    expect(grupos).toHaveLength(2);
+    expect(grupos[0].deposito_destino).toBe('0005');
+    expect(grupos[0].itens).toHaveLength(2);
+    expect(grupos[1].deposito_destino).toBe('0006');
+    expect(grupos[1].itens).toHaveLength(1);
+    expect(grupos[0].pep).toBeNull();
+  });
 });
 
 describe('validarRequisicao', () => {
@@ -184,13 +222,31 @@ describe('validarRequisicao', () => {
     expect(validarRequisicao(cab, [linha])).toEqual([]);
   });
 
-  it('exige colaborador, aplicação e itens', () => {
+  it('exige colaborador, aplicação e itens na saída', () => {
     expect(validarRequisicao({ ...cab, colaboradorNome: '', aplicacao: '' }, [])).toHaveLength(3);
+  });
+
+  it('transferência não exige PEP/aplicação', () => {
+    const erros = validarRequisicao(
+      { tipoMovimento: 'transferencia', depositoOrigem: '0002', depositoDestino: '0004', colaboradorNome: 'JOSE', aplicacao: '' },
+      [linha],
+    );
+    expect(erros).toEqual([]);
   });
 
   it('transferência não pode ter destino igual à origem', () => {
     const erros = validarRequisicao({ ...cab, tipoMovimento: 'transferencia', depositoDestino: '2' }, [linha]);
     expect(erros).toEqual(['O depósito de destino precisa ser diferente do de saída.']);
+  });
+
+  it('transferência com itens de múltiplos depósitos valida que destino não conflita com nenhum', () => {
+    const linhaDep2 = { ...linha, deposito: '0002' };
+    const linhaDep4 = { ...linha, material: '2', deposito: '0004' };
+    const erros = validarRequisicao(
+      { tipoMovimento: 'transferencia', depositoOrigem: '0002', depositoDestino: '0004', colaboradorNome: 'JOSE', aplicacao: '' },
+      [linhaDep2, linhaDep4],
+    );
+    expect(erros).toContain('O depósito de destino precisa ser diferente do de saída.');
   });
 });
 

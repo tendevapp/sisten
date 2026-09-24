@@ -747,6 +747,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   const [searchQuery, setSearchQuery] = useState('');
   // Filtros de seleção múltipla: conjunto vazio = sem restrição ("Todos").
   const [rmFilter, setRmFilter] = useState<Set<string>>(new Set());
+  const [numPoFilter, setNumPoFilter] = useState<Set<string>>(new Set());
   const [buyerFilter, setBuyerFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
   const [alertFilter, setAlertFilter] = useState<Set<string>>(new Set());
@@ -840,7 +841,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
+  }, [searchQuery, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -1655,11 +1656,13 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // Opções de filtro — dependentes entre si: cada lista considera os demais filtros
   // ativos (menos o próprio), então escolher um comprador restringe as RMs exibidas,
   // escolher uma RM restringe os compradores, e assim por diante.
-  const { rmOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions, grupoMercOptions } = useMemo(() => {
-    type Campo = 'rm' | 'buyer' | 'status' | 'alert' | 'prioridade' | 'grupoMerc';
+  const { rmOptions, poOptions, buyerOptions, statusOptions, alertOptions, prioridadeOptions, grupoMercOptions } = useMemo(() => {
+    type Campo = 'rm' | 'po' | 'buyer' | 'status' | 'alert' | 'prioridade' | 'grupoMerc';
     const passa = (rm: string, it: RMGroup['items'][number], exceto: Campo) => {
       const r = it.record;
+      const poNum = (r.documento_compra || r.pedido || '').trim();
       if (exceto !== 'rm' && rmFilter.size > 0 && !rmFilter.has(rm)) return false;
+      if (exceto !== 'po' && numPoFilter.size > 0 && (!poNum || !numPoFilter.has(poNum))) return false;
       if (exceto !== 'buyer' && buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
       if (exceto !== 'status' && statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
       if (exceto !== 'alert' && alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
@@ -1673,6 +1676,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     };
 
     const rms = new Set<string>();
+    const pos = new Set<string>();
     const buyers = new Set<string>();
     const statuses = new Set<string>();
     const alerts = new Set<string>();
@@ -1681,7 +1685,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
     rmGroups.forEach(g => g.items.forEach(it => {
       const r = it.record;
+      const poNum = (r.documento_compra || r.pedido || '').trim();
       if (g.rm && passa(g.rm, it, 'rm')) rms.add(g.rm);
+      if (poNum && poNum !== '—' && passa(g.rm, it, 'po')) pos.add(poNum);
       if (r.grupo_comprador && passa(g.rm, it, 'buyer')) buyers.add(r.grupo_comprador);
       if (r.status_atualizado && passa(g.rm, it, 'status')) statuses.add(r.status_atualizado);
       if (r.alerta && passa(g.rm, it, 'alert')) alerts.add(r.alerta);
@@ -1699,6 +1705,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
     return {
       rmOptions: Array.from(rms).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+      poOptions: Array.from(pos).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
       buyerOptions: Array.from(buyers).sort(),
       statusOptions: Array.from(statuses).sort(),
       alertOptions: Array.from(alerts).sort(),
@@ -1706,11 +1713,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       // Ordem fixa (mais urgente primeiro), mantendo só os graus presentes.
       prioridadeOptions: ['5', '4', '3', '2', '1', 'Nenhuma'].filter(n => prioridades.has(n)),
     };
-  }, [rmGroups, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, poFilter]);
+  }, [rmGroups, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, poFilter]);
 
   // Se um valor marcado deixar de existir nas opções (por causa de outro filtro
   // selecionado depois), ele é descartado em vez de zerar a listagem.
   useSaneamento(rmFilter, setRmFilter, rmOptions);
+  useSaneamento(numPoFilter, setNumPoFilter, poOptions);
   useSaneamento(buyerFilter, setBuyerFilter, buyerOptions);
   useSaneamento(statusFilter, setStatusFilter, statusOptions);
   useSaneamento(alertFilter, setAlertFilter, alertOptions);
@@ -1730,6 +1738,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       const rmMatchesSearch = q ? g.rm.toLowerCase().includes(q) : false;
       const items = g.items.filter(it => {
         const r = it.record;
+        if (numPoFilter.size > 0) {
+          const poNum = (r.documento_compra || r.pedido || '').trim();
+          if (!poNum || !numPoFilter.has(poNum)) return false;
+        }
         if (buyerFilter.size > 0 && !buyerFilter.has(r.grupo_comprador || '')) return false;
         if (statusFilter.size > 0 && !statusFilter.has(r.status_atualizado || '')) return false;
         if (alertFilter.size > 0 && !alertFilter.has(r.alerta || '')) return false;
@@ -1767,7 +1779,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
+  }, [rmGroups, searchQuery, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -2568,6 +2580,15 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               options={rmOptions}
               selected={rmFilter}
               onChange={setRmFilter}
+              className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
+            />
+            <MultiSelectFilter
+              label="PO"
+              icon={Tag}
+              allLabel="Todos"
+              options={poOptions}
+              selected={numPoFilter}
+              onChange={setNumPoFilter}
               className="shrink-0 w-[150px] lg:w-auto lg:min-w-[150px]"
             />
             <MultiSelectFilter

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronRight, ClipboardList, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
+import { ChevronRight, CircleCheck, ClipboardList, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
 import type { Profile } from '../../types';
 import { ordenarPlanoExpedicao, resumirPlanoExpedicao, type StatusPlanoExpedicao } from '../../lib/producao';
 import {
@@ -28,7 +28,9 @@ const STATUS: Record<StatusPlanoExpedicao, { label: string; classe: string }> = 
 };
 
 function Marcador({ marcado, label }: { marcado: boolean; label: string }) {
-  return marcado ? <Check aria-label={label} className="mx-auto h-4 w-4 text-blue-600" /> : <span aria-label={`${label}: não emitida`} className="block text-center text-slate-300">—</span>;
+  return marcado
+    ? <CircleCheck aria-label={label} className="mx-auto h-5 w-5 stroke-[2.75] text-blue-650" />
+    : <span aria-label={`${label}: não emitida`} className="block text-center text-base leading-none text-slate-350">—</span>;
 }
 
 function BotaoNf({ checked, disabled, label, onChange }: { checked: boolean; disabled: boolean; label: string; onChange: (valor: boolean) => void }) {
@@ -114,8 +116,19 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
   const previsaoPorData = useMemo(() => {
     const grupos = new Map<string, number>();
     relatorio.forEach(linha => { if (linha.data_expedicao) grupos.set(linha.data_expedicao, (grupos.get(linha.data_expedicao) ?? 0) + 1); });
-    return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [relatorio]);
+    const anoBase = relatorio.map(linha => linha.data_expedicao ?? linha.data_carregamento).filter((data): data is string => Boolean(data)).sort()[0];
+    const ano = anoBase ? Number(anoBase.slice(0, 4)) : new Date().getFullYear();
+    const referencia = new Date(ano, 0, 1 + (semanaRelatorio - 1) * 7);
+    const diaSemana = referencia.getDay();
+    const segunda = new Date(referencia);
+    segunda.setDate(referencia.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+    return Array.from({ length: 5 }, (_, indice) => {
+      const data = new Date(segunda);
+      data.setDate(segunda.getDate() + indice);
+      const iso = data.toISOString().slice(0, 10);
+      return [iso, grupos.get(iso) ?? 0] as [string, number];
+    });
+  }, [relatorio, semanaRelatorio]);
   const periodo = useMemo(() => {
     const datas = relatorio.flatMap(linha => [linha.data_carregamento, linha.data_expedicao]).filter((data): data is string => Boolean(data)).sort();
     return datas.length ? `${formatarData(datas[0])} a ${formatarData(datas.at(-1) ?? null)}` : 'Período sem datas';
@@ -183,13 +196,13 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_245px]">
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800"><h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">PROGRAMAÇÃO DE EXPEDIÇÃO · W{semanaRelatorio} · {tituloTorres}</h2></div>
-              <div className="overflow-x-auto"><table className="min-w-[720px] w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:bg-slate-800/80"><tr><th className="p-3">Torre</th><th className="p-3">Tramo</th><th className="p-3">ID</th><th className="p-3 text-center">NF Fat.</th><th className="p-3 text-center">NF-GW</th><th className="p-3 text-center">NF Exp.</th><th className="p-3">Carregamento</th><th className="p-3">Expedição</th><th className="p-3">Status</th></tr></thead><tbody>{porTorre.map(([torre, itens]) => itens.map((linha, indice) => <tr key={linha.id} className={`border-t border-slate-100 dark:border-slate-800 ${linha.status === 'expedido' ? 'bg-emerald-50/80 dark:bg-emerald-950/20' : linha.status === 'faturado' ? 'bg-blue-50/55 dark:bg-blue-950/15' : ''}`}><td className="p-3 font-bold text-slate-800 dark:text-slate-100">{indice === 0 ? `Torre ${torre}` : ''}</td><td className="p-3 font-semibold">{linha.tramo}</td><td className="p-3">{linha.identificador ?? '—'}</td><td className="p-3"><Marcador marcado={linha.nf_faturamento_emitida} label="NF de faturamento" /></td><td className="p-3"><Marcador marcado={linha.nf_gw_emitida} label="NF GW" /></td><td className="p-3"><Marcador marcado={linha.nf_expedicao_emitida} label="NF de expedição" /></td><td className="p-3">{formatarData(linha.data_carregamento)}</td><td className="p-3 font-semibold">{formatarData(linha.data_expedicao)}</td><td className="p-3"><span className={`inline-flex rounded-md px-2 py-1 text-[11px] font-bold ${STATUS[linha.status].classe}`}>{STATUS[linha.status].label}</span></td></tr>))}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="min-w-[650px] w-full table-fixed text-left text-sm"><colgroup><col className="w-[11%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[15%]" /></colgroup><thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"><tr><th className="px-2 py-2.5">Torre</th><th className="px-2 py-2.5">Tramo</th><th className="px-2 py-2.5">ID</th><th className="px-2 py-2.5 text-center">NF Fat.</th><th className="px-2 py-2.5 text-center">NF-GW</th><th className="px-2 py-2.5 text-center">NF Exp.</th><th className="px-2 py-2.5">Carregamento</th><th className="px-2 py-2.5">Expedição</th><th className="px-2 py-2.5">Status</th></tr></thead><tbody>{porTorre.map(([torre, itens], indiceTorre) => itens.map((linha, indice) => <tr key={linha.id} className={`border-t border-slate-200 dark:border-slate-800 ${indice === 0 && indiceTorre > 0 ? 'border-t-2 border-t-slate-400 dark:border-t-slate-600' : ''} ${linha.status === 'expedido' ? 'bg-emerald-100/85 dark:bg-emerald-950/35' : linha.status === 'faturado' ? 'bg-blue-100/75 dark:bg-blue-950/35' : 'bg-slate-100/90 dark:bg-slate-800/80'}`}><td className="truncate px-2 py-2.5 font-bold text-slate-800 dark:text-slate-100">{indice === 0 ? `Torre ${torre}` : ''}</td><td className="px-2 py-2.5 font-semibold">{linha.tramo}</td><td className="px-2 py-2.5">{linha.identificador ?? '—'}</td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_faturamento_emitida} label="NF de faturamento" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_gw_emitida} label="NF GW" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_expedicao_emitida} label="NF de expedição" /></td><td className="whitespace-nowrap px-2 py-2.5">{formatarData(linha.data_carregamento)}</td><td className="whitespace-nowrap px-2 py-2.5 font-semibold">{formatarData(linha.data_expedicao)}</td><td className="px-2 py-2.5"><span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${STATUS[linha.status].classe}`}>{STATUS[linha.status].label}</span></td></tr>))}</tbody></table></div>
               {!relatorio.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum tramo encontrado para esse filtro.</p>}
             </section>
             <aside className="rounded-xl bg-[#0b70bb] p-5 text-white shadow-sm">
               <p className="text-lg font-bold">EXPEDIÇÃO</p><p className="text-sm font-semibold text-blue-200">SEMANA {semanaRelatorio}</p><div className="my-5 h-1 w-11 bg-orange-400" />
               <div className="space-y-2">{previsaoPorData.map(([data, total]) => <div key={data} className="flex items-center justify-between border-b border-blue-300/45 pb-2 text-sm"><span className="font-bold">{formatarData(data, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span><span className="font-bold">{total}</span></div>)}</div>
-              <div className="mt-12 rounded-xl bg-slate-900/35 p-4"><p className="text-[11px] font-bold uppercase text-blue-200">Previsão de expedição semana</p><p className="mt-2 text-4xl font-bold">{resumo.total}<span className="ml-1 text-base">tramos</span></p></div>
+              <div className="mt-12 rounded-xl bg-slate-900/35 p-4"><p className="text-[11px] font-bold uppercase text-blue-200">Previsão de faturamento semana</p><p className="mt-2 text-4xl font-bold">{resumo.total}<span className="ml-1 text-base">tramos</span></p></div>
             </aside>
           </div>
         </> : <>
