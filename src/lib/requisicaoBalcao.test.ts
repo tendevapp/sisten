@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  adicionarLinha, buscarMateriais, buscarMateriaisEmDepositos, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos,
-  ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
+  achatarGruposPep, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha, agruparLinhasPorPep,
+  alertaDaLinha, atualizarQtdItemDoGrupo, buscarMateriais, buscarMateriaisEmDepositos, criarGrupoPep,
+  definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
+  removerItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao, type LinhaBalcao,
 } from './requisicaoBalcao';
 import type { EstoqueItem } from '../types';
 
@@ -14,15 +16,21 @@ const estoque: EstoqueItem[] = [
 ];
 
 describe('indexarEstoquePorDeposito', () => {
-  const idx = indexarEstoquePorDeposito(estoque);
-
   it('soma linhas do mesmo material e normaliza o código do depósito', () => {
+    const idx = indexarEstoquePorDeposito(estoque, false);
     expect(idx.get('0002')?.get('1291134')?.saldo).toBe(3030);
     expect(idx.get('0105')?.get('1291134')?.saldo).toBe(60);
   });
 
-  it('descarta material sem saldo e depósito que ficou vazio', () => {
+  it('descarta material sem saldo quando incluirSemSaldo = false', () => {
+    const idx = indexarEstoquePorDeposito(estoque, false);
     expect(idx.has('0004')).toBe(false);
+  });
+
+  it('mantém material sem saldo quando incluirSemSaldo = true (padrão)', () => {
+    const idx = indexarEstoquePorDeposito(estoque, true);
+    expect(idx.has('0004')).toBe(true);
+    expect(idx.get('0004')?.get('9999999')?.saldo).toBe(0);
   });
 });
 
@@ -67,16 +75,104 @@ describe('linhas', () => {
     expect(l[0].quantidade).toBe(5);
   });
 
-  it('acusa quantidade zero e acima do saldo', () => {
-    expect(erroDaLinha({ quantidade: 0, saldo: 5 })).not.toBeNull();
-    expect(erroDaLinha({ quantidade: 6, saldo: 5 })).toMatch(/saldo/);
-    expect(erroDaLinha({ quantidade: 5, saldo: 5 })).toBeNull();
+  it('erroDaLinha só bloqueia quantidade zero ou negativa, não bloqueia saldo insuficiente', () => {
+    expect(erroDaLinha({ quantidade: 0 })).not.toBeNull();
+    expect(erroDaLinha({ quantidade: -1 })).not.toBeNull();
+    expect(erroDaLinha({ quantidade: 6 })).toBeNull();
+    expect(erroDaLinha({ quantidade: 5 })).toBeNull();
+  });
+
+  it('alertaDaLinha sinaliza item sem saldo ou quantidade superior ao saldo', () => {
+    expect(alertaDaLinha({ quantidade: 6, saldo: 5 })).toMatch(/saldo/);
+    expect(alertaDaLinha({ quantidade: 1, saldo: 0 })).toMatch(/saldo/);
+    expect(alertaDaLinha({ quantidade: 5, saldo: 5 })).toBeNull();
   });
 
   it('trocar o depósito zera o saldo de material que não existe lá', () => {
     const idx = indexarEstoquePorDeposito(estoque);
     const linhas: LinhaBalcao[] = [{ ...item, quantidade: 1 }];
     expect(reaplicarSaldos(linhas, idx.get('0105'))[0].saldo).toBe(0);
+  });
+});
+
+describe('grupos de PEP', () => {
+  const pepA = { wbs: 'TEN001201016503', nome: 'SUPRIMENTOS' };
+  const pepB = { wbs: 'TEN001101127004', nome: 'LAVAGEM' };
+  const mat1 = { material: '1001', descricao: 'ITEM 1', unidade: 'UN', saldo: 10 };
+  const mat2 = { material: '1002', descricao: 'ITEM 2', unidade: 'UN', saldo: 5 };
+
+  it('cria e adiciona grupos de PEP', () => {
+    const g1 = criarGrupoPep(pepA);
+    expect(g1.pep).toEqual(pepA);
+    expect(g1.itens).toEqual([]);
+
+    const grupos = adicionarGrupoPep([g1], pepB);
+    expect(grupos).toHaveLength(2);
+    expect(grupos[1].pep).toEqual(pepB);
+  });
+
+  it('adiciona e atualiza itens dentro do grupo correto', () => {
+    let grupos = [criarGrupoPep(pepA), criarGrupoPep(pepB)];
+    const idGrupoA = grupos[0].id;
+    const idGrupoB = grupos[1].id;
+
+    grupos = adicionarItemAoGrupo(grupos, idGrupoA, mat1, 3);
+    grupos = adicionarItemAoGrupo(grupos, idGrupoB, mat2, 2);
+
+    expect(grupos[0].itens).toHaveLength(1);
+    expect(grupos[0].itens[0].material).toBe('1001');
+    expect(grupos[0].itens[0].quantidade).toBe(3);
+
+    expect(grupos[1].itens).toHaveLength(1);
+    expect(grupos[1].itens[0].material).toBe('1002');
+    expect(grupos[1].itens[0].quantidade).toBe(2);
+
+    grupos = atualizarQtdItemDoGrupo(grupos, idGrupoA, 0, 7);
+    expect(grupos[0].itens[0].quantidade).toBe(7);
+
+    grupos = removerItemDoGrupo(grupos, idGrupoB, 0);
+    expect(grupos[1].itens).toHaveLength(0);
+  });
+
+  it('achatarGruposPep injeta aplicacao_pep e aplicacao em cada item', () => {
+    let grupos = [criarGrupoPep(pepA), criarGrupoPep(pepB)];
+    grupos = adicionarItemAoGrupo(grupos, grupos[0].id, mat1, 2);
+    grupos = adicionarItemAoGrupo(grupos, grupos[1].id, mat2, 4);
+
+    const linhas = achatarGruposPep(grupos);
+    expect(linhas).toHaveLength(2);
+    expect(linhas[0].aplicacao_pep).toBe(pepA.wbs);
+    expect(linhas[0].aplicacao).toBe(pepA.nome);
+    expect(linhas[1].aplicacao_pep).toBe(pepB.wbs);
+    expect(linhas[1].aplicacao).toBe(pepB.nome);
+  });
+
+  it('agruparLinhasPorPep remonta a estrutura a partir de linhas salvas', () => {
+    const linhas: LinhaBalcao[] = [
+      { material: '1001', descricao: 'ITEM 1', unidade: 'UN', saldo: 10, quantidade: 2, aplicacao_pep: pepA.wbs, aplicacao: pepA.nome },
+      { material: '1002', descricao: 'ITEM 2', unidade: 'UN', saldo: 5, quantidade: 4, aplicacao_pep: pepB.wbs, aplicacao: pepB.nome },
+      { material: '1003', descricao: 'ITEM 3', unidade: 'UN', saldo: 2, quantidade: 1, aplicacao_pep: pepA.wbs, aplicacao: pepA.nome },
+    ];
+    const grupos = agruparLinhasPorPep(linhas, [pepA, pepB], pepA);
+    expect(grupos).toHaveLength(2);
+    expect(grupos[0].pep?.wbs).toBe(pepA.wbs);
+    expect(grupos[0].itens).toHaveLength(2);
+    expect(grupos[1].pep?.wbs).toBe(pepB.wbs);
+    expect(grupos[1].itens).toHaveLength(1);
+  });
+
+  it('removerGrupoPep não remove o último grupo restante', () => {
+    const g1 = criarGrupoPep(pepA);
+    const grupos = removerGrupoPep([g1], g1.id);
+    expect(grupos).toHaveLength(1);
+  });
+
+  it('definirPepDoGrupo altera o PEP e reflete nos itens', () => {
+    let grupos = [criarGrupoPep(pepA)];
+    grupos = adicionarItemAoGrupo(grupos, grupos[0].id, mat1, 1);
+    grupos = definirPepDoGrupo(grupos, grupos[0].id, pepB);
+    expect(grupos[0].pep).toEqual(pepB);
+    expect(grupos[0].itens[0].aplicacao_pep).toBe(pepB.wbs);
   });
 });
 

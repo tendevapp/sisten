@@ -42,29 +42,42 @@ export interface RequisicaoParaPlanilha {
   aplicacao_pep: string | null;
   aplicacao: string;
   observacao: string | null;
-  itens: { material: string; descricao: string | null; quantidade: number }[];
+  itens: {
+    material: string;
+    descricao: string | null;
+    quantidade: number;
+    aplicacao_pep?: string | null;
+    aplicacao?: string | null;
+    saldo_zl0024?: number | null;
+    sem_saldo?: boolean | null;
+  }[];
 }
 
 /**
  * Converte requisições em linhas. A observação leva o código RQB na frente:
  * é o que liga a linha processada no SAP de volta à requisição.
  * `Status_Processamento` sai vazio — é preenchido por quem processa.
+ * Cada item leva o seu Elemento_PEP respectivo (se houver grupos de PEP múltiplos).
  */
 export function montarLinhasBalcao(requisicoes: RequisicaoParaPlanilha[]): LinhaPlanilhaBalcao[] {
   return requisicoes.flatMap((r) =>
-    r.itens.map((i) => ({
-      Tipo: ROTULO_TIPO_MOVIMENTO[r.tipo_movimento],
-      Material: i.material,
-      'Texto breve': i.descricao ?? '',
-      Quantidade: Number(i.quantidade),
-      Deposito: r.deposito_origem,
-      Descricao_Deposito: descricaoDeposito(r.deposito_origem),
-      Elemento_PEP: r.aplicacao_pep ?? '',
-      Descricao_PEP: r.aplicacao_pep ? r.aplicacao : '',
-      Receptor_Centro: BALCAO_CENTRO,
-      Status_Processamento: '',
-      Observacao: r.observacao ? `${r.codigo} - ${r.observacao}` : r.codigo,
-    })),
+    r.itens.map((i) => {
+      const pep = i.aplicacao_pep || r.aplicacao_pep || '';
+      const descPep = i.aplicacao || (i.aplicacao_pep ? i.aplicacao_pep : r.aplicacao);
+      return {
+        Tipo: ROTULO_TIPO_MOVIMENTO[r.tipo_movimento],
+        Material: i.material,
+        'Texto breve': i.descricao ?? '',
+        Quantidade: Number(i.quantidade),
+        Deposito: r.deposito_origem,
+        Descricao_Deposito: descricaoDeposito(r.deposito_origem),
+        Elemento_PEP: pep,
+        Descricao_PEP: pep ? descPep : '',
+        Receptor_Centro: BALCAO_CENTRO,
+        Status_Processamento: '',
+        Observacao: r.observacao ? `${r.codigo} - ${r.observacao}` : r.codigo,
+      };
+    }),
   );
 }
 

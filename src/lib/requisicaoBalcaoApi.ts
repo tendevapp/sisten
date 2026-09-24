@@ -11,11 +11,21 @@
  */
 
 import { supabase } from '../db/supabaseClient';
+import { localDb } from '../db/localDb';
+import type { EstoqueItem } from '../types';
 import type { PepAplicacao, TipoMovimentoBalcao } from './requisicaoBalcao';
 
 /** As tabelas ainda não estão em `database.types.ts` — mesmo atalho de `almoxarifadoRmApi`. */
 const dbReq = () => (supabase.from as any)('alm_req_balcao');
 const dbExportacoes = () => (supabase.from as any)('alm_req_balcao_exportacoes');
+
+/**
+ * Puxa a posição de estoque da ZL0024 diretamente do Supabase (`sap_zl0024_stk`),
+ * garantindo que a tela e o formulário de balcão trabalhem com saldos em tempo real.
+ */
+export async function buscarEstoqueBalcao(forcar = true): Promise<EstoqueItem[]> {
+  return localDb.fetchEstoque(forcar);
+}
 
 export interface ReqBalcaoItemRow {
   id: string;
@@ -26,6 +36,9 @@ export interface ReqBalcaoItemRow {
   unidade: string | null;
   quantidade: number;
   saldo_zl0024: number | null;
+  aplicacao_pep?: string | null;
+  aplicacao?: string | null;
+  sem_saldo?: boolean | null;
   /** Documento SAP da baixa deste item — vem da importação da planilha concluída. */
   doc_sap: string | null;
   status_processamento: string | null;
@@ -145,11 +158,20 @@ export async function listarRequisicoesBalcao(limite = 500): Promise<ReqBalcaoRo
   }));
 }
 
+export interface ReqBalcaoItemInput {
+  material: string;
+  quantidade: number;
+  aplicacao_pep?: string | null;
+  aplicacao?: string | null;
+  descricao?: string | null;
+  unidade?: string | null;
+}
+
 /** Cria (`id` nulo) ou edita uma requisição. Devolve o código gravado. */
 export async function salvarRequisicaoBalcao(
   id: string | null,
   req: ReqBalcaoInput,
-  itens: { material: string; quantidade: number }[],
+  itens: ReqBalcaoItemInput[],
 ): Promise<string> {
   const { data, error } = await supabase.rpc('alm_req_balcao_salvar' as any, {
     p_id: id,

@@ -105,6 +105,7 @@ export const PAGES: PageDef[] = [
   { id: 'prod_pendencias', group: 'PRODUÇÃO', label: 'Controle de Liberações', path: '/producao/pendencias', icon: ListChecks, defaultRoles: ['admin'] },
   { id: 'prod_consulta', group: 'PRODUÇÃO', label: 'Consulta', path: '/producao/consulta', icon: Search, defaultRoles: ['admin'] },
   { id: 'prod_entrega', group: 'PRODUÇÃO', label: 'Controle de Entrega', path: '/producao/entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
+  { id: 'prod_expedicao', group: 'PRODUÇÃO', label: 'Plano de Expedição', path: '/producao/expedicao', icon: Truck, defaultRoles: [] },
   { id: 'prod_painel', group: 'PRODUÇÃO', label: 'Painel de Qualidade', path: '/producao/painel', icon: Activity, defaultRoles: ['admin'] },
   { id: 'prod_dashboards', group: 'PRODUÇÃO', label: 'Dashboards', path: '/producao/dashboards', icon: LayoutDashboard, defaultRoles: ['admin'] },
   { id: 'prod_cadastros', group: 'PRODUÇÃO', label: 'Cadastros de Qualidade', path: '/producao/cadastros', icon: Settings, defaultRoles: ['admin'] },
@@ -675,6 +676,13 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   if (user.roles.includes('admin')) return true;
 
   if (pageId === 'ssma') return canAccessFormGroup(user, 'ssma');
+
+  // O plano é uma ferramenta operacional do módulo: quem já recebeu o hub de
+  // Produção a enxerga, salvo bloqueio explícito nesta página pelo admin.
+  if (pageId === 'prod_expedicao') {
+    const override = user.page_access?.prod_expedicao;
+    return override ?? canAccessPage(user, 'producao_home');
+  }
 
   const def = BY_ID[pageId];
   if (!def) return false;

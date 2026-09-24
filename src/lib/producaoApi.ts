@@ -141,6 +141,23 @@ export interface EntregaTramoProducao {
   pronto_expedicao: boolean;
 }
 
+export interface PlanoExpedicaoProducao {
+  id: string;
+  semana: number;
+  torre_numero: number;
+  tramo: 'T1' | 'T2' | 'T3' | 'T4' | 'T5';
+  identificador: number | null;
+  nf_faturamento_emitida: boolean;
+  nf_gw_emitida: boolean;
+  nf_expedicao_emitida: boolean;
+  status: import('./producao').StatusPlanoExpedicao;
+  data_carregamento: string | null;
+  data_expedicao: string | null;
+  observacao: string | null;
+  atualizado_em: string;
+  atualizado_por: string | null;
+}
+
 export interface ToleranciaProducaoDb {
   id: string;
   etapa_id: string;
@@ -640,6 +657,31 @@ export async function listarLancamentos(filtros: FiltrosConsultaProducao = {}): 
 export async function listarRelatorioDiario(filtros: Pick<FiltrosConsultaProducao, 'dataInicial' | 'dataFinal'> = {}): Promise<RelatorioDiarioLinha[]> {
   const linhas = await listarLancamentos(filtros);
   return calcularRelatorioDiario(linhas);
+}
+
+export async function listarPlanoExpedicao(): Promise<PlanoExpedicaoProducao[]> {
+  const { data, error } = await db('prod_plano_expedicao')
+    .select('*')
+    .order('semana')
+    .order('torre_numero')
+    .order('tramo');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PlanoExpedicaoProducao[];
+}
+
+export async function atualizarPlanoExpedicao(
+  id: string,
+  campos: Partial<Pick<PlanoExpedicaoProducao,
+    'semana' | 'torre_numero' | 'tramo' | 'identificador' | 'nf_faturamento_emitida' | 'nf_gw_emitida'
+    | 'nf_expedicao_emitida' | 'status' | 'data_carregamento' | 'data_expedicao' | 'observacao'>>,
+): Promise<PlanoExpedicaoProducao> {
+  const { data, error } = await db('prod_plano_expedicao')
+    .update(campos)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as PlanoExpedicaoProducao;
 }
 
 export async function listarAlteracoes(lancamentoId: string): Promise<AlteracaoProducao[]> {

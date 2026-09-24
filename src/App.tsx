@@ -98,6 +98,7 @@ const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamen
 const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
 const ProducaoOperacao = lazy(() => import('./views/producao/ProducaoOperacao'));
 const ProducaoDashboards = lazy(() => import('./views/producao/ProducaoDashboards'));
+const ProducaoPlanoExpedicao = lazy(() => import('./views/producao/ProducaoPlanoExpedicao'));
 
 // Remontar uma tela quando a sincronização em segundo plano chega apaga todo o
 // estado local dela: formulário preenchido, filtros, busca, seleção, edição
@@ -1130,6 +1131,14 @@ export default function App() {
 
       case '/producao/entrega':
         if (canAccessPage(user, 'prod_entrega')) return <ProducaoOperacao modo="entrega" user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/expedicao':
+        if (canAccessPage(user, 'prod_expedicao')) return <ProducaoPlanoExpedicao user={user} onNavigate={handleNavigate} />;
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/expedicao/dados':
+        if (canAccessPage(user, 'prod_expedicao')) return <ProducaoPlanoExpedicao user={user} onNavigate={handleNavigate} modo="dados" />;
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
       case '/producao/painel':

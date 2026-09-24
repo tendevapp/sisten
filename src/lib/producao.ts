@@ -242,3 +242,33 @@ export function calcularRelatorioDiario(
   }
   return [...porData.values()].sort((a, b) => b.data.localeCompare(a.data));
 }
+
+/** Ordem física do plano: o topo da torre (T5) antecede a base (T1). */
+const ORDEM_TRAMOS_EXPEDICAO: Record<string, number> = { T5: 1, T4: 2, T3: 3, T2: 4, T1: 5 };
+
+/** Situação operacional de cada tramo no plano de expedição. */
+export type StatusPlanoExpedicao = 'a_faturar' | 'faturado' | 'expedido';
+
+/** Totais que alimentam os cartões do relatório, sempre a partir das linhas filtradas. */
+export function resumirPlanoExpedicao(
+  linhas: Array<{ status: StatusPlanoExpedicao; data_expedicao?: string | null }>,
+): { total: number; faturados: number; expedidos: number; aFaturar: number } {
+  const expedidos = linhas.filter(linha => linha.status === 'expedido').length;
+  const aFaturar = linhas.filter(linha => linha.status === 'a_faturar').length;
+  return {
+    total: linhas.length,
+    faturados: linhas.length - aFaturar,
+    expedidos,
+    aFaturar,
+  };
+}
+
+/** Mantém a programação de expedição estável mesmo quando a API retorna linhas fora da ordem. */
+export function ordenarPlanoExpedicao<T extends { semana: number; torre_numero: number; tramo: string }>(linhas: T[]): T[] {
+  return [...linhas].sort((a, b) =>
+    a.semana - b.semana
+    || a.torre_numero - b.torre_numero
+    || (ORDEM_TRAMOS_EXPEDICAO[a.tramo] ?? Number.MAX_SAFE_INTEGER) - (ORDEM_TRAMOS_EXPEDICAO[b.tramo] ?? Number.MAX_SAFE_INTEGER)
+    || a.tramo.localeCompare(b.tramo),
+  );
+}

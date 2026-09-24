@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Almoxarifado > Requisição no Balcão (FRM.ALM-0014) — regras sem React e
- * sem Supabase: o que pode sair de qual depósito, busca de material e
- * validação das linhas antes de gravar.
+ * sem Supabase: o que pode sair de qual depósito, busca de material,
+ * agrupamento por PEP e validação das linhas antes de gravar.
  *
- * Só sai material que tem saldo na ZL0024 (`sap_zl0024_stk`) no depósito de
- * saída escolhido. A RPC `alm_req_balcao_salvar` repete a checagem no banco;
- * aqui ela existe para o almoxarife ver o saldo enquanto digita e não
- * descobrir o problema só ao salvar.
+ * O almoxarife visualiza o saldo da ZL0024 (`sap_zl0024_stk`). Itens sem saldo
+ * ou com quantidade maior que o estoque são permitidos com aviso de alerta
+ * (para suprir defasagens de importação de notas/planilhas), devendo ser
+ * confirmados antes do processamento no SAP.
+ *
+ * Permite múltiplos grupos de PEP em um mesmo formulário RQB.
  */
 
 import type { EstoqueItem } from '../types';
@@ -39,6 +41,15 @@ export interface LinhaBalcao {
   unidade: string;
   saldo: number;
   quantidade: number;
+  aplicacao_pep?: string | null;
+  aplicacao?: string | null;
+}
+
+/** Grupo de itens associados a um mesmo PEP no formulário. */
+export interface GrupoPepBalcao {
+  id: string;
+  pep: PepAplicacao | null;
+  itens: LinhaBalcao[];
 }
 
 /** Códigos de depósito chegam como '0004' ou '4' — o cadastro usa quatro dígitos. */
@@ -50,9 +61,13 @@ export function chaveDeposito(cod?: string | null): string {
 /**
  * Agrupa a posição de estoque em `depósito → material → saldo`, somando
  * linhas repetidas do mesmo material (a ZL0024 pode trazer mais de uma linha
- * por lote/tipo de estoque). Material sem saldo positivo fica de fora.
+ * por lote/tipo de estoque). Por padrão, mantém materiais mesmo com saldo 0
+ * para permitir selecionar itens sem saldo.
  */
-export function indexarEstoquePorDeposito(estoque: EstoqueItem[]): Map<string, Map<string, MaterialDisponivel>> {
+export function indexarEstoquePorDeposito(
+  estoque: EstoqueItem[],
+  incluirSemSaldo = true,
+): Map<string, Map<string, MaterialDisponivel>> {
   const porDeposito = new Map<string, Map<string, MaterialDisponivel>>();
   for (const row of estoque) {
     const dep = chaveDeposito(row.deposito);
@@ -75,7 +90,9 @@ export function indexarEstoquePorDeposito(estoque: EstoqueItem[]): Map<string, M
     }
   }
   for (const [dep, mapa] of porDeposito) {
-    for (const [mat, item] of mapa) if (item.saldo <= 0) mapa.delete(mat);
+    if (!incluirSemSaldo) {
+      for (const [mat, item] of mapa) if (item.saldo <= 0) mapa.delete(mat);
+    }
     if (mapa.size === 0) porDeposito.delete(dep);
   }
   return porDeposito;
@@ -119,8 +136,9 @@ export interface MaterialNoDeposito extends MaterialDisponivel {
  * `depositoFixo` a busca fica só nele: depois do primeiro item a requisição
  * já tem depósito (uma baixa no SAP sai de um depósito só).
  *
- * Um material em dois depósitos aparece duas vezes, uma por depósito, e o
- * depósito ativo vem antes do inativo.
+ * Um material em dois depósitos aparece duas vezes, uma por depósito.
+ * Materiais com saldo positivo vêm antes dos com saldo <= 0, e depósito ativo
+ * vem antes do inativo.
  */
 export function buscarMateriaisEmDepositos(
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>,
@@ -135,7 +153,10 @@ export function buscarMateriaisEmDepositos(
     for (const item of buscarMateriais(mapa.values(), termo, limite)) achados.push({ ...item, deposito });
   }
   const t = normalizar(termo.trim()).split(/\s+/)[0] ?? '';
-  const peso = (m: MaterialNoDeposito) => (m.material.startsWith(t) ? 0 : 2) + (depositoInativo(m.deposito) ? 1 : 0);
+  const peso = (m: MaterialNoDeposito) =>
+    (m.material.startsWith(t) ? 0 : 2) +
+    (depositoInativo(m.deposito) ? 1 : 0) +
+    (m.saldo <= 0 ? 10 : 0);
   achados.sort((a, b) =>
     peso(a) - peso(b)
     || a.descricao.localeCompare(b.descricao, 'pt-BR')
@@ -146,8 +167,7 @@ export function buscarMateriaisEmDepositos(
 
 /**
  * Adiciona um material à lista. Se já estiver lá, soma a quantidade na linha
- * existente em vez de duplicar — duas linhas do mesmo material viram duas
- * baixas no SAP e confundem a conferência.
+ * existente em vez de duplicar.
  */
 export function adicionarLinha(linhas: LinhaBalcao[], item: MaterialDisponivel, quantidade: number): LinhaBalcao[] {
   const i = linhas.findIndex((l) => l.material === item.material);
@@ -157,18 +177,30 @@ export function adicionarLinha(linhas: LinhaBalcao[], item: MaterialDisponivel, 
   return [...linhas, { ...item, quantidade }];
 }
 
-/** Erro da linha para exibir, ou `null` se está ok. */
-export function erroDaLinha(linha: Pick<LinhaBalcao, 'quantidade' | 'saldo'>): string | null {
+/**
+ * Erro impeditivo da linha: quantidade precisa ser positiva.
+ * Retorna texto do erro ou `null` se está apta para gravar.
+ */
+export function erroDaLinha(linha: Pick<LinhaBalcao, 'quantidade'>): string | null {
   if (!(linha.quantidade > 0)) return 'Quantidade precisa ser maior que zero.';
-  if (linha.quantidade > linha.saldo) return 'Maior que o saldo na ZL0024.';
+  return null;
+}
+
+/**
+ * Alerta informativo da linha: saldo zerado ou quantidade superior ao saldo.
+ * Não impede gravação (pode ser defasagem na importação da ZL0024), mas
+ * deve ser conferido antes da importação no SAP.
+ */
+export function alertaDaLinha(linha: Pick<LinhaBalcao, 'quantidade' | 'saldo'>): string | null {
+  if (linha.saldo <= 0) return 'Item sem saldo na ZL0024.';
+  if (linha.quantidade > linha.saldo) return `Qtd (${linha.quantidade}) maior que o saldo (${linha.saldo}).`;
   return null;
 }
 
 /**
  * Reaplica o saldo do depósito atual sobre as linhas. Usado quando o
  * almoxarife troca o depósito de saída com itens já lançados: material que
- * não existe no novo depósito fica com saldo 0 (e a linha acusa erro) em vez
- * de sumir sem aviso.
+ * não existe no novo depósito fica com saldo 0 em vez de sumir sem aviso.
  */
 export function reaplicarSaldos(
   linhas: LinhaBalcao[],
@@ -198,9 +230,19 @@ export function validarRequisicao(cab: CabecalhoBalcao, linhas: LinhaBalcao[]): 
   if (linhas.length === 0) erros.push('Adicione ao menos um item.');
   const comErro = linhas.filter((l) => erroDaLinha(l));
   if (comErro.length > 0) {
-    erros.push(`${comErro.length} item(ns) com quantidade inválida ou acima do saldo.`);
+    erros.push(`${comErro.length} item(ns) com quantidade inválida (deve ser maior que zero).`);
   }
   return erros;
+}
+
+/** Retorna lista de alertas de saldo das linhas para confirmação do usuário. */
+export function alertasRequisicao(linhas: LinhaBalcao[]): string[] {
+  const avisos: string[] = [];
+  const comAlerta = linhas.filter((l) => alertaDaLinha(l));
+  if (comAlerta.length > 0) {
+    avisos.push(`${comAlerta.length} item(ns) sem saldo na ZL0024 ou com quantidade superior.`);
+  }
+  return avisos;
 }
 
 /** Aplicação = centro de custo (PEP) da lista fixa `alm_balcao_aplicacoes`. */
@@ -223,4 +265,141 @@ export function ultimaAplicacaoPorColaborador(
     mapa.set(r.colaborador_id, { wbs: r.aplicacao_pep, nome: r.aplicacao });
   }
   return mapa;
+}
+
+// ===========================================================================
+// Gerenciamento de Grupos de PEP
+// ===========================================================================
+
+export function criarGrupoPep(
+  pepOuId?: PepAplicacao | string | null,
+  pepSeId?: PepAplicacao | null,
+): GrupoPepBalcao {
+  if (typeof pepOuId === 'string') {
+    return { id: pepOuId, pep: pepSeId ?? null, itens: [] };
+  }
+  const id = `pep-grupo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return { id, pep: pepOuId ?? null, itens: [] };
+}
+
+export function adicionarGrupoPep(grupos: GrupoPepBalcao[], pep: PepAplicacao | null = null): GrupoPepBalcao[] {
+  return [...grupos, criarGrupoPep(pep)];
+}
+
+export function removerGrupoPep(grupos: GrupoPepBalcao[], grupoId: string): GrupoPepBalcao[] {
+  if (grupos.length <= 1) return grupos;
+  return grupos.filter((g) => g.id !== grupoId);
+}
+
+export function definirPepDoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  pep: PepAplicacao | null,
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    return {
+      ...g,
+      pep,
+      itens: g.itens.map((i) => ({
+        ...i,
+        aplicacao_pep: pep?.wbs ?? null,
+        aplicacao: pep?.nome ?? null,
+      })),
+    };
+  });
+}
+
+export function adicionarItemAoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  item: MaterialDisponivel,
+  quantidade: number,
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    const linhaComPep: MaterialDisponivel = { ...item };
+    const novasLinhas = adicionarLinha(g.itens, linhaComPep, quantidade).map((l) => ({
+      ...l,
+      aplicacao_pep: g.pep?.wbs ?? null,
+      aplicacao: g.pep?.nome ?? null,
+    }));
+    return { ...g, itens: novasLinhas };
+  });
+}
+
+export function removerItemDoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  materialIndex: number,
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    return { ...g, itens: g.itens.filter((_, idx) => idx !== materialIndex) };
+  });
+}
+
+export function atualizarQtdItemDoGrupo(
+  grupos: GrupoPepBalcao[],
+  grupoId: string,
+  materialIndex: number,
+  quantidade: number,
+): GrupoPepBalcao[] {
+  return grupos.map((g) => {
+    if (g.id !== grupoId) return g;
+    return {
+      ...g,
+      itens: g.itens.map((item, idx) => (idx === materialIndex ? { ...item, quantidade } : item)),
+    };
+  });
+}
+
+export function achatarGruposPep(grupos: GrupoPepBalcao[]): LinhaBalcao[] {
+  return grupos.flatMap((g) =>
+    g.itens.map((i) => ({
+      ...i,
+      aplicacao_pep: g.pep?.wbs ?? i.aplicacao_pep ?? null,
+      aplicacao: g.pep?.nome ?? i.aplicacao ?? null,
+    })),
+  );
+}
+
+export function agruparLinhasPorPep(
+  linhas: LinhaBalcao[],
+  pepsDisponiveis: PepAplicacao[],
+  pepPadrao?: PepAplicacao | null,
+): GrupoPepBalcao[] {
+  if (linhas.length === 0) {
+    return [criarGrupoPep('grupo-1', pepPadrao ?? null)];
+  }
+
+  const mapa = new Map<string, LinhaBalcao[]>();
+  const ordemChaves: string[] = [];
+
+  for (const linha of linhas) {
+    const chave = linha.aplicacao_pep || pepPadrao?.wbs || '__sem_pep__';
+    if (!mapa.has(chave)) {
+      mapa.set(chave, []);
+      ordemChaves.push(chave);
+    }
+    mapa.get(chave)!.push(linha);
+  }
+
+  return ordemChaves.map((chave, idx) => {
+    let pepEncontrado: PepAplicacao | null = null;
+    if (chave !== '__sem_pep__') {
+      pepEncontrado = pepsDisponiveis.find((p) => p.wbs === chave) ?? {
+        wbs: chave,
+        nome: linhas.find((l) => l.aplicacao_pep === chave)?.aplicacao ?? chave,
+      };
+    } else {
+      pepEncontrado = pepPadrao ?? null;
+    }
+
+    return {
+      id: `grupo-${idx + 1}-${chave}`,
+      pep: pepEncontrado,
+      itens: mapa.get(chave) ?? [],
+    };
+  });
 }

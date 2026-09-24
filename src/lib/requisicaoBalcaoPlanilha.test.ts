@@ -90,6 +90,28 @@ describe('montarLinhasBalcao', () => {
     expect(linhas[2].Observacao).toBe('RQB-230926-02');
   });
 
+  it('respeita aplicacao_pep e aplicacao individual de cada item quando houver múltiplos PEPs', () => {
+    const multiPepLinhas = montarLinhasBalcao([
+      {
+        codigo: 'RQB-230926-03',
+        tipo_movimento: 'saida',
+        deposito_origem: '0002',
+        aplicacao_pep: 'TEN001201016503',
+        aplicacao: 'SUPRIMENTOS',
+        observacao: null,
+        itens: [
+          { material: '1', descricao: 'ITEM PEP 1', quantidade: 1, aplicacao_pep: 'TEN001201016503', aplicacao: 'SUPRIMENTOS' },
+          { material: '2', descricao: 'ITEM PEP 2', quantidade: 2, aplicacao_pep: 'TEN001101127004', aplicacao: 'LAVAGEM' },
+        ],
+      },
+    ]);
+    expect(multiPepLinhas).toHaveLength(2);
+    expect(multiPepLinhas[0].Elemento_PEP).toBe('TEN001201016503');
+    expect(multiPepLinhas[0].Descricao_PEP).toBe('SUPRIMENTOS');
+    expect(multiPepLinhas[1].Elemento_PEP).toBe('TEN001101127004');
+    expect(multiPepLinhas[1].Descricao_PEP).toBe('LAVAGEM');
+  });
+
   it('nome do arquivo leva data e hora', () => {
     expect(nomeArquivoBalcao(new Date(2026, 8, 23, 14, 5))).toBe('requisicao_balcao_20260923_1405.xlsx');
   });

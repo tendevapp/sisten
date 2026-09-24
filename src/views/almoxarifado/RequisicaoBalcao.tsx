@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowLeftRight, Check, ChevronDown, Download, FileCheck2, History, Loader2, LogOut, Plus,
+  AlertTriangle, ArrowLeft, ArrowLeftRight, Check, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
   RefreshCw, RotateCcw, Search, Trash2, Upload, User, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -34,12 +34,14 @@ import {
   DEPOSITO_DESCRICAO, formatDeposito, isDepositoInativo, ordenarDepositos,
 } from '../../lib/almoxarifado';
 import {
-  PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarLinha, buscarMateriaisEmDepositos, chaveDeposito, erroDaLinha,
-  indexarEstoquePorDeposito, reaplicarSaldos, ultimaAplicacaoPorColaborador,
-  validarRequisicao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
+  PREFIXO_REQ_BALCAO, ROTULO_TIPO_MOVIMENTO, adicionarGrupoPep, adicionarItemAoGrupo, adicionarLinha,
+  alertaDaLinha, alertasRequisicao, achatarGruposPep, agruparLinhasPorPep, buscarMateriaisEmDepositos, chaveDeposito,
+  criarGrupoPep, definirPepDoGrupo, erroDaLinha, indexarEstoquePorDeposito, reaplicarSaldos, removerGrupoPep,
+  removerItemDoGrupo, atualizarQtdItemDoGrupo, ultimaAplicacaoPorColaborador, validarRequisicao,
+  type GrupoPepBalcao, type LinhaBalcao, type MaterialDisponivel, type MaterialNoDeposito, type PepAplicacao, type TipoMovimentoBalcao,
 } from '../../lib/requisicaoBalcao';
 import {
-  excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
+  buscarEstoqueBalcao, excluirRequisicaoBalcao, importarSapBalcao, informarDocSap, listarAlteracoesBalcao, listarAplicacoesBalcao,
   listarExportacoesBalcao, listarRequisicoesBalcao, reabrirExportacaoBalcao, registrarExportacaoBalcao,
   salvarRequisicaoBalcao,
   type ReqBalcaoAlteracao, type ReqBalcaoExportacao, type ReqBalcaoRow,
@@ -132,11 +134,11 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     }
   }, [toast]);
 
-  const recarregar = useCallback(async (forcarEstoque = false) => {
+  const recarregar = useCallback(async (forcarEstoque = true) => {
     setLoading(true);
     try {
       const [est, pes, pep, tur] = await Promise.all([
-        localDb.fetchEstoque(forcarEstoque),
+        buscarEstoqueBalcao(forcarEstoque),
         listarRhPessoas().catch(() => [] as RhPessoa[]),
         listarAplicacoesBalcao().catch(() => [] as PepAplicacao[]),
         listarRhTurnos().catch(() => [] as RhTurno[]),
@@ -151,9 +153,9 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     }
   }, [recarregarRequisicoes]);
 
-  useEffect(() => { void recarregar(); }, [recarregar]);
+  useEffect(() => { void recarregar(true); }, [recarregar]);
 
-  const estoquePorDeposito = useMemo(() => indexarEstoquePorDeposito(estoque), [estoque]);
+  const estoquePorDeposito = useMemo(() => indexarEstoquePorDeposito(estoque, true), [estoque]);
   const importadoEm = useMemo(
     () => estoque.reduce<string | undefined>((max, r) => (r.imported_at && (!max || r.imported_at > max) ? r.imported_at : max), undefined),
     [estoque],
@@ -168,7 +170,7 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
       if (!t) return true;
       const alvo = semAcento([
         r.codigo, r.colaborador_nome, r.colaborador_registro, r.aplicacao_pep, r.aplicacao, r.doc_sap, r.deposito_origem,
-        ...r.itens.flatMap((i) => [i.material, i.descricao]),
+        ...r.itens.flatMap((i) => [i.material, i.descricao, i.aplicacao_pep, i.aplicacao]),
       ].filter(Boolean).join(' '));
       return t.split(/\s+/).every((p) => alvo.includes(p));
     });
@@ -200,6 +202,27 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     const jaExportadas = sel.filter((r) => r.exportacao_id).length;
     if (jaExportadas > 0
         && !window.confirm(`${jaExportadas} das selecionadas já foram exportadas. Exportar de novo mesmo assim?`)) return;
+
+    // Alerta de itens sem saldo na ZL0024 para confirmação prévia antes de importar no SAP
+    const comSemSaldo = sel.filter((r) =>
+      r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo),
+    );
+    if (comSemSaldo.length > 0) {
+      const itensSemSaldo = comSemSaldo.flatMap((r) =>
+        r.itens
+          .filter((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo)
+          .map((i) => `• [${r.codigo}] Material ${i.material} - ${i.descricao || ''} (Qtd: ${i.quantidade}, Saldo ZL0024: ${i.saldo_zl0024 ?? 0})`),
+      );
+      const conf = window.confirm(
+        `⚠️ ATENÇÃO: Confirmação antes de importar no SAP\n\n` +
+        `Foram selecionadas ${comSemSaldo.length} requisição(ões) contendo ${itensSemSaldo.length} item(ns) sem saldo na ZL0024 (possível defasagem de importação):\n\n` +
+        itensSemSaldo.slice(0, 6).join('\n') +
+        (itensSemSaldo.length > 6 ? `\n... e mais ${itensSemSaldo.length - 6} item(ns)` : '') +
+        `\n\nConfirme se estes itens estão autorizados antes de importar no SAP. Deseja prosseguir com a exportação da planilha?`,
+      );
+      if (!conf) return;
+    }
+
     setExportando(true);
     try {
       const { arquivo, linhas } = exportarPlanilhaBalcao(sel);
@@ -621,6 +644,9 @@ function CartaoRequisicao({
   onExcluir: () => void;
 }) {
   const acao = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(); };
+  const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
+  const pepsDistintos = Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+
   return (
     <div
       onClick={onAbrir}
@@ -642,11 +668,28 @@ function CartaoRequisicao({
           <ChipTipo tipo={r.tipo_movimento} />
           <ChipDocSap doc={r.doc_sap} />
           {r.exportacao_id && <ChipExportada />}
+          {temSemSaldo && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300"
+              title="Contém itens sem saldo na ZL0024"
+            >
+              <AlertTriangle className="h-3 w-3" /> Sem saldo ZL0024
+            </span>
+          )}
+          {pepsDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+              title={`Itens distribuídos em ${pepsDistintos.length} PEPs`}
+            >
+              <Layers className="h-3 w-3" /> {pepsDistintos.length} PEPs
+            </span>
+          )}
         </div>
         <div className="text-sm font-bold truncate" style={{ color: 'var(--ink-primary)' }}>
           {r.colaborador_nome}
           <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
-            {' · '}{r.aplicacao}
+            {' · '}{pepsDistintos.length > 1 ? `${r.aplicacao} (+${pepsDistintos.length - 1} PEPs)` : r.aplicacao}
           </span>
         </div>
         <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -692,10 +735,35 @@ function ModalRequisicao({
   const toast = useToast();
   const pref = useMemo(lerPreferencias, []);
 
+  // Sincronização em tempo real do estoque da ZL0024 diretamente do Supabase
+  const [atualizandoEstoque, setAtualizandoEstoque] = useState(false);
+  const [estoqueModal, setEstoqueModal] = useState<EstoqueItem[]>([]);
+  const estoquePorDepositoModal = useMemo(
+    () => (estoqueModal.length > 0 ? indexarEstoquePorDeposito(estoqueModal, true) : estoquePorDeposito),
+    [estoqueModal, estoquePorDeposito],
+  );
+
+  const sincronizarEstoqueSupabase = useCallback(async () => {
+    setAtualizandoEstoque(true);
+    try {
+      const dados = await buscarEstoqueBalcao(true);
+      if (dados && dados.length > 0) {
+        setEstoqueModal(dados);
+      }
+    } catch (err: any) {
+      console.warn('Falha ao sincronizar saldos da ZL0024 do Supabase no modal:', err);
+    } finally {
+      setAtualizandoEstoque(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void sincronizarEstoqueSupabase();
+  }, [sincronizarEstoqueSupabase]);
+
   const [data, setData] = useState(registro?.data ?? hojeISO());
   const [turno, setTurno] = useState(registro?.turno ?? pref.turno ?? '');
   const [tipo, setTipo] = useState<TipoMovimentoBalcao>(registro?.tipo_movimento ?? pref.tipo ?? 'saida');
-  // Vem do primeiro item escolhido (a busca de material já traz o depósito).
   const [deposito, setDeposito] = useState(() => (registro ? chaveDeposito(registro.deposito_origem) : ''));
   const [destino, setDestino] = useState(registro?.deposito_destino ?? pref.destino ?? '');
   const [colaborador, setColaborador] = useState<{ id: string | null; nome: string; registro: string | null }>(
@@ -703,47 +771,110 @@ function ModalRequisicao({
       ? { id: registro.colaborador_id, nome: registro.colaborador_nome, registro: registro.colaborador_registro }
       : { id: null, nome: '', registro: null },
   );
-  const [aplicacao, setAplicacao] = useState<PepAplicacao | null>(
-    registro?.aplicacao_pep ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao } : null,
-  );
   const [observacao, setObservacao] = useState(registro?.observacao ?? '');
-  const [linhas, setLinhas] = useState<LinhaBalcao[]>(() =>
-    (registro?.itens ?? []).map((i) => ({
-      material: i.material,
-      descricao: i.descricao ?? '',
-      unidade: i.unidade ?? '',
-      quantidade: Number(i.quantidade),
-      saldo: estoquePorDeposito.get(chaveDeposito(registro!.deposito_origem))?.get(i.material)?.saldo ?? 0,
-    })),
-  );
+
+  // Grupos de PEP
+  const [grupos, setGrupos] = useState<GrupoPepBalcao[]>(() => {
+    if (registro?.itens && registro.itens.length > 0) {
+      const pepPadrao = registro.aplicacao_pep
+        ? { wbs: registro.aplicacao_pep, nome: registro.aplicacao }
+        : null;
+      return agruparLinhasPorPep(
+        registro.itens.map((i) => ({
+          material: i.material,
+          descricao: i.descricao ?? '',
+          unidade: i.unidade ?? '',
+          quantidade: Number(i.quantidade),
+          saldo: estoquePorDeposito.get(chaveDeposito(registro.deposito_origem))?.get(i.material)?.saldo ?? 0,
+          aplicacao_pep: i.aplicacao_pep || registro.aplicacao_pep,
+          aplicacao: i.aplicacao || registro.aplicacao,
+        })),
+        peps,
+        pepPadrao,
+      );
+    }
+    return [criarGrupoPep('grupo-1', null)];
+  });
+
   const [salvando, setSalvando] = useState(false);
   const [tentouSalvar, setTentouSalvar] = useState(false);
 
-  const disponiveis = estoquePorDeposito.get(deposito);
+  const todasLinhas = useMemo(() => achatarGruposPep(grupos), [grupos]);
+  const disponiveis = estoquePorDepositoModal.get(deposito);
   const ultimaAplicacao = useMemo(() => ultimaAplicacaoPorColaborador(historico), [historico]);
-  const buscaMaterialRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setLinhas((l) => reaplicarSaldos(l, disponiveis)); }, [disponiveis]);
+  useEffect(() => {
+    setGrupos((gs) =>
+      gs.map((g) => ({
+        ...g,
+        itens: reaplicarSaldos(g.itens, disponiveis),
+      })),
+    );
+  }, [disponiveis]);
+
   // Removeu todos os itens: libera o depósito para o próximo item escolher.
-  useEffect(() => { if (linhas.length === 0 && !registro) setDeposito(''); }, [linhas.length, registro]);
+  useEffect(() => {
+    if (todasLinhas.length === 0 && !registro) setDeposito('');
+  }, [todasLinhas.length, registro]);
 
   const destinosPossiveis = useMemo(
     () => ordenarDepositos(Object.keys(DEPOSITO_DESCRICAO).filter((d) => !isDepositoInativo(d) && d !== deposito)),
     [deposito],
   );
 
-  const erros = validarRequisicao(
-    { tipoMovimento: tipo, depositoOrigem: deposito, depositoDestino: destino, colaboradorNome: colaborador.nome, aplicacao: aplicacao?.wbs ?? '' },
-    linhas,
-  );
-
   const escolherColaborador = (p: { id: string | null; nome: string; registro: string | null }) => {
     setColaborador(p);
-    if (p.id && !aplicacao) {
+    if (p.id) {
       const ult = ultimaAplicacao.get(p.id);
-      if (ult) setAplicacao(ult);
+      if (ult && grupos.length === 1 && !grupos[0].pep) {
+        setGrupos((gs) => definirPepDoGrupo(gs, gs[0].id, ult));
+      }
     }
   };
+
+  const adicionarNovoGrupo = () => {
+    setGrupos((gs) => adicionarGrupoPep(gs, null));
+  };
+
+  const removerGrupo = (grupoId: string) => {
+    setGrupos((gs) => removerGrupoPep(gs, grupoId));
+  };
+
+  const alterarPepDoGrupo = (grupoId: string, pep: PepAplicacao | null) => {
+    setGrupos((gs) => definirPepDoGrupo(gs, grupoId, pep));
+  };
+
+  const adicionarItemNoGrupo = (grupoId: string, item: MaterialNoDeposito, qtd: number) => {
+    if (item.deposito !== deposito) setDeposito(item.deposito);
+    setGrupos((gs) => adicionarItemAoGrupo(gs, grupoId, item, qtd));
+  };
+
+  const removerItemDoGrupoIdx = (grupoId: string, itemIdx: number) => {
+    setGrupos((gs) => removerItemDoGrupo(gs, grupoId, itemIdx));
+  };
+
+  const alterarQtdItemNoGrupo = (grupoId: string, itemIdx: number, qtd: number) => {
+    setGrupos((gs) => atualizarQtdItemDoGrupo(gs, grupoId, itemIdx, qtd));
+  };
+
+  const primeiroPep = grupos.find((g) => g.pep)?.pep ?? null;
+  const gruposSemPep = grupos.filter((g) => g.itens.length > 0 && !g.pep);
+
+  const erros = [
+    ...validarRequisicao(
+      {
+        tipoMovimento: tipo,
+        depositoOrigem: deposito,
+        depositoDestino: destino,
+        colaboradorNome: colaborador.nome,
+        aplicacao: primeiroPep?.wbs ?? '',
+      },
+      todasLinhas,
+    ),
+    ...(gruposSemPep.length > 0 ? [`${gruposSemPep.length} grupo(s) com itens sem PEP selecionado.`] : []),
+  ];
+
+  const alertas = alertasRequisicao(todasLinhas);
 
   const salvar = async (continuar: boolean) => {
     setTentouSalvar(true);
@@ -753,6 +884,7 @@ function ModalRequisicao({
     }
     setSalvando(true);
     try {
+      const pepPrincipal = primeiroPep ?? peps[0];
       const codigo = await salvarRequisicaoBalcao(
         registro?.id ?? null,
         {
@@ -764,21 +896,26 @@ function ModalRequisicao({
           colaborador_id: colaborador.id,
           colaborador_nome: colaborador.nome,
           colaborador_registro: colaborador.registro,
-          aplicacao_pep: aplicacao!.wbs,
+          aplicacao_pep: pepPrincipal.wbs,
           observacao: observacao || null,
           criado_por_nome: user.name,
         },
-        linhas.map((l) => ({ material: l.material, quantidade: l.quantidade })),
+        todasLinhas.map((l) => ({
+          material: l.material,
+          quantidade: l.quantidade,
+          aplicacao_pep: l.aplicacao_pep || pepPrincipal.wbs,
+          aplicacao: l.aplicacao || pepPrincipal.nome,
+          descricao: l.descricao,
+          unidade: l.unidade,
+        })),
       );
       gravarPreferencias({ tipo, turno, destino });
       toast.success(registro ? `${codigo} atualizada.` : `${codigo} registrada.`);
       await onSalvo(continuar);
       if (continuar) {
-        // Mantém o cabeçalho do balcão; limpa quem retirou e o que retirou.
         setColaborador({ id: null, nome: '', registro: null });
-        setAplicacao(null);
+        setGrupos([criarGrupoPep('grupo-1', null)]);
         setObservacao('');
-        setLinhas([]);
         setTentouSalvar(false);
       }
     } catch (err: any) {
@@ -791,12 +928,27 @@ function ModalRequisicao({
   return (
     <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel="Requisição no balcão" disableOutsideClose>
       <ModalHeader onClose={onClose}>
-        <h2 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>
-          {registro ? `Editar ${registro.codigo}` : 'Nova requisição no balcão'}
-        </h2>
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          {registro ? 'Os itens serão regravados com o saldo atual da ZL0024.' : `Código ${PREFIXO_REQ_BALCAO}-DDMMAA-NN gerado ao salvar.`}
-        </p>
+        <div className="flex w-full items-start justify-between gap-3 pr-2">
+          <div>
+            <h2 className="text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+              {registro ? `Editar ${registro.codigo}` : 'Nova requisição no balcão'}
+            </h2>
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {registro ? 'Os itens serão regravados com o saldo atual da ZL0024.' : `Código ${PREFIXO_REQ_BALCAO}-DDMMAA-NN gerado ao salvar.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void sincronizarEstoqueSupabase()}
+            disabled={atualizandoEstoque}
+            className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors disabled:opacity-50"
+            style={{ borderColor: 'var(--hairline)', color: 'var(--brand)', background: 'var(--surface-raised)' }}
+            title="Atualizar saldos da ZL0024 diretamente do Supabase"
+          >
+            <RefreshCw className={`h-3 w-3 ${atualizandoEstoque ? 'animate-spin' : ''}`} />
+            {atualizandoEstoque ? 'Sincronizando…' : 'ZL0024 Supabase'}
+          </button>
+        </div>
       </ModalHeader>
       <ModalBody>
         <div className="space-y-5">
@@ -839,101 +991,173 @@ function ModalRequisicao({
             </Campo>
           )}
 
-          {/* Quem e para quê */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Campo rotulo="Colaborador que retira" obrigatorio>
-              <SeletorColaborador pessoas={pessoas} valor={colaborador} onChange={escolherColaborador} />
-            </Campo>
-            <Campo rotulo="Aplicação (centro de custo / PEP)" obrigatorio>
-              <select
-                value={aplicacao?.wbs ?? ''}
-                onChange={(e) => setAplicacao(peps.find((p) => p.wbs === e.target.value) ?? null)}
-                className={inputCls}
-              >
-                <option value="">Selecione…</option>
-                {aplicacao && !peps.some((p) => p.wbs === aplicacao.wbs) && (
-                  <option value={aplicacao.wbs}>{aplicacao.nome} — {aplicacao.wbs}</option>
-                )}
-                {peps.map((p) => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
-              </select>
-            </Campo>
-          </div>
+          {/* Colaborador que retira */}
+          <Campo rotulo="Colaborador que retira" obrigatorio>
+            <SeletorColaborador pessoas={pessoas} valor={colaborador} onChange={escolherColaborador} />
+          </Campo>
 
-          {/* Itens */}
-          <div className="space-y-2">
+          {/* Grupos de PEP e Itens */}
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
-                Itens <span className="text-rose-500">*</span>
-              </span>
-              {linhas.length > 0 && (
+              <div>
+                <span className="text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>
+                  Grupos de PEP e Itens <span className="text-rose-500">*</span>
+                </span>
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Lance os materiais dentro de cada PEP. Você pode adicionar múltiplos PEPs no mesmo formulário.
+                </p>
+              </div>
+              {todasLinhas.length > 0 && (
                 <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
-                  {linhas.length} item(ns) · saída do depósito {formatDeposito(deposito)}
+                  {todasLinhas.length} item(ns) · saída do depósito {formatDeposito(deposito)}
                 </span>
               )}
             </div>
-            <AdicionarItem
-              refBusca={buscaMaterialRef}
-              estoquePorDeposito={estoquePorDeposito}
-              // Sem itens, busca em todos os depósitos e o item escolhido define o
-              // depósito de saída; depois do primeiro, fica presa a ele.
-              depositoFixo={linhas.length > 0 ? deposito : null}
-              jaLancado={(m) => linhas.find((l) => l.material === m)?.quantidade ?? 0}
-              onAdicionar={(item, qtd) => {
-                if (item.deposito !== deposito) setDeposito(item.deposito);
-                setLinhas((l) => adicionarLinha(l, item, qtd));
-              }}
-            />
 
-            {linhas.length > 0 && (
-              <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
-                {linhas.map((l, i) => {
-                  const erro = erroDaLinha(l);
-                  return (
-                    <div key={l.material} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
-                      <span className="w-5 text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>{i + 1}</span>
-                      <div className="min-w-0 flex-1 basis-48">
-                        <div className="truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{l.descricao || l.material}</div>
-                        <div className="text-[11px]" style={{ color: erro ? 'var(--status-critical)' : 'var(--ink-muted)' }}>
-                          <span className="font-mono">{l.material}</span> · saldo {formatQtd(l.saldo)} {l.unidade}
-                          {erro && <> · {erro}</>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          step="any"
-                          value={Number.isFinite(l.quantidade) ? l.quantidade : ''}
-                          onChange={(e) => {
-                            const q = parseFloat(e.target.value);
-                            setLinhas((ls) => ls.map((x, j) => (j === i ? { ...x, quantidade: q } : x)));
-                          }}
-                          aria-label={`Quantidade de ${l.material}`}
-                          className={`${inputCls} w-24 text-right tabular-nums`}
-                          style={erro ? { borderColor: 'var(--status-critical)' } : undefined}
-                        />
-                        <span className="w-8 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{l.unidade}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLinhas((ls) => ls.filter((_, j) => j !== i))}
-                          aria-label={`Remover ${l.material}`}
-                          className="rounded-md p-1.5 hover:bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]"
-                          style={{ color: 'var(--status-critical)' }}
+            {grupos.map((grupo, gIdx) => {
+              const semPepErro = tentouSalvar && grupo.itens.length > 0 && !grupo.pep;
+              return (
+                <div
+                  key={grupo.id}
+                  className="rounded-xl border p-3.5 space-y-3 transition-colors"
+                  style={{
+                    borderColor: semPepErro ? 'var(--status-critical)' : 'var(--hairline)',
+                    background: 'var(--surface-raised)',
+                  }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: 'var(--hairline)' }}>
+                    <div className="flex items-center gap-2 min-w-0 flex-1 basis-64">
+                      <span
+                        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-xs font-black"
+                        style={{ background: 'color-mix(in srgb, var(--brand) 15%, transparent)', color: 'var(--brand)' }}
+                      >
+                        {gIdx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <label className="block text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>
+                          Aplicação / PEP {gIdx + 1} <span className="text-rose-500">*</span>
+                        </label>
+                        <select
+                          value={grupo.pep?.wbs ?? ''}
+                          onChange={(e) => alterarPepDoGrupo(grupo.id, peps.find((p) => p.wbs === e.target.value) ?? null)}
+                          className={inputCls}
+                          style={semPepErro ? { borderColor: 'var(--status-critical)' } : undefined}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          <option value="">Selecione o PEP…</option>
+                          {grupo.pep && !peps.some((p) => p.wbs === grupo.pep!.wbs) && (
+                            <option value={grupo.pep.wbs}>{grupo.pep.nome} — {grupo.pep.wbs}</option>
+                          )}
+                          {peps.map((p) => <option key={p.wbs} value={p.wbs}>{p.nome} — {p.wbs}</option>)}
+                        </select>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>
+                        {grupo.itens.length} item(ns)
+                      </span>
+                      {grupos.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removerGrupo(grupo.id)}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold hover:bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]"
+                          style={{ color: 'var(--status-critical)' }}
+                          title="Remover este grupo de PEP"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remover PEP
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Input de Adicionar Item ao Grupo */}
+                  <AdicionarItem
+                    estoquePorDeposito={estoquePorDepositoModal}
+                    depositoFixo={todasLinhas.length > 0 ? deposito : null}
+                    jaLancado={(m) => todasLinhas.find((l) => l.material === m)?.quantidade ?? 0}
+                    onAdicionar={(item, qtd) => adicionarItemNoGrupo(grupo.id, item, qtd)}
+                  />
+
+                  {/* Lista de itens deste grupo */}
+                  {grupo.itens.length > 0 && (
+                    <div className="divide-y rounded-lg border" style={{ borderColor: 'var(--hairline)' }}>
+                      {grupo.itens.map((l, i) => {
+                        const erro = erroDaLinha(l);
+                        const alerta = alertaDaLinha(l);
+                        return (
+                          <div key={`${l.material}-${i}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2" style={{ borderColor: 'var(--hairline)' }}>
+                            <span className="w-5 text-[11px] font-bold tabular-nums" style={{ color: 'var(--ink-muted)' }}>{i + 1}</span>
+                            <div className="min-w-0 flex-1 basis-48">
+                              <div className="truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{l.descricao || l.material}</div>
+                              <div className="text-[11px]" style={{ color: erro ? 'var(--status-critical)' : alerta ? 'var(--status-serious)' : 'var(--ink-muted)' }}>
+                                <span className="font-mono">{l.material}</span> · saldo {formatQtd(l.saldo)} {l.unidade}
+                                {alerta && (
+                                  <span className="inline-flex items-center gap-0.5 ml-1 font-bold text-amber-700 dark:text-amber-300">
+                                    · ⚠️ {alerta}
+                                  </span>
+                                )}
+                                {erro && <> · {erro}</>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                min={0}
+                                step="any"
+                                value={Number.isFinite(l.quantidade) ? l.quantidade : ''}
+                                onChange={(e) => alterarQtdItemNoGrupo(grupo.id, i, parseFloat(e.target.value) || 0)}
+                                aria-label={`Quantidade de ${l.material}`}
+                                className={`${inputCls} w-24 text-right tabular-nums`}
+                                style={erro ? { borderColor: 'var(--status-critical)' } : alerta ? { borderColor: 'var(--status-serious)' } : undefined}
+                              />
+                              <span className="w-8 text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{l.unidade}</span>
+                              <button
+                                type="button"
+                                onClick={() => removerItemDoGrupoIdx(grupo.id, i)}
+                                aria-label={`Remover ${l.material}`}
+                                className="rounded-md p-1.5 hover:bg-[color-mix(in_srgb,var(--status-critical)_12%,transparent)]"
+                                style={{ color: 'var(--status-critical)' }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Botão para adicionar outro grupo de PEP */}
+            <button
+              type="button"
+              onClick={adicionarNovoGrupo}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed py-3 text-xs font-bold transition-colors hover:border-[var(--brand)] hover:text-[var(--brand)]"
+              style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)', background: 'transparent' }}
+            >
+              <FolderPlus className="h-4 w-4" /> Adicionar outro PEP
+            </button>
           </div>
 
           <Campo rotulo="Observação">
             <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
           </Campo>
+
+          {/* Alertas de itens sem saldo */}
+          {alertas.length > 0 && (
+            <div className="rounded-lg p-2.5 text-xs flex items-start gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div>
+                <span className="font-bold">Aviso de saldo na ZL0024:</span>
+                <p className="text-[11px] mt-0.5">
+                  Há itens com quantidade acima do saldo ou sem saldo positivo na ZL0024. Eles serão registrados normalmente
+                  (possível defasagem na importação da planilha) e deverão ser conferidos antes da importação no SAP.
+                </p>
+              </div>
+            </div>
+          )}
 
           {tentouSalvar && erros.length > 0 && (
             <ul className="rounded-lg px-3 py-2 text-xs space-y-0.5" style={{ background: 'color-mix(in srgb, var(--status-critical) 10%, transparent)', color: 'var(--status-critical)' }}>
@@ -1072,13 +1296,13 @@ function SeletorColaborador({
 
 /**
  * Linha de entrada rápida: busca (código ou descrição) → Enter escolhe →
- * quantidade → Enter adiciona e devolve o foco à busca. O resultado mostra o
- * depósito de cada saldo; escolher o item preenche o depósito de saída.
+ * quantidade → Enter adiciona e devolve o foco à busca.
+ * Permite adicionar itens com ou sem saldo na ZL0024 (sinalizados como alerta).
  */
 function AdicionarItem({
   refBusca, estoquePorDeposito, depositoFixo, jaLancado, onAdicionar,
 }: {
-  refBusca: React.RefObject<HTMLInputElement | null>;
+  refBusca?: React.RefObject<HTMLInputElement | null>;
   estoquePorDeposito: Map<string, Map<string, MaterialDisponivel>>;
   depositoFixo: string | null;
   jaLancado: (material: string) => number;
@@ -1090,6 +1314,8 @@ function AdicionarItem({
   const [escolhido, setEscolhido] = useState<MaterialNoDeposito | null>(null);
   const [qtd, setQtd] = useState('');
   const qtdRef = useRef<HTMLInputElement>(null);
+  const inputRefLocal = useRef<HTMLInputElement>(null);
+  const inputEfetivo = refBusca ?? inputRefLocal;
 
   const resultados = useMemo(
     () => buscarMateriaisEmDepositos(estoquePorDeposito, texto, depositoFixo, isDepositoInativo),
@@ -1110,23 +1336,44 @@ function AdicionarItem({
 
   const quantidade = parseFloat(qtd.replace(',', '.'));
   const restante = escolhido ? escolhido.saldo - jaLancado(escolhido.material) : 0;
-  const qtdInvalida = !(quantidade > 0) || quantidade > restante;
+  const semSaldo = restante <= 0;
+  const qtdAcimaSaldo = quantidade > restante && restante > 0;
+  const qtdInvalida = !(quantidade > 0);
 
   const adicionar = () => {
     if (!escolhido || qtdInvalida) return;
     onAdicionar(escolhido, quantidade);
     setEscolhido(null);
     setQtd('');
-    setTimeout(() => refBusca.current?.focus(), 0);
+    setTimeout(() => inputEfetivo.current?.focus(), 0);
   };
 
   if (escolhido) {
     return (
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2" style={{ borderColor: 'var(--brand)', background: 'color-mix(in srgb, var(--brand) 5%, transparent)' }}>
+      <div
+        className="flex flex-wrap items-center gap-2 rounded-lg border p-2"
+        style={{
+          borderColor: semSaldo ? 'var(--status-serious)' : 'var(--brand)',
+          background: semSaldo ? 'color-mix(in srgb, var(--status-serious) 6%, transparent)' : 'color-mix(in srgb, var(--brand) 5%, transparent)',
+        }}
+      >
         <div className="min-w-0 flex-1 basis-48">
           <div className="truncate text-xs font-bold" style={{ color: 'var(--ink-primary)' }}>{escolhido.descricao}</div>
-          <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            <span className="font-mono">{escolhido.material}</span> · Dep. {formatDeposito(escolhido.deposito)} · disponível {formatQtd(restante)} {escolhido.unidade}
+          <div className="text-[11px] flex flex-wrap items-center gap-1" style={{ color: 'var(--ink-muted)' }}>
+            <span className="font-mono font-semibold">{escolhido.material}</span>
+            <span>· Dep. {formatDeposito(escolhido.deposito)}</span>
+            {semSaldo ? (
+              <span className="inline-flex items-center gap-0.5 font-bold text-amber-700 dark:text-amber-300">
+                · ⚠️ sem saldo ZL0024 (alerta)
+              </span>
+            ) : (
+              <span>· disponível {formatQtd(restante)} {escolhido.unidade}</span>
+            )}
+            {qtdAcimaSaldo && (
+              <span className="inline-flex items-center gap-0.5 font-bold text-amber-700 dark:text-amber-300">
+                · ⚠️ acima do saldo ({formatQtd(restante)} disp.)
+              </span>
+            )}
           </div>
         </div>
         <input
@@ -1137,7 +1384,7 @@ function AdicionarItem({
           onChange={(e) => setQtd(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); adicionar(); }
-            if (e.key === 'Escape') { e.preventDefault(); setEscolhido(null); refBusca.current?.focus(); }
+            if (e.key === 'Escape') { e.preventDefault(); setEscolhido(null); inputEfetivo.current?.focus(); }
           }}
           placeholder="Qtd"
           aria-label="Quantidade"
@@ -1161,32 +1408,44 @@ function AdicionarItem({
     );
   }
 
+  const temSugestaoAvulsa = texto.trim().length > 0;
+  const maxAtivo = resultados.length + (temSugestaoAvulsa ? 0 : -1);
+
   return (
     <div className="relative">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
       <input
-        ref={refBusca}
+        ref={inputEfetivo}
         value={texto}
         onChange={(e) => { setTexto(e.target.value); setAberto(true); setAtivo(0); }}
         onFocus={() => setAberto(true)}
         onBlur={() => setTimeout(() => setAberto(false), 150)}
         onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo((a) => Math.min(a + 1, resultados.length - 1)); }
+          if (e.key === 'ArrowDown') { e.preventDefault(); setAtivo((a) => Math.min(a + 1, maxAtivo)); }
           if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo((a) => Math.max(a - 1, 0)); }
-          if (e.key === 'Enter') { e.preventDefault(); escolher(resultados[ativo]); }
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (ativo < resultados.length) {
+              escolher(resultados[ativo]);
+            } else if (temSugestaoAvulsa) {
+              escolher({
+                material: texto.trim().toUpperCase(),
+                descricao: `Material ${texto.trim().toUpperCase()}`,
+                unidade: 'UN',
+                saldo: 0,
+                deposito: depositoFixo || '0002',
+              });
+            }
+          }
         }}
         placeholder={depositoFixo
-          ? `Código ou descrição do material (${totalMateriais} com saldo em ${depositoFixo})`
-          : `Código ou descrição do material (${totalMateriais} com saldo) — o depósito vem do item`}
+          ? `Código ou descrição do material (${totalMateriais} materiais em ${depositoFixo})`
+          : `Código ou descrição do material (${totalMateriais} materiais) — o depósito vem do item`}
         className={`${inputCls} pl-8`}
       />
       {aberto && texto.trim() && (
         <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border shadow-lg" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
-          {resultados.length === 0 ? (
-            <li className="px-3 py-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
-              {depositoFixo ? `Nenhum material com saldo no depósito ${depositoFixo}.` : 'Nenhum material com saldo na ZL0024.'}
-            </li>
-          ) : resultados.map((m, i) => (
+          {resultados.map((m, i) => (
             <li key={`${m.deposito}-${m.material}`}>
               <button
                 type="button"
@@ -1199,14 +1458,38 @@ function AdicionarItem({
                   <span style={{ color: 'var(--ink-secondary)' }}> · {m.descricao}</span>
                 </span>
                 <span className="shrink-0 text-right">
-                  <span className="block tabular-nums font-bold" style={{ color: 'var(--ink-muted)' }}>
-                    {formatQtd(m.saldo)} {m.unidade}
+                  <span className={`block tabular-nums font-bold ${m.saldo <= 0 ? 'text-amber-700 dark:text-amber-400' : ''}`} style={{ color: m.saldo <= 0 ? undefined : 'var(--ink-muted)' }}>
+                    {m.saldo <= 0 ? '0 UN (sem saldo)' : `${formatQtd(m.saldo)} ${m.unidade}`}
                   </span>
                   <span className="block text-[10px]" style={{ color: 'var(--ink-muted)' }}>{formatDeposito(m.deposito)}</span>
                 </span>
               </button>
             </li>
           ))}
+          {temSugestaoAvulsa && (
+            <li>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  escolher({
+                    material: texto.trim().toUpperCase(),
+                    descricao: `Material ${texto.trim().toUpperCase()}`,
+                    unidade: 'UN',
+                    saldo: 0,
+                    deposito: depositoFixo || '0002',
+                  });
+                }}
+                className="block w-full px-3 py-2 text-left text-xs italic"
+                style={{
+                  background: ativo === resultados.length ? 'color-mix(in srgb, var(--brand) 10%, transparent)' : undefined,
+                  color: 'var(--ink-secondary)',
+                }}
+              >
+                Adicionar “{texto.trim().toUpperCase()}” sem saldo na ZL0024
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>
@@ -1293,22 +1576,61 @@ function ModalDetalhe({
   onExcluir: () => void;
   onDocSap: () => void;
 }) {
+  const temSemSaldo = r.itens.some((i) => (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo);
+  const pepsDistintos = Array.from(new Set(r.itens.map((i) => i.aplicacao_pep || r.aplicacao_pep).filter(Boolean)));
+
   return (
-    <Modal onClose={onClose} maxWidth="max-w-2xl" ariaLabel={`Detalhes de ${r.codigo}`}>
+    <Modal onClose={onClose} maxWidth="max-w-3xl" ariaLabel={`Detalhes de ${r.codigo}`}>
       <ModalHeader onClose={onClose}>
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-mono text-base font-extrabold" style={{ color: 'var(--ink-primary)' }}>{r.codigo}</h2>
           <ChipTipo tipo={r.tipo_movimento} />
           <ChipDocSap doc={r.doc_sap} />
           {r.exportacao_id && <ChipExportada />}
+          {temSemSaldo && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300"
+              title="Contém itens sem saldo na ZL0024"
+            >
+              <AlertTriangle className="h-3 w-3" /> Sem saldo ZL0024
+            </span>
+          )}
+          {pepsDistintos.length > 1 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+              style={{ background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }}
+            >
+              <Layers className="h-3 w-3" /> {pepsDistintos.length} grupos de PEP
+            </span>
+          )}
         </div>
       </ModalHeader>
       <ModalBody>
         <div className="space-y-4">
+          {temSemSaldo && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>Esta requisição contém itens lançados sem saldo registrado na ZL0024. Confirme o estoque físico antes de processar no SAP.</span>
+            </div>
+          )}
+
           <div>
             <Linha rotulo="Data / turno" valor={`${formatDateBR(r.data)}${r.turno ? ` · ${r.turno}` : ''}`} />
             <Linha rotulo="Colaborador" valor={`${r.colaborador_nome}${r.colaborador_registro ? ` · ${r.colaborador_registro}` : ''}`} />
-            <Linha rotulo="Aplicação (PEP)" valor={r.aplicacao_pep ? <>{r.aplicacao} · <span className="font-mono">{r.aplicacao_pep}</span></> : r.aplicacao} />
+            <Linha
+              rotulo="Aplicação (PEP)"
+              valor={
+                pepsDistintos.length > 1 ? (
+                  <span>
+                    {pepsDistintos.length} grupos de PEP distintos (detalhes na tabela abaixo)
+                  </span>
+                ) : r.aplicacao_pep ? (
+                  <>{r.aplicacao} · <span className="font-mono">{r.aplicacao_pep}</span></>
+                ) : (
+                  r.aplicacao
+                )
+              }
+            />
             <Linha rotulo="Depósito de saída" valor={formatDeposito(r.deposito_origem)} />
             {r.tipo_movimento === 'transferencia' && (
               <Linha rotulo="Depósito de destino" valor={r.deposito_destino ? formatDeposito(r.deposito_destino) : 'Definir no SAP'} />
@@ -1329,25 +1651,48 @@ function ModalDetalhe({
                   <th className="px-3 py-2 text-left font-bold">#</th>
                   <th className="px-3 py-2 text-left font-bold">Código</th>
                   <th className="px-3 py-2 text-left font-bold">Descrição</th>
+                  <th className="px-3 py-2 text-left font-bold">PEP / Aplicação</th>
                   <th className="px-3 py-2 text-right font-bold">Qtd</th>
                   <th className="px-3 py-2 text-left font-bold">Un</th>
                   <th className="px-3 py-2 text-left font-bold">Doc. SAP</th>
                 </tr>
               </thead>
               <tbody>
-                {r.itens.map((i, n) => (
-                  <tr key={i.id} className="border-t" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
-                    <td className="px-3 py-2 tabular-nums">{n + 1}</td>
-                    <td className="px-3 py-2 font-mono">{i.material}</td>
-                    <td className="px-3 py-2">{i.descricao}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-bold">{formatQtd(i.quantidade)}</td>
-                    <td className="px-3 py-2">{i.unidade}</td>
-                    <td className="px-3 py-2 font-mono">
-                      {i.doc_sap ?? '—'}
-                      {i.status_processamento && <span className="block font-sans text-[10px]" style={{ color: 'var(--ink-muted)' }}>{i.status_processamento}</span>}
-                    </td>
-                  </tr>
-                ))}
+                {r.itens.map((i, n) => {
+                  const pepItem = i.aplicacao_pep || r.aplicacao_pep;
+                  const descPep = i.aplicacao || r.aplicacao;
+                  const itemSemSaldo = (i.saldo_zl0024 != null && i.saldo_zl0024 <= 0) || i.sem_saldo;
+                  return (
+                    <tr key={i.id} className="border-t" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-primary)' }}>
+                      <td className="px-3 py-2 tabular-nums">{n + 1}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {i.material}
+                        {itemSemSaldo && (
+                          <span className="block text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                            ⚠️ Sem saldo ZL0024
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{i.descricao}</td>
+                      <td className="px-3 py-2">
+                        {pepItem ? (
+                          <div>
+                            <span className="font-medium">{descPep || '—'}</span>
+                            <span className="block font-mono text-[10px]" style={{ color: 'var(--ink-muted)' }}>{pepItem}</span>
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-bold">{formatQtd(i.quantidade)}</td>
+                      <td className="px-3 py-2">{i.unidade}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {i.doc_sap ?? '—'}
+                        {i.status_processamento && <span className="block font-sans text-[10px]" style={{ color: 'var(--ink-muted)' }}>{i.status_processamento}</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -13,6 +13,8 @@ import {
   deveExigirMedicoesEvs,
   calcularIndicadoresQualidade,
   calcularRelatorioDiario,
+  ordenarPlanoExpedicao,
+  resumirPlanoExpedicao,
 } from './producao';
 
 describe('producao.ts — virolas por tramo (PRD NAV1 §5.2)', () => {
@@ -169,5 +171,32 @@ describe('producao.ts — relatório diário', () => {
       { data: '2026-09-11', total: 1, aprovados: 0, reprovados: 0, refugados: 0, pendentes: 1 },
       { data: '2026-09-10', total: 2, aprovados: 1, reprovados: 0, refugados: 1, pendentes: 0 },
     ]);
+  });
+});
+
+describe('producao.ts — plano de expedição', () => {
+  it('ordena o plano por semana, torre e tramo físico', () => {
+    expect(ordenarPlanoExpedicao([
+      { semana: 36, torre_numero: 2, tramo: 'T1' },
+      { semana: 35, torre_numero: 4, tramo: 'T3' },
+      { semana: 35, torre_numero: 4, tramo: 'T5' },
+      { semana: 35, torre_numero: 4, tramo: 'T1' },
+    ])).toEqual([
+      { semana: 35, torre_numero: 4, tramo: 'T5' },
+      { semana: 35, torre_numero: 4, tramo: 'T3' },
+      { semana: 35, torre_numero: 4, tramo: 'T1' },
+      { semana: 36, torre_numero: 2, tramo: 'T1' },
+    ]);
+  });
+
+  it('consolida faturamento e expedição para as torres filtradas no relatório', () => {
+    const resumo = resumirPlanoExpedicao([
+      { status: 'expedido' as const, data_expedicao: '2026-09-22' },
+      { status: 'expedido' as const, data_expedicao: '2026-09-22' },
+      { status: 'faturado' as const, data_expedicao: '2026-09-25' },
+      { status: 'a_faturar' as const, data_expedicao: '2026-09-29' },
+    ]);
+
+    expect(resumo).toEqual({ total: 4, faturados: 3, expedidos: 2, aFaturar: 1 });
   });
 });
