@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_CONTAGENS, linhasResultado, montarCandidatos, proximaContagem, resumirInventario, type ItemInventario,
+  MAX_CONTAGENS, coberturaInventario, diasEntre, historicoPorItem, linhasResultado, montarCandidatos, proximaContagem,
+  resumirInventario, rotuloDias, type ItemInventario,
 } from './inventarioCiclico';
 import { montarLinhasPlanilhaInventario } from './inventarioCiclicoPlanilha';
 import type { EstoqueGiro, EstoqueItem } from '../types';
@@ -118,5 +119,39 @@ describe('resultado', () => {
     expect(linhas[1]['2ª contagem']).toBe(1100);
     expect(linhas[2]['Saldo ZL0024']).toBe('');
     expect(linhas[0]['Descrição depósito']).toBe('Consumíveis Solda');
+  });
+});
+
+describe('histórico e cobertura', () => {
+  const inventarios = [
+    { data: '2026-09-01', itens: [
+      item({ material: '01371231', deposito: '0001', status: 'divergente', contagens: [contagem(1, 5, true)] }),
+      item({ material: '1425762', deposito: '0001', status: 'pendente', contagens: [] }),
+    ] },
+    { data: '2026-09-20', itens: [
+      item({ material: '1371231', deposito: '1', status: 'conferido', contagens: [contagem(1, 10, false)] }),
+    ] },
+  ];
+
+  it('guarda a data mais recente, as vezes e se já divergiu; ignora item sem contagem', () => {
+    const h = historicoPorItem(inventarios);
+    expect(h.get('1371231|0001')).toEqual({ ultimaData: '2026-09-20', vezes: 2, jaDivergiu: true });
+    expect(h.has('1425762|0001')).toBe(false);
+  });
+
+  it('conta dias sem passar por fuso', () => {
+    expect(diasEntre('2026-08-31', '2026-09-24')).toBe(24);
+    expect(rotuloDias(0)).toBe('hoje');
+    expect(rotuloDias(1)).toBe('ontem');
+    expect(rotuloDias(24)).toBe('há 24 dias');
+  });
+
+  it('cobertura = material × depósito da ZL0024 já contado, com filtro de depósito', () => {
+    const h = historicoPorItem(inventarios);
+    const todos = coberturaInventario(estoque, h);
+    expect(todos).toMatchObject({ total: 4, inventariados: 1 });
+    expect(todos.pct).toBe(25);
+    expect(coberturaInventario(estoque, h, ['0001'])).toMatchObject({ total: 2, inventariados: 1, pct: 50 });
+    expect(coberturaInventario([], h).pct).toBe(0);
   });
 });

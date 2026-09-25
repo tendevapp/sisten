@@ -96,6 +96,7 @@ const ModuleHome = lazy(() => import('./views/ModuleHome'));
 const DemandasWorkspace = lazy(() => import('./views/demandas/DemandasWorkspace'));
 const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
 const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
+const ProducaoApontamentos = lazy(() => import('./views/producao/ProducaoApontamentos'));
 const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
 const ProducaoOperacao = lazy(() => import('./views/producao/ProducaoOperacao'));
 const ProducaoDashboards = lazy(() => import('./views/producao/ProducaoDashboards'));
@@ -1124,6 +1125,12 @@ export default function App() {
       case '/producao/lancamentos':
         if (canAccessPage(user, 'prod_lancamentos')) {
           return <ProducaoLancamentos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/producao/apontamentos':
+        if (canAccessPage(user, 'prod_apontamentos')) {
+          return <ProducaoApontamentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

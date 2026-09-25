@@ -22,8 +22,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, ArrowLeftRight, Check, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
-  RefreshCw, RotateCcw, Search, Trash2, Upload, User, X,
+  AlertTriangle, ArrowLeft, ArrowLeftRight, Check, CheckSquare, ChevronDown, Download, FileCheck2, FolderPlus, History, Layers, Loader2, LogOut, Plus,
+  RefreshCw, RotateCcw, Search, Square, Trash2, Upload, User, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../../components/ui/Modal';
@@ -273,6 +273,12 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
     });
   };
 
+  const idsFiltradas = useMemo(() => filtradas.map((r) => r.id), [filtradas]);
+  const todasFiltradasSelecionadas = idsFiltradas.length > 0 && idsFiltradas.every((id) => selecionadas.has(id));
+  const alternarSelecionarTodas = () => {
+    alternarSelecao(idsFiltradas, !todasFiltradasSelecionadas);
+  };
+
   /**
    * Requisição exportada não se altera (a planilha já saiu com ela). Em vez de
    * esconder o botão, pergunta e reabre a exportação antes — é o que o
@@ -413,6 +419,26 @@ export default function RequisicaoBalcao({ user, onNavigate }: Props) {
           <input type="checkbox" checked={soPendentes} onChange={(e) => setSoPendentes(e.target.checked)} />
           Só sem doc. SAP
         </label>
+        {filtradas.length > 0 && (
+          <button
+            type="button"
+            onClick={alternarSelecionarTodas}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer hover:opacity-90 active:scale-95 ml-auto"
+            style={{
+              borderColor: todasFiltradasSelecionadas ? 'var(--brand)' : 'var(--hairline)',
+              background: todasFiltradasSelecionadas ? 'color-mix(in srgb, var(--brand) 12%, transparent)' : 'var(--surface-raised)',
+              color: todasFiltradasSelecionadas ? 'var(--brand)' : 'var(--ink-secondary)',
+            }}
+            title={todasFiltradasSelecionadas ? 'Desmarcar todas as requisições listadas' : `Selecionar todas as ${filtradas.length} requisições listadas`}
+          >
+            {todasFiltradasSelecionadas ? (
+              <CheckSquare className="h-3.5 w-3.5 text-[var(--brand)]" />
+            ) : (
+              <Square className="h-3.5 w-3.5" />
+            )}
+            {todasFiltradasSelecionadas ? 'Desmarcar todos' : `Selecionar todos (${filtradas.length})`}
+          </button>
+        )}
       </div>
 
       {selecionadas.size > 0 && (

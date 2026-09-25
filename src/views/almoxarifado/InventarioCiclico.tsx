@@ -27,9 +27,10 @@ import { localDb } from '../../db/localDb';
 import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
 import {
-  FORM_CODIGO_INVENTARIO, MAX_CONTAGENS, ROTULO_CRITERIO, ROTULO_STATUS_ITEM, chaveItem, itemEncerrado, montarCandidatos,
-  proximaContagem, resumirInventario,
-  type CandidatoInventario, type ClasseCurva, type CriterioCurva, type ItemInventario, type StatusItemInventario,
+  FORM_CODIGO_INVENTARIO, MAX_CONTAGENS, ROTULO_CRITERIO, ROTULO_STATUS_ITEM, chaveItem, coberturaInventario, diasEntre,
+  historicoPorItem, itemEncerrado, montarCandidatos, proximaContagem, resumirInventario, rotuloDias,
+  type CandidatoInventario, type ClasseCurva, type CoberturaInventario, type CriterioCurva, type HistoricoItem,
+  type ItemInventario, type StatusItemInventario,
 } from '../../lib/inventarioCiclico';
 import {
   adicionarItensInventario, criarInventario, encerrarItemInventario, excluirInventario, listarInventarios, registrarContagem,
@@ -163,6 +164,9 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
     );
   }, [inventarios, busca]);
 
+  const historico = useMemo(() => historicoPorItem(inventarios), [inventarios]);
+  const cobertura = useMemo(() => coberturaInventario(estoque, historico), [estoque, historico]);
+
   const emAberto = inventarios.filter((i) => i.status === 'aberto').length;
   const comDivergencia = inventarios.filter((i) => i.itens.some((x) => x.status === 'divergente')).length;
 
@@ -171,6 +175,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
       user={user}
       estoque={estoque}
       giro={giro}
+      historico={historico}
       inventario={novo.inventario}
       onClose={() => setNovo(null)}
       onSalvo={async (id) => {
@@ -236,6 +241,8 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         <Indicador rotulo="Com divergência" valor={comDivergencia} critico={comDivergencia > 0} />
       </div>
 
+      <PainelCobertura cobertura={cobertura} carregando={loading && estoque.length === 0} />
+
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
         <input
@@ -275,6 +282,40 @@ function Indicador({ rotulo, valor, destaque, critico }: { rotulo: string; valor
       >
         {valor}
       </span>
+    </div>
+  );
+}
+
+/** Quanto do almoxarifado (material × depósito na ZL0024) já foi contado ao menos uma vez. */
+function PainelCobertura({ cobertura, carregando, rotulo = 'Cobertura do almoxarifado' }: {
+  cobertura: CoberturaInventario;
+  carregando?: boolean;
+  rotulo?: string;
+}) {
+  const faltam = cobertura.total - cobertura.inventariados;
+  return (
+    <div className="rounded-xl border px-4 py-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-[11px] font-bold" style={{ color: 'var(--ink-muted)' }}>{rotulo}</span>
+        {carregando ? (
+          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>Carregando ZL0024…</span>
+        ) : (
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            {cobertura.inventariados} de {cobertura.total} item(ns) inventariado(s) · faltam {faltam}
+          </span>
+        )}
+      </div>
+      <div className="mt-1 flex items-center gap-3">
+        <span className="text-2xl font-extrabold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
+          {cobertura.pct.toFixed(1).replace('.', ',')}%
+        </span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: 'color-mix(in srgb, var(--ink-muted) 15%, transparent)' }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(cobertura.pct, 100)}%`, background: 'var(--brand)' }} />
+        </div>
+      </div>
+      <p className="mt-1 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+        Item = material × depósito na posição atual da ZL0024; inventariado = contado ao menos uma vez.
+      </p>
     </div>
   );
 }
@@ -334,11 +375,13 @@ const COR_CLASSE: Record<ClasseCurva, string> = {
 };
 
 function ModalSelecaoItens({
-  user, estoque, giro, inventario, onClose, onSalvo,
+  user, estoque, giro, historico, inventario, onClose, onSalvo,
 }: {
   user: Profile;
   estoque: EstoqueItem[];
   giro: EstoqueGiro[];
+  /** Último inventário de cada material × depósito. */
+  historico: Map<string, HistoricoItem>;
   /** Presente = acrescentar itens a este inventário. */
   inventario?: InventarioRow;
   onClose: () => void;
@@ -353,6 +396,8 @@ function ModalSelecaoItens({
   const [criterio, setCriterio] = useState<CriterioCurva>(giro.length > 0 ? pref.criterio : 'valor');
   const [texto, setTexto] = useState('');
   const [soClasseA, setSoClasseA] = useState(false);
+  const [soDivergentes, setSoDivergentes] = useState(false);
+  const hoje = hojeISO();
   const [marcados, setMarcados] = useState<Map<string, CandidatoInventario>>(new Map());
   const [salvando, setSalvando] = useState(false);
 
@@ -375,13 +420,16 @@ function ModalSelecaoItens({
     const termos = semAcento(texto.trim()).split(/\s+/).filter(Boolean);
     return candidatos.filter((c) => {
       if (soClasseA && c.classe !== 'A') return false;
+      if (soDivergentes && !historico.get(c.chave)?.jaDivergiu) return false;
       if (termos.length === 0) return true;
       const alvo = semAcento(`${c.material} ${c.descricao}`);
       return termos.every((t) => alvo.includes(t));
     });
-  }, [candidatos, texto, soClasseA]);
+  }, [candidatos, texto, soClasseA, soDivergentes, historico]);
 
   const qtdClasseA = candidatos.filter((c) => c.classe === 'A').length;
+  const qtdDivergentesAnteriores = candidatos.filter((c) => historico.get(c.chave)?.jaDivergiu).length;
+  const coberturaSelecao = useMemo(() => coberturaInventario(estoque, historico, depositos), [estoque, historico, depositos]);
 
   const alternar = (c: CandidatoInventario) => setMarcados((m) => {
     const n = new Map(m);
@@ -513,7 +561,25 @@ function ModalSelecaoItens({
             <input type="checkbox" checked={soClasseA} onChange={(e) => setSoClasseA(e.target.checked)} />
             Só classe A
           </label>
+          <button
+            type="button"
+            onClick={() => setSoDivergentes((v) => !v)}
+            disabled={qtdDivergentesAnteriores === 0 && !soDivergentes}
+            aria-pressed={soDivergentes}
+            title="Itens que terminaram divergentes em inventário anterior"
+            className={btnSec}
+            style={soDivergentes
+              ? { borderColor: 'var(--status-critical)', background: 'var(--status-critical)', color: 'white' }
+              : { borderColor: 'var(--status-critical)', color: 'var(--status-critical)' }}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" /> Divergências anteriores ({qtdDivergentesAnteriores})
+          </button>
         </div>
+
+        <PainelCobertura
+          cobertura={coberturaSelecao}
+          rotulo={depositos.length > 0 ? `Cobertura dos depósitos ${depositos.join(', ')}` : 'Cobertura do almoxarifado'}
+        />
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
@@ -555,6 +621,7 @@ function ModalSelecaoItens({
                   <span className="block text-[11px] font-mono" style={{ color: 'var(--ink-muted)' }}>
                     {c.material} · {formatDeposito(c.deposito)} · {c.unidade}
                   </span>
+                  <ChipsHistorico h={historico.get(c.chave)} hoje={hoje} />
                 </span>
                 <span className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: 'var(--ink-muted)' }}>#{c.posicao}</span>
               </label>
@@ -571,6 +638,21 @@ function ModalSelecaoItens({
         </button>
       </ModalFooter>
     </Modal>
+  );
+}
+
+function ChipsHistorico({ h, hoje }: { h?: HistoricoItem; hoje: string }) {
+  if (!h) {
+    return <span className="mt-0.5 block text-[10px] font-semibold" style={{ color: 'var(--ink-muted)' }}>Nunca inventariado</span>;
+  }
+  const dias = diasEntre(h.ultimaData, hoje);
+  return (
+    <span className="mt-0.5 flex flex-wrap gap-1">
+      <Chip token="var(--brand)">
+        Inventariado {rotuloDias(dias)} ({formatDateBR(h.ultimaData)}){h.vezes > 1 ? ` · ${h.vezes}x` : ''}
+      </Chip>
+      {h.jaDivergiu && <Chip token="var(--status-critical)"><AlertTriangle className="h-3 w-3" /> Já divergiu</Chip>}
+    </span>
   );
 }
 

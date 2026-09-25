@@ -250,3 +250,90 @@ export function linhasResultado(itens: ItemInventario[]): LinhaResultado[] {
 export function nomeArquivoInventario(codigo: string, ext: 'xlsx' | 'pdf'): string {
   return `inventario_${codigo}.${ext}`;
 }
+
+// ---------------------------------------------------------------------------
+// Histórico e cobertura
+// ---------------------------------------------------------------------------
+
+export interface HistoricoItem {
+  /** Data (ISO) do inventário mais recente em que o item foi contado. */
+  ultimaData: string;
+  /** Vezes em que o item foi contado (inventários distintos). */
+  vezes: number;
+  /** Já terminou divergente em algum inventário. */
+  jaDivergiu: boolean;
+}
+
+/** Dias corridos entre duas datas ISO (AAAA-MM-DD), sem passar por fuso. */
+export function diasEntre(deISO: string, ateISO: string): number {
+  const utc = (iso: string) => {
+    const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((utc(ateISO) - utc(deISO)) / 86_400_000);
+}
+
+/** "hoje", "ontem", "há 12 dias". */
+export function rotuloDias(dias: number): string {
+  if (dias <= 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  return `há ${dias} dias`;
+}
+
+/**
+ * Histórico por material × depósito a partir dos inventários gravados. Só
+ * conta item que recebeu ao menos uma contagem — item só listado não foi
+ * inventariado.
+ */
+export function historicoPorItem(
+  inventarios: { data: string; itens: Pick<ItemInventario, 'material' | 'deposito' | 'status' | 'contagens'>[] }[],
+): Map<string, HistoricoItem> {
+  const mapa = new Map<string, HistoricoItem>();
+  inventarios.forEach((inv) => {
+    inv.itens.forEach((i) => {
+      if (i.contagens.length === 0) return;
+      const chave = chaveItem(i.material, i.deposito);
+      const atual = mapa.get(chave);
+      const divergiu = i.status === 'divergente';
+      if (!atual) {
+        mapa.set(chave, { ultimaData: inv.data, vezes: 1, jaDivergiu: divergiu });
+      } else {
+        atual.vezes += 1;
+        atual.jaDivergiu ||= divergiu;
+        if (inv.data > atual.ultimaData) atual.ultimaData = inv.data;
+      }
+    });
+  });
+  return mapa;
+}
+
+export interface CoberturaInventario {
+  /** Itens (material × depósito) na ZL0024. */
+  total: number;
+  /** Desses, quantos já foram contados ao menos uma vez. */
+  inventariados: number;
+  pct: number;
+}
+
+/**
+ * Quanto do almoxarifado já passou por inventário. Base = posição atual da
+ * ZL0024 (material × depósito); `depositos` vazio = todos.
+ */
+export function coberturaInventario(
+  estoque: EstoqueItem[],
+  historico: Map<string, HistoricoItem>,
+  depositos: string[] = [],
+): CoberturaInventario {
+  const filtro = new Set(depositos.map((d) => d.trim().padStart(4, '0')));
+  const chaves = new Set<string>();
+  estoque.forEach((e) => {
+    if (!e.material || !e.deposito) return;
+    const dep = String(e.deposito).trim().padStart(4, '0');
+    if (filtro.size > 0 && !filtro.has(dep)) return;
+    chaves.add(chaveItem(String(e.material), dep));
+  });
+  let inventariados = 0;
+  chaves.forEach((c) => { if (historico.has(c)) inventariados += 1; });
+  const total = chaves.size;
+  return { total, inventariados, pct: total > 0 ? (inventariados / total) * 100 : 0 };
+}

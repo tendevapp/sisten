@@ -8941,8 +8941,11 @@ class LocalDatabase {
    * e-mail, o usuário já nasce ativo e com `must_change_password`, então a
    * senha provisória digitada pelo admin só serve para o primeiro login.
    *
-   * Depende da service_role (`supabaseAdmin`): a Admin API é o único caminho
-   * para criar usuário já confirmado, sem o fluxo de convite por e-mail.
+   * Criar usuário já confirmado exige a Admin API. Caminho preferido: a Edge
+   * Function `admin-criar-usuario`, que guarda a service_role só no servidor e
+   * confere o papel `admin` do chamador. Se a função não estiver publicada,
+   * cai para a Admin API direta (`supabaseAdmin`, que exige
+   * VITE_SUPABASE_SERVICE_ROLE_KEY no build).
    */
   public async criarUsuarioSemEmail(params: {
     nome: string;
@@ -8953,9 +8956,6 @@ class LocalDatabase {
     role?: string;
   }): Promise<{ profile: Profile | null; erro: string | null }> {
     if (!supabase) return { profile: null, erro: 'Supabase não inicializado.' };
-    if (!supabaseAdmin) {
-      return { profile: null, erro: 'Criação de usuário exige a chave service_role do Supabase configurada.' };
-    }
 
     const nome = (params.nome || '').trim().toUpperCase();
     const usuario = (params.usuario || '').trim().toLowerCase();
@@ -8966,6 +8966,56 @@ class LocalDatabase {
       return { profile: null, erro: 'Identificador inválido. Use o padrão nome.sobrenome, só letras minúsculas, números e ponto.' };
     }
     if (senha.length < 6) return { profile: null, erro: 'A senha provisória deve ter pelo menos 6 caracteres.' };
+
+    // 1a. Edge Function (não depende de service_role no navegador).
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-criar-usuario', {
+        body: {
+          nome,
+          usuario,
+          senha,
+          cargo: (params.cargo || '').trim(),
+          sectorId: params.sectorId ?? null,
+          role: params.role || 'visualizador',
+        },
+      });
+      if (!error && (data as any)?.ok && (data as any)?.profile) {
+        const perfil = (data as any).profile as Profile;
+        const perfis = this.getProfiles();
+        perfis.push(perfil);
+        this.setStorageItem(this.profilesKey, perfis);
+        this.logActivity(
+          'admin',
+          'Administração',
+          'Novo Usuário',
+          `Acesso sem e-mail criado para ${nome} (${usuario}). Troca de senha obrigatória no primeiro login.`,
+        );
+        return { profile: perfil, erro: null };
+      }
+      if (error) {
+        const contexto = (error as any)?.context;
+        const corpo = typeof contexto?.json === 'function' ? await contexto.json().catch(() => null) : null;
+        const status = contexto?.status ?? (error as any)?.status;
+        // 404/erro de transporte = função não publicada → segue para o fallback.
+        const funcaoAusente =
+          status === 404 ||
+          (error as any)?.name === 'FunctionsFetchError' ||
+          /not found|failed to (send|fetch)/i.test(error.message || '');
+        if (!funcaoAusente) {
+          return { profile: null, erro: (corpo?.error as string | undefined) || error.message || 'Falha ao criar o usuário no servidor.' };
+        }
+      }
+    } catch (e) {
+      console.warn('admin-criar-usuario indisponível, tentando via Admin API direta:', e);
+    }
+
+    // 1b. Fallback: Admin API direta com a service_role do build.
+    if (!supabaseAdmin) {
+      return {
+        profile: null,
+        erro: 'Criação de usuário indisponível: publique a Edge Function admin-criar-usuario (npx supabase functions deploy admin-criar-usuario) ou configure a chave service_role no build.',
+      };
+    }
 
     const email = emailDeLogin(usuario);
 

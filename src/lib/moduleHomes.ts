@@ -107,6 +107,7 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     },
     cardDescriptions: {
       prod_lancamentos: 'Filas por etapa e lançamento de liberação de cada peça.',
+      prod_apontamentos: 'Programado × realizado por etapa da Nave 1, Nave 2 e White, com relatórios de aderência.',
       prod_pendencias: 'Reprovações abertas aguardando correção e reinspeção.',
       prod_consulta: 'Consulta de lançamentos e ficha completa de cada virola.',
       prod_entrega: 'Matriz de prontidão por torre e tramo para a Expedição.',

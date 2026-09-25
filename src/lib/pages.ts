@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -102,6 +102,7 @@ export const PAGES: PageDef[] = [
   // painel de Módulos de Acesso, mesmo desenho do RH/Facilities.
   { id: 'producao_home', group: 'PRODUÇÃO', label: 'Produção', path: '/producao', icon: Flame, defaultRoles: ['admin'] },
   { id: 'prod_lancamentos', group: 'PRODUÇÃO', label: 'Lançamentos', path: '/producao/lancamentos', icon: ClipboardPlus, defaultRoles: ['admin'] },
+  { id: 'prod_apontamentos', group: 'PRODUÇÃO', label: 'Apontamentos', path: '/producao/apontamentos', icon: Timer, defaultRoles: ['admin'] },
   { id: 'prod_pendencias', group: 'PRODUÇÃO', label: 'Controle de Liberações', path: '/producao/pendencias', icon: ListChecks, defaultRoles: ['admin'] },
   { id: 'prod_consulta', group: 'PRODUÇÃO', label: 'Consulta', path: '/producao/consulta', icon: Search, defaultRoles: ['admin'] },
   { id: 'prod_entrega', group: 'PRODUÇÃO', label: 'Controle de Entrega', path: '/producao/entrega', icon: KanbanSquare, defaultRoles: ['admin'] },
@@ -530,6 +531,21 @@ export const FEATURE_FLAGS: PageDef[] = [
     label: 'Produção: lançar Flange',
     defaultRoles: [],
   },
+  // Apontamentos: lançar o realizado é de quem acessa a página (herda o hub
+  // de Produção); o programado é do Planejamento e o cadastro de etapas, de
+  // quem administra — checadas também no banco (private.prod_apt_pode).
+  {
+    id: 'prod_apt_programar',
+    group: 'PRODUÇÃO',
+    label: 'Produção: programado semanal dos apontamentos (Planejamento)',
+    defaultRoles: [],
+  },
+  {
+    id: 'prod_apt_cadastros',
+    group: 'PRODUÇÃO',
+    label: 'Produção: cadastro de etapas dos apontamentos',
+    defaultRoles: [],
+  },
   {
     id: 'prod_editar_todos',
     group: 'PRODUÇÃO',
@@ -694,6 +710,13 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   // Produção a enxerga, salvo bloqueio explícito nesta página pelo admin.
   if (pageId === 'prod_expedicao') {
     const override = user.page_access?.prod_expedicao;
+    return override ?? canAccessPage(user, 'producao_home');
+  }
+
+  // Apontamentos: qualquer usuário do módulo Produção lança o realizado
+  // (espelha private.prod_apt_pode_lancar no banco).
+  if (pageId === 'prod_apontamentos') {
+    const override = user.page_access?.prod_apontamentos;
     return override ?? canAccessPage(user, 'producao_home');
   }
 
