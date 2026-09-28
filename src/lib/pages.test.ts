@@ -140,19 +140,24 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessFormGroup(userSemForm, 'almoxarifado')).toBe(false);
     });
 
-    it('se selecionar formulários (padrão), deve mostrar grupos gerais e restringir rh (ASE) a admin e gestor', () => {
+    it('se selecionar formulários (padrão), deve mostrar grupos gerais e restringir rh e ssma por padrão', () => {
       const userComForm = mockUser({ roles: ['requisitante'] });
       expect(canAccessFormGroup(userComForm, 'portaria')).toBe(true);
       expect(canAccessFormGroup(userComForm, 'logistica')).toBe(true);
-      expect(canAccessFormGroup(userComForm, 'ssma')).toBe(true);
       expect(canAccessFormGroup(userComForm, 'almoxarifado')).toBe(true);
-      // RH/ASE só aparece por padrão para admin e gestor
+      // RH/ASE e SSMA nascem desmarcados para usuários comuns
       expect(canAccessFormGroup(userComForm, 'rh')).toBe(false);
+      expect(canAccessFormGroup(userComForm, 'ssma')).toBe(false);
 
       const gestor = mockUser({ roles: ['gestor'] });
       expect(canAccessFormGroup(gestor, 'rh')).toBe(true);
       const admin = mockUser({ roles: ['admin'] });
       expect(canAccessFormGroup(admin, 'rh')).toBe(true);
+      expect(canAccessFormGroup(admin, 'ssma')).toBe(true);
+
+      // Com override do admin, o grupo SSMA é liberado
+      const userComSsma = mockUser({ roles: ['requisitante'], page_access: { form_ssma: true } });
+      expect(canAccessFormGroup(userComSsma, 'ssma')).toBe(true);
     });
 
     it('deve respeitar subpermissões específicas desmarcadas pelo admin', () => {
@@ -330,6 +335,21 @@ describe('pages.ts - Controle de Acesso', () => {
   });
 
   describe('GROUP_ORDER — ordem dos módulos no menu', () => {
+    it('registra as duas telas de acompanhamento do Planejamento', () => {
+      expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_geral')).toMatchObject({
+        path: '/planejamento/acompanhamento-geral',
+        group: 'PLANEJAMENTO',
+      });
+      expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_diario')).toMatchObject({
+        path: '/planejamento/acompanhamento-diario',
+        group: 'PLANEJAMENTO',
+      });
+      expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_diario_tv')).toMatchObject({
+        path: '/planejamento/acompanhamento-diario-tv',
+        group: 'PLANEJAMENTO',
+      });
+    });
+
     it('cobre todos os grupos de PAGES', () => {
       // Grupo fora desta lista simplesmente não é renderizado no Sidebar, sem
       // erro nenhum — foi assim que o módulo de RH nasceu invisível no menu.
@@ -395,40 +415,38 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(isUserVisualizador(mockUser({ roles: ['gestor'] }))).toBe(false);
     });
 
-    it('para visualizador comum sem setor operacional, APENAS o RID deve ser liberado por padrão', () => {
+    it('para visualizador comum, Qualidade e SSMA nascem desmarcados/bloqueados por padrão', () => {
       const visGeral = mockUser({
         roles: ['visualizador'],
-        setor_id: '9', // TI (não opera formulários de portaria/almox/etc.)
+        setor_id: '9', // TI
       });
 
-      // RID é o único formulário liberado para todos os usuários
-      expect(canAccessForm(visGeral, 'form_ssma_rid')).toBe(true);
-
-      // Outros formulários de SSMA e outros setores permanecem bloqueados
+      // SSMA e RID não são mais liberados por padrão para usuários comuns
+      expect(canAccessForm(visGeral, 'form_ssma_rid')).toBe(false);
       expect(canAccessForm(visGeral, 'form_ssma_alcoolemia')).toBe(false);
+      expect(canAccessFormGroup(visGeral, 'ssma')).toBe(false);
+      expect(canAccessPage(visGeral, 'ssma')).toBe(false);
+
+      // Qualidade também nasce bloqueada por padrão
+      expect(canAccessPage(visGeral, 'qualidade_home')).toBe(false);
+      expect(canAccessPage(visGeral, 'qualidade_rnc')).toBe(false);
+
+      // Outros formulários de outros setores permanecem bloqueados
       expect(canAccessForm(visGeral, 'form_almoxarifado_recebimento')).toBe(false);
       expect(canAccessForm(visGeral, 'form_portaria_plantao')).toBe(false);
-      expect(canAccessForm(visGeral, 'form_portaria_carretas')).toBe(false);
       expect(canAccessForm(visGeral, 'form_logistica_expedicao')).toBe(false);
       expect(canAccessForm(visGeral, 'form_rh_ase')).toBe(false);
-
-      // No Hub de formulários, o grupo SSMA fica visível (porque contém o RID acessível)
-      expect(canAccessFormGroup(visGeral, 'ssma')).toBe(true);
-      // Os demais grupos não aparecem
-      expect(canAccessFormGroup(visGeral, 'portaria')).toBe(false);
-      expect(canAccessFormGroup(visGeral, 'almoxarifado')).toBe(false);
-      expect(canAccessFormGroup(visGeral, 'logistica')).toBe(false);
-      expect(canAccessFormGroup(visGeral, 'rh')).toBe(false);
     });
 
-    it('visualizador do Almoxarifado pode ver os formulários do Almoxarifado + RID', () => {
+    it('visualizador do Almoxarifado pode ver os formulários do Almoxarifado, enquanto SSMA permanece bloqueado', () => {
       const visAlmox = mockUser({
         roles: ['visualizador'],
         setor_id: '2', // Setor Almoxarifado
       });
 
-      // RID liberado universalmente
-      expect(canAccessForm(visAlmox, 'form_ssma_rid')).toBe(true);
+      // SSMA nasce bloqueado
+      expect(canAccessForm(visAlmox, 'form_ssma_rid')).toBe(false);
+      expect(canAccessFormGroup(visAlmox, 'ssma')).toBe(false);
 
       // Formulários do seu próprio setor (Almoxarifado) liberados por padrão
       expect(canAccessForm(visAlmox, 'form_almoxarifado_recebimento')).toBe(true);
@@ -439,21 +457,16 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessForm(visAlmox, 'form_portaria_carretas')).toBe(false);
       expect(canAccessForm(visAlmox, 'form_logistica_expedicao')).toBe(false);
       expect(canAccessForm(visAlmox, 'form_rh_ase')).toBe(false);
-      expect(canAccessForm(visAlmox, 'form_ssma_alcoolemia')).toBe(false);
-
-      expect(canAccessFormGroup(visAlmox, 'portaria')).toBe(false);
-      expect(canAccessFormGroup(visAlmox, 'logistica')).toBe(false);
-      expect(canAccessFormGroup(visAlmox, 'rh')).toBe(false);
     });
 
-    it('visualizador da Portaria pode ver os formulários da Portaria + RID', () => {
+    it('visualizador da Portaria pode ver os formulários da Portaria por setor', () => {
       const visPortaria = mockUser({
         roles: ['visualizador'],
         setor_id: '19', // Setor Portaria
       });
 
-      // RID liberado
-      expect(canAccessForm(visPortaria, 'form_ssma_rid')).toBe(true);
+      // SSMA bloqueado
+      expect(canAccessForm(visPortaria, 'form_ssma_rid')).toBe(false);
 
       // Formulários de Portaria liberados
       expect(canAccessForm(visPortaria, 'form_portaria_plantao')).toBe(true);
@@ -466,26 +479,27 @@ describe('pages.ts - Controle de Acesso', () => {
       expect(canAccessFormGroup(visPortaria, 'almoxarifado')).toBe(false);
     });
 
-    it('administrador pode liberar pontualmente qualquer formulário para qualquer visualizador', () => {
-      const visAlmoxComPortaria = mockUser({
+    it('administrador pode liberar pontualmente qualquer formulário ou módulo (inclusive SSMA e Qualidade)', () => {
+      const visComOverrides = mockUser({
         roles: ['visualizador'],
         setor_id: '2', // Almoxarifado
         page_access: {
-          form_portaria_carretas: true, // Liberação manual pontual pelo admin
+          form_portaria_carretas: true,
+          form_ssma_rid: true,
+          qualidade_home: true,
         },
       });
 
-      // Mantém acesso aos do seu setor + RID
-      expect(canAccessForm(visAlmoxComPortaria, 'form_ssma_rid')).toBe(true);
-      expect(canAccessForm(visAlmoxComPortaria, 'form_almoxarifado_recebimento')).toBe(true);
+      expect(canAccessForm(visComOverrides, 'form_almoxarifado_recebimento')).toBe(true);
+      expect(canAccessForm(visComOverrides, 'form_portaria_carretas')).toBe(true);
+      expect(canAccessFormGroup(visComOverrides, 'portaria')).toBe(true);
 
-      // Formulário liberado individualmente pelo admin passa a ter acesso!
-      expect(canAccessForm(visAlmoxComPortaria, 'form_portaria_carretas')).toBe(true);
-      // O grupo Portaria agora aparece no hub porque contém um form ativo
-      expect(canAccessFormGroup(visAlmoxComPortaria, 'portaria')).toBe(true);
+      // SSMA/RID liberado via override pontual
+      expect(canAccessForm(visComOverrides, 'form_ssma_rid')).toBe(true);
+      expect(canAccessFormGroup(visComOverrides, 'ssma')).toBe(true);
 
-      // Outros formulários de Portaria continuam bloqueados
-      expect(canAccessForm(visAlmoxComPortaria, 'form_portaria_plantao')).toBe(false);
+      // Qualidade liberada via override pontual
+      expect(canAccessPage(visComOverrides, 'qualidade_home')).toBe(true);
     });
 
     it('administrador pode bloquear pontualmente um formulário do próprio setor do visualizador', () => {
@@ -498,7 +512,7 @@ describe('pages.ts - Controle de Acesso', () => {
       });
 
       expect(canAccessForm(visAlmoxBloqueado, 'form_almoxarifado_recebimento')).toBe(false);
-      expect(canAccessForm(visAlmoxBloqueado, 'form_ssma_rid')).toBe(true);
+      expect(canAccessForm(visAlmoxBloqueado, 'form_ssma_rid')).toBe(false);
     });
 
     it('administrador tem acesso irrestrito a todos os formulários', () => {

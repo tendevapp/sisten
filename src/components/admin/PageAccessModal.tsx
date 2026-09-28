@@ -138,6 +138,88 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
     }
   };
 
+  const handleToggleAllInGroup = async (groupDef: { group: string; pages: any[] }, habilitar: boolean) => {
+    const editablePages = groupDef.pages.filter((p: any) => !p.alwaysAdmin);
+    if (editablePages.length === 0) return;
+
+    const next = { ...pageAccess };
+    for (const p of editablePages) {
+      next[p.id] = habilitar;
+    }
+
+    // Se for o módulo SSMA, sincronizar formulários vinculados
+    if (groupDef.group === 'SSMA') {
+      const subSsma = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === 'ssma');
+      if (subSsma) next[subSsma.id] = habilitar;
+      const formsSsma = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === 'ssma');
+      for (const f of formsSsma) {
+        next[f.id] = habilitar;
+      }
+      next['ssma_rid_editar_todas'] = habilitar;
+    }
+
+    setPageAccess(next);
+    try {
+      for (const p of editablePages) {
+        await localDb.updatePageAccess(user.id, p.id, habilitar);
+      }
+      if (groupDef.group === 'SSMA') {
+        const subSsma = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === 'ssma');
+        if (subSsma) await localDb.updatePageAccess(user.id, subSsma.id, habilitar);
+        const formsSsma = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === 'ssma');
+        for (const f of formsSsma) {
+          await localDb.updatePageAccess(user.id, f.id, habilitar);
+        }
+        await localDb.updatePageAccess(user.id, 'ssma_rid_editar_todas', habilitar);
+      }
+      onChanged();
+      toast.success(
+        habilitar
+          ? `Todos os itens do módulo ${groupDef.group} foram selecionados.`
+          : `Todos os itens do módulo ${groupDef.group} foram desmarcados.`
+      );
+    } catch (e) {
+      console.error(`Falha ao atualizar módulo ${groupDef.group}:`, e);
+      toast.error('Não foi possível salvar as alterações do módulo.');
+    }
+  };
+
+  const handleResetGroup = async (groupDef: { group: string; pages: any[] }) => {
+    const editablePages = groupDef.pages.filter((p: any) => !p.alwaysAdmin);
+    if (editablePages.length === 0) return;
+
+    const next = { ...pageAccess };
+    for (const p of editablePages) {
+      delete next[p.id];
+    }
+    if (groupDef.group === 'SSMA') {
+      delete next['form_ssma'];
+      for (const f of FORMULARIOS_DETALHADOS.filter(x => x.grupoId === 'ssma')) {
+        delete next[f.id];
+      }
+      delete next['ssma_rid_editar_todas'];
+    }
+
+    setPageAccess(next);
+    try {
+      for (const p of editablePages) {
+        await localDb.updatePageAccess(user.id, p.id, null);
+      }
+      if (groupDef.group === 'SSMA') {
+        await localDb.updatePageAccess(user.id, 'form_ssma', null);
+        for (const f of FORMULARIOS_DETALHADOS.filter(x => x.grupoId === 'ssma')) {
+          await localDb.updatePageAccess(user.id, f.id, null);
+        }
+        await localDb.updatePageAccess(user.id, 'ssma_rid_editar_todas', null);
+      }
+      onChanged();
+      toast.success(`Itens do módulo ${groupDef.group} restaurados ao padrão.`);
+    } catch (e) {
+      console.error(`Falha ao restaurar módulo ${groupDef.group}:`, e);
+      toast.error('Não foi possível restaurar o módulo.');
+    }
+  };
+
   return (
     <Modal onClose={onClose} maxWidth="max-w-xl" ariaLabel={`Módulos de acesso — ${user.name}`}>
       <ModalHeader onClose={onClose}>
@@ -152,10 +234,58 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
           </div>
         ) : (
           <div className="space-y-5">
-            {groups.map(g => (
-              <div key={g.group}>
-                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-widest mb-1.5">{g.group}</h4>
-                <div className="space-y-1">
+            {groups.map(g => {
+              const editablePages = g.pages.filter(p => !p.alwaysAdmin);
+
+              return (
+                <div key={g.group} className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-3 shadow-2xs">
+                  {/* Cabeçalho do Módulo com Ações Rápidas */}
+                  <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h4 className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-wider uppercase truncate">
+                        {g.group}
+                      </h4>
+                      <span className="text-[9px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full shrink-0">
+                        {editablePages.length} {editablePages.length === 1 ? 'item' : 'itens'}
+                      </span>
+                    </div>
+
+                    {editablePages.length > 0 && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAllInGroup(g, true)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                          title={`Selecionar todos os itens do módulo ${g.group}`}
+                        >
+                          <CheckSquare className="h-3 w-3" />
+                          Selecionar todos
+                        </button>
+                        <span className="text-slate-200 dark:text-slate-700 text-[10px]">|</span>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAllInGroup(g, false)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-rose-600 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                          title={`Desmarcar todos os itens do módulo ${g.group}`}
+                        >
+                          <Square className="h-3 w-3" />
+                          Desmarcar todos
+                        </button>
+                        <span className="text-slate-200 dark:text-slate-700 text-[10px]">|</span>
+                        <button
+                          type="button"
+                          onClick={() => handleResetGroup(g)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                          title={`Restaurar itens do módulo ${g.group} para o padrão do perfil`}
+                        >
+                          <RotateCcw className="h-2.5 w-2.5" />
+                          Padrão
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
                   {g.pages.map(p => {
                     const hasOverride = pageAccess[p.id] !== undefined;
                     const checked = p.alwaysAdmin ? canAccessPage(user, p.id) : canAccessPage({ ...user, page_access: pageAccess }, p.id);
@@ -496,8 +626,9 @@ export default function PageAccessModal({ user, onClose, onChanged }: PageAccess
                     );
                   })}
                 </div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </ModalBody>

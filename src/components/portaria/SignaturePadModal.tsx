@@ -38,6 +38,8 @@ export default function SignaturePadModal({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.scale(2, 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, rect.width, rect.height);
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.strokeStyle = '#0f172a';
@@ -89,7 +91,8 @@ export default function SignaturePadModal({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     setHasDrawn(false);
   };
 

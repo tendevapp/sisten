@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { MessageSquare, PackageCheck, Undo2, Tag } from 'lucide-react';
+import { MessageSquare, PackageCheck, Undo2, Tag, Truck } from 'lucide-react';
 import { RastreioRow, DeliveryStatus, DELIVERY_STATUS_META, deriveDeliveryStatus, formatDateBR, formatBRL, isAlmoxarifadoCandidate } from '../../lib/rastreio';
 import type { EntregaParcial } from '../../lib/entregaParcial';
 import { formatInt } from '../../lib/format';
@@ -32,6 +32,7 @@ export const RASTREIO_COLUMNS: ColumnOption[] = [
   { id: 'descricao', label: 'Item / Descrição', sortable: true, width: 'w-[320px] min-w-[320px]' },
   { id: 'fornecedor', label: 'Fornecedor', sortable: true, width: 'w-[200px] min-w-[200px]' },
   { id: 'setor', label: 'Setor', sortable: true, width: 'w-[120px] min-w-[120px]' },
+  { id: 'transportadora', label: 'Transportadora', sortable: true, width: 'w-[150px] min-w-[150px]' },
   { id: 'qtd', label: 'Qtd', align: 'right', sortable: true, width: 'w-[80px] min-w-[80px]' },
   { id: 'qtdFornecida', label: 'Qtd fornecida', align: 'right', sortable: true, width: 'w-[145px] min-w-[145px]' },
   { id: 'precoUnitario', label: 'Preço unit.', align: 'right', sortable: true, width: 'w-[115px] min-w-[115px]' },
@@ -231,6 +232,12 @@ export default function RastreioTable({
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs pt-0.5" style={{ color: 'var(--ink-muted)' }}>
                 {visibleColumns.setor && <span>{r.setor}</span>}
+                {visibleColumns.transportadora && r.transportadora && (
+                  <span className="inline-flex items-center gap-1 font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                    <Truck className="h-3 w-3 text-slate-400" />
+                    {r.transportadora}
+                  </span>
+                )}
                 {visibleColumns.qtd && (
                   <span>Qtd <strong className="tabular" style={{ color: 'var(--ink-secondary)' }}>{r.qtd !== undefined ? formatInt(r.qtd) : '—'}</strong></span>
                 )}
@@ -394,6 +401,9 @@ export default function RastreioTable({
                 )}
                 {visibleColumns.setor && (
                   <Td truncate title={r.setor} className="py-1.5 px-2">{r.setor}</Td>
+                )}
+                {visibleColumns.transportadora && (
+                  <Td truncate title={r.transportadora || undefined} className="py-1.5 px-2">{r.transportadora || '—'}</Td>
                 )}
                 {visibleColumns.qtd && (
                   <Td align="right" numeric className="py-1.5 px-2 whitespace-nowrap">

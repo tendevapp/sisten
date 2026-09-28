@@ -256,11 +256,13 @@ const qtdDaLinha = (r: EnrichedSAPRecord): { qtd: number | undefined; un: string
 );
 
 // Componente local de cópia rápida reutilizável
-const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) => {
+const ClipboardCopyButton = ({ text, label, size = 'sm' }: { text: string; label: string; size?: 'xs' | 'sm' }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -270,21 +272,26 @@ const ClipboardCopyButton = ({ text, label }: { text: string; label: string }) =
     }
   };
 
+  const iconClass = size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5';
+  const padClass = size === 'xs' ? 'p-0.5' : 'p-1';
+
   return (
     <button
+      type="button"
       onClick={handleCopy}
-      className="p-1 rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700"
-      title={`Copiar ${label}`}
+      className={`${padClass} rounded-md bg-slate-50 hover:bg-slate-150 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors relative group cursor-pointer inline-flex items-center justify-center shrink-0 border border-slate-200/50 dark:border-slate-700`}
+      title={`Copiar ${label} (${text})`}
+      aria-label={`Copiar ${label} ${text}`}
     >
       {copied ? (
         <>
-          <Check className="h-3.5 w-3.5 text-emerald-650 dark:text-emerald-450" />
+          <Check className={`${iconClass} text-emerald-650 dark:text-emerald-450`} />
           <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-850 dark:bg-slate-700 text-white text-[10px] py-1 px-1.5 rounded shadow-md whitespace-nowrap z-50">
             Copiado!
           </span>
         </>
       ) : (
-        <Copy className="h-3.5 w-3.5" />
+        <Copy className={iconClass} />
       )}
     </button>
   );
@@ -2085,6 +2092,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       const eContrato = !!r.is_contrato;
       const contratoPO = numeroContratoPO(r);
       const itemContrato = itemContratoPO(r);
+      const docCompra = r.documento_compra || r.pedido || '';
       return (
         <div className="inline-flex flex-wrap items-center gap-1.5">
           {eContrato ? (
@@ -2093,19 +2101,27 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               title="Item de contrato (categoria D no SAP): fornecimento amarrado a contrato, sem pedido a colocar"
             >
               <Check className="h-3 w-3 shrink-0" />
-              <span className="flex flex-col leading-tight">
+              <span className="flex flex-col leading-tight select-text">
                 <span>Contrato</span>
-                {(r.documento_compra || r.pedido) && <span>{r.documento_compra || r.pedido}</span>}
+                {docCompra && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <span>{docCompra}</span>
+                    <ClipboardCopyButton text={docCompra} label="Contrato" size="xs" />
+                  </span>
+                )}
               </span>
             </span>
           ) : (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-250 dark:border-blue-900/50"
-            title={`PO ${r.documento_compra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
+            title={`PO ${docCompra || '—'} emitida em ${formatDateBR(r.data_pedido)}`}
           >
             <Check className="h-3 w-3 shrink-0" />
-            <span className="flex flex-col leading-tight">
-              <span>PO {r.documento_compra || '—'}</span>
+            <span className="flex flex-col leading-tight select-text">
+              <span className="inline-flex items-center gap-1">
+                <span>PO {docCompra || '—'}</span>
+                {docCompra && <ClipboardCopyButton text={docCompra} label="PO" size="xs" />}
+              </span>
               {r.data_pedido && <span>{formatDateBR(r.data_pedido)}</span>}
             </span>
           </span>
@@ -2119,7 +2135,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
               title={`Pedido colocado por referência ao contrato ${contratoPO}${itemContrato ? `, item ${itemContrato}` : ''} — não passou por cotação`}
             >
               <FileText className="h-3 w-3 shrink-0" />
-              Contrato {contratoPO}
+              <span className="inline-flex items-center gap-0.5 select-text">
+                <span>Contrato {contratoPO}</span>
+                <ClipboardCopyButton text={contratoPO} label="Contrato" size="xs" />
+              </span>
             </span>
           )}
           {!dataMigo && !eContrato && (
@@ -2155,20 +2174,25 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   // da tabela (linha densa, dezenas de itens na tela); o card da visão em
   // grade continua com o contato completo, onde a informação cabe sem apertar
   // as outras colunas.
-  const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow, compact = false) => (
-    <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="font-extrabold text-slate-850 dark:text-slate-200">
-          {r.is_contrato
-            ? `Contrato${r.documento_compra || r.pedido ? ` ${r.documento_compra || r.pedido}` : ''}`
-            : `PO ${r.documento_compra || '—'}`}
-        </span>
-        {r.item_pedido && (
-          <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-500 dark:text-slate-400">
-            Item {r.item_pedido}
+  const renderPOInfoBlock = (r: EnrichedSAPRecord, poForn?: FornecedorMaterialRow, compact = false) => {
+    const docCompra = r.documento_compra || r.pedido || '';
+    return (
+      <div className="p-3 rounded-xl bg-slate-50/60 dark:bg-slate-800/20 border border-slate-200/60 dark:border-slate-800/40 text-[11px] space-y-1.5">
+        <div className="flex items-center justify-between gap-2 flex-wrap select-text">
+          <span className="font-extrabold text-slate-850 dark:text-slate-200 inline-flex items-center gap-1">
+            <span>
+              {r.is_contrato
+                ? `Contrato${docCompra ? ` ${docCompra}` : ''}`
+                : `PO ${docCompra || '—'}`}
+            </span>
+            {docCompra && <ClipboardCopyButton text={docCompra} label={r.is_contrato ? 'Contrato' : 'PO'} size="xs" />}
           </span>
-        )}
-      </div>
+          {r.item_pedido && (
+            <span className="px-1.5 py-0.3 bg-slate-100 dark:bg-slate-700 rounded text-[9px] font-black text-slate-500 dark:text-slate-400">
+              Item {r.item_pedido}
+            </span>
+          )}
+        </div>
       <p className="text-slate-700 dark:text-slate-300 font-bold break-words">
         {r.fornecedor_name || poForn?.fornecedor || 'Fornecedor não identificado'}
         {r.fornecedor_code && <span className="text-slate-450 dark:text-slate-500 font-semibold"> ({r.fornecedor_code})</span>}
@@ -2221,6 +2245,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       </div>
     </div>
   );
+};
 
   const worstLevel = (items: ItemNode[]): 'critico' | 'atencao' | 'monitorar' | 'ok' => {
     const order = ['ok', 'monitorar', 'atencao', 'critico'];
@@ -2327,7 +2352,8 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       <select
         value={normalizedVal}
         onChange={(e) => setStatusInputState(prev => ({ ...prev, [ri]: e.target.value as ItemStatus | '' }))}
-        className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:outline-none"
+        title={normalizedVal || 'Selecione'}
+        className="w-full min-w-[150px] text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:outline-none"
       >
         <option value="">Selecione</option>
         {itemStatusOptions.map(opt => (
@@ -2812,7 +2838,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                     <div className="p-4 space-y-3 flex-1">
                       {/* Meta header */}
                       <div className="flex items-center justify-between flex-wrap gap-1.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 select-text">
                           <input
                             type="checkbox"
                             checked={selectedRis.has(r.ri_po)}
@@ -2821,6 +2847,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                             aria-label={`Selecionar item ${r.item_reqc}`}
                           />
                           <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400 dark:text-slate-500">RM {rm}</span>
+                          <ClipboardCopyButton text={rm} label="RM" size="xs" />
                           <span className="text-[10px] text-slate-350">•</span>
                           <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Item {r.item_reqc}</span>
                           {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
@@ -3065,12 +3092,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                               <History className="h-3 w-3" /> Histórico
                             </button>
                           </div>
-                          <input
-                            type="text"
+                          <textarea
                             value={obsInputState[r.ri] || ''}
                             onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
                             placeholder="Notas de compra..."
-                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
+                            rows={2}
+                            className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-850 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 px-2.5 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all resize-y leading-snug"
                           />
                         </div>
                       </div>
@@ -3180,9 +3207,9 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                   {/* "Informações do PO" (Sem MIGO) saiu daqui — essa visão agora é a
                       tabela de Diligenciamento, renderizada antes deste bloco. */}
                   {!tableShowSupplierFirst && <Th label="Histórico Fornecedores" />}
-                  <Th label="Status" />
+                  <Th label="Status" width="w-[170px]" />
                   <Th label="Promessa Entrega" />
-                  <Th label="Observação" />
+                  <Th label="Observação" width="w-[220px]" />
                   <Th label="Ações" align="center" />
                 </TableHeadRow>
                 <tbody className="divide-y" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-secondary)' }}>
@@ -3280,8 +3307,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         )}
 
                         {/* RM / Item */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
+                        <td className="py-3 px-3 whitespace-nowrap select-text">
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono font-bold block text-slate-850 dark:text-slate-100">RM {rm}</span>
+                            <ClipboardCopyButton text={rm} label="RM" size="xs" />
+                          </div>
                           <span className="text-[10px] text-slate-400 font-semibold">Item {r.item_reqc}</span>
                           {/* RM vinculada em Abrir RM > Abertas a uma solicitação do SISTEN. */}
                           {vinculoSisten && (
@@ -3445,7 +3475,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                         )}
 
                         {/* Status Select */}
-                        <td className="py-2.5 px-3 min-w-[140px]">
+                        <td className="py-2.5 px-3 min-w-[170px]">
                           {renderStatusSelect(r.ri, r.item_status || 'Aguardando Cotação')}
                         </td>
 
@@ -3454,19 +3484,22 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
                           {renderPromessaInput(r, true)}
                         </td>
 
-                        {/* Buyer Observation */}
-                        <td className="py-2.5 px-3">
+                        {/* Buyer Observation — textarea (não input) para o texto
+                            quebrar linha em vez de cortar; a nota do comprador
+                            às vezes é mais longa que uma linha só (ex.: número
+                            de rastreio + observação). */}
+                        <td className="py-2.5 px-3 min-w-[200px]">
                           <div className="relative">
-                            <input
-                              type="text"
+                            <textarea
                               value={obsInputState[r.ri] || ''}
                               onChange={(e) => setObsInputState(prev => ({ ...prev, [r.ri]: e.target.value }))}
                               placeholder="Notas..."
-                              className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all"
+                              rows={2}
+                              className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 py-1.5 pr-7 pl-2 focus:border-[#0056c6] focus:outline-none transition-all resize-y leading-snug"
                             />
                             <button
                               onClick={() => handleViewHistory(r.ri)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 cursor-pointer"
+                              className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-655 cursor-pointer"
                               title="Ver histórico de alterações"
                             >
                               <History className="h-3 w-3" />

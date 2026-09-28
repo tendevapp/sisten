@@ -78,6 +78,8 @@ const PortariaAlcoolemia = lazy(() => import('./views/portaria/PortariaAlcoolemi
 const SsmaAlcoolemiaView = lazy(() => import('./views/ssma/SsmaAlcoolemiaView'));
 const QualidadeHub = lazy(() => import('./views/qualidade/QualidadeHub'));
 const QualidadeRncView = lazy(() => import('./views/qualidade/QualidadeRncView'));
+const QualidadeChecklistExpedicaoView = lazy(() => import('./views/qualidade/QualidadeChecklistExpedicaoView'));
+const QualidadeInternosMecanicosView = lazy(() => import('./views/qualidade/QualidadeInternosMecanicosView'));
 const CadastrosAdmin = lazy(() => import('./views/CadastrosAdmin'));
 const FacilitiesHome = lazy(() => import('./views/facilities/FacilitiesHome'));
 const FacilitiesRotas = lazy(() => import('./views/facilities/FacilitiesRotas'));
@@ -89,12 +91,17 @@ const RhHome = lazy(() => import('./views/rh/RhHome'));
 const RhColaboradores = lazy(() => import('./views/rh/RhColaboradores'));
 const RhSetores = lazy(() => import('./views/rh/RhSetores'));
 const RhTurnos = lazy(() => import('./views/rh/RhTurnos'));
+const RhTreinamentos = lazy(() => import('./views/rh/RhTreinamentos'));
 const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
 const RhAseRelatorio = lazy(() => import('./views/rh/RhAseRelatorio'));
 const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
 const ModuleHome = lazy(() => import('./views/ModuleHome'));
 const DemandasWorkspace = lazy(() => import('./views/demandas/DemandasWorkspace'));
 const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
+const PlanejamentoHome = lazy(() => import('./views/planejamento/PlanejamentoHome'));
+const AcompanhamentoGeralView = lazy(() => import('./views/planejamento/AcompanhamentoGeralView'));
+const AcompanhamentoDiarioView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioView'));
+const AcompanhamentoDiarioTvView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioTvView'));
 const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
 const ProducaoApontamentos = lazy(() => import('./views/producao/ProducaoApontamentos'));
 const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
@@ -118,6 +125,8 @@ const REMOUNT_ON_SYNC_PATHS = new Set<string>([
   '/almoxarifado',
   '/producao',
   '/financeiro',
+  '/planejamento',
+  '/planejamento/acompanhamento-diario-tv',
   '/admin',
   '/facilities',
   '/rh',
@@ -164,6 +173,8 @@ const FULL_BLEED_PATHS = new Set<string>([
   // altura disponível — com o padding e a rolagem do <main> ele nunca fecharia
   // numa tela só.
   '/producao/dashboards',
+  // Acompanhamento Diário TV: a própria tela escala o painel para a área útil.
+  '/planejamento/acompanhamento-diario-tv',
 ]);
 
 function ViewLoadingFallback() {
@@ -783,6 +794,18 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/qualidade/expedicao':
+        if (canAccessPage(user, 'qualidade_expedicao')) {
+          return <QualidadeChecklistExpedicaoView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/qualidade/internos-mecanicos':
+        if (canAccessPage(user, 'qualidade_internos_mecanicos')) {
+          return <QualidadeInternosMecanicosView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/solicitacoes/nova':
         if (canAccessPage(user, 'sol_nova')) {
           return <NewRequest user={user} onNavigate={handleNavigate} />;
@@ -1100,6 +1123,30 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
+      case '/planejamento':
+        if (canAccessPage(user, 'planejamento_home')) {
+          return <PlanejamentoHome user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/planejamento/acompanhamento-geral':
+        if (canAccessPage(user, 'planejamento_acompanhamento_geral')) {
+          return <AcompanhamentoGeralView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/planejamento/acompanhamento-diario':
+        if (canAccessPage(user, 'planejamento_acompanhamento_diario')) {
+          return <AcompanhamentoDiarioView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/planejamento/acompanhamento-diario-tv':
+        if (canAccessPage(user, 'planejamento_acompanhamento_diario_tv')) {
+          return <AcompanhamentoDiarioTvView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
       case '/suprimentos':
         if (canAccessPage(user, 'suprimentos_home')) {
           return <ModuleHome user={user} onNavigate={handleNavigate} moduleId="suprimentos" />;
@@ -1247,6 +1294,12 @@ export default function App() {
       case '/rh/turnos':
         if (canAccessPage(user, 'rh_turnos_cad')) {
           return <RhTurnos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/treinamentos':
+        if (canAccessPage(user, 'rh_treinamentos_cad')) {
+          return <RhTreinamentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

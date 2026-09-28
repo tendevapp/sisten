@@ -16,10 +16,11 @@
 import { supabase } from '../db/supabaseClient';
 import type {
   AseHoraExtraCompleta, AseHoraExtraItem, AseHoraExtraSolicitacao, AseHoraExtraStatus,
-  RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTurno,
+  RhHoraExtra, RhPessoa, RhRota, RhSetor, RhTreinamento, RhTurno,
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 import { situacaoParaAtivo, type PessoaImportada } from './rhPessoasImport';
+import type { TreinamentoImportado } from './rhTreinamentosImport';
 
 export interface RhImportSummary {
   lidos: number;
@@ -107,6 +108,130 @@ export function normalizarItem(raw: any, rotasMap?: Map<string, RhRota>): AseHor
 
 function isErroRls(error: any): boolean {
   return error?.code === '42501' || Boolean(error?.message && /row-level security/i.test(error.message));
+}
+
+const RH_TREINAMENTOS_CONFLICT = 'data_treinamento,treinamento,turma_horario,tipo_planejamento,tipo_treinamento';
+
+function chaveTreinamento(item: Pick<TreinamentoImportado, 'data_treinamento' | 'treinamento' | 'turma_horario' | 'tipo_planejamento' | 'tipo_treinamento'>): string {
+  return [item.data_treinamento, item.treinamento, item.turma_horario, item.tipo_planejamento, item.tipo_treinamento].join('|');
+}
+
+function normalizarTreinamento(dados: Partial<TreinamentoImportado>): TreinamentoImportado {
+  const treinamento = String(dados.treinamento ?? '').trim();
+  const data = String(dados.data_treinamento ?? '').trim();
+  if (!data) throw new Error('A data do treinamento é obrigatória.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error('A data do treinamento deve estar no formato YYYY-MM-DD.');
+  if (!treinamento) throw new Error('O nome do treinamento é obrigatório.');
+  return {
+    data_treinamento: data,
+    dia_semana: String(dados.dia_semana ?? '').trim(),
+    semana: String(dados.semana ?? '').trim(),
+    tipo_planejamento: (dados.tipo_planejamento || 'P') as TreinamentoImportado['tipo_planejamento'],
+    treinamento,
+    turma_horario: String(dados.turma_horario ?? '').trim(),
+    tipo_treinamento: (dados.tipo_treinamento || '') as TreinamentoImportado['tipo_treinamento'],
+    data_eficacia: dados.data_eficacia || null,
+    realizado: Boolean(dados.realizado),
+  };
+}
+
+export async function listarRhTreinamentos(incluirExcluidos = false): Promise<RhTreinamento[]> {
+  let query = (supabase as any).from('rh_treinamentos').select('*').order('data_treinamento', { ascending: false }).order('treinamento');
+  if (!incluirExcluidos) query = query.is('excluido_em', null);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []) as RhTreinamento[];
+}
+
+export async function criarRhTreinamento(dados: Partial<TreinamentoImportado>, criadoPor?: string | null): Promise<RhTreinamento> {
+  const payload = { ...normalizarTreinamento(dados), criado_por: criadoPor || null };
+  const { data, error } = await (supabase as any).from('rh_treinamentos').insert(payload).select().single();
+  if (error) {
+    if (error.code === '23505' || /unique/i.test(error.message || '')) {
+      throw new Error('Já existe um treinamento com a mesma data, nome, horário e classificação.');
+    }
+    if (isErroRls(error)) throw new Error('Permissão negada: seu usuário não possui autorização para cadastrar treinamentos no RH.');
+    throw new Error(error.message);
+  }
+  return data as RhTreinamento;
+}
+
+export async function atualizarRhTreinamento(
+  id: string,
+  dados: Partial<TreinamentoImportado>,
+  atualizadoPor?: string | null,
+): Promise<void> {
+  const payload = { ...normalizarTreinamento(dados), atualizado_por: atualizadoPor || null, updated_at: new Date().toISOString() };
+  const { error } = await (supabase as any).from('rh_treinamentos').update(payload).eq('id', id);
+  if (error) {
+    if (error.code === '23505' || /unique/i.test(error.message || '')) {
+      throw new Error('Já existe outro treinamento com a mesma data, nome, horário e classificação.');
+    }
+    if (isErroRls(error)) throw new Error('Permissão negada: seu usuário não possui autorização para atualizar treinamentos no RH.');
+    throw new Error(error.message);
+  }
+}
+
+export async function excluirRhTreinamento(id: string, excluidoPor?: string | null): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('rh_treinamentos')
+    .update({ excluido_em: new Date().toISOString(), excluido_por: excluidoPor || null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) {
+    if (isErroRls(error)) throw new Error('Permissão negada: seu usuário não possui autorização para excluir treinamentos no RH.');
+    throw new Error(error.message);
+  }
+}
+
+export async function restaurarRhTreinamento(id: string): Promise<void> {
+  const { error } = await (supabase as any)
+    .from('rh_treinamentos')
+    .update({ excluido_em: null, excluido_por: null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function importarRhTreinamentos(
+  itens: TreinamentoImportado[],
+  onProgress?: (percent: number, message?: string) => void,
+  atualizadoPor?: string | null,
+): Promise<RhImportSummary> {
+  const deduped = new Map<string, ReturnType<typeof normalizarTreinamento>>();
+  itens.forEach(item => deduped.set(chaveTreinamento(item), normalizarTreinamento(item)));
+  const linhas = Array.from(deduped.values());
+  if (!linhas.length) throw new Error('Nenhum treinamento válido foi encontrado na planilha.');
+
+  let inseridos = 0;
+  let atualizados = 0;
+  for (let i = 0; i < linhas.length; i += BATCH_SIZE) {
+    const chunk = linhas.slice(i, i + BATCH_SIZE);
+    const datas = Array.from(new Set(chunk.map(item => item.data_treinamento)));
+    const { data: existentes, error: selectError } = await (supabase as any)
+      .from('rh_treinamentos')
+      .select('id,data_treinamento,treinamento,turma_horario,tipo_planejamento,tipo_treinamento')
+      .in('data_treinamento', datas);
+    if (selectError) throw new Error(selectError.message);
+
+    const existentesSet = new Set((existentes || []).map((item: TreinamentoImportado) => chaveTreinamento(item)));
+    const payload = chunk.map(item => ({
+      ...item,
+      criado_por: atualizadoPor || null,
+      atualizado_por: atualizadoPor || null,
+      excluido_em: null,
+      excluido_por: null,
+    }));
+    const { error: upsertError } = await (supabase as any)
+      .from('rh_treinamentos')
+      .upsert(payload, { onConflict: RH_TREINAMENTOS_CONFLICT });
+    if (upsertError) {
+      if (isErroRls(upsertError)) throw new Error('Permissão negada: seu usuário não possui autorização para importar treinamentos no RH.');
+      throw new Error(upsertError.message);
+    }
+    chunk.forEach(item => { if (existentesSet.has(chaveTreinamento(item))) atualizados += 1; else inseridos += 1; });
+    onProgress?.(Math.round(((i + chunk.length) / linhas.length) * 100), `Importados ${i + chunk.length} de ${linhas.length} treinamentos.`);
+  }
+
+  return { lidos: linhas.length, inseridos, atualizados };
 }
 
 export async function listarRhSetores(): Promise<RhSetor[]> {

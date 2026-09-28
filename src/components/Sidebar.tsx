@@ -28,6 +28,7 @@ const COLLAPSED_GROUPS_KEY = 'sisten:sidebar-collapsed-groups';
 const GROUP_HOME: Record<string, { path: string; base: string; apenasHub?: boolean }> = {
   'SOLICITAÇÕES': { path: '/solicitacoes', base: '/solicitacoes' },
   'DEMANDAS': { path: '/demandas', base: '/demandas' },
+  'PLANEJAMENTO': { path: '/planejamento', base: '/planejamento' },
   'SUPRIMENTOS': { path: '/suprimentos', base: '/suprimentos' },
   'ALMOXARIFADO': { path: '/almoxarifado', base: '/almoxarifado' },
   'PRODUÇÃO': { path: '/producao', base: '/producao' },

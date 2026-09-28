@@ -15,7 +15,7 @@ import {
   Truck, PackageSearch, Building2, History, Route, Activity, Boxes, Info, Link2,
   ClipboardList, FileText, Receipt, Flag, BookOpen, ArrowLeftRight, CalendarDays,
   FileSpreadsheet, Cpu, ClipboardPlus, ReceiptText, Wrench, UserCog, Clock, Percent,
-  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer,
+  ClipboardCheck, KanbanSquare, ListChecks, Factory, Calculator, Flame, Car, FolderTree, Timer, MonitorPlay,
 } from 'lucide-react';
 import { Profile, Role, Sector } from '../types';
 import { INITIAL_SECTORS } from '../data/sectors';
@@ -28,7 +28,12 @@ export interface PageDef {
   /** Rota do menu/roteador. Ausente para feature flags (não são páginas). */
   path?: string;
   icon?: LucideIcon;
-  /** '*' = acesso universal, todo perfil vê por padrão. */
+  /**
+   * REGRA DE SEGURANÇA E GOVERNANÇA (AGENTS.md):
+   * Novos módulos criados no SISTEN NUNCA devem ter liberação universal ('*').
+   * Devem nascer desmarcados para o público geral (usar `defaultRoles: ['admin']` ou `defaultRoles: []`).
+   * '*' é reservado estritamente para páginas universais e essenciais da aplicação (ex: Início).
+   */
   defaultRoles: Role[] | '*';
   /** Página administrativa: sempre restrita a admin, sem checkbox editável no painel. */
   alwaysAdmin?: boolean;
@@ -58,6 +63,11 @@ export const PAGES: PageDef[] = [
   // campo "Setores de Demandas" no modal de Governança.
   { id: 'demandas', group: 'DEMANDAS', label: 'Demandas', path: '/demandas', icon: KanbanSquare, defaultRoles: '*' },
   { id: 'demandas_minhas', group: 'DEMANDAS', label: 'Minhas tarefas', path: '/demandas/minhas', icon: ListChecks, defaultRoles: '*' },
+
+  { id: 'planejamento_home', group: 'PLANEJAMENTO', label: 'Planejamento', path: '/planejamento', icon: CalendarDays, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'planejamento_acompanhamento_geral', group: 'PLANEJAMENTO', label: 'Acompanhamento Geral', path: '/planejamento/acompanhamento-geral', icon: Activity, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'planejamento_acompanhamento_diario', group: 'PLANEJAMENTO', label: 'Acomp Diário', path: '/planejamento/acompanhamento-diario', icon: BarChart3, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'planejamento_acompanhamento_diario_tv', group: 'PLANEJAMENTO', label: 'Acomp Diário TV', path: '/planejamento/acompanhamento-diario-tv', icon: MonitorPlay, defaultRoles: ['admin', 'coordenador_suprimentos'] },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
@@ -112,11 +122,12 @@ export const PAGES: PageDef[] = [
   { id: 'prod_cadastros', group: 'PRODUÇÃO', label: 'Cadastros de Qualidade', path: '/producao/cadastros', icon: Settings, defaultRoles: ['admin'] },
 
   // Módulo Qualidade — gestão de RNC (Relatório de Não Conformidade): abertura,
-  // plano de ação com prazos/anexos e relatórios em PDF (FRM.QUA-0026). Mesmo
-  // desenho de hub único do RH (`apenasHub` no Sidebar): o menu mostra um botão
-  // só, e a própria tela de Gestão de RNC concentra as abas do módulo.
-  { id: 'qualidade_home', group: 'QUALIDADE', label: 'Qualidade', path: '/qualidade', icon: ClipboardCheck, defaultRoles: '*' },
-  { id: 'qualidade_rnc', group: 'QUALIDADE', label: 'Gestão de RNC', path: '/qualidade/rnc', icon: ClipboardCheck, defaultRoles: '*' },
+  // plano de ação com prazos/anexos e relatórios em PDF (FRM.QUA-0026).
+  // Acesso padrão restrito a administradores (desmarcado para novos usuários).
+  { id: 'qualidade_home', group: 'QUALIDADE', label: 'Qualidade', path: '/qualidade', icon: ClipboardCheck, defaultRoles: ['admin'] },
+  { id: 'qualidade_rnc', group: 'QUALIDADE', label: 'Gestão de RNC', path: '/qualidade/rnc', icon: ClipboardCheck, defaultRoles: ['admin'] },
+  { id: 'qualidade_expedicao', group: 'QUALIDADE', label: 'Checklist de Expedição', path: '/qualidade/expedicao', icon: ClipboardList, defaultRoles: ['admin'] },
+  { id: 'qualidade_internos_mecanicos', group: 'QUALIDADE', label: 'Checklist Internos Mecânicos', path: '/qualidade/internos-mecanicos', icon: ClipboardList, defaultRoles: ['admin'] },
 
   // Módulo Facilities — tela inicial (hub) + páginas de cadastro e relatórios
   // alimentados pelos formulários de Portaria e RH/ASE. No Sidebar, o próprio
@@ -136,12 +147,13 @@ export const PAGES: PageDef[] = [
   { id: 'rh_colaboradores', group: 'RH', label: 'Colaboradores', path: '/rh/colaboradores', icon: Users, defaultRoles: ['admin'] },
   { id: 'rh_setores_cad', group: 'RH', label: 'Setores do RH', path: '/rh/setores', icon: Map, defaultRoles: ['admin'] },
   { id: 'rh_turnos_cad', group: 'RH', label: 'Turnos', path: '/rh/turnos', icon: Clock, defaultRoles: ['admin'] },
+  { id: 'rh_treinamentos_cad', group: 'RH', label: 'Treinamentos', path: '/rh/treinamentos', icon: CalendarDays, defaultRoles: ['admin'] },
   { id: 'rh_rotas_cad', group: 'RH', label: 'Rotas de Transporte', path: '/rh/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'rh_percentual_he', group: 'RH', label: 'Percentual de Hora Extra', path: '/rh/percentual-he', icon: Percent, defaultRoles: ['admin'] },
 
-  // Hub SSMA dentro de Formulários. O acesso acompanha a subpermissão SSMA,
-  // inclusive quando ela foi bloqueada individualmente pelo administrador.
-  { id: 'ssma', group: 'SSMA', label: 'SSMA', path: '/ssma', icon: Shield, defaultRoles: '*' },
+  // Hub SSMA dentro de Formulários. Acesso padrão restrito a administradores,
+  // devendo ser concedido na Gestão de Acessos (desmarcado para novos usuários).
+  { id: 'ssma', group: 'SSMA', label: 'SSMA', path: '/ssma', icon: Shield, defaultRoles: ['admin'] },
 
   { id: 'financeiro_home', group: 'FINANCEIRO', label: 'Financeiro', path: '/financeiro', icon: Receipt, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'fin_contas_pagar', group: 'FINANCEIRO', label: 'Contas a Pagar', path: '/financeiro/contas-pagar', icon: Receipt, defaultRoles: ['admin'] },
@@ -205,8 +217,11 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
     codigo: 'FRM.SSMA-0001',
     descricao: 'Registro e identificação de desvios comportamentais e condições inseguras',
     path: '/formularios/ssma-rid',
-    defaultRoles: '*',
-    universalParaVisualizador: true, // Liberado para todos os usuários e visualizadores
+    defaultRoles: ['admin'],
+    setores: {
+      ids: ['12', '13'],
+      keywords: ['ssma', 'saúde', 'saude', 'segurança', 'seguranca', 'meio ambiente'],
+    },
   },
   {
     id: 'form_ssma_alcoolemia',
@@ -596,7 +611,7 @@ export const FEATURE_FLAGS: PageDef[] = [
     id: 'form_ssma',
     group: 'SUBPERMISSÕES DE FORMULÁRIOS',
     label: 'Grupo: SSMA (Saúde, Segurança e Meio Ambiente)',
-    defaultRoles: '*',
+    defaultRoles: ['admin'],
   },
   // Formulários individuais (selecionáveis e auditáveis pelo admin)
   ...FORMULARIOS_DETALHADOS.map(f => ({
@@ -661,7 +676,7 @@ export const FORMULARIO_SUBPERMISSOES: FormularioSubpermissaoDef[] = [
     grupoId: 'ssma',
     label: 'SSMA - Saúde, Segurança e Meio Ambiente',
     descricao: 'Registro de Identificação de Desvio (RID) e relatórios preventivos',
-    defaultRoles: '*',
+    defaultRoles: ['admin'],
   },
 ];
 
@@ -759,6 +774,7 @@ export function canAccessPage(user: Profile, pageId: string): boolean {
   }
 
   if (def.defaultRoles === '*') return true;
+  if (!def.defaultRoles || def.defaultRoles.length === 0) return false;
   return def.defaultRoles.some(r => user.roles.includes(r));
 }
 
@@ -959,8 +975,8 @@ export function canEditDesvioRid(
   if (
     !desvio.criado_por &&
     desvio.matricula_informante &&
-    user.matricula &&
-    desvio.matricula_informante === user.matricula
+    (user as any).matricula &&
+    desvio.matricula_informante === (user as any).matricula
   ) {
     return true;
   }
@@ -993,7 +1009,7 @@ export function pageIdForPath(path: string): string | undefined {
  * `pages.test.ts` garante que todo grupo de `PAGES` esteja listado.
  */
 export const GROUP_ORDER = [
-  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PRODUÇÃO', 'QUALIDADE', 'FACILITIES', 'RH',
+  'GERAL', 'SOLICITAÇÕES', 'DEMANDAS', 'SUPRIMENTOS', 'ALMOXARIFADO', 'PLANEJAMENTO', 'PRODUÇÃO', 'QUALIDADE', 'FACILITIES', 'RH',
   'SSMA', 'FINANCEIRO', 'HELPDESK', 'ADMINISTRAÇÃO',
 ] as const;
 
@@ -1006,4 +1022,3 @@ export function getPageGroups(): { group: string; pages: PageDef[] }[] {
   }
   return groups;
 }
-

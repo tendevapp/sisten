@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Route, Search, FileSpreadsheet, FileText, AlertCircle, RefreshCw, Filter,
   Building2, Calendar, Clock, ChevronDown, SlidersHorizontal, Table as TableIcon,
@@ -16,9 +16,11 @@ import { canAccessPage } from '../lib/pages';
 import {
   RastreioRow, DeliveryScope, TipoItemFilter, RastreioDateField, buildRastreioRows, filterRegistros, deriveDeliveryStatus,
   statusOptions, setorOptions, anoOptions, formatDateBR, formatDateTimeBR, parseDate, defaultSort, itensSemMigo,
+  montarSemMigoDadosMap, SemMigoRowInfo,
 } from '../lib/rastreio';
 import { AlmoxarifadoChegada } from '../types';
 import { indexarVinculosSistenPorRm, VinculoSistenRm } from '../lib/centralComprasSisten';
+import { listarDiligenciamentoItens } from '../lib/diligenciamentoApi';
 import RastreioTable, { RASTREIO_COLUMNS, getRastreioColumns, SortDir } from '../components/rastreio/RastreioTable';
 import RastreioCronograma from '../components/rastreio/RastreioCronograma';
 import RastreioDetailModal from '../components/rastreio/RastreioDetailModal';
@@ -133,6 +135,10 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
   const [rows, setRows] = useState<RastreioRow[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [chegadasMap, setChegadasMap] = useState<Map<string, AlmoxarifadoChegada>>(new Map());
+  // Dados de transportadora e previsão que já vêm da tela Sem MIGO (Diligenciamento/Bahia Sul),
+  // por `ri_po`. Guardamos numa ref para o `recalcular` dos eventos do localDb
+  // reaproveitar o último valor carregado sem refetch desnecessário ao Supabase.
+  const semMigoMapRef = useRef<Map<string, SemMigoRowInfo>>(new Map());
 
   const [tab, setTab] = useState<Tab>('tabela');
 
@@ -168,7 +174,10 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
     const defaults = RASTREIO_COLUMNS.reduce((acc, col) => ({ ...acc, [col.id]: true }), {} as Record<string, boolean>);
     const saved = localStorage.getItem(STORAGE_COLS_KEY);
     if (saved) {
-      try { return { ...defaults, ...JSON.parse(saved) }; } catch {}
+      try {
+        const parsed = JSON.parse(saved);
+        return { ...defaults, ...parsed, transportadora: parsed.transportadora ?? true };
+      } catch {}
     }
     return defaults;
   });
@@ -309,8 +318,23 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
       const vinculos = indexarVinculosSistenPorRm(compras, itensPorRequest);
 
+      // Dados consolidados que já vêm da tela Sem MIGO (transportadora e previsão do CTe Bahia Sul ou diligenciamento)
+      const [diligItens, bahiaSulEntregas] = await Promise.all([
+        listarDiligenciamentoItens().catch(e => {
+          console.warn('Falha ao carregar diligenciamento:', e);
+          return [];
+        }),
+        localDb.getBahiaSulEntregas().catch(e => {
+          console.warn('Falha ao carregar entregas Bahia Sul:', e);
+          return [];
+        }),
+      ]);
+
       const records = localDb.getEnrichedSAPRequisicoes();
-      setRows(buildRastreioRows(records, vinculos));
+      const semMigoMap = montarSemMigoDadosMap(records, diligItens, bahiaSulEntregas);
+      semMigoMapRef.current = semMigoMap;
+
+      setRows(buildRastreioRows(records, vinculos, semMigoMap));
       setChegadasMap(localDb.getAlmoxarifadoChegadasMap());
       setLastUpdated(localDb.getDatasetUpdatedAt('requisicoes'));
     } catch (e: any) {
@@ -331,7 +355,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       const itensPorRequest = new Map(compras.map(r => [r.id, localDb.getRequestItems(r.id)]));
       const vinculos = indexarVinculosSistenPorRm(compras, itensPorRequest);
       const records = localDb.getEnrichedSAPRequisicoes();
-      setRows(buildRastreioRows(records, vinculos));
+      setRows(buildRastreioRows(records, vinculos, semMigoMapRef.current));
       setChegadasMap(localDb.getAlmoxarifadoChegadasMap());
     };
     const unsubscribe = localDb.subscribe(recalcular);
@@ -364,6 +388,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
         case 'descricao': return r.descricao.toLowerCase();
         case 'fornecedor': return r.fornecedor.toLowerCase();
         case 'setor': return r.setor.toLowerCase();
+        case 'transportadora': return r.transportadora.toLowerCase();
         case 'qtd': return r.qtd ?? -Infinity;
         // Ordena pelo % atendido, não pela quantidade crua: 80 de 115 e 80 de
         // 8000 são situações bem diferentes para quem cobra saldo.
@@ -445,6 +470,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       'Descrição': r.descricao,
       'Fornecedor': r.fornecedor,
       'Setor': r.setor,
+      'Transportadora': r.transportadora || '—',
       'Quantidade': r.qtd ?? '—',
       'Qtd. Fornecida': r.qtdFornecida ?? '—',
       '% Atendido': r.entrega ? Math.round(r.entrega.percentual) : '—',
@@ -479,7 +505,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       <tr>
         <td>${esc(r.rm)}</td><td>${esc(r.po)}</td>
         <td>${esc(r.material)} — ${esc(r.descricao)}</td>
-        <td>${esc(r.fornecedor)}</td><td>${esc(r.setor)}</td>
+        <td>${esc(r.fornecedor)}</td><td>${esc(r.setor)}</td><td>${esc(r.transportadora || '—')}</td>
         <td class="r">${r.qtd !== undefined ? r.qtd.toLocaleString('pt-BR') : '—'}</td>
         <td class="r">${r.qtdFornecida !== undefined ? r.qtdFornecida.toLocaleString('pt-BR') : '—'}${r.entrega && (r.entrega.parcial || r.entrega.excedente) ? ` (${Math.round(r.entrega.percentual)}%)` : ''}</td>
         <td>${formatDateBR(r.dataCriacao)}</td><td>${formatDateBR(r.dataPo)}</td><td>${formatDateBR(r.dataPrevista)}</td><td>${formatDateBR(r.dataEntrega)}</td>
@@ -502,7 +528,7 @@ export default function RastreioCompras({ user }: RastreioComprasProps) {
       <h1>Rastreio Compras</h1>
       <div class="meta">${filteredRows.length} registro(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
       <table><thead><tr>
-        <th>RM</th><th>PO</th><th>Item / Descrição</th><th>Fornecedor</th><th>Setor</th>
+        <th>RM</th><th>PO</th><th>Item / Descrição</th><th>Fornecedor</th><th>Setor</th><th>Transportadora</th>
         <th>Qtd</th><th>Qtd fornecida</th><th>RM Data</th><th>PO Data</th><th>Prev. Entrega</th><th>Entrega</th><th>Status</th>
       </tr></thead><tbody>${bodyRows}</tbody></table>
       </body></html>`);

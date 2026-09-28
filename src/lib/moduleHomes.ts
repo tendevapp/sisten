@@ -13,7 +13,7 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { PackageSearch, Boxes, Receipt, Radio, Settings, Flame } from 'lucide-react';
+import { PackageSearch, Boxes, Receipt, Radio, Settings, Flame, CalendarDays } from 'lucide-react';
 
 export interface ModuleHomeDef {
   /** Identificador passado em `<ModuleHome moduleId="..." />`. */
@@ -43,6 +43,25 @@ export interface ModuleHomeDef {
 export const MODULE_HOMES: ModuleHomeDef[] = [
   // SOLICITAÇÕES não tem hub: `/solicitacoes` é a própria Central. Um hub com
   // cards levando a quatro telas era parte do problema que a Central resolveu.
+  {
+    id: 'planejamento',
+    group: 'PLANEJAMENTO',
+    homePath: '/planejamento',
+    title: 'Planejamento',
+    description: 'Acompanhamento físico da produção, prazos, gargalos e projeções do projeto.',
+    icon: CalendarDays,
+    accent: {
+      tile: 'bg-violet-600 shadow-violet-500/25',
+      hoverBorder: 'hover:border-violet-400/60 dark:hover:border-violet-400/40',
+      ring: 'focus-visible:ring-violet-500',
+      arrow: 'group-hover:text-violet-500',
+    },
+    cardDescriptions: {
+      planejamento_acompanhamento_geral: 'Importe a base operacional e consulte o dashboard, PCP, motor, auxiliares e dados de origem.',
+      planejamento_acompanhamento_diario: 'Acompanhe entregas semanais e mensais por área, com metas e média residual recalculadas sobre a base importada.',
+      planejamento_acompanhamento_diario_tv: 'Painel em tela cheia para TV, com escala automática, atualização periódica e leitura à distância.',
+    },
+  },
   {
     id: 'suprimentos',
     group: 'SUPRIMENTOS',

@@ -1,0 +1,9 @@
+import { date, text, type PlanejamentoRow } from '../../lib/planejamentoAcompanhamento';
+
+const core = [
+  ['linha_origem', 'Linha'], ['bd', 'BD'], ['sequencial', 'Sequencial'], ['tramo', 'Tramo'], ['projeto', 'Projeto'], ['descricao', 'Descrição'], ['posto_atual', 'Posto'], ['inicio', 'Início'], ['termino_nav01', 'Término NAV01'], ['data_termino_saw3', 'Término SAW3'], ['data_termino_internos', 'Término Internos'], ['termino_final', 'Término White'], ['qtd_reparos', 'Reparos'], ['numero_torre', 'Nº Torre'],
+] as const;
+
+export default function AcompanhamentoBase({ rows }: { rows: PlanejamentoRow[] }) {
+  return <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center justify-between"><div><h3 className="font-bold text-slate-900 dark:text-slate-100">BD_ACOMPANHAMENTO_GERAL</h3><p className="mt-1 text-xs text-slate-500">Dados tipados da base e colunas originais preservadas em JSON.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{rows.length} linhas</span></div><div className="mt-4 overflow-x-auto"><table className="min-w-[1200px] text-xs"><thead><tr className="border-b text-left uppercase tracking-wide text-slate-500">{core.map(([, label]) => <th key={label} className="px-2 py-2">{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={String(row.id ?? row.linha_origem)} className="border-b border-slate-100 dark:border-slate-800">{core.map(([key]) => <td key={key} className="px-2 py-2 whitespace-nowrap">{key.includes('inicio') || key.includes('termino') || key === 'data_termino_saw3' || key === 'data_termino_internos' ? date(row[key]) : text(row[key])}</td>)}</tr>)}</tbody></table></div></section>;
+}

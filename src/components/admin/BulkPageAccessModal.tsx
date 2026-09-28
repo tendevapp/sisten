@@ -7,7 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { Users, RotateCcw, ShieldCheck, Check, X, Minus, Sparkles, AlertCircle, Layers } from 'lucide-react';
 import { localDb } from '../../db/localDb';
 import { Profile } from '../../types';
-import { getPageGroups, FORMULARIO_SUBPERMISSOES, FORMULARIOS_DETALHADOS } from '../../lib/pages';
+import { getPageGroups, FORMULARIO_SUBPERMISSOES, FORMULARIOS_DETALHADOS, PageDef } from '../../lib/pages';
 import Modal, { ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 
@@ -44,6 +44,29 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
 
   const setAction = (pageId: string, action: BulkActionType) => {
     setActions(prev => ({ ...prev, [pageId]: action }));
+  };
+
+  const handleApplyGroup = (groupDef: { group: string; pages: PageDef[] }, action: BulkActionType) => {
+    setActions(prev => {
+      const next = { ...prev };
+      for (const p of groupDef.pages) {
+        if (!p.alwaysAdmin) {
+          next[p.id] = action;
+        }
+      }
+      if (groupDef.group === 'SSMA') {
+        const subSsma = FORMULARIO_SUBPERMISSOES.find(s => s.grupoId === 'ssma');
+        if (subSsma) next[subSsma.id] = action;
+        const formsSsma = FORMULARIOS_DETALHADOS.filter(f => f.grupoId === 'ssma');
+        for (const f of formsSsma) {
+          next[f.id] = action;
+        }
+        if (action === 'allow') setRidEditAction('all');
+        else if (action === 'block') setRidEditAction('own');
+        else if (action === 'reset') setRidEditAction('reset');
+      }
+      return next;
+    });
   };
 
   const handleApplyAll = (action: BulkActionType) => {
@@ -273,9 +296,41 @@ export default function BulkPageAccessModal({ users, onClose, onChanged }: BulkP
           <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
             {groups.map(g => (
               <div key={g.group} className="space-y-1.5">
-                <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                  {g.group}
-                </h4>
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                    {g.group}
+                  </h4>
+                  {g.pages.some(p => !p.alwaysAdmin) && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleApplyGroup(g, 'allow')}
+                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 cursor-pointer"
+                        title={`Liberar todos os itens de ${g.group}`}
+                      >
+                        Liberar todos
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-700 text-[10px]">·</span>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyGroup(g, 'block')}
+                        className="text-[10px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 cursor-pointer"
+                        title={`Bloquear todos os itens de ${g.group}`}
+                      >
+                        Bloquear todos
+                      </button>
+                      <span className="text-slate-300 dark:text-slate-700 text-[10px]">·</span>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyGroup(g, 'reset')}
+                        className="text-[10px] font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 cursor-pointer"
+                        title={`Restaurar padrão para os itens de ${g.group}`}
+                      >
+                        Padrão
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white p-2.5 dark:divide-slate-800/60 dark:border-slate-800 dark:bg-slate-900">
                   {g.pages.map(p => {

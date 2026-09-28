@@ -16,7 +16,6 @@ import {
   PRIORITY_LEVELS, priorityMeta, latestPriorityByRi, hasValue,
 } from '../../lib/rastreio';
 import { resumirBahiaSulPorPo, normalizePoNumber } from '../../lib/bahiasul';
-import { gravarPrevisaoNoRastreio } from '../../lib/diligenciamentoApi';
 
 // Uma entrada da linha do tempo da conversa: mensagem de chat ou uma
 // atualização de observação registrada pelo comprador (histórico de
@@ -172,33 +171,30 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
     }
   };
 
-  // Previsão de entrega pela transportadora Bahia Sul: quando há CTe vinculado
-  // ao PO deste item, a `prv_chegada`/`prv_entrega` do conhecimento serve de
-  // previsão pronta — o comprador confirma com um clique em vez de digitar.
-  const [bsPrevisao, setBsPrevisao] = useState<string | null>(null);
-  const [bsCtos, setBsCtos] = useState<string[]>([]);
-  const [bsSaving, setBsSaving] = useState(false);
-  const [bsError, setBsError] = useState<string | null>(null);
-  const [previstaLocal, setPrevistaLocal] = useState(row.dataPrevista);
+  // Dados de previsão e CTe da Bahia Sul (quando vinculados ao PO deste item)
+  const [bsPrevisao, setBsPrevisao] = useState<string | null>(
+    () => (row.transportadora === 'Bahia Sul' && hasValue(row.dataPrevista) ? row.dataPrevista : null)
+  );
+  const [bsCtos, setBsCtos] = useState<string[]>(() => row.ctos || []);
 
   useEffect(() => {
-    setPrevistaLocal(row.dataPrevista);
     if (!row.po || row.po === '—' || hasValue(row.dataEntrega)) {
       setBsPrevisao(null);
       setBsCtos([]);
       return;
     }
+    // Se a linha já trouxe os dados consolidados da Bahia Sul, reaproveita direto
+    if (row.transportadora === 'Bahia Sul' && hasValue(row.dataPrevista) && row.ctos && row.ctos.length > 0) {
+      setBsPrevisao(row.dataPrevista);
+      setBsCtos(row.ctos);
+      return;
+    }
     let cancelado = false;
     (async () => {
       try {
-        // Mesmo padrão do Diligenciamento: baixa todas as entregas e casa pelo
-        // PO normalizado (sem zero à esquerda / sufixo). O filtro `.eq` exato
-        // errava quando `nro_pedido` vinha com zeros ou sufixo na planilha.
         const entregas = await localDb.getBahiaSulEntregas();
         const resumo = resumirBahiaSulPorPo(entregas).get(normalizePoNumber(row.po));
         if (cancelado) return;
-        // "O que já tem": previsão de chegada/entrega do CTe; na falta dela,
-        // a data física já registrada pela transportadora.
         const data = resumo?.previsaoChegada || resumo?.dataChegadaFisica || null;
         setBsPrevisao(data);
         setBsCtos(resumo?.ctos.filter(Boolean) ?? []);
@@ -208,28 +204,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
       }
     })();
     return () => { cancelado = true; };
-  }, [row.po, row.dataPrevista, row.dataEntrega]);
-
-  const previsaoJaConfirmada = hasValue(previstaLocal) && previstaLocal === bsPrevisao;
-
-  const handleUsarPrevisaoBahiaSul = async () => {
-    if (!bsPrevisao || bsSaving) return;
-    setBsSaving(true);
-    setBsError(null);
-    try {
-      const { falhas } = await gravarPrevisaoNoRastreio([row.ri], bsPrevisao);
-      if (falhas.length > 0) {
-        setBsError('Não foi possível gravar a previsão. Tente novamente.');
-        return;
-      }
-      setPrevistaLocal(bsPrevisao);
-    } catch (e) {
-      console.error('Erro ao gravar previsão da Bahia Sul no Rastreio:', e);
-      setBsError('Não foi possível gravar a previsão. Tente novamente.');
-    } finally {
-      setBsSaving(false);
-    }
-  };
+  }, [row.po, row.dataPrevista, row.dataEntrega, row.transportadora, row.ctos]);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -356,6 +331,7 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
             <Field label="Data PO" icon={Calendar}>{formatDateBR(row.dataPo)}</Field>
             <Field label="Prev. entrega" icon={Calendar}>{formatDateBR(row.dataPrevista)}</Field>
             <Field label="Entrega (MIGO)" icon={CheckCircle2}>{formatDateBR(row.dataEntrega)}</Field>
+            <Field label="Transportadora" icon={Truck}>{row.transportadora || '—'}</Field>
             {row.grupoComprador && <Field label="Grupo comprador" icon={UserIcon}>{row.grupoComprador}</Field>}
             {row.isGeneric && row.obsGenerica && (
               <div className="col-span-2 md:col-span-3">
@@ -381,42 +357,14 @@ export default function RastreioDetailModal({ row, user, hoje, onClose, onThread
           {/* Previsão de entrega pela Bahia Sul */}
           {bsPrevisao && (
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                 <CalendarClock className="h-4 w-4 text-emerald-600 dark:text-emerald-500" /> Previsão de entrega — Bahia Sul
               </h4>
-              {previsaoJaConfirmada ? (
-                <p className="text-[13px] text-slate-600 dark:text-slate-300">
-                  Previsão preenchida com a data da transportadora Bahia Sul:{' '}
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
-                  {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}
-                </p>
-              ) : (
-                <>
-                  <p className="text-[13px] text-slate-600 dark:text-slate-300">
-                    A Bahia Sul prevê a entrega deste pedido em{' '}
-                    <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
-                    {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}.
-                    {hasValue(previstaLocal) && (
-                      <span className="text-slate-400 dark:text-slate-500"> Previsão atual no Rastreio: {formatDateBR(previstaLocal)}.</span>
-                    )}
-                  </p>
-                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={handleUsarPrevisaoBahiaSul}
-                      disabled={bsSaving}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                    >
-                      {bsSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
-                      {hasValue(previstaLocal) ? 'Atualizar previsão pela Bahia Sul' : 'Preencher previsão pela Bahia Sul'}
-                    </button>
-                    {bsError && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
-                        <AlertCircle className="h-3.5 w-3.5" /> {bsError}
-                      </span>
-                    )}
-                  </div>
-                </>
-              )}
+              <p className="text-[13px] text-slate-600 dark:text-slate-300">
+                A Bahia Sul prevê a entrega deste pedido em{' '}
+                <span className="font-bold text-slate-800 dark:text-slate-200">{formatDateBR(bsPrevisao)}</span>
+                {bsCtos.length > 0 && <span className="text-slate-400 dark:text-slate-500"> · CTe {bsCtos.join(', ')}</span>}.
+              </p>
             </div>
           )}
 

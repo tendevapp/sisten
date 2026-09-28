@@ -83,6 +83,56 @@ const campo: React.CSSProperties = {
   outlineColor: 'var(--brand)',
 };
 
+/**
+ * Botao de copia rapida discreto e com stopPropagation para nunca
+ * abrir modais ou colapsar acordions ao copiar PO ou RM.
+ */
+function BotaoCopiar({
+  texto,
+  rotulo,
+  className = '',
+  size = 'sm',
+}: {
+  texto: string;
+  rotulo: string;
+  className?: string;
+  size?: 'xs' | 'sm';
+}) {
+  const [copiado, setCopiado] = useState(false);
+
+  const handleCopiar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!texto) return;
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1800);
+    } catch (err) {
+      console.error('Falha ao copiar:', err);
+    }
+  };
+
+  const iconSize = size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5';
+  const padding = size === 'xs' ? 'p-0.5' : 'p-1';
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopiar}
+      className={`inline-flex items-center justify-center rounded transition-colors cursor-pointer shrink-0 ${padding} ${
+        copiado
+          ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
+          : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10'
+      } ${className}`}
+      title={copiado ? 'Copiado!' : `Copiar ${rotulo} (${texto})`}
+      aria-label={copiado ? `${rotulo} copiado` : `Copiar ${rotulo} ${texto}`}
+    >
+      {copiado ? <Check className={`${iconSize} text-emerald-600 dark:text-emerald-400`} /> : <Copy className={iconSize} />}
+    </button>
+  );
+}
+
 export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, user, promessaFilter, onCountChange }: Props) {
   const toast = useToast();
 
@@ -676,7 +726,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                     >
                       {/* Cabecalho consolidado do PO */}
                       <div
-                        className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 select-none"
+                        className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
                         style={{
                           background: 'var(--surface-raised)',
                           borderBottom: colapsado ? 'none' : '1px solid var(--hairline)',
@@ -696,16 +746,24 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                           <button
                             type="button"
                             onClick={() => alternarColapsoPo(po.docCompra)}
-                            className="inline-flex items-center gap-1.5 cursor-pointer font-bold text-xs hover:opacity-80 transition-opacity"
+                            className="p-1 -ml-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                             style={{ color: 'var(--ink-primary)' }}
+                            title={colapsado ? 'Expandir itens do pedido' : 'Recolher itens do pedido'}
+                            aria-label={colapsado ? `Expandir PO ${po.docCompra}` : `Recolher PO ${po.docCompra}`}
                           >
                             {colapsado ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            <span className="font-mono text-sm font-bold tracking-tight">PO {po.docCompra}</span>
                           </button>
+
+                          <div className="inline-flex items-center gap-1 select-text">
+                            <span className="font-mono text-sm font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+                              PO {po.docCompra}
+                            </span>
+                            <BotaoCopiar texto={po.docCompra} rotulo="PO" size="xs" />
+                          </div>
 
                           {po.contrato && (
                             <span
-                              className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                              className="rounded px-1.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 select-text"
                               style={{
                                 color: 'var(--series-5)',
                                 background: 'color-mix(in srgb, var(--series-5) 12%, var(--surface-card))',
@@ -713,7 +771,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               }}
                               title={`Pedido vinculado ao Contrato ${po.contrato}`}
                             >
-                              Contrato {po.contrato}
+                              <span>Contrato {po.contrato}</span>
+                              <BotaoCopiar texto={po.contrato} rotulo="Contrato" size="xs" />
                             </span>
                           )}
 
@@ -732,9 +791,15 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                           )}
 
                           {po.rms.length > 0 && (
-                            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                              RM {po.rms.join(', ')}
-                            </span>
+                            <div className="flex items-center gap-1 text-xs select-text" style={{ color: 'var(--ink-muted)' }}>
+                              <span>RM</span>
+                              {po.rms.map((rmNum, idx) => (
+                                <span key={rmNum} className="inline-flex items-center gap-0.5 font-mono">
+                                  <span>{rmNum}{idx < po.rms.length - 1 ? ',' : ''}</span>
+                                  <BotaoCopiar texto={rmNum} rotulo="RM" size="xs" />
+                                </span>
+                              ))}
+                            </div>
                           )}
 
                           {po.dataPedido && (
@@ -828,8 +893,13 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                         style={{ accentColor: 'var(--brand)' }}
                                       />
                                     </Td>
-                                    <Td mono className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                                      {reg?.requisicao_de_compra ? `RM ${reg.requisicao_de_compra}` : '—'}
+                                    <Td mono className="text-[11px] select-text" style={{ color: 'var(--ink-secondary)' }}>
+                                      {reg?.requisicao_de_compra ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <span>RM {reg.requisicao_de_compra}</span>
+                                          <BotaoCopiar texto={reg.requisicao_de_compra} rotulo="RM" size="xs" />
+                                        </span>
+                                      ) : '—'}
                                       {reg?.item_reqc && ` / it. ${reg.item_reqc}`}
                                     </Td>
                                     <Td mono className="font-semibold">{item.material}</Td>
@@ -942,21 +1012,29 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               style={{ accentColor: 'var(--brand)' }}
                             />
                           </Td>
-                          <Td strong mono className="text-sm">
-                            {item.docCompra}
-                            <span className="mt-0.5 block text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
-                              RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
-                            </span>
+                          <Td strong mono className="text-sm select-text">
+                            <div className="flex items-center gap-1">
+                              <span>{item.docCompra}</span>
+                              <BotaoCopiar texto={item.docCompra} rotulo="PO" size="xs" />
+                            </div>
+                            {reg?.requisicao_de_compra && (
+                              <div className="mt-0.5 flex items-center gap-1 text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                                <span>RM {reg.requisicao_de_compra}</span>
+                                <BotaoCopiar texto={reg.requisicao_de_compra} rotulo="RM" size="xs" />
+                                {reg?.item_reqc && <span>· item {reg.item_reqc}</span>}
+                              </div>
+                            )}
                             {/* PO nascido de contrato guarda-chuva: a cobrança
                                 muda de interlocutor (gestor do contrato, não
                                 cotação), então o número aparece junto do PO. */}
                             {reg && numeroContratoPO(reg) && (
                               <span
-                                className="mt-0.5 block text-[11px] font-semibold"
+                                className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold"
                                 style={{ color: 'var(--series-5)' }}
                                 title={`Pedido colocado por referência ao contrato ${numeroContratoPO(reg)}`}
                               >
-                                Contrato {numeroContratoPO(reg)}
+                                <span>Contrato {numeroContratoPO(reg)}</span>
+                                <BotaoCopiar texto={numeroContratoPO(reg)!} rotulo="Contrato" size="xs" />
                               </span>
                             )}
                           </Td>
@@ -1094,10 +1172,11 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               style={{ accentColor: 'var(--brand)' }}
                             />
                             <div>
-                              <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <div className="flex items-baseline gap-1.5 flex-wrap select-text">
                                 <span className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>
                                   PO {po.docCompra}
                                 </span>
+                                <BotaoCopiar texto={po.docCompra} rotulo="PO" size="xs" />
                                 {po.grupoComprador && (
                                   <span
                                     className="rounded px-1 text-[10px] font-mono font-bold"
@@ -1115,8 +1194,14 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                 {po.fornecedorNome}
                               </div>
                               {po.rms.length > 0 && (
-                                <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                                  RM {po.rms.join(', ')}
+                                <div className="text-[11px] flex items-center gap-1 select-text" style={{ color: 'var(--ink-muted)' }}>
+                                  <span>RM</span>
+                                  {po.rms.map((rmNum, idx) => (
+                                    <span key={rmNum} className="inline-flex items-center gap-0.5 font-mono">
+                                      <span>{rmNum}{idx < po.rms.length - 1 ? ',' : ''}</span>
+                                      <BotaoCopiar texto={rmNum} rotulo="RM" size="xs" />
+                                    </span>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -1467,7 +1552,10 @@ function ItemCard({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>{item.docCompra}</span>
+            <div className="flex items-center gap-1 select-text">
+              <span className="font-mono text-base font-bold" style={{ color: 'var(--ink-primary)' }}>{item.docCompra}</span>
+              <BotaoCopiar texto={item.docCompra} rotulo="PO" size="xs" />
+            </div>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1485,10 +1573,16 @@ function ItemCard({
               <EstadoChegada item={item} />
             </div>
           </div>
-          <span className="block text-xs" style={{ color: 'var(--ink-muted)' }}>
-            RM {reg?.requisicao_de_compra} · item {reg?.item_reqc}
-            {item.grupoComprador && ` · Comp. ${item.grupoComprador}`}
-          </span>
+          <div className="flex items-center gap-1 text-xs select-text" style={{ color: 'var(--ink-muted)' }}>
+            {reg?.requisicao_de_compra && (
+              <span className="inline-flex items-center gap-0.5 font-mono">
+                <span>RM {reg.requisicao_de_compra}</span>
+                <BotaoCopiar texto={reg.requisicao_de_compra} rotulo="RM" size="xs" />
+                {reg?.item_reqc && <span>· it. {reg.item_reqc}</span>}
+              </span>
+            )}
+            {item.grupoComprador && <span>· Comp. {item.grupoComprador}</span>}
+          </div>
         </div>
       </div>
 

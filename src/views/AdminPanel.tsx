@@ -80,7 +80,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   // Busca e filtro por setor e status na tabela de Usuários
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSectorFilter, setUserSectorFilter] = useState('all');
-  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'ativo' | 'pendente' | 'inativo' | 'admin' | 'comprador' | 'gestor'>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'novos' | 'ativo' | 'pendente' | 'inativo' | 'admin' | 'comprador' | 'gestor'>('all');
   // Edição de setor inline por usuário
   const [editingSectorProfileId, setEditingSectorProfileId] = useState<string | null>(null);
   const [editingSectorId, setEditingSectorId] = useState<string>('');
@@ -1098,7 +1098,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     if (isNaN(createdTime)) return false;
     const now = new Date().getTime();
     const diffDays = (now - createdTime) / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= 7;
+    return diffDays >= 0 && diffDays <= 30;
   };
 
   const sectorMap = useMemo(() => {
@@ -1115,7 +1115,8 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     const admins = profiles.filter(p => p.roles?.includes('admin')).length;
     const buyers = profiles.filter(p => p.roles?.includes('comprador') || p.roles?.includes('coordenador_suprimentos')).length;
     const managers = profiles.filter(p => p.roles?.includes('gestor')).length;
-    return { total, pending, active, inactive, admins, buyers, managers };
+    const newUsers = profiles.filter(p => isRecentlyCreated(p.created_at)).length;
+    return { total, pending, active, inactive, admins, buyers, managers, newUsers };
   }, [profiles]);
 
   const pendingUsers = useMemo(
@@ -1129,6 +1130,7 @@ export default function AdminPanel({ user }: AdminPanelProps) {
     () => [...profiles]
       .filter(p => {
         // Status / Role chips filter
+        if (userStatusFilter === 'novos' && !isRecentlyCreated(p.created_at)) return false;
         if (userStatusFilter === 'ativo' && p.status !== 'ativo') return false;
         if (userStatusFilter === 'inativo' && p.status !== 'inativo') return false;
         if (userStatusFilter === 'pendente' && p.status !== 'pendente') return false;
@@ -1156,6 +1158,12 @@ export default function AdminPanel({ user }: AdminPanelProps) {
         return true;
       })
       .sort((a, b) => {
+        // Se filtrando por novos usuários, exibe os mais recentes primeiro
+        if (userStatusFilter === 'novos') {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return timeB - timeA;
+        }
         // Pending users first, then alphabetically
         if (a.status === 'pendente' && b.status !== 'pendente') return -1;
         if (a.status !== 'pendente' && b.status === 'pendente') return 1;
@@ -1663,6 +1671,19 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                 }`}
               >
                 Todos ({userStats.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserStatusFilter('novos')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  userStatusFilter === 'novos'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-blue-50 text-blue-800 border border-blue-200/70 hover:bg-blue-100'
+                }`}
+                title="Filtrar colaboradores cadastrados nos últimos 30 dias"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                Novos ({userStats.newUsers})
               </button>
               <button
                 type="button"

@@ -14,7 +14,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   UserCog, Users, Map, Clock, Percent, BusFront, Timer, ArrowRight,
-  ClipboardList, BarChart3, Database, Clock3,
+  ClipboardList, BarChart3, Database, Clock3, CalendarDays,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -84,6 +84,16 @@ const SECOES: Secao[] = [
         path: '/rh/turnos',
         gateId: 'rh_turnos_cad',
         fonte: 'Base rh_turnos',
+      },
+      {
+        id: 'treinamentos',
+        label: 'Treinamentos',
+        icon: CalendarDays,
+        desc: 'Plano de treinamentos programados, realizados e pendentes, com edição direta e importação em massa da planilha do RH.',
+        cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400',
+        path: '/rh/treinamentos',
+        gateId: 'rh_treinamentos_cad',
+        fonte: 'Base rh_treinamentos',
       },
       {
         id: 'rotas',

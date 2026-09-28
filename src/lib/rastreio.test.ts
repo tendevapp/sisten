@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { EnrichedSAPRecord } from '../types';
-import { buildRastreioRows, groupRowsByPo, filterRegistros } from './rastreio';
+import type { BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord } from '../types';
+import { buildRastreioRows, groupRowsByPo, filterRegistros, montarSemMigoDadosMap } from './rastreio';
 import type { VinculoSistenRm } from './centralComprasSisten';
 
 function registro(over: Partial<EnrichedSAPRecord> = {}): EnrichedSAPRecord {
@@ -160,6 +160,77 @@ describe('itens genéricos no rastreio', () => {
       scope: 'todos',
     });
     expect(filtrados2.length).toBe(1);
+  });
+});
+
+describe('integração dos dados que vêm da tela Sem MIGO no Rastreio', () => {
+  it('preenche transportadora e previsão vindas do CTe da Bahia Sul sem necessidade de preencher manualmente', () => {
+    const reg = registro({
+      ri: '120009113300010',
+      requisicao_de_compra: '1200091133',
+      documento_compra: '4100451286',
+      ri_po: '120009113300010-4100451286',
+      data_entrega_confirmada: undefined,
+    });
+
+    const entregasBs: BahiaSulEntrega[] = [{
+      id: 'bs-1',
+      cto_numero: '31115',
+      nro_pedido: '4100451286',
+      prv_chegada: '2026-06-11',
+      situacao: 'EM TRANSITO',
+    } as any];
+
+    const semMigoMap = montarSemMigoDadosMap([reg], [], entregasBs);
+    const [row] = buildRastreioRows([reg], undefined, semMigoMap);
+
+    expect(row.transportadora).toBe('Bahia Sul');
+    expect(row.dataPrevista).toBe('2026-06-11');
+    expect(row.ctos).toEqual(['31115']);
+  });
+
+  it('preenche transportadora e previsão manual digitadas pelo comprador na Sem MIGO', () => {
+    const reg = registro({
+      ri: '120009412500010',
+      documento_compra: '4100465946',
+      ri_po: '120009412500010-4100465946',
+      data_entrega_confirmada: undefined,
+    });
+
+    const diligItens: DiligenciamentoItem[] = [{
+      ri_po: '120009412500010-4100465946',
+      ri: '120009412500010',
+      transportadora: 'RODOTEN',
+      previsao_manual: '2026-07-20',
+    } as any];
+
+    const semMigoMap = montarSemMigoDadosMap([reg], diligItens, []);
+    const [row] = buildRastreioRows([reg], undefined, semMigoMap);
+
+    expect(row.transportadora).toBe('RODOTEN');
+    expect(row.dataPrevista).toBe('2026-07-20');
+  });
+
+  it('data_entrega_confirmada prevalece caso já tenha sido confirmada', () => {
+    const reg = registro({
+      ri: '120009412500010',
+      documento_compra: '4100465946',
+      ri_po: '120009412500010-4100465946',
+      data_entrega_confirmada: '2026-09-01',
+    });
+
+    const diligItens: DiligenciamentoItem[] = [{
+      ri_po: '120009412500010-4100465946',
+      ri: '120009412500010',
+      transportadora: 'RODOTEN',
+      previsao_manual: '2026-07-20',
+    } as any];
+
+    const semMigoMap = montarSemMigoDadosMap([reg], diligItens, []);
+    const [row] = buildRastreioRows([reg], undefined, semMigoMap);
+
+    expect(row.transportadora).toBe('RODOTEN');
+    expect(row.dataPrevista).toBe('2026-09-01');
   });
 });
 

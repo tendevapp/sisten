@@ -291,7 +291,10 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
               Detalhamento SAP do Item
             </h3>
             <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
-              <span className="font-mono font-bold">RM: {record.requisicao_de_compra || '—'}</span>
+              <span className="font-mono font-bold select-text inline-flex items-center gap-1">
+                <span>RM: {record.requisicao_de_compra || '—'}</span>
+                {record.requisicao_de_compra && <CopyButton text={record.requisicao_de_compra} label="RM" />}
+              </span>
               <span>•</span>
               <span className="font-mono font-bold">Item: {record.item_reqc || '—'}</span>
               {record.status_requisicao === 'Processado' ? (
@@ -300,7 +303,10 @@ export default function SapDetailModal({ record, fornecedores, vinculoSisten, on
                   title={`PO ${record.documento_compra || '—'} emitida em ${record.data_pedido ? new Date(record.data_pedido).toLocaleDateString('pt-BR') : '—'}`}
                 >
                   <Check className="h-3 w-3 shrink-0" />
-                  PO {record.documento_compra || '—'}{record.data_pedido ? ` • ${new Date(record.data_pedido).toLocaleDateString('pt-BR')}` : ''}
+                  <span className="select-text inline-flex items-center gap-1">
+                    <span>PO {record.documento_compra || '—'}{record.data_pedido ? ` • ${new Date(record.data_pedido).toLocaleDateString('pt-BR')}` : ''}</span>
+                    {record.documento_compra && <CopyButton text={record.documento_compra} label="PO" />}
+                  </span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wide bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-250 dark:border-rose-900/50">

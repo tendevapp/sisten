@@ -1903,6 +1903,25 @@ export interface RhHoraExtra {
   created_at: string;
 }
 
+export interface RhTreinamento {
+  id: string;
+  data_treinamento: string;
+  dia_semana: string;
+  semana: string;
+  tipo_planejamento: 'P' | 'NP' | 'RP';
+  treinamento: string;
+  turma_horario: string;
+  tipo_treinamento: 'B' | 'T.E' | 'T.L' | '';
+  data_eficacia: string | null;
+  realizado: boolean;
+  criado_por: string | null;
+  atualizado_por: string | null;
+  created_at: string;
+  updated_at: string;
+  excluido_em: string | null;
+  excluido_por: string | null;
+}
+
 // ---------- Formulário: ASE - Hora Extra (FRM.RHU-0007) ----------
 
 /**
@@ -2700,6 +2719,74 @@ export interface QuaRelatorioCampos {
   fotos: boolean;
 }
 
+export type QuaChecklistResposta = 'OK' | 'NA' | 'NOK';
+// RASCUNHO: inspetor preenchendo. AGUARDANDO_ASSINATURAS: fechado (conteúdo
+// travado) e na fila de assinaturas. FINALIZADO: as 4 assinaturas coletadas.
+export type QuaChecklistStatus = 'RASCUNHO' | 'AGUARDANDO_ASSINATURAS' | 'FINALIZADO';
+export type QuaChecklistPapel = 'QUALIDADE' | 'PRODUCAO' | 'CLIENTE' | 'TRANSPORTADOR';
+export type QuaChecklistAssinaturaTipo = 'DESENHO' | 'SELFIE';
+
+export interface QuaChecklistItem {
+  chave: string;
+  numero: number;
+  descricao: string;
+}
+
+export interface QuaChecklistFoto {
+  id: string;
+  checklist_id: string;
+  item_chave: string;
+  path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  preview_url?: string;
+}
+
+export interface QuaChecklistAssinatura {
+  id: string;
+  checklist_id: string;
+  papel: QuaChecklistPapel;
+  nome: string;
+  tipo: QuaChecklistAssinaturaTipo;
+  path: string;
+  mime_type: string;
+  created_at: string;
+  /** Momento da captura da assinatura (data e hora). */
+  assinado_em?: string | null;
+  coletado_por_nome?: string | null;
+  preview_url?: string;
+}
+
+export interface QuaChecklistExpedicao {
+  id: string;
+  codigo_registro: string;
+  status: QuaChecklistStatus;
+  cliente: string;
+  projeto: string;
+  tramo_sequencial: string;
+  numero_serie: string;
+  data_expedicao: string;
+  site: string;
+  inspetor_qualidade: string;
+  etiqueta_secao: string;
+  respostas: Record<string, QuaChecklistResposta | null>;
+  observacoes: Record<string, { resposta: QuaChecklistResposta | null; texto: string }>;
+  validacao_nomes: Record<QuaChecklistPapel, string>;
+  fotos: QuaChecklistFoto[];
+  assinaturas: QuaChecklistAssinatura[];
+  criado_por: string | null;
+  criado_por_nome: string | null;
+  created_at: string;
+  updated_at: string;
+  fechado_por?: string | null;
+  fechado_por_nome?: string | null;
+  fechado_em?: string | null;
+  finalizado_em?: string | null;
+  excluido_em?: string | null;
+}
+
 // ---------------------------------------------------------------------
 // Facilities — cadastros do módulo
 // ---------------------------------------------------------------------
@@ -3272,4 +3359,3 @@ export type FinPepInput = Omit<FinPep, 'id' | 'created_at' | 'updated_at' | 'imp
   updated_at?: string;
   importado_em?: string;
 };
-

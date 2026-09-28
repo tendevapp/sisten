@@ -1,0 +1,2644 @@
+{
+  "version": "FRM.ENG-0240 Rev.02",
+  "models": [
+    {
+      "id": "checklist-plataforma-inf-t1",
+      "nome": "Plataforma inferior T1",
+      "sheet": "CHECKLIST PLATAFORMA INF T1",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T1",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10433692",
+          "descricao": "Verificar o torque aplicado em 3 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 3 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10433692",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.80173",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.80173",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10433692",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10433692",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M16 por junta de fixação entre os setores da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolt per joint fastening between the platform sectors, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10433692",
+          "descricao": "Verificar altura da plataforma inferior. Dimensão da base dos pés até a parte superior do piso da plataforma deve ser 2514mm. / Check the height of the lower platform. The dimension from the base of the feet to the top of the platform floor must be 2514 mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.80173",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    },
+    {
+      "id": "checklist-escada-de-acesso",
+      "nome": "Escada de acesso",
+      "sheet": "CHECKLIST ESCADA DE ACESSO",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T5",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.99602",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M12 da conexão da escada de acesso, torque (47Nm). / Check the torque applied to the two M12 bolts of the access ladder connection, torque (47Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "47Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.99602",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M12 da conexão da escada de acesso, torque (47Nm). / Check the torque applied to the two M12 bolts of the access ladder connection, torque (47Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "47Nm"
+          ]
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.99602",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M12 da conexão da escada de acesso, torque (47Nm). / Check the torque applied to the two M12 bolts of the access ladder connection, torque (47Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "47Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.99602",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M12, localizados em degraus distintos, em ambos os lados da conexão da escada de acesso, torque (47Nm). / Check the torque applied to three M12 bolts located on different steps, on both sides of the access ladder connection, torque (47Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "47Nm"
+          ]
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.99602",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M12, localizados em ambos os lados da conexão da escada de acesso, torque (47Nm). / Check the torque applied to the two M12 bolts located on both sides of the access ladder connection, torque (47Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "47Nm"
+          ]
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "60.10.102566",
+          "descricao": "Confira as distâncias de 361 mm e 816 mm entre a chapa de conexão e a plataforma. / Check the 361mm and 816mm distances between the connecting plate and the platform.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "10,474,057",
+          "descricao": "Verificar a distância de 32 mm entre ambas as chapas de conexão e o torque aplicado em 2 parafusos M12, torque (40Nm). / Check the 32mm distance between both connecting plates and verify the torque applied to the two M12 bolts, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "10,474,057",
+          "descricao": "Verificar a distância de 90 mm entre a chapa de conexão e a viga, bem como o torque aplicado em 2 parafusos M16, torque (115Nm). / Check the 90mm distance between the connection plate and the suspended beam, and verify the torque applied to two two M12 bolts, torque (115Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "115Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO ESCADA DE ACESSO / ENTRANCE STAIRS ASSEMBLY",
+          "numero_peca": "10,474,057",
+          "descricao": "Verificar a distância de 230 mm entre o bloco de borracha e o centro da viga, bem como o torque aplicado em 2 parafusos M8, torque (15Nm). / Check the 230 mm distance between the rubber block and the beam centerline, as well as the torque applied to the two M8 bolts, torque (15Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "15Nm"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "checklist-t1",
+      "nome": "Checklist T1",
+      "sheet": "CHECKLIST T1",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T1",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO BORDA PERIFERICA / SURROUNDING EDGE ASSEMBLY",
+          "numero_peca": "60.10.51709",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image95.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO BORDA PERIFERICA / SURROUNDING EDGE ASSEMBLY",
+          "numero_peca": "60.10.51709",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image94.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image93.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image80.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "10483758",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "10483758",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "10483758",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.102097",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.102097",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_10",
+          "numero": 10,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_11",
+          "numero": 11,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_12",
+          "numero": 12,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_13",
+          "numero": 13,
+          "grupo": "CONJUNTO DA PLATAFORMA MÉDIA / MEDIUM PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_14",
+          "numero": 14,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image93.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_15",
+          "numero": 15,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image80.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_16",
+          "numero": 16,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_17",
+          "numero": 17,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_18",
+          "numero": 18,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_19",
+          "numero": 19,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_20",
+          "numero": 20,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_21",
+          "numero": 21,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_22",
+          "numero": 22,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_23",
+          "numero": 23,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_24",
+          "numero": 24,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_25",
+          "numero": 25,
+          "grupo": "CONJUNTO PORTA DA TORRE / TOWER DOOR ASSEMBLY",
+          "numero_peca": "60.10.102388",
+          "descricao": "Verificar a lubrificação com graxa Mobilux EP 0. / Check the lubrication with Mobilux EP 0.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_26",
+          "numero": 26,
+          "grupo": "CONJUNTO PORTA DA TORRE / TOWER DOOR ASSEMBLY",
+          "numero_peca": "60.10.102388",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M16 por junta de fixação da dobradiça da porta, torque (155Nm). / Check the applied torque on 2 M16 bolts per door hinge fastening joint, torque (155Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_27",
+          "numero": 27,
+          "grupo": "CONJUNTO PORTA DA TORRE / TOWER DOOR ASSEMBLY",
+          "numero_peca": "60.09.00896",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 do painel resistente à chuva, torque (40Nm). / Check the applied torque on 2 M10 bolts of the rainpoof panel, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_28",
+          "numero": 28,
+          "grupo": "CONJUNTO PORTA DA TORRE / TOWER DOOR ASSEMBLY",
+          "numero_peca": "60.09.01940",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M8 da conexão do tubo do radiador, torque (18Nm). / Check the applied torque on 2 M16 bolts of the connecting tube of radiator, torque (18Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_29",
+          "numero": 29,
+          "grupo": "CONJUNTO PORTA DA TORRE / TOWER DOOR ASSEMBLY",
+          "numero_peca": "60.10.83716",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M8 da conexão do tubo do radiador, torque (18Nm). / Check the applied torque on 2 M16 bolts of the connecting tube of radiator, torque (18Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "27Nm"
+          ]
+        },
+        {
+          "chave": "item_30",
+          "numero": 30,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do conjunto da estrutura da escada, torque (35Nm). / Check the applied torque on 3 M16 bolts fastening the ladder structure assembly, torque (35Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image82.png"
+          ],
+          "indicadores": [
+            "35Nm"
+          ]
+        },
+        {
+          "chave": "item_31",
+          "numero": 31,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte das legs da escada, torque (155Nm). / Check the applied torque on 3 M16 bolts fastening the ladder leg support, torque (155Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png"
+          ],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_32",
+          "numero": 32,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência. / Check torque applied to M16 screws of fixing of ladder legs bracket, torque (155Nm). Check the mark of use adhesive thread lock medium and high strenght.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_33",
+          "numero": 33,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006879",
+          "descricao": "Verificar montagem de end caps nas extremidade inferior e superior do lance de escada entre plataformas superior e inferior. / Check the assemble of end caps in lower and upper ends of ladder section between upper and lower platform.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image90.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_34",
+          "numero": 34,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 18º degrau do 1º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 18th step of the 1º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_35",
+          "numero": 35,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 9º degrau do 2º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 9th step of the 2º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_36",
+          "numero": 36,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 2º degrau do 3º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 2th step of the 3º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_37",
+          "numero": 37,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 9º degrau do 2º lance. / Check installation of anchor point on the 9º step of the 2º ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_38",
+          "numero": 38,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 15º degrau do 1º lance. / Check installation of anchor point on the 15º step of the 1º ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_39",
+          "numero": 39,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do começo da escada para o flange inferior. Distância deve ser 20mm. / Check start of the ladder to inferior flange. Distance must be 20mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_40",
+          "numero": 40,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do final da escada para o flange superior. Distância deve ser 40mm. / Check end of the ladder to superior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_41",
+          "numero": 41,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância entre as emendas das linhas de vida. Distância deve ser menor que 4mm / Check distance between the conection of fall protection rail. Distance must be less than 4mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_42",
+          "numero": 42,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar a marcação da numeração dos flanges a cada 8 furos. / Check the flange numbering marking at every 8 holes.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_43",
+          "numero": 43,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar tipagem com o número do desenho (10458674-01). / Check the type using the drawing number (10458674-01).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_44",
+          "numero": 44,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "60.10.31563",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_45",
+          "numero": 45,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem do Qrcode. / Check instalation of Qrcode.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_46",
+          "numero": 46,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar ovalização dos flanges antes da instalação das barras estabilizadoras. / Check flange ovality before assembly of the anti-deformation fixtures.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_47",
+          "numero": 47,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem das lonas (dois lados) do tramo. Flange Inferior e Flange Superior. / Check mounting of the tarpaulin (both sides) of the branch. Bottom Flange and Top Flange .",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image86.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_48",
+          "numero": 48,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar se chave do guarda-corpo está sendo enviada em anexo. / Check if the square fence key is attached.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_49",
+          "numero": 49,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_50",
+          "numero": 50,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_51",
+          "numero": 51,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_52",
+          "numero": 52,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image72.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image84.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_53",
+          "numero": 53,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image89.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image71.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    },
+    {
+      "id": "checklist-t2",
+      "nome": "Checklist T2",
+      "sheet": "CHECKLIST T2",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T2",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image93.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image80.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_10",
+          "numero": 10,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_11",
+          "numero": 11,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_12",
+          "numero": 12,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do conjunto da estrutura da escada, torque (35Nm). / Check the applied torque on 3 M16 bolts fastening the ladder structure assembly, torque (35Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image82.png"
+          ],
+          "indicadores": [
+            "35Nm"
+          ]
+        },
+        {
+          "chave": "item_13",
+          "numero": 13,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte das legs da escada, torque (155Nm). / Check the applied torque on 3 M16 bolts fastening the ladder leg support, torque (155Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png"
+          ],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_14",
+          "numero": 14,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência. / Check torque applied to M16 screws of fixing of ladder legs bracket, torque (155Nm). Check the mark of use adhesive thread lock medium and high strenght.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_15",
+          "numero": 15,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04002418",
+          "descricao": "Verificar montagem de end caps nas extremidade inferior e superior do lance de escada entre plataformas superior e inferior. / Check the assemble of end caps in lower and upper ends of ladder section between upper and lower platform.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image90.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_16",
+          "numero": 16,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 17º degrau do 1º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 17th step of the 1º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_17",
+          "numero": 17,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 2º degrau do 3º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 2th step of the 3º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_18",
+          "numero": 18,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 8º degrau do 4º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 8th step of the 4º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_19",
+          "numero": 19,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 8º degrau do 5º lance. / Check installation of anchor point on the 8º step of the 5º ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_20",
+          "numero": 20,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do começo da escada para o flange inferior. Distância deve ser 40mm. / Check start of the ladder to inferior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_21",
+          "numero": 21,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do final da escada para o flange superior. Distância deve ser 40mm. / Check end of the ladder to superior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_22",
+          "numero": 22,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância entre as emendas das linhas de vida. Distância deve ser menor que 4mm / Check distance between the conection of fall protection rail. Distance must be less than 4mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_23",
+          "numero": 23,
+          "grupo": "SUPORTE DO ELEVADOR / LIFT SUPPORT",
+          "numero_peca": "60.10.72450",
+          "descricao": "Verificar dimensão do suporte do elevador. Dimensão deve ser 1300±1. / Check the lift bracket dimension. The dimension must be 1300 ± 1.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_24",
+          "numero": 24,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar a marcação da numeração dos flanges a cada 8 furos. / Check the flange numbering marking at every 8 holes.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_25",
+          "numero": 25,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar tipagem com o número do desenho (10458674-02). / Check the type using the drawing number (10458674-02).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_26",
+          "numero": 26,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar montagem do Qrcode. / Check instalation of Qrcode.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_27",
+          "numero": 27,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar ovalização dos flanges antes da instalação das barras estabilizadoras. / Check flange ovality before assembly of the anti-deformation fixtures.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_28",
+          "numero": 28,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem das lonas (dois lados) do tramo. Flange Inferior e Flange Superior. / Check mounting of the tarpaulin (both sides) of the branch. Bottom Flange and Top Flange .",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image86.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_29",
+          "numero": 29,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_30",
+          "numero": 30,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_31",
+          "numero": 31,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_32",
+          "numero": 32,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image72.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image96.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image97.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_33",
+          "numero": 33,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image89.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image71.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image85.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    },
+    {
+      "id": "checklist-t3",
+      "nome": "Checklist T3",
+      "sheet": "CHECKLIST T3",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T3",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image93.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image80.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10481931",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_10",
+          "numero": 10,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_11",
+          "numero": 11,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_12",
+          "numero": 12,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do conjunto da estrutura da escada, torque (35Nm). / Check the applied torque on 3 M16 bolts fastening the ladder structure assembly, torque (35Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image82.png"
+          ],
+          "indicadores": [
+            "35Nm"
+          ]
+        },
+        {
+          "chave": "item_13",
+          "numero": 13,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte das legs da escada, torque (155Nm). / Check the applied torque on 3 M16 bolts fastening the ladder leg support, torque (155Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png"
+          ],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_14",
+          "numero": 14,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência. / Check torque applied to M16 screws of fixing of ladder legs bracket, torque (155Nm). Check the mark of use adhesive thread lock medium and high strenght.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_15",
+          "numero": 15,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04002502",
+          "descricao": "Verificar montagem de end caps nas extremidade inferior e superior do lance de escada entre plataformas superior e inferior. / Check the assemble of end caps in lower and upper ends of ladder section between upper and lower platform.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image90.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_16",
+          "numero": 16,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 17º degrau do 1º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 17th step of the 1º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_17",
+          "numero": 17,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 1º degrau do 3º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 1th step of the 3º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_18",
+          "numero": 18,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 4º degrau do 4º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 4th step of the 4º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_19",
+          "numero": 19,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 8º degrau do 5º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 8th step of the 5º flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_20",
+          "numero": 20,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 8º degrau do 5º lance. / Check installation of anchor point on the 8º step of the 5º ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_21",
+          "numero": 21,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do começo da escada para o flange inferior. Distância deve ser 40mm. / Check start of the ladder to inferior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_22",
+          "numero": 22,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do final da escada para o flange superior. Distância deve ser 40mm. / Check end of the ladder to superior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_23",
+          "numero": 23,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância entre as emendas das linhas de vida. Distância deve ser menor que 4mm / Check distance between the conection of fall protection rail. Distance must be less than 4mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_24",
+          "numero": 24,
+          "grupo": "SUPORTE DO ELEVADOR / LIFT SUPPORT",
+          "numero_peca": "60.10.72450",
+          "descricao": "Verificar dimensão do suporte do elevador. Dimensão deve ser 1300±1. / Check the lift bracket dimension. The dimension must be 1300 ± 1.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_25",
+          "numero": 25,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar a marcação da numeração dos flanges a cada 8 furos. / Check the flange numbering marking at every 8 holes.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_26",
+          "numero": 26,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar tipagem com o número do desenho (10458674-03). / Check the type using the drawing number (10458674-03).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_27",
+          "numero": 27,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar montagem do Qrcode. / Check instalation of Qrcode.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_28",
+          "numero": 28,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar ovalização dos flanges antes da instalação das barras estabilizadoras. / Check flange ovality before assembly of the anti-deformation fixtures.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_29",
+          "numero": 29,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem das lonas (dois lados) do tramo. Flange Inferior e Flange Superior. / Check mounting of the tarpaulin (both sides) of the branch. Bottom Flange and Top Flange .",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image86.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_30",
+          "numero": 30,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_31",
+          "numero": 31,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_32",
+          "numero": 32,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_33",
+          "numero": 33,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image96.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image97.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image98.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image99.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_34",
+          "numero": 34,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image89.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image71.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image85.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image84.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    },
+    {
+      "id": "checklist-t4",
+      "nome": "Checklist T4",
+      "sheet": "CHECKLIST T4",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T4",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97838",
+          "descricao": "Verificar o torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image93.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image80.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10482208",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10482208",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10482208",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_10",
+          "numero": 10,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.69668",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_11",
+          "numero": 11,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_12",
+          "numero": 12,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do conjunto da estrutura da escada, torque (35Nm). / Check the applied torque on 3 M16 bolts fastening the ladder structure assembly, torque (35Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image82.png"
+          ],
+          "indicadores": [
+            "35Nm"
+          ]
+        },
+        {
+          "chave": "item_13",
+          "numero": 13,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte das legs da escada, torque (155Nm). / Check the applied torque on 3 M16 bolts fastening the ladder leg support, torque (155Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png"
+          ],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_14",
+          "numero": 14,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência. / Check torque applied to M16 screws of fixing of ladder legs bracket, torque (155Nm). Check the mark of use adhesive thread lock medium and high strenght.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_15",
+          "numero": 15,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 6º degrau do 1º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 7th step of the first flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_16",
+          "numero": 16,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 2º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 5th step of the second flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_17",
+          "numero": 17,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 3º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 6th step of the third flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_18",
+          "numero": 18,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 4º degrau do 4º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 4th step of the fourth flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_19",
+          "numero": 19,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 7º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 7th step of the seventh flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_20",
+          "numero": 20,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 2º degrau do 1º lance. / Check installation of anchor point on the 2º step of the 1º ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_21",
+          "numero": 21,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do começo da escada para o flange inferior. Distância deve ser 40mm. / Check start of the ladder to inferior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_22",
+          "numero": 22,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do final da escada para o flange superior. Distância deve ser 40mm. / Check end of the ladder to superior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_23",
+          "numero": 23,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância entre as emendas das linhas de vida. Distância deve ser menor que 4mm / Check distance between the conection of fall protection rail. Distance must be less than 4mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_24",
+          "numero": 24,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04002419",
+          "descricao": "Verificar montagem de end caps nas extremidade inferior e superior do lance de escada entre plataformas superior e inferior. / Check the assemble of end caps in lower and upper ends of ladder section between upper and lower platform.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image90.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_25",
+          "numero": 25,
+          "grupo": "SUPORTE DO ELEVADOR / LIFT SUPPORT",
+          "numero_peca": "60.10.72450",
+          "descricao": "Verificar dimensão do suporte do elevador. Dimensão deve ser 1300±1. / Check the lift bracket dimension. The dimension must be 1300 ± 1.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_26",
+          "numero": 26,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar a marcação da numeração dos flanges a cada 8 furos. / Check the flange numbering marking at every 8 holes.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_27",
+          "numero": 27,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar tipagem com o número do desenho (10458674-04). / Check the type using the drawing number (10458674-04).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_28",
+          "numero": 28,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar montagem do Qrcode. / Check instalation of Qrcode.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_29",
+          "numero": 29,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar ovalização dos flanges antes da instalação das barras estabilizadoras. / Check flange ovality before assembly of the anti-deformation fixtures.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_30",
+          "numero": 30,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem das lonas (dois lados) do tramo. Flange Inferior e Flange Superior. / Check mounting of the tarpaulin (both sides) of the branch. Bottom Flange and Top Flange .",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image86.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_31",
+          "numero": 31,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_32",
+          "numero": 32,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_33",
+          "numero": 33,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_34",
+          "numero": 34,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image98.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image99.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image100.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image101.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_35",
+          "numero": 35,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image89.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image71.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image85.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image84.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image72.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    },
+    {
+      "id": "checklist-t5",
+      "nome": "Checklist T5",
+      "sheet": "CHECKLIST T5",
+      "formulario": "FRM.ENG-0240 / Rev.02 / 11/08/2026",
+      "projeto_padrao": "GW5S120M-0001 / GW5S120M-0001",
+      "tramo_padrao": "T5",
+      "items": [
+        {
+          "chave": "item_01",
+          "numero": 1,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Distância entre o suporte o encostado da superficie deve ser entre 53mm e 47mm. / The distance between the support and the surface should be between 53mm and 47mm.",
+          "ilustracoes": [],
+          "indicadores": [
+            "Distância"
+          ]
+        },
+        {
+          "chave": "item_02",
+          "numero": 2,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image95.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_03",
+          "numero": 3,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image94.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_04",
+          "numero": 4,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image102.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_05",
+          "numero": 5,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_06",
+          "numero": 6,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image110.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_07",
+          "numero": 7,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_08",
+          "numero": 8,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97545",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_09",
+          "numero": 9,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97545",
+          "descricao": "Verificar torque aplicado em 4 parafusos M10 de fixação do suporte da plataforma, torque (40Nm). / Check the applied torque on 3 M10 bolts fastening the platform support, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_10",
+          "numero": 10,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97545",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_11",
+          "numero": 11,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97545",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image74.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_12",
+          "numero": 12,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar o torque aplicado em 2 parafusos M10 de fixação do guarda-corpo com a plataforma, torque (18Nm). / Check the applied torque on 2 M10 bolts fastening the guardrail to the platform, torque (18Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image83.png"
+          ],
+          "indicadores": [
+            "18Nm"
+          ]
+        },
+        {
+          "chave": "item_13",
+          "numero": 13,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.59670",
+          "descricao": "Verificar fixação do portão do guarda corpo com braçadeira de nylon. / Check the fixing of the guardeail gate with cable tie.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image92.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_14",
+          "numero": 14,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97887",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_15",
+          "numero": 15,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97887",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_16",
+          "numero": 16,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.93554",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_17",
+          "numero": 17,
+          "grupo": "CONJUNTO DA PLATAFORMA INFERIOR / LOWER PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_18",
+          "numero": 18,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Distância entre o suporte o encostado da superficie deve ser entre 53mm e 47mm. / The distance between the support and the surface should be between 53mm and 47mm.",
+          "ilustracoes": [],
+          "indicadores": [
+            "Distância"
+          ]
+        },
+        {
+          "chave": "item_19",
+          "numero": 19,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image106.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_20",
+          "numero": 20,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image105.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_21",
+          "numero": 21,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "10538498",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image102.png"
+          ],
+          "indicadores": [
+            "70~100Nm"
+          ]
+        },
+        {
+          "chave": "item_22",
+          "numero": 22,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_23",
+          "numero": 23,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência na montagem dos parafusos M16 de fixação do suporte da plataforma. / Check the mark of use adhesive thread lock medium and high strenght in assemble of support bracket of platform screws.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image110.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_24",
+          "numero": 24,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98749",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte da plataforma, torque (70~100Nm). / Check the applied torque on 3 M16 bolts fastening the platform support, torque (70~100Nm).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_25",
+          "numero": 25,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98152",
+          "descricao": "Verificar o torque aplicado em 2 parafuso M10 por junta de fixação entre os setores da plataforma, torque (40Nm). / Check the applied torque on 2 M10 bolt per joint fastening between the platform sectors, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image88.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_26",
+          "numero": 26,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98152",
+          "descricao": "Verificar torque aplicado em 4 parafusos M10 de fixação do suporte da plataforma, torque (40Nm). / Check the applied torque on 3 M10 bolts fastening the platform support, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_27",
+          "numero": 27,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98152",
+          "descricao": "Verificar desnível entre pisos da plataforma, não deve ser maior que 3mm. / Check the flat on walking surface, it should be not more than 3mm difference in elevation.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image103.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_28",
+          "numero": 28,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.93554",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da escotilha, torque (40Nm). / Check the applied torque on 2 M12 bolts fastening the hatch, torque (40Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image79.png"
+          ],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_29",
+          "numero": 29,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.93554",
+          "descricao": "Verificar montagem do posicionamento dos parafusos da escotilha. Conjunto dos fixadores sextavados e rosca abaulada é montado para parte interna na seção, parte interna da escotilha. / Check assembly of hatch bolt positioning. Hex and domed thread fasteners assembly is mounted to the inner part of the section, inner part of the hatch.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image78.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_30",
+          "numero": 30,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.98152",
+          "descricao": "Verificar se os setores da plataforma não estão tocando o costado do tramo. / Check that the sections of the platform are not touching the side of the section.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image103.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_31",
+          "numero": 31,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97887",
+          "descricao": "Verificar ângulo de abertura total da escotilha. Ângulo deve ser 95°. / Check angle of hatch opening. Angle must be 95°.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_32",
+          "numero": 32,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97734",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação da guia do suporte do cabo, torque (155Nm). / Check the applied torque on 2 M12 bolts fastening the bridge, torque (155Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_33",
+          "numero": 33,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.97734",
+          "descricao": "Verificar torque aplicado em 2 parafusos M10 de fixação da guia do suporte do cabo, torque (40Nm). / Check the applied torque on 2 M10 bolts fastening the bridge, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_34",
+          "numero": 34,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "60.10.83745",
+          "descricao": "Verificar medida do flange superior para parte inferior do piso da plataforma superior. Dimensão deve ser de 1700±5. / Check the measurement from the top flange to the underside of the upper platform deck. The dimension must be 1700 ± 5.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_35",
+          "numero": 35,
+          "grupo": "CONJUNTO DA PLATAFORMA SUPERIOR / TOP PLATFORM ASSEMBLY",
+          "numero_peca": "-",
+          "descricao": "Verificar marcação de torque nos fixadores do conjunto da plataforma / Check torque markings on deck assembly fasteners",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image75.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image76.jpeg",
+            "/qualidade-internos-mecanicos/ilustracoes/image77.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_36",
+          "numero": 36,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do conjunto da estrutura da escada, torque (35Nm). / Check the applied torque on 3 M16 bolts fastening the ladder structure assembly, torque (35Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image82.png"
+          ],
+          "indicadores": [
+            "35Nm"
+          ]
+        },
+        {
+          "chave": "item_37",
+          "numero": 37,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar torque aplicado em 3 parafusos M16 de fixação do suporte das legs da escada, torque (155Nm). / Check the applied torque on 3 M16 bolts fastening the ladder leg support, torque (155Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png"
+          ],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_38",
+          "numero": 38,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.69307",
+          "descricao": "Verificar marcação de uso do adesivo auto travante de média e alta resistência. / Check torque applied to M16 screws of fixing of ladder legs bracket, torque (155Nm). Check the mark of use adhesive thread lock medium and high strenght.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image81.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image87.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_39",
+          "numero": 39,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 6º degrau do 1º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 6th step of the first flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_40",
+          "numero": 40,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 2º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 7th step of the second flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_41",
+          "numero": 41,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 3º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 7th step of the third flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_42",
+          "numero": 42,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 7º degrau do 4º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 7th step of the forth flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_43",
+          "numero": 43,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem das plataformas de descanso no 4º degrau do 5º lance. Torque aplicado 65Nm. / Check the installation of the resting platforms on the 4th step of the fifith flight. Applied torque: 65 Nm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_44",
+          "numero": 44,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 2º degrau do primeiro lance. / Check installation of anchor point on the 2º step of the first ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_45",
+          "numero": 45,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 9º degrau do quinto lance. / Check installation of anchor point on the 9º step of the fifith ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_46",
+          "numero": 46,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 10º degrau do sexto lance. / Check installation of anchor point on the 10º step of the sixth ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_47",
+          "numero": 47,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar montagem do ponto de acoragem no 16º degrau do sexto lance. / Check installation of anchor point on the 16º step of the sixth ladder section.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_48",
+          "numero": 48,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância do começo da escada para o flange inferior. Distância deve ser 40mm. / Check start of the ladder to inferior flange. Distance must be 40mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_49",
+          "numero": 49,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006878",
+          "descricao": "Verificar distância entre as emendas das linhas de vida. Distância deve ser menor que 4mm / Check distance between the conection of fall protection rail. Distance must be less than 4mm.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_50",
+          "numero": 50,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "AT04006880",
+          "descricao": "Verificar montagem de end caps nas extremidade inferior e superior do lance de escada entre plataformas superior e inferior. / Check the assemble of end caps in lower and upper ends of ladder section between upper and lower platform.",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image90.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_51",
+          "numero": 51,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.97737",
+          "descricao": "Verificar torque aplicado em 2 parafusos M12 de fixação do suporte do cabo, torque (155Nm). / Check the applied torque on 2 M12 bolts fastening the cable support, torque (155Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "155Nm"
+          ]
+        },
+        {
+          "chave": "item_52",
+          "numero": 52,
+          "grupo": "CONJUNTO DA ESCADA / LADDER ASSEMBLY",
+          "numero_peca": "60.10.97737",
+          "descricao": "Verificar torque aplicado em 2 parafusos M10 de fixação do suporte do cabo, torque (40Nm). / Check the applied torque on 2 M10 bolts fastening the cable support, torque (40Nm).",
+          "ilustracoes": [],
+          "indicadores": [
+            "40Nm"
+          ]
+        },
+        {
+          "chave": "item_53",
+          "numero": 53,
+          "grupo": "MOBILE STEPS / MOBILE STEPS",
+          "numero_peca": "60.10.97863",
+          "descricao": "Componente mobile steps vai ser enviado em anexo. verificar item no anexo e condição da embalagem para envio. / Mobile steps component will be sent as an attachment. check item in the attachment and packaging condition for shipping.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_54",
+          "numero": 54,
+          "grupo": "VIGA DO ELEVADOR / LIFT BEAM",
+          "numero_peca": "60.10.83751",
+          "descricao": "Verificar torque aplicado em 2 parafusos M20 de fixação do suporte do elevador, torque (36Nm). / Check torque applied on 2 M20 screws of lift service bracket, torque (36Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image107.png"
+          ],
+          "indicadores": [
+            "36Nm"
+          ]
+        },
+        {
+          "chave": "item_55",
+          "numero": 55,
+          "grupo": "VIGA DO ELEVADOR / LIFT BEAM",
+          "numero_peca": "60.10.83751",
+          "descricao": "Verificar torque aplicado em 2 parafusos M16 de fixação do suporte do elevador, torque (210Nm). / Check torque applied on 2 M16 screws of lift service bracket, torque (210Nm).",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image108.png"
+          ],
+          "indicadores": [
+            "210Nm"
+          ]
+        },
+        {
+          "chave": "item_56",
+          "numero": 56,
+          "grupo": "VIGA DO ELEVADOR / LIFT BEAM",
+          "numero_peca": "60.10.83760",
+          "descricao": "Verificar dimensão do suporte do elevador. Dimensão deve ser 1300±1. / Check the lift bracket dimension. The dimension must be 1300 ± 1.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_57",
+          "numero": 57,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar a marcação da numeração dos flanges a cada 8 furos. / Check the flange numbering marking at every 8 holes.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_58",
+          "numero": 58,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar tipagem com o número do desenho (10458674-05). / Check the type using the drawing number (10458674-05).",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_59",
+          "numero": 59,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar montagem do Qrcode. / Check instalation of Qrcode.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_60",
+          "numero": 60,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "",
+          "descricao": "Verificar ovalização dos flanges antes da instalação das barras estabilizadoras. / Check flange ovality before assembly of the anti-deformation fixtures.",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_61",
+          "numero": 61,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "Verificar montagem das lonas (dois lados) do tramo. Flange Inferior e Flange Superior. / Check mounting of the tarpaulin (both sides) of the branch. Bottom Flange and Top Flange .",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image86.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_62",
+          "numero": 62,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_63",
+          "numero": 63,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_64",
+          "numero": 64,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [],
+          "indicadores": []
+        },
+        {
+          "chave": "item_65",
+          "numero": 65,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image98.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image99.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image100.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image101.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image109.png"
+          ],
+          "indicadores": []
+        },
+        {
+          "chave": "item_66",
+          "numero": 66,
+          "grupo": "GERAL / GENERAL",
+          "numero_peca": "-",
+          "descricao": "",
+          "ilustracoes": [
+            "/qualidade-internos-mecanicos/ilustracoes/image89.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image71.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image85.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image84.png",
+            "/qualidade-internos-mecanicos/ilustracoes/image72.png"
+          ],
+          "indicadores": []
+        }
+      ]
+    }
+  ]
+}

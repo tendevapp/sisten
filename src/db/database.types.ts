@@ -2832,6 +2832,85 @@ export type Database = {
         }
         Relationships: []
       }
+      rh_treinamentos: {
+        Row: {
+          atualizado_por: string | null
+          created_at: string
+          criado_por: string | null
+          data_eficacia: string | null
+          data_treinamento: string
+          dia_semana: string
+          excluido_em: string | null
+          excluido_por: string | null
+          id: string
+          realizado: boolean
+          semana: string
+          tipo_planejamento: string
+          tipo_treinamento: string
+          treinamento: string
+          turma_horario: string
+          updated_at: string
+        }
+        Insert: {
+          atualizado_por?: string | null
+          created_at?: string
+          criado_por?: string | null
+          data_eficacia?: string | null
+          data_treinamento: string
+          dia_semana?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          realizado?: boolean
+          semana?: string
+          tipo_planejamento?: string
+          tipo_treinamento?: string
+          treinamento: string
+          turma_horario?: string
+          updated_at?: string
+        }
+        Update: {
+          atualizado_por?: string | null
+          created_at?: string
+          criado_por?: string | null
+          data_eficacia?: string | null
+          data_treinamento?: string
+          dia_semana?: string
+          excluido_em?: string | null
+          excluido_por?: string | null
+          id?: string
+          realizado?: boolean
+          semana?: string
+          tipo_planejamento?: string
+          tipo_treinamento?: string
+          treinamento?: string
+          turma_horario?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rh_treinamentos_atualizado_por_fkey"
+            columns: ["atualizado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_treinamentos_criado_por_fkey"
+            columns: ["criado_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rh_treinamentos_excluido_por_fkey"
+            columns: ["excluido_por"]
+            isOneToOne: false
+            referencedRelation: "core_perfis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rh_pessoas: {
         Row: {
           area: string | null

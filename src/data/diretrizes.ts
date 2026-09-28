@@ -38,6 +38,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-28',
+    resumo: 'Suprimentos > Rastreio de Compras — Integração Direta de Dados da Sem MIGO e Coluna de Transportadora (`rastreio.ts`, `rastreio.test.ts`, `RastreioCompras.tsx`, `RastreioTable.tsx`, `RastreioDetailModal.tsx`, `diretrizes.ts`): 1. Eliminação da necessidade de preenchimento manual de previsão: removido o botão "Preencher previsão pela Bahia Sul" / "Atualizar previsão" no modal de detalhes (`RastreioDetailModal.tsx`), tornando a exibição dos dados da transportadora estritamente informativa; 2. Previsão e transportadora refletem diretamente o que já vem da tela Sem MIGO (`montarSemMigoDadosMap`): itens vinculados à Bahia Sul via CTe ou com dados preenchidos no diligenciamento têm sua transportadora, previsão e CTes integrados automaticamente no `RastreioRow`; 3. Adicionada coluna "Transportadora" na tabela de Rastreio de Compras (desktop e cards mobile), com suporte a ordenação, busca textual e exportação para Excel e PDF; 4. Adicionado campo "Transportadora" no grid de detalhes do item no modal (`RastreioDetailModal.tsx`).',
+  },
+  {
+    data: '2026-09-28',
+    resumo: 'Admin > Governança de Acessos, Novos Módulos e Gestão de Usuários (`pages.ts`, `pages.test.ts`, `PageAccessModal.tsx`, `BulkPageAccessModal.tsx`, `AdminPanel.tsx`, `AGENTS.md`, `diretrizes.ts`): 1. Cadastro de novos usuários: os módulos de Qualidade e SSMA deixam de ser liberados por padrão para usuários comuns/visualizadores (`defaultRoles: ["admin"]`); 2. Regra de Governança para novos módulos (AGENTS.md): novos módulos, páginas ou formulários no SISTEN nunca devem nascer com liberação universal (`*`), nascendo desmarcados por padrão com concessão granular pelo administrador via Gestão de Acessos; 3. Gestão de Acessos: adicionados botões no cabeçalho de cada módulo em `PageAccessModal.tsx` e `BulkPageAccessModal.tsx` para selecionar todos os itens, desmarcar todos os itens e restaurar o padrão do perfil com 1 clique; 4. Gestão de Usuários (`AdminPanel.tsx`): novo filtro rápido de "Novos" permitindo listar e ordenar colaboradores cadastrados recentemente (últimos 30 dias).',
+  },
+  {
     data: '2026-09-24',
     resumo: 'Suprimentos > Central de Compras — Filtro de Seleção Múltipla por Pedido de Compra (PO) (`Compras.tsx`, `diretrizes.ts`): 1. Implementado novo filtro de seleção múltipla padronizado (`MultiSelectFilter`) por número de Pedido de Compra (PO) na barra de ferramentas da Central de Compras (`Compras.tsx`), posicionado ao lado do filtro de RM; 2. O filtro indexa dinamicamente todos os números de PO disponíveis nos registros enriquecidos (`documento_compra` / `pedido`), com suporte a busca interna, ordenação alfanumérica e saneamento automático (`useSaneamento`); 3. Integração reativa com os demais filtros (RM, comprador, status, alertas, promessa e abas Todos / Sem MIGO / Contrato) e redefinição da paginação incremental de renderização (`visibleCount`); 4. Validação completa com suíte de testes unitários aprovada (1578 testes).',
   },
@@ -692,6 +700,10 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     data: '2026-08-19',
     resumo: 'Reportes de feedback (bugs e sugestões): disparo automático de notificações (in-app e Supabase) para todos os administradores ativos ao criar novo reporte, com deep link direto via context_key para a aba Reportes do AdminPanel (`/admin/feedback?id=...`).'
+  },
+  {
+    data: '2026-09-28',
+    resumo: 'Central de Compras (Sem MIGO, Compras e SapDetailModal): facilitação da cópia de números de PO e RM com botões dedicados de 1 clique, feedback visual ("Copiado!"), liberação de seleção de texto (select-text) e isolamento de eventos de clique (stopPropagation) para impedir abertura indesejada de modais ou colapso de acordeões.'
   },
   {
     data: '2026-08-19',

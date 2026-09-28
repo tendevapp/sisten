@@ -9,7 +9,7 @@ import {
   Calendar, CheckCircle2, Clock, AlertTriangle, ChevronRight,
   ExternalLink, Package, ArrowRight, ShieldCheck, MapPin,
   Scale, DollarSign, X, Edit2, Check, HelpCircle,
-  Calculator, TrendingUp, TrendingDown, Sparkles, PackageCheck
+  Calculator, TrendingUp, TrendingDown, Sparkles, PackageCheck, RotateCcw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { localDb } from '../../db/localDb';
@@ -83,6 +83,23 @@ export default function BahiaSulAnalyticsPanel({
   const [vinculoFilter, setVinculoFilter] = useState<'todos' | 'vinculado' | 'sem_vinculo'>('todos');
   const [migoFilter, setMigoFilter] = useState<'todos' | 'sem_migo' | 'com_migo'>('todos');
   const [auditoriaFilter, setAuditoriaFilter] = useState<'todos' | 'sobrepreco' | 'conforme' | 'desconto' | 'sem_rota'>('todos');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const hasActiveFilters = Boolean(
+    searchTerm.trim() ||
+    statusFilter !== 'todos' ||
+    vinculoFilter !== 'todos' ||
+    migoFilter !== 'todos' ||
+    auditoriaFilter !== 'todos'
+  );
+
+  const limparTodosFiltros = () => {
+    setSearchTerm('');
+    setStatusFilter('todos');
+    setVinculoFilter('todos');
+    setMigoFilter('todos');
+    setAuditoriaFilter('todos');
+  };
 
   // Manual PO linking edit
   const [editingPoChave, setEditingPoChave] = useState<string | null>(null);
@@ -94,6 +111,17 @@ export default function BahiaSulAnalyticsPanel({
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const loadData = async () => {
@@ -133,14 +161,24 @@ export default function BahiaSulAnalyticsPanel({
     return enriquecerEntregasComPedidos(entregas, pedidosSap, tabelaFreteList, requisicoesSap);
   }, [entregas, pedidosSap, tabelaFreteList, requisicoesSap]);
 
+  const normStr = (str: unknown): string => {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  };
+
   // Auxiliar para identificar quais itens do pedido bateram com o termo pesquisado
   const getMatchedItens = (item: BahiaSulEnriquecida, query: string): ItemPedidoBahiaSul[] => {
     if (!query.trim() || !item.itensPedido || item.itensPedido.length === 0) return [];
-    const q = query.toLowerCase().trim();
-    return item.itensPedido.filter(it =>
-      (it.material && it.material.toLowerCase().includes(q)) ||
-      (it.descricao && it.descricao.toLowerCase().includes(q))
-    );
+    const tokens = normStr(query).split(/\s+/).filter(Boolean);
+    return item.itensPedido.filter(it => {
+      const mat = normStr(it.material);
+      const desc = normStr(it.descricao);
+      return tokens.some(t => mat.includes(t) || desc.includes(t));
+    });
   };
 
   // Indicadores (KPIs)
@@ -246,26 +284,33 @@ export default function BahiaSulAnalyticsPanel({
         if (auditoriaFilter === 'sem_rota' && auditStatus !== 'sem_rota') return false;
       }
 
-      // Busca textual (CTe, Fornecedor, Cidade, NFs, Pedido SAP ou Itens do Pedido)
+      // Busca textual inteligente (CTe, Fornecedor, Cidade, NFs, Pedido SAP, itens, etc.)
       if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase().trim();
-        const matchesField =
-          (item.cto_numero || '').toLowerCase().includes(q) ||
-          (item.cto_filial || '').toLowerCase().includes(q) ||
-          (item.rmt_nome || '').toLowerCase().includes(q) ||
-          (item.rmt_cnpj || '').toLowerCase().includes(q) ||
-          (item.org_cidade || '').toLowerCase().includes(q) ||
-          (item.dst_cidade || '').toLowerCase().includes(q) ||
-          (item.nfs_embarcadas || '').toLowerCase().includes(q) ||
-          (item.nro_pedido || '').toLowerCase().includes(q) ||
-          (item.pedidoSap?.documento_compra || '').toLowerCase().includes(q);
+        const tokens = normStr(searchTerm).split(/\s+/).filter(Boolean);
+        const campos = [
+          item.cto_numero,
+          item.cto_filial,
+          item.cto_documento,
+          item.rmt_nome,
+          item.rmt_cnpj,
+          item.dst_nome,
+          item.dst_cnpj,
+          item.org_cidade,
+          item.dst_cidade,
+          item.nfs_embarcadas,
+          item.nro_pedido,
+          item.pedidoSap?.documento_compra,
+          item.pedidoSap?.fornecedor_name,
+          item.referencia,
+          item.obs_diversos,
+          item.chave_unica,
+        ].map(normStr).join(' ');
 
-        const matchesItem = (item.itensPedido || []).some(it =>
-          (it.material && it.material.toLowerCase().includes(q)) ||
-          (it.descricao && it.descricao.toLowerCase().includes(q))
-        );
+        const itensStr = (item.itensPedido || []).map(it => `${normStr(it.material)} ${normStr(it.descricao)}`).join(' ');
+        const textoCompleto = `${campos} ${itensStr}`;
 
-        if (!matchesField && !matchesItem) return false;
+        const matchTodosTokens = tokens.every(token => textoCompleto.includes(token));
+        if (!matchTodosTokens) return false;
       }
 
       return true;
@@ -630,65 +675,99 @@ export default function BahiaSulAnalyticsPanel({
       </div>
 
       {/* Barra de Filtros e Busca */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Input de Busca */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por CTe, Fornecedor, Cidade, NF, Pedido SAP ou Item (código/descrição)..."
-            className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+        {/* Linha Superior: Campo de Busca com Largura Total, Contador e Botão Limpar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Input de Busca */}
+          <div className="relative flex-1 min-w-[280px]">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por CTe, Fornecedor, Cidade, NF, Pedido SAP ou Item (código/descrição)..."
+              className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all shadow-2xs"
+            />
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                  title="Limpar pesquisa"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <span className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-slate-200/60 border border-slate-200 select-none" title="Pressione / para buscar">
+                /
+              </span>
+            </div>
+          </div>
+
+          {/* Contador de Resultados e Limpar Filtros */}
+          <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 text-xs">
+            <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 font-bold text-slate-700 border border-slate-200/80">
+              <span className="text-amber-600 font-black">{entregasFiltradas.length}</span>
+              <span className="text-slate-400 font-normal">de</span>
+              <span>{kpis.totalCte}</span>
+              <span className="text-slate-500 font-normal">fretes</span>
+            </span>
+
+            {hasActiveFilters && (
+              <button
+                onClick={limparTodosFiltros}
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 border border-slate-200/80 hover:border-rose-200 transition-all cursor-pointer shadow-2xs"
+                title="Redefinir busca e todos os filtros para o padrão"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Limpar filtros</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filtros de Status Operacional */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-            <Filter className="h-3.5 w-3.5" /> Status:
-          </span>
-          <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
-            <button
-              onClick={() => setStatusFilter('todos')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'todos' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Todos ({kpis.totalCte})
-            </button>
-            <button
-              onClick={() => setStatusFilter('TRANSITO')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'TRANSITO' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Em Trânsito ({kpis.emTransito})
-            </button>
-            <button
-              onClick={() => setStatusFilter('A ENTREGAR')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'A ENTREGAR' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              A Entregar ({kpis.aEntregar})
-            </button>
-            <button
-              onClick={() => setStatusFilter('ENTREGUE')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                statusFilter === 'ENTREGUE' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Entregue ({kpis.entregues})
-            </button>
+        {/* Linha Inferior: Grupos de Filtros Organizados e Fluidos */}
+        <div className="flex items-center gap-2.5 flex-wrap pt-3 border-t border-slate-100">
+          {/* Filtros de Status Operacional */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
+              <Filter className="h-3.5 w-3.5" /> Status:
+            </span>
+            <div className="flex items-center rounded-xl bg-slate-100 p-1 space-x-1">
+              <button
+                onClick={() => setStatusFilter('todos')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'todos' ? 'bg-white text-slate-800 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Todos ({kpis.totalCte})
+              </button>
+              <button
+                onClick={() => setStatusFilter('TRANSITO')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'TRANSITO' ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Em Trânsito ({kpis.emTransito})
+              </button>
+              <button
+                onClick={() => setStatusFilter('A ENTREGAR')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'A ENTREGAR' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                A Entregar ({kpis.aEntregar})
+              </button>
+              <button
+                onClick={() => setStatusFilter('ENTREGUE')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'ENTREGUE' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Entregue ({kpis.entregues})
+              </button>
+            </div>
           </div>
 
           {/* Filtro de Vínculo SAP */}

@@ -7,11 +7,13 @@
 // Mantida isolada da UI para facilitar leitura, reuso e testes futuros.
 
 import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { EnrichedSAPRecord, GrupoMercadoria, RastreioPrioridade } from '../types';
+import { BahiaSulEntrega, DiligenciamentoItem, EnrichedSAPRecord, GrupoMercadoria, RastreioPrioridade } from '../types';
 import { toDate, formatDateBR, formatDateTimeBR, formatBRL, yearOf } from './format';
 import { avaliarEntregaParcial, type EntregaParcial } from './entregaParcial';
 import { buscarVinculoSistenRm, type VinculoSistenRm } from './centralComprasSisten';
 import { desformatarObservacaoItemGenerico } from './solicitacoes';
+import { dataValida, TRANSPORTADORA_BAHIA_SUL } from './diligenciamento';
+import { normalizePoNumber, resumirBahiaSulPorPo } from './bahiasul';
 
 // Re-exportadas para quem já importa daqui (RastreioCompras, RastreioTable,
 // RastreioDetailModal): a formatação em si vive em `lib/format.ts`, fonte
@@ -110,9 +112,61 @@ export interface RastreioRow {
   statusReq: string;     // status_requisicao ('Sem PO' | 'Processado')
   observacoes: string;   // obs_comprador
   grupoComprador: string; // grupo_comprador (roteamento de notificações)
+  transportadora: string; // digitada pelo comprador na tela Sem MIGO ou 'Bahia Sul' vinculada via CTe
+  ctos?: string[];        // números de CTe vinculados (ex.: Bahia Sul)
   isGeneric?: boolean;    // se o item é genérico (vinculado a solicitação SISTEN com is_generic ou obs de item genérico)
   obsGenerica?: string;   // observação técnica do item genérico escrita pelo solicitante
   vinculoSisten?: VinculoSistenRm | null; // vínculo com a solicitação SISTEN que originou a RM
+}
+
+/**
+ * Informações consolidadas que já vêm da aba Sem MIGO (diligenciamento e entregas Bahia Sul).
+ */
+export interface SemMigoRowInfo {
+  transportadora?: string;
+  previsao?: string;
+  ctos?: string[];
+}
+
+/**
+ * Monta mapa indexado por `ri_po` com os dados que já vêm da tela Sem MIGO
+ * (transportadora digitada ou Bahia Sul, previsão de chegada do CTe ou manual, e lista de CTes).
+ */
+export function montarSemMigoDadosMap(
+  records: EnrichedSAPRecord[],
+  diligItens: DiligenciamentoItem[],
+  bahiaSulEntregas: BahiaSulEntrega[],
+): Map<string, SemMigoRowInfo> {
+  const mapa = new Map<string, SemMigoRowInfo>();
+  const diligPorRiPo = new Map<string, DiligenciamentoItem>();
+  for (const d of diligItens) {
+    if (d.ri_po) diligPorRiPo.set(d.ri_po, d);
+  }
+  const bahiaSulPorPo = resumirBahiaSulPorPo(bahiaSulEntregas);
+
+  for (const r of records) {
+    const ri = txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri;
+    const po = txt(r.documento_compra);
+    const riPo = r.ri_po || `${ri}-${po !== EMPTY ? po.trim() : 'SEM-PO'}`;
+
+    const dilig = diligPorRiPo.get(riPo);
+    const bs = po !== EMPTY ? bahiaSulPorPo.get(normalizePoNumber(po)) : null;
+
+    const transportadoraDigitada = (dilig?.transportadora || '').trim();
+    const transportadora = transportadoraDigitada || (bs ? TRANSPORTADORA_BAHIA_SUL : '');
+
+    const previsaoManual = dilig?.previsao_manual && dataValida(dilig.previsao_manual) ? dilig.previsao_manual : '';
+    const previsaoBahiaSul = (bs?.previsaoChegada && dataValida(bs.previsaoChegada) ? bs.previsaoChegada : '') ||
+                             (bs?.dataChegadaFisica && dataValida(bs.dataChegadaFisica) ? bs.dataChegadaFisica : '');
+    const previsao = previsaoManual || previsaoBahiaSul || '';
+
+    const ctos = bs?.ctos?.filter(Boolean) || [];
+
+    if (transportadora || previsao || ctos.length > 0) {
+      mapa.set(riPo, { transportadora, previsao, ctos });
+    }
+  }
+  return mapa;
 }
 
 export type DeliveryStatus = 'entregue' | 'no_prazo' | 'atrasado' | 'sem_data';
@@ -187,6 +241,9 @@ export const parseDate = (d?: string): Date | null => {
 export function buildRastreioRows(
   records: EnrichedSAPRecord[],
   vinculos?: Map<string, VinculoSistenRm>,
+  // Dados de diligenciamento que já vêm da tela Sem MIGO (transportadora e previsão do CTe Bahia Sul / manual),
+  // chaveados por `ri_po`. Também aceita Map<string, string> legado para compatibilidade.
+  semMigoPorRiPo?: Map<string, string | SemMigoRowInfo>,
 ): RastreioRow[] {
   return records
     .filter(r => {
@@ -197,6 +254,7 @@ export function buildRastreioRows(
       const raw = r as any;
       const ri = txt(r.ri) === EMPTY ? `${r.requisicao_de_compra}-${r.item_reqc}` : r.ri;
       const rm = txt(r.requisicao_de_compra);
+      const riPo = r.ri_po || `${ri}-${txt(r.documento_compra) !== EMPTY ? String(r.documento_compra).trim() : 'SEM-PO'}`;
       const material = txt(r.material_code);
       const vinculo = vinculos ? buscarVinculoSistenRm(vinculos, rm, material) : null;
       const isGeneric = Boolean(
@@ -210,8 +268,22 @@ export function buildRastreioRows(
         ? (desformatarObservacaoItemGenerico(vinculo?.item?.observation) || raw.obs_generica || raw.obsGenerica || undefined)
         : undefined;
 
+      const semMigoVal = semMigoPorRiPo?.get(riPo);
+      const semMigoInfo: SemMigoRowInfo = typeof semMigoVal === 'string'
+        ? { transportadora: semMigoVal }
+        : (semMigoVal || {});
+
+      const transportadora = semMigoInfo.transportadora?.trim() || '';
+      const previsaoSemMigo = semMigoInfo.previsao?.trim() || '';
+      const ctos = semMigoInfo.ctos || [];
+
+      // Previsão de entrega: se há data confirmada no SAP pelo comprador, ela prevalece;
+      // senão, reflete os dados que já vêm da tela Sem MIGO (manual ou CTe da transportadora).
+      const dataPrevistaConfirmada = txt(r.data_entrega_confirmada);
+      const dataPrevista = hasValue(dataPrevistaConfirmada) ? dataPrevistaConfirmada : (previsaoSemMigo || EMPTY);
+
       return {
-        riPo: r.ri_po || `${ri}-${txt(r.documento_compra) !== EMPTY ? String(r.documento_compra).trim() : 'SEM-PO'}`,
+        riPo,
         ri,
         rm,
         item: txt(r.item_reqc),
@@ -232,12 +304,7 @@ export function buildRastreioRows(
         valorTotal: typeof r.valor_total === 'number' ? r.valor_total : undefined,
         dataCriacao: txt(r.data_solicitacao) !== EMPTY ? txt(r.data_solicitacao) : txt(raw.data_solicitacao),
         dataPo: txt(r.data_pedido),
-        // Data prevista = a promessa de entrega CONFIRMADA pelo comprador na
-        // Central de Compras (data_entrega_confirmada). Enquanto ele não clica em
-        // "Confirmar data", o valor de trabalho (data_entrega_prevista, muitas
-        // vezes só a estimativa da remessa do PO) NÃO aparece aqui. Também não
-        // usa data_entrega_sap como fallback: é a remessa do SAP, não a promessa.
-        dataPrevista: txt(r.data_entrega_confirmada),
+        dataPrevista,
         dataEntrega: txt(r.data_migo),
         // Regra de negócio: se há data de entrega (MIGO), o status é "Entregue",
         // independentemente do item_status registrado.
@@ -247,6 +314,8 @@ export function buildRastreioRows(
         statusReq: txt(r.status_requisicao),
         observacoes: txt(r.obs_comprador),
         grupoComprador: txt(r.grupo_comprador) === EMPTY ? '' : txt(r.grupo_comprador),
+        transportadora,
+        ctos,
         isGeneric,
         obsGenerica,
         vinculoSisten: vinculo,
@@ -313,6 +382,7 @@ export function filterRegistros(rows: RastreioRow[], f: RastreioFilters): Rastre
         r.material.toLowerCase().includes(q) ||
         r.fornecedor.toLowerCase().includes(q) ||
         r.setor.toLowerCase().includes(q) ||
+        r.transportadora.toLowerCase().includes(q) ||
         (!!r.obsGenerica && r.obsGenerica.toLowerCase().includes(q)) ||
         (!!r.isGeneric && (q === 'generico' || q === 'genérico' || q === 'ig' || 'item genérico'.includes(q) || 'item generico'.includes(q)));
       if (!hit) return false;

@@ -49,6 +49,18 @@ Módulos legados com variações próprias (`SUP-DDMMAA-NN`, `ASE-DDMMAA-SETOR`,
 protocolos de portaria com sufixo aleatório) **ficam como estão**: o código já
 está impresso em registro de produção e renumerar quebraria o histórico.
 
+## 3. Novos módulos: sem liberação padrão geral (nascem desmarcados)
+
+Todo novo módulo, página ou formulário criado no SISTEN **NUNCA** deve nascer
+liberado universalmente (`defaultRoles: '*'`).
+
+- Novos módulos devem nascer desmarcados para o público geral (usar `defaultRoles: ['admin']`
+  ou `defaultRoles: []`).
+- O acesso a novos módulos deve ser concedido de forma granular pelo administrador através
+  da **Gestão de Acessos** (`profiles.page_access`) ou atribuído a papéis/setores específicos.
+- Princípio do menor privilégio: um colaborador recém-cadastrado só acessa o essencial
+  (Início, Solicitações básicas), sem expor novos módulos operacionais automaticamente.
+
 ## Verificação antes de entregar
 
 ```bash

@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ClipboardCheck, ArrowRight, Target, AlertTriangle } from 'lucide-react';
+import { ClipboardCheck, ArrowRight, Target, AlertTriangle, Camera } from 'lucide-react';
 import type { Profile, QuaRncMetricas } from '../../types';
 import { obterMetricasRnc } from '../../lib/qualidadeApi';
 
@@ -36,6 +36,28 @@ export default function QualidadeHub({ onNavigate }: QualidadeHubProps) {
       badge: `${metricas?.total ?? 0} registradas`,
       badgeCor: 'bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border-rose-200 dark:border-rose-800',
       path: '/qualidade/rnc',
+    },
+    {
+      id: 'checklist-expedicao',
+      codigo: 'FRM.QUA-0030',
+      title: 'Checklist de Expedição',
+      desc: 'Checklist fotográfico de tramos para expedição, validação com assinaturas e relatório oficial em PDF.',
+      icon: Camera,
+      cor: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400',
+      badge: 'Novo formulário',
+      badgeCor: 'bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+      path: '/qualidade/expedicao',
+    },
+    {
+      id: 'checklist-internos-mecanicos',
+      codigo: 'FRM.ENG-0240',
+      title: 'Checklist de Internos Mecânicos',
+      desc: 'Inspeção dos conjuntos mecânicos por modelo, com ilustrações de referência, fotos de campo, assinaturas e PDF.',
+      icon: ClipboardCheck,
+      cor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400',
+      badge: '7 formulários',
+      badgeCor: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+      path: '/qualidade/internos-mecanicos',
     },
   ];
 
