@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, CircleCheck, ClipboardList, FileText, Loader2, RefreshCw, Save, Truck } from 'lucide-react';
 import type { Profile } from '../../types';
 import { ordenarPlanoExpedicao, resumirPlanoExpedicao, type StatusPlanoExpedicao } from '../../lib/producao';
@@ -82,6 +82,7 @@ function CartaoIndicador({ valor, legenda, detalhe, cor = 'blue' }: { valor: str
 export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo = 'relatorio' }: { user: Profile; onNavigate: (path: string) => void; modo?: ModoPlano }) {
   const toast = useToast();
   const [linhas, setLinhas] = useState<PlanoExpedicaoProducao[]>([]);
+  const linhasSalvasRef = useRef<Map<string, PlanoExpedicaoProducao>>(new Map());
   const [semanaRelatorio, setSemanaRelatorio] = useState(39);
   const [torresSelecionadas, setTorresSelecionadas] = useState<number[]>([4, 5]);
   const [semanaDados, setSemanaDados] = useState('todas');
@@ -96,6 +97,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
     try {
       const plano = ordenarPlanoExpedicao(await listarPlanoExpedicao());
       setLinhas(plano);
+      linhasSalvasRef.current = new Map(plano.map(item => [item.id, { ...item }]));
       if (!plano.some(linha => linha.semana === 39)) setSemanaRelatorio(plano[0]?.semana ?? 39);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível carregar o plano de expedição.');
@@ -145,26 +147,47 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
     return [...grupos.entries()];
   }, [linhasDados]);
 
-  const salvar = async (linha: PlanoExpedicaoProducao, campos: Partial<PlanoExpedicaoProducao>) => {
-    if (Object.entries(campos).every(([campo, valor]) => linha[campo as keyof PlanoExpedicaoProducao] === valor)) return;
-    setSalvando(linha.id);
+  const normalizarValorCampo = (campo: string, valor: unknown) => {
+    if ((campo === 'data_carregamento' || campo === 'data_expedicao') && typeof valor === 'string') {
+      return valor.slice(0, 10);
+    }
+    return valor ?? null;
+  };
+
+  const salvar = async (id: string, campos: Partial<PlanoExpedicaoProducao>) => {
+    const salva = linhasSalvasRef.current.get(id);
+    if (salva) {
+      const semAlteracao = Object.entries(campos).every(([campo, valor]) => {
+        const valorSalvo = normalizarValorCampo(campo, salva[campo as keyof PlanoExpedicaoProducao]);
+        const valorNovo = normalizarValorCampo(campo, valor);
+        return valorSalvo === valorNovo;
+      });
+      if (semAlteracao) return;
+    }
+    setSalvando(id);
     try {
-      const atualizada = await atualizarPlanoExpedicao(linha.id, campos);
+      const atualizada = await atualizarPlanoExpedicao(id, campos);
+      linhasSalvasRef.current.set(id, { ...atualizada });
       setLinhas(atuais => ordenarPlanoExpedicao(atuais.map(item => item.id === atualizada.id ? atualizada : item)));
     } catch (e) {
+      if (salva) {
+        setLinhas(atuais => atuais.map(item => item.id === id ? { ...salva } : item));
+      }
       toast.error(e instanceof Error ? e.message : 'Não foi possível salvar a alteração.');
     } finally { setSalvando(null); }
   };
 
-  const marcarNfFaturamento = (linha: PlanoExpedicaoProducao, valor: boolean) => void salvar(linha, {
-    nf_faturamento_emitida: valor,
-    status: valor ? 'faturado' : 'a_faturar',
-  });
-  const mudarStatus = (linha: PlanoExpedicaoProducao, status: StatusPlanoExpedicao) => void salvar(linha, {
+  const mudarStatus = (linha: PlanoExpedicaoProducao, status: StatusPlanoExpedicao) => void salvar(linha.id, {
     status,
-    nf_faturamento_emitida: status !== 'a_faturar',
-    nf_expedicao_emitida: status === 'expedido',
   });
+
+  const alterarData = (linhaId: string, campo: 'data_carregamento' | 'data_expedicao', valorBruto: string) => {
+    const valor = valorBruto ? valorBruto.slice(0, 10) : null;
+    setLinhas(atuais => atuais.map(item => item.id === linhaId ? { ...item, [campo]: valor } : item));
+    if (!valor || valor.length === 10) {
+      void salvar(linhaId, { [campo]: valor });
+    }
+  };
 
   const tituloTorres = torresSelecionadas.length ? `TORRES ${torresSelecionadas.join(' E ')}` : 'TODAS AS TORRES';
 
@@ -196,7 +219,7 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_245px]">
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800"><h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">PROGRAMAÇÃO DE EXPEDIÇÃO · W{semanaRelatorio} · {tituloTorres}</h2></div>
-              <div className="overflow-x-auto"><table className="min-w-[650px] w-full table-fixed text-left text-sm"><colgroup><col className="w-[11%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[15%]" /></colgroup><thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"><tr><th className="px-2 py-2.5">Torre</th><th className="px-2 py-2.5">Tramo</th><th className="px-2 py-2.5">ID</th><th className="px-2 py-2.5 text-center">NF Fat.</th><th className="px-2 py-2.5 text-center">NF-GW</th><th className="px-2 py-2.5 text-center">NF Exp.</th><th className="px-2 py-2.5">Carregamento</th><th className="px-2 py-2.5">Expedição</th><th className="px-2 py-2.5">Status</th></tr></thead><tbody>{porTorre.map(([torre, itens], indiceTorre) => itens.map((linha, indice) => <tr key={linha.id} className={`border-t border-slate-200 dark:border-slate-800 ${indice === 0 && indiceTorre > 0 ? 'border-t-2 border-t-slate-400 dark:border-t-slate-600' : ''} ${linha.status === 'expedido' ? 'bg-emerald-100/85 dark:bg-emerald-950/35' : linha.status === 'faturado' ? 'bg-blue-100/75 dark:bg-blue-950/35' : 'bg-slate-100/90 dark:bg-slate-800/80'}`}><td className="truncate px-2 py-2.5 font-bold text-slate-800 dark:text-slate-100">{indice === 0 ? `Torre ${torre}` : ''}</td><td className="px-2 py-2.5 font-semibold">{linha.tramo}</td><td className="px-2 py-2.5">{linha.identificador ?? '—'}</td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_faturamento_emitida} label="NF de faturamento" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_gw_emitida} label="NF GW" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_expedicao_emitida} label="NF de expedição" /></td><td className="whitespace-nowrap px-2 py-2.5">{formatarData(linha.data_carregamento)}</td><td className="whitespace-nowrap px-2 py-2.5 font-semibold">{formatarData(linha.data_expedicao)}</td><td className="px-2 py-2.5"><span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${STATUS[linha.status].classe}`}>{STATUS[linha.status].label}</span></td></tr>))}</tbody></table></div>
+              <div className="overflow-auto max-h-[70vh]"><table className="min-w-[650px] w-full table-fixed border-separate border-spacing-0 text-left text-sm"><colgroup><col className="w-[11%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[15%]" /></colgroup><thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-600 shadow-xs dark:bg-slate-800 dark:text-slate-300"><tr><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">Torre</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">Tramo</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">ID</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-center dark:border-slate-700 dark:bg-slate-800">NF Fat.</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-center dark:border-slate-700 dark:bg-slate-800">NF-GW</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 text-center dark:border-slate-700 dark:bg-slate-800">NF Exp.</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">Carregamento</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">Expedição</th><th className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2.5 dark:border-slate-700 dark:bg-slate-800">Status</th></tr></thead><tbody>{porTorre.map(([torre, itens], indiceTorre) => itens.map((linha, indice) => <tr key={linha.id} className={`[&>td]:border-b [&>td]:border-slate-200 dark:[&>td]:border-slate-800 ${indice === 0 && indiceTorre > 0 ? '[&>td]:border-t-2 [&>td]:border-t-slate-400 dark:[&>td]:border-t-slate-600' : ''} ${linha.status === 'expedido' ? 'bg-emerald-100/85 dark:bg-emerald-950/35' : linha.status === 'faturado' ? 'bg-blue-100/75 dark:bg-blue-950/35' : 'bg-slate-100/90 dark:bg-slate-800/80'}`}><td className="truncate px-2 py-2.5 font-bold text-slate-800 dark:text-slate-100">{indice === 0 ? `Torre ${torre}` : ''}</td><td className="px-2 py-2.5 font-semibold">{linha.tramo}</td><td className="px-2 py-2.5">{linha.identificador ?? '—'}</td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_faturamento_emitida} label="NF de faturamento" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_gw_emitida} label="NF GW" /></td><td className="px-2 py-2.5"><Marcador marcado={linha.nf_expedicao_emitida} label="NF de expedição" /></td><td className="whitespace-nowrap px-2 py-2.5">{formatarData(linha.data_carregamento)}</td><td className="whitespace-nowrap px-2 py-2.5 font-semibold">{formatarData(linha.data_expedicao)}</td><td className="px-2 py-2.5"><span className={`inline-flex rounded-md px-2 py-1 text-xs font-bold ${STATUS[linha.status].classe}`}>{STATUS[linha.status].label}</span></td></tr>))}</tbody></table></div>
               {!relatorio.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum tramo encontrado para esse filtro.</p>}
             </section>
             <aside className="rounded-xl bg-[#0b70bb] p-5 text-white shadow-sm">
@@ -212,16 +235,16 @@ export default function ProducaoPlanoExpedicao({ user: _user, onNavigate, modo =
             <label className="grid min-w-52 flex-1 gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300"><span>Buscar torre, tramo, ID ou observação</span><input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Ex.: Torre 4, T3 ou 3195" className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" /></label>
             <p className="pb-2 text-xs text-slate-500">{linhasDados.length} de {linhas.length} tramos</p>
           </section>
-          <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <table className="min-w-[1190px] w-full border-collapse text-left text-xs"><thead className="bg-[#173d6c] text-[10px] font-bold uppercase tracking-wide text-white"><tr><th className="w-8 p-2" aria-label="Mês" /><th className="p-2.5">Week</th><th className="p-2.5">Torre</th><th className="p-2.5">Tramo</th><th className="p-2.5">ID</th><th className="p-2.5 text-center">NF Fat.</th><th className="p-2.5 text-center">NF-GW</th><th className="p-2.5 text-center">NF Exp.</th><th className="p-2.5">Carregamento</th><th className="p-2.5">Expedição</th><th className="p-2.5">Status</th><th className="p-2.5">Observação</th><th className="p-2.5" aria-label="Salvamento" /></tr></thead><tbody>{mesesDados.map(([mes, itens]) => itens.map((linha, indice) => { const bloqueada = salvando === linha.id; const inicioSemana = indice > 0 && itens[indice - 1].semana !== linha.semana; return <tr key={linha.id} className={`border-t border-slate-200 transition-colors hover:bg-blue-50/50 dark:border-slate-800 dark:hover:bg-blue-950/10 ${inicioSemana ? 'border-t-2 border-t-[#173d6c]' : ''} ${linha.status === 'expedido' ? 'bg-emerald-50/70 dark:bg-emerald-950/20' : inicioSemana || indice % 2 === 0 ? 'bg-slate-50/80 dark:bg-slate-900' : ''}`}>
-              {indice === 0 && <td rowSpan={itens.length} className="border-r border-slate-300 bg-slate-100 p-1 text-center align-middle text-[10px] font-bold tracking-wider text-slate-700 [writing-mode:vertical-rl] [transform:rotate(180deg)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">{mes}</td>}
+          <section className="max-h-[calc(100vh-230px)] min-h-[420px] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <table className="min-w-[1190px] w-full border-separate border-spacing-0 text-left text-xs"><thead className="sticky top-0 z-20 shadow-xs"><tr className="bg-[#173d6c] text-[10px] font-bold uppercase tracking-wide text-white"><th className="sticky top-0 z-20 w-8 border-b border-[#0f2c4f] bg-[#173d6c] p-2" aria-label="Mês" /><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Week</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Torre</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Tramo</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">ID</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF Fat.</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF-GW</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5 text-center">NF Exp.</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Carregamento</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Expedição</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Status</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5">Observação</th><th className="sticky top-0 z-20 border-b border-[#0f2c4f] bg-[#173d6c] p-2.5" aria-label="Salvamento" /></tr></thead><tbody>{mesesDados.map(([mes, itens]) => itens.map((linha, indice) => { const bloqueada = salvando === linha.id; const inicioSemana = indice > 0 && itens[indice - 1].semana !== linha.semana; return <tr key={linha.id} className={`transition-colors hover:bg-blue-50/50 dark:hover:bg-blue-950/10 [&>td]:border-b [&>td]:border-slate-200 dark:[&>td]:border-slate-800 ${inicioSemana ? '[&>td]:border-t-2 [&>td]:border-t-[#173d6c]' : ''} ${linha.status === 'expedido' ? 'bg-emerald-50/70 dark:bg-emerald-950/20' : inicioSemana || indice % 2 === 0 ? 'bg-slate-50/80 dark:bg-slate-900' : 'bg-white dark:bg-slate-900'}`}>
+              {indice === 0 && <td rowSpan={itens.length} className="border-b border-r border-slate-300 bg-slate-100 p-1 text-center align-middle text-[10px] font-bold tracking-wider text-slate-700 [writing-mode:vertical-rl] [transform:rotate(180deg)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">{mes}</td>}
               <td className="p-2.5 font-bold text-[#173d6c] dark:text-blue-300">W{linha.semana}</td><td className="p-2.5 font-semibold">{linha.torre_numero}</td><td className="p-2.5 font-semibold">{linha.tramo}</td>
-              <td className="p-1"><input aria-label={`ID da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.identificador ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, identificador: e.target.value ? Number(e.target.value) : null } : item))} onBlur={e => void salvar(linha, { identificador: e.target.value ? Number(e.target.value) : null })} inputMode="numeric" className="w-16 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
-              <td className="p-2.5"><BotaoNf checked={linha.nf_faturamento_emitida} disabled={bloqueada} label="NF de faturamento emitida: altera o status para Faturado" onChange={valor => marcarNfFaturamento(linha, valor)} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_gw_emitida} disabled={bloqueada} label="NF GW emitida" onChange={valor => void salvar(linha, { nf_gw_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_expedicao_emitida} disabled={bloqueada} label="NF de expedição emitida" onChange={valor => void salvar(linha, { nf_expedicao_emitida: valor, status: valor ? 'expedido' : linha.nf_faturamento_emitida ? 'faturado' : 'a_faturar' })} /></td>
-              <td className="p-1"><input aria-label={`Data de carregamento da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_carregamento)} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, data_carregamento: e.target.value || null } : item))} onBlur={e => void salvar(linha, { data_carregamento: e.target.value || null })} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
-              <td className="p-1"><input aria-label={`Data de expedição da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_expedicao)} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, data_expedicao: e.target.value || null } : item))} onBlur={e => void salvar(linha, { data_expedicao: e.target.value || null })} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-1"><input aria-label={`ID da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.identificador ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, identificador: e.target.value ? Number(e.target.value) : null } : item))} onBlur={e => void salvar(linha.id, { identificador: e.target.value ? Number(e.target.value) : null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} inputMode="numeric" className="w-16 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-2.5"><BotaoNf checked={linha.nf_faturamento_emitida} disabled={bloqueada} label="NF de faturamento emitida" onChange={valor => void salvar(linha.id, { nf_faturamento_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_gw_emitida} disabled={bloqueada} label="NF GW emitida" onChange={valor => void salvar(linha.id, { nf_gw_emitida: valor })} /></td><td className="p-2.5"><BotaoNf checked={linha.nf_expedicao_emitida} disabled={bloqueada} label="NF de expedição emitida" onChange={valor => void salvar(linha.id, { nf_expedicao_emitida: valor })} /></td>
+              <td className="p-1"><input aria-label={`Data de carregamento da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_carregamento)} onChange={e => alterarData(linha.id, 'data_carregamento', e.target.value)} onBlur={e => alterarData(linha.id, 'data_carregamento', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-1"><input aria-label={`Data de expedição da torre ${linha.torre_numero} ${linha.tramo}`} type="date" value={dataParaInput(linha.data_expedicao)} onChange={e => alterarData(linha.id, 'data_expedicao', e.target.value)} onBlur={e => alterarData(linha.id, 'data_expedicao', e.target.value)} className="rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-1"><select aria-label={`Status da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.status} disabled={bloqueada} onChange={e => mudarStatus(linha, e.target.value as StatusPlanoExpedicao)} className={`h-8 rounded-md border border-transparent px-2 text-xs font-bold focus:border-blue-500 focus:outline-none ${STATUS[linha.status].classe}`}><option value="a_faturar">A faturar</option><option value="faturado">Faturado</option><option value="expedido">Expedido</option></select></td>
-              <td className="p-1"><input aria-label={`Observação da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.observacao ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, observacao: e.target.value || null } : item))} onBlur={e => void salvar(linha, { observacao: e.target.value || null })} className="w-44 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
+              <td className="p-1"><input aria-label={`Observação da torre ${linha.torre_numero} ${linha.tramo}`} value={linha.observacao ?? ''} onChange={e => setLinhas(atuais => atuais.map(item => item.id === linha.id ? { ...item, observacao: e.target.value || null } : item))} onBlur={e => void salvar(linha.id, { observacao: e.target.value || null })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} className="w-44 rounded border border-transparent bg-transparent px-1 py-1.5 hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:outline-none dark:focus:bg-slate-950" /></td>
               <td className="p-2 text-slate-400">{bloqueada ? <Save className="h-4 w-4 animate-pulse text-blue-600" /> : <ChevronRight className="h-4 w-4" />}</td>
             </tr>; }))}</tbody></table>
             {!linhasDados.length && <p className="p-8 text-center text-sm text-slate-500">Nenhum tramo encontrado para esse filtro.</p>}
