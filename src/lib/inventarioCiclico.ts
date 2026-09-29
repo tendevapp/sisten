@@ -337,3 +337,22 @@ export function coberturaInventario(
   const total = chaves.size;
   return { total, inventariados, pct: total > 0 ? (inventariados / total) * 100 : 0 };
 }
+
+/**
+ * Indica se um usuário tem permissão para excluir um inventário cíclico:
+ * - Administradores (`admin`) podem excluir qualquer inventário cíclico criado (mesmo com contagens ou concluído).
+ * - O autor do inventário pode excluir apenas enquanto nenhum item tiver contagem registrada.
+ */
+export function podeExcluirInventario(
+  user: { id: string; roles?: readonly string[] | null } | null | undefined,
+  inv: { criado_por_id?: string | null; itens?: readonly { contagens?: readonly unknown[] }[] } | null | undefined,
+): boolean {
+  if (!user) return false;
+  if (user.roles?.includes('admin')) return true;
+  if (!inv) return false;
+  const dono = inv.criado_por_id != null && inv.criado_por_id === user.id;
+  if (!dono) return false;
+  const algumContado = inv.itens?.some((i) => (i.contagens?.length ?? 0) > 0) ?? false;
+  return !algumContado;
+}
+

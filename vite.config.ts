@@ -48,6 +48,21 @@ export default defineConfig(() => {
                 expiration: { maxEntries: 5 },
               },
             },
+            // Checklist de Internos Mecânicos preenchido sem sinal (Qualidade
+            // offline, ver lib/qualidadeOffline.ts): o catálogo de modelos e
+            // as ilustrações dos itens ficam fora do precache (PNG, ~1,6 MB,
+            // só interessa a quem usa o checklist) e entram aqui na primeira
+            // visita — `prepararIlustracoesOffline` baixa todas de uma vez.
+            {
+              urlPattern: ({ url }) => url.pathname === '/qualidade-internos-mecanicos/modelos.json',
+              handler: 'NetworkFirst',
+              options: { cacheName: 'sisten-qualidade-catalogo', networkTimeoutSeconds: 4, expiration: { maxEntries: 2 } },
+            },
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/qualidade-internos-mecanicos/') || url.pathname.startsWith('/qualidade/'),
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'sisten-qualidade-ilustracoes', expiration: { maxEntries: 1000 } },
+            },
           ],
         },
       }),

@@ -7,7 +7,7 @@
 
 import { PDFDocument, PDFImage, PDFPage } from 'pdf-lib';
 import type { QuaChecklistExpedicao, QuaChecklistResposta } from '../../types';
-import { CHECKLIST_ITENS, CHECKLIST_OBSERVACOES, CHECKLIST_PAPEIS } from '../qualidadeChecklistExpedicao';
+import { CHECKLIST_ITENS, CHECKLIST_OBSERVACOES, CHECKLIST_PAPEIS, urlImagemNaoAplicavel } from '../qualidadeChecklistExpedicao';
 import { separarBilingue } from '../textoBilingue';
 import {
   BLACK, GREEN, HEAD_BG, MUTED, PH, PW, RED,
@@ -55,13 +55,15 @@ function desenharTopo(page: PDFPage, f: Fontes, logo: PDFImage | null, checklist
     ['Data de Expedição', 'Shipping Date', fmtData(checklist.data_expedicao)],
     ['Site', 'Site', checklist.site],
     ['Inspetor de Qualidade', 'Quality Inspector', checklist.inspetor_qualidade],
-    ['Nº Etiqueta Seção', 'Section Number TAG', checklist.etiqueta_secao],
   ];
-  const largura = W / 4;
+  // 4 campos na primeira linha, 3 (mais largos) na segunda.
+  const porLinha = [4, 3];
   const h = 27;
   campos.forEach(([pt, en, valor], indice) => {
-    const x = M + (indice % 4) * largura;
-    const y = topo + Math.floor(indice / 4) * h;
+    const linha = indice < porLinha[0] ? 0 : 1;
+    const largura = W / porLinha[linha];
+    const x = M + (linha ? indice - porLinha[0] : indice) * largura;
+    const y = topo + linha * h;
     retangulo(page, x, y, largura, h);
     textoMisto(page, f, [[`${pt} / `, f.bold], [en, f.italic]], x, largura, y + 9, 6.2);
     celula(page, f, [{ text: valor || '-', font: f.bold, size: 8.5 }], x, y + 11, largura, h - 11, { pad: 2 });
@@ -152,9 +154,15 @@ async function montarDocumento(checklist: QuaChecklistExpedicao): Promise<PDFDoc
   const f = await carregarFontes(doc);
   const carregar = criarCarregadorImagens(doc);
   const logo = await carregar('/logo-adm.png');
-  const fotosDe = async (chave: string) =>
-    (await Promise.all(checklist.fotos.filter(foto => foto.item_chave === chave && foto.preview_url).slice(0, 4).map(foto => carregar(foto.preview_url))))
+  // N/A: a imagem "Not Available" ocupa o lugar da foto do item.
+  const respostaDe = (chave: string) => checklist.respostas?.[chave] ?? checklist.observacoes?.[chave]?.resposta;
+  const naoAplicaveis = new Set<string>([...CHECKLIST_ITENS, ...CHECKLIST_OBSERVACOES].map(item => item.chave).filter(chave => respostaDe(chave) === 'NA'));
+  const imagemNa = naoAplicaveis.size ? await carregar(await urlImagemNaoAplicavel()) : null;
+  const fotosDe = async (chave: string) => {
+    if (naoAplicaveis.has(chave)) return imagemNa ? [imagemNa] : [];
+    return (await Promise.all(checklist.fotos.filter(foto => foto.item_chave === chave && foto.preview_url).slice(0, 4).map(foto => carregar(foto.preview_url))))
       .filter((img): img is PDFImage => !!img);
+  };
 
   let page = doc.addPage([PW, PH]);
   let topo = desenharTopo(page, f, logo, checklist);
@@ -199,7 +207,7 @@ async function montarDocumento(checklist: QuaChecklistExpedicao): Promise<PDFDoc
   await desenharValidacao(page, doc, f, checklist, topo);
 
   // Registro fotográfico ampliado (na tabela a foto cabe só na coluna Imagem).
-  const fotos = checklist.fotos.filter(foto => foto.preview_url);
+  const fotos = checklist.fotos.filter(foto => foto.preview_url && !naoAplicaveis.has(foto.item_chave));
   if (fotos.length) {
     const rotulo = new Map<string, string>([
       ...CHECKLIST_ITENS.map(item => [item.chave, `Item ${item.numero}`] as [string, string]),

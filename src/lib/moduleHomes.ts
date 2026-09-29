@@ -58,7 +58,6 @@ export const MODULE_HOMES: ModuleHomeDef[] = [
     },
     cardDescriptions: {
       planejamento_acompanhamento_geral: 'Importe a base operacional e consulte o dashboard, PCP, motor, auxiliares e dados de origem.',
-      planejamento_acompanhamento_diario: 'Acompanhe entregas semanais e mensais por área, com metas e média residual recalculadas sobre a base importada.',
       planejamento_acompanhamento_diario_tv: 'Painel em tela cheia para TV, com escala automática, atualização periódica e leitura à distância.',
     },
   },

@@ -1,18 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Eye, FileDown, FileText, History, Inbox, Loader2, Lock,
-  PenTool, Plus, RotateCcw, Save, Search, Signature, Trash2, UserCheck, Users, X,
+  PenTool, Plus, RotateCcw, Save, Search, Signature, Trash2, UserCheck, Users, WifiOff, X,
 } from 'lucide-react';
 import type {
-  Profile, QuaChecklistAssinatura, QuaChecklistAssinaturaTipo, QuaChecklistExpedicao,
-  QuaChecklistFoto, QuaChecklistPapel, QuaChecklistResposta, QuaChecklistStatus,
+  Profile, QuaChecklistAssinaturaTipo, QuaChecklistExpedicao,
+  QuaChecklistPapel, QuaChecklistResposta, QuaChecklistStatus,
 } from '../../types';
 import { localDb } from '../../db/localDb';
 import * as api from '../../lib/qualidadeChecklistExpedicao';
+import {
+  comCache, guardarCache, lerCache, mesclarComPendencias, novaPendencia, obterPendencia, prepararAssinaturaOffline,
+  prepararFotoOffline, removerPendencia, salvarPendencia, urlLocal,
+  type ArquivoOffline, type RemocaoOffline, type ResultadoSincronizacao,
+} from '../../lib/qualidadeOffline';
+import { gerarUUID } from '../../lib/ids';
+import { estaOffline, pareceFalhaDeRede } from '../../lib/rede';
 import { exportQualidadeChecklistExpedicaoPdf, gerarQualidadeChecklistExpedicaoPdf } from '../../lib/pdfExport/exportQualidadeChecklistExpedicaoPdf';
 import Bilingue from '../../components/qualidade/Bilingue';
 import ColetaAssinaturaTablet, { type AssinaturaColetada, type ModoColeta } from '../../components/qualidade/ColetaAssinaturaTablet';
 import FormularioPdfPreview from '../../components/qualidade/FormularioPdfPreview';
+import { ChipSincronizacao, PainelSincronizacao, useSincronizacaoOffline } from '../../components/qualidade/SincronizacaoOffline';
 import { useLightbox } from '../../components/ui/Lightbox';
 import { useToast } from '../../components/ui/Toast';
 
@@ -21,10 +29,15 @@ interface Props {
   onNavigate: (path: string) => void;
 }
 
+const MODULO = 'qua_expedicao' as const;
+/** Detalhes guardados no aparelho para abrir sem rede; limite para não baixar a fila inteira. */
+const MAX_DETALHES_OFFLINE = 20;
+
 type Tela = 'inicio' | 'formulario' | 'assinaturas' | 'historico';
 type FiltroHistorico = QuaChecklistStatus | 'TODOS';
-type HeaderKey = 'cliente' | 'projeto' | 'tramo_sequencial' | 'numero_serie' | 'data_expedicao' | 'site' | 'inspetor_qualidade' | 'etiqueta_secao';
-type FotoRascunho = Partial<QuaChecklistFoto> & { localFile?: File; localUrl?: string; id: string; item_chave: string };
+type HeaderKey = 'cliente' | 'projeto' | 'tramo_sequencial' | 'numero_serie' | 'data_expedicao' | 'site' | 'inspetor_qualidade';
+type Checklist = api.ChecklistExpedicaoTela;
+type FotoRascunho = Partial<api.FotoExpedicaoTela> & { localUrl?: string; id: string; item_chave: string };
 type Observacao = api.ChecklistObservacao;
 /** Destino da próxima assinatura capturada: um checklist ou vários (lote). */
 type AlvoAssinatura = { papel: QuaChecklistPapel; nome: string; ids: string[] };
@@ -41,7 +54,6 @@ const HEADERS: { key: HeaderKey; pt: string; en: string; type?: string }[] = [
   { key: 'data_expedicao', pt: 'Data de expedição', en: 'Shipping date', type: 'date' },
   { key: 'site', pt: 'Site', en: 'Site' },
   { key: 'inspetor_qualidade', pt: 'Inspetor de qualidade', en: 'Quality inspector' },
-  { key: 'etiqueta_secao', pt: 'Nº etiqueta seção', en: 'Section number TAG' },
 ];
 
 const STATUS_INFO: Record<QuaChecklistStatus, { label: string; className: string }> = {
@@ -70,7 +82,7 @@ function fmtDataHora(value?: string | null): string {
 }
 
 function novoCabecalho(user: Profile): Record<HeaderKey, string> {
-  return { cliente: '', projeto: '', tramo_sequencial: '', numero_serie: '', data_expedicao: api.hojeLocal(), site: '', inspetor_qualidade: user.name, etiqueta_secao: '' };
+  return { cliente: api.CHECKLIST_CLIENTE_PADRAO, projeto: '', tramo_sequencial: '', numero_serie: '', data_expedicao: api.hojeLocal(), site: api.CHECKLIST_SITE_PADRAO, inspetor_qualidade: user.name };
 }
 function respostasVazias(): Record<string, QuaChecklistResposta | null> {
   return Object.fromEntries(api.CHECKLIST_ITENS.map(item => [item.chave, null]));
@@ -81,16 +93,24 @@ function observacoesVazias(): Record<string, Observacao> {
 function nomesVazios(): Record<QuaChecklistPapel, string> {
   return { QUALIDADE: '', PRODUCAO: '', CLIENTE: '', TRANSPORTADOR: '' };
 }
-function idLocal(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-function agruparFotos(fotos: QuaChecklistFoto[]): Record<string, FotoRascunho[]> {
+function agruparFotos(fotos: api.FotoExpedicaoTela[]): Record<string, FotoRascunho[]> {
   return fotos.reduce<Record<string, FotoRascunho[]>>((acc, foto) => {
     (acc[foto.item_chave] ||= []).push(foto);
     return acc;
   }, {});
 }
 const rotuloPapel = (papel: QuaChecklistPapel) => api.CHECKLIST_PAPEIS.find(item => item.papel === papel)?.label || papel;
+
+/** Registro do servidor com o que está só no aparelho aplicado por cima. */
+const aplicar = (base: QuaChecklistExpedicao | null, p: api.PendenciaExpedicao): Checklist =>
+  api.aplicarPendenciaExpedicao(base, p, (arquivo: ArquivoOffline) => urlLocal(arquivo, p.id));
+
+function tituloPendencia(p: api.PendenciaExpedicao): string {
+  const dados = p.input || p.base;
+  return `${p.base?.codigo_registro || 'Novo checklist'}${dados?.tramo_sequencial ? ` · ${dados.tramo_sequencial}` : ''}${dados?.numero_serie ? ` · Série ${dados.numero_serie}` : ''}`;
+}
+
+const semCodigo = <span className="font-sans font-semibold italic text-slate-400">Código gerado ao sincronizar</span>;
 
 function StatusBadge({ status }: { status: QuaChecklistStatus }) {
   const info = STATUS_INFO[status] || STATUS_INFO.RASCUNHO;
@@ -110,7 +130,20 @@ function RespostaBotoes({ value, onChange, disabled }: { value: QuaChecklistResp
 }
 
 /** Área de imagem do item: a foto registrada ocupa o lugar; sem foto, convite para fotografar. */
-function FotosItem({ fotos, editavel, onAdd, onRemove, onOpen }: { fotos: FotoRascunho[]; editavel: boolean; onAdd: (files: FileList) => void; onRemove: (foto: FotoRascunho) => void; onOpen: (indice: number) => void }) {
+function FotosItem({ fotos, editavel, onAdd, onRemove, onOpen, imagemNa }: { fotos: FotoRascunho[]; editavel: boolean; onAdd: (files: FileList) => void; onRemove: (foto: FotoRascunho) => void; onOpen: (indice: number) => void; imagemNa?: string | null }) {
+  if (imagemNa) {
+    // Marcado N/A: a imagem "Not Available" ocupa o lugar da foto (igual ao PDF).
+    return <div className="space-y-2">
+      <div className="flex h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700"><img src={imagemNa} alt="Não aplicável" className="h-full object-contain" /></div>
+      {editavel && fotos.length > 0 && <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-slate-500">Fotos anteriores (não vão para o PDF):</span>
+        {fotos.map(foto => <div key={foto.id} className="relative h-10 w-12 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+          <img src={foto.localUrl || foto.preview_url} alt="" className="h-full w-full object-cover opacity-60" />
+          <button type="button" onClick={() => onRemove(foto)} className="absolute right-0.5 top-0.5 rounded-full bg-slate-950/75 p-0.5 text-white" aria-label="Remover foto"><X className="h-3 w-3" /></button>
+        </div>)}
+      </div>}
+    </div>;
+  }
   const capa = fotos[0]?.localUrl || fotos[0]?.preview_url;
   return <div className="space-y-2">
     {capa ? <button type="button" onClick={() => onOpen(0)} className="relative block h-40 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" aria-label="Ampliar foto">
@@ -130,7 +163,7 @@ function FotosItem({ fotos, editavel, onAdd, onRemove, onOpen }: { fotos: FotoRa
   </div>;
 }
 
-function ChipsAssinaturas({ checklist }: { checklist: QuaChecklistExpedicao }) {
+function ChipsAssinaturas({ checklist }: { checklist: Checklist }) {
   const assinados = api.papeisAssinados(checklist);
   return <div className="flex flex-wrap gap-1">
     {api.CHECKLIST_PAPEIS.map(({ papel, label }) => {
@@ -142,12 +175,12 @@ function ChipsAssinaturas({ checklist }: { checklist: QuaChecklistExpedicao }) {
   </div>;
 }
 
-function ResumoCard({ item, acoes, detalhe, selecionado, onSelecionar }: { item: QuaChecklistExpedicao; acoes: React.ReactNode; detalhe?: React.ReactNode; selecionado?: boolean; onSelecionar?: () => void }) {
+function ResumoCard({ item, acoes, detalhe, selecionado, onSelecionar }: { item: Checklist; acoes: React.ReactNode; detalhe?: React.ReactNode; selecionado?: boolean; onSelecionar?: () => void }) {
   const nok = Object.values(item.respostas || {}).filter(valor => valor === 'NOK').length + Object.values(item.observacoes || {}).filter(valor => valor?.resposta === 'NOK').length;
-  return <div className={`${cardClass} flex flex-col gap-3 p-4 ${selecionado ? 'ring-2 ring-blue-500' : ''}`}>
+  return <div className={`${cardClass} flex flex-col gap-3 p-4 ${selecionado ? 'ring-2 ring-blue-500' : ''} ${item.offline ? 'border-amber-300 dark:border-amber-800' : ''}`}>
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
-        <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{item.codigo_registro}</p>
+        <p className="flex flex-wrap items-center gap-1.5 font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{item.codigo_registro || semCodigo} <ChipSincronizacao offline={item.offline} /></p>
         <p className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-50">{item.tramo_sequencial} <span className="font-normal text-slate-400">· Série {item.numero_serie}</span></p>
         <p className="truncate text-xs text-slate-500">{item.cliente} · {item.projeto}</p>
       </div>
@@ -170,14 +203,20 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   const setores = useMemo(() => localDb.getSectors(), []);
 
   const [tela, setTela] = useState<Tela>('inicio');
-  const [aberto, setAberto] = useState<QuaChecklistExpedicao | null>(null);
+  const [aberto, setAberto] = useState<Checklist | null>(null);
+  /** Id do checklist novo em preenchimento — gerado no aparelho, vira o id definitivo no servidor. */
+  const [idNovo, setIdNovo] = useState(() => gerarUUID());
   const [cabecalho, setCabecalho] = useState<Record<HeaderKey, string>>(() => novoCabecalho(user));
   const [respostas, setRespostas] = useState<Record<string, QuaChecklistResposta | null>>(respostasVazias);
   const [observacoes, setObservacoes] = useState<Record<string, Observacao>>(observacoesVazias);
   const [fotos, setFotos] = useState<Record<string, FotoRascunho[]>>({});
+  /** Fotos/assinaturas do servidor removidas no formulário — saem ao salvar. */
+  const [fotosRemovidas, setFotosRemovidas] = useState<RemocaoOffline[]>([]);
+  const [assinaturasRemovidas, setAssinaturasRemovidas] = useState<string[]>([]);
   const [nomes, setNomes] = useState<Record<QuaChecklistPapel, string>>(nomesVazios);
   const [opcoes, setOpcoes] = useState<Record<string, string[]>>({});
   const [lista, setLista] = useState<QuaChecklistExpedicao[]>([]);
+  const [listaSalvaEm, setListaSalvaEm] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FiltroHistorico>('FINALIZADO');
   const [soMeus, setSoMeus] = useState(false);
@@ -189,39 +228,112 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   const [assinando, setAssinando] = useState<{ papel: QuaChecklistPapel; feitos: number; total: number } | null>(null);
   const [lote, setLote] = useState<{ papel: QuaChecklistPapel; nome: string; ids: Set<string> } | null>(null);
   const [verRespostas, setVerRespostas] = useState(false);
-  const [pdfAlvo, setPdfAlvo] = useState<QuaChecklistExpedicao | null>(null);
+  const [pdfAlvo, setPdfAlvo] = useState<Checklist | null>(null);
+  const [imagemNa, setImagemNa] = useState<string | null>(null);
+
+  useEffect(() => { api.urlImagemNaoAplicavel().then(setImagemNa); }, []);
+
+  const podeColetar = useCallback((checklist: Checklist) => api.podeColetarAssinaturas(user, checklist, setores), [user, setores]);
+  const podeEditar = (checklist: Checklist | null) => !checklist || (checklist.status === 'RASCUNHO' && (checklist.criado_por === user.id || ehAdmin));
+
+  /**
+   * Guarda no aparelho o detalhe do que o usuário provavelmente vai precisar
+   * sem rede: os próprios rascunhos e a fila de assinaturas que ele coleta.
+   * Só baixa de novo o que mudou no servidor desde a última cópia.
+   */
+  const guardarDetalhesOffline = useCallback(async (rows: QuaChecklistExpedicao[]) => {
+    const alvos = rows
+      .filter(row => (row.status === 'RASCUNHO' && row.criado_por === user.id) || (row.status === 'AGUARDANDO_ASSINATURAS' && api.podeColetarAssinaturas(user, row, setores)))
+      .slice(0, MAX_DETALHES_OFFLINE);
+    for (const row of alvos) {
+      const cache = await lerCache<QuaChecklistExpedicao>(MODULO, `det:${row.id}`);
+      if (cache && Date.parse(cache.salvoEm) >= Date.parse(row.updated_at)) continue;
+      try {
+        await guardarCache(MODULO, `det:${row.id}`, await api.obterChecklist(row.id));
+      } catch {
+        return; // caiu a rede no meio — tenta na próxima carga
+      }
+    }
+  }, [user, setores]);
 
   const carregarLista = useCallback(async () => {
-    try { setLista(await api.listarChecklists()); } catch (error: any) { toast.error(`Erro ao carregar checklists: ${error.message || ''}`); } finally { setCarregando(false); }
-  }, [toast]);
+    try {
+      const resultado = await comCache(MODULO, 'lista', api.listarChecklists);
+      setLista(resultado.valor);
+      setListaSalvaEm(resultado.doCache ? resultado.salvoEm : null);
+      if (!resultado.doCache) void guardarDetalhesOffline(resultado.valor);
+    } catch (error: any) {
+      if (!pareceFalhaDeRede(error)) toast.error(`Erro ao carregar checklists: ${error.message || ''}`);
+    } finally {
+      setCarregando(false);
+    }
+  }, [toast, guardarDetalhesOffline]);
+
+  // A rodada automática pode enviar o checklist aberto na fila de assinaturas
+  // (lá não há edição em andamento): a tela troca a cópia do aparelho pela do servidor.
+  const telaRef = useRef(tela);
+  telaRef.current = tela;
+  const abertoRef = useRef(aberto);
+  abertoRef.current = aberto;
+
+  const onResultadoSync = useCallback((resultado: ResultadoSincronizacao, automatico: boolean) => {
+    if (resultado.enviados.length) void carregarLista();
+    if (!automatico) return;
+    const emTela = abertoRef.current;
+    if (emTela && telaRef.current !== 'formulario' && resultado.enviados.includes(emTela.id)) {
+      api.obterChecklist(emTela.id).then(atualizado => { if (abertoRef.current?.id === emTela.id) setAberto(atualizado); }).catch(() => {});
+    }
+    if (resultado.enviados.length) toast.success(`${resultado.enviados.length === 1 ? '1 checklist guardado no aparelho foi enviado' : `${resultado.enviados.length} checklists guardados no aparelho foram enviados`} ao servidor.`);
+    if (resultado.erros.length) toast.error(`O servidor recusou ${resultado.erros.length === 1 ? '1 checklist' : `${resultado.erros.length} checklists`} guardado(s) no aparelho: ${resultado.erros[0].mensagem}`);
+  }, [carregarLista, toast]);
+
+  const sync = useSincronizacaoOffline<api.PendenciaExpedicao>({
+    modulo: MODULO,
+    usuarioId: user.id,
+    sincronizar: api.sincronizarPendenciaExpedicao,
+    abertoId: tela === 'formulario' ? aberto?.id || null : null,
+    onResultado: onResultadoSync,
+  });
 
   useEffect(() => {
     carregarLista();
     Promise.all(api.CHECKLIST_CAMPOS_CABECALHO.map(async campo => [campo, await api.listarOpcoesCabecalho(campo)] as const))
-      .then(entries => setOpcoes(Object.fromEntries(entries))).catch(() => {});
+      .then(async entries => {
+        const valores = Object.fromEntries(entries);
+        const vazio = entries.every(([, itens]) => !itens.length);
+        if (vazio) {
+          const cache = await lerCache<Record<string, string[]>>(MODULO, 'opcoes');
+          setOpcoes(cache?.valor || valores);
+        } else {
+          setOpcoes(valores);
+          void guardarCache(MODULO, 'opcoes', valores);
+        }
+      }).catch(() => {});
   }, [carregarLista]);
 
-  const podeColetar = useCallback((checklist: QuaChecklistExpedicao) => api.podeColetarAssinaturas(user, checklist, setores), [user, setores]);
-  const podeEditar = (checklist: QuaChecklistExpedicao | null) => !checklist || (checklist.status === 'RASCUNHO' && (checklist.criado_por === user.id || ehAdmin));
+  const listaTela = useMemo(() => mesclarComPendencias<Checklist, api.PendenciaExpedicao>(lista, sync.pendencias, aplicar), [lista, sync.pendencias]);
 
   const fila = useMemo(() => {
-    const todos = api.filaAssinaturas(lista);
+    const todos = api.filaAssinaturas(listaTela);
     return soMeus ? todos.filter(item => item.criado_por === user.id || item.fechado_por === user.id) : todos;
-  }, [lista, soMeus, user.id]);
-  const rascunhos = useMemo(() => lista.filter(item => item.status === 'RASCUNHO' && (item.criado_por === user.id || ehAdmin)), [lista, user.id, ehAdmin]);
+  }, [listaTela, soMeus, user.id]);
+  const rascunhos = useMemo(() => listaTela.filter(item => item.status === 'RASCUNHO' && (item.criado_por === user.id || ehAdmin)), [listaTela, user.id, ehAdmin]);
 
-  const preencher = (checklist: QuaChecklistExpedicao | null) => {
+  const preencher = (checklist: Checklist | null) => {
     setAberto(checklist);
     setVerRespostas(false);
+    setFotosRemovidas([]);
+    setAssinaturasRemovidas([]);
     setPendentes(prev => {
       Object.values(prev).forEach(item => item && URL.revokeObjectURL(item.url));
       return {};
     });
     if (!checklist) {
+      setIdNovo(gerarUUID());
       setCabecalho(novoCabecalho(user)); setRespostas(respostasVazias()); setObservacoes(observacoesVazias()); setFotos({}); setNomes(nomesVazios());
       return;
     }
-    setCabecalho({ cliente: checklist.cliente, projeto: checklist.projeto, tramo_sequencial: checklist.tramo_sequencial, numero_serie: checklist.numero_serie, data_expedicao: checklist.data_expedicao, site: checklist.site, inspetor_qualidade: checklist.inspetor_qualidade, etiqueta_secao: checklist.etiqueta_secao });
+    setCabecalho({ cliente: checklist.cliente, projeto: checklist.projeto, tramo_sequencial: checklist.tramo_sequencial, numero_serie: checklist.numero_serie, data_expedicao: checklist.data_expedicao, site: checklist.site, inspetor_qualidade: checklist.inspetor_qualidade });
     setRespostas({ ...respostasVazias(), ...checklist.respostas });
     setObservacoes({ ...observacoesVazias(), ...checklist.observacoes });
     setNomes({ ...nomesVazios(), ...checklist.validacao_nomes });
@@ -241,10 +353,29 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     carregarLista();
   };
 
+  /**
+   * Checklist completo para a tela: o do servidor (ou a cópia guardada no
+   * aparelho, sem rede) com as pendências locais aplicadas. Checklist que
+   * nasceu offline nem consulta o servidor.
+   */
+  const carregarCompleto = async (id: string): Promise<Checklist> => {
+    const pendencia = await obterPendencia<api.PendenciaExpedicao>(MODULO, id);
+    let base: QuaChecklistExpedicao | null = null;
+    if (!pendencia?.novo) {
+      try {
+        base = (await comCache(MODULO, `det:${id}`, () => api.obterChecklist(id))).valor;
+      } catch (error) {
+        if (!pendencia) throw pareceFalhaDeRede(error) ? new Error('sem conexão, e este checklist ainda não foi baixado neste aparelho.') : error;
+        base = pendencia.base;
+      }
+    }
+    return pendencia ? aplicar(base, pendencia) : base as Checklist;
+  };
+
   const abrir = async (id: string, destino?: Tela) => {
     setAbrindoId(id);
     try {
-      const checklist = await api.obterChecklist(id);
+      const checklist = await carregarCompleto(id);
       preencher(checklist);
       const padrao: Tela = checklist.status === 'AGUARDANDO_ASSINATURAS' ? 'assinaturas' : 'formulario';
       irPara(destino || padrao);
@@ -257,20 +388,27 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
 
   const verPdf = async (id: string) => {
     setAbrindoId(id);
-    try { setPdfAlvo(await api.obterChecklist(id)); } catch (error: any) { toast.error(`Erro ao gerar PDF: ${error.message || ''}`); } finally { setAbrindoId(null); }
+    try { setPdfAlvo(await carregarCompleto(id)); } catch (error: any) { toast.error(`Erro ao gerar PDF: ${error.message || ''}`); } finally { setAbrindoId(null); }
   };
   const gerarPdf = useMemo(() => pdfAlvo ? () => gerarQualidadeChecklistExpedicaoPdf(pdfAlvo) : null, [pdfAlvo]);
 
-  const adicionarFotos = (itemChave: string, files: FileList) => {
-    const novos = Array.from(files).filter(file => file.type.startsWith('image/')).map(file => ({ id: idLocal('foto'), item_chave: itemChave, localFile: file, localUrl: URL.createObjectURL(file) }));
-    if (novos.length) setFotos(prev => ({ ...prev, [itemChave]: [...(prev[itemChave] || []), ...novos] }));
+  /** Comprime já na captura e guarda o blob — sobrevive a ficar sem rede. */
+  const adicionarFotos = async (itemChave: string, files: FileList) => {
+    const imagens = Array.from(files).filter(file => file.type.startsWith('image/'));
+    const donoId = aberto?.id || idNovo;
+    for (const file of imagens) {
+      try {
+        const local = await prepararFotoOffline(itemChave, file);
+        const nova: FotoRascunho = { id: local.id, item_chave: itemChave, local, localUrl: urlLocal(local, donoId) };
+        setFotos(prev => ({ ...prev, [itemChave]: [...(prev[itemChave] || []), nova] }));
+      } catch (error: any) {
+        toast.error(`Não foi possível processar a foto ${file.name}: ${error.message || ''}`);
+      }
+    }
   };
 
-  const removerFoto = async (itemChave: string, foto: FotoRascunho) => {
-    if (foto.path) {
-      try { await api.removerChecklistFoto(foto as QuaChecklistFoto); } catch (error: any) { toast.error(`Erro ao remover foto: ${error.message || ''}`); return; }
-    }
-    if (foto.localUrl) URL.revokeObjectURL(foto.localUrl);
+  const removerFoto = (itemChave: string, foto: FotoRascunho) => {
+    if (foto.path) setFotosRemovidas(prev => [...prev, { id: foto.id, path: foto.path }]);
     setFotos(prev => ({ ...prev, [itemChave]: (prev[itemChave] || []).filter(item => item.id !== foto.id) }));
   };
 
@@ -282,6 +420,19 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   const respondidos = api.CHECKLIST_ITENS.length + api.CHECKLIST_OBSERVACOES.length - faltas.itens.length - faltas.observacoes.length;
   const totalPerguntas = api.CHECKLIST_ITENS.length + api.CHECKLIST_OBSERVACOES.length;
 
+  /** Assinaturas do checklist aberto que continuam valendo no formulário. */
+  const assinaturasVisiveis = useMemo(() => (aberto?.assinaturas || []).filter(item => !assinaturasRemovidas.includes(item.id)), [aberto, assinaturasRemovidas]);
+
+  /**
+   * Sobe a pendência na hora, se houver rede. Devolve o checklist do
+   * servidor quando tudo subiu; `null` quando ficou no aparelho (sem rede ou
+   * recusado — o motivo já foi avisado).
+   */
+  const enviarAgora = async (ids: string[]): Promise<{ resultado: ResultadoSincronizacao | null }> => {
+    if (estaOffline()) return { resultado: null };
+    return { resultado: await sync.sincronizarAgora({ ids, incluirAberto: true }) };
+  };
+
   const salvar = async (fechar: boolean) => {
     const vazios = HEADERS.filter(field => !cabecalho[field.key].trim()).map(field => field.pt);
     if (vazios.length) { toast.error(`Preencha o cabeçalho: ${vazios.join(', ')}.`); return; }
@@ -291,32 +442,58 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
       return;
     }
     setSalvando(true);
+    const id = aberto?.id || idNovo;
     try {
-      const salvo = await api.salvarChecklist({ ...cabecalho, respostas, observacoes, validacao_nomes: nomes }, user, aberto?.id);
-      for (const [itemChave, listaFotos] of Object.entries(fotos)) {
-        for (const foto of listaFotos) {
-          if (foto.localFile) await api.uploadChecklistFoto(salvo.id, itemChave, foto.localFile);
+      // 1. Guarda no aparelho — a partir daqui nada se perde, com ou sem rede.
+      const existente = await obterPendencia<api.PendenciaExpedicao>(MODULO, id);
+      const removidasServidor = (aberto?.assinaturas || [])
+        .filter(item => assinaturasRemovidas.includes(item.id) && !item.local)
+        .map(item => ({ id: item.id, path: item.path }));
+      const assinaturasNovas = [
+        ...assinaturasVisiveis.filter(item => item.local && !pendentes[item.papel]).map(item => item.local!),
+        ...(Object.entries(pendentes) as [QuaChecklistPapel, AssinaturaPendente | undefined][])
+          .filter(([, pendente]) => !!pendente)
+          .map(([papel, pendente]) => prepararAssinaturaOffline(papel, pendente!, { coletadoPorNome: user.name })),
+      ];
+      await salvarPendencia(novaPendencia<api.ChecklistInput, api.AcaoExpedicaoOffline, QuaChecklistExpedicao>(MODULO, id, user, {
+        ...(existente || {}),
+        novo: existente ? existente.novo : !aberto,
+        base: existente?.base ?? (aberto && !aberto.offline ? aberto : null),
+        input: { ...cabecalho, etiqueta_secao: aberto?.etiqueta_secao || '', respostas, observacoes, validacao_nomes: nomes },
+        acao: fechar ? 'fechar' : existente?.acao ?? null,
+        fotosNovas: Object.values(fotos).flat().filter(foto => foto.local).map(foto => foto.local!),
+        fotosRemovidas: [...(existente?.fotosRemovidas || []), ...fotosRemovidas],
+        assinaturasNovas,
+        assinaturasRemovidas: [...(existente?.assinaturasRemovidas || []), ...removidasServidor],
+      }));
+
+      // 2. Com rede, sobe na hora e segue o fluxo de sempre.
+      const { resultado } = await enviarAgora([id]);
+      if (resultado?.enviados.includes(id)) {
+        const completo = await carregarCompleto(id);
+        preencher(completo);
+        await carregarLista();
+        if (completo.status === 'FINALIZADO') {
+          toast.success(`${completo.codigo_registro} fechado com as 4 assinaturas e finalizado.`);
+          irPara('formulario');
+          setPdfAlvo(completo);
+        } else if (fechar) {
+          const faltam = api.papeisPendentes(completo).length;
+          toast.success(`${completo.codigo_registro} fechado. ${faltam === 1 ? 'Falta 1 assinatura' : `Faltam ${faltam} assinaturas`} — colete agora ou depois, pela fila.`);
+          irPara('assinaturas');
+        } else {
+          toast.success('Rascunho salvo e sincronizado.');
         }
+        return;
       }
-      // Assinaturas coletadas no preenchimento sobem ainda com o rascunho aberto.
-      for (const [papel, pendente] of Object.entries(pendentes) as [QuaChecklistPapel, AssinaturaPendente | undefined][]) {
-        if (pendente) await api.salvarChecklistAssinatura(salvo.id, papel, pendente.nome, pendente.tipo, pendente.arquivo, user, pendente.assinadoEm);
-      }
-      if (fechar) await api.fecharChecklist(salvo.id, user);
-      const completo = await api.obterChecklist(salvo.id);
-      preencher(completo);
-      await carregarLista();
-      if (completo.status === 'FINALIZADO') {
-        toast.success(`${completo.codigo_registro} fechado com as 4 assinaturas e finalizado.`);
-        irPara('formulario');
-        setPdfAlvo(completo);
-      } else if (fechar) {
-        const faltam = api.papeisPendentes(completo).length;
-        toast.success(`${completo.codigo_registro} fechado. ${faltam === 1 ? 'Falta 1 assinatura' : `Faltam ${faltam} assinaturas`} — colete agora ou depois, pela fila.`);
-        irPara('assinaturas');
-      } else {
-        toast.success('Rascunho salvo.');
-      }
+
+      // 3. Ficou no aparelho: reabre a cópia local e avisa o porquê.
+      const recusa = resultado?.erros.find(erro => erro.id === id);
+      if (recusa) toast.error(`Salvo neste aparelho, mas o servidor recusou: ${recusa.mensagem}`);
+      else toast.info(`Sem conexão: ${fechar ? 'checklist fechado' : 'rascunho salvo'} neste aparelho. Ele sobe sozinho quando a rede voltar.`);
+      const local = await carregarCompleto(id);
+      preencher(local);
+      if (fechar) irPara(api.papeisPendentes(local).length ? 'assinaturas' : 'inicio');
     } catch (error: any) {
       toast.error(`Erro ao salvar checklist: ${error.message || ''}`);
     } finally {
@@ -327,44 +504,78 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   const reabrir = async () => {
     if (!aberto) return;
     try {
-      await api.reabrirChecklist(aberto.id);
-      const completo = await api.obterChecklist(aberto.id);
+      const pendencia = await obterPendencia<api.PendenciaExpedicao>(MODULO, aberto.id);
+      if (pendencia?.acao === 'fechar' && (pendencia.novo || pendencia.base?.status === 'RASCUNHO')) {
+        // Fechado só no aparelho: desfaz aqui mesmo, sem precisar de rede.
+        await salvarPendencia({ ...pendencia, acao: null });
+      } else {
+        await api.reabrirChecklist(aberto.id);
+      }
+      const completo = await carregarCompleto(aberto.id);
       preencher(completo);
       await carregarLista();
       toast.success('Checklist reaberto para edição.');
       irPara('formulario');
     } catch (error: any) {
-      toast.error(`Não foi possível reabrir: ${error.message || ''}`);
+      toast.error(pareceFalhaDeRede(error) ? 'Reabrir um checklist já enviado precisa de conexão.' : `Não foi possível reabrir: ${error.message || ''}`);
     }
   };
 
-  /** Grava a assinatura capturada em um ou vários checklists. */
+  /**
+   * Altera a pendência de um checklist já existente (assinaturas coletadas
+   * pela fila), criando-a se preciso. A base é o detalhe guardado no aparelho.
+   */
+  const alterarPendencia = async (id: string, alterar: (p: api.PendenciaExpedicao) => Partial<api.PendenciaExpedicao>) => {
+    const existente = await obterPendencia<api.PendenciaExpedicao>(MODULO, id);
+    const registro = aberto?.id === id ? aberto : listaTela.find(item => item.id === id);
+    const base = existente?.base
+      ?? (await lerCache<QuaChecklistExpedicao>(MODULO, `det:${id}`))?.valor
+      ?? (registro && !registro.offline ? registro : null);
+    const atual = existente || novaPendencia<api.ChecklistInput, api.AcaoExpedicaoOffline, QuaChecklistExpedicao>(MODULO, id, user, { base });
+    await salvarPendencia({ ...atual, ...alterar(atual) });
+  };
+
+  /** Grava a assinatura capturada em um ou vários checklists — no aparelho primeiro, depois no servidor. */
   const gravarAssinatura = async (alvo: AlvoAssinatura, tipo: QuaChecklistAssinaturaTipo, file: File, assinadoEm: string) => {
     setAssinando({ papel: alvo.papel, feitos: 0, total: alvo.ids.length });
     const falhas: string[] = [];
-    let finalizados = 0;
-    let ultimo: QuaChecklistExpedicao | null = null;
     for (const [indice, id] of alvo.ids.entries()) {
       try {
-        await api.salvarChecklistAssinatura(id, alvo.papel, alvo.nome.trim(), tipo, file, user, assinadoEm);
-        const atualizado = await api.obterChecklist(id);
+        const nova = prepararAssinaturaOffline(alvo.papel, { nome: alvo.nome.trim(), tipo, arquivo: file, assinadoEm }, { coletadoPorNome: user.name });
+        await alterarPendencia(id, atual => ({ assinaturasNovas: [...atual.assinaturasNovas.filter(item => item.papel !== alvo.papel), nova] }));
+      } catch (error: any) {
+        falhas.push(`${listaTela.find(item => item.id === id)?.codigo_registro || id}: ${error.message || 'erro'}`);
+      }
+      setAssinando({ papel: alvo.papel, feitos: indice + 1, total: alvo.ids.length });
+    }
+    const { resultado } = await enviarAgora(alvo.ids);
+    for (const erro of resultado?.erros || []) {
+      falhas.push(`${listaTela.find(item => item.id === erro.id)?.codigo_registro || 'Checklist'}: ${erro.mensagem}`);
+    }
+    let finalizados = 0;
+    let ultimo: Checklist | null = null;
+    for (const id of alvo.ids) {
+      try {
+        const atualizado = await carregarCompleto(id);
         ultimo = atualizado;
         if (atualizado.status === 'FINALIZADO') finalizados++;
         if (aberto?.id === id) preencher(atualizado);
-      } catch (error: any) {
-        falhas.push(`${lista.find(item => item.id === id)?.codigo_registro || id}: ${error.message || 'erro'}`);
-      }
-      setAssinando({ papel: alvo.papel, feitos: indice + 1, total: alvo.ids.length });
+      } catch { /* segue com os demais */ }
     }
     setAssinando(null);
     await carregarLista();
     if (falhas.length) toast.error(`Assinatura não gravada em ${falhas.length}: ${falhas.join('; ')}`);
     const gravadas = alvo.ids.length - falhas.length;
-    if (gravadas) toast.success(`Assinatura de ${alvo.nome.trim()} gravada${alvo.ids.length > 1 ? ` em ${gravadas} checklists` : ''}.${finalizados ? ` ${finalizados} ${finalizados === 1 ? 'checklist finalizado' : 'checklists finalizados'} com as 4 assinaturas.` : ''}`);
+    const noAparelho = !resultado || resultado.semRede.length > 0;
+    if (gravadas) {
+      toast.success(noAparelho
+        ? `Assinatura de ${alvo.nome.trim()} guardada neste aparelho${alvo.ids.length > 1 ? ` para ${gravadas} checklists` : ''}. Sobe sozinha quando a rede voltar.`
+        : `Assinatura de ${alvo.nome.trim()} gravada${alvo.ids.length > 1 ? ` em ${gravadas} checklists` : ''}.${finalizados ? ` ${finalizados} ${finalizados === 1 ? 'checklist finalizado' : 'checklists finalizados'} com as 4 assinaturas.` : ''}`);
+    }
     return { falhas: falhas.length, finalizados, ultimo };
   };
 
-  const contextoDe = (checklist: QuaChecklistExpedicao) => `${checklist.codigo_registro} · ${checklist.tramo_sequencial} · Série ${checklist.numero_serie}`;
+  const contextoDe = (checklist: Checklist) => `${checklist.codigo_registro || 'Checklist no aparelho'} · ${checklist.tramo_sequencial} · Série ${checklist.numero_serie}`;
 
   /** Abre a coleta em tela cheia para um papel do checklist aberto. */
   const coletarNoTablet = (papel: QuaChecklistPapel, modo: ModoColeta, sequencia = false) => {
@@ -417,32 +628,51 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     }
   };
 
-  const removerAssinatura = async (assinatura: QuaChecklistAssinatura) => {
+  /** Refazer na fila de assinaturas: tira a assinatura já coletada (no aparelho primeiro). */
+  const removerAssinatura = async (assinatura: api.AssinaturaExpedicaoTela) => {
+    if (!aberto) return;
     try {
-      await api.removerChecklistAssinatura(assinatura);
-      if (aberto) preencher(await api.obterChecklist(aberto.id));
+      await alterarPendencia(aberto.id, atual => assinatura.local
+        ? { assinaturasNovas: atual.assinaturasNovas.filter(item => item.id !== assinatura.id) }
+        : { assinaturasRemovidas: [...atual.assinaturasRemovidas, { id: assinatura.id, path: assinatura.path }] });
+      const { resultado } = await enviarAgora([aberto.id]);
+      const recusa = resultado?.erros.find(erro => erro.id === aberto.id);
+      if (recusa) toast.error(`Não foi possível remover a assinatura no servidor: ${recusa.mensagem}`);
+      preencher(await carregarCompleto(aberto.id));
       await carregarLista();
     } catch (error: any) {
       toast.error(`Erro ao remover assinatura: ${error.message || ''}`);
     }
   };
 
+  /** Refazer no formulário: some da tela agora, sai do servidor ao salvar. */
+  const marcarAssinaturaRemovida = (assinatura: api.AssinaturaExpedicaoTela) => {
+    setAssinaturasRemovidas(prev => [...prev, assinatura.id]);
+  };
+
+  const descartarDoAparelho = async (p: api.PendenciaExpedicao) => {
+    await removerPendencia(MODULO, p.id);
+    if (aberto?.id === p.id) { preencher(null); irPara('inicio'); }
+    toast.success('Cópia do aparelho descartada.');
+    await carregarLista();
+  };
+
   const historico = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return lista
+    return listaTela
       .filter(item => filtro === 'TODOS' || item.status === filtro)
       .filter(item => !termo || [item.codigo_registro, item.cliente, item.projeto, item.tramo_sequencial, item.numero_serie, item.site, item.inspetor_qualidade, item.criado_por_nome || '']
         .some(value => value.toLowerCase().includes(termo)));
-  }, [busca, filtro, lista]);
+  }, [busca, filtro, listaTela]);
 
   const contagem = useMemo(() => ({
-    FINALIZADO: lista.filter(item => item.status === 'FINALIZADO').length,
-    AGUARDANDO_ASSINATURAS: lista.filter(item => item.status === 'AGUARDANDO_ASSINATURAS').length,
-    RASCUNHO: lista.filter(item => item.status === 'RASCUNHO').length,
-    TODOS: lista.length,
-  }), [lista]);
+    FINALIZADO: listaTela.filter(item => item.status === 'FINALIZADO').length,
+    AGUARDANDO_ASSINATURAS: listaTela.filter(item => item.status === 'AGUARDANDO_ASSINATURAS').length,
+    RASCUNHO: listaTela.filter(item => item.status === 'RASCUNHO').length,
+    TODOS: listaTela.length,
+  }), [listaTela]);
 
-  const acoes = (item: QuaChecklistExpedicao) => {
+  const acoes = (item: Checklist) => {
     const carregandoItem = abrindoId === item.id;
     const spinner = <Loader2 className="h-4 w-4 animate-spin" />;
     const pdf = <button type="button" disabled={carregandoItem} onClick={() => verPdf(item.id)} className={botaoSecundario}><FileText className="h-4 w-4" /> Ver PDF</button>;
@@ -458,7 +688,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
   };
 
   const renderInicio = () => {
-    const filaColetavel = api.filaAssinaturas(lista).filter(podeColetar);
+    const filaColetavel = api.filaAssinaturas(listaTela).filter(podeColetar);
     return <div className="space-y-6">
       <button type="button" onClick={novoChecklist} className={`${cardClass} flex w-full items-center gap-4 p-4 text-left transition hover:border-blue-400 hover:shadow-md`}>
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><Plus className="h-6 w-6" /></span>
@@ -471,7 +701,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Inbox className="h-5 w-5 text-amber-500" /> Pendentes de assinatura {api.filaAssinaturas(lista).length > 0 && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-black text-white">{api.filaAssinaturas(lista).length}</span>}</h2>
+            <h2 className="flex items-center gap-2 font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Inbox className="h-5 w-5 text-amber-500" /> Pendentes de assinatura {api.filaAssinaturas(listaTela).length > 0 && <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-black text-white">{api.filaAssinaturas(listaTela).length}</span>}</h2>
             <p className="text-xs text-slate-500">Checklists fechados, esperando Qualidade, Produção, Cliente e Transportador. Com a 4ª assinatura ele vai para o histórico.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -518,7 +748,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs font-black text-white dark:bg-slate-100 dark:text-slate-900">{item.numero}</span>
             <div className="min-w-0 space-y-0.5"><Bilingue texto={item.descricao} ptClass="text-sm font-semibold leading-snug text-slate-900 dark:text-slate-50" enClass="text-[13px] leading-snug" /></div>
           </div>
-          <FotosItem fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Item ${item.numero}`, indice)} />
+          <FotosItem imagemNa={respostas[item.chave] === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Item ${item.numero}`, indice)} />
           <RespostaBotoes disabled={!editavel} value={respostas[item.chave]} onChange={value => setRespostas(prev => ({ ...prev, [item.chave]: value }))} />
         </article>)}
       </div>
@@ -538,7 +768,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
             {editavel
               ? <textarea value={valor?.texto || ''} onChange={event => setObservacoes(prev => ({ ...prev, [item.chave]: { ...(prev[item.chave] || { resposta: null }), texto: event.target.value } }))} placeholder="Observação / Observation" rows={2} className={`${inputClass} text-xs`} />
               : valor?.texto && <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-950 dark:text-slate-300">{valor.texto}</p>}
-            {(editavel || (fotos[item.chave] || []).length > 0) && <FotosItem fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Observação ${item.numero}`, indice)} />}
+            {(editavel || valor?.resposta === 'NA' || (fotos[item.chave] || []).length > 0) && <FotosItem imagemNa={valor?.resposta === 'NA' ? imagemNa : null} fotos={fotos[item.chave] || []} editavel={editavel} onAdd={files => adicionarFotos(item.chave, files)} onRemove={foto => removerFoto(item.chave, foto)} onOpen={indice => abrirFotos(item.chave, `Observação ${item.numero}`, indice)} />}
           </article>;
         })}
       </div>
@@ -571,14 +801,15 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
 
   const renderFormulario = () => {
     const editavel = podeEditar(aberto);
-    const totalAssinadas = api.CHECKLIST_PAPEIS.filter(({ papel }) => pendentes[papel] || aberto?.assinaturas.some(item => item.papel === papel)).length;
+    const totalAssinadas = api.CHECKLIST_PAPEIS.filter(({ papel }) => pendentes[papel] || assinaturasVisiveis.some(item => item.papel === papel)).length;
     return <div className="space-y-5">
       <section className={`${cardClass} space-y-4 p-4 sm:p-5`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              {aberto && <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro}</span>}
+              {aberto && <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro || semCodigo}</span>}
               <StatusBadge status={aberto?.status || 'RASCUNHO'} />
+              {aberto && <ChipSincronizacao offline={aberto.offline} />}
               {!editavel && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-800">Somente leitura</span>}
             </div>
             <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50"><Bilingue inline pt="Cabeçalho" en="Header" /></h2>
@@ -606,7 +837,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {api.CHECKLIST_PAPEIS.map(({ papel, label }) => {
-            const gravada = aberto?.assinaturas.find(item => item.papel === papel);
+            const gravada = assinaturasVisiveis.find(item => item.papel === papel);
             const pendente = pendentes[papel];
             const imagem = pendente?.url || gravada?.preview_url;
             return <div key={papel} className={`flex flex-col gap-2 rounded-xl border p-3 ${imagem ? 'border-emerald-200 dark:border-emerald-900/60' : 'border-slate-200 dark:border-slate-800'}`}>
@@ -615,8 +846,8 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
                 <img src={imagem} alt={`Assinatura ${label}`} className="h-20 w-full rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700" />
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{pendente?.nome || gravada?.nome}</p>
                 <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Assinado em {fmtDataHora(pendente?.assinadoEm || gravada?.assinado_em || gravada?.created_at)}</p>
-                {pendente && <p className="text-[11px] font-semibold text-amber-600">Grava ao salvar ou fechar</p>}
-                <button type="button" onClick={() => pendente ? descartarPendente(papel) : gravada && removerAssinatura(gravada)} className="mt-auto inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-red-600 dark:border-slate-700"><Trash2 className="h-3.5 w-3.5" /> Refazer</button>
+                {(pendente || gravada?.local) && <p className="text-[11px] font-semibold text-amber-600">{pendente ? 'Grava ao salvar ou fechar' : 'Guardada no aparelho'}</p>}
+                <button type="button" onClick={() => pendente ? descartarPendente(papel) : gravada && marcarAssinaturaRemovida(gravada)} className="mt-auto inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-red-600 dark:border-slate-700"><Trash2 className="h-3.5 w-3.5" /> Refazer</button>
               </> : <>
                 <input value={nomes[papel]} onChange={event => setNomes(prev => ({ ...prev, [papel]: event.target.value }))} placeholder="Nome (opcional)" className={`${inputClass} text-xs`} />
                 <div className="mt-auto grid grid-cols-2 gap-1.5">
@@ -633,6 +864,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
         <div className="flex items-center gap-2 sm:mr-auto">
           <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div className="h-full bg-blue-600 transition-all" style={{ width: `${(respondidos / totalPerguntas) * 100}%` }} /></div>
           <p className="text-xs text-slate-500">{respondidos} de {totalPerguntas} respondidos</p>
+          {!sync.online && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"><WifiOff className="h-3 w-3" /> Sem conexão — salva no aparelho</span>}
         </div>
         <button type="button" onClick={() => salvar(false)} disabled={salvando} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"><Save className="h-4 w-4" /> Salvar rascunho</button>
         <button type="button" onClick={() => salvar(true)} disabled={salvando} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-xs font-bold text-white shadow-sm disabled:opacity-60 ${totalAssinadas === 4 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : totalAssinadas === 4 ? <CheckCircle2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />} {totalAssinadas === 4 ? 'Fechar e finalizar' : totalAssinadas ? `Fechar — faltam ${4 - totalAssinadas} assinaturas` : 'Fechar e assinar depois'}</button>
@@ -644,12 +876,12 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     if (!aberto) return null;
     const coletar = podeColetar(aberto);
     const assinados = aberto.assinaturas.length;
-    const proximo = api.filaAssinaturas(lista).filter(podeColetar).find(item => item.id !== aberto.id);
+    const proximo = api.filaAssinaturas(listaTela).filter(podeColetar).find(item => item.id !== aberto.id);
     return <div className="space-y-5">
       <section className={`${cardClass} space-y-3 p-4 sm:p-5`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro}</span><StatusBadge status={aberto.status} /></div>
+            <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro || semCodigo}</span><StatusBadge status={aberto.status} /><ChipSincronizacao offline={aberto.offline} /></div>
             <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50">{aberto.tramo_sequencial} <span className="text-sm font-normal text-slate-400">· Série {aberto.numero_serie}</span></h2>
             <p className="text-xs text-slate-500">{aberto.cliente} · {aberto.projeto} · Expedição {formatDate(aberto.data_expedicao)} · {aberto.site}</p>
             <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500"><Lock className="h-3.5 w-3.5 text-amber-500" /> Fechado por {aberto.fechado_por_nome || aberto.criado_por_nome || '-'} · {fmtDataHora(aberto.fechado_em)}</p>
@@ -684,6 +916,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
                   <p className="text-sm font-bold text-slate-900 dark:text-slate-50">{assinatura.nome}</p>
                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Assinado em {fmtDataHora(assinatura.assinado_em || assinatura.created_at)}</p>
                   {assinatura.coletado_por_nome && <p className="text-[11px] text-slate-500">Coletada por {assinatura.coletado_por_nome}</p>}
+                  {assinatura.local && <p className="text-[11px] font-semibold text-amber-600">Guardada no aparelho — sobe ao sincronizar</p>}
                 </div>
                 {coletar && <button type="button" onClick={() => removerAssinatura(assinatura)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-red-600 dark:border-slate-700"><Trash2 className="h-3.5 w-3.5" /> Refazer</button>}
               </div>
@@ -700,7 +933,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
 
       {!coletar && <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-900">As assinaturas são coletadas por quem fez o checklist, pelo setor Qualidade ou por um admin.</p>}
       {proximo && <button type="button" onClick={() => abrir(proximo.id, 'assinaturas')} className={`${cardClass} flex w-full items-center justify-between gap-3 p-4 text-left hover:border-blue-400`}>
-        <span className="text-xs text-slate-500">Próximo da fila: <b className="text-slate-800 dark:text-slate-100">{proximo.codigo_registro}</b> · {proximo.tramo_sequencial} · faltam {api.papeisPendentes(proximo).length}</span>
+        <span className="text-xs text-slate-500">Próximo da fila: <b className="text-slate-800 dark:text-slate-100">{proximo.codigo_registro || 'Checklist no aparelho'}</b> · {proximo.tramo_sequencial} · faltam {api.papeisPendentes(proximo).length}</span>
         <PenTool className="h-4 w-4 text-blue-600" />
       </button>}
 
@@ -713,7 +946,7 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
 
   const renderLote = () => {
     if (!lote) return null;
-    const candidatos = api.filaAssinaturas(lista).filter(podeColetar).filter(item => !api.papeisAssinados(item).has(lote.papel));
+    const candidatos = api.filaAssinaturas(listaTela).filter(podeColetar).filter(item => !api.papeisAssinados(item).has(lote.papel));
     const alvo: AlvoAssinatura = { papel: lote.papel, nome: lote.nome, ids: [...lote.ids].filter(id => candidatos.some(item => item.id === id)) };
     const alternar = (id: string) => setLote(prev => {
       if (!prev) return prev;
@@ -752,8 +985,8 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
     </div>;
   };
 
-  const tituloAba = tela === 'formulario' ? (aberto ? aberto.codigo_registro : 'Novo checklist') : tela === 'assinaturas' ? 'Assinaturas' : 'Checklists';
-  const pendentesTotal = api.filaAssinaturas(lista).length;
+  const tituloAba = tela === 'formulario' ? (aberto ? aberto.codigo_registro || 'Checklist no aparelho' : 'Novo checklist') : tela === 'assinaturas' ? 'Assinaturas' : 'Checklists';
+  const pendentesTotal = api.filaAssinaturas(listaTela).length;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-16">
@@ -769,6 +1002,20 @@ export default function QualidadeChecklistExpedicaoView({ user, onNavigate }: Pr
           <button type="button" onClick={() => { setTela('historico'); carregarLista(); }} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${tela === 'historico' ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}><History className="h-4 w-4" /> Histórico</button>
         </div>
       </div>
+
+      {(tela === 'inicio' || tela === 'historico') && <PainelSincronizacao
+        online={sync.online}
+        pendencias={sync.pendencias}
+        sincronizando={sync.sincronizando}
+        ultimaSincronizacao={sync.ultimaSincronizacao}
+        listaSalvaEm={listaSalvaEm}
+        rotulosAcao={api.ROTULOS_ACAO_EXPEDICAO}
+        titulo={tituloPendencia}
+        onSincronizar={() => sync.sincronizarAgora()}
+        onDescartar={descartarDoAparelho}
+        onAbrir={p => abrir(p.id)}
+      />}
+      {tela !== 'inicio' && tela !== 'historico' && !sync.online && <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200"><WifiOff className="h-4 w-4 shrink-0" /> Sem conexão. O que você salvar fica guardado neste aparelho e sobe sozinho quando a rede voltar.</p>}
 
       {tela === 'historico' ? renderHistorico() : tela === 'formulario' ? renderFormulario() : tela === 'assinaturas' ? renderAssinaturas() : renderInicio()}
 

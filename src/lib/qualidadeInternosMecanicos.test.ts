@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  caminhoIlustracaoPdfInternos, ehUsuarioQualidade, etapaDoChecklist, pendentesQualidade, resumoRespostas,
-  respostasVazias, separarBilingue, validacoesVazias, type InternosModelo,
+  aplicarPendenciaInternos, caminhoIlustracaoPdfInternos, dataLocalDe, ehUsuarioQualidade, etapaDoChecklist, pendentesQualidade, resumoRespostas,
+  respostasVazias, separarBilingue, validacoesVazias, type AcaoInternosOffline, type InternosChecklist, type InternosChecklistInput, type InternosModelo,
 } from './qualidadeInternosMecanicos';
+import { novaPendencia } from './qualidadeOffline';
 
 const modelo: InternosModelo = {
   id: 'teste',
@@ -74,5 +75,37 @@ describe('qualidadeInternosMecanicos', () => {
       item_02: { resposta: 'CONFORME', responsavel: 'A', quantidade_nao_conforme: '2', observacao: '', qualidade_resposta: 'NAO_CONFORME' },
       item_03: { resposta: 'CONFORME', responsavel: 'A', quantidade_nao_conforme: '', observacao: '' },
     })).toEqual({ producaoNc: 1, qualidadeNc: 1, qualidadeRespondidos: 2 });
+  });
+
+  describe('offline — cópia do aparelho sobre o servidor', () => {
+    const usuario = { id: 'prod', name: 'Produção' };
+    const url = (arquivo: { id: string }) => `blob:${arquivo.id}`;
+    const input = {
+      modelo_id: 'teste', modelo_nome: 'Modelo de teste', versao_formulario: 'FRM.ENG-0240 Rev.02', projeto: 'P1', tramo: 'T1', sequencial: '01',
+      responsavel_producao: 'Produção', responsavel_qualidade: '', instrumentos_utilizados: '', respostas: {}, validacoes: validacoesVazias(),
+      observacao_final: '', aprovacao_final_qualidade: false,
+    };
+
+    it('concluído no aparelho já aparece aguardando a Qualidade, com a assinatura datada do dia da captura', () => {
+      const assinadoEm = new Date(2026, 8, 29, 23, 30).toISOString();
+      const p = novaPendencia<InternosChecklistInput, AcaoInternosOffline, InternosChecklist>('qua_internos', 'n1', usuario, {
+        novo: true, input, acao: 'concluir',
+        assinaturasNovas: [{ id: 'a1', papel: 'PRODUCAO', nomePessoa: 'Produção', tipo: 'DESENHO', blob: new Blob(['x']), nome: 'p.jpg', mimeType: 'image/png', assinadoEm, setor: 'Produção' }],
+      });
+      const tela = aplicarPendenciaInternos(null, p, url);
+      expect(tela).toMatchObject({ id: 'n1', codigo_registro: '', status: 'AGUARDANDO_QUALIDADE', producao_concluida_por: 'prod', tramo: 'T1', modelo_id: 'teste' });
+      expect(tela.assinaturas).toMatchObject([{ papel: 'PRODUCAO', setor: 'Produção', data_assinatura: '2026-09-29', preview_url: 'blob:a1' }]);
+      expect(tela.offline?.novo).toBe(true);
+    });
+
+    it('finalizado no aparelho pela Qualidade vai para o histórico', () => {
+      const base = { ...input, id: 's1', codigo_registro: 'IMC-290926-01', status: 'AGUARDANDO_QUALIDADE', fotos: [], assinaturas: [], finalizado_em: null, qualidade_por: null } as unknown as InternosChecklist;
+      const tela = aplicarPendenciaInternos(base, novaPendencia<InternosChecklistInput, AcaoInternosOffline, InternosChecklist>('qua_internos', 's1', { id: 'qua', name: 'Qualidade' }, { acao: 'finalizar' }), url);
+      expect(tela).toMatchObject({ status: 'FINALIZADO', qualidade_por: 'qua', qualidade_por_nome: 'Qualidade', codigo_registro: 'IMC-290926-01' });
+    });
+
+    it('usa o dia local do instante', () => {
+      expect(dataLocalDe(new Date(2026, 0, 5, 0, 10).toISOString())).toBe('2026-01-05');
+    });
   });
 });

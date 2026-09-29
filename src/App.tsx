@@ -6,6 +6,7 @@ import { trackLogin, trackPageView } from './lib/usageTracker';
 import { recordRecentPage } from './lib/homePrefs';
 import { canAccessPage, canAccessFormGroup, canAccessForm, canAccessAseRelatorio, pageIdForPath } from './lib/pages';
 import { marcarDiaSessao, limparDiaSessao, sessaoExpirouNoDia, usuarioSessaoPermanente } from './lib/sessaoDiaria';
+import { pareceFalhaDeRede } from './lib/rede';
 
 // Components
 import Sidebar from './components/Sidebar';
@@ -92,6 +93,7 @@ const RhColaboradores = lazy(() => import('./views/rh/RhColaboradores'));
 const RhSetores = lazy(() => import('./views/rh/RhSetores'));
 const RhTurnos = lazy(() => import('./views/rh/RhTurnos'));
 const RhTreinamentos = lazy(() => import('./views/rh/RhTreinamentos'));
+const RhMatrizTreinamentos = lazy(() => import('./views/rh/RhMatrizTreinamentos'));
 const RhPercentualHE = lazy(() => import('./views/rh/RhPercentualHE'));
 const RhAseRelatorio = lazy(() => import('./views/rh/RhAseRelatorio'));
 const CotacaoVinculos = lazy(() => import('./views/CotacaoVinculos'));
@@ -100,7 +102,6 @@ const DemandasWorkspace = lazy(() => import('./views/demandas/DemandasWorkspace'
 const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
 const PlanejamentoHome = lazy(() => import('./views/planejamento/PlanejamentoHome'));
 const AcompanhamentoGeralView = lazy(() => import('./views/planejamento/AcompanhamentoGeralView'));
-const AcompanhamentoDiarioView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioView'));
 const AcompanhamentoDiarioTvView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioTvView'));
 const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
 const ProducaoApontamentos = lazy(() => import('./views/producao/ProducaoApontamentos'));
@@ -267,7 +268,16 @@ export default function App() {
         }
 
         // Obter sessão inicial
-        let { data: { session } } = await supabase.auth.getSession();
+        let { data: { session }, error: erroSessao } = await supabase.auth.getSession();
+
+        // Sem rede e com o token de acesso vencido, o supabase-js não consegue
+        // renovar e devolve sessão nula — mas mantém a sessão guardada e renova
+        // sozinho quando a rede volta. Quem abre o app em campo sem sinal
+        // (checklists da Qualidade offline) segue com o perfil em cache em vez
+        // de cair no login.
+        const usuarioOffline = !session && !isRecovery && erroSessao && pareceFalhaDeRede(erroSessao)
+          ? localDb.getCurrentUser()
+          : null;
 
         // Expiração diária: se a sessão foi aberta em outro dia (virou a
         // meia-noite), descarta antes de restaurar — o usuário faz login
@@ -325,6 +335,8 @@ export default function App() {
               setUser(null);
             }
           }
+        } else if (usuarioOffline && usuarioOffline.status === 'ativo' && !sessaoExpirouNoDia(new Date(), usuarioOffline)) {
+          setUser(usuarioOffline);
         } else {
           if (!isRecovery) {
             localDb.setCurrentUser(null);
@@ -1135,12 +1147,6 @@ export default function App() {
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 
-      case '/planejamento/acompanhamento-diario':
-        if (canAccessPage(user, 'planejamento_acompanhamento_diario')) {
-          return <AcompanhamentoDiarioView user={user} onNavigate={handleNavigate} />;
-        }
-        return <Dashboard user={user} onNavigate={handleNavigate} />;
-
       case '/planejamento/acompanhamento-diario-tv':
         if (canAccessPage(user, 'planejamento_acompanhamento_diario_tv')) {
           return <AcompanhamentoDiarioTvView user={user} onNavigate={handleNavigate} />;
@@ -1300,6 +1306,12 @@ export default function App() {
       case '/rh/treinamentos':
         if (canAccessPage(user, 'rh_treinamentos_cad')) {
           return <RhTreinamentos user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/rh/matriz-treinamentos':
+        if (canAccessPage(user, 'rh_matriz_treinamentos')) {
+          return <RhMatrizTreinamentos user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

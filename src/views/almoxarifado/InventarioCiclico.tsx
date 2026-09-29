@@ -28,7 +28,7 @@ import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
 import {
   FORM_CODIGO_INVENTARIO, MAX_CONTAGENS, ROTULO_CRITERIO, ROTULO_STATUS_ITEM, chaveItem, coberturaInventario, diasEntre,
-  historicoPorItem, itemEncerrado, montarCandidatos, proximaContagem, resumirInventario, rotuloDias,
+  historicoPorItem, itemEncerrado, montarCandidatos, podeExcluirInventario, proximaContagem, resumirInventario, rotuloDias,
   type CandidatoInventario, type ClasseCurva, type CoberturaInventario, type CriterioCurva, type HistoricoItem,
   type ItemInventario, type StatusItemInventario,
 } from '../../lib/inventarioCiclico';
@@ -170,6 +170,21 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const emAberto = inventarios.filter((i) => i.status === 'aberto').length;
   const comDivergencia = inventarios.filter((i) => i.itens.some((x) => x.status === 'divergente')).length;
 
+  const confirmarExcluirInventario = async (inv: InventarioRow) => {
+    const algumContado = inv.itens.some((i) => i.contagens.length > 0);
+    const msg = algumContado
+      ? `Excluir o inventário ${inv.codigo}? Ele possui contagens registradas. Esta exclusão só é permitida para administradores. O inventário sairá da listagem, mas continuará registrado no banco.`
+      : `Excluir o inventário ${inv.codigo}? Sai da tela, mas permanece no banco.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await excluirInventario(inv.id, user.name);
+      toast.success(`Inventário ${inv.codigo} excluído com sucesso.`);
+      await recarregarInventarios();
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao excluir inventário.');
+    }
+  };
+
   const modalNovo = novo && (
     <ModalSelecaoItens
       user={user}
@@ -263,7 +278,15 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtrados.map((inv) => <CartaoInventario key={inv.id} inv={inv} onAbrir={() => setAbertoId(inv.id)} />)}
+          {filtrados.map((inv) => (
+            <CartaoInventario
+              key={inv.id}
+              inv={inv}
+              podeExcluir={podeExcluirInventario(user, inv)}
+              onAbrir={() => setAbertoId(inv.id)}
+              onExcluir={() => void confirmarExcluirInventario(inv)}
+            />
+          ))}
         </div>
       )}
 
@@ -332,13 +355,30 @@ function BarraProgresso({ inv }: { inv: InventarioRow }) {
   );
 }
 
-function CartaoInventario({ inv, onAbrir }: { inv: InventarioRow; onAbrir: () => void }) {
+function CartaoInventario({
+  inv,
+  onAbrir,
+  onExcluir,
+  podeExcluir,
+}: {
+  inv: InventarioRow;
+  onAbrir: () => void;
+  onExcluir?: () => void;
+  podeExcluir?: boolean;
+}) {
   const r = resumirInventario(inv.itens);
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onAbrir}
-      className="block w-full rounded-xl border px-4 py-3 text-left transition-colors hover:border-[var(--brand)]"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onAbrir();
+        }
+      }}
+      className="group relative block w-full rounded-xl border px-4 py-3 text-left transition-colors hover:border-[var(--brand)] cursor-pointer"
       style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -350,7 +390,22 @@ function CartaoInventario({ inv, onAbrir }: { inv: InventarioRow; onAbrir: () =>
           {r.divergentes > 0 && <Chip token="var(--status-critical)"><AlertTriangle className="h-3 w-3" /> {r.divergentes} divergente(s)</Chip>}
           {r.aguardando > 0 && <Chip token="var(--status-serious)">{r.aguardando} aguardando decisão</Chip>}
         </div>
-        <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>{formatDateBR(inv.data)}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-muted)' }}>{formatDateBR(inv.data)}</span>
+          {podeExcluir && onExcluir && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExcluir();
+              }}
+              title="Excluir inventário"
+              className="rounded-lg p-1.5 text-[var(--ink-muted)] hover:text-[var(--status-critical)] hover:bg-rose-500/10 transition-colors cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
       <p className="mt-1 text-xs" style={{ color: 'var(--ink-secondary)' }}>
         {r.total} item(ns) · {r.conferidos + r.divergentes} encerrado(s)
@@ -359,7 +414,7 @@ function CartaoInventario({ inv, onAbrir }: { inv: InventarioRow; onAbrir: () =>
         {inv.conferente_nome && <> · conferente {inv.conferente_nome}</>}
       </p>
       <div className="mt-2"><BarraProgresso inv={inv} /></div>
-    </button>
+    </div>
   );
 }
 
@@ -688,6 +743,7 @@ function VistaInventario({
   const r = resumirInventario(inv.itens);
   const dono = podeEditarFormulario(user, inv);
   const algumContado = inv.itens.some((i) => i.contagens.length > 0);
+  const podeExcluir = podeExcluirInventario(user, inv);
 
   const contagemFiltro = useMemo(() => {
     const c: Record<FiltroItens, number> = { todos: r.total, abertos: r.pendentes + r.aguardando, pendente: r.pendentes, aguardando_decisao: r.aguardando, conferido: r.conferidos, divergente: r.divergentes };
@@ -733,7 +789,10 @@ function VistaInventario({
   };
 
   const excluir = async () => {
-    if (!window.confirm(`Excluir o inventário ${inv.codigo}? Sai da tela, mas permanece no banco.`)) return;
+    const msg = algumContado
+      ? `Excluir o inventário ${inv.codigo}? Ele possui contagens registradas. Esta exclusão só é permitida para administradores. O inventário sairá da tela, mas continuará registrado no histórico do banco.`
+      : `Excluir o inventário ${inv.codigo}? Sai da tela, mas permanece no banco.`;
+    if (!window.confirm(msg)) return;
     try { await excluirInventario(inv.id, user.name); toast.success(`${inv.codigo} excluído.`); await onExcluido(); }
     catch (err: any) { toast.error(err?.message || 'Falha ao excluir.'); }
   };
@@ -776,8 +835,13 @@ function VistaInventario({
               <Plus className="h-3.5 w-3.5" /> Itens
             </button>
           )}
-          {dono && !algumContado && (
-            <button onClick={() => void excluir()} className={btnSec} style={{ borderColor: 'var(--hairline)', color: 'var(--status-critical)' }}>
+          {podeExcluir && (
+            <button
+              onClick={() => void excluir()}
+              className={btnSec}
+              style={{ borderColor: 'var(--hairline)', color: 'var(--status-critical)' }}
+              title={algumContado ? 'Excluir inventário (permissão de administrador)' : 'Excluir inventário'}
+            >
               <Trash2 className="h-3.5 w-3.5" /> Excluir
             </button>
           )}

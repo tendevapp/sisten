@@ -2,6 +2,11 @@ import { supabase } from '../db/supabaseClient';
 import type { Profile } from '../types';
 import { comprimirImagemUpload } from './imageCompression';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
+import { estaOffline } from './rede';
+import {
+  erroDeArquivoJaExistente, infoOffline, inserirComCodigoUnico,
+  type AssinaturaOffline, type FotoOffline, type InfoOffline, type PendenciaOffline, type SalvarProgresso,
+} from './qualidadeOffline';
 
 export const INTERNOS_BUCKET = 'qua-internos-mecanicos';
 export const INTERNOS_PREFIXO = 'IMC';
@@ -44,7 +49,7 @@ export function caminhoIlustracaoPdfInternos(modeloId: string, itemChave: string
   return `/qualidade-internos-mecanicos/recortes-pdf/${modeloId}/${itemChave}.png`;
 }
 
-interface CatalogoInternos {
+export interface CatalogoInternos {
   version: string;
   models: InternosModelo[];
 }
@@ -79,6 +84,8 @@ export interface InternosFoto {
   mime_type: string;
   size_bytes: number;
   preview_url?: string;
+  /** Foto só no aparelho, ainda não enviada. */
+  local?: FotoOffline;
 }
 
 export interface InternosAssinatura {
@@ -94,6 +101,7 @@ export interface InternosAssinatura {
   path: string;
   mime_type: string;
   preview_url?: string;
+  local?: AssinaturaOffline;
 }
 
 interface InternosIlustracaoStorage {
@@ -128,8 +136,11 @@ export interface InternosChecklist {
   qualidade_por_nome: string | null;
   qualidade_iniciada_em: string | null;
   finalizado_em: string | null;
+  updated_at?: string;
   fotos: InternosFoto[];
   assinaturas: InternosAssinatura[];
+  /** Presente quando há alterações só no aparelho (ver qualidadeOffline.ts). */
+  offline?: InfoOffline;
 }
 
 export interface InternosChecklistInput {
@@ -191,8 +202,33 @@ export async function carregarCatalogoInternos(): Promise<CatalogoInternos> {
           })),
         })),
       }));
+    // Falhou (ex.: sem rede no primeiro acesso): não guarda a promessa
+    // rejeitada, para a próxima chamada tentar de novo.
+    catalogoPromise.catch(() => { catalogoPromise = null; });
   }
   return catalogoPromise;
+}
+
+/**
+ * Baixa uma vez as ilustrações dos itens (~1,6 MB) para o service worker
+ * guardá-las — sem isso, o checklist aberto sem rede mostra os itens sem
+ * figura. Só com service worker ativo e rede; repete quando o catálogo muda
+ * de versão.
+ */
+export async function prepararIlustracoesOffline(catalogo: CatalogoInternos): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.serviceWorker?.controller || estaOffline()) return;
+  const chave = `sisten_qua_internos_ilustracoes_${catalogo.version}`;
+  try {
+    if (localStorage.getItem(chave)) return;
+  } catch {
+    return;
+  }
+  const urls = [...new Set(catalogo.models.flatMap(modelo => modelo.items.flatMap(item => item.ilustracoes)))];
+  for (let inicio = 0; inicio < urls.length; inicio += 6) {
+    await Promise.allSettled(urls.slice(inicio, inicio + 6).map(url => fetch(url)));
+    if (estaOffline()) return;
+  }
+  try { localStorage.setItem(chave, new Date().toISOString()); } catch { /* sem storage: baixa de novo na próxima */ }
 }
 
 export { separarBilingue } from './textoBilingue';
@@ -272,30 +308,14 @@ export async function obterChecklistInternos(id: string): Promise<InternosCheckl
   } as InternosChecklist;
 }
 
-// Índice reinicia por dia (a data já está no próprio código).
-export async function obterProximoCodigoInternos(): Promise<string> {
-  const hoje = hojeLocal();
-  const { data } = await db('qua_internos_mecanicos_checklists').select('codigo_registro').gte('created_at', `${hoje}T00:00:00`);
-  return gerarCodigoFormulario(INTERNOS_PREFIXO, hoje, proximoIndiceCodigo(INTERNOS_PREFIXO, (data || []).map((row: any) => row.codigo_registro)));
-}
-
-// O status não muda aqui: só em concluirProducaoInternos /
-// finalizarQualidadeInternos, depois que fotos e assinaturas já subiram (a RLS
-// tira a edição da Produção assim que o registro vai para a Qualidade).
-export async function salvarChecklistInternos(input: InternosChecklistInput, user: Profile, id?: string): Promise<InternosChecklist> {
-  const payload = { ...input, updated_at: new Date().toISOString() };
-  let checklistId = id;
-  if (checklistId) {
-    const { error } = await db('qua_internos_mecanicos_checklists').update(payload).eq('id', checklistId);
-    if (error) throw new Error(error.message);
-  } else {
-    const { data, error } = await db('qua_internos_mecanicos_checklists')
-      .insert({ ...payload, status: 'RASCUNHO', criado_por_nome: user.name, codigo_registro: await obterProximoCodigoInternos(), criado_por: user.id }).select().single();
-    if (error) throw new Error(error.message);
-    checklistId = data.id;
-  }
-  await lembrarCabecalhosInternos(input);
-  return obterChecklistInternos(checklistId);
+// Índice reinicia por dia (a data já está no próprio código). `dia` é o dia
+// em que o checklist foi feito — offline, o envio pode acontecer dias depois.
+export async function obterProximoCodigoInternos(dia: string = hojeLocal()): Promise<string> {
+  const seguinte = new Date(`${dia}T12:00:00`);
+  seguinte.setDate(seguinte.getDate() + 1);
+  const { data } = await db('qua_internos_mecanicos_checklists').select('codigo_registro')
+    .gte('created_at', `${dia}T00:00:00`).lt('created_at', `${dataLocalDe(seguinte.toISOString())}T00:00:00`);
+  return gerarCodigoFormulario(INTERNOS_PREFIXO, dia, proximoIndiceCodigo(INTERNOS_PREFIXO, (data || []).map((row: any) => row.codigo_registro)));
 }
 
 async function atualizarChecklist(id: string, campos: Record<string, unknown>): Promise<void> {
@@ -303,7 +323,7 @@ async function atualizarChecklist(id: string, campos: Record<string, unknown>): 
   if (error) throw new Error(error.message);
 }
 
-export async function concluirProducaoInternos(id: string, user: Profile): Promise<void> {
+export async function concluirProducaoInternos(id: string, user: Pick<Profile, 'id' | 'name'>): Promise<void> {
   await atualizarChecklist(id, {
     status: 'AGUARDANDO_QUALIDADE',
     producao_concluida_por: user.id,
@@ -318,7 +338,7 @@ export async function assumirQualidadeInternos(checklist: Pick<InternosChecklist
   await atualizarChecklist(checklist.id, { qualidade_por: user.id, qualidade_por_nome: user.name, qualidade_iniciada_em: new Date().toISOString() });
 }
 
-export async function finalizarQualidadeInternos(id: string, user: Profile): Promise<void> {
+export async function finalizarQualidadeInternos(id: string, user: Pick<Profile, 'id' | 'name'>): Promise<void> {
   await atualizarChecklist(id, {
     status: 'FINALIZADO',
     qualidade_por: user.id,
@@ -347,19 +367,7 @@ export async function lembrarCabecalhosInternos(input: Pick<InternosChecklistInp
   }
 }
 
-export async function uploadFotoInternos(checklistId: string, itemChave: string, file: File): Promise<InternosFoto> {
-  const blob = await comprimirImagemUpload(file);
-  const mimeType = blob.type || file.type || 'image/jpeg';
-  const path = `${checklistId}/itens/${itemChave}/${uid('foto')}.${extensao(mimeType)}`;
-  const { error: uploadError } = await supabase.storage.from(INTERNOS_BUCKET).upload(path, blob, { contentType: mimeType, upsert: false });
-  if (uploadError) throw new Error(uploadError.message);
-  const { data, error } = await db('qua_internos_mecanicos_fotos')
-    .insert({ checklist_id: checklistId, item_chave: itemChave, path, file_name: file.name, mime_type: mimeType, size_bytes: blob.size }).select().single();
-  if (error) throw new Error(error.message);
-  return (await urlsAssinadas([data]))[0] as InternosFoto;
-}
-
-export async function removerFotoInternos(foto: InternosFoto): Promise<void> {
+export async function removerFotoInternos(foto: Pick<InternosFoto, 'id' | 'path'>): Promise<void> {
   await supabase.storage.from(INTERNOS_BUCKET).remove([foto.path]);
   const { error } = await db('qua_internos_mecanicos_fotos').delete().eq('id', foto.id);
   if (error) throw new Error(error.message);
@@ -394,7 +402,7 @@ export async function salvarAssinaturaInternos(
   return (await urlsAssinadas([data]))[0] as InternosAssinatura;
 }
 
-export async function removerAssinaturaInternos(assinatura: InternosAssinatura): Promise<void> {
+export async function removerAssinaturaInternos(assinatura: Pick<InternosAssinatura, 'id' | 'path'>): Promise<void> {
   await supabase.storage.from(INTERNOS_BUCKET).remove([assinatura.path]);
   const { error } = await db('qua_internos_mecanicos_assinaturas').delete().eq('id', assinatura.id);
   if (error) throw new Error(error.message);
@@ -426,4 +434,152 @@ export async function sincronizarIlustracoesInternos(catalogo: CatalogoInternos)
   const rows = [...existentes.values()] as InternosIlustracaoStorage[];
   const signed = await urlsAssinadas(rows);
   return Object.fromEntries(signed.map(item => [item.asset_key, item.preview_url || '']));
+}
+
+// =====================================================================
+// OFFLINE — preenchimento sem rede (ver qualidadeOffline.ts)
+// =====================================================================
+
+export type AcaoInternosOffline = 'concluir' | 'finalizar';
+export const ROTULOS_ACAO_INTERNOS: Record<AcaoInternosOffline, string> = {
+  concluir: 'concluir e enviar à Qualidade',
+  finalizar: 'finalizar checklist',
+};
+export type PendenciaInternos = PendenciaOffline<InternosChecklistInput, AcaoInternosOffline, InternosChecklist>;
+
+/** Data local (YYYY-MM-DD) de um instante ISO — o dia em que o checklist foi feito no aparelho. */
+export function dataLocalDe(iso: string): string {
+  const momento = new Date(iso);
+  if (Number.isNaN(momento.getTime())) return hojeLocal();
+  return `${momento.getFullYear()}-${String(momento.getMonth() + 1).padStart(2, '0')}-${String(momento.getDate()).padStart(2, '0')}`;
+}
+
+function registroVazioInternos(p: PendenciaInternos): InternosChecklist {
+  return {
+    id: p.id, codigo_registro: '', modelo_id: p.input?.modelo_id || '', modelo_nome: p.input?.modelo_nome || '',
+    versao_formulario: p.input?.versao_formulario || '', status: 'RASCUNHO',
+    projeto: '', tramo: '', sequencial: '', responsavel_producao: null, responsavel_qualidade: null, instrumentos_utilizados: null,
+    respostas: {}, validacoes: {}, observacao_final: null, aprovacao_final_qualidade: false,
+    criado_por: p.usuarioId, criado_por_nome: p.usuarioNome, created_at: p.criadoEm,
+    producao_concluida_por: null, producao_concluida_por_nome: null, producao_concluida_em: null,
+    qualidade_por: null, qualidade_por_nome: null, qualidade_iniciada_em: null, finalizado_em: null,
+    fotos: [], assinaturas: [],
+  };
+}
+
+/**
+ * Aplica a pendência do aparelho sobre o registro do servidor (ou cria o
+ * registro, se nasceu offline). Concluído/finalizado no aparelho já aparece
+ * na etapa seguinte — é o que o servidor fará ao receber.
+ */
+export function aplicarPendenciaInternos(
+  base: InternosChecklist | null,
+  p: PendenciaInternos,
+  urlDe: (arquivo: FotoOffline | AssinaturaOffline) => string,
+): InternosChecklist {
+  const registro = base || registroVazioInternos(p);
+  const removidas = new Set([...p.fotosRemovidas, ...p.assinaturasRemovidas].map(item => item.id));
+  const papeisNovos = new Set(p.assinaturasNovas.map(item => item.papel));
+  const concluidoAqui = !!p.acao && registro.status === 'RASCUNHO';
+  const finalizadoAqui = p.acao === 'finalizar' && registro.status !== 'FINALIZADO';
+  const status: InternosStatus = finalizadoAqui ? 'FINALIZADO' : concluidoAqui ? 'AGUARDANDO_QUALIDADE' : registro.status;
+  return {
+    ...registro,
+    ...(p.input || {}),
+    status,
+    producao_concluida_por: concluidoAqui ? p.usuarioId : registro.producao_concluida_por,
+    producao_concluida_por_nome: concluidoAqui ? p.usuarioNome : registro.producao_concluida_por_nome,
+    producao_concluida_em: concluidoAqui ? p.atualizadoEm : registro.producao_concluida_em,
+    qualidade_por: finalizadoAqui ? p.usuarioId : registro.qualidade_por,
+    qualidade_por_nome: finalizadoAqui ? p.usuarioNome : registro.qualidade_por_nome,
+    finalizado_em: finalizadoAqui ? p.atualizadoEm : registro.finalizado_em,
+    fotos: [
+      ...registro.fotos.filter(foto => !removidas.has(foto.id)),
+      ...p.fotosNovas.map(foto => ({
+        id: foto.id, checklist_id: p.id, item_chave: foto.itemChave, path: '', file_name: foto.nome,
+        mime_type: foto.mimeType, size_bytes: foto.blob.size, preview_url: urlDe(foto), local: foto,
+      })),
+    ],
+    assinaturas: [
+      ...registro.assinaturas.filter(item => !removidas.has(item.id) && !papeisNovos.has(item.papel)),
+      ...p.assinaturasNovas.map(item => ({
+        id: item.id, checklist_id: p.id, papel: item.papel as InternosPapel, nome: item.nomePessoa, setor: item.setor || null,
+        data_assinatura: dataLocalDe(item.assinadoEm), assinado_em: item.assinadoEm, tipo: item.tipo,
+        path: '', mime_type: item.mimeType, preview_url: urlDe(item), local: item,
+      })),
+    ],
+    offline: infoOffline(p),
+  };
+}
+
+/** Path determinístico: reenviar a mesma foto cai em "já existe" em vez de duplicar. */
+async function enviarFotoOfflineInternos(checklistId: string, foto: FotoOffline): Promise<void> {
+  const path = `${checklistId}/itens/${foto.itemChave}/foto-${foto.id}.${extensao(foto.mimeType)}`;
+  const { error: uploadError } = await supabase.storage.from(INTERNOS_BUCKET).upload(path, foto.blob, { contentType: foto.mimeType, upsert: false });
+  if (uploadError && !erroDeArquivoJaExistente(uploadError as { message?: string; statusCode?: string })) throw new Error(uploadError.message);
+  const { data: existente, error: consultaError } = await db('qua_internos_mecanicos_fotos').select('id').eq('path', path).maybeSingle();
+  if (consultaError) throw new Error(consultaError.message);
+  if (existente) return;
+  const { error } = await db('qua_internos_mecanicos_fotos')
+    .insert({ id: foto.id, checklist_id: checklistId, item_chave: foto.itemChave, path, file_name: foto.nome, mime_type: foto.mimeType, size_bytes: foto.blob.size });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Sobe uma pendência: conteúdo → remoções → fotos → assinaturas → status.
+ * O status muda por último, depois de fotos e assinaturas (a RLS tira a
+ * edição da Produção assim que o registro vai para a Qualidade). Cada passo
+ * sai da pendência assim que o servidor confirma.
+ */
+export async function sincronizarPendenciaInternos(p: PendenciaInternos, salvarProgresso: SalvarProgresso<PendenciaInternos>): Promise<void> {
+  const usuario = { id: p.usuarioId, name: p.usuarioNome };
+  if (p.input) {
+    const input = p.input;
+    const { data: atual, error } = await db('qua_internos_mecanicos_checklists').select('id, status').eq('id', p.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    const payload = { ...input, updated_at: new Date().toISOString() };
+    if (!atual) {
+      await inserirComCodigoUnico(
+        // O código leva o dia em que o checklist foi feito, não o do envio.
+        () => obterProximoCodigoInternos(dataLocalDe(p.criadoEm)),
+        codigo => db('qua_internos_mecanicos_checklists').insert({
+          ...payload, id: p.id, status: 'RASCUNHO', criado_por: usuario.id, criado_por_nome: usuario.name, codigo_registro: codigo, created_at: p.criadoEm,
+        }),
+      );
+    } else {
+      if (atual.status === 'FINALIZADO') throw new Error('Este checklist já foi finalizado no servidor — as respostas alteradas no aparelho não podem mais ser aplicadas. Descarte a cópia do aparelho.');
+      const { data, error: updateError } = await db('qua_internos_mecanicos_checklists').update(payload).eq('id', p.id).select('id');
+      if (updateError) throw new Error(updateError.message);
+      if (!data?.length) throw new Error('O servidor não aceitou a alteração: o checklist mudou de etapa ou você não tem permissão para editá-lo.');
+    }
+    await lembrarCabecalhosInternos(input).catch(() => {});
+    await salvarProgresso(() => ({ input: null, novo: false }));
+  }
+  for (const remocao of p.fotosRemovidas) {
+    await removerFotoInternos(remocao);
+    await salvarProgresso(atual => ({ fotosRemovidas: atual.fotosRemovidas.filter(item => item.id !== remocao.id) }));
+  }
+  for (const foto of p.fotosNovas) {
+    await enviarFotoOfflineInternos(p.id, foto);
+    await salvarProgresso(atual => ({ fotosNovas: atual.fotosNovas.filter(item => item.id !== foto.id) }));
+  }
+  for (const remocao of p.assinaturasRemovidas) {
+    await removerAssinaturaInternos(remocao);
+    await salvarProgresso(atual => ({ assinaturasRemovidas: atual.assinaturasRemovidas.filter(item => item.id !== remocao.id) }));
+  }
+  for (const assinatura of p.assinaturasNovas) {
+    await salvarAssinaturaInternos(p.id, assinatura.papel as InternosPapel, assinatura.nomePessoa, assinatura.setor || '', assinatura.assinadoEm, assinatura.tipo, assinatura.blob);
+    await salvarProgresso(atual => ({ assinaturasNovas: atual.assinaturasNovas.filter(item => item.id !== assinatura.id) }));
+  }
+  if (p.acao) {
+    const { data, error } = await db('qua_internos_mecanicos_checklists').select('status').eq('id', p.id).single();
+    if (error) throw new Error(error.message);
+    let status = data.status as InternosStatus;
+    if (status === 'RASCUNHO') {
+      await concluirProducaoInternos(p.id, usuario);
+      status = 'AGUARDANDO_QUALIDADE';
+    }
+    if (p.acao === 'finalizar' && status === 'AGUARDANDO_QUALIDADE') await finalizarQualidadeInternos(p.id, usuario);
+    await salvarProgresso(() => ({ acao: null }));
+  }
 }

@@ -20,7 +20,7 @@ import type {
 } from '../types';
 import { apenasVigentes, marcarExcluido, marcarRestaurado, semExcluidos } from './softDelete';
 import { situacaoParaAtivo, type PessoaImportada } from './rhPessoasImport';
-import type { TreinamentoImportado } from './rhTreinamentosImport';
+import { corrigirTextoTreinamento, diaSemanaPtBr, normalizarHorarioTreinamento, type TreinamentoImportado } from './rhTreinamentosImport';
 
 export interface RhImportSummary {
   lidos: number;
@@ -124,11 +124,11 @@ function normalizarTreinamento(dados: Partial<TreinamentoImportado>): Treinament
   if (!treinamento) throw new Error('O nome do treinamento é obrigatório.');
   return {
     data_treinamento: data,
-    dia_semana: String(dados.dia_semana ?? '').trim(),
+    dia_semana: diaSemanaPtBr(data),
     semana: String(dados.semana ?? '').trim(),
     tipo_planejamento: (dados.tipo_planejamento || 'P') as TreinamentoImportado['tipo_planejamento'],
     treinamento,
-    turma_horario: String(dados.turma_horario ?? '').trim(),
+    turma_horario: normalizarHorarioTreinamento(dados.turma_horario),
     tipo_treinamento: (dados.tipo_treinamento || '') as TreinamentoImportado['tipo_treinamento'],
     data_eficacia: dados.data_eficacia || null,
     realizado: Boolean(dados.realizado),
@@ -166,6 +166,33 @@ export async function atualizarRhTreinamento(
   if (error) {
     if (error.code === '23505' || /unique/i.test(error.message || '')) {
       throw new Error('Já existe outro treinamento com a mesma data, nome, horário e classificação.');
+    }
+    if (isErroRls(error)) throw new Error('Permissão negada: seu usuário não possui autorização para atualizar treinamentos no RH.');
+    throw new Error(error.message);
+  }
+}
+
+export type RhTreinamentoEdicaoMassa = Partial<Pick<TreinamentoImportado,
+  'realizado' | 'tipo_planejamento' | 'tipo_treinamento' | 'turma_horario' | 'semana' | 'data_eficacia'>>;
+
+/** Aplica os mesmos campos a vários treinamentos; só entra no UPDATE o que estiver no `alteracoes`. */
+export async function atualizarRhTreinamentosEmMassa(
+  ids: string[],
+  alteracoes: RhTreinamentoEdicaoMassa,
+  atualizadoPor?: string | null,
+): Promise<void> {
+  if (!ids.length) throw new Error('Selecione ao menos um treinamento.');
+  if (!Object.keys(alteracoes).length) throw new Error('Informe ao menos um campo para alterar.');
+  const { error } = await (supabase as any)
+    .from('rh_treinamentos')
+    .update({
+      ...alteracoes,
+      ...(alteracoes.turma_horario !== undefined && { turma_horario: normalizarHorarioTreinamento(alteracoes.turma_horario) }),
+      atualizado_por: atualizadoPor || null, updated_at: new Date().toISOString() })
+    .in('id', ids);
+  if (error) {
+    if (error.code === '23505' || /unique/i.test(error.message || '')) {
+      throw new Error('A alteração geraria treinamentos repetidos (mesma data, nome, horário e classificação). Ajuste a seleção.');
     }
     if (isErroRls(error)) throw new Error('Permissão negada: seu usuário não possui autorização para atualizar treinamentos no RH.');
     throw new Error(error.message);
@@ -212,22 +239,43 @@ export async function importarRhTreinamentos(
       .in('data_treinamento', datas);
     if (selectError) throw new Error(selectError.message);
 
-    const existentesSet = new Set((existentes || []).map((item: TreinamentoImportado) => chaveTreinamento(item)));
-    const payload = chunk.map(item => ({
-      ...item,
-      criado_por: atualizadoPor || null,
-      atualizado_por: atualizadoPor || null,
-      excluido_em: null,
-      excluido_por: null,
-    }));
-    const { error: upsertError } = await (supabase as any)
-      .from('rh_treinamentos')
-      .upsert(payload, { onConflict: RH_TREINAMENTOS_CONFLICT });
-    if (upsertError) {
-      if (isErroRls(upsertError)) throw new Error('Permissão negada: seu usuário não possui autorização para importar treinamentos no RH.');
-      throw new Error(upsertError.message);
+    // Linhas gravadas por importações antigas podem ter o nome com acento quebrado ou o
+    // horário como fração do Excel; casa pela chave normalizada para atualizar em vez de duplicar.
+    const existentesPorChave = new Map<string, string>();
+    (existentes || []).forEach((item: TreinamentoImportado & { id: string }) => {
+      const chave = chaveTreinamento({
+        ...item,
+        treinamento: corrigirTextoTreinamento(item.treinamento),
+        turma_horario: normalizarHorarioTreinamento(item.turma_horario),
+      });
+      if (!existentesPorChave.has(chave)) existentesPorChave.set(chave, item.id);
+    });
+
+    const auditoria = { atualizado_por: atualizadoPor || null, excluido_em: null, excluido_por: null };
+    const novos = chunk.filter(item => !existentesPorChave.has(chaveTreinamento(item)));
+    const jaExistentes = chunk.filter(item => existentesPorChave.has(chaveTreinamento(item)));
+
+    if (novos.length) {
+      const { error: upsertError } = await (supabase as any)
+        .from('rh_treinamentos')
+        .upsert(novos.map(item => ({ ...item, criado_por: atualizadoPor || null, ...auditoria })), { onConflict: RH_TREINAMENTOS_CONFLICT });
+      if (upsertError) {
+        if (isErroRls(upsertError)) throw new Error('Permissão negada: seu usuário não possui autorização para importar treinamentos no RH.');
+        throw new Error(upsertError.message);
+      }
     }
-    chunk.forEach(item => { if (existentesSet.has(chaveTreinamento(item))) atualizados += 1; else inseridos += 1; });
+    for (const item of jaExistentes) {
+      const { error: updateError } = await (supabase as any)
+        .from('rh_treinamentos')
+        .update({ ...item, ...auditoria, updated_at: new Date().toISOString() })
+        .eq('id', existentesPorChave.get(chaveTreinamento(item)));
+      if (updateError) {
+        if (isErroRls(updateError)) throw new Error('Permissão negada: seu usuário não possui autorização para importar treinamentos no RH.');
+        throw new Error(updateError.message);
+      }
+    }
+    inseridos += novos.length;
+    atualizados += jaExistentes.length;
     onProgress?.(Math.round(((i + chunk.length) / linhas.length) * 100), `Importados ${i + chunk.length} de ${linhas.length} treinamentos.`);
   }
 

@@ -15,6 +15,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   UserCog, Users, Map, Clock, Percent, BusFront, Timer, ArrowRight,
   ClipboardList, BarChart3, Database, Clock3, CalendarDays,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import { canAccessPage } from '../../lib/pages';
@@ -94,6 +95,16 @@ const SECOES: Secao[] = [
         path: '/rh/treinamentos',
         gateId: 'rh_treinamentos_cad',
         fonte: 'Base rh_treinamentos',
+      },
+      {
+        id: 'matriz_treinamentos',
+        label: 'Matriz de Treinamentos',
+        icon: ClipboardCheck,
+        desc: 'Aptidão, validade e vencimentos por colaborador. A função vem sempre do cadastro de pessoas e define os treinamentos obrigatórios.',
+        cor: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400',
+        path: '/rh/matriz-treinamentos',
+        gateId: 'rh_matriz_treinamentos',
+        fonte: 'Matriz de conformidade RH',
       },
       {
         id: 'rotas',

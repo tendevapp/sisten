@@ -340,10 +340,6 @@ describe('pages.ts - Controle de Acesso', () => {
         path: '/planejamento/acompanhamento-geral',
         group: 'PLANEJAMENTO',
       });
-      expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_diario')).toMatchObject({
-        path: '/planejamento/acompanhamento-diario',
-        group: 'PLANEJAMENTO',
-      });
       expect(PAGES.find(page => page.id === 'planejamento_acompanhamento_diario_tv')).toMatchObject({
         path: '/planejamento/acompanhamento-diario-tv',
         group: 'PLANEJAMENTO',

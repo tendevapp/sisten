@@ -66,8 +66,7 @@ export const PAGES: PageDef[] = [
 
   { id: 'planejamento_home', group: 'PLANEJAMENTO', label: 'Planejamento', path: '/planejamento', icon: CalendarDays, defaultRoles: ['admin', 'coordenador_suprimentos'] },
   { id: 'planejamento_acompanhamento_geral', group: 'PLANEJAMENTO', label: 'Acompanhamento Geral', path: '/planejamento/acompanhamento-geral', icon: Activity, defaultRoles: ['admin', 'coordenador_suprimentos'] },
-  { id: 'planejamento_acompanhamento_diario', group: 'PLANEJAMENTO', label: 'Acomp Diário', path: '/planejamento/acompanhamento-diario', icon: BarChart3, defaultRoles: ['admin', 'coordenador_suprimentos'] },
-  { id: 'planejamento_acompanhamento_diario_tv', group: 'PLANEJAMENTO', label: 'Acomp Diário TV', path: '/planejamento/acompanhamento-diario-tv', icon: MonitorPlay, defaultRoles: ['admin', 'coordenador_suprimentos'] },
+  { id: 'planejamento_acompanhamento_diario_tv', group: 'PLANEJAMENTO', label: 'Acomp Diário', path: '/planejamento/acompanhamento-diario-tv', icon: MonitorPlay, defaultRoles: ['admin', 'coordenador_suprimentos'] },
 
   { id: 'suprimentos_home', group: 'SUPRIMENTOS', label: 'Suprimentos', path: '/suprimentos', icon: PackageSearch, defaultRoles: ['admin', 'comprador', 'coordenador_suprimentos'] },
   { id: 'sup_cadastros_sap', group: 'SUPRIMENTOS', label: 'Cadastros SAP', path: '/suprimentos/cadastros-sap', icon: KeyRound, defaultRoles: ['admin', 'coordenador_suprimentos', 'comprador'] },
@@ -148,6 +147,7 @@ export const PAGES: PageDef[] = [
   { id: 'rh_setores_cad', group: 'RH', label: 'Setores do RH', path: '/rh/setores', icon: Map, defaultRoles: ['admin'] },
   { id: 'rh_turnos_cad', group: 'RH', label: 'Turnos', path: '/rh/turnos', icon: Clock, defaultRoles: ['admin'] },
   { id: 'rh_treinamentos_cad', group: 'RH', label: 'Treinamentos', path: '/rh/treinamentos', icon: CalendarDays, defaultRoles: ['admin'] },
+  { id: 'rh_matriz_treinamentos', group: 'RH', label: 'Matriz de Treinamentos', path: '/rh/matriz-treinamentos', icon: ClipboardCheck, defaultRoles: ['admin'] },
   { id: 'rh_rotas_cad', group: 'RH', label: 'Rotas de Transporte', path: '/rh/rotas', icon: Route, defaultRoles: ['admin'] },
   { id: 'rh_percentual_he', group: 'RH', label: 'Percentual de Hora Extra', path: '/rh/percentual-he', icon: Percent, defaultRoles: ['admin'] },
 

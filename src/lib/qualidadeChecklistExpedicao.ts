@@ -10,6 +10,10 @@ import type {
 } from '../types';
 import { comprimirImagemUpload } from './imageCompression';
 import { gerarCodigoFormulario, proximoIndiceCodigo } from './codigosFormulario';
+import {
+  comCache, erroDeArquivoJaExistente, infoOffline, inserirComCodigoUnico,
+  type AssinaturaOffline, type FotoOffline, type InfoOffline, type PendenciaOffline, type SalvarProgresso,
+} from './qualidadeOffline';
 
 export const CHECKLIST_BUCKET = 'qua-checklist-expedicao';
 export const CHECKLIST_PREFIXO = 'EXP';
@@ -42,7 +46,11 @@ export const CHECKLIST_PAPEIS: { papel: QuaChecklistPapel; label: string }[] = [
   { papel: 'TRANSPORTADOR', label: 'Transportador / Transporter' },
 ];
 
-export const CHECKLIST_CAMPOS_CABECALHO = ['cliente', 'projeto', 'tramo_sequencial', 'numero_serie', 'site', 'inspetor_qualidade', 'etiqueta_secao'] as const;
+export const CHECKLIST_CAMPOS_CABECALHO = ['cliente', 'projeto', 'tramo_sequencial', 'numero_serie', 'site', 'inspetor_qualidade'] as const;
+
+/** Valores de partida de um checklist novo — o inspetor pode trocar. */
+export const CHECKLIST_CLIENTE_PADRAO = 'GOLDWIND';
+export const CHECKLIST_SITE_PADRAO = 'TEN';
 export type ChecklistCampoCabecalho = typeof CHECKLIST_CAMPOS_CABECALHO[number];
 
 export type ChecklistObservacao = { resposta: QuaChecklistResposta | null; texto: string };
@@ -61,6 +69,29 @@ function extensao(mimeType: string): string {
   return 'jpg';
 }
 
+/**
+ * Imagem mostrada no lugar da foto quando o item/observação é marcado N/A
+ * (formulário e PDF). Fica no Storage do checklist; a cópia em `public/` é o
+ * último recurso (primeiro acesso já sem rede).
+ */
+export const IMAGEM_NA_PATH = 'modelos/nao-aplicavel.png';
+export const IMAGEM_NA_LOCAL = '/qualidade/nao-aplicavel.png';
+let imagemNaPromise: Promise<string> | null = null;
+
+/** URL da imagem N/A — baixada do Storage uma vez e guardada no aparelho para uso offline. */
+export function urlImagemNaoAplicavel(): Promise<string> {
+  if (!imagemNaPromise) {
+    imagemNaPromise = comCache<Blob>('qua_expedicao', 'imagem-na', async () => {
+      const { data, error } = await supabase.storage.from(CHECKLIST_BUCKET).download(IMAGEM_NA_PATH);
+      if (error || !data) throw new Error(error?.message || 'Imagem N/A não encontrada no Storage.');
+      return data;
+    })
+      .then(({ valor }) => URL.createObjectURL(valor))
+      .catch(() => IMAGEM_NA_LOCAL);
+  }
+  return imagemNaPromise;
+}
+
 export function hojeLocal(): string {
   const agora = new Date();
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
@@ -74,6 +105,11 @@ export interface ChecklistInput {
   data_expedicao: string;
   site: string;
   inspetor_qualidade: string;
+  /**
+   * Campo retirado do formulário (FRM.QUA-0030). A coluna segue `not null` e
+   * no trigger de proteção, então os novos gravam vazio e os antigos mantêm o
+   * valor que tinham.
+   */
   etiqueta_secao: string;
   respostas: Record<string, QuaChecklistResposta | null>;
   observacoes: Record<string, ChecklistObservacao>;
@@ -180,30 +216,13 @@ export async function obterChecklist(id: string): Promise<QuaChecklistExpedicao>
   return { ...data, ...arquivos } as QuaChecklistExpedicao;
 }
 
-export async function salvarChecklist(input: ChecklistInput, user: Profile, id?: string): Promise<QuaChecklistExpedicao> {
-  const payload = { ...input, updated_at: new Date().toISOString() };
-  let registroId = id;
-  if (!registroId) {
-    const codigo = await obterProximoNumeroChecklist(input.data_expedicao);
-    const { data, error } = await db('qua_checklist_expedicoes')
-      .insert({ ...payload, status: 'RASCUNHO', criado_por: user.id, criado_por_nome: user.name, codigo_registro: codigo }).select().single();
-    if (error) throw new Error(error.message);
-    registroId = data.id;
-  } else {
-    const { error } = await db('qua_checklist_expedicoes').update(payload).eq('id', registroId);
-    if (error) throw new Error(error.message);
-  }
-  await recordarCabecalhos(input);
-  return obterChecklist(registroId);
-}
-
 async function atualizarChecklist(id: string, campos: Record<string, unknown>): Promise<void> {
   const { error } = await db('qua_checklist_expedicoes').update({ ...campos, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
 /** Trava o conteúdo e manda para a fila de assinaturas. */
-export async function fecharChecklist(id: string, user: Profile): Promise<void> {
+export async function fecharChecklist(id: string, user: Pick<Profile, 'id' | 'name'>): Promise<void> {
   await atualizarChecklist(id, { status: 'AGUARDANDO_ASSINATURAS', fechado_por: user.id, fechado_por_nome: user.name, fechado_em: new Date().toISOString() });
 }
 
@@ -232,19 +251,7 @@ export async function recordarCabecalhos(input: Pick<ChecklistInput, ChecklistCa
   }
 }
 
-export async function uploadChecklistFoto(checklistId: string, itemChave: string, file: File): Promise<QuaChecklistFoto> {
-  const blob = await comprimirImagemUpload(file);
-  const mimeType = blob.type || file.type || 'image/jpeg';
-  const path = `${checklistId}/${itemChave}/${uid('foto')}.${extensao(mimeType)}`;
-  const { error: uploadError } = await supabase.storage.from(CHECKLIST_BUCKET).upload(path, blob, { contentType: mimeType, upsert: false });
-  if (uploadError) throw new Error(uploadError.message);
-  const row = { checklist_id: checklistId, item_chave: itemChave, path, file_name: file.name, mime_type: mimeType, size_bytes: blob.size };
-  const { data, error } = await db('qua_checklist_expedicao_fotos').insert(row).select().single();
-  if (error) throw new Error(error.message);
-  return (await assinarUrls([data as QuaChecklistFoto]))[0];
-}
-
-export async function removerChecklistFoto(foto: QuaChecklistFoto): Promise<void> {
+export async function removerChecklistFoto(foto: Pick<QuaChecklistFoto, 'id' | 'path'>): Promise<void> {
   await supabase.storage.from(CHECKLIST_BUCKET).remove([foto.path]);
   const { error } = await db('qua_checklist_expedicao_fotos').delete().eq('id', foto.id);
   if (error) throw new Error(error.message);
@@ -261,7 +268,7 @@ export async function salvarChecklistAssinatura(
   nome: string,
   tipo: QuaChecklistAssinaturaTipo,
   file: File | Blob,
-  coletadoPor?: Profile,
+  coletadoPor?: Pick<Profile, 'name'> | null,
   assinadoEm?: string,
 ): Promise<QuaChecklistAssinatura> {
   const { data: atual } = await db('qua_checklist_expedicoes').select('validacao_nomes').eq('id', checklistId).single();
@@ -282,8 +289,155 @@ export async function salvarChecklistAssinatura(
   return (await assinarUrls([data as QuaChecklistAssinatura]))[0];
 }
 
-export async function removerChecklistAssinatura(assinatura: QuaChecklistAssinatura): Promise<void> {
+export async function removerChecklistAssinatura(assinatura: Pick<QuaChecklistAssinatura, 'id' | 'path'>): Promise<void> {
   await supabase.storage.from(CHECKLIST_BUCKET).remove([assinatura.path]);
   const { error } = await db('qua_checklist_expedicao_assinaturas').delete().eq('id', assinatura.id);
   if (error) throw new Error(error.message);
+}
+
+// =====================================================================
+// OFFLINE — preenchimento sem rede (ver qualidadeOffline.ts)
+// =====================================================================
+
+export type AcaoExpedicaoOffline = 'fechar';
+export const ROTULOS_ACAO_EXPEDICAO: Record<AcaoExpedicaoOffline, string> = { fechar: 'fechar checklist' };
+export type PendenciaExpedicao = PendenciaOffline<ChecklistInput, AcaoExpedicaoOffline, QuaChecklistExpedicao>;
+
+export interface FotoExpedicaoTela extends QuaChecklistFoto {
+  /** Foto só no aparelho, ainda não enviada. */
+  local?: FotoOffline;
+}
+export interface AssinaturaExpedicaoTela extends QuaChecklistAssinatura {
+  local?: AssinaturaOffline;
+}
+/** Checklist como a tela mostra: servidor + o que está só no aparelho. */
+export interface ChecklistExpedicaoTela extends QuaChecklistExpedicao {
+  fotos: FotoExpedicaoTela[];
+  assinaturas: AssinaturaExpedicaoTela[];
+  offline?: InfoOffline;
+}
+
+function registroVazio(p: PendenciaExpedicao): QuaChecklistExpedicao {
+  return {
+    id: p.id, codigo_registro: '', status: 'RASCUNHO',
+    cliente: '', projeto: '', tramo_sequencial: '', numero_serie: '', data_expedicao: '', site: '', inspetor_qualidade: '', etiqueta_secao: '',
+    respostas: {}, observacoes: {}, validacao_nomes: { QUALIDADE: '', PRODUCAO: '', CLIENTE: '', TRANSPORTADOR: '' },
+    fotos: [], assinaturas: [],
+    criado_por: p.usuarioId, criado_por_nome: p.usuarioNome, created_at: p.criadoEm, updated_at: p.atualizadoEm,
+  };
+}
+
+/**
+ * Aplica a pendência do aparelho sobre o registro do servidor (ou cria o
+ * registro, se o checklist nasceu offline). Fechado no aparelho aparece como
+ * "Aguardando assinaturas" — é o que o servidor fará ao receber.
+ */
+export function aplicarPendenciaExpedicao(
+  base: QuaChecklistExpedicao | null,
+  p: PendenciaExpedicao,
+  urlDe: (arquivo: FotoOffline | AssinaturaOffline) => string,
+): ChecklistExpedicaoTela {
+  const registro = base || registroVazio(p);
+  const removidas = new Set([...p.fotosRemovidas, ...p.assinaturasRemovidas].map(item => item.id));
+  const papeisNovos = new Set(p.assinaturasNovas.map(item => item.papel));
+  const fechadoAqui = p.acao === 'fechar' && registro.status === 'RASCUNHO';
+  return {
+    ...registro,
+    ...(p.input || {}),
+    validacao_nomes: {
+      ...registro.validacao_nomes,
+      ...(p.input?.validacao_nomes || {}),
+      ...Object.fromEntries(p.assinaturasNovas.map(item => [item.papel, item.nomePessoa])),
+    },
+    status: fechadoAqui ? 'AGUARDANDO_ASSINATURAS' : registro.status,
+    fechado_por: fechadoAqui ? p.usuarioId : registro.fechado_por,
+    fechado_por_nome: fechadoAqui ? p.usuarioNome : registro.fechado_por_nome,
+    fechado_em: fechadoAqui ? p.atualizadoEm : registro.fechado_em,
+    updated_at: p.atualizadoEm,
+    fotos: [
+      ...registro.fotos.filter(foto => !removidas.has(foto.id)),
+      ...p.fotosNovas.map(foto => ({
+        id: foto.id, checklist_id: p.id, item_chave: foto.itemChave, path: '', file_name: foto.nome,
+        mime_type: foto.mimeType, size_bytes: foto.blob.size, created_at: p.atualizadoEm, preview_url: urlDe(foto), local: foto,
+      })),
+    ],
+    assinaturas: [
+      ...registro.assinaturas.filter(item => !removidas.has(item.id) && !papeisNovos.has(item.papel)),
+      ...p.assinaturasNovas.map(item => ({
+        id: item.id, checklist_id: p.id, papel: item.papel as QuaChecklistPapel, nome: item.nomePessoa, tipo: item.tipo,
+        path: '', mime_type: item.mimeType, created_at: item.assinadoEm, assinado_em: item.assinadoEm,
+        coletado_por_nome: item.coletadoPorNome ?? null, preview_url: urlDe(item), local: item,
+      })),
+    ],
+    offline: infoOffline(p),
+  };
+}
+
+/** Path determinístico: reenviar a mesma foto cai em "já existe" em vez de duplicar. */
+async function enviarFotoOffline(checklistId: string, foto: FotoOffline): Promise<void> {
+  const path = `${checklistId}/${foto.itemChave}/foto-${foto.id}.${extensao(foto.mimeType)}`;
+  const { error: uploadError } = await supabase.storage.from(CHECKLIST_BUCKET).upload(path, foto.blob, { contentType: foto.mimeType, upsert: false });
+  if (uploadError && !erroDeArquivoJaExistente(uploadError as { message?: string; statusCode?: string })) throw new Error(uploadError.message);
+  const { data: existente, error: consultaError } = await db('qua_checklist_expedicao_fotos').select('id').eq('path', path).maybeSingle();
+  if (consultaError) throw new Error(consultaError.message);
+  if (existente) return;
+  const { error } = await db('qua_checklist_expedicao_fotos')
+    .insert({ id: foto.id, checklist_id: checklistId, item_chave: foto.itemChave, path, file_name: foto.nome, mime_type: foto.mimeType, size_bytes: foto.blob.size });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Sobe uma pendência: conteúdo → remoções → fotos → assinaturas → fechar.
+ * A ordem é a do salvar online (as assinaturas entram ainda no rascunho; a
+ * 4ª + fechar finaliza pelo trigger). Cada passo sai da pendência assim que
+ * o servidor confirma — a próxima tentativa continua de onde parou.
+ */
+export async function sincronizarPendenciaExpedicao(p: PendenciaExpedicao, salvarProgresso: SalvarProgresso<PendenciaExpedicao>): Promise<void> {
+  const usuario = { id: p.usuarioId, name: p.usuarioNome };
+  if (p.input) {
+    const input = p.input;
+    const { data: atual, error } = await db('qua_checklist_expedicoes').select('id, status').eq('id', p.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    const payload = { ...input, updated_at: new Date().toISOString() };
+    if (!atual) {
+      await inserirComCodigoUnico(
+        () => obterProximoNumeroChecklist(input.data_expedicao),
+        codigo => db('qua_checklist_expedicoes').insert({
+          ...payload, id: p.id, status: 'RASCUNHO', criado_por: usuario.id, criado_por_nome: usuario.name, codigo_registro: codigo, created_at: p.criadoEm,
+        }),
+      );
+    } else {
+      if (atual.status !== 'RASCUNHO') throw new Error('Este checklist já foi fechado no servidor — as respostas alteradas no aparelho não podem mais ser aplicadas. Descarte a cópia do aparelho.');
+      const { data, error: updateError } = await db('qua_checklist_expedicoes').update(payload).eq('id', p.id).select('id');
+      if (updateError) throw new Error(updateError.message);
+      if (!data?.length) throw new Error('O servidor não aceitou a alteração: sem permissão para editar este checklist.');
+    }
+    await recordarCabecalhos(input).catch(() => {});
+    await salvarProgresso(() => ({ input: null, novo: false }));
+  }
+  for (const remocao of p.fotosRemovidas) {
+    await removerChecklistFoto(remocao);
+    await salvarProgresso(atual => ({ fotosRemovidas: atual.fotosRemovidas.filter(item => item.id !== remocao.id) }));
+  }
+  for (const foto of p.fotosNovas) {
+    await enviarFotoOffline(p.id, foto);
+    await salvarProgresso(atual => ({ fotosNovas: atual.fotosNovas.filter(item => item.id !== foto.id) }));
+  }
+  for (const remocao of p.assinaturasRemovidas) {
+    await removerChecklistAssinatura(remocao);
+    await salvarProgresso(atual => ({ assinaturasRemovidas: atual.assinaturasRemovidas.filter(item => item.id !== remocao.id) }));
+  }
+  for (const assinatura of p.assinaturasNovas) {
+    await salvarChecklistAssinatura(
+      p.id, assinatura.papel as QuaChecklistPapel, assinatura.nomePessoa, assinatura.tipo, assinatura.blob,
+      assinatura.coletadoPorNome ? { name: assinatura.coletadoPorNome } : null, assinatura.assinadoEm,
+    );
+    await salvarProgresso(atual => ({ assinaturasNovas: atual.assinaturasNovas.filter(item => item.id !== assinatura.id) }));
+  }
+  if (p.acao === 'fechar') {
+    const { data, error } = await db('qua_checklist_expedicoes').select('status').eq('id', p.id).single();
+    if (error) throw new Error(error.message);
+    if (data.status === 'RASCUNHO') await fecharChecklist(p.id, usuario);
+    await salvarProgresso(() => ({ acao: null }));
+  }
 }

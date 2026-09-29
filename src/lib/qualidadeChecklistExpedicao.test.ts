@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import type { QuaChecklistAssinatura } from '../types';
+import type { QuaChecklistAssinatura, QuaChecklistExpedicao } from '../types';
 import {
   CHECKLIST_CAMPOS_CABECALHO,
   CHECKLIST_ITENS,
   CHECKLIST_OBSERVACOES,
   CHECKLIST_PAPEIS,
+  aplicarPendenciaExpedicao,
+  type AcaoExpedicaoOffline,
+  type ChecklistInput,
   faltasParaFechar,
   filaAssinaturas,
   papeisPendentes,
   podeColetarAssinaturas,
 } from './qualidadeChecklistExpedicao';
 import { separarBilingue } from './textoBilingue';
+import { novaPendencia } from './qualidadeOffline';
 
 const setores = [{ id: '11', name: 'Qualidade' }, { id: '14', name: 'Produção' }];
 const assinatura = (papel: QuaChecklistAssinatura['papel']) => ({ papel } as QuaChecklistAssinatura);
@@ -37,7 +41,7 @@ describe('FRM.QUA-0030 - Checklist de Expedição', () => {
 
   it('mantém os cabeçalhos selecionáveis, sem transformar a data em catálogo', () => {
     expect(CHECKLIST_CAMPOS_CABECALHO).toEqual([
-      'cliente', 'projeto', 'tramo_sequencial', 'numero_serie', 'site', 'inspetor_qualidade', 'etiqueta_secao',
+      'cliente', 'projeto', 'tramo_sequencial', 'numero_serie', 'site', 'inspetor_qualidade',
     ]);
   });
 
@@ -70,5 +74,49 @@ describe('FRM.QUA-0030 - Checklist de Expedição', () => {
     expect(podeColetarAssinaturas({ id: 'outro', roles: [], sector_id: '11' }, { ...fechado, status: 'RASCUNHO' }, setores)).toBe(false);
     expect(podeColetarAssinaturas({ id: 'autor', roles: [], sector_id: '14' }, { ...fechado, status: 'FINALIZADO' }, setores)).toBe(false);
     expect(podeColetarAssinaturas({ id: 'x', roles: ['admin'], sector_id: '14' }, { ...fechado, status: 'RASCUNHO' }, setores)).toBe(true);
+  });
+
+  describe('offline — cópia do aparelho sobre o servidor', () => {
+    const usuario = { id: 'autor', name: 'Inspetor' };
+    const url = (arquivo: { id: string }) => `blob:${arquivo.id}`;
+    const input = {
+      cliente: 'Cliente', projeto: 'P1', tramo_sequencial: 'T1-01', numero_serie: 'S1', data_expedicao: '2026-09-29', site: 'Site',
+      inspetor_qualidade: 'Inspetor', etiqueta_secao: 'E1', respostas: { item_01: 'OK' as const }, observacoes: {},
+      validacao_nomes: { QUALIDADE: '', PRODUCAO: '', CLIENTE: '', TRANSPORTADOR: '' },
+    };
+    const assinaturaLocal = { id: 'a-local', papel: 'CLIENTE', nomePessoa: 'Fulano', tipo: 'DESENHO' as const, blob: new Blob(['x']), nome: 'CLIENTE.jpg', mimeType: 'image/png', assinadoEm: '2026-09-29T10:00:00Z' };
+
+    it('checklist nascido offline e fechado aparece aguardando assinaturas, sem código', () => {
+      const p = novaPendencia<ChecklistInput, AcaoExpedicaoOffline, QuaChecklistExpedicao>('qua_expedicao', 'novo-1', usuario, {
+        novo: true, input, acao: 'fechar',
+        fotosNovas: [{ id: 'f1', itemChave: 'item_01', blob: new Blob(['abc']), nome: 'f1.jpg', mimeType: 'image/jpeg' }],
+        assinaturasNovas: [assinaturaLocal],
+      });
+      const tela = aplicarPendenciaExpedicao(null, p, url);
+      expect(tela).toMatchObject({ id: 'novo-1', codigo_registro: '', status: 'AGUARDANDO_ASSINATURAS', criado_por: 'autor', fechado_por_nome: 'Inspetor', tramo_sequencial: 'T1-01' });
+      expect(tela.fotos).toMatchObject([{ id: 'f1', item_chave: 'item_01', preview_url: 'blob:f1', path: '' }]);
+      expect(tela.fotos[0].local?.id).toBe('f1');
+      expect(tela.assinaturas).toMatchObject([{ papel: 'CLIENTE', nome: 'Fulano', assinado_em: '2026-09-29T10:00:00Z', preview_url: 'blob:a-local' }]);
+      expect(tela.validacao_nomes.CLIENTE).toBe('Fulano');
+      expect(tela.offline).toMatchObject({ estado: 'pendente', novo: true });
+    });
+
+    it('sobre o servidor: some a foto removida e a assinatura nova substitui a do mesmo papel', () => {
+      const base = {
+        ...input, id: 's1', codigo_registro: 'EXP-290926-01', status: 'AGUARDANDO_ASSINATURAS', criado_por: 'autor', criado_por_nome: 'Inspetor',
+        created_at: '2026-09-29T08:00:00Z', updated_at: '2026-09-29T08:00:00Z', fechado_em: '2026-09-29T09:00:00Z',
+        fotos: [{ id: 'fs1', checklist_id: 's1', item_chave: 'item_01', path: 's1/item_01/a.jpg', file_name: 'a.jpg', mime_type: 'image/jpeg', size_bytes: 1, created_at: '' },
+          { id: 'fs2', checklist_id: 's1', item_chave: 'item_02', path: 's1/item_02/b.jpg', file_name: 'b.jpg', mime_type: 'image/jpeg', size_bytes: 1, created_at: '' }],
+        assinaturas: [{ id: 'as1', checklist_id: 's1', papel: 'CLIENTE', nome: 'Antigo', tipo: 'DESENHO', path: 'x', mime_type: 'image/png', created_at: '' },
+          { id: 'as2', checklist_id: 's1', papel: 'QUALIDADE', nome: 'Qualidade', tipo: 'DESENHO', path: 'y', mime_type: 'image/png', created_at: '' }],
+      } as QuaChecklistExpedicao;
+      const p = novaPendencia<ChecklistInput, AcaoExpedicaoOffline, QuaChecklistExpedicao>('qua_expedicao', 's1', usuario, { fotosRemovidas: [{ id: 'fs1', path: 's1/item_01/a.jpg' }], assinaturasNovas: [assinaturaLocal], acao: 'fechar' });
+      const tela = aplicarPendenciaExpedicao(base, p, url);
+      expect(tela.codigo_registro).toBe('EXP-290926-01');
+      expect(tela.status).toBe('AGUARDANDO_ASSINATURAS');
+      expect(tela.fechado_em).toBe('2026-09-29T09:00:00Z');
+      expect(tela.fotos.map(item => item.id)).toEqual(['fs2']);
+      expect(tela.assinaturas.map(item => `${item.papel}:${item.nome}`)).toEqual(['QUALIDADE:Qualidade', 'CLIENTE:Fulano']);
+    });
   });
 });

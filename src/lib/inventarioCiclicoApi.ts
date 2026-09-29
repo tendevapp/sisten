@@ -125,7 +125,7 @@ export async function encerrarItemInventario(
   return data as any;
 }
 
-/** Exclusão lógica — só enquanto nenhum item foi contado. */
+/** Exclusão lógica — autor só enquanto nenhum item foi contado; administradores podem excluir qualquer inventário criado. */
 export async function excluirInventario(id: string, por: string): Promise<void> {
   const { error } = await supabase.rpc('alm_inv_excluir' as any, { p_id: id, p_por: por } as any);
   if (error) throw new Error(error.message);

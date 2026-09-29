@@ -22,6 +22,7 @@ import { apenasVigentes } from './softDelete';
 import type { PreparedAttachment } from './imageCompression';
 import { gerarUUID } from './ids';
 import * as outbox from './outbox';
+import { pareceFalhaDeRede } from './rede';
 import type { StatusLancamento } from './producao';
 import { calcularRelatorioDiario, type RelatorioDiarioLinha } from './producao';
 import type {
@@ -411,13 +412,6 @@ export interface RegistrarLancamentoInput {
 interface OutboxPayload {
   clientId: string;
   input: RegistrarLancamentoInput;
-}
-
-/** `TypeError: Failed to fetch` (Chrome/Edge) e afins — falha de conectividade, não de validação. */
-function pareceFalhaDeRede(erro: unknown): boolean {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-  const msg = erro instanceof Error ? erro.message : String(erro);
-  return /failed to fetch|networkerror|network request failed|load failed|err_internet|err_network/i.test(msg);
 }
 
 function montarPayloadRpc(input: RegistrarLancamentoInput, clientId: string, evidencias: AnexoProducao[]) {

@@ -1,15 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, Camera, CheckCircle2, ClipboardCheck, Clock, Eye, FileDown, FileText, History, Inbox, Loader2,
-  PenTool, Plus, Save, Search, Send, ShieldCheck, Trash2, UserCheck, X,
+  PenTool, Plus, Save, Search, Send, ShieldCheck, Trash2, UserCheck, WifiOff, X,
 } from 'lucide-react';
 import type { Profile } from '../../types';
 import { localDb } from '../../db/localDb';
 import * as api from '../../lib/qualidadeInternosMecanicos';
+import {
+  comCache, guardarCache, lerCache, mesclarComPendencias, novaPendencia, obterPendencia, prepararAssinaturaOffline,
+  prepararFotoOffline, removerPendencia, salvarPendencia, urlLocal,
+  type ArquivoOffline, type RemocaoOffline, type ResultadoSincronizacao,
+} from '../../lib/qualidadeOffline';
+import { gerarUUID } from '../../lib/ids';
+import { estaOffline, pareceFalhaDeRede } from '../../lib/rede';
 import { exportQualidadeInternosMecanicosPdf, gerarQualidadeInternosMecanicosPdf } from '../../lib/pdfExport/exportQualidadeInternosMecanicosPdf';
 import Bilingue from '../../components/qualidade/Bilingue';
 import ColetaAssinaturaTablet, { formatarDataHoraAssinatura, type ModoColeta } from '../../components/qualidade/ColetaAssinaturaTablet';
 import FormularioPdfPreview from '../../components/qualidade/FormularioPdfPreview';
+import { ChipSincronizacao, PainelSincronizacao, useSincronizacaoOffline } from '../../components/qualidade/SincronizacaoOffline';
 import { useLightbox } from '../../components/ui/Lightbox';
 import { useToast } from '../../components/ui/Toast';
 
@@ -21,11 +29,26 @@ interface Props {
 type Tela = 'inicio' | 'formulario' | 'historico';
 type FiltroHistorico = 'FINALIZADO' | 'AGUARDANDO_QUALIDADE' | 'RASCUNHO' | 'TODOS';
 type HeaderKey = 'projeto' | 'tramo' | 'sequencial' | 'responsavel_producao' | 'responsavel_qualidade' | 'instrumentos_utilizados';
-type FotoRascunho = Partial<api.InternosFoto> & { id: string; item_chave: string; localFile?: File; localUrl?: string };
+type FotoRascunho = Partial<api.InternosFoto> & { id: string; item_chave: string; localUrl?: string };
+/** `localFile`: recém-coletada na tela; `local` (de InternosAssinatura): já guardada no aparelho. */
 type AssinaturaRascunho = Partial<api.InternosAssinatura> & { papel: api.InternosPapel; tipo: api.InternosAssinaturaTipo; localFile?: File; localUrl?: string; assinadoEm?: string };
 type Acao = 'rascunho' | 'concluir' | 'finalizar';
 
 const VERSAO_FORMULARIO = 'FRM.ENG-0240 Rev.02';
+const MODULO = 'qua_internos' as const;
+/** Detalhes guardados no aparelho para abrir sem rede; limite para não baixar a fila inteira. */
+const MAX_DETALHES_OFFLINE = 20;
+
+/** Registro do servidor com o que está só no aparelho aplicado por cima. */
+const aplicar = (base: api.InternosChecklist | null, p: api.PendenciaInternos): api.InternosChecklist =>
+  api.aplicarPendenciaInternos(base, p, (arquivo: ArquivoOffline) => urlLocal(arquivo, p.id));
+
+function tituloPendencia(p: api.PendenciaInternos): string {
+  const dados = p.input || p.base;
+  return `${p.base?.codigo_registro || 'Novo checklist'}${dados?.modelo_nome ? ` · ${dados.modelo_nome}` : ''}${dados?.tramo ? ` · ${dados.tramo}` : ''}${dados?.sequencial ? ` / ${dados.sequencial}` : ''}`;
+}
+
+const semCodigo = <span className="font-sans font-semibold italic text-slate-400">Código gerado ao sincronizar</span>;
 
 const VALIDACOES = [
   { chave: 'nao_conformidade', pt: 'Seção tem NÃO CONFORMIDADE (NC) via “Se Suíte”?', en: 'Section has NON-CONFORMITY (NC) via “Se Suite”?' },
@@ -45,7 +68,6 @@ const today = () => {
   const agora = new Date();
   return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
 };
-const localId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const fmtData = (value?: string | null) => value ? value.slice(0, 10).split('-').reverse().join('/') : '-';
 function fmtDataHora(value?: string | null): string {
   if (!value) return '-';
@@ -229,10 +251,10 @@ function ItemVerificacao({ item, etapa, resposta, fotos, onProducao, onQualidade
 
 function ChecklistResumoCard({ item, acoes, destaque }: { item: api.InternosChecklist; acoes: React.ReactNode; destaque?: React.ReactNode }) {
   const resumo = api.resumoRespostas(item.respostas);
-  return <div className={`${cardClass} flex flex-col gap-3 p-4`}>
+  return <div className={`${cardClass} flex flex-col gap-3 p-4 ${item.offline ? 'border-amber-300 dark:border-amber-800' : ''}`}>
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
-        <p className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{item.codigo_registro}</p>
+        <p className="flex flex-wrap items-center gap-1.5 font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{item.codigo_registro || semCodigo} <ChipSincronizacao offline={item.offline} /></p>
         <p className="mt-0.5 truncate text-sm font-bold text-slate-900 dark:text-slate-50">{item.modelo_nome}</p>
       </div>
       <StatusBadge status={item.status} />
@@ -264,11 +286,16 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
   const [catalogo, setCatalogo] = useState<api.InternosModelo[]>([]);
   const [modeloId, setModeloId] = useState('');
   const [aberto, setAberto] = useState<api.InternosChecklist | null>(null);
+  /** Id do checklist novo em preenchimento — gerado no aparelho, vira o id definitivo no servidor. */
+  const [idNovo, setIdNovo] = useState(() => gerarUUID());
   const [etapa, setEtapa] = useState<api.InternosEtapa>('PRODUCAO');
   const [cabecalho, setCabecalho] = useState<Record<HeaderKey, string>>(() => cabecalhoVazio(undefined, user));
   const [respostas, setRespostas] = useState<Record<string, api.InternosRespostaItem>>({});
   const [validacoes, setValidacoes] = useState<Record<string, api.InternosValidacao>>(api.validacoesVazias);
   const [fotos, setFotos] = useState<Record<string, FotoRascunho[]>>({});
+  /** Fotos/assinaturas do servidor removidas no formulário — saem ao salvar. */
+  const [fotosRemovidas, setFotosRemovidas] = useState<RemocaoOffline[]>([]);
+  const [assinaturasRemovidas, setAssinaturasRemovidas] = useState<RemocaoOffline[]>([]);
   const [assinaturas, setAssinaturas] = useState<Record<api.InternosPapel, AssinaturaRascunho | null>>(assinaturasVazias);
   const [dadosAssinatura, setDadosAssinatura] = useState(datasVazias);
   const [aprovacaoFinal, setAprovacaoFinal] = useState(false);
@@ -276,6 +303,7 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
   const [ilustracoes, setIlustracoes] = useState<Record<string, string>>({});
   const [opcoes, setOpcoes] = useState<Partial<Record<HeaderKey, string[]>>>({});
   const [lista, setLista] = useState<api.InternosChecklist[]>([]);
+  const [listaSalvaEm, setListaSalvaEm] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
   const [filtro, setFiltro] = useState<FiltroHistorico>('FINALIZADO');
   const [salvando, setSalvando] = useState(false);
@@ -287,25 +315,79 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
   const modelo = useMemo(() => catalogo.find(item => item.id === modeloId), [catalogo, modeloId]);
   const status: api.InternosStatus = aberto?.status || 'RASCUNHO';
 
-  const carregarLista = async () => {
-    try { setLista(await api.listarChecklistsInternos()); } catch (error: any) { toast.error(`Erro ao carregar checklists: ${error.message || ''}`); }
+  /**
+   * Guarda no aparelho o detalhe do que o usuário provavelmente vai precisar
+   * sem rede: os próprios rascunhos e, para a Qualidade, a fila de dupla
+   * verificação. Só baixa de novo o que mudou desde a última cópia.
+   */
+  const guardarDetalhesOffline = async (rows: api.InternosChecklist[]) => {
+    const alvos = rows
+      .filter(row => (row.status === 'RASCUNHO' && row.criado_por === user.id) || (row.status === 'AGUARDANDO_QUALIDADE' && ehQualidade))
+      .slice(0, MAX_DETALHES_OFFLINE);
+    for (const row of alvos) {
+      const cache = await lerCache<api.InternosChecklist>(MODULO, `det:${row.id}`);
+      if (cache && row.updated_at && Date.parse(cache.salvoEm) >= Date.parse(row.updated_at)) continue;
+      try {
+        await guardarCache(MODULO, `det:${row.id}`, await api.obterChecklistInternos(row.id));
+      } catch {
+        return; // caiu a rede no meio — tenta na próxima carga
+      }
+    }
   };
+
+  const carregarLista = async () => {
+    try {
+      const resultado = await comCache(MODULO, 'lista', api.listarChecklistsInternos);
+      setLista(resultado.valor);
+      setListaSalvaEm(resultado.doCache ? resultado.salvoEm : null);
+      if (!resultado.doCache) void guardarDetalhesOffline(resultado.valor);
+    } catch (error: any) {
+      if (!pareceFalhaDeRede(error)) toast.error(`Erro ao carregar checklists: ${error.message || ''}`);
+    }
+  };
+  const carregarListaRef = useRef(carregarLista);
+  carregarListaRef.current = carregarLista;
+
+  const onResultadoSync = useCallback((resultado: ResultadoSincronizacao, automatico: boolean) => {
+    if (resultado.enviados.length) void carregarListaRef.current();
+    if (!automatico) return;
+    if (resultado.enviados.length) toast.success(`${resultado.enviados.length === 1 ? '1 checklist guardado no aparelho foi enviado' : `${resultado.enviados.length} checklists guardados no aparelho foram enviados`} ao servidor.`);
+    if (resultado.erros.length) toast.error(`O servidor recusou ${resultado.erros.length === 1 ? '1 checklist' : `${resultado.erros.length} checklists`} guardado(s) no aparelho: ${resultado.erros[0].mensagem}`);
+  }, [toast]);
+
+  const sync = useSincronizacaoOffline<api.PendenciaInternos>({
+    modulo: MODULO,
+    usuarioId: user.id,
+    sincronizar: api.sincronizarPendenciaInternos,
+    abertoId: tela === 'formulario' ? aberto?.id || null : null,
+    onResultado: onResultadoSync,
+  });
 
   useEffect(() => {
     let ativo = true;
     const carregar = async () => {
       try {
-        const [dados, ...listas] = await Promise.all([
-          api.carregarCatalogoInternos(),
+        const [{ valor: dados }, ...listas] = await Promise.all([
+          comCache(MODULO, 'catalogo', api.carregarCatalogoInternos),
           ...api.INTERNOS_CAMPOS_CABECALHO.map(campo => api.listarOpcoesInternos(campo)),
         ]);
         if (!ativo) return;
         setCatalogo(dados.models);
-        setOpcoes(Object.fromEntries(api.INTERNOS_CAMPOS_CABECALHO.map((campo, index) => [campo, listas[index]])));
+        const valores = Object.fromEntries(api.INTERNOS_CAMPOS_CABECALHO.map((campo, index) => [campo, listas[index]]));
+        if (listas.every(itens => !itens.length)) {
+          const cache = await lerCache<Partial<Record<HeaderKey, string[]>>>(MODULO, 'opcoes');
+          if (ativo) setOpcoes(cache?.valor || valores);
+        } else {
+          setOpcoes(valores);
+          void guardarCache(MODULO, 'opcoes', valores);
+        }
+        void api.prepararIlustracoesOffline(dados);
         if (ehAdmin) api.sincronizarIlustracoesInternos(dados).then(urls => { if (ativo) setIlustracoes(urls); }).catch(() => {});
         await carregarLista();
       } catch (error: any) {
-        if (ativo) toast.error(`Erro ao carregar checklist: ${error.message || ''}`);
+        if (ativo) toast.error(pareceFalhaDeRede(error)
+          ? 'Sem conexão, e o catálogo de checklists ainda não foi baixado neste aparelho. Abra esta tela uma vez com internet.'
+          : `Erro ao carregar checklist: ${error.message || ''}`);
       } finally {
         if (ativo) setCarregando(false);
       }
@@ -314,17 +396,21 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     return () => { ativo = false; };
   }, []);
 
-  const pendentes = useMemo(() => api.pendentesQualidade(lista), [lista]);
-  const rascunhos = useMemo(() => lista.filter(item => item.status === 'RASCUNHO' && (item.criado_por === user.id || ehAdmin)), [lista, user.id, ehAdmin]);
+  const listaTela = useMemo(() => mesclarComPendencias<api.InternosChecklist, api.PendenciaInternos>(lista, sync.pendencias, aplicar), [lista, sync.pendencias]);
+  const pendentes = useMemo(() => api.pendentesQualidade(listaTela), [listaTela]);
+  const rascunhos = useMemo(() => listaTela.filter(item => item.status === 'RASCUNHO' && (item.criado_por === user.id || ehAdmin)), [listaTela, user.id, ehAdmin]);
 
   const limparFormulario = (novoModelo?: api.InternosModelo) => {
     setModeloId(novoModelo?.id || '');
     setAberto(null);
+    setIdNovo(gerarUUID());
     setEtapa('PRODUCAO');
     setCabecalho(cabecalhoVazio(novoModelo, user));
     setRespostas(novoModelo ? api.respostasVazias(novoModelo) : {});
     setValidacoes(api.validacoesVazias());
     setFotos({});
+    setFotosRemovidas([]);
+    setAssinaturasRemovidas([]);
     setAssinaturas(assinaturasVazias());
     setDadosAssinatura(datasVazias());
     setAprovacaoFinal(false);
@@ -365,6 +451,8 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     setRespostas({ ...api.respostasVazias(modeloAberto), ...checklist.respostas });
     setValidacoes({ ...api.validacoesVazias(), ...checklist.validacoes });
     setFotos(agruparFotos(checklist.fotos));
+    setFotosRemovidas([]);
+    setAssinaturasRemovidas([]);
     setAssinaturas({ PRODUCAO: assinaturaProducao, QUALIDADE: assinaturaQualidade });
     setDadosAssinatura({
       PRODUCAO: { setor: assinaturaProducao?.setor || 'Produção', data: assinaturaProducao?.data_assinatura || today() },
@@ -374,8 +462,27 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     setObservacaoFinal(checklist.observacao_final || '');
   };
 
+  /**
+   * Checklist completo para a tela: o do servidor (ou a cópia guardada no
+   * aparelho, sem rede) com as pendências locais aplicadas. Checklist que
+   * nasceu offline nem consulta o servidor.
+   */
+  const carregarCompleto = async (id: string): Promise<api.InternosChecklist> => {
+    const pendencia = await obterPendencia<api.PendenciaInternos>(MODULO, id);
+    let base: api.InternosChecklist | null = null;
+    if (!pendencia?.novo) {
+      try {
+        base = (await comCache(MODULO, `det:${id}`, () => api.obterChecklistInternos(id))).valor;
+      } catch (error) {
+        if (!pendencia) throw pareceFalhaDeRede(error) ? new Error('sem conexão, e este checklist ainda não foi baixado neste aparelho.') : error;
+        base = pendencia.base;
+      }
+    }
+    return pendencia ? aplicar(base, pendencia) : base;
+  };
+
   const buscarCompleto = async (id: string) => {
-    const checklist = await api.obterChecklistInternos(id);
+    const checklist = await carregarCompleto(id);
     const modeloAberto = catalogo.find(item => item.id === checklist.modelo_id);
     if (!modeloAberto) throw new Error('O modelo deste checklist não está disponível no catálogo atual.');
     return { checklist, modeloAberto };
@@ -388,10 +495,16 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
       const novaEtapa = somenteLeitura ? 'LEITURA' : etapaPara(checklist);
       if (novaEtapa === 'QUALIDADE') {
         if (checklist.qualidade_por && checklist.qualidade_por !== user.id) toast.info(`Em verificação por ${checklist.qualidade_por_nome || 'outro usuário'} — você assume a verificação ao salvar.`);
-        if (!checklist.qualidade_por) {
-          await api.assumirQualidadeInternos(checklist, user);
-          checklist.qualidade_por = user.id;
-          checklist.qualidade_por_nome = user.name;
+        // Marcar "em verificação por" é só informativo: sem rede (ou com o
+        // checklist ainda no aparelho) segue sem marcar.
+        if (!checklist.qualidade_por && !checklist.offline) {
+          try {
+            await api.assumirQualidadeInternos(checklist, user);
+            checklist.qualidade_por = user.id;
+            checklist.qualidade_por_nome = user.name;
+          } catch (error) {
+            if (!pareceFalhaDeRede(error)) throw error;
+          }
         }
       }
       preencherFormulario(checklist, modeloAberto, novaEtapa);
@@ -438,19 +551,32 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     });
   };
 
-  const adicionarFotos = (itemChave: string, files: FileList) => {
-    const novas = Array.from(files).filter(file => file.type.startsWith('image/')).map(file => ({ id: localId('foto'), item_chave: itemChave, localFile: file, localUrl: URL.createObjectURL(file) }));
-    if (novas.length) setFotos(previous => ({ ...previous, [itemChave]: [...(previous[itemChave] || []), ...novas] }));
+  /** Comprime já na captura e guarda o blob — sobrevive a ficar sem rede. */
+  const adicionarFotos = async (itemChave: string, files: FileList) => {
+    const imagens = Array.from(files).filter(file => file.type.startsWith('image/'));
+    const donoId = aberto?.id || idNovo;
+    for (const file of imagens) {
+      try {
+        const local = await prepararFotoOffline(itemChave, file);
+        const nova: FotoRascunho = { id: local.id, item_chave: itemChave, local, localUrl: urlLocal(local, donoId) };
+        setFotos(previous => ({ ...previous, [itemChave]: [...(previous[itemChave] || []), nova] }));
+      } catch (error: any) {
+        toast.error(`Não foi possível processar a foto ${file.name}: ${error.message || ''}`);
+      }
+    }
   };
 
-  const removerFoto = async (itemChave: string, foto: FotoRascunho) => {
-    try {
-      if (foto.path) await api.removerFotoInternos(foto as api.InternosFoto);
-      if (foto.localUrl && !foto.preview_url) URL.revokeObjectURL(foto.localUrl);
-      setFotos(previous => ({ ...previous, [itemChave]: (previous[itemChave] || []).filter(item => item.id !== foto.id) }));
-    } catch (error: any) {
-      toast.error(`Erro ao remover foto: ${error.message || ''}`);
-    }
+  const removerFoto = (itemChave: string, foto: FotoRascunho) => {
+    if (foto.path) setFotosRemovidas(previous => [...previous, { id: foto.id, path: foto.path }]);
+    setFotos(previous => ({ ...previous, [itemChave]: (previous[itemChave] || []).filter(item => item.id !== foto.id) }));
+  };
+
+  /** Refazer: some da tela agora; se já estava no servidor, sai de lá ao salvar. */
+  const refazerAssinatura = (papel: api.InternosPapel) => {
+    const atual = assinaturas[papel];
+    if (atual?.path && !atual.local) setAssinaturasRemovidas(previous => [...previous, { id: atual.id!, path: atual.path! }]);
+    if (atual?.localFile && atual.localUrl) URL.revokeObjectURL(atual.localUrl);
+    setAssinaturas(previous => ({ ...previous, [papel]: null }));
   };
 
   const nomePorPapel = (papel: api.InternosPapel) => papel === 'PRODUCAO' ? cabecalho.responsavel_producao : cabecalho.responsavel_qualidade;
@@ -486,42 +612,69 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
   const salvar = async (acao: Acao) => {
     if (!validar(acao) || !modelo) return;
     setSalvando(true);
+    const id = aberto?.id || idNovo;
     try {
-      const salvo = await api.salvarChecklistInternos({
-        ...cabecalho,
-        modelo_id: modelo.id,
-        modelo_nome: modelo.nome,
-        versao_formulario: VERSAO_FORMULARIO,
-        respostas,
-        validacoes,
-        observacao_final: observacaoFinal,
-        aprovacao_final_qualidade: aprovacaoFinal,
-      }, user, aberto?.id);
-      for (const [itemChave, listaFotos] of Object.entries(fotos)) {
-        for (const foto of listaFotos) {
-          if (foto.localFile) await api.uploadFotoInternos(salvo.id, itemChave, foto.localFile);
-        }
-      }
-      for (const { papel } of api.INTERNOS_PAPEIS) {
+      // 1. Guarda no aparelho — a partir daqui nada se perde, com ou sem rede.
+      const existente = await obterPendencia<api.PendenciaInternos>(MODULO, id);
+      const assinaturasNovas = api.INTERNOS_PAPEIS.flatMap(({ papel }) => {
         const assinatura = assinaturas[papel];
-        if (assinatura?.localFile) await api.salvarAssinaturaInternos(salvo.id, papel, nomePorPapel(papel), dadosAssinatura[papel].setor, assinatura.assinadoEm || new Date().toISOString(), assinatura.tipo, assinatura.localFile);
+        const extra = { setor: dadosAssinatura[papel].setor, coletadoPorNome: user.name };
+        if (assinatura?.localFile) {
+          return [prepararAssinaturaOffline(papel, { nome: nomePorPapel(papel), tipo: assinatura.tipo, arquivo: assinatura.localFile, assinadoEm: assinatura.assinadoEm || new Date().toISOString() }, extra)];
+        }
+        if (assinatura?.local) return [{ ...assinatura.local, nomePessoa: nomePorPapel(papel), setor: extra.setor }];
+        return [];
+      });
+      await salvarPendencia(novaPendencia<api.InternosChecklistInput, api.AcaoInternosOffline, api.InternosChecklist>(MODULO, id, user, {
+        ...(existente || {}),
+        novo: existente ? existente.novo : !aberto,
+        base: existente?.base ?? (aberto && !aberto.offline ? aberto : null),
+        input: {
+          ...cabecalho,
+          modelo_id: modelo.id,
+          modelo_nome: modelo.nome,
+          versao_formulario: VERSAO_FORMULARIO,
+          respostas,
+          validacoes,
+          observacao_final: observacaoFinal,
+          aprovacao_final_qualidade: aprovacaoFinal,
+        },
+        acao: acao === 'rascunho' ? existente?.acao ?? null : acao,
+        fotosNovas: Object.values(fotos).flat().filter(foto => foto.local).map(foto => foto.local!),
+        fotosRemovidas: [...(existente?.fotosRemovidas || []), ...fotosRemovidas],
+        assinaturasNovas,
+        assinaturasRemovidas: [...(existente?.assinaturasRemovidas || []), ...assinaturasRemovidas],
+      }));
+
+      // 2. Com rede, sobe na hora e segue o fluxo de sempre.
+      const resultado = estaOffline() ? null : await sync.sincronizarAgora({ ids: [id], incluirAberto: true });
+      if (resultado?.enviados.includes(id)) {
+        const completo = await carregarCompleto(id);
+        await carregarLista();
+        if (acao === 'concluir') {
+          toast.success(`${completo.codigo_registro} concluído pela Produção e enviado para a Qualidade.`);
+          voltarInicio();
+        } else if (acao === 'finalizar') {
+          toast.success(`${completo.codigo_registro} finalizado e movido para o histórico.`);
+          preencherFormulario(completo, modelo, 'LEITURA');
+          setPdfAlvo({ checklist: completo, modelo });
+          window.scrollTo({ top: 0 });
+        } else {
+          preencherFormulario(completo, modelo, etapa);
+          toast.success(etapa === 'QUALIDADE' ? 'Verificação da Qualidade salva e sincronizada.' : 'Rascunho salvo e sincronizado.');
+        }
+        return;
       }
-      if (acao === 'concluir') await api.concluirProducaoInternos(salvo.id, user);
-      if (acao === 'finalizar') await api.finalizarQualidadeInternos(salvo.id, user);
-      const completo = await api.obterChecklistInternos(salvo.id);
-      await carregarLista();
-      if (acao === 'concluir') {
-        toast.success(`${completo.codigo_registro} concluído pela Produção e enviado para a Qualidade.`);
-        voltarInicio();
-      } else if (acao === 'finalizar') {
-        toast.success(`${completo.codigo_registro} finalizado e movido para o histórico.`);
-        preencherFormulario(completo, modelo, 'LEITURA');
-        setPdfAlvo({ checklist: completo, modelo });
-        window.scrollTo({ top: 0 });
-      } else {
-        preencherFormulario(completo, modelo, etapa);
-        toast.success(etapa === 'QUALIDADE' ? 'Verificação da Qualidade salva.' : 'Rascunho salvo.');
-      }
+
+      // 3. Ficou no aparelho: avisa o porquê e segue o fluxo com a cópia local.
+      const recusa = resultado?.erros.find(erro => erro.id === id);
+      if (recusa) toast.error(`Salvo neste aparelho, mas o servidor recusou: ${recusa.mensagem}`);
+      else if (acao === 'concluir') toast.info('Sem conexão: checklist concluído neste aparelho. Ele vai para a Qualidade quando a rede voltar.');
+      else if (acao === 'finalizar') toast.info('Sem conexão: checklist finalizado neste aparelho. Ele sobe sozinho quando a rede voltar.');
+      else toast.info('Sem conexão: salvo neste aparelho. Sobe sozinho quando a rede voltar.');
+      const local = await carregarCompleto(id);
+      if (acao === 'concluir' && !recusa) voltarInicio();
+      else preencherFormulario(local, modelo, acao === 'finalizar' && !recusa ? 'LEITURA' : etapa);
     } catch (error: any) {
       toast.error(`Erro ao salvar checklist: ${error.message || ''}`);
     } finally {
@@ -529,20 +682,27 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
     }
   };
 
+  const descartarDoAparelho = async (p: api.PendenciaInternos) => {
+    await removerPendencia(MODULO, p.id);
+    if (aberto?.id === p.id) voltarInicio();
+    toast.success('Cópia do aparelho descartada.');
+    await carregarLista();
+  };
+
   const historicoFiltrado = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return lista
+    return listaTela
       .filter(item => filtro === 'TODOS' || item.status === filtro)
       .filter(item => !termo || [item.codigo_registro, item.modelo_nome, item.projeto, item.tramo, item.sequencial, item.criado_por_nome || '', item.producao_concluida_por_nome || '', item.qualidade_por_nome || '']
         .some(value => value.toLowerCase().includes(termo)));
-  }, [busca, filtro, lista]);
+  }, [busca, filtro, listaTela]);
 
   const contagem = useMemo(() => ({
-    FINALIZADO: lista.filter(item => item.status === 'FINALIZADO').length,
+    FINALIZADO: listaTela.filter(item => item.status === 'FINALIZADO').length,
     AGUARDANDO_QUALIDADE: pendentes.length,
-    RASCUNHO: lista.filter(item => item.status === 'RASCUNHO').length,
-    TODOS: lista.length,
-  }), [lista, pendentes]);
+    RASCUNHO: listaTela.filter(item => item.status === 'RASCUNHO').length,
+    TODOS: listaTela.length,
+  }), [listaTela, pendentes]);
 
   const acoesChecklist = (item: api.InternosChecklist) => {
     const carregandoItem = abrindoId === item.id;
@@ -635,8 +795,9 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              {aberto && <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro}</span>}
+              {aberto && <span className="font-mono text-xs font-bold text-blue-700 dark:text-blue-300">{aberto.codigo_registro || semCodigo}</span>}
               <StatusBadge status={status} />
+              {aberto && <ChipSincronizacao offline={aberto.offline} />}
               {leitura && aberto?.status !== 'FINALIZADO' && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-800">Somente leitura</span>}
             </div>
             <h2 className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-slate-50">{modelo.nome}</h2>
@@ -728,9 +889,9 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
               <input disabled={!editavel} value={dadosAssinatura[papel].setor} onChange={event => setDadosAssinatura(previous => ({ ...previous, [papel]: { ...previous[papel], setor: event.target.value } }))} placeholder="Setor / Sector" className={`${inputClass} text-xs`} />
               {assinatura?.localUrl || assinatura?.preview_url ? <><div className="flex items-center gap-2">
                 <img src={assinatura.localUrl || assinatura.preview_url} alt={`Assinatura ${pt}`} className="h-16 flex-1 rounded-lg border border-slate-200 bg-white object-contain dark:border-slate-700" />
-                {editavel && <button type="button" onClick={async () => { try { if (assinatura.path) await api.removerAssinaturaInternos(assinatura as api.InternosAssinatura); if (assinatura.localUrl && !assinatura.preview_url) URL.revokeObjectURL(assinatura.localUrl); setAssinaturas(previous => ({ ...previous, [papel]: null })); } catch (error: any) { toast.error(`Erro ao remover assinatura: ${error.message || ''}`); } }} className="rounded-lg border border-slate-200 p-2 text-slate-500 dark:border-slate-700" title="Refazer assinatura"><Trash2 className="h-4 w-4" /></button>}
+                {editavel && <button type="button" onClick={() => refazerAssinatura(papel)} className="rounded-lg border border-slate-200 p-2 text-slate-500 dark:border-slate-700" title="Refazer assinatura"><Trash2 className="h-4 w-4" /></button>}
               </div>
-              <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Assinado em {formatarDataHoraAssinatura(assinatura.assinadoEm || assinatura.assinado_em || assinatura.data_assinatura)}{assinatura.localFile ? <span className="font-normal text-amber-600"> · grava ao salvar</span> : null}</p>
+              <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Assinado em {formatarDataHoraAssinatura(assinatura.assinadoEm || assinatura.assinado_em || assinatura.data_assinatura)}{assinatura.localFile ? <span className="font-normal text-amber-600"> · grava ao salvar</span> : assinatura.local ? <span className="font-normal text-amber-600"> · guardada no aparelho</span> : null}</p>
               </> : editavel ? <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setColeta({ papel, modo: 'DESENHO' })} className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 text-sm font-bold text-white hover:bg-blue-700"><PenTool className="h-4 w-4" /> Assinar</button>
                 <button type="button" onClick={() => setColeta({ papel, modo: 'SELFIE' })} className="inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200"><Camera className="h-4 w-4" /> Tirar selfie</button>
@@ -745,7 +906,9 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
       </section>
 
       {!leitura && <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-end dark:border-slate-800 dark:bg-slate-900/95">
-        <p className="text-xs text-slate-500 sm:mr-auto">{progresso.feitos} de {progresso.total} itens {etapa === 'QUALIDADE' ? 'verificados pela Qualidade' : 'respondidos'}</p>
+        <p className="flex flex-wrap items-center gap-2 text-xs text-slate-500 sm:mr-auto">{progresso.feitos} de {progresso.total} itens {etapa === 'QUALIDADE' ? 'verificados pela Qualidade' : 'respondidos'}
+          {!sync.online && <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"><WifiOff className="h-3 w-3" /> Sem conexão — salva no aparelho</span>}
+        </p>
         <button type="button" onClick={() => salvar('rascunho')} disabled={salvando || carregando} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"><Save className="h-4 w-4" /> {etapa === 'QUALIDADE' ? 'Salvar verificação' : 'Salvar rascunho'}</button>
         {etapa === 'PRODUCAO'
           ? <button type="button" onClick={() => salvar('concluir')} disabled={salvando || carregando} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60">{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Concluir e enviar à Qualidade</button>
@@ -763,10 +926,24 @@ export default function QualidadeInternosMecanicosView({ user, onNavigate }: Pro
         <p className="text-sm italic text-slate-500 dark:text-slate-400">Mechanical internal checklist</p>
       </div>
       <div className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-        <button type="button" onClick={() => tela === 'formulario' ? undefined : setTela('inicio')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${tela !== 'historico' ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}><ClipboardCheck className="h-4 w-4" /> {tela === 'formulario' ? (aberto ? aberto.codigo_registro : 'Novo checklist') : 'Checklists'}{tela !== 'formulario' && pendentes.length > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{pendentes.length}</span>}</button>
+        <button type="button" onClick={() => tela === 'formulario' ? undefined : setTela('inicio')} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${tela !== 'historico' ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}><ClipboardCheck className="h-4 w-4" /> {tela === 'formulario' ? (aberto ? aberto.codigo_registro || 'Checklist no aparelho' : 'Novo checklist') : 'Checklists'}{tela !== 'formulario' && pendentes.length > 0 && <span className="rounded-full bg-amber-500 px-1.5 text-[10px] text-white">{pendentes.length}</span>}</button>
         <button type="button" onClick={() => { setTela('historico'); carregarLista(); }} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold ${tela === 'historico' ? 'bg-white text-blue-700 shadow-sm dark:bg-slate-900 dark:text-blue-300' : 'text-slate-500'}`}><History className="h-4 w-4" /> Histórico</button>
       </div>
     </div>
+
+    {tela !== 'formulario' && <PainelSincronizacao
+      online={sync.online}
+      pendencias={sync.pendencias}
+      sincronizando={sync.sincronizando}
+      ultimaSincronizacao={sync.ultimaSincronizacao}
+      listaSalvaEm={listaSalvaEm}
+      rotulosAcao={api.ROTULOS_ACAO_INTERNOS}
+      titulo={tituloPendencia}
+      onSincronizar={() => sync.sincronizarAgora()}
+      onDescartar={descartarDoAparelho}
+      onAbrir={p => abrirChecklist(p.id)}
+    />}
+    {tela === 'formulario' && !sync.online && <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200"><WifiOff className="h-4 w-4 shrink-0" /> Sem conexão. O que você salvar fica guardado neste aparelho e sobe sozinho quando a rede voltar.</p>}
 
     {tela === 'historico' ? renderHistorico() : tela === 'formulario' && modelo ? renderFormulario() : renderInicio()}
 

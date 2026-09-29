@@ -38,6 +38,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    data: '2026-09-29',
+    resumo: 'RH > Matriz de Treinamentos por Cargo e Colaborador (`RhMatrizTreinamentos.tsx`, `rhMatrizTreinamentosApi.ts`, `rhMatrizTreinamentosImport.ts`, `rhMatrizTreinamentosViewModel.ts`, `diretrizes.ts`): 1. Implementação da visualização em matriz cruzando colaboradores e catálogo de treinamentos com paginação, filtros, busca e exportação para Excel; 2. Gestão de status de capacitação (apto, vencido, pendente, não aplicável) com cálculo de validade e importação de requisitos por cargo; 3. Qualidade: implementação de suporte e sincronização offline com service worker, fila de pendências locais e status de rede.',
+  },
+  {
+    data: '2026-09-28',
+    resumo: 'Almoxarifado > Inventário Cíclico — Exclusão de Inventários Criados por Administradores (`inventarioCiclico.ts`, `inventarioCiclico.test.ts`, `inventarioCiclicoApi.ts`, `InventarioCiclico.tsx`, `20260928210000_alm_inv_excluir_admin.sql`, `diretrizes.ts`): 1. Permissão de exclusão para administradores: usuários com perfil admin agora podem excluir qualquer inventário cíclico criado, mesmo que já possua contagens registradas ou esteja concluído; 2. Segurança e governança: o autor não-admin continua restrito a excluir apenas enquanto nenhum item do inventário tiver contagem registrada; 3. Interface: adicionado botão de exclusão rápida (com confirmação e isolamento de evento) nos cartões da listagem de inventários e atualizado o botão de exclusão na tela de detalhes (`VistaInventario`), com mensagens contextuais de confirmação; 4. Banco de Dados: atualizada a RPC `alm_inv_excluir` para flexibilizar a trava de contagens registradas quando o executor possuir a role admin (`public.has_role(\'admin\')`); 5. Cobertura de testes unitários adicionada para `podeExcluirInventario`.',
+  },
+  {
     data: '2026-09-28',
     resumo: 'Suprimentos > Rastreio de Compras — Integração Direta de Dados da Sem MIGO e Coluna de Transportadora (`rastreio.ts`, `rastreio.test.ts`, `RastreioCompras.tsx`, `RastreioTable.tsx`, `RastreioDetailModal.tsx`, `diretrizes.ts`): 1. Eliminação da necessidade de preenchimento manual de previsão: removido o botão "Preencher previsão pela Bahia Sul" / "Atualizar previsão" no modal de detalhes (`RastreioDetailModal.tsx`), tornando a exibição dos dados da transportadora estritamente informativa; 2. Previsão e transportadora refletem diretamente o que já vem da tela Sem MIGO (`montarSemMigoDadosMap`): itens vinculados à Bahia Sul via CTe ou com dados preenchidos no diligenciamento têm sua transportadora, previsão e CTes integrados automaticamente no `RastreioRow`; 3. Adicionada coluna "Transportadora" na tabela de Rastreio de Compras (desktop e cards mobile), com suporte a ordenação, busca textual e exportação para Excel e PDF; 4. Adicionado campo "Transportadora" no grid de detalhes do item no modal (`RastreioDetailModal.tsx`).',
   },

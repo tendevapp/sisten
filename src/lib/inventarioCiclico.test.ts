@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_CONTAGENS, coberturaInventario, diasEntre, historicoPorItem, linhasResultado, montarCandidatos, proximaContagem,
-  resumirInventario, rotuloDias, type ItemInventario,
+  MAX_CONTAGENS, coberturaInventario, diasEntre, historicoPorItem, linhasResultado, montarCandidatos, podeExcluirInventario,
+  proximaContagem, resumirInventario, rotuloDias, type ItemInventario,
 } from './inventarioCiclico';
 import { montarLinhasPlanilhaInventario } from './inventarioCiclicoPlanilha';
 import type { EstoqueGiro, EstoqueItem } from '../types';
@@ -155,3 +155,39 @@ describe('histórico e cobertura', () => {
     expect(coberturaInventario([], h).pct).toBe(0);
   });
 });
+
+describe('podeExcluirInventario', () => {
+  const admin = { id: 'adm-1', roles: ['admin'] };
+  const autor = { id: 'user-1', roles: ['almoxarife'] };
+  const outro = { id: 'user-2', roles: ['almoxarife'] };
+
+  it('permite que o admin exclua qualquer inventário criado (sem contagem, com contagem ou concluído)', () => {
+    expect(podeExcluirInventario(admin, { criado_por_id: 'user-1', itens: [] })).toBe(true);
+    expect(podeExcluirInventario(admin, {
+      criado_por_id: 'user-1',
+      itens: [{ contagens: [{ id: 'c1' }] }],
+    })).toBe(true);
+    expect(podeExcluirInventario(admin, { criado_por_id: null, itens: [] })).toBe(true);
+  });
+
+  it('permite que o autor exclua apenas enquanto nenhum item tiver contagem', () => {
+    expect(podeExcluirInventario(autor, {
+      criado_por_id: 'user-1',
+      itens: [{ contagens: [] }, { contagens: [] }],
+    })).toBe(true);
+    expect(podeExcluirInventario(autor, {
+      criado_por_id: 'user-1',
+      itens: [{ contagens: [{ id: 'c1' }] }],
+    })).toBe(false);
+  });
+
+  it('bloqueia usuário que não seja autor nem admin', () => {
+    expect(podeExcluirInventario(outro, { criado_por_id: 'user-1', itens: [] })).toBe(false);
+  });
+
+  it('bloqueia se usuário não estiver autenticado', () => {
+    expect(podeExcluirInventario(null, { criado_por_id: 'user-1', itens: [] })).toBe(false);
+    expect(podeExcluirInventario(undefined, { criado_por_id: 'user-1', itens: [] })).toBe(false);
+  });
+});
+
