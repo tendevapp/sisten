@@ -26,6 +26,7 @@ import {
   salvarItemCatalogo,
   obterUrlFotoCatalogo,
   excluirItemCatalogo,
+  obterListaFixaCatalogoLocal,
   type ItemConsumivelZl0024,
   type CatalogoItem,
   type MaterialCandidatoCatalogo,
@@ -45,8 +46,22 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const toast = useToast();
 
   const [dadosCompletos, setDadosCompletos] = useState<DadosCatalogoCompleto | null>(null);
-  const [itens, setItens] = useState<ItemConsumivelZl0024[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  
+  // Inicialização síncrona imediata a partir do armazenamento local para abertura com zero delay
+  const [itens, setItens] = useState<ItemConsumivelZl0024[]>(() => {
+    try {
+      return obterListaFixaCatalogoLocal();
+    } catch {
+      return [];
+    }
+  });
+  const [carregando, setCarregando] = useState(() => {
+    try {
+      return obterListaFixaCatalogoLocal().length === 0;
+    } catch {
+      return true;
+    }
+  });
   const [atualizando, setAtualizando] = useState(false);
 
   // Campo Adicionar Item (Busca Rápida por Código SAP ou Descrição)
@@ -87,9 +102,9 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const carregarDados = useCallback(async () => {
+  const carregarDados = useCallback(async (mostrarCarregando = false) => {
     try {
-      setCarregando(true);
+      if (mostrarCarregando) setCarregando(true);
       const dados = await carregarDadosCatalogoCompleto();
       setDadosCompletos(dados);
       setItens(dados.itens);

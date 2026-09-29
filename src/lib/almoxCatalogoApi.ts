@@ -172,8 +172,10 @@ export function salvarListaFixaCatalogoLocal(lista: ItemConsumivelZl0024[]): voi
   }
 }
 
+const cacheUrlsAssinadas = new Map<string, { url: string; expiraEm: number }>();
+
 /**
- * Obtém URL assinada da imagem do catálogo no Supabase Storage.
+ * Obtém URL assinada da imagem do catálogo no Supabase Storage com cache em memória.
  * Suporta o bucket oficial do catálogo, contingência alm-catalogo e o bucket do Book de EPIs (ssma-book-epis).
  */
 export async function obterUrlFotoCatalogo(path?: string | null, bucketPreferencial?: string): Promise<string | null> {
@@ -181,24 +183,91 @@ export async function obterUrlFotoCatalogo(path?: string | null, bucketPreferenc
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   if (!supabase) return null;
 
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const cacheKey = `${bucketPreferencial || 'auto'}:${cleanPath}`;
+  const emCache = cacheUrlsAssinadas.get(cacheKey);
+  if (emCache && emCache.expiraEm > Date.now()) {
+    return emCache.url;
+  }
+
   try {
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
     const bucket = bucketPreferencial || (cleanPath.startsWith('epis/') ? SSMA_BOOK_EPIS_BUCKET : BUCKET_CATALOGO);
     const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanPath, 86400);
     if (!error && data?.signedUrl) {
+      cacheUrlsAssinadas.set(cacheKey, { url: data.signedUrl, expiraEm: Date.now() + 80000 * 1000 });
       return data.signedUrl;
     }
     // Fallback caso a foto resida em outro bucket
     const outros = [SSMA_BOOK_EPIS_BUCKET, BUCKET_CATALOGO, 'alm-catalogo'].filter(b => b !== bucket);
     for (const b of outros) {
       const { data: d2 } = await supabase.storage.from(b).createSignedUrl(cleanPath, 86400);
-      if (d2?.signedUrl) return d2.signedUrl;
+      if (d2?.signedUrl) {
+        cacheUrlsAssinadas.set(cacheKey, { url: d2.signedUrl, expiraEm: Date.now() + 80000 * 1000 });
+        return d2.signedUrl;
+      }
     }
     return null;
   } catch (err) {
     console.warn('[almoxCatalogoApi] Falha ao obter URL assinada da foto:', err);
     return null;
   }
+}
+
+/**
+ * Resolve em lote (batch) URLs assinadas de fotos para múltiplos caminhos em 1 única requisição por bucket,
+ * eliminando waterfalls sequenciais lentos.
+ */
+export async function obterUrlsFotosCatalogoLote(
+  itens: Array<{ path: string; bucket?: string }>
+): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>();
+  if (!supabase || itens.length === 0) return mapa;
+
+  const porBucket = new Map<string, string[]>();
+  for (const item of itens) {
+    if (!item.path) continue;
+    if (item.path.startsWith('http://') || item.path.startsWith('https://')) {
+      mapa.set(item.path, item.path);
+      continue;
+    }
+    const cleanPath = item.path.startsWith('/') ? item.path.slice(1) : item.path;
+    const cacheKey = `${item.bucket || 'auto'}:${cleanPath}`;
+    const emCache = cacheUrlsAssinadas.get(cacheKey);
+    if (emCache && emCache.expiraEm > Date.now()) {
+      mapa.set(cleanPath, emCache.url);
+      continue;
+    }
+
+    const b = item.bucket || (cleanPath.startsWith('epis/') ? SSMA_BOOK_EPIS_BUCKET : BUCKET_CATALOGO);
+    const lista = porBucket.get(b) || [];
+    if (!lista.includes(cleanPath)) lista.push(cleanPath);
+    porBucket.set(b, lista);
+  }
+
+  // Executa em paralelo para cada bucket em apenas 1 requisição batch
+  await Promise.all(
+    Array.from(porBucket.entries()).map(async ([bucket, paths]) => {
+      if (paths.length === 0) return;
+      try {
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrls(paths, 86400);
+        if (!error && data) {
+          for (const res of data) {
+            if (res.signedUrl && res.path) {
+              mapa.set(res.path, res.signedUrl);
+              cacheUrlsAssinadas.set(`${bucket}:${res.path}`, {
+                url: res.signedUrl,
+                expiraEm: Date.now() + 80000 * 1000,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[almoxCatalogoApi] Falha no lote de signed URLs do bucket ${bucket}:`, err);
+      }
+    })
+  );
+
+  return mapa;
 }
 
 /**
@@ -964,33 +1033,26 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
     listarEpisComFoto(),
   ]);
 
-  // Resolve URLs das fotos já cadastradas no catálogo em lote
-  for (const cat of itensCatalogo) {
-    if (cat.imagem_path && !cat.url_imagem) {
-      cat.url_imagem = await obterUrlFotoCatalogo(cat.imagem_path);
-    }
-  }
-
-  // Resolve URLs das fotos do Book de EPIs em lote
-  for (const [, epi] of mapaEpis.entries()) {
-    if (epi.imagem_path && !epi.url_imagem) {
-      epi.url_imagem = await obterUrlFotoCatalogo(epi.imagem_path, SSMA_BOOK_EPIS_BUCKET);
-    }
-  }
-
   // Verifica se já existe lista fixa do catálogo persistida
   let listaFixa = obterListaFixaCatalogoLocal();
 
   if (listaFixa.length === 0) {
-    // Primeira carga: usa o estoque já existente em cache local (sem fetch de rede)
-    const estoqueLocal = (localDb.getEstoque() || []) as EstoqueItem[];
-    if (estoqueLocal.length > 0) {
+    // Primeira carga inicial: se não houver estoque local em memória, busca uma única vez
+    let estoqueLocal = localDb.getEstoque();
+    if (!estoqueLocal || estoqueLocal.length === 0) {
+      try {
+        estoqueLocal = await localDb.fetchEstoque(false);
+      } catch {
+        estoqueLocal = [];
+      }
+    }
+    if (estoqueLocal && estoqueLocal.length > 0) {
       listaFixa = filtrarEAgruparZl0024Consumiveis(estoqueLocal, grupos, itensCatalogo, true, mapaEpis);
       salvarListaFixaCatalogoLocal(listaFixa);
     }
   }
 
-  // Atualiza informações de fotos da lista fixa a partir do catálogo e mapa de EPIs
+  // Mapa de itens do catálogo persistidos
   const mapaCatalogo = new Map<string, CatalogoItem>();
   for (const c of itensCatalogo) {
     if (c.codigo_sap) mapaCatalogo.set(c.codigo_sap, c);
@@ -1042,6 +1104,41 @@ export async function carregarDadosCatalogoCompleto(_forcar = false): Promise<Da
 
   // Mantém a lista fixa sincronizada
   salvarListaFixaCatalogoLocal(listaFixa);
+
+  // Coleta caminhos de fotos APENAS dos itens que efetivamente estão na lista e têm foto pendente de URL
+  const caminhosParaAssinar: Array<{ path: string; bucket?: string }> = [];
+  for (const it of itensAtualizados) {
+    if (it.tem_foto && !it.url_foto) {
+      if (it.origem_foto === 'book_epi') {
+        const epi = mapaEpis.get(it.codigo_sap);
+        if (epi?.imagem_path) {
+          caminhosParaAssinar.push({ path: epi.imagem_path, bucket: SSMA_BOOK_EPIS_BUCKET });
+        }
+      } else if (it.item_catalogo?.imagem_path) {
+        caminhosParaAssinar.push({ path: it.item_catalogo.imagem_path, bucket: BUCKET_CATALOGO });
+      }
+    }
+  }
+
+  // Resolve URLs assinadas em lote (1 única requisição batch de alta performance)
+  if (caminhosParaAssinar.length > 0) {
+    const urlsResolvidas = await obterUrlsFotosCatalogoLote(caminhosParaAssinar);
+    for (const it of itensAtualizados) {
+      if (it.tem_foto && !it.url_foto) {
+        const path = it.origem_foto === 'book_epi'
+          ? mapaEpis.get(it.codigo_sap)?.imagem_path
+          : it.item_catalogo?.imagem_path;
+        if (path) {
+          const clean = path.startsWith('/') ? path.slice(1) : path;
+          const url = urlsResolvidas.get(clean) || urlsResolvidas.get(path);
+          if (url) {
+            it.url_foto = url;
+            if (it.item_catalogo) it.item_catalogo.url_imagem = url;
+          }
+        }
+      }
+    }
+  }
 
   return {
     itens: itensAtualizados,

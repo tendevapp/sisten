@@ -404,4 +404,17 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
     expect(fixa).toHaveLength(1);
     expect(fixa[0].codigo_sap).toBe('200099');
   });
+
+  it('deve resolver URLs de fotos em lote de forma rápida com obterUrlsFotosCatalogoLote', async () => {
+    const { obterUrlsFotosCatalogoLote } = await import('./almoxCatalogoApi');
+
+    // URLs diretas
+    const lote = [
+      { path: 'https://exemplo.com/foto1.jpg' },
+      { path: 'http://exemplo.com/foto2.jpg' },
+    ];
+    const mapa = await obterUrlsFotosCatalogoLote(lote);
+    expect(mapa.get('https://exemplo.com/foto1.jpg')).toBe('https://exemplo.com/foto1.jpg');
+    expect(mapa.get('http://exemplo.com/foto2.jpg')).toBe('http://exemplo.com/foto2.jpg');
+  });
 });
