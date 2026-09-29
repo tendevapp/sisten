@@ -47,6 +47,34 @@ export interface DailyMonthPoint {
   diasUteis: number;
 }
 
+export interface AcompanhamentoDiarioMeta {
+  area: DailyAreaId;
+  ano: number;
+  mes: number;
+  meta: number;
+  dias_uteis: number;
+}
+
+export interface AcompanhamentoDiarioRealizado {
+  area: DailyAreaId;
+  data: string;
+  realizado: number;
+}
+
+export interface AcompanhamentoDiarioMetaSemanal {
+  area: DailyAreaId;
+  semana_inicio: string;
+  meta: number;
+  dias_uteis: number;
+}
+
+export interface AcompanhamentoDiarioConfiguracao {
+  metas: AcompanhamentoDiarioMeta[];
+  metasSemanais?: AcompanhamentoDiarioMetaSemanal[];
+  realizados: AcompanhamentoDiarioRealizado[];
+  feriados: string[];
+}
+
 export interface DailyAreaModel extends DailyAreaDefinition {
   weeklyDaily: DailyPoint[];
   monthly: DailyMonthPoint[];
@@ -105,9 +133,9 @@ function monthIndex(date: Date): number {
   return date.getUTCMonth();
 }
 
-function isBusinessDay(date: Date): boolean {
+function isBusinessDay(date: Date, holidays: Set<string>): boolean {
   if (date.getUTCDay() === 0 || date.getUTCDay() === 6) return false;
-  return !(HOLIDAYS_BY_YEAR[date.getUTCFullYear()] ?? []).includes(dateKey(date));
+  return !holidays.has(dateKey(date));
 }
 
 function sundayWeekStart(date: Date): Date {
@@ -144,16 +172,63 @@ function targetsFor(profile: DailyAreaDefinition['targetProfile']): number[] {
   return profile === 'internos' ? INTERNALS_TARGETS : STANDARD_TARGETS;
 }
 
-function countInRange(dates: Date[], start: Date, end: Date): number {
-  return dates.filter(date => date >= start && date <= end).length;
+function targetsAndDaysFor(definition: DailyAreaDefinition, year: number, config?: AcompanhamentoDiarioConfiguracao): { metas: number[]; diasUteis: number[] } {
+  const metas = [...targetsFor(definition.targetProfile)];
+  const diasUteis = [...WORKING_DAYS];
+  for (const item of config?.metas ?? []) {
+    if (item.area !== definition.id || item.ano !== year || item.mes < 1 || item.mes > 12) continue;
+    metas[item.mes - 1] = Number(item.meta);
+    diasUteis[item.mes - 1] = Number(item.dias_uteis);
+  }
+  return { metas, diasUteis };
 }
 
-function dailyPlanRate(month: number, targets: number[]): number {
-  const days = WORKING_DAYS[month];
-  return days > 0 ? targets[month] / days : 0;
+function countsByDate(dates: Date[], overrides: AcompanhamentoDiarioRealizado[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const date of dates) counts.set(dateKey(date), (counts.get(dateKey(date)) ?? 0) + 1);
+  for (const override of overrides) {
+    const date = toDate(override.data);
+    if (date) counts.set(dateKey(date), Number(override.realizado));
+  }
+  return counts;
 }
 
-function buildWeeklyDaily(dates: Date[], referenceDate: Date, targets: number[]): DailyPoint[] {
+function countInRange(counts: Map<string, number>, start: Date, end: Date): number {
+  let result = 0;
+  for (let date = start; date <= end; date = addDays(date, 1)) result += counts.get(dateKey(date)) ?? 0;
+  return result;
+}
+
+function dailyPlanRate(month: number, targets: number[], days: number[]): number {
+  return days[month] > 0 ? targets[month] / days[month] : 0;
+}
+
+function weeklyRates(items: AcompanhamentoDiarioMetaSemanal[]): Map<string, AcompanhamentoDiarioMetaSemanal> {
+  return new Map(items.map(item => [item.semana_inicio, item]));
+}
+
+function planRateForDate(date: Date, targets: number[], days: number[], weekly: Map<string, AcompanhamentoDiarioMetaSemanal>): number {
+  const metaSemanal = weekly.get(dateKey(sundayWeekStart(date)));
+  if (metaSemanal) return metaSemanal.dias_uteis > 0 ? metaSemanal.meta / metaSemanal.dias_uteis : 0;
+  return dailyPlanRate(monthIndex(date), targets, days);
+}
+
+function weeklyAdjustmentTouchesMonth(weekly: Map<string, AcompanhamentoDiarioMetaSemanal>, start: Date, end: Date): boolean {
+  return [...weekly.keys()].some(key => {
+    const weekStart = toDate(key);
+    return !!weekStart && weekStart <= end && addDays(weekStart, 6) >= start;
+  });
+}
+
+function plannedInMonth(start: Date, end: Date, targets: number[], days: number[], holidays: Set<string>, weekly: Map<string, AcompanhamentoDiarioMetaSemanal>): number {
+  let planned = 0;
+  for (let date = start; date <= end; date = addDays(date, 1)) {
+    if (isBusinessDay(date, holidays)) planned += planRateForDate(date, targets, days, weekly);
+  }
+  return planned;
+}
+
+function buildWeeklyDaily(counts: Map<string, number>, referenceDate: Date, targets: number[], days: number[], holidays: Set<string>, weekly: Map<string, AcompanhamentoDiarioMetaSemanal>): DailyPoint[] {
   const currentWeek = sundayWeekStart(referenceDate);
   const points: DailyPoint[] = [];
   for (let offset = -4; offset <= 0; offset += 1) {
@@ -162,7 +237,7 @@ function buildWeeklyDaily(dates: Date[], referenceDate: Date, targets: number[])
       label: `W${sundayWeekNumber(start)}`,
       kind: 'week',
       date: dateKey(start),
-      real: countInRange(dates, start, addDays(start, 6)),
+      real: countInRange(counts, start, addDays(start, 6)),
       media: null,
       mediaAcumulada: null,
     });
@@ -171,48 +246,48 @@ function buildWeeklyDaily(dates: Date[], referenceDate: Date, targets: number[])
   const monthStart = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1));
   let accumulated: number | null = null;
   const accumulatedByDay = new Map<string, number>();
-  const realByDay = new Map<string, number>();
-  for (const date of dates) realByDay.set(dateKey(date), (realByDay.get(dateKey(date)) ?? 0) + 1);
   for (let date = monthStart; date <= addDays(currentWeek, 6); date = addDays(date, 1)) {
-    const rate = dailyPlanRate(monthIndex(date), targets);
-    if (isBusinessDay(date)) {
-      accumulated = accumulated === null ? rate : accumulated + rate - (realByDay.get(dateKey(addDays(date, -1))) ?? 0);
+    const rate = planRateForDate(date, targets, days, weekly);
+    if (isBusinessDay(date, holidays)) {
+      accumulated = accumulated === null ? rate : accumulated + rate - (counts.get(dateKey(addDays(date, -1))) ?? 0);
     }
     if (accumulated !== null) accumulatedByDay.set(dateKey(date), accumulated);
   }
   for (let day = 1; day <= 6; day += 1) {
     const date = addDays(currentWeek, day);
-    const businessDay = isBusinessDay(date);
+    const businessDay = isBusinessDay(date, holidays);
     points.push({
       label: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][day - 1],
       kind: 'day',
       date: dateKey(date),
-      real: countInRange(dates, date, date),
-      media: businessDay ? dailyPlanRate(monthIndex(date), targets) : null,
+      real: countInRange(counts, date, date),
+      media: businessDay ? planRateForDate(date, targets, days, weekly) : null,
       mediaAcumulada: accumulatedByDay.get(dateKey(date)) ?? null,
     });
   }
   return points;
 }
 
-function buildMonthly(dates: Date[], referenceDate: Date, targets: number[]): DailyMonthPoint[] {
+function buildMonthly(counts: Map<string, number>, referenceDate: Date, targets: number[], days: number[], holidays: Set<string>, weekly: Map<string, AcompanhamentoDiarioMetaSemanal>): DailyMonthPoint[] {
   return DAILY_MONTHS.map((month, index) => {
     const start = new Date(Date.UTC(referenceDate.getUTCFullYear(), index, 1));
     const end = new Date(Date.UTC(referenceDate.getUTCFullYear(), index + 1, 0, 23, 59, 59));
-    const real = countInRange(dates, start, end);
-    const programado = targets[index];
+    const real = countInRange(counts, start, end);
+    const programado = weeklyAdjustmentTouchesMonth(weekly, start, end)
+      ? plannedInMonth(start, end, targets, days, holidays, weekly)
+      : targets[index];
     return {
       month,
       monthIndex: index,
       real,
       programado,
       pendencia: index <= referenceDate.getUTCMonth() ? programado - real : null,
-      diasUteis: WORKING_DAYS[index],
+      diasUteis: days[index],
     };
   });
 }
 
-export function buildAcompanhamentoDiarioModel(rows: AcompanhamentoDiarioRow[], today = new Date(), selectedMonthIndex = today.getUTCMonth()): AcompanhamentoDiarioModel {
+export function buildAcompanhamentoDiarioModel(rows: AcompanhamentoDiarioRow[], today = new Date(), selectedMonthIndex = today.getUTCMonth(), config?: AcompanhamentoDiarioConfiguracao): AcompanhamentoDiarioModel {
   const currentDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   const monthIndex = Math.max(0, Math.min(DAILY_MONTHS.length - 1, selectedMonthIndex));
   const referenceDate = selectedReferenceDate(currentDate, monthIndex);
@@ -223,10 +298,15 @@ export function buildAcompanhamentoDiarioModel(rows: AcompanhamentoDiarioRow[], 
     areas: DAILY_AREAS.map(definition => {
       const resolved = rows.map(row => areaDate(row, definition.id));
       const dates = resolved.flatMap(item => item.date ? [item.date] : []);
+      const targetConfig = targetsAndDaysFor(definition, currentDate.getUTCFullYear(), config);
+      const manualOverrides = (config?.realizados ?? []).filter(item => item.area === definition.id);
+      const counts = countsByDate(dates, manualOverrides);
+      const holidays = new Set(config ? config.feriados : HOLIDAYS_BY_YEAR[currentDate.getUTCFullYear()] ?? []);
+      const metasSemanais = weeklyRates((config?.metasSemanais ?? []).filter(item => item.area === definition.id));
       return {
         ...definition,
-        weeklyDaily: buildWeeklyDaily(dates, referenceDate, targetsFor(definition.targetProfile)),
-        monthly: buildMonthly(dates, currentDate, targetsFor(definition.targetProfile)),
+        weeklyDaily: buildWeeklyDaily(counts, referenceDate, targetConfig.metas, targetConfig.diasUteis, holidays, metasSemanais),
+        monthly: buildMonthly(counts, currentDate, targetConfig.metas, targetConfig.diasUteis, holidays, metasSemanais),
         fallbackFaturamento: definition.id === 'FATURAMENTO' && resolved.some(item => item.fallbackFaturamento),
       };
     }),

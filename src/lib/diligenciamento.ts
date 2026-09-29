@@ -162,6 +162,7 @@ export interface ItemDiligenciamento {
   grupoComprador?: string;
   faturamentoTransportadora?: string;
   previsaoManual?: string;
+  observacao?: string;
   /** `data de remessa + prazo`; null quando falta remessa ou prazo cadastrado. */
   previsaoCalculada: string | null;
   /** `previsaoManual`, senão `previsaoCalculada` — o valor que a tela mostra. */
@@ -281,6 +282,7 @@ export function montarItens(
           ? (dilig!.data_faturamento_transportadora as string)
           : undefined,
         previsaoManual,
+        observacao: dilig?.observacao || r.obs_comprador || undefined,
         previsaoCalculada,
         previsaoEfetiva: previsaoManual || previsaoCalculada,
         motivoSemPrevisao: previsaoManual ? undefined : motivoSemPrevisao,

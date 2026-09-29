@@ -25,10 +25,12 @@ import * as outbox from './outbox';
 import { pareceFalhaDeRede } from './rede';
 import type { StatusLancamento } from './producao';
 import { calcularRelatorioDiario, type RelatorioDiarioLinha } from './producao';
-import type {
-  ApontamentoChecklistLiberacao,
-  EtapaChecklistLiberacao,
-  TramoEntrega,
+import {
+  determinarSubprojetoPorTorre,
+  type ApontamentoChecklistLiberacao,
+  type EtapaChecklistLiberacao,
+  type TramoEntrega,
+  type TramoId,
 } from './producaoEntrega';
 
 const db = (tabela: string) => (supabase.from as any)(tabela);
@@ -304,6 +306,166 @@ export async function atualizarTramoEntrega(
   const payload = { ...campos, updated_at: new Date().toISOString() };
   const { error } = await db('prod_tramos_entrega').update(payload).eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Atualiza número de série do tramo ou reatribui a outra torre/posição.
+ * Se a posição de destino já estiver ocupada por outro tramo, realiza a permuta (swap)
+ * segura entre os dois em 3 passos para respeitar a restrição unique (projeto, torre_numero, tramo).
+ */
+export async function reassociarOuTrocarTramoEntrega(params: {
+  idOrigem: string;
+  novaTorre: number;
+  novoTramo: TramoId;
+  novaSerie?: number;
+}): Promise<{ swapped: boolean; tramoDestinoId?: string; tramosAfetados: TramoEntrega[] }> {
+  // 1. Busca o tramo de origem
+  const { data: origem, error: errOrigem } = await db('prod_tramos_entrega')
+    .select('*')
+    .eq('id', params.idOrigem)
+    .single();
+  if (errOrigem || !origem) {
+    throw new Error(errOrigem?.message || 'Tramo de origem não encontrado.');
+  }
+
+  const serieFinal =
+    params.novaSerie !== undefined && !isNaN(Number(params.novaSerie))
+      ? Number(params.novaSerie)
+      : (origem as TramoEntrega).serie;
+
+  const mudouPosicao =
+    (origem as TramoEntrega).torre_numero !== params.novaTorre ||
+    (origem as TramoEntrega).tramo !== params.novoTramo;
+
+  if (!mudouPosicao) {
+    if (serieFinal !== (origem as TramoEntrega).serie) {
+      await atualizarTramoEntrega(params.idOrigem, { serie: serieFinal });
+    }
+    const atualizado = { ...(origem as TramoEntrega), serie: serieFinal };
+    return { swapped: false, tramosAfetados: [atualizado] };
+  }
+
+  // 2. Verifica se a posição de destino já tem um tramo
+  const { data: conflito, error: errConflito } = await db('prod_tramos_entrega')
+    .select('*')
+    .eq('projeto', (origem as TramoEntrega).projeto)
+    .eq('torre_numero', params.novaTorre)
+    .eq('tramo', params.novoTramo)
+    .neq('id', params.idOrigem)
+    .maybeSingle();
+
+  if (errConflito) throw new Error(errConflito.message);
+
+  const novoSubprojeto = determinarSubprojetoPorTorre(params.novaTorre);
+
+  if (!conflito) {
+    // Slot livre - move direto
+    await atualizarTramoEntrega(params.idOrigem, {
+      torre_numero: params.novaTorre,
+      tramo: params.novoTramo,
+      serie: serieFinal,
+      subprojeto_id: novoSubprojeto,
+    });
+    const atualizado: TramoEntrega = {
+      ...(origem as TramoEntrega),
+      torre_numero: params.novaTorre,
+      tramo: params.novoTramo,
+      serie: serieFinal,
+      subprojeto_id: novoSubprojeto,
+    };
+    return { swapped: false, tramosAfetados: [atualizado] };
+  }
+
+  // Conflito existe - permuta (swap) segura em 3 etapas para não violar a unique constraint
+  const tempTorre = -Math.abs((origem as TramoEntrega).torre_numero) - 10000;
+
+  // Etapa 1: move origem para torre temporária negativa
+  const { error: err1 } = await db('prod_tramos_entrega')
+    .update({ torre_numero: tempTorre, updated_at: new Date().toISOString() })
+    .eq('id', (origem as TramoEntrega).id);
+  if (err1) throw new Error(err1.message);
+
+  // Etapa 2: move o tramo em conflito para a posição que a origem ocupava
+  const { error: err2 } = await db('prod_tramos_entrega')
+    .update({
+      torre_numero: (origem as TramoEntrega).torre_numero,
+      tramo: (origem as TramoEntrega).tramo,
+      subprojeto_id: (origem as TramoEntrega).subprojeto_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conflito.id);
+  if (err2) throw new Error(err2.message);
+
+  // Etapa 3: move origem para o destino final com a nova série
+  const { error: err3 } = await db('prod_tramos_entrega')
+    .update({
+      torre_numero: params.novaTorre,
+      tramo: params.novoTramo,
+      serie: serieFinal,
+      subprojeto_id: conflito.subprojeto_id || novoSubprojeto,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', (origem as TramoEntrega).id);
+  if (err3) throw new Error(err3.message);
+
+  const origemFinal: TramoEntrega = {
+    ...(origem as TramoEntrega),
+    torre_numero: params.novaTorre,
+    tramo: params.novoTramo,
+    serie: serieFinal,
+    subprojeto_id: conflito.subprojeto_id || novoSubprojeto,
+  };
+
+  const conflitoFinal: TramoEntrega = {
+    ...(conflito as TramoEntrega),
+    torre_numero: (origem as TramoEntrega).torre_numero,
+    tramo: (origem as TramoEntrega).tramo,
+    subprojeto_id: (origem as TramoEntrega).subprojeto_id,
+  };
+
+  return {
+    swapped: true,
+    tramoDestinoId: conflito.id,
+    tramosAfetados: [origemFinal, conflitoFinal],
+  };
+}
+
+/**
+ * Permuta direta entre dois tramos quaisquer
+ */
+export async function permutarDoisTramosEntrega(idA: string, idB: string): Promise<void> {
+  if (idA === idB) return;
+  const { data: itemA, error: errA } = await db('prod_tramos_entrega').select('*').eq('id', idA).single();
+  const { data: itemB, error: errB } = await db('prod_tramos_entrega').select('*').eq('id', idB).single();
+  if (errA || !itemA) throw new Error('Tramo A não encontrado.');
+  if (errB || !itemB) throw new Error('Tramo B não encontrado.');
+
+  const tempTorre = -Math.abs(itemA.torre_numero) - 20000;
+
+  const { error: e1 } = await db('prod_tramos_entrega')
+    .update({ torre_numero: tempTorre, updated_at: new Date().toISOString() })
+    .eq('id', idA);
+  if (e1) throw new Error(e1.message);
+
+  const { error: e2 } = await db('prod_tramos_entrega')
+    .update({
+      torre_numero: itemA.torre_numero,
+      tramo: itemA.tramo,
+      subprojeto_id: itemA.subprojeto_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', idB);
+  if (e2) throw new Error(e2.message);
+
+  const { error: e3 } = await db('prod_tramos_entrega')
+    .update({
+      torre_numero: itemB.torre_numero,
+      tramo: itemB.tramo,
+      subprojeto_id: itemB.subprojeto_id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', idA);
+  if (e3) throw new Error(e3.message);
 }
 
 // ---------------------------------------------------------------------------

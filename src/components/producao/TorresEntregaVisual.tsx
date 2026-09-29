@@ -14,6 +14,7 @@ import {
   ListOrdered,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Truck,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import {
   type TramoId,
 } from '../../lib/producaoEntrega';
 import ModalDetalheTramoEntrega from './ModalDetalheTramoEntrega';
+import ModalGerenciarTramosEntrega from './ModalGerenciarTramosEntrega';
 import VisaoExpedicaoChecklist from './VisaoExpedicaoChecklist';
 
 interface TorresEntregaVisualProps {
@@ -49,6 +51,7 @@ export default function TorresEntregaVisual({
 
   const [tramoSelecionado, setTramoSelecionado] = useState<TramoEntrega | null>(null);
   const [torreSelecionada, setTorreSelecionada] = useState<TorreEntregaAgrupada | null>(null);
+  const [modalGerenciarTramos, setModalGerenciarTramos] = useState(false);
 
   // Agrupamento de torres
   const todasTorres = useMemo(() => agruparTramosPorTorre(tramos), [tramos]);
@@ -138,6 +141,15 @@ export default function TorresEntregaVisual({
             >
               <ListChecks className="h-3.5 w-3.5" />
               Visão Expedição
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalGerenciarTramos(true)}
+              title="Gerenciar e ajustar torres e tramos"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              Editar Tramos
             </button>
             {recarregar && (
               <button
@@ -599,11 +611,22 @@ export default function TorresEntregaVisual({
         <ModalDetalheTramoEntrega
           tramo={tramoSelecionado}
           torre={torreSelecionada}
+          todosTramos={tramos}
           aoFechar={() => {
             setTramoSelecionado(null);
             setTorreSelecionada(null);
           }}
           aoSalvar={handleSalvarTramo}
+          recarregar={recarregar}
+        />
+      )}
+
+      {/* 7. Modal Geral de Gestão e Ajuste de Tramos (Permutas e Edição de Séries) */}
+      {modalGerenciarTramos && (
+        <ModalGerenciarTramosEntrega
+          tramos={tramos}
+          aoFechar={() => setModalGerenciarTramos(false)}
+          recarregar={recarregar}
         />
       )}
     </div>

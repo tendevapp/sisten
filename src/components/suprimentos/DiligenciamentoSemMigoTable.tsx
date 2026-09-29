@@ -148,6 +148,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
   const [loteTransp, setLoteTransp] = useState('');
   const [loteFat, setLoteFat] = useState('');
   const [lotePrev, setLotePrev] = useState('');
+  const [loteObs, setLoteObs] = useState('');
+  const [obsLocal, setObsLocal] = useState<Record<string, string>>({});
   const [aplicandoLote, setAplicandoLote] = useState(false);
   const [enviandoColeta, setEnviandoColeta] = useState(false);
   const [modalColeta, setModalColeta] = useState<{ corpo: string; mailtoEmBranco: string } | null>(null);
@@ -356,7 +358,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   const limparSelecao = () => {
     setSelecionados(new Set());
-    setLoteTransp(''); setLoteFat(''); setLotePrev('');
+    setLoteTransp(''); setLoteFat(''); setLotePrev(''); setLoteObs('');
   };
 
   /**
@@ -491,6 +493,20 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     }
   };
 
+  const salvarObservacao = async (item: ItemDiligenciamento, novaObs: string) => {
+    const reg = regPorRi.get(item.riPo);
+    setObsLocal(prev => ({ ...prev, [item.ri]: novaObs }));
+    if (reg) reg.obs_comprador = novaObs;
+    item.observacao = novaObs;
+    try {
+      await localDb.updateBuyerFields(item.ri, novaObs, reg?.data_entrega_prevista || '');
+      toast.success('Observação salva.');
+    } catch (e) {
+      console.error('Falha ao salvar observação:', e);
+      toast.error('Não foi possível salvar a observação.');
+    }
+  };
+
   /**
    * Lista de coleta: o que a logística precisa para ir buscar o material no
    * fornecedor. Sai pelo Outlook (`mailto:`), com destinatário e assunto vindos
@@ -591,22 +607,39 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
     if (lotePrev) patch.previsao_manual = lotePrev;
     if (loteTransp && !lotePrev) patch.previsao_manual = null;
 
-    if (Object.keys(patch).length === 0) {
-      toast.error('Preencha transportadora, faturamento e/ou previsão para aplicar.');
+    if (Object.keys(patch).length === 0 && !loteObs) {
+      toast.error('Preencha transportadora, faturamento, previsão e/ou observação para aplicar.');
       return;
     }
 
     setAplicandoLote(true);
     try {
-      const docPorRi = new Map(riPos.map(riPo => [riPo, itensPorRi.get(riPo)?.docCompra || '']));
-      await salvarDiligenciamentoItens(riPos, docPorRi, patch, { id: user.id, nome: user.name });
+      if (Object.keys(patch).length > 0) {
+        const docPorRi = new Map(riPos.map(riPo => [riPo, itensPorRi.get(riPo)?.docCompra || '']));
+        await salvarDiligenciamentoItens(riPos, docPorRi, patch, { id: user.id, nome: user.name });
 
-      if (lotePrev) {
-        const { falhas } = await gravarPrevisaoNoRastreio(ris, lotePrev);
-        if (falhas.length > 0) {
-          toast.error(`Previsão salva, mas ${falhas.length} item(ns) não atualizaram o Rastreio Compras.`);
+        if (lotePrev) {
+          const { falhas } = await gravarPrevisaoNoRastreio(ris, lotePrev);
+          if (falhas.length > 0) {
+            toast.error(`Previsão salva, mas ${falhas.length} item(ns) não atualizaram o Rastreio Compras.`);
+          }
         }
       }
+
+      if (loteObs) {
+        for (const it of selecionadosItens) {
+          const reg = regPorRi.get(it.riPo);
+          await localDb.updateBuyerFields(it.ri, loteObs, reg?.data_entrega_prevista || '');
+          if (reg) reg.obs_comprador = loteObs;
+          it.observacao = loteObs;
+        }
+        setObsLocal(prev => {
+          const next = { ...prev };
+          for (const it of selecionadosItens) next[it.ri] = loteObs;
+          return next;
+        });
+      }
+
       toast.success(`${riPos.length} item(ns) atualizados.`);
       limparSelecao();
       await carregarDiligenciamento();
@@ -620,7 +653,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
 
   /* Desenho ------------------------------------------------------------------- */
 
-  if (carregando) return <TableSkeleton columns={10} rows={6} />;
+  if (carregando) return <TableSkeleton columns={11} rows={6} />;
 
   return (
     <div className="space-y-3">
@@ -690,6 +723,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
           transp={loteTransp} setTransp={setLoteTransp}
           fat={loteFat} setFat={setLoteFat}
           prev={lotePrev} setPrev={setLotePrev}
+          obs={loteObs} setObs={setLoteObs}
           aplicando={aplicandoLote}
           onAplicar={aplicarLote}
           onLimpar={limparSelecao}
@@ -871,6 +905,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                 <Th label="Remessa & Previsão" />
                                 <Th label="Fat. Transportadora" />
                                 <Th label="Transportadora" />
+                                <Th label="Observação" />
                                 <Th label="Chegada (Rastreio)" />
                               </tr>
                             </thead>
@@ -953,6 +988,13 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                                       />
                                     </Td>
                                     <Td>
+                                      <CampoObservacao
+                                        valor={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                                        desabilitado={item.chegou}
+                                        onSalvar={texto => salvarObservacao(item, texto)}
+                                      />
+                                    </Td>
+                                    <Td>
                                       <EstadoChegada item={item} />
                                     </Td>
                                   </Tr>
@@ -990,6 +1032,7 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                     <Th label="Remessa & Previsão" />
                     <Th label="Fat. Transportadora" />
                     <Th label="Transportadora" />
+                    <Th label="Observação" />
                     <Th label="Chegada (Rastreio)" />
                     <Th label="Cobrar" />
                   </TableHeadRow>
@@ -1087,6 +1130,13 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               opcoes={opcoesTransportadora}
                               desabilitado={item.chegou}
                               onSalvar={nome => salvarTransportadora(item, nome)}
+                            />
+                          </Td>
+                          <Td>
+                            <CampoObservacao
+                              valor={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                              desabilitado={item.chegou}
+                              onSalvar={texto => salvarObservacao(item, texto)}
                             />
                           </Td>
                           <Td>
@@ -1268,6 +1318,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                               onSalvarPrevisao={salvarPrevisaoManual}
                               onSalvarFaturamento={salvarFaturamento}
                               onSalvarTransportadora={salvarTransportadora}
+                              valorObservacao={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                              onSalvarObservacao={salvarObservacao}
                               onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
                             />
                           ))}
@@ -1291,6 +1343,8 @@ export default function DiligenciamentoSemMigoTable({ registros, chegadasMap, us
                   onSalvarPrevisao={salvarPrevisaoManual}
                   onSalvarFaturamento={salvarFaturamento}
                   onSalvarTransportadora={salvarTransportadora}
+                  valorObservacao={obsLocal[item.ri] ?? item.observacao ?? reg?.obs_comprador ?? ''}
+                  onSalvarObservacao={salvarObservacao}
                   onCobrar={(doc, nome, code) => setCobrancaPo({ docCompra: doc, fornecedorNome: nome, fornecedorCode: code })}
                 />
               ))
@@ -1361,6 +1415,7 @@ function BarraLote({
   transp: string; setTransp: (v: string) => void;
   fat: string; setFat: (v: string) => void;
   prev: string; setPrev: (v: string) => void;
+  obs: string; setObs: (v: string) => void;
   aplicando: boolean;
   onAplicar: () => void;
   onLimpar: () => void;
@@ -1400,6 +1455,18 @@ function BarraLote({
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Previsão</span>
           <input type="date" value={prev} onChange={e => setPrev(e.target.value)} className="h-8 rounded border px-2 text-xs" style={campo} />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Observação</span>
+          <input
+            type="text"
+            value={obs}
+            onChange={e => setObs(e.target.value)}
+            placeholder="Não alterar"
+            className="h-8 w-44 rounded border px-2 text-xs"
+            style={campo}
+          />
         </label>
 
         <button
@@ -1518,6 +1585,7 @@ function EstadoChegada({ item }: { item: ItemDiligenciamento }) {
 function ItemCard({
   item, reg, marcado, onAlternarSel, vencido, opcoesTransportadora,
   onAbrirPrazos, onSalvarPrevisao, onSalvarFaturamento, onSalvarTransportadora,
+  valorObservacao, onSalvarObservacao,
   onCobrar,
 }: {
   item: ItemDiligenciamento;
@@ -1530,6 +1598,8 @@ function ItemCard({
   onSalvarPrevisao: (item: ItemDiligenciamento, data: string) => void;
   onSalvarFaturamento: (item: ItemDiligenciamento, data: string) => void;
   onSalvarTransportadora: (item: ItemDiligenciamento, nome: string) => void;
+  valorObservacao: string;
+  onSalvarObservacao: (item: ItemDiligenciamento, texto: string) => void;
   onCobrar: (docCompra: string, fornecedorNome: string, fornecedorCode: string) => void;
 }) {
   return (
@@ -1644,6 +1714,16 @@ function ItemCard({
             />
           </label>
         </div>
+        <div>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--ink-muted)' }}>Observação</span>
+            <CampoObservacao
+              valor={valorObservacao}
+              desabilitado={item.chegou}
+              onSalvar={texto => onSalvarObservacao(item, texto)}
+            />
+          </label>
+        </div>
       </div>
     </div>
   );
@@ -1682,6 +1762,38 @@ function CampoTransportadora({
         {opcoes.map(o => <option key={o} value={o} />)}
       </datalist>
     </>
+  );
+}
+
+/**
+ * Campo de observação: texto livre salvo ao sair do campo (onBlur) ou pressionar Enter,
+ * apenas se o valor de fato foi alterado.
+ */
+function CampoObservacao({
+  valor, desabilitado, onSalvar,
+}: { valor: string; desabilitado?: boolean; onSalvar: (texto: string) => void }) {
+  const [rascunho, setRascunho] = useState(valor);
+
+  useEffect(() => setRascunho(valor), [valor]);
+
+  return (
+    <input
+      type="text"
+      aria-label="Observação"
+      value={rascunho}
+      disabled={desabilitado}
+      placeholder="Observação…"
+      title={rascunho || 'Observação'}
+      onChange={e => setRascunho(e.target.value)}
+      onBlur={() => {
+        if (rascunho.trim() !== (valor || '').trim()) onSalvar(rascunho.trim());
+      }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      className="w-full min-w-[130px] rounded border px-1.5 py-1 text-[11px]"
+      style={campo}
+    />
   );
 }
 

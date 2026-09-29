@@ -109,6 +109,7 @@ const DemandasMinhas = lazy(() => import('./views/demandas/DemandasMinhas'));
 const PlanejamentoHome = lazy(() => import('./views/planejamento/PlanejamentoHome'));
 const AcompanhamentoGeralView = lazy(() => import('./views/planejamento/AcompanhamentoGeralView'));
 const AcompanhamentoDiarioTvView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioTvView'));
+const AcompanhamentoDiarioDadosView = lazy(() => import('./views/planejamento/AcompanhamentoDiarioDadosView'));
 const ProducaoLancamentos = lazy(() => import('./views/producao/ProducaoLancamentos'));
 const ProducaoApontamentos = lazy(() => import('./views/producao/ProducaoApontamentos'));
 const ProducaoConsulta = lazy(() => import('./views/producao/ProducaoConsulta'));
@@ -1164,6 +1165,12 @@ export default function App() {
       case '/planejamento/acompanhamento-diario-tv':
         if (canAccessPage(user, 'planejamento_acompanhamento_diario_tv')) {
           return <AcompanhamentoDiarioTvView user={user} onNavigate={handleNavigate} />;
+        }
+        return <Dashboard user={user} onNavigate={handleNavigate} />;
+
+      case '/planejamento/acompanhamento-diario-dados':
+        if (canAccessPage(user, 'planejamento_acompanhamento_diario_editar')) {
+          return <AcompanhamentoDiarioDadosView user={user} onNavigate={handleNavigate} />;
         }
         return <Dashboard user={user} onNavigate={handleNavigate} />;
 

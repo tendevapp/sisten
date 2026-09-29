@@ -52,6 +52,7 @@ import {
 import { podeEditarFormulario } from '../../lib/permissoesFormularios';
 import { canAccessForm } from '../../lib/pages';
 import type { Profile } from '../../types';
+import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 
 interface Props {
   user: Profile;
@@ -2427,7 +2428,7 @@ function ModalConferencia({
                 <input
                   value={filtroItens}
                   onChange={(e) => setFiltroItens(e.target.value)}
-                  placeholder="Buscar item por descrição, código ou PO"
+                  placeholder="Buscar item por palavras-chave (descrição, código ou PO)"
                   className={`${inputCls} pl-8 ${filtroItens ? 'pr-8' : ''}`}
                 />
                 {filtroItens && (
@@ -2565,13 +2566,11 @@ function ModalConferencia({
               );
               };
 
-              const termo = filtroItens.trim().toLowerCase();
+              const tokens = extrairPalavrasChave(filtroItens);
               const casa = (l: LinhaUI) =>
-                !termo
+                tokens.length === 0
                 || l.itemManual
-                || l.descricao.toLowerCase().includes(termo)
-                || l.materialCode.toLowerCase().includes(termo)
-                || (l.nroPedido ?? '').includes(termo);
+                || casarTokens([l.descricao, l.materialCode, l.nroPedido], tokens);
 
               const nadaEncontrado = (
                 <p className="rounded-lg border border-dashed px-3 py-4 text-center text-[11px]" style={{ borderColor: 'var(--hairline)', color: 'var(--ink-muted)' }}>

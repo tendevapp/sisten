@@ -40,6 +40,7 @@ import {
 import { formatBRL, formatQtd, isProjetoItem, descricaoDeposito, formatDeposito, isDepositoInativo, ordenarDepositos } from '../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatInt, formatPct } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
+import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
 import MovimentacoesKpis from '../components/almoxarifado/MovimentacoesKpis';
 import MovimentacoesPorTipoChart from '../components/almoxarifado/MovimentacoesPorTipoChart';
 import MovimentacoesSerieChart from '../components/almoxarifado/MovimentacoesSerieChart';
@@ -276,7 +277,7 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   }, [pepList]);
 
   const movsFiltrados = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(searchQuery);
     return movs.filter(r => {
       if (centroFiltro !== 'Todos' && r.centro !== centroFiltro) return false;
       if (depositoFiltro.size > 0 && !depositoFiltro.has(r.deposito)) return false;
@@ -287,11 +288,18 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
       if (!passaTipoItem(r.material)) return false;
       if (!passaGrupo(r.material)) return false;
       if (!passaMaterialSel(r.material)) return false;
-      if (!materialSel && q) {
+      if (!materialSel && tokens.length > 0) {
         const pepCod = r.elemento_pep?.trim() || '';
         const pepDesc = r.pep_nome || (pepCod ? pepMap.get(pepCod)?.nome : '') || '';
-        const alvo = `${r.material ?? ''} ${r.texto_breve_material ?? ''} ${r.doc_material ?? ''} ${r.razao_social_fornecedor ?? ''} ${pepCod} ${pepDesc}`.toLowerCase();
-        if (!alvo.includes(q)) return false;
+        const hit = casarTokens([
+          r.material,
+          r.texto_breve_material,
+          r.doc_material,
+          r.razao_social_fornecedor,
+          pepCod,
+          pepDesc,
+        ], tokens);
+        if (!hit) return false;
       }
       return true;
     });
@@ -302,15 +310,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   // filtros de centro/depósito/TMV não se aplicam a elas (uma view por
   // material não tem depósito único). Só a busca textual atravessa.
   const giroFiltrado = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(searchQuery);
     return giro.filter(g => {
       if (coberturaFiltro !== 'Todos' && classificarCobertura(g) !== coberturaFiltro) return false;
       if (!passaTipoItem(g.material)) return false;
       if (!passaGrupo(g.material)) return false;
       if (!passaMaterialSel(g.material)) return false;
-      if (!materialSel && q) {
-        const alvo = `${g.material ?? ''} ${g.descricao ?? ''} ${g.grupo_mercadorias ?? ''}`.toLowerCase();
-        if (!alvo.includes(q)) return false;
+      if (!materialSel && tokens.length > 0) {
+        if (!casarTokens([g.material, g.descricao, g.grupo_mercadorias], tokens)) return false;
       }
       return true;
     });
@@ -325,14 +332,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   }, [giro]);
 
   const camadasFiltradas = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(searchQuery);
     return camadas.filter(c => {
       if (!passaTipoItem(c.material)) return false;
       if (!passaGrupo(c.material)) return false;
       if (!passaMaterialSel(c.material)) return false;
-      if (!materialSel && q) {
+      if (!materialSel && tokens.length > 0) {
         const desc = descricaoPorMaterial.get(c.material) ?? '';
-        if (!`${c.material} ${desc}`.toLowerCase().includes(q)) return false;
+        if (!casarTokens([c.material, desc], tokens)) return false;
       }
       return true;
     });
@@ -382,15 +389,14 @@ export default function Movimentacoes({ user, abaInicial = 'geral' }: Movimentac
   /* Estoque mínimo ------------------------------------------------------- */
 
   const sugestoes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(searchQuery);
     return reposicao
       .filter(r => {
         if (!passaTipoItem(r.material)) return false;
         if (grupoFiltro !== 'Todos' && (r.grupo_mercadorias ?? '').trim() !== grupoFiltro) return false;
         if (!passaMaterialSel(r.material)) return false;
-        if (!materialSel && q) {
-          const alvo = `${r.material ?? ''} ${r.descricao ?? ''} ${r.grupo_mercadorias ?? ''}`.toLowerCase();
-          if (!alvo.includes(q)) return false;
+        if (!materialSel && tokens.length > 0) {
+          if (!casarTokens([r.material, r.descricao, r.grupo_mercadorias], tokens)) return false;
         }
         return true;
       })

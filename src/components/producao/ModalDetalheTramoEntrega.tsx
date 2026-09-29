@@ -17,17 +17,25 @@ import { useToast } from '../ui/Toast';
 import {
   CONFIG_CATEGORIAS,
   avaliarCriticidadeEspera,
+  determinarSubprojetoPorTorre,
   type CategoriaEtapa,
   type TorreEntregaAgrupada,
   type TramoEntrega,
+  type TramoId,
 } from '../../lib/producaoEntrega';
-import { atualizarTramoEntrega } from '../../lib/producaoApi';
+import {
+  atualizarTramoEntrega,
+  reassociarOuTrocarTramoEntrega,
+} from '../../lib/producaoApi';
+import { RefreshCw } from 'lucide-react';
 
 interface ModalDetalheTramoEntregaProps {
   tramo: TramoEntrega | null;
   torre: TorreEntregaAgrupada | null;
+  todosTramos?: TramoEntrega[];
   aoFechar: () => void;
   aoSalvar: (tramoAtualizado: TramoEntrega) => void;
+  recarregar?: () => void;
 }
 
 const SUGESTOES_AGUARDANDO = [
@@ -67,12 +75,18 @@ const ETAPAS_POR_CATEGORIA: Record<CategoriaEtapa, string[]> = {
 export default function ModalDetalheTramoEntrega({
   tramo,
   torre,
+  todosTramos,
   aoFechar,
   aoSalvar,
+  recarregar,
 }: ModalDetalheTramoEntregaProps) {
   const toast = useToast();
 
   if (!tramo) return null;
+
+  const [torreNumero, setTorreNumero] = useState<number>(tramo.torre_numero);
+  const [posicaoTramo, setPosicaoTramo] = useState<TramoId>(tramo.tramo);
+  const [serieNumero, setSerieNumero] = useState<string | number>(tramo.serie);
 
   const [categoria, setCategoria] = useState<CategoriaEtapa>(tramo.etapa_categoria);
   const [etapaNome, setEtapaNome] = useState(tramo.etapa_nome);
@@ -80,6 +94,16 @@ export default function ModalDetalheTramoEntrega({
   const [diasEspera, setDiasEspera] = useState(tramo.dias_espera);
   const [observacao, setObservacao] = useState(tramo.observacao || '');
   const [salvando, setSalvando] = useState(false);
+
+  const mudouPosicao = torreNumero !== tramo.torre_numero || posicaoTramo !== tramo.tramo;
+  const mudouSerie = Number(serieNumero) !== tramo.serie;
+
+  const tramoConflito = useMemo(() => {
+    if (!todosTramos || !mudouPosicao) return null;
+    return todosTramos.find(
+      t => t.id !== tramo.id && t.torre_numero === torreNumero && t.tramo === posicaoTramo,
+    );
+  }, [todosTramos, mudouPosicao, tramo.id, torreNumero, posicaoTramo]);
 
   const criticidade = avaliarCriticidadeEspera(diasEspera);
   const configCat = CONFIG_CATEGORIAS[categoria] || CONFIG_CATEGORIAS.white;
@@ -101,8 +125,13 @@ export default function ModalDetalheTramoEntrega({
   const handleSalvar = async () => {
     setSalvando(true);
     try {
-      const atualizado: TramoEntrega = {
+      const serieFinal = Number(serieNumero) || tramo.serie;
+      let tramoAtualizado: TramoEntrega = {
         ...tramo,
+        torre_numero: torreNumero,
+        tramo: posicaoTramo,
+        serie: serieFinal,
+        subprojeto_id: determinarSubprojetoPorTorre(torreNumero),
         etapa_categoria: categoria,
         etapa_nome: etapaNome,
         status_aguardando: statusAguardando.trim() || null,
@@ -111,16 +140,41 @@ export default function ModalDetalheTramoEntrega({
         updated_at: new Date().toISOString(),
       };
 
+      if (mudouPosicao || mudouSerie) {
+        const resultado = await reassociarOuTrocarTramoEntrega({
+          idOrigem: tramo.id,
+          novaTorre: torreNumero,
+          novoTramo: posicaoTramo,
+          novaSerie: serieFinal,
+        });
+
+        if (resultado.swapped) {
+          toast.success(
+            `Tramos permutados com sucesso entre Torre ${tramo.torre_numero} e Torre ${torreNumero}!`,
+          );
+        } else {
+          toast.success(
+            `Tramo atualizado para Torre ${torreNumero} · Tramo ${posicaoTramo} (Série ${serieFinal}).`,
+          );
+        }
+      }
+
       await atualizarTramoEntrega(tramo.id, {
-        etapa_categoria: atualizado.etapa_categoria,
-        etapa_nome: atualizado.etapa_nome,
-        status_aguardando: atualizado.status_aguardando,
-        dias_espera: atualizado.dias_espera,
-        observacao: atualizado.observacao,
+        etapa_categoria: tramoAtualizado.etapa_categoria,
+        etapa_nome: tramoAtualizado.etapa_nome,
+        status_aguardando: tramoAtualizado.status_aguardando,
+        dias_espera: tramoAtualizado.dias_espera,
+        observacao: tramoAtualizado.observacao,
       });
 
-      toast.success(`Tramo ${tramo.tramo} (Série ${tramo.serie}) atualizado com sucesso.`);
-      aoSalvar(atualizado);
+      if (!mudouPosicao && !mudouSerie) {
+        toast.success(`Tramo ${posicaoTramo} (Série ${serieFinal}) atualizado com sucesso.`);
+      }
+
+      aoSalvar(tramoAtualizado);
+      if (recarregar) {
+        recarregar();
+      }
       aoFechar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Falha ao atualizar tramo.');
@@ -151,19 +205,25 @@ export default function ModalDetalheTramoEntrega({
               className="flex h-12 w-12 items-center justify-center rounded-xl text-lg font-black shadow-inner"
               style={{ background: configCat.gradienteCilindro, color: configCat.textoClasse.includes('text-white') ? '#fff' : '#000' }}
             >
-              {tramo.tramo}
+              {posicaoTramo}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">
-                  Torre {tramo.torre_numero} · Tramo {tramo.tramo}
+                  Torre {torreNumero} · Tramo {posicaoTramo}
                 </h3>
                 <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  Série {tramo.serie}
+                  Série {serieNumero}
                 </span>
+                {(mudouPosicao || mudouSerie) && (
+                  <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                    Modificado
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Modelo: <strong className="text-slate-700 dark:text-slate-300">GW55120M-001</strong> · Subprojeto: {tramo.subprojeto_id || 'SP01'}
+                Modelo: <strong className="text-slate-700 dark:text-slate-300">GW55120M-001</strong> · Subprojeto:{' '}
+                {determinarSubprojetoPorTorre(torreNumero)}
               </p>
             </div>
           </div>
@@ -196,6 +256,96 @@ export default function ModalDetalheTramoEntrega({
               </div>
             </div>
           ) : null}
+
+          {/* Seção de Associação e Identificação da Peça (Torre, Tramo e Série) */}
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-900 dark:text-blue-300">
+                <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                Associação da Torre & Identificação do Tramo
+              </label>
+              <span className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">
+                Subprojeto: <strong>{determinarSubprojetoPorTorre(torreNumero)}</strong>
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {/* 1. Número da Torre */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  Torre de Destino
+                </label>
+                <div className="mt-1 flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-500">Torre</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="69"
+                    value={torreNumero}
+                    onChange={e => setTorreNumero(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              {/* 2. Posição / Tramo */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  Posição do Tramo
+                </label>
+                <div className="mt-1 flex gap-1">
+                  {(['T1', 'T2', 'T3', 'T4', 'T5'] as TramoId[]).map(tId => (
+                    <button
+                      key={tId}
+                      type="button"
+                      onClick={() => setPosicaoTramo(tId)}
+                      className={`flex-1 rounded-lg py-2 text-xs font-black transition ${
+                        posicaoTramo === tId
+                          ? 'bg-blue-600 text-white shadow-sm dark:bg-blue-500'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      {tId}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Número de Série */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  Número de Série (Peça)
+                </label>
+                <input
+                  type="number"
+                  value={serieNumero}
+                  onChange={e => setSerieNumero(e.target.value)}
+                  placeholder="Ex: 3161"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-mono font-bold text-slate-900 focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+
+            {/* Aviso de Troca/Permuta de Torre */}
+            {mudouPosicao && (
+              <div className="mt-3">
+                {tramoConflito ? (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-800/80 dark:bg-amber-950/30 dark:text-amber-200">
+                    <RefreshCw className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Permuta entre Torres (Swap Automático):</strong>
+                      A <strong>Torre {torreNumero}</strong> já possui o tramo <strong>{posicaoTramo}</strong> (Série <strong>{tramoConflito.serie}</strong>). Ao salvar, os dois tramos trocarão de posição automaticamente entre a Torre {tramo.torre_numero} e a Torre {torreNumero}.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-2 text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>Posição disponível na Torre {torreNumero}. O tramo será realocado diretamente.</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Seleção de Categoria (Paleta de cores oficial da fábrica) */}
           <div>

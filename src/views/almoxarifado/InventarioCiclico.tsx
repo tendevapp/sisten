@@ -27,6 +27,7 @@ import { useToast } from '../../components/ui/Toast';
 import { localDb } from '../../db/localDb';
 import { formatDeposito, ordenarDepositos } from '../../lib/almoxarifado';
 import { formatDateBR, formatDateTimeBR, formatQtd } from '../../lib/format';
+import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import {
   FORM_CODIGO_INVENTARIO, MAX_CONTAGENS, ROTULO_CRITERIO, ROTULO_STATUS_ITEM, chaveItem, coberturaInventario, diasEntre,
   historicoPorItem, itemEncerrado, montarCandidatos, podeExcluirInventario, proximaContagem, resumirInventario, rotuloDias,
@@ -181,11 +182,17 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
   const aberto = inventarios.find((i) => i.id === abertoId) ?? null;
 
   const filtrados = useMemo(() => {
-    const t = semAcento(busca.trim());
-    if (!t) return inventarios;
-    return inventarios.filter((i) =>
-      semAcento([i.codigo, i.criado_por_nome, i.conferente_nome, ...i.itens.map((x) => `${x.material} ${x.descricao}`)].join(' ')).includes(t),
-    );
+    const tokens = extrairPalavrasChave(busca);
+    if (tokens.length === 0) return inventarios;
+    return inventarios.filter((i) => {
+      const alvos = [
+        i.codigo,
+        i.criado_por_nome,
+        i.conferente_nome,
+        ...i.itens.map((x) => `${x.material} ${x.descricao}`),
+      ];
+      return casarTokens(alvos, tokens);
+    });
   }, [inventarios, busca]);
 
   const historico = useMemo(() => historicoPorItem(inventarios), [inventarios]);
@@ -287,7 +294,7 @@ export default function InventarioCiclico({ user, onNavigate }: Props) {
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por código, responsável, conferente ou material"
+          placeholder="Buscar por palavras-chave (código, responsável, conferente ou material)..."
           className={`${inputCls} pl-8 text-xs`}
         />
       </div>
@@ -804,11 +811,12 @@ function VistaInventario({
   }, [r]);
 
   const itens = useMemo(() => {
-    const t = semAcento(busca.trim());
+    const tokens = extrairPalavrasChave(busca);
     return inv.itens.filter((i) => {
       if (filtro === 'abertos' && itemEncerrado(i)) return false;
       if (filtro !== 'todos' && filtro !== 'abertos' && i.status !== filtro) return false;
-      return !t || semAcento(`${i.material} ${i.descricao}`).includes(t);
+      if (tokens.length > 0 && !casarTokens([i.material, i.descricao], tokens)) return false;
+      return true;
     });
   }, [inv.itens, filtro, busca]);
 
@@ -927,7 +935,7 @@ function VistaInventario({
         </div>
         <div className="relative min-w-0 flex-1 basis-48">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Material ou descrição" className={`${inputCls} pl-8 text-xs`} />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar item por palavras-chave (material ou descrição)..." className={`${inputCls} pl-8 text-xs`} />
         </div>
       </div>
 

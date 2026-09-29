@@ -1172,6 +1172,40 @@ body,
   }
 }
 
+/* Carga solta do gancho: cai, quica duas vezes e rola até deitar. Em quadros
+   distintos da queda dos troncos porque o vão até o chão é curto (a torre
+   vazia tem só ~20px) — sem os quiques a queda passava despercebida. */
+@keyframes cena-solta {
+  0% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+
+  30% {
+    transform: translate(calc(var(--dx) * 0.3), var(--dy)) rotate(calc(var(--rot) * 0.3));
+    animation-timing-function: cubic-bezier(0.1, 0.5, 0.4, 1);
+  }
+
+  52% {
+    transform: translate(calc(var(--dx) * 0.6), calc(var(--dy) - 14px)) rotate(calc(var(--rot) * 0.7));
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+
+  70% {
+    transform: translate(calc(var(--dx) * 0.85), var(--dy)) rotate(calc(var(--rot) * 0.95));
+    animation-timing-function: cubic-bezier(0.1, 0.5, 0.4, 1);
+  }
+
+  84% {
+    transform: translate(calc(var(--dx) * 0.95), calc(var(--dy) - 4px)) rotate(var(--rot));
+    animation-timing-function: cubic-bezier(0.5, 0, 0.9, 0.6);
+  }
+
+  100% {
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot));
+  }
+}
+
 @keyframes cena-poeira {
   from {
     transform: scale(0.4);
@@ -1293,6 +1327,12 @@ body,
   transform-box: fill-box;
   transform-origin: 50% 50%;
   animation: cena-desaba 1s cubic-bezier(0.5, 0, 0.9, 0.6) var(--atraso, 0s) both;
+}
+
+.cena-solta {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: cena-solta 1.5s linear both;
 }
 
 .cena-poeira {

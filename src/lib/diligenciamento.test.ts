@@ -158,6 +158,17 @@ describe('montarItens', () => {
     expect(item.dataChegada).toBe('2026-08-12');
   });
 
+  it('carrega observacao de obs_comprador do registro SAP e suporta sobreposição de diligenciamento', () => {
+    const [itemSemDilig] = montarItens([registro({ obs_comprador: 'Urgente para montagem' })], semDiligenciamento, semChegadas, semCidades, semRegiao, []);
+    expect(itemSemDilig.observacao).toBe('Urgente para montagem');
+
+    const diligComObs = new Map<string, DiligenciamentoItem>([
+      ['r1-4500001', { ri_po: 'r1-4500001', ri: 'r1', observacao: 'Previsão confirmada por fone' }],
+    ]);
+    const [itemComDilig] = montarItens([registro({ obs_comprador: 'Urgente' })], diligComObs, semChegadas, semCidades, semRegiao, []);
+    expect(itemComDilig.observacao).toBe('Previsão confirmada por fone');
+  });
+
   it('mesmo item de RM comprado em dois POs rende uma linha por pedido', () => {
     const registros = [
       registro({ ri_po: 'r1-4500001', documento_compra: '4500001', qtd_po: 1, valor_total: 100 }),

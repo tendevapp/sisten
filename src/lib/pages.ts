@@ -447,6 +447,12 @@ export const FORMULARIOS_DETALHADOS: FormularioDef[] = [
 // Feature flags: sub-permissões que não são páginas próprias (sem path/icon),
 // controladas pelo mesmo mecanismo de override em profiles.page_access.
 export const FEATURE_FLAGS: PageDef[] = [
+  {
+    id: 'planejamento_acompanhamento_diario_editar',
+    group: 'PLANEJAMENTO',
+    label: 'Acomp Diario: editar metas e realizados',
+    defaultRoles: [],
+  },
   // Abas da Central de Solicitações. Continuam com o mesmo `id` de quando eram
   // páginas próprias, para que o `page_access` já gravado nos perfis siga
   // valendo — desmarcar aqui esconde a aba, como antes escondia o item de menu.

@@ -33,6 +33,8 @@ import {
   type DadosCatalogoCompleto,
 } from '../../lib/almoxCatalogoApi';
 import type { Profile } from '../../types';
+import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../../lib/buscaKeywords';
+import SearchKeywordsChips from '../../components/ui/SearchKeywordsChips';
 
 interface CadastroItensAlmoxProps {
   user: Profile;
@@ -82,7 +84,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
   const [salvandoSap, setSalvandoSap] = useState(false);
 
   // Filtros
-  const [busca, setBusca] = useState('');
+  const [buscaChips, setBuscaChips] = useState<string[]>([]);
   const [filtroFoto, setFiltroFoto] = useState<FiltroFoto>('todos');
   const [filtroNivel2, setFiltroNivel2] = useState<string>('todos');
   const [filtroGrupo, setFiltroGrupo] = useState<string>('todos');
@@ -141,13 +143,20 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
   // Itens filtrados
   const itensFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
 
     return itens.filter(it => {
-      // Filtro de texto
-      if (termo) {
-        const textoBusca = `${it.codigo_sap} ${it.descricao} ${it.texto_tecnico} ${it.grp_mercad} ${it.grupo_mercadorias} ${it.classificacao_nivel2}`.toLowerCase();
-        if (!textoBusca.includes(termo)) return false;
+      // Filtro de texto por palavras-chave
+      if (tokens.length > 0) {
+        const hit = casarTokens([
+          it.codigo_sap,
+          it.descricao,
+          it.texto_tecnico,
+          it.grp_mercad,
+          it.grupo_mercadorias,
+          it.classificacao_nivel2,
+        ], tokens);
+        if (!hit) return false;
       }
 
       // Filtro de status da foto
@@ -162,7 +171,7 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
 
       return true;
     });
-  }, [itens, busca, filtroFoto, filtroNivel2, filtroGrupo]);
+  }, [itens, buscaChips, filtroFoto, filtroNivel2, filtroGrupo]);
 
   // Estatísticas e KPIs
   const kpis = useMemo(() => {
@@ -896,30 +905,14 @@ export default function CadastroItensAlmox({ user, onNavigate }: CadastroItensAl
       {/* Barra de Filtros e Busca */}
       <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--hairline)', background: 'var(--surface-card)' }}>
         <div className="flex flex-col md:flex-row md:items-center gap-3">
-          {/* Busca textual */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 pointer-events-none" style={{ color: 'var(--ink-muted)' }} />
-            <input
-              type="text"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por código SAP, descrição, texto técnico, grupo de mercadorias..."
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border transition focus:outline-2 focus:outline-offset-1"
-              style={{
-                borderColor: 'var(--hairline)',
-                background: 'var(--surface-raised)',
-                color: 'var(--ink-primary)',
-              }}
+          {/* Busca textual por palavras-chave com chips */}
+          <div className="flex-1">
+            <SearchKeywordsChips
+              chips={buscaChips}
+              onChangeChips={setBuscaChips}
+              accent="amber"
+              placeholder="Digite um termo (código SAP, descrição, texto técnico, grupo) e pressione Enter..."
             />
-            {busca && (
-              <button
-                type="button"
-                onClick={() => setBusca('')}
-                className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
           </div>
 
           {/* Seletor de Foto (Todos, Com Foto, Sem Foto) */}

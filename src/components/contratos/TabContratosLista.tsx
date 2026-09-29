@@ -28,6 +28,7 @@ import ChartCard from '../charts/ChartCard';
 import ChartTooltip from '../charts/ChartTooltip';
 import KpiCard from '../charts/KpiCard';
 import ContratoDetailModal from './ContratoDetailModal';
+import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, LabelList, ResponsiveContainer } from 'recharts';
 import {
   TableShell, TableHeadRow, TableBody, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
@@ -198,7 +199,7 @@ export default function TabContratosLista() {
   }, [contratos]);
 
   const filteredContratos = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(searchQuery);
     return contratos.filter(c => {
       if (tipoFilter !== 'Todos') {
         if (tipoFilter === 'Sem tipo' && c.tipo_exibido) return false;
@@ -208,17 +209,20 @@ export default function TabContratosLista() {
       if (statusFilter !== 'Todos' && c.status_exibido !== statusFilter) return false;
       if (fornecedorFilter !== 'Todos' && c.fornecedor !== fornecedorFilter) return false;
       if (centroFilter !== 'Todos' && c.centro !== centroFilter) return false;
-      if (q) {
-        const hit =
-          c.documento_compras.toLowerCase().includes(q) ||
-          (c.tipo_exibido || '').toLowerCase().includes(q) ||
-          c.fornecedor.toLowerCase().includes(q) ||
-          c.requisitante.toLowerCase().includes(q) ||
-          (c.detalhes?.gestor || '').toLowerCase().includes(q) ||
-          (c.detalhes?.escopo_servico || '').toLowerCase().includes(q) ||
-          (c.detalhes?.po_pedido_compra || '').toLowerCase().includes(q) ||
-          c.itens.some(i => (i.material || '').toLowerCase().includes(q) || (i.texto_breve || '').toLowerCase().includes(q));
-        if (!hit) return false;
+      if (tokens.length > 0) {
+        const alvos: (string | undefined | null)[] = [
+          c.documento_compras,
+          c.tipo_exibido,
+          c.fornecedor,
+          c.requisitante,
+          c.detalhes?.gestor,
+          c.detalhes?.escopo_servico,
+          c.detalhes?.po_pedido_compra,
+        ];
+        for (const i of c.itens) {
+          alvos.push(i.material, i.texto_breve);
+        }
+        if (!casarTokens(alvos, tokens)) return false;
       }
       return true;
     });
@@ -423,7 +427,7 @@ export default function TabContratosLista() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Busque por documento, fornecedor, gestor, escopo, PO ou material..."
+              placeholder="Busque por palavras-chave (documento, fornecedor, gestor, escopo, PO ou material)..."
               className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
             />
           </div>

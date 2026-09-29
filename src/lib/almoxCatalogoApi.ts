@@ -1175,6 +1175,19 @@ export async function carregarGruposMercadoria(): Promise<CadastroGrupoMercadori
   return localDb.getGruposMercadoria() as CadastroGrupoMercadoria[];
 }
 
+const EXTENSAO_POR_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'image/heic': 'heic', 'image/heif': 'heif',
+};
+
+/** Extensão do arquivo que vai ao Storage: pelo tipo do que será enviado, senão pelo nome do original. */
+export function extensaoDaImagem(enviado: Blob, original: File): string {
+  const porMime = EXTENSAO_POR_MIME[(enviado.type || '').toLowerCase()];
+  if (porMime) return porMime;
+  const porNome = (original.name ?? '').split('.').pop()?.toLowerCase();
+  return porNome && porNome !== original.name?.toLowerCase() ? porNome : 'jpg';
+}
+
 /**
  * Salva ou atualiza um item no catálogo do almoxarifado, comprimindo a foto
  * antes de subir para o Storage (cumprindo a Regra 1 e a Regra 2 do AGENTS.md).
@@ -1222,7 +1235,9 @@ export async function salvarItemCatalogo(
     // 1. Compressão OBRIGATÓRIA (Regra 1 do AGENTS.md)
     const arquivoComprimido = await comprimirImagemUpload(payload.fotoArquivo);
 
-    const ext = arquivoComprimido.name.split('.').pop()?.toLowerCase() || 'jpg';
+    // Comprimida, a foto volta como Blob JPEG (sem `name`); sem compressão
+    // (HEIC fora do Safari, ou já pequena) volta o File original.
+    const ext = extensaoDaImagem(arquivoComprimido, payload.fotoArquivo);
     const nomeLimpo = `material-${codigoSap}-${Date.now()}.${ext}`;
     const storagePath = `${PASTA_CATALOGO}/${nomeLimpo}`;
 
@@ -1237,7 +1252,9 @@ export async function salvarItemCatalogo(
         .from(BUCKET_CATALOGO)
         .upload(storagePath, arquivoComprimido, {
           contentType: arquivoComprimido.type || 'image/jpeg',
-          upsert: true,
+          // Caminho único (leva o timestamp): não há o que sobrescrever, e o
+          // bucket não tem política de UPDATE — upsert seria barrado pelo RLS.
+          upsert: false,
         });
 
       if (uploadError) {

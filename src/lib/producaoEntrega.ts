@@ -284,6 +284,13 @@ export function avaliarCriticidadeEspera(dias: number): {
   };
 }
 
+/** Determina o subprojeto da torre (SP01: 1..23, SP02: 24..39, SP03: 40..69) */
+export function determinarSubprojetoPorTorre(torreNumero: number): string {
+  if (torreNumero <= 23) return 'SP01';
+  if (torreNumero <= 39) return 'SP02';
+  return 'SP03';
+}
+
 /** Agrupa a lista de tramos por torre mantendo ordenação e cálculo de conjunto */
 export function agruparTramosPorTorre(tramos: TramoEntrega[]): TorreEntregaAgrupada[] {
   const mapa = new Map<number, TorreEntregaAgrupada>();

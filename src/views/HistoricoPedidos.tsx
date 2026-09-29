@@ -20,6 +20,8 @@ import { normalizaContrato } from '../lib/contratoPedido';
 import {
   TableShell, TableHeadRow, TableBody, Th, SortableTh, Tr, Td, TableSkeleton, TableEmpty, TableFooter,
 } from '../components/ui/DataTable';
+import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
+import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 
 interface HistoricoPedidosProps {
   user: Profile;
@@ -164,8 +166,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const [rows, setRows] = useState<Row[]>([]);
 
   // Filtros (Drafts / Rápidos)
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchChips, setSearchChips] = useState<string[]>([]);
   const [ufInput, setUfInput] = useState('Todos');
   const [ufFilter, setUfFilter] = useState('Todos');
   const [classInput, setClassInput] = useState('Todos');
@@ -186,20 +187,13 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const [origemFilter, setOrigemFilter] = useState<'Todos' | 'Contrato' | 'Spot'>('Todos');
 
   const handleApplyFilters = useCallback(() => {
-    setSearchQuery(searchInput);
     setUfFilter(ufInput);
     setClassFilter(classInput);
     setYearFilter(yearInput);
     setGrupoFilter(grupoInput);
     setTipoItemFilter(tipoItemInput);
     setOrigemFilter(origemInput);
-  }, [searchInput, ufInput, classInput, yearInput, grupoInput, tipoItemInput, origemInput]);
-
-  const handleKeyDownSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleApplyFilters();
-    }
-  };
+  }, [ufInput, classInput, yearInput, grupoInput, tipoItemInput, origemInput]);
 
   // Ordenação
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -326,9 +320,9 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [rows]);
 
-  // Filtragem por busca, UF, classificação, ano e grupo de material.
+  // Filtragem por busca por palavras-chave, UF, classificação, ano e grupo de material.
   const filteredRows = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = searchChips.map(normalizarParaBusca).filter(Boolean);
     return rows.filter(r => {
       if (ufFilter !== 'Todos' && r.regiao_uf !== ufFilter) return false;
       if (classFilter !== 'Todos' && r.classificacao !== classFilter) return false;
@@ -337,22 +331,23 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
       if (tipoItemFilter !== 'Todos' && r.tipo_item !== tipoItemFilter) return false;
       if (origemFilter === 'Contrato' && !r.contrato) return false;
       if (origemFilter === 'Spot' && r.contrato) return false;
-      if (q) {
-        const hit =
-          r.material.toLowerCase().includes(q) ||
-          r.txt_breve.toLowerCase().includes(q) ||
-          r.fornecedor.toLowerCase().includes(q) ||
-          r.nome_fantasia.toLowerCase().includes(q) ||
-          r.cnpj.toLowerCase().includes(q) ||
-          r.cod_forn.toLowerCase().includes(q) ||
-          r.rm.toLowerCase().includes(q) ||
-          r.doc_compra.toLowerCase().includes(q) ||
-          (r.contrato || '').toLowerCase().includes(q);
+      if (tokens.length > 0) {
+        const hit = casarTokens([
+          r.material,
+          r.txt_breve,
+          r.fornecedor,
+          r.nome_fantasia,
+          r.cnpj,
+          r.cod_forn,
+          r.rm,
+          r.doc_compra,
+          r.contrato,
+        ], tokens);
         if (!hit) return false;
       }
       return true;
     });
-  }, [rows, searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, origemFilter]);
+  }, [rows, searchChips, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, origemFilter]);
 
   // Ordenação: por coluna quando ativa; caso contrário material asc + data desc.
   const sortedRows = useMemo(() => {
@@ -394,7 +389,7 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, sortColumn, sortDir]);
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchChips, ufFilter, classFilter, yearFilter, grupoFilter, tipoItemFilter, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -577,34 +572,21 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
       {/* Filtros */}
       <div className="rounded-xl border border-slate-250 dark:border-slate-850 bg-white dark:bg-slate-900 p-4 shadow-xs">
         <div className="flex flex-col gap-3">
-          {/* Linha principal: Campo de Pesquisa expandido + Botão Buscar */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={handleKeyDownSearch}
-                placeholder="Busque por item (código ou descrição), fornecedor, CNPJ, RM ou Nº do pedido..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
-              />
-            </div>
-            <button
-              onClick={handleApplyFilters}
-              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer h-[42px] shrink-0"
-            >
-              <Search className="h-4 w-4" /> Buscar
-            </button>
-          </div>
+          {/* Linha principal: Campo de Pesquisa por palavras-chave com chips estilo Catálogo SAP */}
+          <SearchKeywordsChips
+            chips={searchChips}
+            onChangeChips={setSearchChips}
+            accent="blue"
+            placeholder="Digite um termo (item, descrição, fornecedor, CNPJ, RM ou Nº do pedido) e pressione Enter..."
+          />
 
           {/* Linha secundária: Filtros Específicos/Selects compactos */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 lg:mx-0 lg:px-0 lg:flex-wrap">
             <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
               <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={ufInput}
-                onChange={(e) => setUfInput(e.target.value)}
+                value={ufFilter}
+                onChange={(e) => { setUfInput(e.target.value); setUfFilter(e.target.value); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">UF: Todas</option>
@@ -614,8 +596,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             <div className="relative shrink-0 w-[150px] lg:w-auto lg:flex-1 lg:min-w-[130px]">
               <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={classInput}
-                onChange={(e) => setClassInput(e.target.value)}
+                value={classFilter}
+                onChange={(e) => { setClassInput(e.target.value); setClassFilter(e.target.value); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Classificação: Todas</option>
@@ -625,8 +607,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             <div className="relative shrink-0 w-[120px] lg:w-auto lg:flex-1 lg:min-w-[100px]">
               <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={yearInput}
-                onChange={(e) => setYearInput(e.target.value)}
+                value={yearFilter}
+                onChange={(e) => { setYearInput(e.target.value); setYearFilter(e.target.value); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Ano: Todos</option>
@@ -636,8 +618,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             <div className="relative shrink-0 w-[160px] lg:w-auto lg:flex-[1.5] lg:min-w-[140px]">
               <Package className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={grupoInput}
-                onChange={(e) => setGrupoInput(e.target.value)}
+                value={grupoFilter}
+                onChange={(e) => { setGrupoInput(e.target.value); setGrupoFilter(e.target.value); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
               >
                 <option value="Todos">Grupo: Todos</option>
@@ -647,8 +629,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
               <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={tipoItemInput}
-                onChange={(e) => setTipoItemInput(e.target.value as 'Todos' | 'Consumo' | 'Projeto')}
+                value={tipoItemFilter}
+                onChange={(e) => { const v = e.target.value as 'Todos' | 'Consumo' | 'Projeto'; setTipoItemInput(v); setTipoItemFilter(v); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
                 title="Itens de projeto (código de 18 dígitos) têm perfil de gasto muito diferente de consumo"
               >
@@ -660,8 +642,8 @@ export default function HistoricoPedidos({ user, onNavigate }: HistoricoPedidosP
             <div className="relative shrink-0 w-[130px] lg:w-auto lg:flex-1 lg:min-w-[110px]">
               <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
               <select
-                value={origemInput}
-                onChange={(e) => setOrigemInput(e.target.value as 'Todos' | 'Contrato' | 'Spot')}
+                value={origemFilter}
+                onChange={(e) => { const v = e.target.value as 'Todos' | 'Contrato' | 'Spot'; setOrigemInput(v); setOrigemFilter(v); }}
                 className="w-full pl-8 pr-7 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none cursor-pointer appearance-none truncate"
                 title="Call-off de contrato tem preço negociado antes; compra spot passou por cotação"
               >

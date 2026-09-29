@@ -5,6 +5,7 @@ import {
   avaliarCriticidadeEspera,
   calcularIndicadoresDecisao,
   calcularProgressoChecklist,
+  determinarSubprojetoPorTorre,
   type ApontamentoChecklistLiberacao,
   type TramoEntrega,
 } from './producaoEntrega';
@@ -162,5 +163,14 @@ describe('producaoEntrega - Checklist de Liberação (White → Expedido)', () =
     const progresso = calcularProgressoChecklist(apontamentos);
     expect(progresso.concluidas).toBe(ETAPAS_CHECKLIST_LIBERACAO.length);
     expect(progresso.percentual).toBe(100);
+  });
+
+  it('determina corretamente o subprojeto pela faixa de torres', () => {
+    expect(determinarSubprojetoPorTorre(1)).toBe('SP01');
+    expect(determinarSubprojetoPorTorre(23)).toBe('SP01');
+    expect(determinarSubprojetoPorTorre(24)).toBe('SP02');
+    expect(determinarSubprojetoPorTorre(39)).toBe('SP02');
+    expect(determinarSubprojetoPorTorre(40)).toBe('SP03');
+    expect(determinarSubprojetoPorTorre(69)).toBe('SP03');
   });
 });

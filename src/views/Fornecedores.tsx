@@ -17,6 +17,8 @@ import Modal, { ModalHeader, ModalBody, ModalFooter } from '../components/ui/Mod
 import Pagination from '../components/ui/Pagination';
 import { TableShell } from '../components/ui/DataTable';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
+import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
+import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 
 interface FornecedoresProps {
   user: Profile;
@@ -1005,6 +1007,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const [naoCadastradosLoading, setNaoCadastradosLoading] = useState(false);
   const [naoCadastradosError, setNaoCadastradosError] = useState('');
   const [naoCadastradosSearch, setNaoCadastradosSearch] = useState('');
+  const [naoCadastradosChips, setNaoCadastradosChips] = useState<string[]>([]);
   const [naoCadastradosPage, setNaoCadastradosPage] = useState(0);
 
   // Modais de controle
@@ -1070,6 +1073,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
   // Filtros — seleção múltipla: conjunto vazio = "todos" (sem restrição).
   const [searchRaw, setSearchRaw] = useState(pageCache.searchRaw);
+  const [searchChips, setSearchChips] = useState<string[]>(() => extrairPalavrasChave(pageCache.searchRaw));
   const [classificacaoSel, setClassificacaoSel] = useState<Set<string>>(() => new Set(pageCache.classificacaoSel || []));
   const [statusSel, setStatusSel] = useState<Set<string>>(() => new Set(pageCache.statusSel || []));
   const [ufSel, setUfSel] = useState<Set<string>>(() => new Set(pageCache.ufSel || []));
@@ -1193,9 +1197,12 @@ export default function Fornecedores({ user }: FornecedoresProps) {
     try {
       let q = supabase.from('sup_fornecedores_contatos').select('*', { count: 'exact' });
 
-      const term = sanitizeFilterTerm(search);
-      if (term) {
-        q = q.or(`cod_vendor.ilike.%${term}%,cnpj.ilike.%${term}%,fornecedor.ilike.%${term}%,nome_fantasia.ilike.%${term}%,email.ilike.%${term}%`);
+      const tokens = extrairPalavrasChave(search);
+      for (const tok of tokens) {
+        const term = sanitizeFilterTerm(tok);
+        if (term) {
+          q = q.or(`cod_vendor.ilike.%${term}%,cnpj.ilike.%${term}%,fornecedor.ilike.%${term}%,nome_fantasia.ilike.%${term}%,email.ilike.%${term}%`);
+        }
       }
 
       const classificacaoOr = buildOrEqList('classificacao', Array.from(classificacaoSel));
@@ -1340,12 +1347,10 @@ export default function Fornecedores({ user }: FornecedoresProps) {
 
   const filteredNaoCadastrados = useMemo(() => {
     let list = naoCadastradosList;
-    if (naoCadastradosSearch.trim()) {
-      const q = naoCadastradosSearch.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(naoCadastradosSearch);
+    if (tokens.length > 0) {
       list = list.filter(item =>
-        item.cod_forn.toLowerCase().includes(q) ||
-        item.cnpj.toLowerCase().includes(q) ||
-        item.fornecedor.toLowerCase().includes(q)
+        casarTokens([item.cod_forn, item.cnpj, item.fornecedor], tokens)
       );
     }
     if (ufSel.size > 0) {
@@ -1437,6 +1442,7 @@ export default function Fornecedores({ user }: FornecedoresProps) {
   const hasFilters = !!search.trim() || classificacaoSel.size > 0 || statusSel.size > 0 || ufSel.size > 0 || cidadeSel.size > 0 || hasPhone || hasEmail;
 
   const clearFilters = () => {
+    setSearchChips([]);
     setSearchRaw('');
     setClassificacaoSel(new Set());
     setStatusSel(new Set());
@@ -1575,21 +1581,16 @@ export default function Fornecedores({ user }: FornecedoresProps) {
           <>
             {/* Barra de filtros */}
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Buscar por código, CNPJ, razão social, fantasia ou e-mail..."
-                  value={searchRaw}
-                  onChange={e => setSearchRaw(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-400"
-                />
-                {searchRaw && (
-                  <button onClick={() => setSearchRaw('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+              <SearchKeywordsChips
+                chips={searchChips}
+                onChangeChips={(chips) => {
+                  setSearchChips(chips);
+                  setSearchRaw(chips.join(' '));
+                  setPage(0);
+                }}
+                accent="blue"
+                placeholder="Digite um termo (código, CNPJ, razão social, fantasia ou e-mail) e pressione Enter..."
+              />
 
               {/* lg:overflow-visible: em telas pequenas a trilha rola na horizontal
                   (overflow-x-auto), o que também recorta verticalmente os painéis
@@ -1944,22 +1945,17 @@ export default function Fornecedores({ user }: FornecedoresProps) {
         {subTab === 'nao_cadastrados' && (
           <div className="space-y-4">
             {/* Barra de Busca e Filtros de Não Cadastrados */}
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Buscar não cadastrado por código, CNPJ ou nome..."
-                  value={naoCadastradosSearch}
-                  onChange={e => { setNaoCadastradosSearch(e.target.value); setNaoCadastradosPage(0); }}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-9 pr-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 placeholder-slate-400"
-                />
-                {naoCadastradosSearch && (
-                  <button onClick={() => { setNaoCadastradosSearch(''); setNaoCadastradosPage(0); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <SearchKeywordsChips
+                chips={naoCadastradosChips}
+                onChangeChips={(chips) => {
+                  setNaoCadastradosChips(chips);
+                  setNaoCadastradosSearch(chips.join(' '));
+                  setNaoCadastradosPage(0);
+                }}
+                accent="amber"
+                placeholder="Digite um termo (código, CNPJ ou nome) e pressione Enter..."
+              />
             </div>
 
             {/* Tabela de Não Cadastrados */}

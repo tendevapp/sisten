@@ -23,6 +23,7 @@ import {
   construirBaseSemanal, serieDoMaterial, rotuloSemana, intervaloSemana, mediaPorSemanaAtiva, inicioDaSemana,
 } from '../lib/consumoSemanal';
 import { formatQtd, formatBRL, isProjetoItem } from '../lib/almoxarifado';
+import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
 import { formatInt, formatDateBR, formatDateTimeBR } from '../lib/format';
 import MaterialSearchInput from '../components/almoxarifado/MaterialSearchInput';
 import Sparkline from '../components/almoxarifado/Sparkline';
@@ -103,7 +104,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
   }, [base.materiais, grupoPorMaterial]);
 
   const lista = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+    const tokens = extrairPalavrasChave(busca);
     const filtrada = base.materiais.filter(m => {
       // Material escolhido numa sugestão manda sobre o texto: o campo mostra a
       // descrição, que é ambígua entre itens de nome parecido.
@@ -118,7 +119,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
       // "Regulares" = série com o que ler. Abaixo de 5 semanas ativas o
       // gráfico é um ou dois picos isolados, não um perfil.
       if (somenteRegulares && m.semanasAtivas < 5) return false;
-      if (q && !`${m.material} ${m.descricao}`.toLowerCase().includes(q)) return false;
+      if (tokens.length > 0 && !casarTokens([m.material, m.descricao, grupoPorMaterial.get(m.material)], tokens)) return false;
       return true;
     });
 
@@ -285,7 +286,7 @@ export default function ConsumoSemanal({ user }: ConsumoSemanalProps) {
                 materiais={universoBusca}
                 materialSelecionado={materialSel}
                 onSelecionarMaterial={setMaterialSel}
-                placeholder="Filtrar a lista por código ou descrição..."
+                placeholder="Filtrar por palavras-chave (código, descrição)..."
                 className="shrink-0 w-[220px] lg:flex-1 lg:min-w-[220px] lg:max-w-sm lg:shrink"
               />
             </div>

@@ -25,6 +25,7 @@ import {
 import { localDb } from '../../db/localDb';
 import { Avatar } from '../demandas-modulo/shared';
 import { Profile, Request, RequestStatus } from '../../types';
+import { extrairPalavrasChave, casarTokens } from '../../lib/buscaKeywords';
 import { NOME_SETOR_JURIDICO, TIPOS_CHAMADO_JURIDICO, findJuridicoSector, isJuridicoSector } from '../../lib/juridico';
 import {
   COLUNA_INICIAL, DEFAULT_KANBAN_COLUMNS, KanbanColumnConfig,
@@ -455,15 +456,17 @@ export default function TabDemandas({ user }: TabDemandasProps) {
   );
 
   const requestsFiltradas = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    if (!q) return requests;
+    const tokens = extrairPalavrasChave(busca);
+    if (tokens.length === 0) return requests;
     return requests.filter(r =>
-      (r.titulo || '').toLowerCase().includes(q) ||
-      (r.category_id || '').toLowerCase().includes(q) ||
-      (r.number || '').toLowerCase().includes(q) ||
-      codigoCurtoDemanda(r.number).toLowerCase().includes(q) ||
-      (r.solicitante_name || '').toLowerCase().includes(q) ||
-      (r.atendente_name || '').toLowerCase().includes(q)
+      casarTokens([
+        r.titulo,
+        r.category_id,
+        r.number,
+        codigoCurtoDemanda(r.number),
+        r.solicitante_name,
+        r.atendente_name,
+      ], tokens)
     );
   }, [requests, busca]);
 
@@ -576,7 +579,7 @@ export default function TabDemandas({ user }: TabDemandasProps) {
           type="text"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Busque por código, título, categoria, solicitante ou atendente..."
+          placeholder="Busque por palavras-chave (código, título, categoria, solicitante ou atendente)..."
           className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
         />
       </div>

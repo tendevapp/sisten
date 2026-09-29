@@ -46,6 +46,7 @@ import { localDb } from '../db/localDb';
 import { supabase } from '../db/supabaseClient';
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import DateRangeFilter, { type DateRangeValue } from '../components/ui/DateRangeFilter';
+import { extrairPalavrasChave, casarTokens } from '../lib/buscaKeywords';
 import { obterConfigEmail, montarMailtoComConfig } from '../lib/emailConfigApi';
 import {
   camposExibicao,
@@ -440,7 +441,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
 
   // Filtragem combinada de grupos e linhas
   const gruposFiltrados = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const tokens = extrairPalavrasChave(searchQuery);
 
     return grupos.map(g => {
       // 1. Filtro de Status — no nível do chamado, some quem não tem NADA a
@@ -491,29 +492,26 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
           if (!comp || !compradorFilter.has(comp)) return false;
         }
 
-        // Pesquisa textual
-        if (!q) return true;
-
-        const groupMatches = (
-          g.protocolo.toLowerCase().includes(q) ||
-          g.numero.toLowerCase().includes(q) ||
-          g.solicitante_name.toLowerCase().includes(q) ||
-          Boolean(g.classif_causa && g.classif_causa.toLowerCase().includes(q)) ||
-          Boolean(g.classif_responsavel && g.classif_responsavel.toLowerCase().includes(q)) ||
-          Boolean(g.observacao_chamado && g.observacao_chamado.toLowerCase().includes(q))
-        );
-        if (groupMatches) return true;
-
-        return (
-          (l.numero_nfse && l.numero_nfse.toLowerCase().includes(q)) ||
-          (l.nome_fornecedor && l.nome_fornecedor.toLowerCase().includes(q)) ||
-          (l.fornecedor && l.fornecedor.toLowerCase().includes(q)) ||
-          (l.observacao && l.observacao.toLowerCase().includes(q)) ||
-          (l.documento_compras && l.documento_compras.toLowerCase().includes(q)) ||
-          (l.comprador && l.comprador.toLowerCase().includes(q)) ||
-          (l.resolucao && l.resolucao.toLowerCase().includes(q)) ||
-          (l.documento_status && l.documento_status.toLowerCase().includes(q))
-        );
+        // Pesquisa por palavras-chave
+        if (tokens.length > 0) {
+          const hit = casarTokens([
+            g.protocolo,
+            g.numero,
+            g.solicitante_name,
+            g.classif_causa,
+            g.classif_responsavel,
+            g.observacao_chamado,
+            l.numero_nfse,
+            l.nome_fornecedor,
+            l.fornecedor,
+            l.observacao,
+            l.documento_compras,
+            l.comprador,
+            l.resolucao,
+            l.documento_status,
+          ], tokens);
+          if (!hit) return false;
+        }
       });
 
       if (matchingLines.length === 0) return null;
@@ -851,7 +849,7 @@ export default function PendenciasProcessamento({ user, onNavigate }: Pendencias
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Pesquisar por protocolo, chamado, nº nota/documento, fornecedor, observação..."
+              placeholder="Pesquisar por palavras-chave (protocolo, chamado, nº nota/documento, fornecedor, observação)..."
               className="w-full pl-10 pr-9 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:outline-none transition-all"
             />
             {searchQuery && (

@@ -21,6 +21,8 @@ import {
 import MultiSelectFilter from '../components/ui/MultiSelectFilter';
 import PlanilhaSapUploadButton from '../components/almoxarifado/PlanilhaSapUploadButton';
 import { canAccessPage } from '../lib/pages';
+import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
+import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 
 interface EstoqueProps {
   user: Profile;
@@ -79,10 +81,7 @@ export default function Estoque({ user }: EstoqueProps) {
   const [rows, setRows] = useState<EstoqueItem[]>([]);
 
   // Filtros
-  // `searchInput` é o texto digitado; `searchQuery` é o termo efetivamente
-  // aplicado — a busca só filtra ao pressionar Enter ou clicar em "Pesquisar".
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchChips, setSearchChips] = useState<string[]>([]);
   // Depósito aceita seleção múltipla: vazio = todos.
   const [depositoFilter, setDepositoFilter] = useState<Set<string>>(new Set());
   // Item de projeto (código iniciado em 100000) x demais. Mesmo recorte de
@@ -162,12 +161,10 @@ export default function Estoque({ user }: EstoqueProps) {
     const abc = params.get('abc');
     if (abc === 'A' || abc === 'B' || abc === 'C') setAbcFilter(abc);
 
-    // Material entra na busca já aplicada, para que o campo mostre o termo e o
-    // botão "Limpar" apareça — senão o usuário não tem como sair do recorte.
+    // Material entra na busca já aplicada com chip
     const material = params.get('material');
     if (material) {
-      setSearchInput(material);
-      setSearchQuery(material);
+      setSearchChips([material]);
     }
   }, []);
 
@@ -210,9 +207,9 @@ export default function Estoque({ user }: EstoqueProps) {
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [rows]);
 
-  // Filtragem por busca, depósito, tipo, classificação, ABC, grupo e saldo.
+  // Filtragem por busca por palavras-chave, depósito, tipo, classificação, ABC, grupo e saldo.
   const filteredRows = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = searchChips.map(normalizarParaBusca).filter(Boolean);
     return rows.filter(r => {
       if (depositoFilter.size > 0 && !depositoFilter.has(r.deposito)) return false;
       if (tipoItemFilter !== 'Todos') {
@@ -225,15 +222,21 @@ export default function Estoque({ user }: EstoqueProps) {
       if (abcFilter !== 'Todos' && mapaAbc.get(normalizeCode(r.material)) !== abcFilter) return false;
       if (grupoFilter !== 'Todos' && r.grupo_mercadorias !== grupoFilter) return false;
       if (apenasComSaldo && !((r.quantidade ?? 0) > 0)) return false;
-      if (q) {
-        const hit =
-          (r.material || '').toLowerCase().includes(q) ||
-          (r.txt_breve_material || '').toLowerCase().includes(q);
+      if (tokens.length > 0) {
+        const hit = casarTokens([
+          r.material,
+          r.txt_breve_material,
+          r.referencia_fabricante,
+          r.aplicacao,
+          r.texto_pedido_compra,
+          r.grupo_mercadorias,
+          r.deposito,
+        ], tokens);
         if (!hit) return false;
       }
       return true;
     });
-  }, [rows, searchQuery, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
+  }, [rows, searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, mapaAbc]);
 
   const pmmMovDe = useCallback(
     (material?: string | null) => pmmMov.get(normalizeCode(material)) ?? null,
@@ -278,10 +281,7 @@ export default function Estoque({ user }: EstoqueProps) {
   const visibleRows = useMemo(() => sortedRows.slice(0, visibleCount), [sortedRows, visibleCount]);
 
   // Reinicia a paginação quando filtros/ordenação mudam.
-  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchQuery, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
-
-  const handleSearch = () => setSearchQuery(searchInput.trim());
-  const handleClearSearch = () => { setSearchInput(''); setSearchQuery(''); };
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [searchChips, depositoFilter, tipoItemFilter, tipoFilter, classFilter, abcFilter, grupoFilter, apenasComSaldo, sortColumn, sortDir]);
 
   const toggleSort = (col: string) => {
     if (sortColumn === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -493,42 +493,12 @@ export default function Estoque({ user }: EstoqueProps) {
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-xs space-y-3.5">
         {/* Busca: sempre em sua própria linha, para não disputar espaço com os
             filtros e acabar espremida a um quadrado só com o ícone. */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-              placeholder="Busque por material ou descrição..."
-              className="w-full h-10 pl-10 pr-9 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition-all"
-            />
-            {searchInput && (
-              <button
-                onClick={handleClearSearch}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-150 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                title="Limpar busca"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <button
-            onClick={handleSearch}
-            className="h-10 shrink-0 flex items-center gap-1.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 whitespace-nowrap"
-          >
-            <Search className="h-3.5 w-3.5" /> Pesquisar
-          </button>
-          {searchQuery && (
-            <button
-              onClick={handleClearSearch}
-              className="h-10 shrink-0 flex items-center gap-1.5 px-4 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
-            >
-              <X className="h-3.5 w-3.5" /> Limpar
-            </button>
-          )}
-        </div>
+        <SearchKeywordsChips
+          chips={searchChips}
+          onChangeChips={setSearchChips}
+          accent="emerald"
+          placeholder="Digite um termo (material, descrição, aplicação, ref...) e pressione Enter..."
+        />
 
         {/* Filtros de categoria: no mobile viram uma trilha com rolagem
             horizontal (evita empurrar a lista para muito longe do topo);

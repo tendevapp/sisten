@@ -25,7 +25,9 @@ import { avaliarEntregaParcial, temDivergenciaDeEntrega } from '../lib/entregaPa
 import { ehItemDeContrato, numeroContratoPO, itemContratoPO } from '../lib/contratoPedido';
 import { formatDateBR, formatDateTimeBR, formatInt } from '../lib/format';
 import { sanitizeTechnicalText } from '../lib/materiais';
+import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
 import { RASCUNHO_COTACAO_KEY } from '../lib/cotacoes';
+import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 import {
   buscarVinculoSistenRm, formatarItemCotacao, indexarVinculosSistenPorRm, textoTecnicoParaCotacao,
   type VinculoSistenRm,
@@ -414,69 +416,6 @@ const HistoricoFornecedoresModal = ({
   </Modal>
 );
 
-interface SearchInputProps {
-  onSearch: (value: string) => void;
-  initialValue: string;
-}
-
-const SearchInput = React.memo(({ onSearch, initialValue }: SearchInputProps) => {
-  const [value, setValue] = useState(initialValue);
-
-  // Sincroniza estado se initialValue mudar externamente
-  useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
-
-  const triggerSearch = (val: string) => {
-    // Executa de forma assíncrona no próximo tick do event loop.
-    // Isso garante que o navegador repinte o estado do input e dos botões imediatamente,
-    // dando feedback visual instantâneo antes que o processamento pesado de re-filtragem comece.
-    setTimeout(() => {
-      onSearch(val);
-    }, 10);
-  };
-
-  return (
-    <div className="relative flex-1 flex gap-2">
-      <div className="relative flex-1">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450 pointer-events-none" />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              triggerSearch(value);
-            }
-          }}
-          placeholder="Pesquisar por material, descrição, RM, PO ou fornecedor... (Pressione Enter)"
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:border-[#0056c6] focus:ring-1 focus:ring-[#0056c6]/20 focus:outline-none transition-all"
-        />
-      </div>
-      <button
-        onClick={() => triggerSearch(value)}
-        className="px-4 py-2.5 bg-[#0056c6] hover:bg-[#004bb0] text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
-      >
-        <Search className="h-4 w-4" />
-        <span>Pesquisar</span>
-      </button>
-      <button
-        onClick={() => {
-          setValue('');
-          triggerSearch('');
-        }}
-        disabled={!value}
-        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 border ${
-          value 
-            ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700' 
-            : 'bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-600 border-slate-100 dark:border-slate-850 cursor-not-allowed opacity-50'
-        }`}
-      >
-        <span>Limpar</span>
-      </button>
-    </div>
-  );
-});
 
 /**
  * Níveis de alerta dos gráficos de Suprimentos → os valores de `alerta` que
@@ -751,7 +690,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
   };
 
   // Filters
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchChips, setSearchChips] = useState<string[]>([]);
   // Filtros de seleção múltipla: conjunto vazio = sem restrição ("Todos").
   const [rmFilter, setRmFilter] = useState<Set<string>>(new Set());
   const [numPoFilter, setNumPoFilter] = useState<Set<string>>(new Set());
@@ -839,16 +778,12 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
     [grupoMercMap]
   );
 
-  const handleSearch = useCallback((val: string) => {
-    setSearchQuery(val);
-  }, []);
-
   // Paginação incremental para evitar travamento ao carregar listagens gigantescas (ex: ao limpar busca)
   const [visibleCount, setVisibleCount] = useState(40);
 
   useEffect(() => {
     setVisibleCount(40);
-  }, [searchQuery, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
+  }, [searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, promessaFilter, poFilter, kpiFilter, viewMode, tipoItemFilter]);
 
   const rmGroups = useMemo(() => {
     if (poFilter === 'Sem PO') {
@@ -1738,11 +1673,10 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
   // Filtragem (Primeiro estágio sem KPI)
   const filteredGroupsWithoutKpi = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = searchChips.map(normalizarParaBusca).filter(Boolean);
     const result: RMGroup[] = [];
     rmGroups.forEach(g => {
       if (rmFilter.size > 0 && !rmFilter.has(g.rm)) return;
-      const rmMatchesSearch = q ? g.rm.toLowerCase().includes(q) : false;
       const items = g.items.filter(it => {
         const r = it.record;
         if (numPoFilter.size > 0) {
@@ -1763,30 +1697,31 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
           if (!prioridadeFilter.has(nivel === undefined ? 'Nenhuma' : String(nivel))) return false;
         }
         if (poFilter !== 'Sem MIGO' && !matchesPromessaFilter(r.ri, r)) return false;
-        if (q) {
-          const inRecord =
-            (r.material_code || '').toLowerCase().includes(q) ||
-            (r.texto_breve || '').toLowerCase().includes(q) ||
-            (r.requisitante_name || '').toLowerCase().includes(q) ||
-            (r.fornecedor_name || '').toLowerCase().includes(q) ||
-            (r.fornecedor_code || '').toLowerCase().includes(q) ||
-            (r.documento_compra || '').toLowerCase().includes(q);
-          const inFornecedor = it.fornecedores.some(f =>
-            f.fornecedor.toLowerCase().includes(q) ||
-            (f.nome_fantasia || '').toLowerCase().includes(q) ||
-            f.cnpj.toLowerCase().includes(q) ||
-            f.cod_forn.toLowerCase().includes(q)
-          );
+        if (tokens.length > 0) {
           const cotacoesItem = obterCotacoesDoItem(r);
-          const inCotacao = cotacoesItem.some(c => c.numero.toLowerCase().includes(q));
-          if (!rmMatchesSearch && !inRecord && !inFornecedor && !inCotacao) return false;
+          const alvos: (string | undefined | null)[] = [
+            g.rm,
+            r.material_code,
+            r.texto_breve,
+            r.requisitante_name,
+            r.fornecedor_name,
+            r.fornecedor_code,
+            r.documento_compra,
+          ];
+          for (const f of it.fornecedores) {
+            alvos.push(f.fornecedor, f.nome_fantasia, f.cnpj, f.cod_forn);
+          }
+          for (const c of cotacoesItem) {
+            alvos.push(c.numero);
+          }
+          if (!casarTokens(alvos, tokens)) return false;
         }
         return true;
       });
       if (items.length > 0) result.push({ rm: g.rm, items });
     });
     return result;
-  }, [rmGroups, searchQuery, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
+  }, [rmGroups, searchChips, rmFilter, numPoFilter, buyerFilter, statusFilter, alertFilter, grupoMercFilter, prioridadeFilter, prioridadesMap, grupoMercDe, matchesPromessaFilter, tipoItemFilter, obterCotacoesDoItem]);
 
   // Filtragem (Segundo estágio aplicando KPI)
   const filteredGroups = useMemo(() => {
@@ -1838,7 +1773,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
       selectedSupplier?: any;
     }> = [];
 
-    const q = searchQuery.trim().toLowerCase();
+    const tokens = searchChips.map(normalizarParaBusca).filter(Boolean);
 
     filteredGroups.forEach(g => {
       g.items.forEach(it => {
@@ -1846,19 +1781,20 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
         if (!tableShowSupplierFirst || !encontrado || fornecedores.length === 0) {
           list.push({ rm: g.rm, item: it });
         } else {
-          // Se o termo de busca estiver ativo, e o item em si NÃO bater com o termo de busca,
-          // mas um fornecedor da lista bater, nós devemos apenas listar os fornecedores que batem!
+          // Se houver busca por palavras-chave ativa e o item em si NÃO satisfizer todas as palavras-chave sozinho,
+          // listamos apenas os fornecedores que completam o casamento dos termos
           let showAllSuppliers = true;
-          if (q) {
+          if (tokens.length > 0) {
             const r = it.record;
-            const itemMatches =
-              (r.material_code || '').toLowerCase().includes(q) ||
-              (r.texto_breve || '').toLowerCase().includes(q) ||
-              (r.requisitante_name || '').toLowerCase().includes(q) ||
-              (r.fornecedor_name || '').toLowerCase().includes(q) ||
-              (r.fornecedor_code || '').toLowerCase().includes(q) ||
-              (r.documento_compra || '').toLowerCase().includes(q) ||
-              g.rm.toLowerCase().includes(q);
+            const itemMatches = casarTokens([
+              g.rm,
+              r.material_code,
+              r.texto_breve,
+              r.requisitante_name,
+              r.fornecedor_name,
+              r.fornecedor_code,
+              r.documento_compra,
+            ], tokens);
             if (!itemMatches) {
               showAllSuppliers = false;
             }
@@ -1868,12 +1804,20 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             if (showAllSuppliers) {
               list.push({ rm: g.rm, item: it, selectedSupplier: f });
             } else {
-              // Apenas inclui se o fornecedor bater com a busca
-              const supplierMatches =
-                f.fornecedor.toLowerCase().includes(q) ||
-                (f.nome_fantasia || '').toLowerCase().includes(q) ||
-                f.cnpj.toLowerCase().includes(q) ||
-                f.cod_forn.toLowerCase().includes(q);
+              const r = it.record;
+              const supplierMatches = casarTokens([
+                g.rm,
+                r.material_code,
+                r.texto_breve,
+                r.requisitante_name,
+                r.fornecedor_name,
+                r.fornecedor_code,
+                r.documento_compra,
+                f.fornecedor,
+                f.nome_fantasia,
+                f.cnpj,
+                f.cod_forn,
+              ], tokens);
               if (supplierMatches) {
                 list.push({ rm: g.rm, item: it, selectedSupplier: f });
               }
@@ -1894,7 +1838,7 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
 
     // Ordenação padrão por status de PO
     return list.sort((a, b) => poRank(a.item.record) - poRank(b.item.record));
-  }, [filteredGroups, tableShowSupplierFirst, searchQuery]);
+  }, [filteredGroups, tableShowSupplierFirst, searchChips]);
 
   const totalItemCount = useMemo(() => rmGroups.reduce((s, g) => s + g.items.length, 0), [rmGroups]);
   const filteredItemCount = useMemo(() => filteredGroups.reduce((s, g) => s + g.items.length, 0), [filteredGroups]);
@@ -2581,9 +2525,11 @@ export default function Compras({ user, onNavigate, poFilterInicial }: ComprasPr
             trilha de filtros some inteira — dependendo da largura exata da
             tela. Mesmo padrão já usado em Estoque.tsx. */}
         <div className="space-y-3">
-          <SearchInput
-            initialValue={searchQuery}
-            onSearch={handleSearch}
+          <SearchKeywordsChips
+            chips={searchChips}
+            onChangeChips={setSearchChips}
+            accent="blue"
+            placeholder="Digite um termo (material, descrição, RM, PO, fornecedor) e pressione Enter..."
           />
           {/* No mobile vira uma trilha com rolagem horizontal, como a barra
               de filtros principal do cabeçalho (linha 1511) — evita que os

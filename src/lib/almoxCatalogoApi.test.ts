@@ -10,6 +10,7 @@ import {
   buscarMateriaisParaAdicao,
   pesquisarCatalogoSapOnline,
   PREFIXO_CAT_ITEM,
+  extensaoDaImagem,
   type CatalogoItem,
   type DadosCatalogoCompleto,
 } from './almoxCatalogoApi';
@@ -416,5 +417,24 @@ describe('almoxCatalogoApi - Catálogo de Itens do Almoxarifado', () => {
     const mapa = await obterUrlsFotosCatalogoLote(lote);
     expect(mapa.get('https://exemplo.com/foto1.jpg')).toBe('https://exemplo.com/foto1.jpg');
     expect(mapa.get('http://exemplo.com/foto2.jpg')).toBe('http://exemplo.com/foto2.jpg');
+  });
+});
+
+describe('extensaoDaImagem', () => {
+  const original = new File(['x'], 'IMG_2031.PNG', { type: 'image/png' });
+
+  it('foto comprimida volta como Blob sem nome: a extensão vem do tipo', () => {
+    expect(extensaoDaImagem(new Blob(['x'], { type: 'image/jpeg' }), original)).toBe('jpg');
+  });
+
+  it('sem compressão, usa o tipo do próprio arquivo', () => {
+    expect(extensaoDaImagem(original, original)).toBe('png');
+  });
+
+  it('tipo desconhecido cai para o nome do original, e sem extensão para jpg', () => {
+    const semTipo = new File(['x'], 'foto.HEIC');
+    expect(extensaoDaImagem(semTipo, semTipo)).toBe('heic');
+    const semNada = new File(['x'], 'image');
+    expect(extensaoDaImagem(semNada, semNada)).toBe('jpg');
   });
 });

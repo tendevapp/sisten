@@ -44,4 +44,40 @@ describe('planejamentoAcompanhamentoDiario', () => {
     expect(model.areas.find(area => area.id === 'NAVE_1')?.monthly.find(month => month.month === 'Agosto')?.real).toBe(1);
     expect(model.areas.find(area => area.id === 'NAVE_1')?.weeklyDaily.some(point => point.date === '2026-08-30')).toBe(true);
   });
+  it('aplica a meta configurada e o realizado manual sem alterar os demais dados importados', () => {
+    const model = buildAcompanhamentoDiarioModel([
+      { termino_nav01: '2026-09-08', raw_data: {} },
+    ], new Date('2026-09-08T12:00:00Z'), 8, {
+      metas: [{ area: 'NAVE_1', ano: 2026, mes: 9, meta: 40, dias_uteis: 20 }],
+      realizados: [{ area: 'NAVE_1', data: '2026-09-08', realizado: 4 }],
+      feriados: ['2026-09-07'],
+    });
+
+    const nave = model.areas.find(area => area.id === 'NAVE_1');
+    const setembro = nave?.monthly.find(month => month.month === 'Setembro');
+    const terca = nave?.weeklyDaily.find(point => point.date === '2026-09-08');
+    const segunda = nave?.weeklyDaily.find(point => point.date === '2026-09-07');
+
+    expect(setembro?.programado).toBe(40);
+    expect(setembro?.diasUteis).toBe(20);
+    expect(setembro?.real).toBe(4);
+    expect(terca).toMatchObject({ real: 4, media: 2 });
+    expect(segunda?.media).toBeNull();
+  });
+
+  it('aplica o ajuste semanal ao ritmo diario e ao programado mensal', () => {
+    const model = buildAcompanhamentoDiarioModel([], new Date('2026-09-09T12:00:00Z'), 8, {
+      metas: [{ area: 'NAVE_1', ano: 2026, mes: 9, meta: 42, dias_uteis: 21 }],
+      metasSemanais: [{ area: 'NAVE_1', semana_inicio: '2026-09-06', meta: 16, dias_uteis: 4 }],
+      realizados: [],
+      feriados: ['2026-09-07'],
+    } as any);
+
+    const nave = model.areas.find(area => area.id === 'NAVE_1');
+    const setembro = nave?.monthly.find(month => month.month === 'Setembro');
+    const terca = nave?.weeklyDaily.find(point => point.date === '2026-09-08');
+
+    expect(terca?.media).toBe(4);
+    expect(setembro?.programado).toBe(50);
+  });
 });

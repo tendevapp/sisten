@@ -6,6 +6,7 @@ import {
   type AcompanhamentoRowPayload,
   type CronogramaRowPayload,
 } from './planejamentoAcompanhamentoImportacao';
+import type { AcompanhamentoDiarioConfiguracao, AcompanhamentoDiarioMeta, AcompanhamentoDiarioMetaSemanal, AcompanhamentoDiarioRealizado } from './planejamentoAcompanhamentoDiario';
 
 export interface AcompanhamentoImportResult {
   importacao_id: string;
@@ -23,6 +24,19 @@ export interface AcompanhamentoSnapshot {
   reparos: Record<string, unknown>[];
   divergencias: Record<string, unknown>[];
   ultimaImportacao: Record<string, unknown> | null;
+}
+
+export interface AcompanhamentoDiarioAuditoria {
+  id: string;
+  entidade: 'metas' | 'metas_semanais' | 'realizados' | 'feriados';
+  acao: 'INSERT' | 'UPDATE' | 'DELETE';
+  chave: Record<string, unknown>;
+  alterado_por: string | null;
+  alterado_em: string;
+}
+
+export interface AcompanhamentoDiarioDados extends AcompanhamentoDiarioConfiguracao {
+  auditoria: AcompanhamentoDiarioAuditoria[];
 }
 
 const db = (table: string) => (supabase.from as any)(table);
@@ -77,4 +91,79 @@ export async function carregarAcompanhamentoSnapshot(): Promise<AcompanhamentoSn
     base, engine, pcp, weekly, torres, postos, reparos, divergencias,
     ultimaImportacao: importResult[0] ?? null,
   };
+}
+
+export async function carregarAcompanhamentoDiarioDados(ano: number): Promise<AcompanhamentoDiarioDados> {
+  const inicio = `${ano}-01-01`;
+  const fim = `${ano + 1}-01-01`;
+  const inicioSemanas = `${ano - 1}-12-25`;
+  const [metasResult, metasSemanaisResult, realizadosResult, feriadosResult, auditoriaResult] = await Promise.all([
+    db('planejamento_acomp_diario_metas').select('area, ano, mes, meta, dias_uteis').eq('ano', ano).order('area').order('mes'),
+    db('planejamento_acomp_diario_metas_semanais').select('area, semana_inicio, meta, dias_uteis').gte('semana_inicio', inicioSemanas).lt('semana_inicio', fim).order('semana_inicio').order('area'),
+    db('planejamento_acomp_diario_realizados').select('area, data, realizado').gte('data', inicio).lt('data', fim).order('data'),
+    db('planejamento_acomp_diario_feriados').select('data').gte('data', inicio).lt('data', fim).order('data'),
+    db('planejamento_acomp_diario_auditoria').select('id, entidade, acao, chave, alterado_por, alterado_em').order('alterado_em', { ascending: false }).limit(30),
+  ]);
+  for (const result of [metasResult, metasSemanaisResult, realizadosResult, feriadosResult, auditoriaResult]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+  return {
+    metas: (metasResult.data ?? []).map((item: Record<string, unknown>) => ({
+      area: item.area,
+      ano: Number(item.ano),
+      mes: Number(item.mes),
+      meta: Number(item.meta),
+      dias_uteis: Number(item.dias_uteis),
+    })) as AcompanhamentoDiarioMeta[],
+    metasSemanais: (metasSemanaisResult.data ?? []).map((item: Record<string, unknown>) => ({
+      area: item.area,
+      semana_inicio: String(item.semana_inicio),
+      meta: Number(item.meta),
+      dias_uteis: Number(item.dias_uteis),
+    })) as AcompanhamentoDiarioMetaSemanal[],
+    realizados: (realizadosResult.data ?? []).map((item: Record<string, unknown>) => ({
+      area: item.area,
+      data: String(item.data),
+      realizado: Number(item.realizado),
+    })) as AcompanhamentoDiarioRealizado[],
+    feriados: (feriadosResult.data ?? []).map((item: Record<string, unknown>) => String(item.data)),
+    auditoria: (auditoriaResult.data ?? []) as AcompanhamentoDiarioAuditoria[],
+  };
+}
+
+export async function salvarMetasAcompanhamentoDiario(metas: AcompanhamentoDiarioMeta[]): Promise<void> {
+  if (!metas.length) return;
+  const { error } = await db('planejamento_acomp_diario_metas').upsert(metas, { onConflict: 'area,ano,mes' });
+  if (error) throw new Error(error.message);
+}
+
+export async function salvarMetasSemanaisAcompanhamentoDiario(metas: AcompanhamentoDiarioMetaSemanal[]): Promise<void> {
+  if (!metas.length) return;
+  const { error } = await db('planejamento_acomp_diario_metas_semanais').upsert(metas, { onConflict: 'area,semana_inicio' });
+  if (error) throw new Error(error.message);
+}
+
+export async function removerMetaSemanalAcompanhamentoDiario(area: string, semanaInicio: string): Promise<void> {
+  const { error } = await db('planejamento_acomp_diario_metas_semanais').delete().eq('area', area).eq('semana_inicio', semanaInicio);
+  if (error) throw new Error(error.message);
+}
+
+export async function salvarRealizadoAcompanhamentoDiario(realizado: AcompanhamentoDiarioRealizado): Promise<void> {
+  const { error } = await db('planejamento_acomp_diario_realizados').upsert(realizado, { onConflict: 'area,data' });
+  if (error) throw new Error(error.message);
+}
+
+export async function removerRealizadoAcompanhamentoDiario(area: string, data: string): Promise<void> {
+  const { error } = await db('planejamento_acomp_diario_realizados').delete().eq('area', area).eq('data', data);
+  if (error) throw new Error(error.message);
+}
+
+export async function salvarFeriadoAcompanhamentoDiario(data: string, descricao?: string): Promise<void> {
+  const { error } = await db('planejamento_acomp_diario_feriados').upsert({ data, descricao: descricao?.trim() || null }, { onConflict: 'data' });
+  if (error) throw new Error(error.message);
+}
+
+export async function removerFeriadoAcompanhamentoDiario(data: string): Promise<void> {
+  const { error } = await db('planejamento_acomp_diario_feriados').delete().eq('data', data);
+  if (error) throw new Error(error.message);
 }

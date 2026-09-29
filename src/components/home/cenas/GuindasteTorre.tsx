@@ -24,6 +24,7 @@ const JIB_Y = 18; // altura do carrinho
 const FOLGA = 24; // vão entre o cilindro no gancho e o topo da torre
 const SUBIDA = 70; // de onde o cilindro novo é içado
 const TOLERANCIA = 7; // desvio máximo (px) para o tronco encaixar
+const PATIO_FIM = 182; // borda direita da pilha de troncos deitados
 
 const OMEGA = 2.3; // rad/s do balanço
 const AMP_MAX = 26;
@@ -146,7 +147,7 @@ export default function GuindasteTorre() {
     setSolto({ x: TX + x, y: cilTopo + SEG_A / 2, dir });
     setFase('desaba');
     if (n === 0) {
-      depois(1500, recomecar);
+      depois(2600, recomecar);
       return;
     }
     depois(550, () => setImpacto(true));
@@ -160,12 +161,16 @@ export default function GuindasteTorre() {
 
   const dirQueda = solto?.dir ?? 1;
   const passoQueda = 14;
-  const pousoCilindro = (w: number) => ({
-    ['--dx' as string]: `${dirQueda * (30 + n * passoQueda)}px`,
-    ['--dy' as string]: `${CHAO - w / 2 - (solto?.y ?? 0)}px`,
-    ['--rot' as string]: `${dirQueda * 92}deg`,
-    ['--atraso' as string]: '0s',
-  });
+  // O cilindro rola para o lado do erro, mas nunca para dentro da pilha de troncos.
+  const pousoCilindro = (w: number) => {
+    const de = solto?.x ?? TX;
+    const para = limitar(de + dirQueda * (44 + n * passoQueda), PATIO_FIM + SEG_A / 2 + 4, CENA_L - SEG_A);
+    return {
+      ['--dx' as string]: `${para - de}px`,
+      ['--dy' as string]: `${CHAO - w / 2 - (solto?.y ?? 0)}px`,
+      ['--rot' as string]: `${dirQueda * 92}deg`,
+    };
+  };
 
   return (
     <CenaMoldura>
@@ -252,7 +257,7 @@ export default function GuindasteTorre() {
         {/* Cilindro solto fora do encaixe: cai e rola para o lado do erro */}
         {solto && (
           <g transform={`translate(${n1(solto.x)} ${n1(solto.y)})`}>
-            <g className="cena-desaba" style={pousoCilindro(larg)}>
+            <g className="cena-solta" style={pousoCilindro(larg)}>
               <rect x={-larg / 2} y={-SEG_A / 2} width={larg} height={SEG_A} className="fill-slate-400 dark:fill-slate-500" />
               <rect x={-larg / 2} y={-SEG_A / 2} width={larg} height={SEG_A} fill={`url(#${idCilindro})`} />
             </g>

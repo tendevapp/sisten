@@ -24,6 +24,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useId } from 'react';
 import { Search, X, Boxes, Hammer } from 'lucide-react';
 import { isProjetoItem } from '../../lib/almoxarifado';
+import { extrairPalavrasChave, normalizarParaBusca } from '../../lib/buscaKeywords';
 
 export interface SugestaoMaterial {
   material: string;
@@ -56,7 +57,7 @@ function normalizar(s: string): string {
 
 export default function MaterialSearchInput({
   valor, onChange, materiais, onSelecionarMaterial, materialSelecionado,
-  placeholder = 'Material, descrição, documento...', className = '',
+  placeholder = 'Buscar material por palavras-chave...', className = '',
 }: MaterialSearchInputProps) {
   const [aberto, setAberto] = useState(false);
   const [destaque, setDestaque] = useState(0);
@@ -79,29 +80,29 @@ export default function MaterialSearchInput({
   }, [materiais]);
 
   const sugestoes = useMemo(() => {
-    const q = normalizar(valor.trim());
-    if (q.length < 2) return [];
+    const tokens = extrairPalavrasChave(valor);
+    if (tokens.length === 0) return [];
+    if (tokens.length === 1 && tokens[0].length < 2) return [];
 
     const porCodigo: typeof universo = [];
     const porDescricao: typeof universo = [];
 
     for (const item of universo) {
-      const cod = item.material.toLowerCase();
-      if (cod.includes(q)) {
+      const cod = normalizarParaBusca(item.material);
+      const desc = item.descricao ? normalizarParaBusca(item.descricao) : '';
+
+      if (tokens.every(t => cod.includes(t))) {
         porCodigo.push(item);
-      } else if (item.descricao && normalizar(item.descricao).includes(q)) {
+      } else if (tokens.every(t => desc.includes(t) || cod.includes(t))) {
         porDescricao.push(item);
       }
-      // Para cedo: já há material suficiente para preencher a lista com
-      // sobra, e varrer 2,6 mil itens a cada tecla não paga o custo.
       if (porCodigo.length >= MAX_SUGESTOES) break;
     }
 
-    // Código antes de descrição: quem digita dígitos quase sempre quer o
-    // código, e prefixo antes de "contém" no meio.
+    const primeiroToken = tokens[0];
     porCodigo.sort((a, b) => {
-      const pa = a.material.toLowerCase().startsWith(q) ? 0 : 1;
-      const pb = b.material.toLowerCase().startsWith(q) ? 0 : 1;
+      const pa = normalizarParaBusca(a.material).startsWith(primeiroToken) ? 0 : 1;
+      const pb = normalizarParaBusca(b.material).startsWith(primeiroToken) ? 0 : 1;
       return pa !== pb ? pa - pb : a.material.localeCompare(b.material);
     });
 

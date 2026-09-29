@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Database, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { Profile } from '../../types';
-import { carregarAcompanhamentoSnapshot, type AcompanhamentoSnapshot } from '../../lib/planejamentoAcompanhamentoApi';
+import { canAccessPage } from '../../lib/pages';
+import { carregarAcompanhamentoDiarioDados, carregarAcompanhamentoSnapshot, type AcompanhamentoDiarioDados, type AcompanhamentoSnapshot } from '../../lib/planejamentoAcompanhamentoApi';
 import { buildAcompanhamentoDiarioModel, DAILY_MONTHS } from '../../lib/planejamentoAcompanhamentoDiario';
 import AcompanhamentoDiarioDashboard from '../../components/planejamento/AcompanhamentoDiarioDashboard';
 
@@ -19,8 +20,9 @@ function formatDate(value: string | undefined): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
 }
 
-export default function AcompanhamentoDiarioTvView({ user: _user, onNavigate }: Props) {
+export default function AcompanhamentoDiarioTvView({ user, onNavigate }: Props) {
   const [snapshot, setSnapshot] = useState<AcompanhamentoSnapshot | null>(null);
+  const [dados, setDados] = useState<AcompanhamentoDiarioDados | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,12 @@ export default function AcompanhamentoDiarioTvView({ user: _user, onNavigate }: 
     setRefreshing(true);
     setError(null);
     try {
-      setSnapshot(await carregarAcompanhamentoSnapshot());
+      const [novoSnapshot, novosDados] = await Promise.all([
+        carregarAcompanhamentoSnapshot(),
+        carregarAcompanhamentoDiarioDados(new Date().getUTCFullYear()),
+      ]);
+      setSnapshot(novoSnapshot);
+      setDados(novosDados);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar o Acomp Diário TV.');
     } finally {
@@ -78,7 +85,7 @@ export default function AcompanhamentoDiarioTvView({ user: _user, onNavigate }: 
   };
 
   const rows = snapshot?.base ?? [];
-  const model = useMemo(() => buildAcompanhamentoDiarioModel(rows, new Date(), selectedMonthIndex), [rows, selectedMonthIndex]);
+  const model = useMemo(() => buildAcompanhamentoDiarioModel(rows, new Date(), selectedMonthIndex, dados ?? undefined), [dados, rows, selectedMonthIndex]);
   const last = snapshot?.ultimaImportacao;
   const latestData = rows.flatMap(row => ['termino_nav01', 'data_termino_saw3', 'data_termino_internos', 'termino_final', 'data_expedicao'].map(key => String(row[key] ?? '').slice(0, 10))).filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value)).sort().at(-1);
 
@@ -93,6 +100,7 @@ export default function AcompanhamentoDiarioTvView({ user: _user, onNavigate }: 
           <div><p className="text-lg font-black tracking-wide">ACOMP DIÁRIO · PAINEL TV</p><p className="mt-0.5 text-sm text-slate-300">Atualização automática a cada 2 minutos · fonte: {String(last?.arquivo_bd ?? 'BD_ACOMPANHAMENTO_GERAL')}</p></div>
           <div className="flex items-center gap-3"><label className="flex items-center gap-2 text-sm font-bold">Mês<select value={selectedMonthIndex} onChange={event => setSelectedMonthIndex(Number(event.target.value))} className="rounded-lg border border-white/20 bg-[#173d69] px-3 py-2 text-sm text-white outline-none">{DAILY_MONTHS.map((month, index) => <option key={month} value={index}>{month} / {model.referenceYear}</option>)}</select></label><span className="text-right text-xs text-slate-300">Dados até<br /><strong className="text-sm text-white">{formatDate(latestData)}</strong></span><span className="text-right text-xs text-slate-300">Atualizado<br /><strong className="text-sm text-white">{formatDateTime(last?.concluido_em ?? last?.iniciado_em)}</strong></span><button type="button" onClick={() => void load()} title="Atualizar agora" className="rounded-lg border border-white/20 p-2 hover:bg-white/10"><RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} /></button><button type="button" onClick={toggleFullscreen} title={fullscreen ? 'Sair da tela cheia' : 'Entrar em tela cheia'} className="rounded-lg border border-white/20 p-2 hover:bg-white/10">{fullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}</button></div>
         </div>
+        {canAccessPage(user, 'planejamento_acompanhamento_diario_editar') && <div className="mb-2 flex justify-end"><button type="button" onClick={() => onNavigate('/planejamento/acompanhamento-diario-dados')} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-[#0b2347] px-3 py-2 text-sm font-bold text-white hover:bg-[#173d69]"><Database className="h-4 w-4" /> Dados</button></div>}
         <AcompanhamentoDiarioDashboard areas={model.areas} referenceMonth={`${model.referenceMonth} / ${model.referenceYear}`} tvMode />
       </div>
     </div>

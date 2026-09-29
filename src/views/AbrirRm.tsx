@@ -58,6 +58,8 @@ import { mapaGrupoComprasPorMercadoria } from '../lib/grupoCompradorApi';
 import { mapaGrupoComprasPorSetor } from '../lib/setorCompradorApi';
 import { ESTAGIOS_AUTOMATICOS_COMPRA } from '../lib/statusAutomaticoCompra';
 import { useToast } from '../components/ui/Toast';
+import { extrairPalavrasChave, casarTokens, normalizarParaBusca } from '../lib/buscaKeywords';
+import SearchKeywordsChips from '../components/ui/SearchKeywordsChips';
 import { TableEmpty } from '../components/ui/DataTable';
 import Modal, { ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import TourSpotlight from '../components/help/TourSpotlight';
@@ -300,7 +302,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   const [concluindoAjusteSap, setConcluindoAjusteSap] = useState(false);
   const [liberandoAjusteSap, setLiberandoAjusteSap] = useState(false);
 
-  const [busca, setBusca] = useState('');
+  const [buscaChips, setBuscaChips] = useState<string[]>([]);
   const [filtroSetor, setFiltroSetor] = useState('todos');
   const [filtroClassificacao, setFiltroClassificacao] = useState('todas');
   const [filtroDeposito, setFiltroDeposito] = useState('todos');
@@ -313,7 +315,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   // Aba "Abertas": solicitações já exportadas, aguardando o número da RM
   // voltar do SAP — por digitação avulsa ou pela planilha reimportada.
   const [aba, setAba] = useState<'para_abrir' | 'abertas'>('para_abrir');
-  const [buscaAbertas, setBuscaAbertas] = useState('');
+  const [buscaAbertasChips, setBuscaAbertasChips] = useState<string[]>([]);
   const [itensExpandidosAbertas, setItensExpandidosAbertas] = useState<Set<string>>(new Set());
 
   const alternarItensAbertas = (id: string) => {
@@ -480,17 +482,19 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     if (filtroDeposito !== 'todos') {
       lista = lista.filter(r => depositoRm(r.tipo_compra) === filtroDeposito);
     }
-    if (busca.trim()) {
-      const termo = busca.toLowerCase().trim();
+    const tokens = buscaChips.map(normalizarParaBusca).filter(Boolean);
+    if (tokens.length > 0) {
       lista = lista.filter(r => {
-        if (r.number.toLowerCase().includes(termo)) return true;
-        if ((r.solicitante_name || '').toLowerCase().includes(termo)) return true;
-        if ((r.justificativa || '').toLowerCase().includes(termo)) return true;
-        return (itensPorRequest[r.id] || []).some(
-          it =>
-            it.description.toLowerCase().includes(termo) ||
-            (it.sap_code || '').toLowerCase().includes(termo),
-        );
+        const alvos: (string | undefined | null)[] = [
+          r.number,
+          r.solicitante_name,
+          r.justificativa,
+        ];
+        const itens = itensPorRequest[r.id] || [];
+        for (const it of itens) {
+          alvos.push(it.description, it.sap_code);
+        }
+        return casarTokens(alvos, tokens);
       });
     }
 
@@ -501,7 +505,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
     });
   }, [
     requests, itensPorRequest, exportacaoVigentePorRequest, filtroExportacao,
-    filtroSetor, filtroClassificacao, filtroDeposito, busca,
+    filtroSetor, filtroClassificacao, filtroDeposito, buscaChips,
   ]);
 
   /** A lista de sempre, sem quem precisa de ajuste manual no SAP — esses têm grupo próprio. */
@@ -575,20 +579,20 @@ export default function AbrirRm({ user, onNavigate }: Props) {
   /** Exportadas e vigentes — o que já saiu no SAP e ainda pode não ter RM de volta. */
   const abertas = useMemo(() => {
     let lista = requests.filter(r => exportacaoVigentePorRequest.has(r.id));
-    if (buscaAbertas.trim()) {
-      const termo = buscaAbertas.toLowerCase().trim();
+    const tokens = buscaAbertasChips.map(normalizarParaBusca).filter(Boolean);
+    if (tokens.length > 0) {
       lista = lista.filter(r => {
-        if (r.number.toLowerCase().includes(termo)) return true;
-        if ((r.solicitante_name || '').toLowerCase().includes(termo)) return true;
-        if ((r.linked_rm_number || '').toLowerCase().includes(termo)) return true;
-        if ((r.justificativa || '').toLowerCase().includes(termo)) return true;
+        const alvos: (string | undefined | null)[] = [
+          r.number,
+          r.solicitante_name,
+          r.linked_rm_number,
+          r.justificativa,
+        ];
         const itens = itensPorRequest[r.id] || [];
-        return itens.some(
-          it =>
-            (it.description || '').toLowerCase().includes(termo) ||
-            (it.sap_code || '').toLowerCase().includes(termo) ||
-            (it.observation || '').toLowerCase().includes(termo),
-        );
+        for (const it of itens) {
+          alvos.push(it.description, it.sap_code, it.observation);
+        }
+        return casarTokens(alvos, tokens);
       });
     }
     // Sem RM primeiro — é o que falta resolver.
@@ -598,7 +602,7 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       if (aSemRm !== bSemRm) return aSemRm - bSemRm;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [requests, exportacaoVigentePorRequest, buscaAbertas, itensPorRequest]);
+  }, [requests, exportacaoVigentePorRequest, buscaAbertasChips, itensPorRequest]);
 
   const abertasComRm = useMemo(() => abertas.filter(r => r.linked_rm_number).length, [abertas]);
   const abertasSemRm = abertas.length - abertasComRm;
@@ -1273,14 +1277,12 @@ export default function AbrirRm({ user, onNavigate }: Props) {
         className="flex flex-wrap items-center gap-2 rounded-xl border p-3"
         style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)' }}
       >
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-          <input
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            placeholder="Número, solicitante, material ou código SAP"
-            className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]"
-            style={{ borderColor: 'var(--hairline)', background: 'var(--surface)', color: 'var(--ink-primary)' }}
+        <div className="w-full mb-1">
+          <SearchKeywordsChips
+            chips={buscaChips}
+            onChangeChips={setBuscaChips}
+            accent="brand"
+            placeholder="Buscar por palavras-chave (número, solicitante, material ou código SAP)..."
           />
         </div>
 
@@ -1955,25 +1957,13 @@ export default function AbrirRm({ user, onNavigate }: Props) {
       )}
 
       {/* Busca */}
-      <div className="relative max-w-lg">
-        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--ink-muted)' }} />
-        <input
-          value={buscaAbertas}
-          onChange={e => setBuscaAbertas(e.target.value)}
-          placeholder="Número, solicitante, RM, material ou código SAP"
-          className="w-full pl-9 pr-8 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]"
-          style={{ borderColor: 'var(--hairline)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+      <div className="w-full max-w-xl">
+        <SearchKeywordsChips
+          chips={buscaAbertasChips}
+          onChangeChips={setBuscaAbertasChips}
+          accent="brand"
+          placeholder="Buscar por palavras-chave (número, solicitante, RM, material ou código SAP)..."
         />
-        {buscaAbertas && (
-          <button
-            type="button"
-            onClick={() => setBuscaAbertas('')}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--ink-muted)] hover:text-[var(--ink-primary)] p-0.5 rounded cursor-pointer"
-            title="Limpar busca"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
       </div>
 
       {/* Lista de Abertas */}
@@ -1994,7 +1984,8 @@ export default function AbrirRm({ user, onNavigate }: Props) {
               const vigente = exportacaoVigentePorRequest.get(r.id);
               const lote = vigente ? loteById.get(vigente.exportacao_id) : undefined;
               const temRm = !!r.linked_rm_number;
-              const estaExpandido = itensExpandidosAbertas.has(r.id) || buscaAbertas.trim().length > 0;
+              const tokensAbertas = buscaAbertasChips.map(normalizarParaBusca).filter(Boolean);
+              const estaExpandido = itensExpandidosAbertas.has(r.id) || tokensAbertas.length > 0;
               const itensExibidos = estaExpandido ? itens : itens.slice(0, 3);
               const temMaisItens = itens.length > 3;
 
@@ -2051,12 +2042,8 @@ export default function AbrirRm({ user, onNavigate }: Props) {
                     {itens.length > 0 && (
                       <div className="mt-2 space-y-1.5">
                         {itensExibidos.map((it, idx) => {
-                          const termo = buscaAbertas.trim().toLowerCase();
-                          const bateuBusca = termo && (
-                            (it.description || '').toLowerCase().includes(termo) ||
-                            (it.sap_code || '').toLowerCase().includes(termo) ||
-                            (it.observation || '').toLowerCase().includes(termo)
-                          );
+                          const tokensAbertas = buscaAbertasChips.map(normalizarParaBusca).filter(Boolean);
+                          const bateuBusca = tokensAbertas.length > 0 && casarTokens([it.description, it.sap_code, it.observation], tokensAbertas);
 
                           return (
                             <div

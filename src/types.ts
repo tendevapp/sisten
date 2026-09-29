@@ -927,6 +927,7 @@ export interface DiligenciamentoItem {
   data_faturamento_transportadora?: string | null;
   /** Sobrepoe a previsao calculada (remessa + prazo). NULL = usa o calculo. */
   previsao_manual?: string | null;
+  observacao?: string | null;
   atualizado_por_id?: string | null;
   atualizado_por_nome?: string | null;
   created_at?: string;
